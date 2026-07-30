@@ -71,7 +71,7 @@ import {
   useCollapsedNavigationGroups,
 } from "./hooks/useCollapsedNavigationGroups.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
-import { AttentionDetail, CommentsPanel } from "./CollaborationSurfaces.js";
+import { AttentionDetail } from "./CollaborationSurfaces.js";
 import {
   countLabel,
   dateKeyInZone,
@@ -101,6 +101,15 @@ import {
 // project nobody has opened costs nothing.
 const ProjectRecordScreen = lazy(
   () => import("./record/ProjectRecordScreen.js"),
+);
+// Lazy for the same reason, and the reason is measured: the panel's stylesheet
+// is eight kilobytes that a STATIC import would move onto the head-linked
+// sheet, against the six this retirement frees. The inspector rail is the third
+// mount of the one comments panel, not a second implementation of it.
+const RecordCommentsPanel = lazy(() =>
+  import("./record/RecordCommentsPanel.js").then((module) => ({
+    default: module.RecordCommentsPanel,
+  })),
 );
 import {
   addWorkspaceMember,
@@ -135,6 +144,7 @@ import {
   unrelateTask,
   updateAreaResponsibility,
   updateInitiativeOutcome,
+  updateSavedWorkView,
   updateProjectOutcome,
   updateAttention,
   createAgentGrant,
@@ -1800,6 +1810,15 @@ export const RealApp = ({
       : undefined,
     currentPrincipalId,
   );
+  // The reader is taken out of their own picker: a comment does not wake
+  // anyone, a mention does, and naming yourself would be a chip that reaches an
+  // Inbox you are already reading.
+  const commentMentionCandidates =
+    state.snapshot.mentionCandidates.kind === "ready"
+      ? state.snapshot.mentionCandidates.data.candidates.filter(
+          (candidate) => candidate.principalId !== currentPrincipalId,
+        )
+      : [];
 
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
@@ -2096,6 +2115,23 @@ export const RealApp = ({
             else showFailure(result);
           });
         }}
+        onSaveViewFilters={async (view, change) => {
+          if (!client) return false;
+          const result = await updateSavedWorkView(
+            client,
+            state.snapshot,
+            view,
+            {
+              filters: change,
+            },
+          );
+          if (result.kind !== "success") {
+            showFailure(result);
+            return false;
+          }
+          await refreshAfter("View conditions saved.");
+          return true;
+        }}
       />
     ),
     library: () => (
@@ -2177,6 +2213,7 @@ export const RealApp = ({
                     body={slots.body}
                     busy={projectBusy}
                     canComment={Boolean(canComment)}
+                    canResolve={Boolean(canResolveComments)}
                     clientLinking={{
                       candidates: linkableClientOrganizations(
                         state.snapshot,
@@ -2200,6 +2237,7 @@ export const RealApp = ({
                     }}
                     commentBusy={commentBusy}
                     comments={comments}
+                    currentPrincipalId={currentPrincipalId}
                     documents={projectOverview.relatedDocuments}
                     mentionCandidates={
                       state.snapshot.mentionCandidates.kind === "ready"
@@ -2209,7 +2247,12 @@ export const RealApp = ({
                           )
                         : []
                     }
-                    onAddComment={(body, mentions) => {
+                    onAddComment={(
+                      body,
+                      mentions,
+                      parent,
+                      attachmentSourceIds,
+                    ) => {
                       if (!client) return Promise.resolve(false);
                       setCommentBusy(true);
                       return addComment(
@@ -2222,8 +2265,8 @@ export const RealApp = ({
                         projectOverview.project.version,
                         body,
                         mentions,
-                        undefined,
-                        [],
+                        parent,
+                        attachmentSourceIds,
                       ).then(async (result) => {
                         setCommentBusy(false);
                         if (result.kind !== "success") {
@@ -2248,6 +2291,61 @@ export const RealApp = ({
                     onBack={() =>
                       openContext(destinationContext("projects", "Projects"))
                     }
+                    onEditComment={(comment, body, attachmentSourceIds) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return editComment(
+                        client,
+                        state.snapshot,
+                        comment.id,
+                        comment.version,
+                        body,
+                        comment.mentionPrincipalIds,
+                        attachmentSourceIds,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          {
+                            kind: "project",
+                            projectId: projectOverview.project.id,
+                          },
+                        );
+                        setComments({ kind: "ready", data });
+                        return true;
+                      });
+                    }}
+                    onResolveComment={(comment, resolved) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return setCommentResolved(
+                        client,
+                        state.snapshot,
+                        comment,
+                        resolved,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          {
+                            kind: "project",
+                            projectId: projectOverview.project.id,
+                          },
+                        );
+                        setComments({ kind: "ready", data });
+                        return true;
+                      });
+                    }}
                     onNewTask={() =>
                       openContext(destinationContext("tasks", "Tasks"))
                     }
@@ -3985,89 +4083,115 @@ export const RealApp = ({
                 onFailure={showFailure}
               />
             )}
-            <CommentsPanel
-              key={`task-${selectedTask.id}`}
-              comments={comments}
-              candidates={state.snapshot.mentionCandidates}
-              currentPrincipalId={currentPrincipalId}
-              canComment={Boolean(canComment)}
-              canResolve={Boolean(canResolveComments)}
-              busy={commentBusy}
-              onAttach={stageCommentAttachment}
-              onInspectAttachment={inspectManagedAttachment}
-              onRestoreAttachment={restoreManagedAttachment}
-              onAdd={(body, mentions, parent, attachmentSourceIds) => {
-                if (!client) return Promise.resolve(false);
-                setCommentBusy(true);
-                return addComment(
-                  client,
-                  state.snapshot,
-                  { kind: "task", taskId: selectedTask.id },
-                  selectedTask.version,
-                  body,
-                  mentions,
-                  parent,
-                  attachmentSourceIds,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "task",
-                      taskId: selectedTask.id,
-                    });
-                    setComments({ kind: "ready", data });
-                    pushToast({ message: "Comment saved." });
-                    return true;
-                  }
-                  showFailure(result);
-                  return false;
-                });
-              }}
-              onEdit={(comment, body, attachmentSourceIds) => {
-                if (!client) return Promise.resolve(false);
-                setCommentBusy(true);
-                return editComment(
-                  client,
-                  state.snapshot,
-                  comment.id,
-                  comment.version,
-                  body,
-                  comment.mentionPrincipalIds,
-                  attachmentSourceIds,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "task",
-                      taskId: selectedTask.id,
-                    });
-                    setComments({ kind: "ready", data });
-                    return true;
-                  }
-                  showFailure(result);
-                  return false;
-                });
-              }}
-              onResolve={(comment, resolved) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void setCommentResolved(
-                  client,
-                  state.snapshot,
-                  comment,
-                  resolved,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "task",
-                      taskId: selectedTask.id,
-                    });
-                    setComments({ kind: "ready", data });
-                  } else showFailure(result);
-                });
-              }}
-            />
+            {/* The rail's Comments, and the SAME panel the project and the
+                organization records draw. The older one lived here alone and
+                had grown replies, editing, resolving and attachments the record
+                screens could not offer — so consistency was reached by growing
+                the shared panel to match, not by giving the task less. */}
+            <section className="inspector-section">
+              <p className="section-label">Comments</p>
+              {comments.kind === "unavailable" ? (
+                // What went wrong, rather than one sentence for every cause:
+                // "Choose a task or a project." and a query that failed used to
+                // read identically here.
+                <p role="status">{comments.message}</p>
+              ) : (
+                <Suspense fallback={null}>
+                  <RecordCommentsPanel
+                    actorOf={actorOf}
+                    busy={commentBusy}
+                    canComment={Boolean(canComment)}
+                    canResolve={Boolean(canResolveComments)}
+                    currentPrincipalId={currentPrincipalId}
+                    mentionCandidates={commentMentionCandidates}
+                    mentionNameOf={(principalId) => mentionNameOf(principalId)}
+                    onAttach={stageCommentAttachment}
+                    onEdit={(comment, body, attachmentSourceIds) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return editComment(
+                        client,
+                        state.snapshot,
+                        comment.id,
+                        comment.version,
+                        body,
+                        comment.mentionPrincipalIds,
+                        attachmentSourceIds,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          { kind: "task", taskId: selectedTask.id },
+                        );
+                        setComments({ kind: "ready", data });
+                        return true;
+                      });
+                    }}
+                    onInspectAttachment={inspectManagedAttachment}
+                    onResolve={(comment, resolved) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return setCommentResolved(
+                        client,
+                        state.snapshot,
+                        comment,
+                        resolved,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          { kind: "task", taskId: selectedTask.id },
+                        );
+                        setComments({ kind: "ready", data });
+                        return true;
+                      });
+                    }}
+                    onRestoreAttachment={restoreManagedAttachment}
+                    onSubmit={(body, mentions, parent, attachmentSourceIds) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return addComment(
+                        client,
+                        state.snapshot,
+                        { kind: "task", taskId: selectedTask.id },
+                        selectedTask.version,
+                        body,
+                        mentions,
+                        parent,
+                        attachmentSourceIds,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          { kind: "task", taskId: selectedTask.id },
+                        );
+                        setComments({ kind: "ready", data });
+                        pushToast({ message: "Comment saved." });
+                        return true;
+                      });
+                    }}
+                    recordKey={`task-${selectedTask.id}`}
+                    threads={comments.data.threads}
+                    timeZone={recordProse.timeZone}
+                  />
+                </Suspense>
+              )}
+            </section>
           </div>
         ) : selectedProject ? (
           <div className="inspector-body">
@@ -4117,89 +4241,113 @@ export const RealApp = ({
                 </div>
               </dl>
             </section>
-            <CommentsPanel
-              key={`project-${selectedProject.id}`}
-              comments={comments}
-              candidates={state.snapshot.mentionCandidates}
-              currentPrincipalId={currentPrincipalId}
-              canComment={Boolean(canComment)}
-              canResolve={Boolean(canResolveComments)}
-              busy={commentBusy}
-              onAttach={stageCommentAttachment}
-              onInspectAttachment={inspectManagedAttachment}
-              onRestoreAttachment={restoreManagedAttachment}
-              onAdd={(body, mentions, parent, attachmentSourceIds) => {
-                if (!client) return Promise.resolve(false);
-                setCommentBusy(true);
-                return addComment(
-                  client,
-                  state.snapshot,
-                  { kind: "project", projectId: selectedProject.id },
-                  projectOverview?.project.version ?? selectedProject.version,
-                  body,
-                  mentions,
-                  parent,
-                  attachmentSourceIds,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "project",
-                      projectId: selectedProject.id,
-                    });
-                    setComments({ kind: "ready", data });
-                    pushToast({ message: "Comment saved." });
-                    return true;
-                  }
-                  showFailure(result);
-                  return false;
-                });
-              }}
-              onEdit={(comment, body, attachmentSourceIds) => {
-                if (!client) return Promise.resolve(false);
-                setCommentBusy(true);
-                return editComment(
-                  client,
-                  state.snapshot,
-                  comment.id,
-                  comment.version,
-                  body,
-                  comment.mentionPrincipalIds,
-                  attachmentSourceIds,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "project",
-                      projectId: selectedProject.id,
-                    });
-                    setComments({ kind: "ready", data });
-                    return true;
-                  }
-                  showFailure(result);
-                  return false;
-                });
-              }}
-              onResolve={(comment, resolved) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void setCommentResolved(
-                  client,
-                  state.snapshot,
-                  comment,
-                  resolved,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "project",
-                      projectId: selectedProject.id,
-                    });
-                    setComments({ kind: "ready", data });
-                  } else showFailure(result);
-                });
-              }}
-            />
+            <section className="inspector-section">
+              <p className="section-label">Comments</p>
+              {comments.kind === "unavailable" ? (
+                <p role="status">{comments.message}</p>
+              ) : (
+                <Suspense fallback={null}>
+                  <RecordCommentsPanel
+                    actorOf={actorOf}
+                    busy={commentBusy}
+                    canComment={Boolean(canComment)}
+                    canResolve={Boolean(canResolveComments)}
+                    currentPrincipalId={currentPrincipalId}
+                    mentionCandidates={commentMentionCandidates}
+                    mentionNameOf={(principalId) => mentionNameOf(principalId)}
+                    onAttach={stageCommentAttachment}
+                    onEdit={(comment, body, attachmentSourceIds) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return editComment(
+                        client,
+                        state.snapshot,
+                        comment.id,
+                        comment.version,
+                        body,
+                        comment.mentionPrincipalIds,
+                        attachmentSourceIds,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          { kind: "project", projectId: selectedProject.id },
+                        );
+                        setComments({ kind: "ready", data });
+                        return true;
+                      });
+                    }}
+                    onInspectAttachment={inspectManagedAttachment}
+                    onResolve={(comment, resolved) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return setCommentResolved(
+                        client,
+                        state.snapshot,
+                        comment,
+                        resolved,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          { kind: "project", projectId: selectedProject.id },
+                        );
+                        setComments({ kind: "ready", data });
+                        return true;
+                      });
+                    }}
+                    onRestoreAttachment={restoreManagedAttachment}
+                    onSubmit={(body, mentions, parent, attachmentSourceIds) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      // The overview carries the version a write is checked
+                      // against once it has loaded; the list entry is what the
+                      // inspector opened with.
+                      const version =
+                        projectOverview?.project.version ??
+                        selectedProject.version;
+                      return addComment(
+                        client,
+                        state.snapshot,
+                        { kind: "project", projectId: selectedProject.id },
+                        version,
+                        body,
+                        mentions,
+                        parent,
+                        attachmentSourceIds,
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          { kind: "project", projectId: selectedProject.id },
+                        );
+                        setComments({ kind: "ready", data });
+                        pushToast({ message: "Comment saved." });
+                        return true;
+                      });
+                    }}
+                    recordKey={`project-${selectedProject.id}`}
+                    threads={comments.data.threads}
+                    timeZone={recordProse.timeZone}
+                  />
+                </Suspense>
+              )}
+            </section>
           </div>
         ) : selectedWorkContextRecord ? (
           <div className="inspector-body">

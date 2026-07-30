@@ -15,6 +15,7 @@ import {
   RECORD_TAB_LABELS,
   buildThreads,
   commentsState,
+  openRoots,
   openThreadCount,
   restoreTab,
   type CommentsState,
@@ -177,6 +178,47 @@ test("the Comments count is unresolved ROOT threads, not comments", () => {
   assert.equal(openThreadCount([settled, settledAnswer]), 0);
   assert.equal(openThreadCount([]), 0);
   assert.equal(openThreadCount(undefined), 0);
+});
+
+test("the panel shows exactly the roots the tab counts", () => {
+  // `openRoots` is THE reading of "still open on this record", and the badge,
+  // the tree builder and the resolved valve were all routed through it. Nothing
+  // pinned that: every test above measures one reading against a LITERAL, and a
+  // literal cannot notice that the other reading moved. So this compares the two
+  // readings TO EACH OTHER — the number the panel would show against the number
+  // on the tab — which is the promise the extraction was made to keep.
+  const open = root(commentId(1), at(1));
+  const settled = root(commentId(2), at(2), "resolved");
+  // OPEN and under the SETTLED root, deliberately. That is the one shape that
+  // tells the two readings apart: a valve re-inlined to treat "has a live
+  // answer" as open would show two roots while the tab still said one, and no
+  // fixture of roots without replies can see it.
+  const answer = reply(commentId(3), at(3), settled.id, settled.id, "open");
+  const threads = [open, settled, answer];
+
+  const shown = commentsState(threads, false);
+  assert.equal(shown.kind, "threads");
+  const showing = shownRoots(shown);
+  const counted = openThreadCount(threads);
+  // IDENTITIES, not counts. Two lengths agree just as readily when the valve is
+  // inverted — it would then show the settled root and hide the open one, one
+  // for one — so a count comparison passes over the exact drift this pins.
+  assert.deepEqual(
+    showing,
+    openRoots(threads).map((thread) => thread.id),
+    `the tab says ${counted} open and the panel shows ${showing.length}`,
+  );
+  assert.equal(showing.length, counted);
+  // Neither may be zero, or the equality above holds over nothing at all.
+  assert.ok(counted > 0, "the fixture carries no open root");
+  // And the settled root is genuinely there to be excluded: asked for, it
+  // appears, which is one MORE than the tab counts. Without this the equality
+  // would also pass on a fixture the valve had nothing to hide from.
+  assert.equal(
+    shownRoots(commentsState(threads, true)).length,
+    counted + 1,
+    "the resolved root is not being hidden from the open list",
+  );
 });
 
 test("threading is two levels — a reply to a reply is pinned to the root", () => {

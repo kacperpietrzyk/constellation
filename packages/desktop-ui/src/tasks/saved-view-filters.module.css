@@ -1,0 +1,144 @@
+/* Editing a stored view's conditions, from the view bar it is stored behind.
+   The form is a disclosure rather than a permanent strip: the bar already
+   carries a layout switcher, a search box and three selects, and a fourth
+   block of checkboxes standing open would push the work itself below the
+   fold on every visit, including the visits nobody came to edit. */
+
+.editor {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.disclosure {
+  border: 1px solid var(--action-secondary-border);
+  border-radius: var(--radius-sm);
+  background: var(--action-secondary-bg);
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.disclosure:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* Full-basis so the form never shares a row with the DISCLOSURE it opened from:
+   four groups of checkboxes wrapped in beside that button read as one long
+   strip of unrelated controls.
+   It says nothing about the view bar, and used to claim it did. `100%` is
+   measured against `.editor`, and `.editor` is the bar's flex child with no
+   basis of its own — so the bar's search box and selects can still land on the
+   form's row. Clearing those would take the basis on `.editor` instead, which
+   would also lift "Edit filters" out of the bar, and beside the view picker is
+   exactly where TasksSurface puts it. */
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  min-inline-size: 0;
+  align-items: flex-start;
+  gap: var(--space-4);
+  border: 1px solid var(--panel-raised-border);
+  border-radius: var(--radius-md);
+  background: var(--panel-raised-bg);
+  padding: var(--space-3);
+}
+
+/* Grouped as a labelled div, not a `fieldset`: a flex `fieldset` renders its
+   `legend` inconsistently across engines, and happy-dom computes no layout at
+   all, so the interaction suite would report nothing either way. */
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.groupName {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.choice input:focus-visible,
+.group select:focus-visible,
+.disclosure:focus-visible,
+.save:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.group select {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+/* Said out loud, because the form shows four of the nine conditions a view can
+   carry and the kernel replaces the whole set on write. A reader who cannot
+   see their relation condition has no other way to know it is coming back. */
+.note {
+  flex-basis: 100%;
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+  padding-block-start: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.save {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--action-primary-bg);
+  padding: var(--space-1) var(--space-4);
+  color: var(--action-primary-text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.save:hover:not(:disabled) {
+  background: var(--action-primary-hover);
+}
+
+/* A disabled control owes the reader a reason, which is what `.hint` beside it
+   carries — greying the button out on its own is the named defect here. */
+.save:disabled {
+  background: var(--action-secondary-bg);
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.hint {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}

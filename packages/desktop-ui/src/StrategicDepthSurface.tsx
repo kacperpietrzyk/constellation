@@ -9,6 +9,7 @@ import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 import {
   addComment,
   directDeliveryProjects,
+  editComment,
   generateRecurrenceOccurrence,
   loadComments,
   linkableDeliveryProjects,
@@ -16,6 +17,8 @@ import {
   resolveDecisionImpact,
   resolveRadarCandidate,
   resolveRenewal,
+  setCommentResolved,
+  type CommentTarget,
   type DesktopSnapshot,
   type MutationFailure,
   type OrganizationOverviewProjection,
@@ -49,6 +52,19 @@ type Review = Extract<Record, { kind: "impact_review" }>;
 // tool voice instead of an English implementation remark.
 const impactReviewNote =
   "Reviewed on the Relationships surface; no automatic changes.";
+
+/** One home for the comment target, built from the LOADED organization rather
+ *  than from the id this screen was opened with: the kernel refuses a target
+ *  whose id turns out to name a Person or an Opportunity, and the projection is
+ *  the only thing here that has already answered which kind the record is. Four
+ *  writes read it, and the same shape restated four times is how one of them
+ *  ends up naming a different record than the other three. */
+const organizationCommentTarget = (
+  organization: OrganizationOverviewProjection["organization"],
+): CommentTarget => ({
+  kind: "organization",
+  organizationId: organization.id,
+});
 
 const StateMark = ({ state }: { readonly state: string }) => (
   <span className={`strategic-state strategic-state--${state}`}>
@@ -1186,7 +1202,36 @@ export const OrganizationContextLoader = ({
     snapshot.access.kind === "ready"
       ? snapshot.access.data.currentPrincipalId
       : undefined;
+  // What this reader may do to a comment, read the same way the shell reads it:
+  // the role on the workspace, the access on the Space. Stated rather than
+  // folded into `busy`, so a control dead because a write is in flight and one
+  // dead because the grant is read-only stay two different facts.
+  const currentMember =
+    snapshot.access.kind === "ready"
+      ? snapshot.access.data.members.find(
+          (member) => member.principalId === currentPrincipalId,
+        )
+      : undefined;
+  const currentGrant = currentMember?.spaces[0];
+  const canResolveComments =
+    currentMember?.role === "owner" || currentGrant?.access === "edit";
+  const canComment = canResolveComments || currentGrant?.access === "comment";
   const [commentBusy, setCommentBusy] = useState(false);
+  // One shape for all three comment writes. Each RE-READS the list on success
+  // rather than patching it: the version the write expected has just moved, and
+  // a list assembled from the old one refuses the NEXT write with a version
+  // conflict nobody can explain.
+  const settleCommentWrite = async (
+    api: ConstellationRendererClient,
+    organization: OrganizationOverviewProjection["organization"],
+    result: { readonly kind: string },
+  ): Promise<boolean> => {
+    setCommentBusy(false);
+    if (result.kind !== "success") return false;
+    const target = organizationCommentTarget(organization);
+    setComments(await loadComments(api, snapshot, target));
+    return true;
+  };
   useEffect(() => {
     const organization =
       snapshot.relationships.kind === "ready"
@@ -1262,6 +1307,9 @@ export const OrganizationContextLoader = ({
                   : undefined,
               )}
               busy={commentBusy}
+              canComment={canComment}
+              canResolve={canResolveComments}
+              currentPrincipalId={currentPrincipalId}
               mentionCandidates={
                 snapshot.mentionCandidates.kind === "ready"
                   ? snapshot.mentionCandidates.data.candidates.filter(
@@ -1276,30 +1324,61 @@ export const OrganizationContextLoader = ({
                   : undefined,
                 currentPrincipalId,
               )}
-              onSubmit={(body, mentions) => {
+              onEdit={async (comment, body, attachmentSourceIds) => {
                 setCommentBusy(true);
-                const target = {
-                  kind: "organization" as const,
-                  organizationId: state.data.organization.id,
-                };
-                return addComment(
+                // The mentions are carried over unchanged: an edit is a
+                // correction to the text, and re-sending an empty list would
+                // quietly un-name everybody the comment had woken.
+                const result = await editComment(
                   client,
                   snapshot,
-                  target,
+                  comment.id,
+                  comment.version,
+                  body,
+                  comment.mentionPrincipalIds,
+                  attachmentSourceIds,
+                );
+                return settleCommentWrite(
+                  client,
+                  state.data.organization,
+                  result,
+                );
+              }}
+              onResolve={async (comment, resolved) => {
+                setCommentBusy(true);
+                const result = await setCommentResolved(
+                  client,
+                  snapshot,
+                  comment,
+                  resolved,
+                );
+                return settleCommentWrite(
+                  client,
+                  state.data.organization,
+                  result,
+                );
+              }}
+              // All FOUR arguments forwarded. A two-parameter function is
+              // assignable to this prop and drops the last two silently, which
+              // lands an answer as a fresh thread and leaves staged files
+              // behind — neither of which the panel can see from here.
+              onSubmit={async (body, mentions, parent, attachmentSourceIds) => {
+                setCommentBusy(true);
+                const result = await addComment(
+                  client,
+                  snapshot,
+                  organizationCommentTarget(state.data.organization),
                   state.data.organization.version,
                   body,
                   mentions,
-                ).then(async (result: { readonly kind: string }) => {
-                  setCommentBusy(false);
-                  if (result.kind !== "success") return false;
-                  // Re-read rather than push the new thread onto the local
-                  // list: the version this write expected has moved, and a
-                  // list assembled from a stale one refuses the NEXT comment
-                  // with a version conflict nobody can explain.
-                  const next = await loadComments(client, snapshot, target);
-                  setComments(next);
-                  return true;
-                });
+                  parent,
+                  attachmentSourceIds,
+                );
+                return settleCommentWrite(
+                  client,
+                  state.data.organization,
+                  result,
+                );
               }}
               recordKey={state.data.organization.id}
               threads={comments.threads}

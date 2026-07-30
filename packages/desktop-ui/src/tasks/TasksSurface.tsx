@@ -1,8 +1,15 @@
 import { Suspense, lazy, useMemo, useState } from "react";
 
-import type { TaskId, TaskStatusId } from "@constellation/contracts";
+import type {
+  FieldDefinitionId,
+  TaskId,
+  TaskStatusId,
+} from "@constellation/contracts";
 
-import type { DesktopSnapshot } from "../client/workflow.js";
+import type {
+  DesktopSnapshot,
+  SavedWorkViewFilterChange,
+} from "../client/workflow.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
 import { countLabel, dateKeyInZone } from "../i18n.js";
 import {
@@ -18,12 +25,19 @@ import {
   TASK_SORT_LABELS,
   buildRows,
   groupTasks,
+  groupingFromSavedView,
+  groupingMakesColumns,
+  layoutFromSavedView,
+  resolveBoardInterlock,
   sortRows,
+  type TaskFieldDefinition,
   type TaskGroup,
+  type TaskGroupBy,
   type TaskGrouping,
   type TaskLayout,
   type TaskProse,
   type TaskSort,
+  type WorkSavedView,
 } from "./task-view.js";
 import styles from "./tasks.module.css";
 
@@ -44,6 +58,14 @@ const TaskTimelineLayout = lazy(async () => ({
 }));
 const TaskCalendarLayout = lazy(async () => ({
   default: (await import("./TaskCalendarLayout.js")).TaskCalendarLayout,
+}));
+
+// Lazy for the same reason and one more: the editor is reachable only with a
+// saved view open, and its own stylesheet is 3.6 kB. Statically imported it
+// would join the first paint of a screen most visits never edit a view on, and
+// the hot-path budget this rebuild refuses to raise has no room for it.
+const SavedViewFilterForm = lazy(async () => ({
+  default: (await import("./SavedViewFilterForm.js")).SavedViewFilterForm,
 }));
 
 // One collection of work, five lenses over it. The layout switcher changes how
@@ -67,6 +89,28 @@ const SORTS: readonly TaskSort[] = ["manual", "due", "title"];
 /** Layouts that group; the rest read a flat list. */
 const GROUPED: ReadonlySet<TaskLayout> = new Set<TaskLayout>(["list", "board"]);
 
+/**
+ * How a field grouping is spelled as one `<option value>`.
+ *
+ * Decoded by TESTING for the prefix, never by an else-branch: an axis added to
+ * the list above without touching the decoder would otherwise be read as a
+ * field id with its first six characters cut off, and the kernel would refuse
+ * the resulting view naming nothing.
+ */
+const FIELD_PREFIX = "field:";
+
+const NO_FIELDS: readonly TaskFieldDefinition[] = [];
+
+const groupingOptionValue = (grouping: TaskGroupBy): string =>
+  typeof grouping === "object"
+    ? `${FIELD_PREFIX}${grouping.fieldId}`
+    : grouping;
+
+const groupingFromOption = (value: string): TaskGroupBy => {
+  if (!value.startsWith(FIELD_PREFIX)) return value as TaskGrouping;
+  return { fieldId: value.slice(FIELD_PREFIX.length) as FieldDefinitionId };
+};
+
 export const TasksSurface = ({
   snapshot,
   selectedTaskId,
@@ -77,6 +121,7 @@ export const TasksSurface = ({
   onSetCompleted,
   onPlanOnDay,
   onOpenCalendar,
+  onSaveViewFilters,
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly selectedTaskId: TaskId | undefined;
@@ -90,9 +135,17 @@ export const TasksSurface = ({
    *  Wednesday". The two are different facts and the gesture means the first. */
   readonly onPlanOnDay: (id: TaskId, dayKey: string) => void;
   readonly onOpenCalendar: () => void;
+  /** Writes the edited conditions back and resolves true once the refreshed
+   *  view is in hand. Optional because the write needs a client this screen
+   *  does not hold, so the shell owns it — and the editor is drawn only when it
+   *  is passed, since a Save that reaches nobody is worse than no Save. */
+  readonly onSaveViewFilters?: (
+    view: WorkSavedView,
+    change: SavedWorkViewFilterChange,
+  ) => Promise<boolean>;
 }) => {
   const [layout, setLayout] = useState<TaskLayout>("list");
-  const [grouping, setGrouping] = useState<TaskGrouping>("status");
+  const [grouping, setGrouping] = useState<TaskGroupBy>("status");
   const [sort, setSort] = useState<TaskSort>("manual");
   const [activeViewId, setActiveViewId] = useState<string>();
   const [search, setSearch] = useState("");
@@ -101,6 +154,9 @@ export const TasksSurface = ({
   const work = snapshot.work;
   const projection = work.kind === "ready" ? work.data : undefined;
   const statuses = snapshot.bootstrap.taskStatuses;
+  // One identity for the absent case, or the grouping memo recomputes on every
+  // render of a workspace that has declared no fields at all.
+  const fieldDefinitions = snapshot.bootstrap.fieldDefinitions ?? NO_FIELDS;
 
   const prose: TaskProse = useMemo(
     () => ({
@@ -114,6 +170,39 @@ export const TasksSurface = ({
   const activeView = projection?.savedViews.find(
     (view) => view.id === activeViewId,
   );
+
+  // A view SEEDS the lens; it does not hold it. Opening one draws the board it
+  // was stored as, and the switcher is free the moment it is open — which is
+  // also why this is done on the change and not derived every render: a lens
+  // recomputed from the view would put the reader back where they started
+  // every time they moved.
+  //
+  // Returning to "All work" leaves the lens where the reader left it. There is
+  // no view saying anything, so there is nothing to seed from, and yanking
+  // them back to a list would be this screen making a choice it was not asked
+  // to make.
+  const openView = (view: WorkSavedView | undefined): void => {
+    setActiveViewId(view?.id);
+    if (view === undefined) return;
+    const seeded = groupingFromSavedView(view.groupBy);
+    setGrouping(seeded);
+    setLayout(layoutFromSavedView(view.layout, seeded, fieldDefinitions));
+  };
+
+  // The lens actually drawn, which is the chosen one except for the pair the
+  // kernel refuses to store. Held as a DERIVED value rather than written back
+  // into `layout`, so restoring a grouping restores the board the reader had
+  // chosen instead of leaving them on the list they were pushed onto.
+  const activeLayout = resolveBoardInterlock(
+    layout,
+    grouping,
+    fieldDefinitions,
+  );
+  // Not `grouping === "none"`. A grouping that names a field this workspace no
+  // longer offers makes exactly one column too, so the Board button has to be
+  // refused on whether there are columns rather than on the word.
+  const boardBlocked = !groupingMakesColumns(grouping, fieldDefinitions);
+
   const rows = useMemo(() => {
     if (projection === undefined) return [];
     const normalized = search.trim().toLocaleLowerCase("pl-PL");
@@ -155,14 +244,22 @@ export const TasksSurface = ({
         // A status column must be drawn while empty or there is nothing to drop
         // onto, and moving the last card out would delete the column under the
         // cursor. A list is the opposite: an empty heading is noise.
-        layout === "board",
+        activeLayout === "board",
+        fieldDefinitions,
       ),
-    [grouping, layout, projection?.projects, rows, statuses],
+    [
+      activeLayout,
+      fieldDefinitions,
+      grouping,
+      projection?.projects,
+      rows,
+      statuses,
+    ],
   );
 
   // Flat index order, shared by every layout, so one roving tab stop survives a
   // layout switch instead of each lens inventing its own.
-  const orderedRows = GROUPED.has(layout)
+  const orderedRows = GROUPED.has(activeLayout)
     ? groups.flatMap((group) => group.rows)
     : rows;
   const itemProps = useListNavigation({
@@ -206,6 +303,41 @@ export const TasksSurface = ({
 
   const planned = rows.filter((row) => row.planState !== "unplanned").length;
 
+  // The axes the switcher names, then every choice field a task can carry. A
+  // stored view may name a field this workspace has since retired or made
+  // another type: the grouping still applies and puts every row under "No
+  // value", so the switcher has to be able to SHOW what is in force rather
+  // than standing blank on a value none of its options carry.
+  const groupingValue = groupingOptionValue(grouping);
+  const groupingOptions = [
+    ...GROUPINGS.map((axis) => ({
+      value: axis as string,
+      label: TASK_GROUPING_LABELS[axis],
+    })),
+    ...fieldDefinitions
+      .filter(
+        (definition) =>
+          definition.targetKind === "task" &&
+          definition.state !== "retired" &&
+          definition.type.kind === "choice",
+      )
+      .map((definition) => ({
+        value: `${FIELD_PREFIX}${definition.id}`,
+        label: definition.label,
+      })),
+  ];
+  if (!groupingOptions.some((option) => option.value === groupingValue))
+    groupingOptions.push({ value: groupingValue, label: "Stored field" });
+
+  // The board names its axis from a table keyed by the five words, which has no
+  // entry for a field — `TASK_GROUPING_LABELS[{ fieldId }]` is `undefined` and
+  // would draw an empty bold. Until the board can be handed the field's own
+  // label, a field grouping is announced with the sentence that is true of any
+  // non-status board: these columns are a lens, not a place. The drop rules do
+  // not read this — they read the columns (`TaskBoardLayout.tsx:217-218`).
+  const boardGrouping: TaskGrouping =
+    typeof grouping === "object" ? "none" : grouping;
+
   return (
     <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
       <header className="surface-header">
@@ -221,9 +353,15 @@ export const TasksSurface = ({
         >
           {TASK_LAYOUTS.map((candidate) => (
             <button
-              aria-pressed={layout === candidate}
+              aria-describedby={
+                candidate === "board" && boardBlocked
+                  ? "tasks-board-requirement"
+                  : undefined
+              }
+              aria-pressed={activeLayout === candidate}
               className={styles.switch}
               data-layout={candidate}
+              disabled={candidate === "board" && boardBlocked}
               key={candidate}
               onClick={() => setLayout(candidate)}
               type="button"
@@ -232,6 +370,13 @@ export const TasksSurface = ({
             </button>
           ))}
         </div>
+        {boardBlocked && (
+          <small className={styles.requirement} id="tasks-board-requirement">
+            {typeof grouping === "object"
+              ? "This view groups by a field the workspace no longer offers."
+              : "Board needs a grouped view."}
+          </small>
+        )}
 
         <div className={styles.search}>
           <label className={styles.searchLabel} htmlFor="tasks-search">
@@ -250,8 +395,10 @@ export const TasksSurface = ({
           <select
             id="tasks-view"
             onChange={(event) =>
-              setActiveViewId(
-                event.target.value === "" ? undefined : event.target.value,
+              openView(
+                projection?.savedViews.find(
+                  (view) => view.id === event.target.value,
+                ),
               )
             }
             value={activeViewId ?? ""}
@@ -267,18 +414,36 @@ export const TasksSurface = ({
           </select>
         </div>
 
+        {/* Editing lives beside the picker and only with a view open: there is
+            nothing to edit on "All work", and a stored view is the only thing
+            here that HAS conditions. Creating a view is not offered — that is
+            on Work (`WorkSurface.tsx:675-768`) and is not duplicated. The
+            fallback is empty on purpose; a spinner where a small button will be
+            is more movement than the wait it reports. */}
+        {activeView !== undefined && onSaveViewFilters !== undefined && (
+          <LazySurfaceBoundary label="View filters">
+            <Suspense fallback={null}>
+              <SavedViewFilterForm
+                onSave={(change) => onSaveViewFilters(activeView, change)}
+                statuses={statuses}
+                view={activeView}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
+        )}
+
         <div className={styles.control}>
           <label htmlFor="tasks-group">Group</label>
           <select
             id="tasks-group"
             onChange={(event) =>
-              setGrouping(event.target.value as TaskGrouping)
+              setGrouping(groupingFromOption(event.target.value))
             }
-            value={grouping}
+            value={groupingValue}
           >
-            {GROUPINGS.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {TASK_GROUPING_LABELS[candidate]}
+            {groupingOptions.map((candidate) => (
+              <option key={candidate.value} value={candidate.value}>
+                {candidate.label}
               </option>
             ))}
           </select>
@@ -306,7 +471,7 @@ export const TasksSurface = ({
         </p>
       </div>
 
-      {layout === "list" ? (
+      {activeLayout === "list" ? (
         <TaskListLayout
           firstRowIndexOfGroup={firstRowIndexOfGroup}
           groups={groups}
@@ -319,16 +484,16 @@ export const TasksSurface = ({
           selectedTaskId={selectedTaskId}
         />
       ) : (
-        <LazySurfaceBoundary label={TASK_LAYOUT_LABELS[layout]}>
+        <LazySurfaceBoundary label={TASK_LAYOUT_LABELS[activeLayout]}>
           <Suspense
             fallback={
-              <SurfaceLoadingState label={TASK_LAYOUT_LABELS[layout]} />
+              <SurfaceLoadingState label={TASK_LAYOUT_LABELS[activeLayout]} />
             }
           >
-            {layout === "board" ? (
+            {activeLayout === "board" ? (
               <TaskBoardLayout
                 firstRowIndexOfGroup={firstRowIndexOfGroup}
-                grouping={grouping}
+                grouping={boardGrouping}
                 groups={groups}
                 itemProps={itemProps}
                 onAddToGroup={addToGroup}
@@ -338,7 +503,7 @@ export const TasksSurface = ({
                 prose={prose}
                 selectedTaskId={selectedTaskId}
               />
-            ) : layout === "table" ? (
+            ) : activeLayout === "table" ? (
               <TaskTableLayout
                 itemProps={itemProps}
                 onOpen={onOpenTask}
@@ -347,7 +512,7 @@ export const TasksSurface = ({
                 rows={rows}
                 selectedTaskId={selectedTaskId}
               />
-            ) : layout === "timeline" ? (
+            ) : activeLayout === "timeline" ? (
               <TaskTimelineLayout
                 itemProps={itemProps}
                 onOpen={onOpenTask}
@@ -357,7 +522,7 @@ export const TasksSurface = ({
                 rows={rows}
                 selectedTaskId={selectedTaskId}
               />
-            ) : layout === "calendar" ? (
+            ) : activeLayout === "calendar" ? (
               <TaskCalendarLayout
                 itemProps={itemProps}
                 onOpen={onOpenTask}

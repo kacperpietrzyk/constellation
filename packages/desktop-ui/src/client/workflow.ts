@@ -1458,6 +1458,21 @@ export const updateInitiativeOutcome = (
         : undefined,
   );
 
+/**
+ * The filter vocabulary as the CREATE path spells it.
+ *
+ * Third restatement of one shape, and the only one still written by hand. It is
+ * deliberately narrower than `SavedWorkView["filters"]` below — which is the
+ * projection's own type, inferred from the very `SavedViewFiltersSchema` the
+ * command validates against (`query.ts:900`) — because it omits the deprecated
+ * `projectIds`/`areaIds`/`initiativeIds` keys nothing should author any more.
+ *
+ * It cannot simply become the projected type here: `createSavedWorkView`'s one
+ * caller is `WorkSurface.tsx:696`, the readonly arrays this interface declares
+ * are not assignable to the mutable ones the schema infers, and a create that
+ * stops compiling is a worse answer than a named restatement. Naming it is the
+ * point — the update path below derives, and the two must not drift again.
+ */
 export interface SavedWorkViewFilters {
   readonly operationalStates?: readonly (
     "actionable" | "waiting" | "blocked"
@@ -1562,6 +1577,128 @@ export const setSavedWorkViewLayout = (
       }),
       commandName: "savedView.update",
       payload: { savedViewId, layout },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+/** A saved view as the work overview projects it. Derived, never restated: the
+ *  filter vocabulary has already drifted three times across the schema, the
+ *  domain record and `SavedWorkViewFilters` above, and a fourth hand-written
+ *  copy is how the deprecated `projectIds`/`areaIds`/`initiativeIds` keys —
+ *  which the projection still carries and `SavedWorkViewFilters` omits — would
+ *  become invisible to the editor below. */
+export type SavedWorkView = WorkOverviewProjection["savedViews"][number];
+
+/**
+ * The brand that keeps a whole filter set out of a change to one condition.
+ *
+ * Every key of a change is optional and every stored value satisfies it, so
+ * without a REQUIRED member the two types are the same shape to the checker and
+ * `savedWorkViewFilters` would happily merge a set somebody meant as a
+ * replacement — resurrecting, silently, every condition they had just dropped.
+ * TypeScript refuses only on a missing required member; extra properties pass
+ * structurally, so nothing narrower than this can refuse it.
+ *
+ * `declare` emits nothing and no value is ever written, so the brand costs no
+ * bytes and never reaches a payload — which matters, because the command schema
+ * is `.strict()` and an unknown key is a contract rejection.
+ */
+export declare const filterChangeBrand: unique symbol;
+
+/**
+ * A change to ONE condition of a stored view. `undefined` leaves the condition
+ * alone, a value sets it, and `null` removes it.
+ *
+ * The three-way spelling exists because the kernel's is two-way and coarser:
+ * `savedView.update` replaces `filters` WHOLESALE
+ * (`domain/src/strategic-depth.ts:445`, `filters: update.filters ??
+ * record.filters`), so a payload naming one condition deletes every other one
+ * the view was created with, and nothing refuses it. Nothing may build that
+ * payload by hand — go through `updateSavedWorkView`, which seeds from the
+ * stored view every time.
+ */
+export type SavedWorkViewFilterChange = {
+  readonly [Key in keyof SavedWorkView["filters"]]?:
+    SavedWorkView["filters"][Key] | null;
+} & { readonly [filterChangeBrand]: never };
+
+/** The full filter object a partial change means. Spread-then-drop rather than
+ *  key-by-key: copying key-by-key is exactly what dropped R12.4's filters on
+ *  create (PR #75) and what drifted the projection (PR #95), and here it would
+ *  silently strip the deprecated relation keys off any view stored before
+ *  ADR-045 — the kernel folds them into `relationConditions` on write
+ *  (`wave2.ts:1215-1233`), so they have to reach it. Cleared conditions are
+ *  DELETED, not set to `undefined`: the key must be absent for the strict
+ *  payload schema, and a key present with no value would also make every
+ *  deep-equality assertion over the envelope answer the wrong question. */
+export const savedWorkViewFilters = (
+  current: SavedWorkView["filters"],
+  change: SavedWorkViewFilterChange,
+): SavedWorkView["filters"] =>
+  Object.fromEntries(
+    Object.entries({ ...current, ...change }).filter(
+      ([, value]) => value !== undefined && value !== null,
+    ),
+  ) as SavedWorkView["filters"];
+
+/**
+ * Editing a stored view in place. `setSavedWorkViewLayout` above was the only
+ * `savedView.update` the renderer had, so filters, sort and grouping were
+ * writable once — at creation — and never again.
+ *
+ * Two kernel facts are encoded here rather than at the call sites, because
+ * getting either wrong answers with a `command.precondition_failed` that names
+ * nothing:
+ *
+ *   - the envelope carries EXACTLY the saved view's id and no other record's.
+ *     `exactExpected` compares the key SET, not a subset (`wave2.ts:1067-1081`),
+ *     so a second id is a version conflict rather than a partial success;
+ *   - `layout: "board"` is refused when the RESULTING record has no grouping
+ *     (`wave2.ts:3579-3584`, `== null` catching both the absent and the cleared
+ *     case). Sending `{ groupBy: null }` on a view already stored as a board is
+ *     therefore refused, and so is sending `{ layout: "board" }` on an
+ *     ungrouped one. Neither is pre-empted here — the caller offering those two
+ *     controls owes the reader the reason on screen, the way
+ *     `WorkSurface.tsx:1583-1624` already does. A filters-only caller cannot
+ *     reach the interlock at all: omitting both keys leaves the resulting
+ *     values equal to the stored ones, which the kernel already accepted.
+ *
+ * `layout` has no cleared arm on purpose. The command schema spells it
+ * `.optional()` while `groupBy` is `.nullable().optional()`
+ * (`command.ts:1380-1381`), so "back to no stored layout" is not a change this
+ * command can express, whatever the domain type accepts.
+ */
+export const updateSavedWorkView = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  view: SavedWorkView,
+  changes: {
+    readonly filters?: SavedWorkViewFilterChange;
+    readonly sort?: "updated_desc" | "due_asc" | "title_asc";
+    readonly groupBy?: SavedWorkViewGroupBy | null;
+    readonly layout?: SavedWorkViewLayout;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [view.id]: view.version,
+      }),
+      commandName: "savedView.update",
+      payload: {
+        savedViewId: view.id,
+        ...(changes.filters === undefined
+          ? {}
+          : { filters: savedWorkViewFilters(view.filters, changes.filters) }),
+        ...(changes.sort === undefined ? {} : { sort: changes.sort }),
+        ...(changes.groupBy === undefined ? {} : { groupBy: changes.groupBy }),
+        ...(changes.layout === undefined ? {} : { layout: changes.layout }),
+      },
     },
     (response) =>
       response.outcome.outcome === "success" &&

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 
 import type {
   DocumentId,
+  KnowledgeSourceId,
   PrincipalId,
   ProjectId,
   StrategicRecordId,
@@ -156,12 +157,37 @@ export interface ProjectRecordScreenProps {
   readonly busy: boolean;
   readonly commentBusy: boolean;
   readonly canComment: boolean;
+  /** Settling anybody else's thread. The author of a thread may always settle
+   *  their own, which is why this and `currentPrincipalId` travel together. */
+  readonly canResolve: boolean;
+  readonly currentPrincipalId: PrincipalId | undefined;
   readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: string) => string;
   readonly mentionCandidates: readonly MentionCandidate[];
+  /** All FOUR arguments are forwarded to the panel, and a caller that supplies
+   *  a two-parameter function is assignable here while silently dropping the
+   *  last two — the answer then lands as a fresh comment under a strip that
+   *  promised it was a reply, and the staged files never reach the write. */
   readonly onAddComment: (
     body: string,
     mentions: readonly PrincipalId[],
+    parent?: CommentThread,
+    attachmentSourceIds?: readonly KnowledgeSourceId[],
+  ) => Promise<boolean>;
+  /** Editing and settling a comment. REQUIRED, and the reason is a defect this
+   *  screen already shipped once: these were optional, the single caller filled
+   *  neither, and the record quietly offered no Edit, no Unlink and no Resolve
+   *  while the organization record offered all three. An optional prop nobody
+   *  fills is indistinguishable from a capability nobody built, so the compiler
+   *  holds the next caller to it. */
+  readonly onEditComment: (
+    comment: CommentThread,
+    body: string,
+    attachmentSourceIds?: readonly KnowledgeSourceId[],
+  ) => Promise<boolean>;
+  readonly onResolveComment: (
+    comment: CommentThread,
+    resolved: boolean,
   ) => Promise<boolean>;
   readonly onBack: () => void;
   readonly onSelectTask: (taskId: TaskId) => void;
@@ -199,10 +225,14 @@ export const ProjectRecordScreen = ({
   busy,
   commentBusy,
   canComment,
+  canResolve,
+  currentPrincipalId,
   actorOf,
   mentionNameOf,
   mentionCandidates,
   onAddComment,
+  onEditComment,
+  onResolveComment,
   onBack,
   onSelectTask,
   onOpenTask,
@@ -227,7 +257,11 @@ export const ProjectRecordScreen = ({
 
   const reading = readProject(project, tasks, prose);
   const projectTasks = reading.all;
-  const threads = comments.kind === "ready" ? comments.data.threads : [];
+  // Undefined and empty are DIFFERENT facts. A failed load collapsed into an
+  // empty list put "Comments 0" on the tab beside a panel saying the comments
+  // could not be read — a number is a claim, and there was nothing to claim it
+  // from. No number is the honest reading of a slice that never arrived.
+  const threads = comments.kind === "ready" ? comments.data.threads : undefined;
   const activityEntries =
     activity.kind === "ready"
       ? recordActivityItems(
@@ -256,7 +290,7 @@ export const ProjectRecordScreen = ({
   const counts: Partial<Record<RecordTab, number>> = {
     tasks: recordOpenTaskCount(projectTasks),
     documents: documents.length,
-    comments: openThreadCount(threads),
+    ...(threads === undefined ? {} : { comments: openThreadCount(threads) }),
   };
 
   const client = overview.clientOrganizations[0];
@@ -343,12 +377,21 @@ export const ProjectRecordScreen = ({
           ) : (
             <RecordCommentsPanel
               actorOf={actorOf}
-              busy={commentBusy || busy || !canComment}
+              // Permission is NOT folded into `busy` any more. A control dead
+              // because a write is in flight and one dead because the grant is
+              // read-only are different facts about the same button, and the
+              // panel is what says which — it cannot, from a single boolean.
+              busy={commentBusy || busy}
+              canComment={canComment}
+              canResolve={canResolve}
+              currentPrincipalId={currentPrincipalId}
               mentionCandidates={mentionCandidates}
               mentionNameOf={(principalId) => mentionNameOf(principalId)}
+              onEdit={onEditComment}
+              onResolve={onResolveComment}
               onSubmit={onAddComment}
               recordKey={projectId}
-              threads={threads}
+              threads={threads ?? []}
               timeZone={prose.timeZone}
             />
           ))}
