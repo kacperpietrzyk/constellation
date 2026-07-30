@@ -112,6 +112,7 @@ export const TaskListLayout = ({
                 onClick={() => onSelect(row.task.id)}
                 onDoubleClick={() => onOpen(row.task.id)}
                 role="option"
+                data-task-row={row.task.id}
               >
                 {/* A real button, not a presentational tick: completing work
                     from the row is the one write this layout offers, and an

@@ -6,6 +6,12 @@
   flex-direction: column;
   gap: var(--space-4);
   min-block-size: 0;
+  /* Scaled text must not make the PAGE scroll sideways. Anything genuinely
+     wider than the window — a board of columns, a table of eight — scrolls
+     inside its own container instead. */
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: hidden;
 }
 
 .viewbar {
@@ -18,7 +24,9 @@
 }
 
 .switcher {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
   gap: var(--space-1);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -51,7 +59,9 @@
 
 .search,
 .control {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
   align-items: center;
   gap: var(--space-2);
   color: var(--text-tertiary);
@@ -64,6 +74,8 @@
 
 .search input,
 .control select {
+  min-inline-size: 0;
+  max-inline-size: 100%;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: var(--surface-content);
