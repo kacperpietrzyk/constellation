@@ -311,3 +311,152 @@
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
 }
+
+/* The send row is its own line so the Attach control never shares one with the
+   textarea. Two controls a finger apart, one of which opens a file picker, is
+   how a comment gets an attachment nobody meant to add. */
+.send {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-basis: 100%;
+}
+
+/* ── WHAT CAN BE DONE TO A COMMENT ─────────────────────────────────────── */
+
+/* Reply, Resolve and Edit sit UNDER the body rather than in the header: they
+   are what a reader does after reading, and a row of controls above the text
+   is read before it. Wraps rather than truncates — the panel narrows with the
+   inspector and a hidden Resolve is a thread nobody can settle. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+/* Quiet by default and named in words. These are secondary to the comment
+   itself, so none of them carries a fill; the underline on hover is what says
+   it is a control, because colour alone would put a second accent next to the
+   mention badge. */
+.action {
+  border: none;
+  padding: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+}
+
+.action:hover:not(:disabled) {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.action:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+/* "Edited · history kept" and "Draft kept" — statements, not controls, so they
+   sit in the same row at the same size but never look pressable. */
+.note {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+/* ── EDITING IN PLACE ──────────────────────────────────────────────────── */
+
+/* The editor replaces the body where it stands. Moving the text into a dialog
+   would take the thread it answers off the screen. */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* The composer's field grows along a row; this one owns a column, so the
+   row-wise basis is dropped and the height comes from a floor instead. */
+.editField {
+  flex: none;
+  inline-size: 100%;
+  min-block-size: 5rem;
+}
+
+/* ── REPLYING ──────────────────────────────────────────────────────────── */
+
+/* Who is being answered, on its own line above the field. The form's
+   accessible name says the same thing for a reader who cannot see the strip,
+   and Cancel is beside it because leaving a reply must not mean clearing what
+   was typed. */
+.replyStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-basis: 100%;
+  min-inline-size: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+}
+
+/* ── FILES ON A COMMENT ────────────────────────────────────────────────── */
+
+/* One list shape for both the files already on a comment and the ones staged
+   in the composer. They differ by what the row SAYS, not by how it looks: a
+   staged file is not a different kind of thing from a saved one. */
+.attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex-basis: 100%;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.attachmentName {
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.attachmentSize {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Custody is about THIS DEVICE, not about the record, so it is stated per file
+   and never as an error: a file left on another machine is a normal thing that
+   happened, and Restore is the answer offered beside it. */
+.custody {
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-2);
+  background: var(--surface-sunken);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.custodyOff {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+}

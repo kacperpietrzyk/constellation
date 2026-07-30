@@ -1,4 +1,11 @@
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import type { KnowledgeSourceId, PrincipalId } from "@constellation/contracts";
 
@@ -58,6 +65,22 @@ export { SYSTEM_ACTOR } from "./record-tabs.js";
 const MENTION = /(@[\p{L}\p{M}'-]+)/gu;
 const isMention = (part: string): boolean => /^@[\p{L}\p{M}'-]+$/u.test(part);
 
+/** A body long enough that nobody writes it by accident, and short enough that
+ *  the kernel accepts it. The composer and the editor carry the SAME cap: a
+ *  reader who can write 16 000 characters into one and 60 000 into the other
+ *  finds out which is which only when the write is refused. */
+const BODY_LIMIT = 16_000;
+
+/** Staged files per comment. The older panel greyed the Attach control at this
+ *  number and said nothing, which reads as a broken button. */
+const ATTACHMENT_LIMIT = 20;
+
+/** What the panel knows about one saved attachment's file. `checking` is this
+ *  panel waiting for an answer, which is why it is not part of the shell's
+ *  `AttachmentCustody` — a shell that could return it would be returning a
+ *  state that never settles. */
+type CustodyState = AttachmentCustody | "checking";
+
 /** The body is plain text and is rendered as plain text. `RecordComment.body`
  *  is a string in the contract, so there is no markup to restore and nothing
  *  that would justify handing React raw HTML. */
@@ -79,26 +102,66 @@ const CommentBody = ({ body }: { readonly body: string }) => (
   </>
 );
 
-const CommentEntry = ({
-  comment,
-  actor,
-  mentionNameOf,
-  timeZone,
-}: {
-  readonly comment: CommentThread;
-  readonly actor: CommentActor;
+/**
+ * Everything an entry reads that the PANEL owns, in one bag.
+ *
+ * Eighteen separate props threaded through the thread view would be eighteen
+ * chances to pass the root's editor to a reply. None of this is an entry's own
+ * state — the panel holds the single open editor, the drafts kept per comment
+ * and the custody answers, because those have to survive the entry unmounting
+ * when a thread is filtered away.
+ */
+interface EntryTools {
+  readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: PrincipalId) => string;
   readonly timeZone: string | undefined;
+  readonly busy: boolean;
+  /** Absent means custody cannot be asked about at all, and no chip is drawn.
+   *  The older panel left the chip reading "Checking storage…" forever. */
+  readonly custodyOf:
+    ((attachment: CommentAttachment) => CustodyState) | undefined;
+  readonly onRestore: ((attachment: CommentAttachment) => void) | undefined;
+  readonly onUnlink:
+    | ((comment: CommentThread, attachment: CommentAttachment) => void)
+    | undefined;
+  readonly editingId: CommentThread["id"] | undefined;
+  readonly mayEdit: (comment: CommentThread) => boolean;
+  readonly draftKept: (comment: CommentThread) => boolean;
+  readonly onBeginEdit: (comment: CommentThread) => void;
+  readonly editor: (comment: CommentThread) => ReactNode;
+}
+
+const CommentEntry = ({
+  comment,
+  tools,
+  actions,
+}: {
+  readonly comment: CommentThread;
+  readonly tools: EntryTools;
+  /** Root-only controls. A reply carries none: threading is two levels, so a
+   *  Reply on a reply would write a sibling, and a thread is settled as a
+   *  whole or not at all. */
+  readonly actions?: ReactNode;
 }) => {
+  // Destructured before use so the narrowing survives into the callbacks
+  // below: TypeScript drops a property's narrowing inside a closure.
+  const { custodyOf, onRestore, onUnlink } = tools;
   const resolved = comment.threadState === "resolved";
+  const actor = tools.actorOf(comment);
+  const editing = tools.editingId === comment.id;
+  const mayEdit = tools.mayEdit(comment);
   // Called with one argument on purpose: `map` also passes the index, and a
   // resolver that happens to take a second parameter would silently receive it.
-  const mentioned = comment.mentionPrincipalIds.map((id) => mentionNameOf(id));
+  const mentioned = comment.mentionPrincipalIds.map((id) =>
+    tools.mentionNameOf(id),
+  );
+  const kept = tools.draftKept(comment);
   return (
     <article
       className={`${styles.entry} ${actor.agent ? styles.entryAgent : ""} ${
         resolved ? styles.entryResolved : ""
       }`}
+      data-comment-id={comment.id}
     >
       <header className={styles.head}>
         {/* Agent and human differ by MARK before they differ by colour: a
@@ -117,11 +180,61 @@ const CommentEntry = ({
             that and put the workspace timezone on it. No comma of ours between
             them — `formatDate` already carries one before the year. */}
         <time className={styles.stamp} dateTime={comment.createdAt}>
-          {formatDate(comment.createdAt, timeZone)}{" "}
-          {formatTime(comment.createdAt, timeZone)}
+          {formatDate(comment.createdAt, tools.timeZone)}{" "}
+          {formatTime(comment.createdAt, tools.timeZone)}
         </time>
       </header>
-      <CommentBody body={comment.body} />
+      {editing ? tools.editor(comment) : <CommentBody body={comment.body} />}
+      {comment.attachments.length > 0 && (
+        <ul aria-label="Comment attachments" className={styles.attachments}>
+          {comment.attachments.map((attachment) => {
+            const held = custodyOf?.(attachment);
+            return (
+              <li className={styles.attachment} key={attachment.sourceId}>
+                <span className={styles.attachmentName}>
+                  {attachment.original.payload.displayName}
+                </span>
+                <span className={styles.attachmentSize}>
+                  {Math.ceil(attachment.original.payload.byteLength / 1024)} KB
+                </span>
+                {held !== undefined && (
+                  <span
+                    className={`${styles.custody} ${
+                      held === "unavailable" ? styles.custodyOff : ""
+                    }`}
+                  >
+                    {held === "available"
+                      ? "In managed storage"
+                      : held === "unavailable"
+                        ? "Not on this device"
+                        : "Checking storage…"}
+                  </span>
+                )}
+                {held === "unavailable" && onRestore !== undefined && (
+                  <button
+                    className={styles.action}
+                    disabled={tools.busy}
+                    onClick={() => onRestore(attachment)}
+                    type="button"
+                  >
+                    Restore
+                  </button>
+                )}
+                {mayEdit && onUnlink !== undefined && (
+                  <button
+                    className={styles.action}
+                    disabled={tools.busy}
+                    onClick={() => onUnlink(comment, attachment)}
+                    type="button"
+                  >
+                    Unlink
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {(mentioned.length > 0 || resolved) && (
         <footer className={styles.footer}>
           {mentioned.length > 0 && (
@@ -140,38 +253,47 @@ const CommentEntry = ({
           )}
         </footer>
       )}
+      {/* An edit is not a rewrite of history: the previous body stays in the
+          activity log, and the entry says so — on a REPLY as much as on a
+          root, which the older panel marked only on roots. */}
+      {(comment.edited || kept || mayEdit || actions !== undefined) && (
+        <div className={styles.actions}>
+          {comment.edited && (
+            <span className={styles.note}>Edited · history kept</span>
+          )}
+          {kept && <span className={styles.note}>Draft kept</span>}
+          {actions}
+          {mayEdit && !editing && (
+            <button
+              className={styles.action}
+              disabled={tools.busy}
+              onClick={() => tools.onBeginEdit(comment)}
+              type="button"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 };
 
 const CommentThreadView = ({
   tree,
-  actorOf,
-  mentionNameOf,
-  timeZone,
+  tools,
+  actions,
 }: {
   readonly tree: CommentTree;
-  readonly actorOf: (comment: CommentThread) => CommentActor;
-  readonly mentionNameOf: (principalId: PrincipalId) => string;
-  readonly timeZone: string | undefined;
+  readonly tools: EntryTools;
+  readonly actions?: ReactNode;
 }) => (
-  <div className={styles.thread}>
-    <CommentEntry
-      actor={actorOf(tree.root)}
-      comment={tree.root}
-      mentionNameOf={mentionNameOf}
-      timeZone={timeZone}
-    />
+  <div className={styles.thread} data-thread-root={tree.root.id}>
+    <CommentEntry actions={actions} comment={tree.root} tools={tools} />
     {tree.replies.length > 0 && (
-      <div className={styles.replies}>
+      <div className={styles.replies} data-replies="">
         {tree.replies.map((reply) => (
-          <CommentEntry
-            actor={actorOf(reply)}
-            comment={reply}
-            key={reply.id}
-            mentionNameOf={mentionNameOf}
-            timeZone={timeZone}
-          />
+          <CommentEntry comment={reply} key={reply.id} tools={tools} />
         ))}
       </div>
     )}
@@ -186,29 +308,39 @@ export interface MentionCandidate {
 }
 
 // The shape below is the whole agreement between this panel and the three
-// records that mount it, and it is settled in one step rather than grown one
-// capability at a time. Half of it is not read yet: replying, resolving,
-// editing and attaching arrive next, and each would otherwise move the same
-// three mounts again — twelve edits, and the mounts drift apart on one of them.
+// records that mount it, and it was settled in one step rather than grown one
+// capability at a time — otherwise each of replying, resolving, editing and
+// attaching would have moved the same three mounts again, and the mounts drift
+// apart on one of them.
 //
-// Everything new is OPTIONAL, so no caller has to change to keep compiling —
-// but `canComment` and `canResolve` have NO default here on purpose. They are
-// permission, and permission that defaults to a value is permission granted by
-// a forgotten prop. Whoever wires the gate decides what an absent grant means,
-// at the point where it is finally read.
+// AN ABSENT PERMISSION MEANS WHAT THE MOUNTS DO TODAY, WHICH IS NOT "NO".
+// Two of the three mounts state neither `canComment` nor `canResolve`, so a
+// panel reading an absent prop as a refusal would tell an owner their own
+// project is read-only. Absent `canComment` therefore leaves the composer
+// working, exactly as it does now. Every control that WRITES is additionally
+// gated on the callback that performs the write, so a mount which has not been
+// taught to resolve, edit or attach shows no control for it.
 export const RecordCommentsPanel = ({
   threads,
   recordKey,
   actorOf,
   mentionNameOf,
   mentionCandidates = [],
+  currentPrincipalId,
+  canComment,
+  canResolve = false,
   onSubmit,
+  onEdit,
+  onResolve,
+  onAttach,
+  onInspectAttachment,
+  onRestoreAttachment,
   busy = false,
   timeZone,
 }: {
   readonly threads: readonly CommentThread[];
-  /** Identifies the record on screen. The resolved valve is keyed by it, so
-   *  opening the next record starts closed again without an effect. */
+  /** Identifies the record on screen. Every unsent thing in this panel is
+   *  keyed by it, so opening the next record starts from nothing typed. */
   readonly recordKey: string;
   readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: PrincipalId) => string;
@@ -253,17 +385,14 @@ export const RecordCommentsPanel = ({
   /** Stages a file and answers with it, or with nothing when the reader backs
    *  out. Only the shell reaches managed storage; the panel never does. */
   readonly onAttach?:
-    | (() => Promise<PendingAttachment | undefined>)
-    | undefined;
+    (() => Promise<PendingAttachment | undefined>) | undefined;
   /** Whether this device still holds the file behind a saved attachment.
    *  Absent means custody cannot be asked about — which the chip says, rather
    *  than waiting forever on an answer nobody is coming to give. */
   readonly onInspectAttachment?:
-    | ((attachment: CommentAttachment) => Promise<AttachmentCustody>)
-    | undefined;
+    ((attachment: CommentAttachment) => Promise<AttachmentCustody>) | undefined;
   readonly onRestoreAttachment?:
-    | ((attachment: CommentAttachment) => Promise<AttachmentCustody>)
-    | undefined;
+    ((attachment: CommentAttachment) => Promise<AttachmentCustody>) | undefined;
   readonly busy?: boolean;
   readonly timeZone?: string | undefined;
 }) => {
@@ -276,24 +405,324 @@ export const RecordCommentsPanel = ({
   // a mention that resolves to the wrong person wakes the wrong person — while
   // one that silently resolves to nobody turns the whole valve into a dummy.
   const [mentions, setMentions] = useState<readonly PrincipalId[]>([]);
-  const showResolved = openedOn === recordKey;
+  const [replyTo, setReplyTo] = useState<CommentThread>();
+  const [staged, setStaged] = useState<readonly PendingAttachment[]>([]);
+  // At most one editor open, and a draft kept per comment: moving the editor to
+  // another entry must not throw away what was typed in the first.
+  const [editingId, setEditingId] = useState<CommentThread["id"]>();
+  const [editDrafts, setEditDrafts] = useState<{
+    readonly [id: string]: string;
+  }>({});
+  const [custody, setCustody] = useState<
+    Readonly<Record<string, CustodyState>>
+  >({});
+  const [scopedTo, setScopedTo] = useState(recordKey);
 
+  // Absent is not "no": see the note above the signature.
+  const mayComment = canComment ?? true;
+  // Replying needs more than permission — it needs a mount that FORWARDS the
+  // parent, and the panel cannot see whether it does: a two-argument
+  // `onSubmit` is assignable to the four-argument shape and silently drops the
+  // third. `canComment` STATED is the proxy, because permission and the
+  // widened callback arrive together at every mount that has been converted. A
+  // mount that states nothing still holds `onSubmit(body, mentions)`, which
+  // would write the reply as a fresh root under a strip promising otherwise.
+  // WHOEVER ADDS `canComment` TO A MOUNT MUST WIDEN ITS `onSubmit` IN THE SAME
+  // EDIT.
+  const mayReply = canComment === true;
+
+  // EVERY UNSENT THING IS RECORD-SCOPED. Until the legacy inspector panel
+  // retires, the only thing resetting a draft is a React `key` its caller
+  // passes — and neither record mount passes one. A mention left selected on
+  // one project and sent from the next wakes somebody about a record they were
+  // never discussing, which is the one failure this panel exists to prevent.
+  // Adjusted during render rather than in an effect, so no frame is ever drawn
+  // with the previous record's text under the new record's heading.
+  //
+  // `custody` is deliberately NOT reset: it answers "does this device hold that
+  // file", which is true or false regardless of which record is open.
+  if (scopedTo !== recordKey) {
+    setScopedTo(recordKey);
+    setDraft("");
+    setMentions([]);
+    setReplyTo(undefined);
+    setStaged([]);
+    setEditingId(undefined);
+    setEditDrafts({});
+  }
+
+  const showResolved = openedOn === recordKey;
   const trees = buildThreads(threads);
   const resolvedRoots = trees.filter(
     (tree) => tree.root.threadState === "resolved",
   ).length;
   const state = commentsState(threads, showResolved);
 
-  const submit = (event: FormEvent) => {
+  // ONE expression for "what this editor would send", read by the Save gate, by
+  // Save itself and by Unlink. The older panel spelled it two ways — the gate
+  // read `editDrafts[id] ?? ""` while the save read `editDrafts[id] ??
+  // comment.body` — so an entry whose draft had been cleared offered a Save
+  // that sent the untouched body back.
+  const bodyToSend = (comment: CommentThread): string =>
+    (editDrafts[comment.id] ?? comment.body).trim();
+
+  const clearDraft = (id: CommentThread["id"]): void =>
+    setEditDrafts((current) =>
+      Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
+    );
+
+  const beginEdit = (comment: CommentThread): void => {
+    setEditDrafts((current) =>
+      current[comment.id] === undefined
+        ? { ...current, [comment.id]: comment.body }
+        : current,
+    );
+    setEditingId(comment.id);
+  };
+
+  const saveEdit = (comment: CommentThread): void => {
+    const body = bodyToSend(comment);
+    if (body === "" || busy || onEdit === undefined) return;
+    void onEdit(comment, body).then((saved) => {
+      if (!saved) return;
+      setEditingId(undefined);
+      clearDraft(comment.id);
+    });
+  };
+
+  // Cancel CLOSES the editor and keeps the draft, which is the same answer
+  // switching to another entry gives. The older panel destroyed it here and
+  // kept it there — two answers to "where did my text go", and the destructive
+  // one sat on the key people press to get out of the way.
+  const cancelEdit = (): void => setEditingId(undefined);
+
+  const editKeyDown = (
+    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+    comment: CommentThread,
+  ): void => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      saveEdit(comment);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      // The inspector this panel can sit inside also closes on Escape. Without
+      // this the key that leaves an editor also leaves the record.
+      event.stopPropagation();
+      cancelEdit();
+    }
+  };
+
+  // Unlinking IS an edit: the command carries the remaining attachment ids and
+  // the body. It sends the body the author is currently looking at, not the
+  // stored one — the older panel sent the stored body and left the editor open
+  // over text that had just been silently discarded.
+  const unlink = (
+    comment: CommentThread,
+    attachment: CommentAttachment,
+  ): void => {
+    const body = bodyToSend(comment);
+    if (body === "" || busy || onEdit === undefined) return;
+    void onEdit(
+      comment,
+      body,
+      comment.attachments
+        .filter((item) => item.sourceId !== attachment.sourceId)
+        .map((item) => item.sourceId),
+    );
+  };
+
+  const setCustodyOf = (
+    sourceId: KnowledgeSourceId,
+    next: CustodyState,
+  ): void => setCustody((current) => ({ ...current, [sourceId]: next }));
+
+  // The shell's inspect callback is a plain arrow rebuilt on every render, so
+  // keying the effect on it re-ran the whole inspection on re-renders that had
+  // nothing to do with attachments — and the older panel replaced the map on
+  // each run, flashing every chip back to "Checking storage…". This keys on the
+  // ATTACHMENT IDS and reads the callback through a ref, and it MERGES: an id
+  // already answered for keeps its answer.
+  const inspectRef = useRef(onInspectAttachment);
+  useEffect(() => {
+    inspectRef.current = onInspectAttachment;
+  });
+  const savedAttachments = threads.flatMap((thread) => thread.attachments);
+  const custodyKey = savedAttachments
+    .map((attachment) => attachment.sourceId)
+    .join(" ");
+  useEffect(() => {
+    const inspect = inspectRef.current;
+    if (inspect === undefined) return undefined;
+    let active = true;
+    setCustody((current) => {
+      const next = { ...current };
+      for (const attachment of savedAttachments)
+        if (next[attachment.sourceId] === undefined)
+          next[attachment.sourceId] = "checking";
+      return next;
+    });
+    void Promise.all(
+      savedAttachments.map(async (attachment) => {
+        const held = await inspect(attachment);
+        if (active) setCustodyOf(attachment.sourceId, held);
+      }),
+    );
+    return () => {
+      active = false;
+    };
+  }, [custodyKey]);
+
+  const submit = (event: FormEvent): void => {
     event.preventDefault();
     const body = draft.trim();
-    if (body === "" || busy) return;
-    void onSubmit(body, mentions).then((saved) => {
-      if (saved) {
-        setDraft("");
-        setMentions([]);
-      }
+    if (body === "" || busy || !mayComment) return;
+    void onSubmit(
+      body,
+      mentions,
+      replyTo,
+      staged.map((attachment) => attachment.sourceId),
+    ).then((sent) => {
+      if (!sent) return;
+      setDraft("");
+      setMentions([]);
+      setReplyTo(undefined);
+      setStaged([]);
     });
+  };
+
+  const attach = (): void => {
+    if (onAttach === undefined) return;
+    void onAttach().then((attachment) => {
+      if (attachment === undefined) return;
+      // De-duplicated by sourceId: staging the same file twice is one
+      // attachment, and the second staging replaces the first rather than
+      // sending the kernel a list with a repeated id.
+      setStaged((current) => [
+        ...current.filter((item) => item.sourceId !== attachment.sourceId),
+        attachment,
+      ]);
+    });
+  };
+
+  const editor = (comment: CommentThread): ReactNode => (
+    <div className={styles.editor}>
+      <textarea
+        aria-label="Edit comment"
+        autoFocus
+        className={`${styles.field} ${styles.editField}`}
+        disabled={busy}
+        maxLength={BODY_LIMIT}
+        onChange={(event) =>
+          setEditDrafts((current) => ({
+            ...current,
+            [comment.id]: event.target.value,
+          }))
+        }
+        onKeyDown={(event) => editKeyDown(event, comment)}
+        value={editDrafts[comment.id] ?? comment.body}
+      />
+      <div className={styles.actions}>
+        <button
+          className={styles.action}
+          disabled={busy || bodyToSend(comment) === ""}
+          onClick={() => saveEdit(comment)}
+          type="button"
+        >
+          Save
+        </button>
+        <button
+          className={styles.action}
+          disabled={busy}
+          onClick={cancelEdit}
+          type="button"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  // Editing belongs to the AUTHOR, and an author is only known when the mount
+  // says who is reading. `author.principalId` is optional in the projection, so
+  // without the first half a system-written comment — which has no author
+  // principal at all — would match every reader.
+  const mayEdit = (comment: CommentThread): boolean =>
+    onEdit !== undefined &&
+    currentPrincipalId !== undefined &&
+    comment.author.principalId === currentPrincipalId;
+
+  const tools: EntryTools = {
+    actorOf,
+    mentionNameOf,
+    timeZone,
+    busy,
+    custodyOf:
+      onInspectAttachment === undefined
+        ? undefined
+        : (attachment) => custody[attachment.sourceId] ?? "checking",
+    onRestore:
+      onRestoreAttachment === undefined
+        ? undefined
+        : (attachment) => {
+            setCustodyOf(attachment.sourceId, "checking");
+            void onRestoreAttachment(attachment).then((held) =>
+              setCustodyOf(attachment.sourceId, held),
+            );
+          },
+    onUnlink: onEdit === undefined ? undefined : unlink,
+    editingId,
+    mayEdit,
+    // Said only where it is not already obvious: an entry whose editor is open
+    // shows the text itself.
+    draftKept: (comment) =>
+      editingId !== comment.id &&
+      editDrafts[comment.id] !== undefined &&
+      editDrafts[comment.id] !== comment.body,
+    onBeginEdit: beginEdit,
+    editor,
+  };
+
+  // A thread is settled by whoever holds the grant, and always by the person
+  // who opened it — somebody may close their own question without being able to
+  // close anybody else's.
+  const mayResolve = (root: CommentThread): boolean =>
+    onResolve !== undefined &&
+    (canResolve ||
+      (currentPrincipalId !== undefined &&
+        root.author.principalId === currentPrincipalId));
+
+  const rootActions = (root: CommentThread): ReactNode => {
+    // A settled thread offers no Reply: reopening it is the way back in, and
+    // an answer written into something closed is an answer nobody reads.
+    const reply = mayReply && root.threadState === "open";
+    const resolve = mayResolve(root);
+    if (!reply && !resolve) return undefined;
+    return (
+      <>
+        {reply && (
+          <button
+            className={styles.action}
+            disabled={busy}
+            onClick={() => setReplyTo(root)}
+            type="button"
+          >
+            Reply
+          </button>
+        )}
+        {resolve && (
+          <button
+            className={styles.action}
+            disabled={busy}
+            onClick={() =>
+              void onResolve?.(root, root.threadState !== "resolved")
+            }
+            type="button"
+          >
+            {root.threadState === "resolved" ? "Reopen" : "Resolve"}
+          </button>
+        )}
+      </>
+    );
   };
 
   return (
@@ -320,10 +749,9 @@ export const RecordCommentsPanel = ({
         <div className={styles.threads}>
           {state.trees.map((tree) => (
             <CommentThreadView
-              actorOf={actorOf}
+              actions={rootActions(tree.root)}
               key={tree.root.id}
-              mentionNameOf={mentionNameOf}
-              timeZone={timeZone}
+              tools={tools}
               tree={tree}
             />
           ))}
@@ -343,12 +771,51 @@ export const RecordCommentsPanel = ({
         <p className={styles.empty}>No comments on this record yet.</p>
       )}
 
-      <form className={styles.composer} onSubmit={submit}>
+      {/* The FORM carries the reply context in its name, not the textarea: the
+          field is anchored on "Write a comment" by the packaged smoke and by
+          the record tests, and a label that moves under them would take the
+          only stable handle on this composer with it. */}
+      <form
+        aria-label={
+          replyTo === undefined
+            ? "New comment"
+            : `Reply in the thread by ${replyTo.author.displayName}`
+        }
+        className={styles.composer}
+        onSubmit={submit}
+      >
+        {replyTo !== undefined && (
+          <div className={styles.replyStrip}>
+            <span>Replying to {replyTo.author.displayName}</span>
+            <button
+              className={styles.action}
+              onClick={() => setReplyTo(undefined)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         <textarea
           aria-label="Write a comment"
           className={styles.field}
+          disabled={!mayComment || busy}
+          maxLength={BODY_LIMIT}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Write a comment"
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
+              submit(event);
+            // Escape leaves the REPLY, and only when there is one to leave —
+            // otherwise the key keeps closing whatever holds this panel.
+            else if (event.key === "Escape" && replyTo !== undefined) {
+              event.preventDefault();
+              event.stopPropagation();
+              setReplyTo(undefined);
+            }
+          }}
+          placeholder={
+            mayComment ? "Write a comment" : "This scope is read-only."
+          }
           rows={2}
           value={draft}
         />
@@ -369,7 +836,7 @@ export const RecordCommentsPanel = ({
                       named ? styles.mentionChipOn : ""
                     }`}
                     data-principal-id={candidate.principalId}
-                    disabled={busy}
+                    disabled={!mayComment || busy}
                     onClick={() =>
                       setMentions((current) =>
                         named
@@ -389,6 +856,35 @@ export const RecordCommentsPanel = ({
             })}
           </ul>
         )}
+        {staged.length > 0 && (
+          <ul
+            aria-label="New comment attachments"
+            className={styles.attachments}
+          >
+            {staged.map((attachment) => (
+              <li className={styles.attachment} key={attachment.sourceId}>
+                <span className={styles.attachmentName}>
+                  {attachment.original.payload.displayName}
+                </span>
+                <span className={styles.attachmentSize}>Ready to attach</span>
+                <button
+                  className={styles.action}
+                  disabled={busy}
+                  onClick={() =>
+                    setStaged((current) =>
+                      current.filter(
+                        (item) => item.sourceId !== attachment.sourceId,
+                      ),
+                    )
+                  }
+                  type="button"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {/* Said before the write, not after: whether this comment will wake
             anybody is the one thing about it worth knowing in advance. */}
         <p className={styles.reach}>
@@ -396,16 +892,36 @@ export const RecordCommentsPanel = ({
             ? "Nobody is notified."
             : `${countLabel(mentions.length, "person", "people")} will be notified.`}
         </p>
-        {/* Disabled only while there is nothing to send or a write is in
-            flight. A control greyed out for no stated reason is a dummy, and
-            dummies are a named defect here. */}
-        <button
-          className={styles.submit}
-          disabled={busy || draft.trim() === ""}
-          type="submit"
-        >
-          Comment
-        </button>
+        {staged.length >= ATTACHMENT_LIMIT && (
+          <p className={styles.reach}>
+            {ATTACHMENT_LIMIT} attachments is the limit.
+          </p>
+        )}
+        <div className={styles.send}>
+          {onAttach !== undefined && (
+            <button
+              className={styles.action}
+              disabled={
+                !mayComment || busy || staged.length >= ATTACHMENT_LIMIT
+              }
+              onClick={attach}
+              type="button"
+            >
+              Attach file
+            </button>
+          )}
+          {/* Disabled only while there is nothing to send, a write is in
+              flight, or the grant does not allow one — and the placeholder
+              above has already said which. A control greyed out for no stated
+              reason is a dummy, and dummies are a named defect here. */}
+          <button
+            className={styles.submit}
+            disabled={!mayComment || busy || draft.trim() === ""}
+            type="submit"
+          >
+            {replyTo === undefined ? "Comment" : "Add reply"}
+          </button>
+        </div>
       </form>
     </div>
   );
