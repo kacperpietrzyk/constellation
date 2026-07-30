@@ -250,7 +250,7 @@ export const WorkSurface = ({
       !filters.operationalStates.includes(task.operationalState)
     )
       return false;
-    if (filters.unassigned === true && task.assigneePrincipalId !== undefined)
+    if (filters.unassigned === true && task.assignment !== undefined)
       return false;
     if (
       filters.statusIds !== undefined &&
@@ -259,8 +259,12 @@ export const WorkSurface = ({
       return false;
     if (
       filters.assigneePrincipalIds !== undefined &&
-      (task.assigneePrincipalId === undefined ||
-        !filters.assigneePrincipalIds.includes(task.assigneePrincipalId))
+      // A view naming somebody this reader may not be told about matches
+      // nothing, rather than matching by an id the projection withheld.
+      (task.assignment?.assigneePrincipalId === undefined ||
+        !filters.assigneePrincipalIds.includes(
+          task.assignment.assigneePrincipalId,
+        ))
     )
       return false;
     if (
@@ -895,10 +899,14 @@ export const WorkSurface = ({
             ?.label ?? "Historical status"
         );
       case "assignee":
-        return task.assigneePrincipalId === undefined
-          ? "Unassigned"
-          : (assigneeNames.get(task.assigneePrincipalId) ??
-              "Person outside current scope");
+        // The projection already decided what this reader may be told; the
+        // group takes its name from that answer instead of looking the
+        // principal up a second time and disagreeing.
+        if (task.assignment === undefined) return "Unassigned";
+        return task.assignment.assigneePrincipalId === undefined
+          ? task.assignment.displayName
+          : (assigneeNames.get(task.assignment.assigneePrincipalId) ??
+              task.assignment.displayName);
       case "priority":
         return priorityLabels[task.priority ?? "normal"];
       case "start":

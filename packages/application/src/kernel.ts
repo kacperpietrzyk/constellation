@@ -37,7 +37,6 @@ import {
   type QueryResult,
   type SpaceId,
   type TaskId,
-  type WorkspaceId,
   type CaptureOriginal,
   type CaptureId,
   type CaptureReviewReason,
@@ -71,7 +70,6 @@ import {
   type DomainEvent,
   type FieldDefinition,
   type Task,
-  type TaskAssignment,
   type OutboxEntry,
   type WorkspaceMembership,
   type ReviewCapture,
@@ -96,6 +94,10 @@ import {
   type TaskPaginationCursor,
 } from "./ports.js";
 import { evaluateRelationConditions } from "./relation-conditions.js";
+import {
+  assigneeIsVisible,
+  projectedTaskAssignment,
+} from "./task-assignment-projection.js";
 import {
   executeWave2Command,
   executeWave2Query,
@@ -3368,38 +3370,6 @@ export class ApplicationKernel {
     });
   }
 
-  /**
-   * Whether this caller may be told WHO a task is assigned to. `task.list`
-   * redacts an assignee who is not an active, Space-granted member, and
-   * `task.assignmentCandidates` refuses to name revoked members and agents at
-   * all. The assignee filters resolve through this same predicate, so naming a
-   * principal the caller cannot see answers empty rather than confirming that
-   * the principal exists — a filter is not a back door into the identity a
-   * projection took care to hide.
-   */
-  private assigneeIsVisible(
-    view: ApplicationReadView,
-    workspaceId: WorkspaceId,
-    spaceId: SpaceId,
-    assignment: TaskAssignment,
-  ): boolean {
-    if (assignment.redactedAssigneeState !== undefined) return false;
-    const assignee = view.getMembership(
-      workspaceId,
-      assignment.assigneePrincipalId,
-    );
-    if (assignee === undefined || assignee.status === "revoked") return false;
-    if (
-      assignee.role === "owner" &&
-      view.getWorkspace(workspaceId)?.rootSpaceId === spaceId
-    )
-      return true;
-    return (
-      view.getSpaceGrantForPrincipal(workspaceId, spaceId, assignee.principalId)
-        ?.status === "active"
-    );
-  }
-
   private taskList(
     view: ApplicationReadView,
     context: ExecutionContext,
@@ -3478,7 +3448,7 @@ export class ApplicationKernel {
         if (
           requested !== undefined &&
           requested.includes(assignment.assigneePrincipalId) &&
-          this.assigneeIsVisible(
+          assigneeIsVisible(
             view,
             query.workspaceId,
             query.parameters.spaceId,
@@ -3591,24 +3561,6 @@ export class ApplicationKernel {
     const projections = visibleItems.map((task) => {
       const status = view.getTaskStatus(task.statusId);
       const assignment = view.getActiveTaskAssignment(task.id);
-      const assignee =
-        assignment === undefined
-          ? undefined
-          : view.getMembership(
-              query.workspaceId,
-              assignment.assigneePrincipalId,
-            );
-      // One predicate, read here and by the assignee filters above, so a filter
-      // can never name a principal this projection hides behind "Former
-      // member".
-      const assigneeIsActive =
-        assignment !== undefined &&
-        this.assigneeIsVisible(
-          view,
-          query.workspaceId,
-          task.spaceId,
-          assignment,
-        );
       const attachments = (task.attachmentSourceIds ?? []).map((sourceId) => {
         if (!isApplicationWave2ReadView(view)) return undefined;
         const source = view.getKnowledgeSource(sourceId);
@@ -3682,32 +3634,17 @@ export class ApplicationKernel {
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
             version: task.version,
+            // The one reading of "may I say who this is", shared with the
+            // assignee filters above and with the Work overview.
             ...(assignment === undefined
               ? {}
               : {
-                  assignment: {
-                    id: assignment.id,
-                    ...(assigneeIsActive
-                      ? { assigneePrincipalId: assignment.assigneePrincipalId }
-                      : {}),
-                    displayName: assigneeIsActive
-                      ? (assignee?.displayName ?? "Workspace member")
-                      : assignment.redactedAssigneeState ===
-                          "unavailable_member"
-                        ? "No Space access"
-                        : assignee?.status === "revoked" ||
-                            assignee === undefined
-                          ? "Former member"
-                          : "No Space access",
-                    availability: assigneeIsActive
-                      ? "active"
-                      : (assignment.redactedAssigneeState ??
-                        (assignee?.status === "revoked" ||
-                        assignee === undefined
-                          ? "former_member"
-                          : "unavailable_member")),
-                    version: assignment.version,
-                  },
+                  assignment: projectedTaskAssignment(
+                    view,
+                    query.workspaceId,
+                    task.spaceId,
+                    assignment,
+                  ),
                 }),
           }
         : undefined;

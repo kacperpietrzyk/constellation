@@ -10,6 +10,19 @@ releases begin.
 
 ### Added
 
+- **The Work overview answers the same assignee, and carries the time held for
+  the work.** It projected a bare assignee principal with no redaction while
+  `task.list` withheld one the reader may not be told about — harmless only
+  while nothing rendered it, and about to stop being harmless in a screen that
+  groups people. Both now answer one shape: the principal id when the reader
+  may know it, and a name and availability that say what happened when they may
+  not. The overview also carries the calendar block reserving time for a task,
+  which it did not, so a work surface can tell a task that is planned AND
+  estimated from one that is merely planned without inventing an effort field
+  to say what the block already says. A contract test walks the projection
+  registry and fails on any projected schedule missing either — a hand-written
+  list of projections goes green the day somebody adds the next one.
+
 - **A saved view now means the same thing to an agent as it does on screen.**
   `task.list` took a strict subset of the filters a saved view can store, so the
   desktop worked out the rest for itself and an operator asking for the same
