@@ -323,3 +323,64 @@ describe("shell navigation across a version upgrade", () => {
     );
   });
 });
+
+describe("opening a task as a record is asked for, never assumed", () => {
+  // Eleven places in the shell build a task context. Most of them mean "take me
+  // to this task": a capture that has just become one, a signal activated from
+  // the operating system, a reference followed out of a document. One means
+  // "show me this task INSTEAD of the list".
+  //
+  // For one CI cycle the difference did not exist, and all eleven promoted: the
+  // packaged smoke turned a capture into a task and then looked for its row on
+  // a screen that had replaced the list with the record. Three packaged runs
+  // failed on three systems for a change that was never about capture.
+  it("a task navigated to is not a task opened", () => {
+    const plain = taskContext(taskId, "Zamów licencje");
+    assert.equal(
+      plain.record,
+      undefined,
+      "navigating to a task promoted it to a record nobody asked for",
+    );
+    assert.equal(
+      taskContext(taskId, "Zamów licencje", { record: true }).record,
+      true,
+      "asking for the record did not produce one",
+    );
+    // Same key either way, and that is deliberate: it is one task, so it is one
+    // tab. Opening the record for a task already in a tab must reuse it rather
+    // than sit beside it under the same name.
+    assert.equal(
+      plain.key,
+      taskContext(taskId, "Zamów licencje", { record: true }).key,
+    );
+  });
+
+  it("a record survives being saved and reopened, and a plain context stays plain", () => {
+    // The flag lives on the CONTEXT rather than in the shell's own state
+    // precisely so a tab reopens as what it was. If it did not round-trip, the
+    // record would silently become the collection on the next launch.
+    const fallback = destinationContext("today", "Today");
+    let state = createShellNavigation(fallback);
+    state = openShellContext(
+      state,
+      taskContext(taskId, "Zamów licencje", {
+        record: true,
+      }),
+    );
+    const second = TaskIdSchema.parse("00000000-0000-4000-8000-0000000000f1");
+    state = openShellContext(state, taskContext(second, "Potwierdź budżet"));
+    const restored = restoreShellNavigation(
+      serializeShellNavigation(state),
+      fallback,
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => `${tab.key}:${tab.record === true}`),
+      [
+        "destination:today:false",
+        `task:${taskId}:true`,
+        `task:${second}:false`,
+      ],
+      "a reopened session disagreed with the one that was saved about which task was open as a record",
+    );
+  });
+});

@@ -1943,7 +1943,9 @@ export const RealApp = ({
   // tasks" on the screen. A record opened from the uncapped list must not fail
   // to open because the capped one stopped short of it.
   const recordTask =
-    activeContext.taskId !== undefined && state.snapshot.work.kind === "ready"
+    activeContext.record === true &&
+    activeContext.taskId !== undefined &&
+    state.snapshot.work.kind === "ready"
       ? state.snapshot.work.data.tasks.find(
           (item) => item.id === activeContext.taskId,
         )
@@ -2186,7 +2188,13 @@ export const RealApp = ({
       <TasksSurface
         snapshot={state.snapshot}
         selectedTaskId={selectedTaskId}
-        activeTaskId={activeContext.taskId}
+        // Only a context that ASKED to be a record draws one. A capture that
+        // just became a task, a signal activated from the operating system and
+        // a reference followed out of a document all carry `taskId` too, and
+        // all of them mean the list with the task in hand.
+        activeTaskId={
+          activeContext.record === true ? activeContext.taskId : undefined
+        }
         renderRecordScreen={
           recordTask === undefined
             ? undefined
@@ -2274,7 +2282,7 @@ export const RealApp = ({
                       openContext(projectContext(projectId, title))
                     }
                     onOpenTask={(id, title) =>
-                      openContext(taskContext(id, title))
+                      openContext(taskContext(id, title, { record: true }))
                     }
                     onResolveComment={(comment, resolved) => {
                       if (!client || !recordTaskCommentsMatch)
@@ -2297,9 +2305,12 @@ export const RealApp = ({
                 </Suspense>
               )
         }
+        // The ONE place a list promotes a task to its own screen: the reader
+        // asked for it, with Enter or a second click. Every other task context
+        // in this file means "take me to it", and those keep the collection.
         onOpenTask={(id) => {
           const task = tasks.find((item) => item.id === id);
-          openContext(taskContext(id, task?.title ?? "Task"));
+          openContext(taskContext(id, task?.title ?? "Task", { record: true }));
         }}
         onSelectTask={selectTaskInInspector}
         onOpenCalendar={() => {
