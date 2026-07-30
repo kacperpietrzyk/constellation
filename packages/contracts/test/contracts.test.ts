@@ -391,6 +391,42 @@ describe("application contracts", () => {
     assert.equal(wave2Result.success, false);
   });
 
+  it("carries a project rename with a deadline, and refuses a null one", () => {
+    const outcome = (projection: Readonly<Record<string, unknown>>) =>
+      CommandOutcomeSchema.safeParse({
+        outcome: "success",
+        contractVersion: 1,
+        commandId: ids.command,
+        correlationId: ids.correlation,
+        kernelTime: "2026-07-12T12:00:00.000Z",
+        diagnosticCode: "project.details_updated",
+        affected: [],
+        auditReceiptId: ids.query,
+        projection,
+      });
+
+    const base = {
+      kind: "project.details_updated",
+      projectId: ids.query,
+      title: "Renamed delivery",
+      intendedOutcome: "The client works unaided",
+      needsReview: false,
+      lifecycle: "active",
+      version: 2,
+    } as const;
+
+    assert.equal(outcome(base).success, true, "a rename with no deadline");
+    assert.equal(
+      outcome({ ...base, dueAt: "2026-09-30T21:59:59.999Z" }).success,
+      true,
+    );
+    // `null` jest tu ODMOWĄ, nie wartością, i to jest cała treść tej asercji:
+    // zapisany `null` przechodzi zapis i wywala ODCZYT, bo `project.list` ma to
+    // pole jako `.strict()`-ISO — awaria jeden ekran od miejsca zapisu. Termin
+    // zdejmuje się `null`-em w KOMENDZIE, nigdy w projekcji.
+    assert.equal(outcome({ ...base, dueAt: null }).success, false);
+  });
+
   it("names the records that block a removal, up to the cap", () => {
     const blocked = (
       blockedBy: readonly Readonly<Record<string, unknown>>[],

@@ -1494,6 +1494,7 @@ export const SearchOverlay = ({
 
 const compensationCopy: Record<string, string> = {
   "project.restore_outcome": "Restore the previous project outcome",
+  "project.restore_details": "Restore the previous project name and deadline",
   "task.restore_state": "Restore the previous task state",
   "task.restore_operational_state": "Restore the previous operational state",
   "work_link.restore_state": "Restore the previous work link",

@@ -59,6 +59,7 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "project.create",
       "project.updateOutcome",
+      "project.updateDetails",
       "project.list",
       "project.operationalOverview",
       "organization.operationalOverview",
@@ -3231,6 +3232,197 @@ describe("Wave 2 reference semantics", () => {
       "re-sweeping is idempotent through dedup keys",
     );
     assert.equal(reswept.projection.alreadySignaledCount, 1);
+  });
+
+  it("renames a Project and moves its deadline, one field at a time, reversibly", () => {
+    // Do 0.2.0 Projektu NIE DAŁO SIĘ PRZEMIANOWAĆ: tytuł pisał wyłącznie
+    // `project.create`. Rekord nie znał też ANI JEDNEJ daty, więc os czasu nad
+    // projektami nie istniała.
+    //
+    // Trzy asercje o polach POJEDYNCZO nie są nadmiarowe: `updateProjectDetails`
+    // stoi obok `updateProjectOutcome`, gdzie brak pola znaczy WYCZYŚĆ.
+    // Napisanie nowej funkcji przez skopiowanie tamtej przechodzi typecheck
+    // i po cichu wymazuje termin przy każdym przemianowaniu — a `Project` nie
+    // ma strażnika `UnprojectableKeys`, więc nic by o tym nie powiedziało.
+    const harness = setup();
+    const { projectId } = createProjectRecord(harness, "Wdrożenie Northstar");
+
+    const listed = () => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "project.list"
+      )
+        throw new Error("Expected the project list.");
+      const project = result.result.projection.items.find(
+        (item) => item.id === projectId,
+      );
+      assert.ok(project, "the project left its own list");
+      return project;
+    };
+    const overview = () => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.operationalOverview",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { projectId },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "project.operationalOverview"
+      )
+        throw new Error("Expected the project overview.");
+      return result.result.projection.project;
+    };
+
+    // 1. Sam tytuł.
+    const renamed = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-rename", { [projectId]: 1 }),
+        commandName: "project.updateDetails",
+        payload: { projectId, title: "Wdrożenie Northstar — faza druga" },
+      }),
+    );
+    assert.equal(renamed.outcome, "success");
+    if (renamed.outcome !== "success") throw new Error("Expected success.");
+    assert.equal(renamed.diagnosticCode, "project.details_updated");
+    assert.equal(listed().title, "Wdrożenie Northstar — faza druga");
+    assert.equal(
+      listed().dueAt,
+      undefined,
+      "a rename must not invent a deadline",
+    );
+
+    // 2. Sam termin — tytuł zostaje.
+    const dated = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-due", { [projectId]: 2 }),
+        commandName: "project.updateDetails",
+        payload: { projectId, dueAt: "2026-09-30T21:59:59.999Z" },
+      }),
+    );
+    assert.equal(dated.outcome, "success");
+    assert.equal(
+      listed().title,
+      "Wdrożenie Northstar — faza druga",
+      "setting a deadline must not touch the title",
+    );
+    assert.equal(listed().dueAt, "2026-09-30T21:59:59.999Z");
+    // Ta sama data musi dojść DWIEMA projekcjami: `Project` nie ma strażnika
+    // kompilacji, więc pole można zapisać, zaudytować i cofnąć, nie pokazując
+    // go na żadnym ekranie, przy wszystkich testach zielonych.
+    assert.equal(overview().dueAt, "2026-09-30T21:59:59.999Z");
+
+    // 3. Przemianowanie PO ustawieniu terminu terminu nie rusza. To jest
+    // dokładnie ta pułapka, o którą chodzi.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("project-rename-again", { [projectId]: 3 }),
+          commandName: "project.updateDetails",
+          payload: { projectId, title: "Wdrożenie Northstar — finał" },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      listed().dueAt,
+      "2026-09-30T21:59:59.999Z",
+      "a rename after a deadline was set must leave the deadline alone",
+    );
+
+    // 4. Cofnięcie komendy, która termin dodała TAM, GDZIE GO NIE BYŁO, musi go
+    // ZDJĄĆ. To jest osobny przypadek od cofnięcia PRZESUNIĘCIA terminu: tam
+    // deskryptor niesie poprzednią datę, a tu nie niesie żadnej, i tylko ten
+    // wariant sprawdza zamianę braku na `null` w kompensacji. Bez niej
+    // cofnięcie zostawiałoby dodaną datę na miejscu, czyli cofałoby połowę.
+    const { projectId: freshProjectId } = createProjectRecord(
+      harness,
+      "Projekt bez terminu",
+    );
+    const firstDateCommand = {
+      ...metadata("fresh-due-add", { [freshProjectId]: 1 }),
+      commandName: "project.updateDetails" as const,
+      payload: { projectId: freshProjectId, dueAt: "2027-01-15T22:59:59.999Z" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), firstDateCommand)).outcome,
+      "success",
+    );
+    const freshListed = () => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "project.list"
+      )
+        throw new Error("Expected the project list.");
+      return result.result.projection.items.find(
+        (item) => item.id === freshProjectId,
+      );
+    };
+    assert.equal(freshListed()?.dueAt, "2027-01-15T22:59:59.999Z");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("fresh-due-undo", { [freshProjectId]: 2 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: firstDateCommand.commandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+    );
+    assert.equal(
+      freshListed()?.dueAt,
+      undefined,
+      "undoing the change that ADDED a deadline removes it; there was none to restore",
+    );
+
+    // 5. Cofnięcie PRZESUNIĘCIA terminu przywraca poprzedni, nie żaden.
+    const addingCommand = {
+      ...metadata("project-due-add", { [projectId]: 4 }),
+      commandName: "project.updateDetails" as const,
+      payload: { projectId, dueAt: "2026-12-31T22:59:59.999Z" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), addingCommand)).outcome,
+      "success",
+    );
+    assert.equal(listed().dueAt, "2026-12-31T22:59:59.999Z");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("project-due-undo", { [projectId]: 5 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: addingCommand.commandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+    );
+    assert.equal(
+      listed().dueAt,
+      "2026-09-30T21:59:59.999Z",
+      "undoing the change that moved the deadline restores the previous one, not nothing and not the new one",
+    );
+    assert.equal(listed().title, "Wdrożenie Northstar — finał");
   });
 
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {

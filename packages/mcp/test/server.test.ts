@@ -325,6 +325,7 @@ test("fails the complete resource when payload integrity changes", async () => {
 test("serves a grant-filtered operation catalog generated from the contract", async () => {
   const capabilityScope = [
     "project.create",
+    "project.updateDetails",
     "task.create",
     "task.updateDetails",
     "task.list",
@@ -393,6 +394,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         // run a command can batch it (ADR-048).
         "command.batch",
         "project.create",
+        "project.updateDetails",
         "record.relate",
         "task.create",
         "task.list",
@@ -520,6 +522,15 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     assert.equal(
       catalog.operations.find(
         (operation) => operation.name === "task.updateDetails",
+      )?.revertable,
+      "always",
+    );
+    // Przemianowanie Projektu jest generowane z tego samego schematu, więc
+    // wpis pojawia się sam — ale bez tej asercji nikt nie zauważyłby, gdyby
+    // wypadł z grantu albo przestał być odwracalny.
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "project.updateDetails",
       )?.revertable,
       "always",
     );

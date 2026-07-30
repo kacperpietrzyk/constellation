@@ -777,6 +777,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             intendedOutcome: z.string(),
             needsReview: NeedsReviewSchema,
             lifecycle: z.enum(["active", "closed"]),
+            // Termin dostawy, opcjonalny. Nigdy nullowalny: `null` w polu
+            // ISO ze `.strict()` wywala CAŁY odczyt, a nie jedną wartość.
+            dueAt: z.iso.datetime({ offset: true }).optional(),
             version: z.int().positive(),
           })
           .strict(),
@@ -1454,6 +1457,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             // make an already-stored value unreadable the day it is tightened.
             externalId: z.string().optional(),
             lifecycle: z.enum(["active", "closed"]),
+            // Termin dostawy, opcjonalny. Nigdy nullowalny: `null` w polu
+            // ISO ze `.strict()` wywala CAŁY odczyt, a nie jedną wartość.
+            dueAt: z.iso.datetime({ offset: true }).optional(),
             relatedOpenTaskCount: z.int().nonnegative(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
@@ -1528,6 +1534,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           needsReview: NeedsReviewSchema,
           lifecycle: z.enum(["active", "closed"]),
           appliedTemplateId: ProjectTemplateIdSchema.optional(),
+          dueAt: z.iso.datetime({ offset: true }).optional(),
           version: z.int().positive(),
           updatedAt: z.iso.datetime({ offset: true }),
         })
@@ -1719,6 +1726,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             intendedOutcome: z.string(),
             needsReview: NeedsReviewSchema,
+            dueAt: z.iso.datetime({ offset: true }).optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -1931,6 +1939,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "capture_transcript_ready",
               "project_created",
               "project_outcome_changed",
+              "project_details_changed",
               "task_created",
               "task_details_updated",
               "task_parent_changed",

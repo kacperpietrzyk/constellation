@@ -276,6 +276,19 @@ describe("Command revertability", () => {
       { projectId, intendedOutcome: "The table is pinned by this test" },
       versions(projectId),
     );
+    // Oba pola naraz, bo deskryptor kompensacji niesie oba i tylko przejście
+    // tą ścieżką dowodzi, że rodzaj kompensacji istnieje w enumie kontraktu —
+    // ten enum nie ma statycznego pinu, więc brak wpisu kompiluje się i wywala
+    // przy pierwszym cofnięciu przemianowania.
+    apply(
+      "project.updateDetails",
+      {
+        projectId,
+        title: "Renamed by the table test",
+        dueAt: "2026-09-30T21:59:59.999Z",
+      },
+      versions(projectId),
+    );
     const relationId = String(
       projection(
         apply(

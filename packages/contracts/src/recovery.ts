@@ -32,6 +32,7 @@ export const CheckpointRevertUnavailableReasonSchema = z
 // and the domain's UndoDescriptor kinds are pinned to it by a conformance test.
 export const CompensationKindSchema = z.enum([
   "project.restore_outcome",
+  "project.restore_details",
   "area.restore_responsibility",
   "initiative.restore_outcome",
   "task.restore_state",

@@ -16,6 +16,7 @@ export const createProject = (input: {
   readonly intendedOutcome?: string;
   readonly evidenceSourceIds?: readonly KnowledgeSourceId[];
   readonly externalId?: string;
+  readonly dueAt?: string;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
 }): Project => ({
@@ -31,6 +32,7 @@ export const createProject = (input: {
     ? {}
     : { evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort() }),
   ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
+  ...(input.dueAt === undefined ? {} : { dueAt: input.dueAt }),
   lifecycle: "active",
   createdBy: input.createdBy,
   version: 1,
@@ -60,6 +62,38 @@ export const updateProjectOutcome = (
     ...(sources === undefined || sources.length === 0
       ? {}
       : { evidenceSourceIds: [...new Set(sources)].sort() }),
+    version: project.version + 1,
+    updatedAt: occurredAt,
+  };
+};
+
+/**
+ * Przemianowanie i termin. Konwencja jest ODWROTNA niż w
+ * `updateProjectOutcome` wyżej i to jest cała pułapka tej funkcji: tam brak
+ * pola znaczy WYCZYŚĆ (bo komenda wymaga `intendedOutcome`, więc brak nie
+ * przychodzi z zewnątrz), a tutaj brak znaczy ZOSTAW W SPOKOJU, a `null`
+ * znaczy wyczyść. Napisanie tego przez skopiowanie tamtej funkcji przeszłoby
+ * typecheck i po cichu wymazywało termin przy każdym przemianowaniu.
+ *
+ * `dueAt` nigdy nie zostaje zapisane jako `null`: klucz albo jest napisem, albo
+ * go nie ma. Zapisany `null` przechodzi zapis i wywala ODCZYT, bo projekcje
+ * mają to pole jako `.strict()`-ISO — awaria jeden ekran od miejsca zapisu.
+ */
+export const updateProjectDetails = (
+  project: Project,
+  update: {
+    readonly title?: string;
+    readonly dueAt?: string | null;
+  },
+  occurredAt: string,
+): Project => {
+  const { dueAt: _priorDueAt, ...rest } = project;
+  void _priorDueAt;
+  const dueAt = update.dueAt === undefined ? project.dueAt : update.dueAt;
+  return {
+    ...rest,
+    title: update.title ?? project.title,
+    ...(dueAt === undefined || dueAt === null ? {} : { dueAt }),
     version: project.version + 1,
     updatedAt: occurredAt,
   };
