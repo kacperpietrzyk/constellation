@@ -33,12 +33,14 @@ const openVerb = (kind: string, fallback: string): string =>
   `Open ${(recordKindLabels[kind] ?? fallback).toLowerCase()}`;
 
 /** Dokąd prowadzi wiersz. Kontrakt nie ma celu „komentarz": wzmianka ląduje
- *  na zadaniu albo projekcie, przy którym komentarz wisi. */
+ *  na rekordzie, przy którym komentarz wisi — na zadaniu, projekcie albo
+ *  organizacji. */
 const openLabels: {
   readonly [kind in InboxSignal["destination"]["kind"]]: string;
 } = {
   task: openVerb("task", "task"),
   project: openVerb("project", "project"),
+  organization: openVerb("organization", "organization"),
   document: openVerb("document", "document"),
   // Wrzut nie prowadzi do rekordu, tylko do HISTORII wrzucania — tam widać, co
   // się z nim stało. Rejestr zna ten rodzaj pod `inspectorSurface: "history"`.

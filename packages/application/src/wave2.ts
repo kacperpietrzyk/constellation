@@ -921,7 +921,9 @@ export const isWave2CommandAuthorized = (
       const record =
         target.kind === "task"
           ? view.getTask(target.taskId)
-          : view.getProject(target.projectId);
+          : target.kind === "project"
+            ? view.getProject(target.projectId)
+            : organizationRecord(view, target.organizationId);
       const spaceId =
         record?.workspaceId === command.workspaceId
           ? record.spaceId
@@ -1961,17 +1963,35 @@ const managedAttachments = (
     : items.map((item) => item!);
 };
 
+type OrganizationRecord = Extract<StrategicRecord, { kind: "organization" }>;
+
+// A StrategicRecordId names a record of SOME strategic kind, so a target that
+// says "organization" has to be checked against what the id actually resolves
+// to. One helper for the authorization arm and the write path both: two copies
+// of this check are two chances for the guard and the writer to disagree about
+// what an Organization is.
+const organizationRecord = (
+  view: ApplicationWave2ReadView,
+  organizationId: StrategicRecordId,
+): OrganizationRecord | undefined => {
+  const record = view.getStrategicRecord(organizationId);
+  return record?.kind === "organization" ? record : undefined;
+};
+
 const targetRecord = (
   view: ApplicationWave2ReadView,
   target: AttentionDestination,
-): Task | Project | NativeDocument | Capture | undefined =>
+):
+  Task | Project | NativeDocument | Capture | OrganizationRecord | undefined =>
   target.kind === "task"
     ? view.getTask(target.taskId)
     : target.kind === "project"
       ? view.getProject(target.projectId)
-      : target.kind === "document"
-        ? view.getDocument(target.documentId)
-        : view.getCapture(target.captureId);
+      : target.kind === "organization"
+        ? organizationRecord(view, target.organizationId)
+        : target.kind === "document"
+          ? view.getDocument(target.documentId)
+          : view.getCapture(target.captureId);
 
 // ADR-043 §4 — the read-side view of a target record: a removed Task must be
 // invisible, the same way the list primitives already hide it. targetRecord
@@ -1980,7 +2000,13 @@ const targetRecord = (
 const activeTargetRecord = (
   view: ApplicationWave2ReadView,
   target: AttentionDestination,
-): Task | Project | NativeDocument | Capture | undefined => {
+):
+  | Task
+  | Project
+  | NativeDocument
+  | Capture
+  | OrganizationRecord
+  | undefined => {
   const record = targetRecord(view, target);
   return record !== undefined &&
     "recordState" in record &&
@@ -1988,6 +2014,17 @@ const activeTargetRecord = (
     ? undefined
     : record;
 };
+
+// Each destination kind spells its headline differently: a Capture keeps the
+// text it was submitted with, an Organization is named rather than titled.
+const attentionTitle = (
+  record: NonNullable<ReturnType<typeof activeTargetRecord>>,
+): string =>
+  "originalText" in record
+    ? record.originalText
+    : "name" in record
+      ? record.name
+      : record.title;
 
 export interface ResolvedDocumentEntityTarget {
   readonly targetKind: DocumentEntityTargetKind;
@@ -2125,7 +2162,11 @@ const attentionDetail = (reason: AttentionSignal["reason"]): string => {
 };
 
 const targetId = (target: CommentTarget): string =>
-  target.kind === "task" ? target.taskId : target.projectId;
+  target.kind === "task"
+    ? target.taskId
+    : target.kind === "project"
+      ? target.projectId
+      : target.organizationId;
 
 const eligibleMention = (
   view: ApplicationWave2ReadView,
@@ -10514,8 +10555,7 @@ export const executeWave2Query = (
             id: signal.id,
             reason: signal.reason,
             destination: signal.destination,
-            title:
-              "originalText" in record ? record.originalText : record.title,
+            title: attentionTitle(record),
             detail: attentionDetail(signal.reason),
             urgency: signal.urgency,
             state: signal.state,

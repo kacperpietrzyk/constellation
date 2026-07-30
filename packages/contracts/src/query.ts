@@ -32,6 +32,7 @@ import {
 import {
   CaptureOriginalSchema,
   CaptureReviewReasonSchema,
+  CommentTargetSchema,
   ContractVersionSchema,
   FieldDefinitionTypeSchema,
   RelationConditionsSchema,
@@ -206,14 +207,9 @@ export const TaskAssignmentCandidatesQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
-const CommentQueryTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("task"), taskId: TaskIdSchema }).strict(),
-  z.object({ kind: z.literal("project"), projectId: ProjectIdSchema }).strict(),
-]);
-
 export const CommentListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("comment.list"),
-  parameters: z.object({ target: CommentQueryTargetSchema }).strict(),
+  parameters: z.object({ target: CommentTargetSchema }).strict(),
 }).strict();
 
 export const CommentMentionCandidatesQuerySchema = QueryMetadataSchema.extend({
@@ -1392,7 +1388,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("comment.list"),
-      target: CommentQueryTargetSchema,
+      target: CommentTargetSchema,
       threads: z.array(
         z
           .object({
@@ -1461,16 +1457,15 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "capture_partial_payload_transfer",
               "capture_unknown_reconcile",
             ]),
+            // Every comment target is also a destination a mention can send
+            // someone to, plus two the comment path never produces. Spreading
+            // the target's arms rather than copying them is what keeps this
+            // union from silently trailing the one comments are written
+            // against: a mention on a target this list had not been taught
+            // would fail the strict parse on the way OUT, which reads as a
+            // broken inbox rather than as a rule anybody chose.
             destination: z.discriminatedUnion("kind", [
-              z
-                .object({ kind: z.literal("task"), taskId: TaskIdSchema })
-                .strict(),
-              z
-                .object({
-                  kind: z.literal("project"),
-                  projectId: ProjectIdSchema,
-                })
-                .strict(),
+              ...CommentTargetSchema.options,
               z
                 .object({
                   kind: z.literal("document"),
