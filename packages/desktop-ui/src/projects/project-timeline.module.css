@@ -1,0 +1,300 @@
+/* Timeline layout for Projects. The bar's LENGTH is the content — the room
+   left before a promised date, or the ground already lost past it — so
+   everything else on the row is kept quiet enough for that length to be the
+   thing you read.
+
+   Health arrives here as a tint, and the tint is never the only carrier: the
+   label stands beside the title in words, and the row's accessible name says it
+   again. Two shapes carry the rest — a deadline already behind us is hatched,
+   and today is a dashed line rather than a filled band, because a line survives
+   high contrast and print and a fill does not.
+
+   Every colour and every step comes from a token: an undefined `var(--…)`
+   resolves quietly to `transparent` and unstyles real UI without erroring. */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Nothing to lay out is an answer, not a blank. */
+.emptyState {
+  max-width: var(--surface-measure, 58rem);
+  margin: 0;
+  padding: var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* The track scrolls INSIDE this box and never widens the page. The scale is
+   derived from the data, so a range wider than the window is expected; the
+   whole surface sliding sideways under it is not. */
+.scroller {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* Width comes from the months on the scale, not from the days: a year-long
+   range would otherwise be drawn at a metre per screen. The month COUNT is set
+   on this element by the component: it is the one part of the width that comes
+   from the data, and the stylesheet cannot know it. */
+.grid {
+  --timeline-label: 14rem;
+  --timeline-track: calc(var(--timeline-month-count, 1) * 6rem);
+  position: relative;
+  min-width: calc(var(--timeline-label) + var(--timeline-track));
+}
+
+.axis,
+.row {
+  display: grid;
+  grid-template-columns: var(--timeline-label) minmax(0, 1fr);
+}
+
+/* NOT sticky, and that is a divergence worth stating rather than a thing left
+   undone. The scale has to scroll sideways inside its own box, so `.scroller`
+   carries `overflow-x: auto` — which makes it the nearest scroll container on
+   BOTH axes, and a `position: sticky` in here would pin against a box that
+   never scrolls vertically. It would be a declaration that does nothing, plus
+   an opaque background kept only to serve it. The axis is the first row of the
+   grid and scrolls away with the collection, exactly like a group heading. */
+.axis {
+  align-items: end;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.axisCorner {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+.axisScale {
+  position: relative;
+  min-height: 1.375rem;
+}
+
+/* Labels sit to the RIGHT of their own boundary rather than centred on it: the
+   first tick can land near the left edge, and a centred label would be clipped
+   by the scroller exactly where the reader needs it. */
+.axisMonth,
+.axisToday {
+  position: absolute;
+  bottom: 0;
+  padding-inline-start: var(--space-1);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.axisMonth {
+  border-inline-start: 1px solid var(--border-strong);
+  color: var(--text-quaternary);
+}
+
+/* Dashed, so the label reads as the same mark as the line below it. */
+.axisToday {
+  border-inline-start: 2px dashed var(--text-secondary);
+  color: var(--text-secondary);
+}
+
+.rows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  align-items: stretch;
+  min-height: 2.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+  transition: background var(--duration-instant) linear;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.row[aria-selected="true"] {
+  background: var(--surface-selected);
+}
+
+/* `--focus-ring` is a box-shadow list, not a colour: written as an outline it
+   parses to nothing and the row loses its focus entirely. The outline beside it
+   is the forced-colours fallback, where shadows are dropped. */
+.row:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -2px;
+  box-shadow: var(--focus-ring);
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  justify-content: center;
+  min-width: 0;
+  padding: var(--space-2);
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  /* A real project title runs long. Wrapping costs a line; truncating costs a
+     trip into the record to find out what the row is. */
+  overflow-wrap: anywhere;
+}
+
+.health {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.track {
+  position: relative;
+  min-height: 100%;
+}
+
+.bar {
+  position: absolute;
+  top: 50%;
+  height: 0.875rem;
+  translate: 0 -50%;
+  border-radius: var(--radius-xs);
+  pointer-events: none;
+}
+
+.barRisk {
+  border: 1px solid color-mix(in oklab, var(--status-error) 60%, transparent);
+  background: var(--status-error-bg);
+}
+
+.barWatch {
+  border: 1px solid color-mix(in oklab, var(--status-warning) 60%, transparent);
+  background: var(--status-warning-bg);
+}
+
+.barGood {
+  border: 1px solid color-mix(in oklab, var(--status-success) 60%, transparent);
+  background: var(--status-success-bg);
+}
+
+/* Waiting is the mild state — nothing is endangered, the work simply is not
+   with you — so the bar sinks rather than warns. A warning colour here would
+   be a lie the health ladder does not tell. */
+.barWaiting {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+/* No reading at all: an outline with nothing in it, the same dashed vocabulary
+   the health dot uses for an absence. */
+.barNone {
+  border: 1px dashed var(--border-strong);
+  background: none;
+}
+
+/* A deadline already behind us. The bar covers the ground between that date and
+   today rather than being clamped to nothing, and it is HATCHED so the overrun
+   is not mistaken for room still in hand on a monochrome screen.
+
+   An attribute rather than a second class: the tone above still says which
+   health reading the bar carries, and this only adds to it. It also outranks
+   the tone rules, so the `background` shorthand they set cannot drop the
+   image whatever order the two end up in. */
+.bar[data-over] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--border-strong) 0 0.125rem,
+    transparent 0.125rem 0.375rem
+  );
+}
+
+/* The caption sits BESIDE the bar, never inside it: a short project's bar is a
+   few dozen pixels wide and any text within it is clipped mid-date. */
+.caption,
+.captionFlipped {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.caption {
+  padding-inline-start: var(--space-2);
+}
+
+/* Past three quarters of the track the caption would run off the end, so it
+   changes sides instead of being cut. */
+.captionFlipped {
+  padding-inline-end: var(--space-2);
+  text-align: end;
+}
+
+/* No date was ever recorded, so no bar is invented. The row says it in words at
+   the head of the track, where a bar would otherwise start. */
+.undated {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: 0;
+  translate: 0 -50%;
+  padding-inline-start: var(--space-2);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* One rule layer over the whole collection: the months and today are the same
+   two facts for every row. It starts where the track column starts, so a
+   percentage in here means the same day as a percentage inside a row. */
+.rules {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--timeline-label);
+  inset-inline-end: 0;
+  pointer-events: none;
+}
+
+.rule {
+  position: absolute;
+  inset-block: 0;
+  width: 1px;
+  background: var(--border-subtle);
+}
+
+/* Today is a LINE, never a filled band: a line survives high contrast and
+   print, and a band would tint every bar it crossed. */
+.today {
+  position: absolute;
+  inset-block: 0;
+  width: 0;
+  border-inline-start: 2px dashed var(--text-secondary);
+}
+
+/* Below this the label column would eat the track. The names get narrower
+   rather than the scale, because the scale is the reason for the layout. */
+@media (max-width: 50rem) {
+  .grid {
+    --timeline-label: 9rem;
+    --timeline-track: calc(var(--timeline-month-count, 1) * 5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+    transition: none;
+  }
+}

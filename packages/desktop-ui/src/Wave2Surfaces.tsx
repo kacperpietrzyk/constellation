@@ -32,9 +32,10 @@ import {
 } from "./client/workflow.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
-import { NarrativeGap, NarrativeText } from "./components/RecordNarrative.js";
+import { NarrativeGap } from "./components/RecordNarrative.js";
 import { recordNarrativeGaps } from "./record-narrative.js";
 import ProjectContextSections from "./ProjectContextSections.js";
+import { ProjectCollection } from "./projects/ProjectCollection.js";
 import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -584,17 +585,6 @@ export const ProjectsSurface = ({
   );
   const fullView =
     activeProjectId !== undefined && overview?.project.id === activeProjectId;
-  const projectNav = useListNavigation({
-    itemCount: projectItems.length,
-    onOpen: (index) => {
-      const project = projectItems[index];
-      if (project) onOpenProject(project.id);
-    },
-    onSelect: (index) => {
-      const project = projectItems[index];
-      if (project) onSelectProject(project.id);
-    },
-  });
   const unrelated = snapshot.tasks.filter(
     (task) => !overview?.relatedTasks.some((related) => related.id === task.id),
   );
@@ -947,48 +937,16 @@ export const ProjectsSurface = ({
           </section>
         </div>
       ) : (
-        <section className="project-portfolio" aria-label="Project list">
-          <header>
-            <div>
-              <h2>Project portfolio</h2>
-              <span>{projectItems.length} in view</span>
-            </div>
-            <span>Outcome and open work</span>
-          </header>
-          <div className="project-list">
-            {projectItems.map((project, index) => (
-              <button
-                type="button"
-                className={`outcome-row ${project.id === selectedProjectId ? "selected" : ""}`}
-                key={project.id}
-                {...projectNav(index)}
-                onClick={(event) => {
-                  if (event.metaKey || event.ctrlKey) onOpenProject(project.id);
-                  else onSelectProject(project.id);
-                }}
-                onDoubleClick={() => onOpenProject(project.id)}
-              >
-                <Mark kind="project" />
-                <span>
-                  {/* Te same dwa zaczepy, co w wierszu zadania: pomiar musi
-                      trafiać w WIDOCZNY tytuł i w WYRENDEROWANĄ intencję, a nie
-                      w tekst całego planu. Intencja ma tu 1400-3000 znaków i
-                      kilka akapitów — obcięcie jej w renderze jest właśnie tym
-                      defektem, którego bogaty fixture pilnuje. */}
-                  <strong data-row-title="">{project.title}</strong>
-                  <small data-row-outcome="">
-                    <NarrativeText
-                      kind="project"
-                      text={project.intendedOutcome}
-                      needsReview={project.needsReview}
-                    />
-                  </small>
-                </span>
-                <em>{project.relatedOpenTaskCount} open</em>
-              </button>
-            ))}
-          </div>
-        </section>
+        /* Kolekcja projektów: trzy soczewki nad jednym zbiorem, grupowane po
+           WYLICZANYM zdrowiu. Powłoka — nagłówek i formularz zakładania —
+           zostaje tutaj, bo to ona niesie zaczepy, po których paczkowany
+           smoke znajduje ścieżkę zakładania projektu. */
+        <ProjectCollection
+          snapshot={snapshot}
+          selectedProjectId={selectedProjectId}
+          onOpenProject={onOpenProject}
+          onSelectProject={onSelectProject}
+        />
       )}
     </div>
   );

@@ -1,0 +1,342 @@
+/* Układ listy w Projektach. Rodzeństwo `tasks/task-list.module.css` i celowo
+   czytane tak samo: wiersze leżą wprost na płótnie pod przyklejonymi
+   nagłówkami grup — Projekty to KOLEKCJA na cały ekran, jak Zadania, więc nie
+   ma tu karty ani tła panelu. Każdy kolor i odstęp z tokenu; niezdefiniowany
+   `var(--…)` rozwiązuje się po cichu do `transparent` i odstyluje ekran, a lint
+   czyta każdy `*.module.css`. */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* Nagłówek stoi POZA listboxem grupy. Dziecko listboxa, które nie jest opcją,
+   trzeba by ratować rolą prezentacyjną — prościej go tam nie wkładać. */
+.groupHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.groupLabel {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+.groupCount {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pytajnik stoi tylko przy PIERWSZEJ grupie: powód jest ten sam dla każdego
+   stanu, a cztery znaki zapytania jeden pod drugim to dekoracja. */
+.help {
+  margin-inline-start: auto;
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* Sześć kolumn: znak stanu | tytuł nad powodem | pasek składu | klient |
+   para „ile otwarte / ile czasu" | slot końcowy. Tytuł bierze całą wolną
+   przestrzeń, reszta ma sufity, bo realny tytuł wypycha inaczej termin poza
+   ekran. */
+.row {
+  display: grid;
+  grid-template-columns:
+    6.5rem minmax(0, 1fr) minmax(6rem, 11rem)
+    minmax(0, 9rem) 6.5rem 1.375rem;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+/* Wskazanie kursorem NIE gasi zaznaczenia: `.row:hover` ma wyższą swoistość
+   niż sama klasa, więc zaznaczony wiersz musi ją tu dogonić. Zaznaczenie jest
+   stanem, do którego przypięty jest inspektor. */
+.rowSelected,
+.rowSelected:hover {
+  background: var(--surface-selected);
+}
+
+/* Pierścień fokusu wprost z kontraktu tokenów. `--focus-ring` jest LISTĄ
+   CIENI, więc `outline: 2px solid var(--focus-ring)` byłoby deklaracją
+   niepoprawną i przeglądarka wyrzuciłaby ją w całości — lint tokenów tego nie
+   widzi, bo nazwa się rozwiązuje. */
+.row:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Znak niesie znaczenie KSZTAŁTEM, kolor tylko wzmacnia, a etykieta stoi obok
+   i mówi to samo słowami — kolor nigdy nie jest jedynym nośnikiem. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.chipLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip_risk {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.chip_watch {
+  color: var(--status-warning);
+}
+
+/* „Czeka" nie dostaje koloru ostrzeżenia: nic nie jest zagrożone, praca po
+   prostu nie jest u Ciebie. */
+.chip_waiting {
+  color: var(--text-secondary);
+}
+
+.chip_good {
+  color: var(--text-tertiary);
+}
+
+.chip_none {
+  color: var(--text-disabled);
+}
+
+.mark {
+  flex: none;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 0.0625rem;
+}
+
+.mark_good {
+  background: var(--status-success);
+}
+
+/* Połowa po przekątnej. */
+.mark_watch {
+  background: var(--status-warning);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+/* Kwadrat z WYBITYM wykrzyknikiem: maska SVG z regułą `evenodd` wycina dziurę,
+   więc znak zostaje ten sam na każdym tle wiersza. Gdyby maski zabrakło,
+   zostaje pełny kwadrat — znaczenie i tak niesie etykieta obok. */
+.mark_risk {
+  background: var(--status-error);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill-rule='evenodd' d='M0 0h10v10H0Z M4.2 1.4h1.6v4.6H4.2Z M4.2 7.2h1.6v1.6H4.2Z'/%3E%3C/svg%3E");
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+
+/* Dwie pionowe belki — znak pauzy. Celowo NIE połowa kształtu: półkwadrat
+   myliłby się z „obserwuj". */
+.mark_waiting {
+  border-inline: 0.1875rem solid var(--text-secondary);
+}
+
+.mark_none {
+  border: 1px dashed var(--text-disabled);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-inline-size: 0;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* Powód stoi PRZY projekcie, nigdy w podsumowaniu nad listą: kiedy cztery z
+   sześciu są zagrożone, sama plakietka nie niesie nic — dopiero powód robi
+   z niej informację. */
+.why {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.composition {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* Pasek SKŁADU, nie postępu: na realnych danych domknięte jest prawie nic,
+   więc procent nie mówi nic, a to, gdzie stoi praca — wszystko. */
+.bar {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  block-size: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+}
+
+.bar_done {
+  background: var(--status-success);
+}
+
+/* Odcinek, o który ten ekran chodzi — rozpoznawalny BEZ koloru, po ukosie. */
+.bar_held {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--status-warning) 0 0.1875rem,
+    var(--status-warning-bg) 0.1875rem 0.375rem
+  );
+}
+
+.bar_open {
+  background: var(--border-strong);
+}
+
+.count {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.client {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* Brak klienta to stan do pokazania, nie do ukrycia. */
+.clientNone {
+  color: var(--text-disabled);
+}
+
+.load {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-inline-size: 0;
+  text-align: end;
+}
+
+.open {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 590;
+  white-space: nowrap;
+}
+
+.left {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.left_over {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.left_soon {
+  color: var(--status-warning);
+}
+
+.left_unset {
+  color: var(--text-disabled);
+}
+
+.left_plain {
+  color: var(--text-tertiary);
+}
+
+/* Szósta kolumna prototypu niosła awatar prowadzącego. Realny `Project` nie ma
+   takiego pola, a kolumna zostaje pusta, żeby trzy układy trzymały tę samą
+   siatkę i wiersz nie przeskakiwał przy zmianie soczewki. */
+.trailing {
+  inline-size: 1.375rem;
+}
+
+/* Wąsko znika to, co POWTARZA się gdzie indziej — klient i slot końcowy są
+   nadal w nazwie dostępnej wiersza. Razem z dzieckiem musi zniknąć TOR: samo
+   `display: none` zostawia kolumnie jej minimalną szerokość i wiersz dalej
+   jest szerszy od okna. */
+@media (width <= 68rem) {
+  .row {
+    grid-template-columns: 6.5rem minmax(0, 1fr) minmax(5rem, 9rem) 6.5rem;
+  }
+
+  .client,
+  .trailing {
+    display: none;
+  }
+}
+
+/* Najwęziej zostaje to, po co ten ekran istnieje: stan, projekt z powodem
+   i ile czasu zostało. */
+@media (width <= 48rem) {
+  .row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .composition {
+    display: none;
+  }
+}

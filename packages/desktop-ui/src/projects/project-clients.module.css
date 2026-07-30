@@ -1,0 +1,244 @@
+/* Układ „wg klienta" w Projektach. Siatka wiersza jest CELOWO ta sama co w
+   układzie listy — te dwa układy porównuje się wzrokiem, więc kolumny muszą
+   stać w tych samych miejscach. Konwencja jak w `task-list.module.css`:
+   modyfikator z prefiksem bloku, każdy kolor i odstęp z tokenu — niezdefiniowany
+   `var(--…)` rozwiązuje się po cichu do `transparent` i odstyluje ekran. */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Nagłówek grupy niesie klienta i liczbę, i nic więcej: druga ozdoba
+   ciężkości twierdziłaby, że grupa ma zdrowie — zdrowie ma wiersz. */
+.groupHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.groupLabel {
+  font-weight: 590;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupCount {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: grid;
+  grid-template-columns:
+    6.5rem minmax(0, 1fr) minmax(6rem, 11rem)
+    minmax(0, 9rem) 6.5rem;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+  min-inline-size: 0;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowSelected {
+  background: var(--surface-selected);
+}
+
+/* Token ogniska to STOS CIENI, nie kolor — `outline: … solid var(--focus-ring)`
+   jest niepoprawną wartością i przeglądarka pomija całą deklarację. */
+.row:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Znak niesie stan KSZTAŁTEM, kolor tylko go wzmacnia, a etykieta stoi obok —
+   kolor nigdy nie jest jedynym nośnikiem znaczenia. */
+.health {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.healthMark {
+  font-size: var(--text-xs);
+}
+
+.health_risk {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.health_watch {
+  color: var(--status-warning);
+}
+
+/* Kolor ostrzegawczy przy „Waiting" byłby kłamstwem: nic nie jest zagrożone,
+   praca po prostu nie jest u Ciebie. */
+.health_waiting {
+  color: var(--text-secondary);
+}
+
+.health_good {
+  color: var(--text-tertiary);
+}
+
+.health_none {
+  color: var(--text-disabled);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.why {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.composition {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.bar {
+  display: flex;
+  flex: 1;
+  block-size: 0.5rem;
+  min-inline-size: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.segment {
+  block-size: 100%;
+}
+
+.segment_done {
+  background: var(--status-success);
+}
+
+/* „Wstrzymane" ma WZÓR, nie tylko kolor — to jest ten segment, o który cały ten
+   ekran pyta, więc nie może być rozpoznawalny wyłącznie po barwie. */
+.segment_held {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--status-warning),
+    var(--status-warning) 0.125rem,
+    transparent 0.125rem,
+    transparent 0.25rem
+  );
+}
+
+.segment_open {
+  background: var(--border-strong);
+}
+
+.ratio {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nazwa klienta jest tu nagłówkiem grupy, więc w każdym wierszu byłaby szumem —
+   ale komórka ZOSTAJE, bo bez niej siatka rozjechałaby się względem pozostałych
+   układów. `visibility`, nie `display`: pudełko ma dalej zajmować kolumnę. */
+.client {
+  visibility: hidden;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.tail {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.open {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.left {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.left_over {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.left_soon {
+  color: var(--status-warning);
+}
+
+.left_unset {
+  color: var(--text-quaternary);
+}
+
+.left_plain {
+  color: var(--text-tertiary);
+}
+
+/* Wąskie okno: znikają POWTÓRZENIA — wszystko, co tu gaśnie, niesie dalej nazwa
+   dostępna wiersza. Kolumna klienta odchodzi razem z paskiem składu, więc oba
+   układy nadal mają tę samą siatkę; stałe kolumny nie zmieściłyby się w 320 px
+   i wiersz zacząłby wystawać poza swoje pudełko. */
+@media (width <= 60rem) {
+  .row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .composition,
+  .client {
+    display: none;
+  }
+}
