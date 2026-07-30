@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { ProjectId, StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -7,8 +7,10 @@ import { NarrativeText } from "./components/RecordNarrative.js";
 import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
+  addComment,
   directDeliveryProjects,
   generateRecurrenceOccurrence,
+  loadComments,
   linkableDeliveryProjects,
   loadOrganizationOverview,
   resolveDecisionImpact,
@@ -20,6 +22,13 @@ import {
   type RelationshipWorkspaceProjection,
 } from "./client/workflow.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
+import {
+  buildActorResolver,
+  buildMentionResolver,
+} from "./record/record-actors.js";
+import { RecordCommentsPanel } from "./record/RecordCommentsPanel.js";
+import { RecordTabStrip } from "./record/RecordTabStrip.js";
+import { openThreadCount, type RecordTab } from "./record/record-tabs.js";
 import {
   countLabel,
   formatDate,
@@ -716,6 +725,11 @@ const DeliveryLinkRow = ({
   );
 };
 
+/** An organization offers two of the five sections a record can have. The
+ *  others need collections it does not own: its projects and tasks are the
+ *  CLIENT's work, listed in the body as exits, not a backlog it holds. */
+const ORGANIZATION_TABS: readonly RecordTab[] = ["overview", "comments"];
+
 export const OrganizationContextSurface = ({
   overview,
   deliveryCandidates,
@@ -728,6 +742,8 @@ export const OrganizationContextSurface = ({
   onOpenDocument,
   onOpenMeeting,
   onOpenRelationship,
+  comments,
+  commentCount,
 }: {
   readonly overview: OrganizationOverviewProjection;
   // Resolved by the caller, exactly as on the Project side.
@@ -755,23 +771,26 @@ export const OrganizationContextSurface = ({
   readonly onOpenRelationship: (
     id: OrganizationOverviewProjection["opportunities"][number]["id"],
   ) => void;
+  /** Decision #28's second record kind. OPTIONAL, and the surface is unchanged
+   *  without it: this component has a second call site — the development
+   *  harness — that supplies no loader, and a required prop would break the
+   *  build there rather than at the place the decision was taken. */
+  readonly comments?: ReactNode | undefined;
+  readonly commentCount?: number | undefined;
 }) => {
   const { organization } = overview;
   const lastMeeting = overview.meetings[0];
   const nextRenewal = overview.renewals[0];
-  return (
-    <div className="surface-scroll organization-context">
-      <header className="surface-header organization-context__header">
-        <div>
-          <p className="eyebrow">Organization · full context</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            {organization.name}
-          </h1>
-          <p>{organization.nextAction ?? "No next move set yet."}</p>
-        </div>
-        <StateMark state={organization.relationshipState} />
-      </header>
-
+  // Held here rather than in the strip, because which tab is open is per-record
+  // and the bar is stateless by design. Two tabs, not five: an organization has
+  // no Tasks panel and no Documents panel of its own — the strip takes its tab
+  // SET as a prop precisely so a kind can show fewer than every tab that
+  // exists, and drawing an empty one would be a promise about a collection this
+  // record does not have.
+  const [tab, setTab] = useState<RecordTab>("overview");
+  const tabbed = comments !== undefined;
+  const body = (
+    <>
       <section
         className="organization-context__pulse"
         aria-label="Relationship status"
@@ -1086,6 +1105,34 @@ export const OrganizationContextSurface = ({
           )}
         </section>
       </div>
+    </>
+  );
+
+  return (
+    <div className="surface-scroll organization-context">
+      <header className="surface-header organization-context__header">
+        <div>
+          <p className="eyebrow">Organization · full context</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            {organization.name}
+          </h1>
+          <p>{organization.nextAction ?? "No next move set yet."}</p>
+        </div>
+        <StateMark state={organization.relationshipState} />
+      </header>
+      {tabbed ? (
+        <RecordTabStrip
+          counts={commentCount === undefined ? {} : { comments: commentCount }}
+          onSelect={setTab}
+          recordId={organization.id}
+          selected={tab}
+          tabs={ORGANIZATION_TABS}
+        >
+          {tab === "comments" ? comments : body}
+        </RecordTabStrip>
+      ) : (
+        body
+      )}
     </div>
   );
 };
@@ -1125,6 +1172,21 @@ export const OrganizationContextLoader = ({
     | { readonly kind: "ready"; readonly data: OrganizationOverviewProjection }
     | { readonly kind: "unavailable"; readonly message: string }
   >({ kind: "loading" });
+  // A record's comments are a TARGETED fetch, not a snapshot slice, so they are
+  // read here beside the overview rather than threaded down from the shell —
+  // the same reason the overview itself is read here. `undefined` means the
+  // read has not landed or the contract refused, and the surface then renders
+  // exactly as it did before the tab existed.
+  const [comments, setComments] =
+    useState<Awaited<ReturnType<typeof loadComments>>>();
+  // Whose voice this is. Read from the access slice, the same place the shell
+  // reads it: a mention list that names you in the third person makes you read
+  // every line to find out whether one of them was addressed to you.
+  const currentPrincipalId =
+    snapshot.access.kind === "ready"
+      ? snapshot.access.data.currentPrincipalId
+      : undefined;
+  const [commentBusy, setCommentBusy] = useState(false);
   useEffect(() => {
     const organization =
       snapshot.relationships.kind === "ready"
@@ -1156,6 +1218,16 @@ export const OrganizationContextLoader = ({
             message: "Could not load the overview. Nothing was changed.",
           });
       });
+    void loadComments(client, snapshot, {
+      kind: "organization",
+      organizationId: organization.id,
+    })
+      .then((data) => active && setComments(data))
+      // Swallowed on purpose, and it is the ONLY thing swallowed here. The
+      // organization arm of the comment target landed in 0.2.0; a workspace
+      // whose kernel predates it refuses the query, and that must cost the
+      // client context nothing — the record still opens, without the tab.
+      .catch(() => undefined);
     return () => {
       active = false;
     };
@@ -1178,6 +1250,63 @@ export const OrganizationContextLoader = ({
           )
         }
         {...navigation}
+        commentCount={
+          comments === undefined ? undefined : openThreadCount(comments.threads)
+        }
+        comments={
+          client === undefined || comments === undefined ? undefined : (
+            <RecordCommentsPanel
+              actorOf={buildActorResolver(
+                snapshot.agentAccess.kind === "ready"
+                  ? snapshot.agentAccess.data
+                  : undefined,
+              )}
+              busy={commentBusy}
+              mentionCandidates={
+                snapshot.mentionCandidates.kind === "ready"
+                  ? snapshot.mentionCandidates.data.candidates.filter(
+                      (candidate) =>
+                        candidate.principalId !== currentPrincipalId,
+                    )
+                  : []
+              }
+              mentionNameOf={buildMentionResolver(
+                snapshot.mentionCandidates.kind === "ready"
+                  ? snapshot.mentionCandidates.data
+                  : undefined,
+                currentPrincipalId,
+              )}
+              onSubmit={(body, mentions) => {
+                setCommentBusy(true);
+                const target = {
+                  kind: "organization" as const,
+                  organizationId: state.data.organization.id,
+                };
+                return addComment(
+                  client,
+                  snapshot,
+                  target,
+                  state.data.organization.version,
+                  body,
+                  mentions,
+                ).then(async (result: { readonly kind: string }) => {
+                  setCommentBusy(false);
+                  if (result.kind !== "success") return false;
+                  // Re-read rather than push the new thread onto the local
+                  // list: the version this write expected has moved, and a
+                  // list assembled from a stale one refuses the NEXT comment
+                  // with a version conflict nobody can explain.
+                  const next = await loadComments(client, snapshot, target);
+                  setComments(next);
+                  return true;
+                });
+              }}
+              recordKey={state.data.organization.id}
+              threads={comments.threads}
+              timeZone={snapshot.bootstrap.workspace.timezone}
+            />
+          )
+        }
       />
     );
   return (

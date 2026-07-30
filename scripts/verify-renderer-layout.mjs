@@ -127,6 +127,7 @@ const sweep = async (browser, { width, fontSize }) => {
       (item) => item.dataset.surface,
     );
     const results = [];
+    let recordPanels = 0;
     for (const id of ids) {
       // Settings is a MODE: entering it replaces the left column, so the nav
       // item for the next destination is not there to click. Without leaving
@@ -190,8 +191,48 @@ const sweep = async (browser, { width, fontSize }) => {
         await frame();
         measure(`${id}:${label}`);
       }
+
+      // A destination can also OPEN a record, and the record is a different
+      // screen — its own header, its own tab bar, a reading column and a rail.
+      // Sweeping only the collection reported a pass for geometry nobody
+      // measured: this gate visited Projects thirteen times without once
+      // seeing the screen a project opens as.
+      //
+      // What this DOES catch, verified by breaking it: a record that renders
+      // nothing, and a page that grows past the window. What it does NOT catch
+      // is the same blind spot every other surface has here — a box made wider
+      // than its parent is absorbed, because `scrollWidth > clientWidth` asks
+      // whether CONTENT overflows its own box, and the scroll containers on
+      // this shell are designed to let wide content scroll inside them. Two
+      // deliberate breaks (a 90rem minimum on the record screen, then on the
+      // surface root) both passed. Stated rather than implied, so nobody reads
+      // a green run here as a promise it does not make.
+      const row = work?.querySelector("[data-project-row]");
+      if (row instanceof HTMLElement) {
+        row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        await frame();
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        await frame();
+        measure(`${id}:record`);
+        // Every tab, because the panels differ in kind: a reading column, a
+        // list of rows, a stream. The widest of them is where a narrow window
+        // overflows, and it is not the one the record opens on.
+        const tabs = [
+          ...(document.querySelectorAll('[role="tab"][data-record-tab]') ?? []),
+        ];
+        for (const tab of tabs) {
+          const label = tab.getAttribute("data-record-tab");
+          if (label === null || !(tab instanceof HTMLElement)) continue;
+          tab.click();
+          await frame();
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          await frame();
+          measure(`${id}:record:${label}`);
+        }
+        recordPanels += tabs.length;
+      }
     }
-    return { ids, results };
+    return { ids, results, recordPanels };
   }, fontSize);
 
   if (measured.ids.length < 5) {
@@ -210,6 +251,17 @@ const sweep = async (browser, { width, fontSize }) => {
     failures.push({
       surface: "-",
       reason: `only ${lensesMeasured} lenses were measured — a destination with several layouts drew none of them, so this pass covers geometry nobody looked at`,
+    });
+  }
+  // The same trap one level down, and it is the one that bit: an opened record
+  // is a DIFFERENT screen from the collection that opens it, and this gate
+  // swept Projects thirteen times without ever seeing it. A workspace whose
+  // rows never rendered would now pass here in silence, so the count is a
+  // failure rather than a shrug.
+  if (measured.recordPanels < 5) {
+    failures.push({
+      surface: "-",
+      reason: `only ${measured.recordPanels} record panels were measured — no project opened, so the record screen's geometry is untested and this pass says nothing about it`,
     });
   }
   for (const entry of measured.results) {

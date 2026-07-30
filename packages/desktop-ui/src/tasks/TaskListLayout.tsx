@@ -146,21 +146,31 @@ export const TaskListLayout = ({
                 <span className={styles.title} data-row-title>
                   {row.task.title}
                 </span>
-                {row.task.operationalState !== "actionable" && (
-                  <span className={styles.state}>
-                    {row.task.operationalState}
-                  </span>
-                )}
+                {/* Rendered even when there is nothing to say. A cell that
+                    disappears takes its grid track with it and every cell after
+                    it moves one column left — so a row about actionable work
+                    put its project where the state belongs, and no two rows in
+                    a real list lined up. The absence is drawn as nothing, not
+                    as a dash: "actionable" is the ordinary case and a mark on
+                    every second row buries the two states that mean the work is
+                    standing still. */}
+                <span className={styles.state}>
+                  {row.task.operationalState === "actionable"
+                    ? ""
+                    : row.task.operationalState}
+                </span>
                 <span className={styles.context}>
                   {row.projects.length > 0
                     ? row.projects.map((project) => project.title).join(", ")
                     : ""}
                 </span>
-                {(row.task.priority ?? "normal") !== "normal" && (
-                  <span className={styles.priority}>
-                    {PRIORITY_LABELS[row.task.priority ?? "normal"]}
-                  </span>
-                )}
+                {/* Same rule as the state cell: always present, empty when the
+                    priority is the default one nobody set. */}
+                <span className={styles.priority}>
+                  {(row.task.priority ?? "normal") === "normal"
+                    ? ""
+                    : PRIORITY_LABELS[row.task.priority ?? "normal"]}
+                </span>
                 <PlanCell prose={prose} row={row} />
                 <span
                   className={styles.due}

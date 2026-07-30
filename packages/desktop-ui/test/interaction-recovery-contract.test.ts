@@ -86,10 +86,6 @@ const taskAttachments = readFileSync(
   path.join(root, "src", "TaskAttachmentsSection.tsx"),
   "utf8",
 );
-const projectContextSections = readFileSync(
-  path.join(root, "src", "ProjectContextSections.tsx"),
-  "utf8",
-);
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
   "utf8",
@@ -305,102 +301,37 @@ describe("interaction recovery contracts", () => {
     assert.match(styles, /@container \(max-width: 42rem\)/);
   });
 
-  it("composes Project context as navigable sections without duplicating records", () => {
-    // Section identity travels on the stable key, not on the visible title.
-    for (const key of ["client", "meetings", "documents", "decisions"])
-      assert.match(projectContextSections, new RegExp(`key: "${key}"`));
-    assert.match(projectContextSections, /overview\.clientOrganizations\.map/);
-    assert.match(projectContextSections, /overview\.relatedMeetings\.map/);
-    assert.match(projectContextSections, /overview\.relatedDocuments\.map/);
-    assert.match(projectContextSections, /overview\.relatedDecisions\.map/);
-    assert.match(projectContextSections, /onOpenDocument\(document\.id/);
-    assert.match(projectContextSections, /onOpenMeeting\(meeting\.id\)/);
-    assert.match(projectContextSections, /onOpenRelationship\(decision\.id\)/);
-    assert.match(
-      styles,
-      /\.project-context-grid\s*\{[^}]*grid-template-columns/s,
-    );
-    assert.match(
-      styles,
-      /@container \(max-width: 34rem\)[\s\S]*\.project-context-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
-    );
-  });
-
-  it("lets a human link and detach a client from the Klient card", () => {
-    // The row has to be WIRED, not merely defined: it hangs off the Klient
-    // section as a footer and is rendered outside the list/empty branch,
-    // because linking the first client is exactly the empty state.
-    assert.match(projectContextSections, /footer: \(\s*<ClientLinkRow/);
-    assert.match(projectContextSections, /\{section\.footer\}/);
-    // A read that did not land and a Space with no organizations are different
-    // facts and must not share a sentence — the whole reason this branch
-    // exists is a surface that said "unavailable" without naming a cause.
-    assert.match(projectContextSections, /candidates === undefined \? \(/);
-    assert.match(projectContextSections, /candidates\.length === 0 \? \(/);
-    // These two really are about wording: the branches exist only so that a
-    // read that did not land and a Space with no organizations stop sharing a
-    // sentence. Asserting the branch conditions alone would let both render the
-    // same "unavailable" copy and still pass.
-    assert.match(projectContextSections, /Could not load organizations/);
-    assert.match(
-      projectContextSections,
-      /No organization to link in this project/,
-    );
-    assert.match(projectContextSections, /className="project-context-actions"/);
-    // The picker is a labelled select with an unset placeholder option, and
-    // linking is disabled until something is chosen.
-    assert.match(projectContextSections, /htmlFor="project-client-link"/);
-    assert.match(projectContextSections, /id="project-client-link"/);
-    assert.match(projectContextSections, /<option value="">/);
-    assert.match(
-      projectContextSections,
-      /disabled=\{busy \|\| selected === ""\}/,
-    );
-    assert.match(
-      projectContextSections,
-      /onLink\(selected as StrategicRecordId\)/,
-    );
-    // Two steps, in place, like every other destructive verb here: a quiet
-    // trigger arms the confirm, the danger control performs it, and a third
-    // control disarms without acting.
-    assert.match(
-      projectContextSections,
-      /className="ghost-button"[\s\S]{0,200}?onClick=\{\(\) => setConfirmingId\(organization\.id\)\}/,
-    );
-    assert.match(
-      projectContextSections,
-      /confirmingId === organization\.id \? \(/,
-    );
-    assert.match(
-      projectContextSections,
-      /className="status-danger"[\s\S]{0,300}?onUnlink\(organization\.id\)/,
-    );
-    assert.match(
-      projectContextSections,
-      /onClick=\{\(\) => setConfirmingId\(undefined\)\}/,
-    );
-    // Also legitimately about words: a client reached through an opportunity or
-    // a meeting stays on the list after a detach, so the confirm has to say
-    // that only the direct link goes — otherwise a working detach reads as
-    // broken. Worded differently from its twin on the Organization page, so
-    // this is deliberately its own regex.
-    assert.match(projectContextSections, /Only the direct link goes\./);
-    // The row shares the accepted in-project action row rather than declaring
-    // a second geometry for the same shape. Three selectors now, since the
-    // Organization page authors the same edge from the other end.
-    assert.match(
-      styles,
-      /\.project-template-row,\s*\.organization-context__actions,\s*\.project-context-actions\s*\{[^}]*display:\s*flex/s,
-    );
-    // RealApp resolves both kernel preconditions; the card stays presentational.
+  // WHAT USED TO BE HERE, AND WHERE IT WENT.
+  //
+  // Two sections regexed `ProjectContextSections.tsx` — the four context cards
+  // and the client link/detach row. That file is gone: the record screen took
+  // its four sections (client, meetings and decisions onto the Overview rail,
+  // documents into their own tab) and its link/detach row with them.
+  //
+  // The guarantees did not go with the file. Both are behavioural and both are
+  // now asserted by DRIVING the shell in `record-screen.interaction.test.tsx`:
+  //
+  //   - every record a project reaches — client, meetings, documents,
+  //     decisions — is reachable from the opened project, and each appears
+  //     ONCE;
+  //   - a client can be linked and detached from the record itself, the detach
+  //     is two-step, and "the read did not land" and "this Space has no
+  //     organizations" stay separate sentences.
+  //
+  // What stays HERE is the half that is about `RealApp` and the stylesheet,
+  // because neither belongs to a rendered screen: the shell resolves both
+  // kernel preconditions, and each verb reports both outcomes.
+  it("resolves the client-link preconditions in the shell and reports both outcomes", () => {
+    // RealApp resolves both kernel preconditions; the record stays free of
+    // kernel semantics.
     assert.match(realApp, /linkableClientOrganizations\(/);
     assert.match(realApp, /directClientLinks\(/);
     // Both verbs are wired to a kernel command, and neither outcome is silent:
     // success re-reads the workspace, failure is surfaced. Sliced per handler,
     // so the next handler's error path cannot stand in for this one's.
     for (const [command, until] of [
-      ["void linkProjectClient(", "onUnlinkClient={"],
-      ["void unlinkProjectClient(", "onUnrelate={"],
+      ["void linkProjectClient(", "const detachProjectClient"],
+      ["void unlinkProjectClient(", "// The project as"],
     ] as const) {
       const handler = sliceBetween(realApp, command, until, command);
       // One ordered chain, bounded: success re-reads the workspace and the
@@ -950,26 +881,18 @@ describe("interaction recovery contracts", () => {
       /surface === "projects" && activeContext\.projectId !== undefined/,
     );
     assert.match(realApp, /\(selectedProject && !projectFullView\)/);
-    // The collection half of this guarantee is asserted by DRIVING the screen,
-    // in `projects-collection.interaction.test.tsx`: that the destination opens
-    // as a set rather than as one record, that every lens draws the same set,
-    // and that the keyboard opens the row it is standing on. It used to be
-    // three regexes over this file's markup, which went red when the collection
-    // was rebuilt while proving nothing about what the screen does.
-    assert.match(surfaces, /className="project-detail-flow"/);
-    // The way back out of the full view exists, and only in the full view —
-    // that gating is the guarantee, not the label on the button.
-    assert.match(
-      surfaces,
-      /\{fullView && \([\s\S]{0,300}?onClick=\{onBackToProjects\}/,
-    );
+    // BOTH halves of this guarantee are now asserted by DRIVING the screen —
+    // the collection in `projects-collection.interaction.test.tsx`, the opened
+    // record in `record-screen.interaction.test.tsx`. What used to stand here
+    // was `className="project-detail-flow"` plus a rule for that class in the
+    // stylesheet; the class is gone with the view it named, and neither
+    // assertion ever proved that opening a project shows one.
+    //
+    // The way OUT is asserted there too, from a click: a regex over the markup
+    // could only ever say a button existed in a branch.
     assert.match(
       surfaces,
       /aria-controls=\{creating \? "project-create-form" : undefined\}/,
-    );
-    assert.match(
-      styles,
-      /\.project-detail-flow\s*\{[^}]*display:\s*grid;[^}]*gap:[^;]+;[^}]*margin:\s*0 auto/s,
     );
   });
 

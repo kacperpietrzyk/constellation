@@ -569,9 +569,18 @@ test("the composition bar sums to the total and counts no task twice", () => {
     reading.buckets.total,
   );
   assert.equal(reading.buckets.total, reading.all.length);
+  // "unblocked", not "open". The record header states `open.length` — which
+  // counts the held ones too — so the same word here put two numbers one apart
+  // two lines from each other on a real record, and the screen read as broken
+  // while both numbers were right.
   assert.equal(
     compositionSentence(reading.buckets),
-    "2 closed, 3 waiting or blocked, 1 open",
+    "2 closed, 3 waiting or blocked, 1 unblocked",
+  );
+  assert.notEqual(
+    reading.buckets.open,
+    reading.open.length,
+    "this fixture no longer makes the two quantities differ, so the wording above is not being tested",
   );
 });
 

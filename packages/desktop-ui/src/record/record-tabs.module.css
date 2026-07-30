@@ -1,0 +1,70 @@
+/* The record tab bar and the panel below it. Sibling of
+   `projects/project-list.module.css` and read the same way: every colour and
+   step comes from a token, because an undefined `var(--…)` resolves quietly to
+   transparent and unstyles the screen.
+
+   No viewport width query anywhere on this screen — a container query or
+   nothing. The canvas is narrowed by the open inspector, which a query against
+   the window cannot see, so such a rule fires at the wrong width. Nothing here
+   needs one at all: the strip wraps rather than measuring itself. */
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+  min-inline-size: 0;
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+/* The open tab is marked by a BORDER, not a box-shadow. `--focus-ring` is a
+   list of shadows, and a tab drawing its own shadow at higher specificity would
+   erase the focus ring the token contract puts on every button — the one tab
+   that is a Tab stop would be the one you cannot see land on. */
+.tab {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  margin-block-end: -1px;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: transparent;
+  padding: 0.4375rem 0;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+/* Three carriers at once — the rule under it, the weight, the colour — so the
+   open section is never told by colour alone. */
+.tab[aria-selected="true"] {
+  border-block-end-color: var(--text-primary);
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+/* Quieter than the label it trails, and tabular so a count that changes while
+   you read does not shuffle the bar sideways. */
+.count {
+  margin-inline-start: 0.3125rem;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.tab[aria-selected="true"] .count {
+  color: var(--text-tertiary);
+}
+
+.panel {
+  min-inline-size: 0;
+  padding-block-start: var(--space-5);
+}

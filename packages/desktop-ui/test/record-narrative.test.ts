@@ -38,6 +38,7 @@ const read = (relative: string): string =>
 const narrativeComponent = read("src/components/RecordNarrative.tsx");
 const workSurface = read("src/WorkSurface.tsx");
 const surfaces = read("src/Wave2Surfaces.tsx");
+const projectRecordOverview = read("src/record/ProjectRecordOverview.tsx");
 const realApp = read("src/RealApp.tsx");
 const strategicSurface = read("src/StrategicDepthSurface.tsx");
 const styles = read("src/styles.css");
@@ -198,9 +199,18 @@ describe("unwritten record narrative", () => {
   });
 
   it("branches every remaining narrative block on needsReview", () => {
+    // The Project full view that used to stand here is gone; the record screen
+    // draws the outcome now, and it draws it as PARAGRAPHS with a reading
+    // width rather than through `NarrativeText`, because a multi-paragraph
+    // outcome is not a span. The guarantee is unchanged and asserted in this
+    // file's own terms just below, on the file that now owns it.
     assert.match(
-      surfaces,
-      /overview\.project\.needsReview \?[\s\S]{0,400}NarrativeGap[\s\S]{0,400}\{overview\.project\.intendedOutcome\}/,
+      projectRecordOverview,
+      /const written =\s*!overview\.project\.needsReview && overview\.project\.intendedOutcome !== ""/,
+    );
+    assert.match(
+      projectRecordOverview,
+      /written \?[\s\S]{0,600}paragraphsOf\(overview\.project\.intendedOutcome\)/,
     );
     assert.match(
       realApp,
@@ -213,8 +223,16 @@ describe("unwritten record narrative", () => {
   });
 
   it("routes every needs-review affordance to a place the narrative can be written", () => {
-    // The Project full view already owns an outcome editor; the gap opens it.
-    assert.match(surfaces, /NarrativeGap[\s\S]{0,160}setEditing\(true\)/);
+    // The record screen's unwritten branch offers a control, and the surface
+    // that fills its slots wires that control to the outcome editor. Split
+    // across two files because the screen is deliberately ignorant of what
+    // writing means — and asserted from a CLICK, end to end, in
+    // `record-screen.interaction.test.tsx`.
+    assert.match(
+      projectRecordOverview,
+      /onWriteOutcome !== undefined && \([\s\S]{0,300}?Write the intended outcome/,
+    );
+    assert.match(surfaces, /onWriteOutcome: \(\) => setEditing\(true\)/);
     // The inspector cannot edit, so it opens the Project's own surface.
     assert.match(realApp, /NarrativeGap[\s\S]{0,200}projectContext\(/);
     // Areas and Initiatives had no edit surface at all until the two update
