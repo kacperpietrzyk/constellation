@@ -1592,8 +1592,7 @@ export type SavedWorkView = WorkOverviewProjection["savedViews"][number];
  */
 export type SavedWorkViewFilterChange = {
   readonly [Key in keyof SavedWorkView["filters"]]?:
-    | SavedWorkView["filters"][Key]
-    | null;
+    SavedWorkView["filters"][Key] | null;
 };
 
 /** The full filter object a partial change means. Spread-then-drop rather than

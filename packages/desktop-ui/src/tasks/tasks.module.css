@@ -50,6 +50,20 @@
   font-weight: 590;
 }
 
+/* A refused lens still has to look refused. The board is the one layout that
+   cannot be drawn without a grouping, and the sentence beside the switcher says
+   why — greying a control out with no reason given is the defect this repo
+   keeps naming. */
+.switch:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.requirement {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
 .switch:focus-visible,
 .search input:focus-visible,
 .control select:focus-visible {

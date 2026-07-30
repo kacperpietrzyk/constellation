@@ -4,6 +4,7 @@ import {
   AttentionSignalIdSchema,
   CaptureIdSchema,
   DEFAULT_WORKING_DAY,
+  FieldDefinitionIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
   QueryIdSchema,
@@ -615,4 +616,133 @@ export const populatedShellQueries = {
   "work.overview": projectionResponse(populatedWorkOverview),
   "relationship.workspace": projectionResponse(populatedRelationshipWorkspace),
   "attention.inbox": projectionResponse(populatedAttentionInbox),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRZECI wariant: workspace, w którym KTOŚ ZAPISAŁ WIDOK.
+//
+// Every fixture above ships `savedViews: []`, so nothing in the suite ever saw
+// a screen open a stored view — a whole half of the saved-view contract
+// (`groupBy` and `layout`) was invisible to every assertion in the repo.
+//
+// It is a SEPARATE export rather than a change to the two above, on purpose.
+// Both are read by mounted tests that would start rendering a different screen:
+// a saved view appears in every picker, and `fieldDefinitions` turns on the
+// custom-field sections at `RealApp.tsx:3743` and `WorkSurface.tsx:1344`. A
+// fixture that quietly changes what an unrelated test renders is the same
+// family of defect as a test that measures nothing.
+
+export const workKindFieldId = FieldDefinitionIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000d1",
+);
+export const assigneeBoardViewId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000d2",
+);
+export const fieldGroupedViewId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000d3",
+);
+export const secondMemberPrincipalId = PrincipalIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000d4",
+);
+
+// Kolejność opcji jest ZADEKLAROWANA i celowo nie alfabetyczna ani nie taka,
+// w jakiej wartości pojawiają się w zadaniach — inaczej grupowanie ustawione
+// „jak leci" wyszłoby identycznie i asercja o kolejności nie mierzyłaby nic.
+export const populatedFieldDefinitions: NonNullable<
+  Projection<"workspace.bootstrapContext">["fieldDefinitions"]
+> = [
+  {
+    id: workKindFieldId,
+    targetKind: "task",
+    label: "Rodzaj pracy",
+    type: { kind: "choice", options: ["Warsztat", "Analiza", "Przegląd"] },
+    state: "active",
+    position: 0,
+    version: 1,
+  },
+];
+
+export const populatedBootstrapWithFields: Projection<"workspace.bootstrapContext"> =
+  { ...populatedBootstrap, fieldDefinitions: populatedFieldDefinitions };
+
+// `relationTaskIds` jest ŚWIADOMIE nieobecne w obu widokach. Pusta tablica
+// znaczy „widok filtruje po relacji i nic nie pasuje" (ADR-045), więc odsiałaby
+// wszystkie wiersze i każda asercja niżej mierzyłaby pusty ekran.
+export const populatedSavedViews: Projection<"work.overview">["savedViews"] = [
+  {
+    id: assigneeBoardViewId,
+    name: "Kto co trzyma",
+    filters: {},
+    // Sortowanie NIE jest przenoszone na ekran Zadań (`manual` nie ma
+    // odpowiednika w kontrakcie, `updated_desc` nie ma go w Zadaniach). Stoi
+    // tu, bo projekcja go wymaga, i ma prawo być ignorowane.
+    sort: "updated_desc",
+    groupBy: "assignee",
+    layout: "board",
+    state: "active",
+    version: 2,
+  },
+  {
+    id: fieldGroupedViewId,
+    name: "Praca po rodzaju",
+    filters: {},
+    sort: "updated_desc",
+    groupBy: { fieldId: workKindFieldId },
+    layout: "list",
+    state: "active",
+    version: 1,
+  },
+];
+
+const workKindOfTask: Readonly<Record<string, string>> = {
+  [longTaskId]: "Przegląd",
+  [waitingTaskId]: "Analiza",
+  [agentPlannedTaskId]: "Warsztat",
+  [unplannedDeadlineTaskId]: "Analiza",
+};
+
+// Drugi właściciel, bo tablica po osobach z jednym nazwiskiem i workiem
+// „Nieprzypisane" nie odróżnia kolumn na osobach od dwóch kolumn w ogóle.
+const heldByMarta: Readonly<Record<string, string>> = {
+  [waitingTaskId]: "00000000-0000-4000-8000-0000000000d5",
+  [doneTaskId]: "00000000-0000-4000-8000-0000000000d6",
+};
+
+export const populatedWorkOverviewWithSavedViews: Projection<"work.overview"> =
+  {
+    ...populatedWorkOverview,
+    tasks: populatedWorkOverview.tasks.map((task) => {
+      const held = heldByMarta[task.id];
+      const kind = workKindOfTask[task.id];
+      return {
+        ...task,
+        ...(held === undefined
+          ? {}
+          : {
+              assignment: {
+                id: TaskAssignmentIdSchema.parse(held),
+                assigneePrincipalId: secondMemberPrincipalId,
+                displayName: "Marta",
+                availability: "active" as const,
+                version: 1,
+              },
+            }),
+        ...(kind === undefined
+          ? {}
+          : {
+              fields: {
+                [workKindFieldId]: { kind: "choice" as const, value: kind },
+              },
+            }),
+      };
+    }),
+    savedViews: populatedSavedViews,
+  };
+
+export const savedViewShellQueries = {
+  ...populatedShellQueries,
+  "workspace.bootstrapContext": projectionResponse(
+    populatedBootstrapWithFields,
+  ),
+  "work.overview": projectionResponse(populatedWorkOverviewWithSavedViews),
 };
