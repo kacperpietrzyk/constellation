@@ -103,6 +103,12 @@ import {
 const ProjectRecordScreen = lazy(
   () => import("./record/ProjectRecordScreen.js"),
 );
+// Lazy for exactly the same measured reason. Tasks is an EAGER destination
+// (⌘4), so anything this file imports statically for it lands in the first
+// paint — and the record screen with its stylesheet and the comments panel is
+// several times the room the size gate leaves. A task nobody has opened costs
+// nothing.
+const TaskRecordScreen = lazy(() => import("./record/TaskRecordScreen.js"));
 // Lazy for the same reason, and the reason is measured: the panel's stylesheet
 // is eight kilobytes that a STATIC import would move onto the head-linked
 // sheet, against the six this retirement frees. The inspector rail is the third
@@ -1218,8 +1224,24 @@ export const RealApp = ({
   // still the overview OF this project, because that state keeps the previous
   // project's reading on screen for the whole round trip of the next one; the
   // list entry is what the inspector opened with.
+  // A task's version, from whichever projection actually has the task.
+  //
+  // `task.list` pages at fifty or a hundred; `work.overview` does not. A record
+  // opened past that page therefore has a task the rail's list never returned —
+  // and the composer's own grant is a workspace reading, so it drew a live
+  // field over a write that could not name a version and silently answered
+  // false. A field that takes your text and sends nothing is worse than no
+  // field: the second attempt is a retype, not a retry.
+  const commentTaskVersion =
+    selectedTaskId === undefined
+      ? undefined
+      : (selectedTask?.version ??
+        (snapshot?.work.kind === "ready"
+          ? snapshot.work.data.tasks.find((task) => task.id === selectedTaskId)
+              ?.version
+          : undefined));
   const commentTargetVersion = selectedTaskId
-    ? selectedTask?.version
+    ? commentTaskVersion
     : projectOverview !== undefined &&
         projectOverview.project.id === selectedProjectId
       ? projectOverview.project.version
@@ -1915,6 +1937,27 @@ export const RealApp = ({
       state.snapshot.bootstrap.workspace.timezone,
     ),
   };
+  // The opened TASK, read from `work.overview` and not from `task.list`. The
+  // overview is whole-Space and uncapped while the query pages at fifty or a
+  // hundred — the pairing that already put "100" in the sidebar beside "157
+  // tasks" on the screen. A record opened from the uncapped list must not fail
+  // to open because the capped one stopped short of it.
+  const recordTask =
+    activeContext.taskId !== undefined && state.snapshot.work.kind === "ready"
+      ? state.snapshot.work.data.tasks.find(
+          (item) => item.id === activeContext.taskId,
+        )
+      : undefined;
+  // Whether the shell's comment slice is the one THIS record asked for. The
+  // effect that follows the active context into `selectedTaskId` runs after the
+  // commit, so there is one painted frame in which the record is the newly
+  // opened task and the slice still holds the previous one's threads — and a
+  // write in that frame would carry the previous task's version. Reusing the
+  // shell's target is the point; checking that it is this record's is the price.
+  const recordTaskCommentsMatch =
+    recordTask !== undefined &&
+    commentTarget?.kind === "task" &&
+    commentTarget.taskId === recordTask.id;
   const actorOf = buildActorResolver(
     state.snapshot.agentAccess.kind === "ready"
       ? state.snapshot.agentAccess.data
@@ -2143,6 +2186,117 @@ export const RealApp = ({
       <TasksSurface
         snapshot={state.snapshot}
         selectedTaskId={selectedTaskId}
+        activeTaskId={activeContext.taskId}
+        renderRecordScreen={
+          recordTask === undefined
+            ? undefined
+            : () => (
+                <Suspense
+                  fallback={<p className="capacity-note">Opening the task…</p>}
+                >
+                  <TaskRecordScreen
+                    actorOf={actorOf}
+                    // The shell's per-task write flag, and nothing wider. It is
+                    // rarely true while the record is open — the writes that set
+                    // it are the collection's row controls, and the collection
+                    // is not on screen — but folding the rail's own busy flags
+                    // in here would disable the record's composer because
+                    // somebody is picking a file in the inspector.
+                    busy={busyTaskId === recordTask.id}
+                    canComment={canComment}
+                    canResolve={canResolveComments}
+                    commentBusy={commentBusy}
+                    // The shell's slice, and only while it IS this record's —
+                    // otherwise the pending line, which is the true thing to say
+                    // for the one frame the selection lags the context.
+                    comments={
+                      recordTaskCommentsMatch ? comments : COMMENTS_PENDING
+                    }
+                    currentPrincipalId={currentPrincipalId}
+                    mentionCandidates={commentMentionCandidates}
+                    mentionNameOf={mentionNameOf}
+                    onAddComment={(
+                      body,
+                      mentions,
+                      parent,
+                      attachmentSourceIds,
+                    ) => {
+                      if (
+                        !client ||
+                        !recordTaskCommentsMatch ||
+                        commentTarget === undefined ||
+                        commentTargetVersion === undefined
+                      )
+                        return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return addComment(
+                        client,
+                        state.snapshot,
+                        commentTarget,
+                        commentTargetVersion,
+                        body,
+                        mentions,
+                        parent,
+                        attachmentSourceIds,
+                      ).then((result) =>
+                        settleCommentWrite(
+                          commentTarget,
+                          result,
+                          "Comment saved.",
+                        ),
+                      );
+                    }}
+                    onAttachToComment={stageCommentAttachment}
+                    onBack={() =>
+                      openContext(destinationContext("tasks", "Tasks"))
+                    }
+                    onEditComment={(comment, body, attachmentSourceIds) => {
+                      if (!client || !recordTaskCommentsMatch)
+                        return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return editComment(
+                        client,
+                        state.snapshot,
+                        comment.id,
+                        comment.version,
+                        body,
+                        comment.mentionPrincipalIds,
+                        attachmentSourceIds,
+                      ).then((result) =>
+                        settleCommentWrite(commentTarget, result),
+                      );
+                    }}
+                    onInspectAttachment={inspectManagedAttachment}
+                    // The record resolved the row that was clicked, so the tab
+                    // it opens is named after the work rather than after a
+                    // second lookup over the capped list.
+                    onOpenProject={(projectId, title) =>
+                      openContext(projectContext(projectId, title))
+                    }
+                    onOpenTask={(id, title) =>
+                      openContext(taskContext(id, title))
+                    }
+                    onResolveComment={(comment, resolved) => {
+                      if (!client || !recordTaskCommentsMatch)
+                        return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return setCommentResolved(
+                        client,
+                        state.snapshot,
+                        comment,
+                        resolved,
+                      ).then((result) =>
+                        settleCommentWrite(commentTarget, result),
+                      );
+                    }}
+                    onRestoreAttachment={restoreManagedAttachment}
+                    receipt={receipts[recordTask.id]}
+                    snapshot={state.snapshot}
+                    task={recordTask}
+                  />
+                </Suspense>
+              )
+        }
         onOpenTask={(id) => {
           const task = tasks.find((item) => item.id === id);
           openContext(taskContext(id, task?.title ?? "Task"));
@@ -4164,10 +4318,22 @@ export const RealApp = ({
                 organization records draw. The older one lived here alone and
                 had grown replies, editing, resolving and attachments the record
                 screens could not offer — so consistency was reached by growing
-                the shared panel to match, not by giving the task less. */}
-            <section className="inspector-section">
-              <p className="section-label">Comments</p>
-              {/* The message sits ABOVE the panel and no longer INSTEAD of it.
+                the shared panel to match, not by giving the task less.
+
+                It stands down for ONE case: this task open as a record on the
+                Tasks screen, where the record's own Comments tab is the
+                conversation and two live composers a hand apart is two places
+                to write one thing. The test is the OPENED task and not merely
+                the selected one — a task selected from Today, Inbox or Calendar
+                has no record on screen to defer to, and would lose its comments
+                entirely. Every other rail section stays: the record reads, the
+                rail edits. */}
+            {!(
+              surface === "tasks" && activeContext.taskId === selectedTask.id
+            ) && (
+              <section className="inspector-section">
+                <p className="section-label">Comments</p>
+                {/* The message sits ABOVE the panel and no longer INSTEAD of it.
                   A read that failed says what went wrong — rather than one
                   sentence for every cause — but it must not also cost the
                   reader the ability to write: the composer takes its version
@@ -4175,82 +4341,83 @@ export const RealApp = ({
                   lands with no threads on screen. Short-circuiting here is what
                   left a member with `comment` access looking at a message and
                   no composer. */}
-              {comments.kind === "unavailable" && (
-                <p role="status">{comments.message}</p>
-              )}
-              <Suspense fallback={null}>
-                <RecordCommentsPanel
-                  actorOf={actorOf}
-                  busy={commentBusy}
-                  canComment={canComment}
-                  canResolve={canResolveComments}
-                  currentPrincipalId={currentPrincipalId}
-                  mentionCandidates={commentMentionCandidates}
-                  mentionNameOf={(principalId) => mentionNameOf(principalId)}
-                  onAttach={stageCommentAttachment}
-                  onEdit={(comment, body, attachmentSourceIds) => {
-                    if (!client) return Promise.resolve(false);
-                    setCommentBusy(true);
-                    return editComment(
-                      client,
-                      state.snapshot,
-                      comment.id,
-                      comment.version,
-                      body,
-                      comment.mentionPrincipalIds,
-                      attachmentSourceIds,
-                    ).then((result) =>
-                      settleCommentWrite(commentTarget, result),
-                    );
-                  }}
-                  onInspectAttachment={inspectManagedAttachment}
-                  onResolve={(comment, resolved) => {
-                    if (!client) return Promise.resolve(false);
-                    setCommentBusy(true);
-                    return setCommentResolved(
-                      client,
-                      state.snapshot,
-                      comment,
-                      resolved,
-                    ).then((result) =>
-                      settleCommentWrite(commentTarget, result),
-                    );
-                  }}
-                  onRestoreAttachment={restoreManagedAttachment}
-                  onSubmit={(body, mentions, parent, attachmentSourceIds) => {
-                    if (
-                      !client ||
-                      commentTarget === undefined ||
-                      commentTargetVersion === undefined
-                    )
-                      return Promise.resolve(false);
-                    setCommentBusy(true);
-                    return addComment(
-                      client,
-                      state.snapshot,
-                      commentTarget,
-                      commentTargetVersion,
-                      body,
-                      mentions,
-                      parent,
-                      attachmentSourceIds,
-                    ).then((result) =>
-                      settleCommentWrite(
+                {comments.kind === "unavailable" && (
+                  <p role="status">{comments.message}</p>
+                )}
+                <Suspense fallback={null}>
+                  <RecordCommentsPanel
+                    actorOf={actorOf}
+                    busy={commentBusy}
+                    canComment={canComment}
+                    canResolve={canResolveComments}
+                    currentPrincipalId={currentPrincipalId}
+                    mentionCandidates={commentMentionCandidates}
+                    mentionNameOf={(principalId) => mentionNameOf(principalId)}
+                    onAttach={stageCommentAttachment}
+                    onEdit={(comment, body, attachmentSourceIds) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return editComment(
+                        client,
+                        state.snapshot,
+                        comment.id,
+                        comment.version,
+                        body,
+                        comment.mentionPrincipalIds,
+                        attachmentSourceIds,
+                      ).then((result) =>
+                        settleCommentWrite(commentTarget, result),
+                      );
+                    }}
+                    onInspectAttachment={inspectManagedAttachment}
+                    onResolve={(comment, resolved) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return setCommentResolved(
+                        client,
+                        state.snapshot,
+                        comment,
+                        resolved,
+                      ).then((result) =>
+                        settleCommentWrite(commentTarget, result),
+                      );
+                    }}
+                    onRestoreAttachment={restoreManagedAttachment}
+                    onSubmit={(body, mentions, parent, attachmentSourceIds) => {
+                      if (
+                        !client ||
+                        commentTarget === undefined ||
+                        commentTargetVersion === undefined
+                      )
+                        return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return addComment(
+                        client,
+                        state.snapshot,
                         commentTarget,
-                        result,
-                        "Comment saved.",
-                      ),
-                    );
-                  }}
-                  recordKey={`task-${selectedTask.id}`}
-                  threads={
-                    comments.kind === "ready" ? comments.data.threads : []
-                  }
-                  threadsKnown={comments.kind === "ready"}
-                  timeZone={recordProse.timeZone}
-                />
-              </Suspense>
-            </section>
+                        commentTargetVersion,
+                        body,
+                        mentions,
+                        parent,
+                        attachmentSourceIds,
+                      ).then((result) =>
+                        settleCommentWrite(
+                          commentTarget,
+                          result,
+                          "Comment saved.",
+                        ),
+                      );
+                    }}
+                    recordKey={`task-${selectedTask.id}`}
+                    threads={
+                      comments.kind === "ready" ? comments.data.threads : []
+                    }
+                    threadsKnown={comments.kind === "ready"}
+                    timeZone={recordProse.timeZone}
+                  />
+                </Suspense>
+              </section>
+            )}
           </div>
         ) : selectedProject ? (
           <div className="inspector-body">

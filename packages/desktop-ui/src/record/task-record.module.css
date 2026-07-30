@@ -1,0 +1,420 @@
+/* The task record's header and Overview panel.
+
+   Every responsive rule here is a CONTAINER query and none is a viewport query,
+   for the reason the project record's stylesheet states: the inspector rail
+   stays open beside this record and takes a fifth of the canvas without the
+   window changing width at all, so a viewport rule would hold the two-column
+   body together long after there is no room for it.
+
+   Every colour and every step comes from a token in `tokens.css`. An undefined
+   `var(--…)` resolves quietly to transparent or inherit and unstyles real UI
+   without erroring, so a name that does not resolve is a silent regression. */
+
+/* ── HEADER ────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* The record names itself once, at level one. Everything else is a section. */
+.title {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: 580;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+
+/* Status, why it is held and where it belongs, on ONE line. Wrapping rather
+   than truncating: the reason is the half that carries information, and
+   clipping it leaves a badge. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  min-inline-size: 0;
+  font-size: var(--text-sm);
+}
+
+/* Colour only reinforces here: the label stands in words beside it and the mark
+   differs by SHAPE, so a reader who sees no colour loses nothing. */
+.state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.mark {
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.state_actionable .mark {
+  color: var(--status-success);
+}
+
+.state_waiting .mark {
+  color: var(--status-warning);
+}
+
+.state_blocked .mark {
+  color: var(--status-error);
+}
+
+.state_done {
+  color: var(--text-tertiary);
+}
+
+.state_done .mark {
+  color: var(--status-success);
+}
+
+.why {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* Pushes what the task BELONGS to to the end of the line, so the state and the
+   place it lives never interleave when the row wraps. */
+.gap {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.chip,
+.chipDashed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-inline-size: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+button.chip {
+  cursor: pointer;
+}
+
+button.chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* Dashed says "there is none" without pretending to be a control. */
+.chipDashed {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.chipLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.sep {
+  padding: 0 var(--space-2);
+  color: var(--text-quaternary);
+}
+
+.dueLate {
+  color: var(--status-error);
+}
+
+.authorship {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* ── OVERVIEW ──────────────────────────────────────────────────────────── */
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+
+/* The reading runs wide and the standings run narrow. One grid, because the two
+   have to top-align: a float would let the rail ride under the prose the moment
+   the prose is three paragraphs long. */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
+  gap: var(--space-6);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+.doc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+
+.docSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.docHeading {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 560;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* The LINE is limited, never the height. Real task context runs to paragraphs,
+   and there is no expander here because there is nothing truncated to open. */
+.prose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-inline-size: 68ch;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.prose p {
+  margin: 0;
+  /* Single newlines inside a paragraph are the author's, and kept. */
+  white-space: pre-wrap;
+}
+
+.note {
+  margin: 0;
+  max-inline-size: 68ch;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.nextStep {
+  margin: 0;
+  max-inline-size: 68ch;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* ── ROWS — exits, not a collection worked inside ──────────────────────── */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  inline-size: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+}
+
+button.row {
+  cursor: pointer;
+}
+
+button.row:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+button.row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.rowMark {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.rowMain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.rowLabel {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.rowArrow {
+  flex: 0 0 auto;
+  color: var(--text-quaternary);
+}
+
+/* ── FIELDS — readings; the inspector owns every editor ────────────────── */
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.fieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.fieldLabel {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.fieldValue {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ── RAIL — how the task stands, read and never edited here ────────────── */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+  padding-inline-start: var(--space-4);
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.railSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.railHeading {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 560;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.railLine {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.railNote {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* An absence is stated, not hidden: "nobody is assigned" is a fact about the
+   task and a section that vanished is a riddle. */
+.railNone {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.quote {
+  margin: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.prov {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+/* The rail goes UNDER the reading rather than getting narrower: below this the
+   two columns are each too narrow to read, and a standing squeezed to four
+   characters is not a standing. */
+@container (max-width: 52rem) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    padding-inline-start: 0;
+    padding-block-start: var(--space-4);
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border-subtle);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .chip {
+    /* Removed outright, never shortened: a 1 ms transition is still motion to
+       somebody who asked for none. */
+    animation: none;
+    transition: none;
+  }
+}
