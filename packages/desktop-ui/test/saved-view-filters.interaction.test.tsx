@@ -142,9 +142,14 @@ const openEditor = async (): Promise<HTMLFormElement> => {
   await act(async () => {
     root.render(
       createElement(SavedViewFilterForm, {
-        // VERBATIM the call the Tasks screen has to make. Written out here
-        // rather than behind a test helper, because a helper that seeded the
-        // filters itself would prove a wiring nobody ships.
+        // A double: the real `updateSavedWorkView` against a client that
+        // records the envelope instead of running it. The shipped handler
+        // additionally reloads the shell BEFORE resolving — see the note on
+        // `submit` — and that half is not exercised here.
+        //
+        // What is deliberate is that the seeding is NOT stubbed. A helper
+        // that assembled the filters itself would prove a wiring nobody
+        // ships, and the whole guarantee lives in that assembly.
         onSave: async (change) =>
           (
             await updateSavedWorkView(client, snapshot, view, {

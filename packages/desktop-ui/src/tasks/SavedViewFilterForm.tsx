@@ -166,11 +166,21 @@ export const SavedViewFilterForm = ({
     event.preventDefault();
     if (!changed || saving || busy) return;
     setSaving(true);
-    await onSave(change);
-    // Nothing is cleared here. Save goes quiet on its own once the refreshed
-    // view agrees with the selection — which is the confirmation — and a
-    // refused write leaves every box exactly as the reader left it.
-    setSaving(false);
+    try {
+      // Nothing is cleared afterwards. Save goes quiet on its own once the
+      // refreshed view agrees with the selection — which is the confirmation
+      // — and a refused write leaves every box where the reader left it.
+      //
+      // `onSave` must not resolve before the refreshed view is in hand. Until
+      // it is, `changed` still reads against the OLD conditions, so a second
+      // click would send the old version against a record the write already
+      // moved — a version conflict reported on a save that landed.
+      await onSave(change);
+    } finally {
+      // Reloading the shell can throw. Leaving `saving` set would then hold
+      // the form shut for good over a write that may well have gone through.
+      setSaving(false);
+    }
   };
 
   return (
