@@ -290,3 +290,67 @@ test("settings is a mode: it takes the left column and gives it back", async () 
     "leaving settings must return to the target you came from",
   );
 });
+
+/* ── DWIE DROGI, KTÓRYMI IDENTYFIKATOR POWIERZCHNI WCHODZI SPOZA ZAPISANEJ
+   SESJI ──────────────────────────────────────────────────────────────────
+   Zapisane zakładki idą przez mapę wycofanych celów od dawna. Te dwie nie szły,
+   a obie niosą identyfikator zapisany PRZED aktualizacją — i obie milczą, kiedy
+   go nie rozpoznają. */
+
+/** Podmienia adres okna na czas jednego testu. `?destination=` czyta się raz,
+ *  przy pierwszym renderze, więc musi stać przed montowaniem. */
+const withDestination = async (value: string): Promise<void> => {
+  const url = new URL(window.location.href);
+  url.searchParams.set("destination", value);
+  url.searchParams.set("detached", "1");
+  window.history.replaceState({}, "", url);
+  try {
+    await mountShell();
+  } finally {
+    url.searchParams.delete("destination");
+    url.searchParams.delete("detached");
+    window.history.replaceState({}, "", url);
+  }
+};
+
+test("odczepione okno otwarte na wycofanym celu ląduje u jego następcy, nie na starcie", async () => {
+  // Rejestr sam mówi, że mapa wycofanych celów istnieje MIĘDZY INNYMI dla
+  // odczepionych okien — a ta ścieżka szukała w rejestrze wprost, więc okno
+  // zapisane przed przebudową wracało na Today. Bez błędu: cel po prostu nie
+  // istniał, a `?? "today"` jest po to, żeby nigdy nie było pustki.
+  await withDestination("work");
+  assert.equal(
+    activeSurface(),
+    "tasks",
+    "odczepione okno wróciło na cel domyślny zamiast na ekran, który przejął tę pracę",
+  );
+});
+
+test("przypięcie do wycofanego celu przechodzi na następcę, zamiast zniknąć z szyny", async () => {
+  // Cichsza strata z tych dwóch: przypięcie do przemianowanej powierzchni było
+  // WYRZUCANE przy pierwszym uruchomieniu po aktualizacji. Bez błędu, bez śladu
+  // — po prostu o jedną pinezkę mniej niż wczoraj, czego nikt nie zgłosi, bo
+  // nikt nie jest pewien, czy ją kiedykolwiek ustawił.
+  localStorage.setItem(
+    "constellation.favorites",
+    JSON.stringify(["work", "cockpit", "tasks"]),
+  );
+  await mountShell();
+  // Przypięcia rysują się jako `.nav-favorite` i — w odróżnieniu od reszty
+  // szyny — NIE niosą `data-surface`, więc czyta się je po etykiecie, którą
+  // rejestr im nadaje.
+  const pinned = [
+    ...container.querySelectorAll<HTMLElement>(".nav-item.nav-favorite"),
+  ].map((item) => (item.textContent ?? "").replace("★", "").trim());
+  assert.ok(
+    pinned.includes("Today"),
+    "przypięty cockpit zniknął z szyny zamiast przejść na Today",
+  );
+  // I DOKŁADNIE RAZ. Dwa wycofane identyfikatory mogą wskazywać jeden cel, a
+  // szyna z tą samą pozycją dwa razy to nie jest to, co ktoś przypiął.
+  assert.deepEqual(
+    pinned.filter((label) => label === "Tasks"),
+    ["Tasks"],
+    "work i tasks rozwiązały się na ten sam cel, a szyna pokazała go dwa razy",
+  );
+});
