@@ -3491,4 +3491,178 @@ describe("narrative-less records in the durable store", () => {
     assert.equal(listed.result.projection.items[0]?.needsReview, true);
     database.close();
   });
+  // Money and the four CRM fields live inside `payload_json`, which SQLite
+  // stores opaquely: only `kind` and `updated_at` are lifted into columns and
+  // reads are `JSON.parse` plus a cast, with no schema check. So an optional
+  // field on a strategic record needs NO migration — a migration is needed
+  // only when a field must be filterable in SQL, and nothing in Wave C filters
+  // on money. This test is what makes that a measurement rather than a claim.
+  it("round-trips money and the new CRM fields across a restart at schema 24", () => {
+    withDatabase((filename) => {
+      const organizationId = "00000000-0000-4000-8000-000000000190";
+      const personId = "00000000-0000-4000-8000-000000000191";
+      const opportunityId = "00000000-0000-4000-8000-000000000192";
+      const documentId = "00000000-0000-4000-8000-000000000193";
+      const offerId = "00000000-0000-4000-8000-000000000194";
+      const estimate = { amountMinor: 320_000_00, currency: "EUR" } as const;
+      const cost = { amountMinor: 28_400_00, currency: "EUR" } as const;
+      const rate = {
+        from: "EUR",
+        to: "PLN",
+        rateMicros: 4_310_000,
+        at: "2026-07-18",
+      } as const;
+      const price = {
+        basis: "confirmed",
+        price: { amountMinor: 205_000_00, currency: "PLN" },
+      } as const;
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const command of [
+        wave2Command(
+          "relationship.personCreate",
+          {
+            personId,
+            spaceId: ids.rootSpace,
+            name: "Marta Nowak",
+            phone: "+48 601 234 567",
+          },
+          "money-person",
+        ),
+        wave2Command(
+          "relationship.organizationCreate",
+          {
+            organizationId,
+            spaceId: ids.rootSpace,
+            name: "Northstar Industries",
+            relationshipState: "active",
+            segment: "Produkcja",
+            since: "2023-04-11",
+            mainContactPersonId: personId,
+          },
+          "money-organization",
+        ),
+        wave2Command(
+          "opportunity.create",
+          {
+            opportunityId,
+            spaceId: ids.rootSpace,
+            title: "Continuity after 30 September",
+            organizationId,
+            personIds: [personId],
+            need: "Support continuity after the current term ends.",
+            qualification: "Sponsor named, budget indicated.",
+            estimate,
+            stage: "qualified",
+            nextAction: "Agree the decision-maker.",
+            evidenceSourceIds: [],
+          },
+          "money-opportunity",
+        ),
+        wave2Command(
+          "document.create",
+          {
+            documentId,
+            spaceId: ids.rootSpace,
+            title: "Continuity offer",
+            role: "deliverable",
+          },
+          "money-deliverable",
+        ),
+        wave2Command(
+          "opportunity.offerCreate",
+          {
+            offerId,
+            opportunityId,
+            deliverableDocumentId: documentId,
+            title: "Continuity offer",
+            ownerPrincipalId: ids.principal,
+            cost,
+            rate,
+            price,
+            state: "ready",
+            nextAction: "Send after the sponsor confirms.",
+          },
+          "money-offer",
+        ),
+      ])
+        assert.equal(
+          unwrap(first.kernel.execute(context(), command)).outcome,
+          "success",
+          command.commandName,
+        );
+      // The version the store was written at, asserted rather than assumed:
+      // this is the whole claim, and a bump would make it false.
+      assert.equal(
+        firstDatabase.prepare("PRAGMA user_version;").get()?.["user_version"],
+        LOCAL_STORE_SCHEMA_VERSION,
+      );
+      assert.equal(LOCAL_STORE_SCHEMA_VERSION, 24);
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const result = reopened.kernel.query(
+        context(),
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "relationship.workspace",
+          queryId: wave2RequestId(),
+          workspaceId: ids.workspace,
+          consistency: "local_authoritative",
+          parameters: { spaceId: ids.rootSpace },
+        }),
+      );
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "relationship.workspace"
+      )
+        throw new Error("Expected the relationship projection.");
+      const records = result.result.projection.records;
+      const organization = records.find(
+        (record) => record.id === organizationId,
+      );
+      assert.equal(
+        organization?.kind === "organization"
+          ? organization.segment
+          : undefined,
+        "Produkcja",
+      );
+      assert.equal(
+        organization?.kind === "organization" ? organization.since : undefined,
+        "2023-04-11",
+      );
+      assert.equal(
+        organization?.kind === "organization"
+          ? organization.mainContactPersonId
+          : undefined,
+        personId,
+      );
+      const person = records.find((record) => record.id === personId);
+      assert.equal(
+        person?.kind === "person" ? person.phone : undefined,
+        "+48 601 234 567",
+      );
+      const opportunity = records.find((record) => record.id === opportunityId);
+      assert.deepEqual(
+        opportunity?.kind === "opportunity" ? opportunity.estimate : undefined,
+        estimate,
+      );
+      const offer = records.find((record) => record.id === offerId);
+      assert.equal(offer?.kind, "offer");
+      if (offer?.kind !== "offer") throw new Error("Expected the offer.");
+      // The whole money shape, value by value: a `rateMicros` that came back as
+      // a float or an `amountMinor` that lost its last digits would still be a
+      // number, and asserting only that the key is present would not see it.
+      assert.deepEqual(offer.cost, cost);
+      assert.deepEqual(offer.rate, rate);
+      assert.deepEqual(offer.price, price);
+      reopenedDatabase.close();
+    });
+  });
 });

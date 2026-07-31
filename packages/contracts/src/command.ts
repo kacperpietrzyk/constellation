@@ -49,6 +49,31 @@ import {
   MeetingWorkItemTitleSchema,
 } from "./meeting-loop.js";
 import { RecordNarrativeSchema } from "./narrative.js";
+import {
+  ExchangeRateInputSchema,
+  MoneyInputSchema,
+  OfferPriceInputSchema,
+} from "./money.js";
+
+/**
+ * What a workspace calls this client's line of business. Free text: no
+ * vocabulary was ever decided, and a command that pinned one would refuse the
+ * segment a real workbook actually carries.
+ */
+export const OrganizationSegmentSchema = z.string().trim().min(1).max(120);
+
+/**
+ * The day the relationship began — a calendar date, deliberately not a
+ * timestamp. "Client since 2023-04-11" is a day; a time of day nobody recorded
+ * would be an invention.
+ */
+export const OrganizationSinceSchema = z.iso.date();
+
+/**
+ * Stored as given. See the domain arm: every phone format this could refuse is
+ * one a real contact list actually holds.
+ */
+export const PersonPhoneSchema = z.string().trim().min(1).max(60);
 
 export const ContractVersionSchema = z.literal(1);
 export type ContractVersion = z.infer<typeof ContractVersionSchema>;
@@ -679,6 +704,14 @@ export const RelationshipOrganizationCreateCommandSchema =
         name: z.string().trim().min(1).max(300),
         relationshipState: z.enum(["prospect", "active", "inactive"]),
         nextAction: z.string().trim().min(1).max(1_000).optional(),
+        segment: OrganizationSegmentSchema.optional(),
+        since: OrganizationSinceSchema.optional(),
+        // The contact at this organisation. The kernel checks that the person
+        // exists, is one, and is in this Space — the same bound their own
+        // creation carries. It is NOT required to already name this
+        // organisation as their employer: a contact can be recorded before the
+        // employment link is, and refusing that would be the worse failure.
+        mainContactPersonId: StrategicRecordIdSchema.optional(),
         // The identity of the source row this record was imported from. It is
         // what refuses a duplicate when a migration re-runs: names are not
         // unique — two people genuinely can share one — and nothing else in
@@ -712,6 +745,7 @@ export const RelationshipPersonCreateCommandSchema =
         organizationId: StrategicRecordIdSchema.optional(),
         role: z.string().trim().min(1).max(300).optional(),
         email: z.email().max(320).optional(),
+        phone: PersonPhoneSchema.optional(),
         // See `relationship.organizationCreate` above — same field, same job.
         externalId: ExternalIdSchema.optional(),
       })
@@ -736,6 +770,7 @@ export const RelationshipPersonUpdateCommandSchema =
         organizationId: StrategicRecordIdSchema.nullable().optional(),
         role: z.string().trim().min(1).max(300).nullable().optional(),
         email: z.email().max(320).nullable().optional(),
+        phone: PersonPhoneSchema.nullable().optional(),
         // Optional but deliberately NOT `.nullable()`, unlike every sibling
         // above: an update can stamp provenance onto a record that predates the
         // field, which is how an existing graph gets its source keys, but it
@@ -751,10 +786,11 @@ export const RelationshipPersonUpdateCommandSchema =
           payload.organizationId !== undefined ||
           payload.role !== undefined ||
           payload.email !== undefined ||
+          payload.phone !== undefined ||
           payload.externalId !== undefined,
         {
           error:
-            "personUpdate must change at least one field: name, organizationId, role, email, or externalId",
+            "personUpdate must change at least one field: name, organizationId, role, email, phone, or externalId",
         },
       ),
   }).strict();
@@ -770,6 +806,13 @@ export const RelationshipOrganizationUpdateCommandSchema =
           .enum(["prospect", "active", "inactive"])
           .optional(),
         nextAction: z.string().trim().min(1).max(1_000).nullable().optional(),
+        segment: OrganizationSegmentSchema.nullable().optional(),
+        since: OrganizationSinceSchema.nullable().optional(),
+        // Clearable, and that matters: `person.organizationId` points back at
+        // this organisation while this points at the person, so each blocks the
+        // other's removal. Setting this to null is how the pair is untangled
+        // when one of the two has to go.
+        mainContactPersonId: StrategicRecordIdSchema.nullable().optional(),
         // See `relationship.personUpdate` above for why this one is not
         // nullable while its neighbours are.
         externalId: ExternalIdSchema.optional(),
@@ -780,10 +823,13 @@ export const RelationshipOrganizationUpdateCommandSchema =
           payload.name !== undefined ||
           payload.relationshipState !== undefined ||
           payload.nextAction !== undefined ||
+          payload.segment !== undefined ||
+          payload.since !== undefined ||
+          payload.mainContactPersonId !== undefined ||
           payload.externalId !== undefined,
         {
           error:
-            "organizationUpdate must change at least one field: name, relationshipState, nextAction, or externalId",
+            "organizationUpdate must change at least one field: name, relationshipState, nextAction, segment, since, mainContactPersonId, or externalId",
         },
       ),
   }).strict();
@@ -809,6 +855,9 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
       ownerPersonId: StrategicRecordIdSchema.optional(),
       need: z.string().trim().min(1).max(4_000),
       qualification: z.string().trim().min(1).max(2_000),
+      // What the deal is worth before any offer exists. Absent means nobody has
+      // put a number on it — which is a state, not a zero.
+      estimate: MoneyInputSchema.optional(),
       stage: z.string().trim().min(1).max(120),
       nextAction: z.string().trim().min(1).max(1_000),
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
@@ -832,6 +881,18 @@ export const OpportunityOfferCreateCommandSchema = CommandMetadataSchema.extend(
         deliverableDocumentId: DocumentIdSchema,
         title: z.string().trim().min(1).max(500),
         ownerPrincipalId: PrincipalIdSchema,
+        // What the offer costs us. Absent is the common case — the
+        // distributor's quote has not come back yet — and is not a zero.
+        cost: MoneyInputSchema.optional(),
+        // The rate this was quoted at, stored on the offer so the card still
+        // says the same thing next month. The kernel refuses a rate whose
+        // `from` is not the cost's currency: the wrong pair yields a plausible
+        // amount rather than an error, so nobody would ever see it.
+        rate: ExchangeRateInputSchema.optional(),
+        // Only a CONFIRMED price is stored. A derived price is a projection of
+        // the currently configured markup, and storing it would create a second
+        // number that disagrees with Settings the day the markup changes.
+        price: OfferPriceInputSchema.optional(),
         state: z.enum(["draft", "ready", "submitted", "accepted", "declined"]),
         nextAction: z.string().trim().min(1).max(1_000),
       })

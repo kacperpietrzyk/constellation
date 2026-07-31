@@ -5349,3 +5349,591 @@ it("hides a strategic record on either deletion axis, and nothing else", () => {
   assert.equal(sawDeletionState, true);
   assert.equal(sawLifecycleState, true);
 });
+
+// B4 + the four fields Kacper accepted. The point of this test is the SECOND
+// projection home. `UnprojectableKeys` (`wave2.ts:10058`) forces every one of
+// these keys into `StrategicRecordProjectionSchema` and will not compile
+// without it — but `organization.operationalOverview` restates the
+// organization, person, opportunity and offer shapes and hand-picks every
+// field into a fresh object literal, so a field can satisfy the compile guard
+// and reach that projection NOT AT ALL, with nothing failing. Every assertion
+// below that names `overview` is hand-written for exactly that reason, and
+// each was verified by deleting its mapper line and watching it go red.
+it("carries money and the four CRM fields through BOTH projection homes", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("money-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Money",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  const contactId = uuid();
+  const opportunityId = uuid();
+  const deliverableDocumentId = uuid();
+  const offerId = uuid();
+  const estimate = { amountMinor: 320_000_00, currency: "EUR" as const };
+  const cost = { amountMinor: 28_400_00, currency: "EUR" as const };
+  const rate = {
+    from: "EUR" as const,
+    to: "PLN" as const,
+    rateMicros: 4_310_000,
+    at: "2026-07-18",
+  };
+  const price = {
+    basis: "confirmed" as const,
+    price: { amountMinor: 205_000_00, currency: "PLN" as const },
+  };
+  for (const command of [
+    {
+      ...metadata("money-contact"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId: contactId,
+        spaceId: ids.space,
+        name: "Marta Nowak",
+        role: "Security lead",
+        email: "marta@example.test",
+        phone: "+48 601 234 567",
+      },
+    },
+    {
+      ...metadata("money-organization"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "Northstar Industries",
+        relationshipState: "active" as const,
+        segment: "Produkcja",
+        since: "2023-04-11",
+        mainContactPersonId: contactId,
+      },
+    },
+    // The contact is employed here, and the two edges are independent: the
+    // organisation names its contact, the person names their employer. The
+    // second is what puts them in this client's `people` list.
+    {
+      ...metadata("money-contact-employed", { [contactId]: 1 }),
+      commandName: "relationship.personUpdate" as const,
+      payload: { personId: contactId, organizationId },
+    },
+    {
+      ...metadata("money-opportunity"),
+      commandName: "opportunity.create" as const,
+      payload: {
+        opportunityId,
+        spaceId: ids.space,
+        title: "Continuity after 30 September",
+        organizationId,
+        personIds: [contactId],
+        need: "Support continuity after the current term ends.",
+        qualification: "Sponsor named, budget indicated.",
+        estimate,
+        stage: "qualified",
+        nextAction: "Agree the decision-maker.",
+        evidenceSourceIds: [],
+      },
+    },
+    {
+      ...metadata("money-deliverable"),
+      commandName: "document.create" as const,
+      payload: {
+        documentId: deliverableDocumentId,
+        spaceId: ids.space,
+        title: "Continuity offer",
+        role: "deliverable" as const,
+      },
+    },
+    {
+      ...metadata("money-offer"),
+      commandName: "opportunity.offerCreate" as const,
+      payload: {
+        offerId,
+        opportunityId,
+        deliverableDocumentId,
+        title: "Continuity offer",
+        ownerPrincipalId: ids.principal,
+        cost,
+        rate,
+        price,
+        state: "ready" as const,
+        nextAction: "Send after the sponsor confirms.",
+      },
+    },
+  ])
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+      command.commandName,
+    );
+
+  // HOME ONE — the guarded projection, and a BOOT query. A money value this
+  // cannot parse does not degrade the Pipeline screen; it takes boot down.
+  const records = (() => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "relationship.workspace",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "relationship.workspace"
+    )
+      assert.fail("Expected the relationship workspace projection");
+    return result.result.projection.records;
+  })();
+  const projectedOrganization = records.find(
+    (record) => record.id === organizationId,
+  );
+  assert.equal(projectedOrganization?.kind, "organization");
+  if (projectedOrganization?.kind !== "organization")
+    assert.fail("Expected the organization");
+  assert.equal(projectedOrganization.segment, "Produkcja");
+  assert.equal(projectedOrganization.since, "2023-04-11");
+  assert.equal(projectedOrganization.mainContactPersonId, contactId);
+  const projectedContact = records.find((record) => record.id === contactId);
+  assert.equal(
+    projectedContact?.kind === "person" ? projectedContact.phone : undefined,
+    "+48 601 234 567",
+  );
+  const projectedOpportunity = records.find(
+    (record) => record.id === opportunityId,
+  );
+  assert.deepEqual(
+    projectedOpportunity?.kind === "opportunity"
+      ? projectedOpportunity.estimate
+      : undefined,
+    estimate,
+  );
+  const projectedOffer = records.find((record) => record.id === offerId);
+  assert.equal(projectedOffer?.kind, "offer");
+  if (projectedOffer?.kind !== "offer") assert.fail("Expected the offer");
+  assert.deepEqual(projectedOffer.cost, cost);
+  assert.deepEqual(projectedOffer.rate, rate);
+  assert.deepEqual(projectedOffer.price, price);
+
+  // HOME TWO — the unguarded one. Eight hand-written assertions, one per new
+  // field, because nothing here is forced by a type.
+  const overview = () => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "organization.operationalOverview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, organizationId },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "organization.operationalOverview"
+    )
+      assert.fail("Expected the Organization overview");
+    return result.result.projection;
+  };
+  assert.equal(
+    overview().organization.segment,
+    "Produkcja",
+    "segment reaches organization.operationalOverview",
+  );
+  assert.equal(
+    overview().organization.since,
+    "2023-04-11",
+    "since reaches organization.operationalOverview",
+  );
+  // Resolved by name, not a bare id: the column reads `Main contact` and a
+  // caller that had to make a second query to render it would not.
+  assert.deepEqual(
+    overview().organization.mainContact,
+    { id: contactId, name: "Marta Nowak" },
+    "mainContact reaches organization.operationalOverview, resolved",
+  );
+  assert.equal(
+    overview().people.find((person) => person.id === contactId)?.phone,
+    "+48 601 234 567",
+    "phone reaches organization.operationalOverview",
+  );
+  assert.deepEqual(
+    overview().opportunities.find((deal) => deal.id === opportunityId)
+      ?.estimate,
+    estimate,
+    "estimate reaches organization.operationalOverview",
+  );
+  const overviewOffer = overview().offers.find((offer) => offer.id === offerId);
+  assert.deepEqual(
+    overviewOffer?.cost,
+    cost,
+    "cost reaches organization.operationalOverview",
+  );
+  assert.deepEqual(
+    overviewOffer?.rate,
+    rate,
+    "rate reaches organization.operationalOverview",
+  );
+  assert.deepEqual(
+    overviewOffer?.price,
+    price,
+    "price reaches organization.operationalOverview",
+  );
+
+  // The rate is FOR the cost. A dollar cost converted at the euro rate yields a
+  // plausible złoty amount, not an error — so the refusal is structural, and it
+  // is made at the boundary rather than remembered by every reader.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("money-offer-wrong-pair"),
+        commandName: "opportunity.offerCreate",
+        payload: {
+          offerId: uuid(),
+          opportunityId,
+          deliverableDocumentId,
+          title: "Mismatched offer",
+          ownerPrincipalId: ids.principal,
+          cost: { amountMinor: 12_000_00, currency: "USD" },
+          rate,
+          state: "draft",
+          nextAction: "Should never be written.",
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "a rate whose `from` is not the cost's currency is refused",
+  );
+  // And a rate with nothing to convert is refused for the same reason: there
+  // is no cost for it to be the rate OF.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("money-offer-rate-without-cost"),
+        commandName: "opportunity.offerCreate",
+        payload: {
+          offerId: uuid(),
+          opportunityId,
+          deliverableDocumentId,
+          title: "Rate without a cost",
+          ownerPrincipalId: ids.principal,
+          rate,
+          state: "draft",
+          nextAction: "Should never be written.",
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "a rate with no cost is refused",
+  );
+  // The state Kacper named as his common one: the distributor's quote has not
+  // come back. An offer with no money at all is a first-class record.
+  const costlessOfferId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("money-offer-costless"),
+        commandName: "opportunity.offerCreate",
+        payload: {
+          offerId: costlessOfferId,
+          opportunityId,
+          deliverableDocumentId,
+          title: "Waiting for the distributor's quote",
+          ownerPrincipalId: ids.principal,
+          state: "draft",
+          nextAction: "Chase the quote.",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    overview().offers.find((offer) => offer.id === costlessOfferId)?.cost,
+    undefined,
+    "an offer with no cost still projects, and says nothing rather than zero",
+  );
+
+  // The reference guard, which the compile check above is blind to: adding an
+  // optional key to the projection still satisfies
+  // `StrategicProjectionsCarryTheirReferences`, so the `organization` arm of
+  // `strategicRecordReferences` is hand-written and nothing forces it.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("money-remove-contact", { [contactId]: 2 }),
+        commandName: "relationship.personRemove",
+        payload: { personId: contactId },
+      }),
+    ).diagnosticCode,
+    "record.still_referenced",
+    "a person named as the main contact cannot be removed out from under it",
+  );
+});
+
+// The four fields go through the two existing update commands, which are
+// `revertability: "always"`. `UndoDescriptor` sits outside `UnprojectableKeys`
+// entirely, so a forgotten `prior*` compiles, ships, and reports success while
+// leaving the new value in place. Each stamp is undone immediately: the kernel
+// refuses an undo once the record has moved on, which is its own correct
+// behaviour and not what this test is measuring.
+it("undoes an update that ADDED one of the four fields by clearing it", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Undo",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  const contactId = uuid();
+  const otherContactId = uuid();
+  for (const command of [
+    {
+      ...metadata("undo-organization"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "Northstar Industries",
+        relationshipState: "prospect" as const,
+      },
+    },
+    {
+      ...metadata("undo-contact"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId: contactId,
+        spaceId: ids.space,
+        name: "Marta Nowak",
+        organizationId,
+      },
+    },
+    {
+      ...metadata("undo-other-contact"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId: otherContactId,
+        spaceId: ids.space,
+        name: "Piotr Zieliński",
+        organizationId,
+        phone: "+48 602 000 000",
+      },
+    },
+  ])
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+      command.commandName,
+    );
+  const read = () => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "organization.operationalOverview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, organizationId },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "organization.operationalOverview"
+    )
+      assert.fail("Expected the Organization overview");
+    return result.result.projection;
+  };
+  const update = (
+    key: string,
+    version: number,
+    payload: Record<string, unknown>,
+  ) => {
+    const command = {
+      ...metadata(key, { [organizationId]: version }),
+      commandName: "relationship.organizationUpdate" as const,
+      payload: { organizationId, ...payload },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+      // Each new field ALONE has to satisfy the at-least-one-field refine.
+      // Nothing asserts that an ordinary case is ACCEPTED unless it is written
+      // down, and a refusal nobody asked for passes a suite of refusals.
+      `${key} alone is a change`,
+    );
+    return command;
+  };
+  const undo = (key: string, version: number, targetCommandId: string) =>
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key, { [organizationId]: version }),
+          commandName: "command.undo",
+          payload: { targetCommandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+      key,
+    );
+
+  // Each of the three: stamp it where there was nothing, then undo. Passing
+  // the bare `descriptor.priorX` instead of `descriptor.priorX ?? null` leaves
+  // the new value in place and still reports success.
+  const stampSegment = update("undo-segment", 1, { segment: "Produkcja" });
+  assert.equal(read().organization.segment, "Produkcja");
+  undo("undo-segment-undo", 2, stampSegment.commandId);
+  assert.equal(
+    read().organization.segment,
+    undefined,
+    "undoing the update that stamped a segment clears it",
+  );
+
+  const stampSince = update("undo-since", 3, { since: "2023-04-11" });
+  assert.equal(read().organization.since, "2023-04-11");
+  undo("undo-since-undo", 4, stampSince.commandId);
+  assert.equal(
+    read().organization.since,
+    undefined,
+    "undoing the update that stamped a start date clears it",
+  );
+
+  // Set a segment that stays put, so the next undo can be shown to leave the
+  // fields its own command never touched alone.
+  update("undo-segment-again", 5, { segment: "Produkcja" });
+  const stampContact = update("undo-contact-set", 6, {
+    mainContactPersonId: contactId,
+  });
+  assert.deepEqual(read().organization.mainContact, {
+    id: contactId,
+    name: "Marta Nowak",
+  });
+  undo("undo-contact-undo", 7, stampContact.commandId);
+  assert.equal(
+    read().organization.mainContact,
+    undefined,
+    "undoing the update that named a contact clears it",
+  );
+  assert.equal(
+    read().organization.segment,
+    "Produkcja",
+    "and leaves the fields that update never touched alone",
+  );
+
+  // Same rule on the person arm.
+  const stampPhone = {
+    ...metadata("undo-phone", { [contactId]: 1 }),
+    commandName: "relationship.personUpdate" as const,
+    payload: { personId: contactId, phone: "+48 601 234 567" },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), stampPhone)).outcome,
+    "success",
+    "phone alone is a change",
+  );
+  assert.equal(
+    read().people.find((person) => person.id === contactId)?.phone,
+    "+48 601 234 567",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-phone-undo", { [contactId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: stampPhone.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(
+    read().people.find((person) => person.id === contactId)?.phone,
+    undefined,
+    "undoing the update that added a number clears it",
+  );
+
+  // A REPLACEMENT is put back, not cleared — the other half of the same rule.
+  const replacePhone = {
+    ...metadata("undo-phone-replace", { [otherContactId]: 1 }),
+    commandName: "relationship.personUpdate" as const,
+    payload: { personId: otherContactId, phone: "+48 603 111 111" },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), replacePhone)).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-phone-replace-undo", { [otherContactId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: replacePhone.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(
+    read().people.find((person) => person.id === otherContactId)?.phone,
+    "+48 602 000 000",
+    "undoing a replacement restores the previous number rather than clearing it",
+  );
+
+  // Naming a contact that is not a person in this Space is refused, on the same
+  // terms moving a person to another organisation is.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-contact-bogus", { [organizationId]: 8 }),
+        commandName: "relationship.organizationUpdate",
+        payload: { organizationId, mainContactPersonId: organizationId },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "a main contact must be a person",
+  );
+  // And clearing it is how the mutual reference with `person.organizationId`
+  // is untangled: the person becomes removable again.
+  update("undo-contact-reset", 8, { mainContactPersonId: otherContactId });
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-contact-blocked", { [otherContactId]: 3 }),
+        commandName: "relationship.personRemove",
+        payload: { personId: otherContactId },
+      }),
+    ).diagnosticCode,
+    "record.still_referenced",
+  );
+  update("undo-contact-clear", 9, { mainContactPersonId: null });
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-contact-freed", { [otherContactId]: 3 }),
+        commandName: "relationship.personRemove",
+        payload: { personId: otherContactId },
+      }),
+    ).outcome,
+    "success",
+    "clearing the contact frees the person for removal",
+  );
+});

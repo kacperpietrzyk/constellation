@@ -7,6 +7,9 @@ import type {
   WorkspaceId,
   DocumentId,
   TaskId,
+  Money,
+  ExchangeRate,
+  OfferPrice,
 } from "@constellation/contracts";
 
 import { strategicRecordReferences } from "@constellation/contracts";
@@ -36,6 +39,9 @@ export const createOrganization = (
     readonly name: string;
     readonly relationshipState: "prospect" | "active" | "inactive";
     readonly nextAction?: string;
+    readonly segment?: string;
+    readonly since?: string;
+    readonly mainContactPersonId?: StrategicRecordId;
     readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "organization" }> => ({
@@ -44,6 +50,14 @@ export const createOrganization = (
   name: input.name,
   relationshipState: input.relationshipState,
   ...(input.nextAction === undefined ? {} : { nextAction: input.nextAction }),
+  // Conditional spread, never `x: input.x ?? null`: a stored null reaching a
+  // `.strict()` projection field throws on a QUERY, far from the command that
+  // wrote it. The rule is "a value, or the key is absent".
+  ...(input.segment === undefined ? {} : { segment: input.segment }),
+  ...(input.since === undefined ? {} : { since: input.since }),
+  ...(input.mainContactPersonId === undefined
+    ? {}
+    : { mainContactPersonId: input.mainContactPersonId }),
   ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
 });
 
@@ -53,6 +67,7 @@ export const createPerson = (
     readonly organizationId?: StrategicRecordId;
     readonly role?: string;
     readonly email?: string;
+    readonly phone?: string;
     readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "person" }> => ({
@@ -64,6 +79,7 @@ export const createPerson = (
     : { organizationId: input.organizationId }),
   ...(input.role === undefined ? {} : { role: input.role }),
   ...(input.email === undefined ? {} : { email: input.email }),
+  ...(input.phone === undefined ? {} : { phone: input.phone }),
   ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
 });
 
@@ -79,6 +95,7 @@ export const updatePersonDetails = (
     readonly organizationId?: StrategicRecordId | null;
     readonly role?: string | null;
     readonly email?: string | null;
+    readonly phone?: string | null;
     // `| null` here but NOT on the command: no caller may clear provenance —
     // the kernel refuses a change and there is no way to ask for a clear — but
     // undoing the update that stamped a key has to put the record back the way
@@ -92,12 +109,14 @@ export const updatePersonDetails = (
     organizationId: _organizationId,
     role: _role,
     email: _email,
+    phone: _phone,
     externalId: _externalId,
     ...base
   } = person;
   void _organizationId;
   void _role;
   void _email;
+  void _phone;
   void _externalId;
   const organizationId =
     changes.organizationId === undefined
@@ -107,6 +126,8 @@ export const updatePersonDetails = (
     changes.role === undefined ? person.role : (changes.role ?? undefined);
   const email =
     changes.email === undefined ? person.email : (changes.email ?? undefined);
+  const phone =
+    changes.phone === undefined ? person.phone : (changes.phone ?? undefined);
   // Absent leaves it alone, an explicit null clears it. Only the compensation
   // path ever passes null; the command schema cannot express it.
   const externalId =
@@ -119,6 +140,7 @@ export const updatePersonDetails = (
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(role === undefined ? {} : { role }),
     ...(email === undefined ? {} : { email }),
+    ...(phone === undefined ? {} : { phone }),
     ...(externalId === undefined ? {} : { externalId }),
     version: person.version + 1,
     updatedAt: occurredAt,
@@ -131,6 +153,9 @@ export const updateOrganizationDetails = (
     readonly name?: string;
     readonly relationshipState?: "prospect" | "active" | "inactive";
     readonly nextAction?: string | null;
+    readonly segment?: string | null;
+    readonly since?: string | null;
+    readonly mainContactPersonId?: StrategicRecordId | null;
     /** See `updatePersonDetails` — clearable only by a compensation. */
     readonly externalId?: string | null;
   },
@@ -138,10 +163,16 @@ export const updateOrganizationDetails = (
 ): Extract<StrategicRecord, { kind: "organization" }> => {
   const {
     nextAction: _nextAction,
+    segment: _segment,
+    since: _since,
+    mainContactPersonId: _mainContactPersonId,
     externalId: _externalId,
     ...base
   } = organization;
   void _nextAction;
+  void _segment;
+  void _since;
+  void _mainContactPersonId;
   void _externalId;
   const externalId =
     changes.externalId === undefined
@@ -151,12 +182,27 @@ export const updateOrganizationDetails = (
     changes.nextAction === undefined
       ? organization.nextAction
       : (changes.nextAction ?? undefined);
+  const segment =
+    changes.segment === undefined
+      ? organization.segment
+      : (changes.segment ?? undefined);
+  const since =
+    changes.since === undefined
+      ? organization.since
+      : (changes.since ?? undefined);
+  const mainContactPersonId =
+    changes.mainContactPersonId === undefined
+      ? organization.mainContactPersonId
+      : (changes.mainContactPersonId ?? undefined);
   return {
     ...base,
     name: changes.name ?? organization.name,
     relationshipState:
       changes.relationshipState ?? organization.relationshipState,
     ...(nextAction === undefined ? {} : { nextAction }),
+    ...(segment === undefined ? {} : { segment }),
+    ...(since === undefined ? {} : { since }),
+    ...(mainContactPersonId === undefined ? {} : { mainContactPersonId }),
     ...(externalId === undefined ? {} : { externalId }),
     version: organization.version + 1,
     updatedAt: occurredAt,
@@ -171,6 +217,7 @@ export const createOpportunity = (
     readonly ownerPersonId?: StrategicRecordId;
     readonly need: string;
     readonly qualification: string;
+    readonly estimate?: Money;
     readonly stage: string;
     readonly nextAction: string;
     readonly evidenceSourceIds: readonly KnowledgeSourceId[];
@@ -187,6 +234,7 @@ export const createOpportunity = (
     : { ownerPersonId: input.ownerPersonId }),
   need: input.need,
   qualification: input.qualification,
+  ...(input.estimate === undefined ? {} : { estimate: input.estimate }),
   stage: input.stage,
   nextAction: input.nextAction,
   evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort(),
@@ -202,6 +250,9 @@ export const createOffer = (
     readonly opportunityId: StrategicRecordId;
     readonly deliverableDocumentId: DocumentId;
     readonly ownerPrincipalId: PrincipalId;
+    readonly cost?: Money;
+    readonly rate?: ExchangeRate;
+    readonly price?: OfferPrice;
     readonly state: "draft" | "ready" | "submitted" | "accepted" | "declined";
     readonly nextAction: string;
   },
@@ -212,6 +263,9 @@ export const createOffer = (
   opportunityId: input.opportunityId,
   deliverableDocumentId: input.deliverableDocumentId,
   ownerPrincipalId: input.ownerPrincipalId,
+  ...(input.cost === undefined ? {} : { cost: input.cost }),
+  ...(input.rate === undefined ? {} : { rate: input.rate }),
+  ...(input.price === undefined ? {} : { price: input.price }),
   state: input.state,
   nextAction: input.nextAction,
 });

@@ -13,6 +13,7 @@ export interface StrategicRecordReferenceFields {
   readonly organizationId?: string | undefined;
   readonly personIds?: readonly string[] | undefined;
   readonly ownerPersonId?: string | undefined;
+  readonly mainContactPersonId?: string | undefined;
   readonly offerIds?: readonly string[] | undefined;
   readonly opportunityId?: string | undefined;
   readonly supersededById?: string | undefined;
@@ -44,6 +45,16 @@ export const strategicRecordReferences = (
   record: StrategicRecordReferenceFields,
 ): readonly string[] => {
   switch (record.kind) {
+    // An organisation held no reference at all until it could name a main
+    // contact, so this arm did not exist and the kind fell through to the
+    // default. The compile guard above does NOT catch that: adding an optional
+    // key to the projection still satisfies `extends`, so a missing arm here is
+    // silent — the person would be removable and the organisation would keep a
+    // dead id, which is the exact state every removal guard exists to prevent.
+    case "organization":
+      return record.mainContactPersonId === undefined
+        ? []
+        : [record.mainContactPersonId];
     case "person":
       return record.organizationId === undefined ? [] : [record.organizationId];
     case "opportunity":

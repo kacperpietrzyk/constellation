@@ -35,6 +35,9 @@ import type {
   KnowledgeSourceId,
   NamedDocumentVersionId,
   StrategicRecordId,
+  Money,
+  ExchangeRate,
+  OfferPrice,
   ImportedMeeting,
   MeetingWorkItem,
   RelationCondition,
@@ -656,6 +659,31 @@ export type StrategicRecord =
       readonly relationshipState: "prospect" | "active" | "inactive";
       readonly nextAction?: string;
       /**
+       * The line of business, as this workspace divides them — free text, not
+       * an enum. Nobody has decided a vocabulary, and a projection that pinned
+       * one would make an already-stored value unreadable the day it changes.
+       */
+      readonly segment?: string;
+      /**
+       * The day the relationship began, as a calendar date. NOT `createdAt`:
+       * a client of three years imported last Tuesday would otherwise read as
+       * new, which is the one thing this field exists to say.
+       */
+      readonly since?: string;
+      /**
+       * The named contact AT THIS ORGANISATION — the person on the client's
+       * side we actually talk to. Not an owner on ours: the screen this
+       * replaces put a client employee under a column headed `Owner`, which is
+       * why the column is now `Main contact` and why this is a new edge rather
+       * than a rename. An owner on our side is a separate, undecided field.
+       *
+       * Blocks that person's removal (`strategicRecordReferences`), and is
+       * clearable through `relationship.organizationUpdate` — which is how the
+       * mutual reference with `person.organizationId` is untangled when one of
+       * the two has to go.
+       */
+      readonly mainContactPersonId?: StrategicRecordId;
+      /**
        * The source row this record was imported from. Absent means it was
        * never imported — a record a human created in the app has no source and
        * never will, so this is optional permanently rather than pending a
@@ -669,6 +697,13 @@ export type StrategicRecord =
       readonly organizationId?: StrategicRecordId;
       readonly role?: string;
       readonly email?: string;
+      /**
+       * Free text on purpose. Phone-number formats are a swamp — extensions,
+       * national prefixes, the spaces a person actually types — and a bound
+       * this record could not later loosen would make an already-stored number
+       * unreadable. Stored as given.
+       */
+      readonly phone?: string;
       /** See the organization arm above. */
       readonly externalId?: string;
     })
@@ -685,6 +720,13 @@ export type StrategicRecord =
       readonly personIds: readonly StrategicRecordId[];
       readonly need: string;
       readonly qualification: string;
+      /**
+       * What this conversation is worth, before any offer exists. Absent means
+       * nobody has put a number on it yet — which is a real and common state,
+       * not a zero. It drives the funnel column sums, and those are summed PER
+       * CURRENCY, which is why the currency travels inside the value.
+       */
+      readonly estimate?: Money;
       readonly stage: string;
       readonly nextAction: string;
       readonly evidenceSourceIds: readonly KnowledgeSourceId[];
@@ -707,6 +749,29 @@ export type StrategicRecord =
       readonly opportunityId: StrategicRecordId;
       readonly deliverableDocumentId: DocumentId;
       readonly ownerPrincipalId: PrincipalId;
+      /**
+       * What the offer costs us. The anchor of the whole card: price is
+       * derived from it, margin is measured against it. Absent is the common
+       * case Kacper named — "waiting for the distributor's quote" — and is not
+       * a zero.
+       */
+      readonly cost?: Money;
+      /**
+       * The rate this offer was quoted at, stored ON the offer rather than
+       * fetched, so the card still says the same thing next month. It names its
+       * own pair; `convertMoney` refuses a rate whose `from` is not the cost's
+       * currency, because a mismatch produces a plausible amount rather than an
+       * error.
+       */
+      readonly rate?: ExchangeRate;
+      /**
+       * Only a CONFIRMED price is ever stored. A derived price is a projection
+       * of the currently configured markup, and storing it would create a
+       * second number that disagrees with Settings the day the markup changes.
+       * Absent means derived — ask `offerPriceState`, which is the one place
+       * that knows it.
+       */
+      readonly price?: OfferPrice;
       readonly state: "draft" | "ready" | "submitted" | "accepted" | "declined";
       readonly nextAction: string;
     })
@@ -889,6 +954,13 @@ export type UndoDescriptor =
       readonly priorOrganizationId?: StrategicRecordId;
       readonly priorRole?: string;
       readonly priorEmail?: string;
+      /**
+       * Absent means the person carried no number before the update, so undoing
+       * an update that ADDED one has to clear it. `UndoDescriptor` sits outside
+       * `UnprojectableKeys` entirely, so a forgotten `prior*` fails nothing at
+       * compile time and reports success while leaving the new value in place.
+       */
+      readonly priorPhone?: string;
       // Absent means the record carried no source key before the update, so
       // undoing a stamp has to clear it. The command can never clear one —
       // provenance is set once — but a compensation is not the command, and a
@@ -907,6 +979,17 @@ export type UndoDescriptor =
       readonly priorName: string;
       readonly priorRelationshipState: "prospect" | "active" | "inactive";
       readonly priorNextAction?: string;
+      /** See `priorPhone` on `relationship.restore_person` above. */
+      readonly priorSegment?: string;
+      /** See `priorPhone` on `relationship.restore_person` above. */
+      readonly priorSince?: string;
+      /**
+       * The contact the organisation named before the update. Restoring it
+       * writes a person id back, so the compensation is only available while
+       * that person is still there — the same rule `priorOrganizationId`
+       * follows on the person arm.
+       */
+      readonly priorMainContactPersonId?: StrategicRecordId;
       /** See `relationship.restore_person` above. */
       readonly priorExternalId?: string;
       readonly resultingVersion: number;

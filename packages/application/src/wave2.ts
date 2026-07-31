@@ -2745,6 +2745,22 @@ export const executeWave2Command = (
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (transaction.getStrategicRecord(command.payload.organizationId))
         return precondition(command, occurredAt);
+      // The main contact is bounded exactly as a person's own employer is on
+      // `relationship.personCreate` below: exists, is a person, same workspace
+      // and Space. Deliberately NOT "and works here" — a contact can be
+      // recorded before the employment link is, and refusing that would be the
+      // worse failure.
+      if (command.payload.mainContactPersonId !== undefined) {
+        const contact = transaction.getStrategicRecord(
+          command.payload.mainContactPersonId,
+        );
+        if (
+          contact?.kind !== "person" ||
+          contact.workspaceId !== command.workspaceId ||
+          contact.spaceId !== command.payload.spaceId
+        )
+          return precondition(command, occurredAt);
+      }
       // A source key is claimed once per Space and kind. Names are not unique,
       // so this is the only thing that can tell a re-run apart from a genuinely
       // new record — and the refusal has to be actionable, which is why it
@@ -2776,6 +2792,15 @@ export const executeWave2Command = (
         ...(command.payload.nextAction === undefined
           ? {}
           : { nextAction: command.payload.nextAction }),
+        ...(command.payload.segment === undefined
+          ? {}
+          : { segment: command.payload.segment }),
+        ...(command.payload.since === undefined
+          ? {}
+          : { since: command.payload.since }),
+        ...(command.payload.mainContactPersonId === undefined
+          ? {}
+          : { mainContactPersonId: command.payload.mainContactPersonId }),
         ...(command.payload.externalId === undefined
           ? {}
           : { externalId: command.payload.externalId }),
@@ -2799,7 +2824,18 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [record.id]: record.version },
-        ["name", "relationshipState", "nextAction", "externalId"],
+        // Hand-maintained, like the org-overview mapper and unlike the two
+        // updates below, which derive this from the payload keys. A field
+        // missing here never appears on the audit receipt and nothing fails.
+        [
+          "name",
+          "relationshipState",
+          "nextAction",
+          "segment",
+          "since",
+          "mainContactPersonId",
+          "externalId",
+        ],
         {
           diagnosticCode: "strategic.record_changed",
           projection: {
@@ -3854,6 +3890,9 @@ export const executeWave2Command = (
         ...(command.payload.email === undefined
           ? {}
           : { email: command.payload.email }),
+        ...(command.payload.phone === undefined
+          ? {}
+          : { phone: command.payload.phone }),
         ...(command.payload.externalId === undefined
           ? {}
           : { externalId: command.payload.externalId }),
@@ -3877,7 +3916,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [record.id]: record.version },
-        ["name", "organizationId", "role", "email", "externalId"],
+        ["name", "organizationId", "role", "email", "phone", "externalId"],
         {
           diagnosticCode: "strategic.record_changed",
           projection: {
@@ -3955,6 +3994,9 @@ export const executeWave2Command = (
           ...(command.payload.email === undefined
             ? {}
             : { email: command.payload.email }),
+          ...(command.payload.phone === undefined
+            ? {}
+            : { phone: command.payload.phone }),
           ...(command.payload.externalId === undefined
             ? {}
             : { externalId: command.payload.externalId }),
@@ -3988,6 +4030,7 @@ export const executeWave2Command = (
             : { priorOrganizationId: current.organizationId }),
           ...(current.role === undefined ? {} : { priorRole: current.role }),
           ...(current.email === undefined ? {} : { priorEmail: current.email }),
+          ...(current.phone === undefined ? {} : { priorPhone: current.phone }),
           ...(current.externalId === undefined
             ? {}
             : { priorExternalId: current.externalId }),
@@ -4004,6 +4047,26 @@ export const executeWave2Command = (
       const expected = { [current.id]: current.version };
       if (!exactExpected(command, expected))
         return versionConflict(command, occurredAt, expected);
+      // Naming a contact is bounded the same way `relationship.personUpdate`
+      // bounds a move to another organisation: the person has to exist, be
+      // one, and be in this organisation's own Space. An explicit null clears
+      // the contact and needs no such check — which is how the mutual
+      // reference with `person.organizationId` is untangled when one of the
+      // two records has to be removed.
+      if (
+        command.payload.mainContactPersonId !== undefined &&
+        command.payload.mainContactPersonId !== null
+      ) {
+        const contact = transaction.getStrategicRecord(
+          command.payload.mainContactPersonId,
+        );
+        if (
+          contact?.kind !== "person" ||
+          contact.workspaceId !== current.workspaceId ||
+          contact.spaceId !== current.spaceId
+        )
+          return precondition(command, occurredAt);
+      }
       // See `relationship.personUpdate` above — set once, never rewritten,
       // never claimed away from another record.
       if (command.payload.externalId !== undefined) {
@@ -4037,6 +4100,15 @@ export const executeWave2Command = (
           ...(command.payload.nextAction === undefined
             ? {}
             : { nextAction: command.payload.nextAction }),
+          ...(command.payload.segment === undefined
+            ? {}
+            : { segment: command.payload.segment }),
+          ...(command.payload.since === undefined
+            ? {}
+            : { since: command.payload.since }),
+          ...(command.payload.mainContactPersonId === undefined
+            ? {}
+            : { mainContactPersonId: command.payload.mainContactPersonId }),
           ...(command.payload.externalId === undefined
             ? {}
             : { externalId: command.payload.externalId }),
@@ -4069,6 +4141,13 @@ export const executeWave2Command = (
           ...(current.nextAction === undefined
             ? {}
             : { priorNextAction: current.nextAction }),
+          ...(current.segment === undefined
+            ? {}
+            : { priorSegment: current.segment }),
+          ...(current.since === undefined ? {} : { priorSince: current.since }),
+          ...(current.mainContactPersonId === undefined
+            ? {}
+            : { priorMainContactPersonId: current.mainContactPersonId }),
           ...(current.externalId === undefined
             ? {}
             : { priorExternalId: current.externalId }),
@@ -4141,6 +4220,9 @@ export const executeWave2Command = (
           : { ownerPersonId: command.payload.ownerPersonId }),
         need: command.payload.need,
         qualification: command.payload.qualification,
+        ...(command.payload.estimate === undefined
+          ? {}
+          : { estimate: command.payload.estimate }),
         stage: command.payload.stage,
         nextAction: command.payload.nextAction,
         evidenceSourceIds: command.payload.evidenceSourceIds,
@@ -4173,6 +4255,7 @@ export const executeWave2Command = (
           "personIds",
           "need",
           "qualification",
+          "estimate",
           "stage",
           "nextAction",
           "evidenceSourceIds",
@@ -4212,7 +4295,15 @@ export const executeWave2Command = (
         document.workspaceId !== command.workspaceId ||
         document.spaceId !== opportunity.spaceId ||
         owner === undefined ||
-        owner.status === "revoked"
+        owner.status === "revoked" ||
+        // The rate must be FOR this cost. A dollar cost converted at the euro
+        // rate produces a plausible złoty amount, not an error — nobody would
+        // ever see it, so the refusal is structural and lives here, at the one
+        // boundary that can still say no. A rate with no cost is refused for
+        // the same reason: there is nothing for it to convert, and storing it
+        // would leave a number the screen would have to guess the meaning of.
+        (command.payload.rate !== undefined &&
+          command.payload.rate.from !== command.payload.cost?.currency)
       )
         return precondition(command, occurredAt);
       const record = createOffer({
@@ -4223,6 +4314,15 @@ export const executeWave2Command = (
         opportunityId: opportunity.id,
         deliverableDocumentId: document.id,
         ownerPrincipalId: command.payload.ownerPrincipalId,
+        ...(command.payload.cost === undefined
+          ? {}
+          : { cost: command.payload.cost }),
+        ...(command.payload.rate === undefined
+          ? {}
+          : { rate: command.payload.rate }),
+        ...(command.payload.price === undefined
+          ? {}
+          : { price: command.payload.price }),
         state: command.payload.state,
         nextAction: command.payload.nextAction,
         createdBy: context.principalId,
@@ -4250,6 +4350,9 @@ export const executeWave2Command = (
           "opportunityId",
           "deliverableDocumentId",
           "ownerPrincipalId",
+          "cost",
+          "rate",
+          "price",
           "state",
           "nextAction",
         ],
@@ -8592,6 +8695,25 @@ const descriptorState = (
     }
     case "relationship.restore_organization": {
       const organization = view.getStrategicRecord(descriptor.organizationId);
+      // The compensation writes a person id back, so that person has to still
+      // be there — the same rule `priorOrganizationId` follows on the person
+      // arm above, and for the same reason: restoring a contact onto a record
+      // that has since been removed leaves a reference pointing at nothing.
+      if (descriptor.priorMainContactPersonId !== undefined) {
+        const contact = view.getStrategicRecord(
+          descriptor.priorMainContactPersonId,
+        );
+        if (
+          contact?.kind !== "person" ||
+          strategicRecordState(contact) !== "active"
+        )
+          return {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+      }
       return organization?.kind === "organization" &&
         strategicRecordState(organization) === "active" &&
         organization.version === descriptor.resultingVersion
@@ -9736,6 +9858,10 @@ const compensateDescriptor = (
         organizationId: descriptor.priorOrganizationId ?? null,
         role: descriptor.priorRole ?? null,
         email: descriptor.priorEmail ?? null,
+        // `?? null`, not the bare value: an update that ADDED a number must be
+        // undone by clearing it, and passing `undefined` would leave the new
+        // one in place while reporting success.
+        phone: descriptor.priorPhone ?? null,
         // Explicit null when the descriptor carries none: the record was
         // unstamped before this update, and an undo that left the key behind
         // would report success while changing nothing a caller can see.
@@ -9756,6 +9882,11 @@ const compensateDescriptor = (
         name: descriptor.priorName,
         relationshipState: descriptor.priorRelationshipState,
         nextAction: descriptor.priorNextAction ?? null,
+        // See `relationship.restore_person` above for why every one of these is
+        // `?? null` and not the bare value.
+        segment: descriptor.priorSegment ?? null,
+        since: descriptor.priorSince ?? null,
+        mainContactPersonId: descriptor.priorMainContactPersonId ?? null,
         externalId: descriptor.priorExternalId ?? null,
       },
       occurredAt,
@@ -11444,6 +11575,15 @@ export const executeWave2Query = (
           right.updatedAt.localeCompare(left.updatedAt) ||
           left.title.localeCompare(right.title),
       );
+    // Resolved against every Person in the Space rather than against this
+    // organisation's own `people`, on the same terms the opportunity owner is:
+    // the two lists are built by different filters and only one of them is the
+    // authority on whether an id still exists.
+    const mainContact = strategicRecords.find(
+      (candidate): candidate is Extract<StrategicRecord, { kind: "person" }> =>
+        candidate.kind === "person" &&
+        candidate.id === organization.mainContactPersonId,
+    );
     const relatedRecordIds = new Set<string>([
       organization.id,
       ...people.map((record) => record.id),
@@ -11466,6 +11606,18 @@ export const executeWave2Query = (
         ...(organization.nextAction === undefined
           ? {}
           : { nextAction: organization.nextAction }),
+        ...(organization.segment === undefined
+          ? {}
+          : { segment: organization.segment }),
+        ...(organization.since === undefined
+          ? {}
+          : { since: organization.since }),
+        // Resolved against every Person in the Space on exactly the terms the
+        // opportunity `owner` below is: a contact who no longer resolves is
+        // omitted rather than handed to a screen as a dead id.
+        ...(mainContact === undefined
+          ? {}
+          : { mainContact: { id: mainContact.id, name: mainContact.name } }),
         version: organization.version,
         updatedAt: organization.updatedAt,
       },
@@ -11474,6 +11626,7 @@ export const executeWave2Query = (
         name: record.name,
         ...(record.role === undefined ? {} : { role: record.role }),
         ...(record.email === undefined ? {} : { email: record.email }),
+        ...(record.phone === undefined ? {} : { phone: record.phone }),
         version: record.version,
         updatedAt: record.updatedAt,
       })),
@@ -11494,6 +11647,9 @@ export const executeWave2Query = (
           id: record.id,
           title: record.title,
           need: record.need,
+          ...(record.estimate === undefined
+            ? {}
+            : { estimate: record.estimate }),
           stage: record.stage,
           nextAction: record.nextAction,
           ...(owner === undefined || owner.kind !== "person"
@@ -11510,6 +11666,9 @@ export const executeWave2Query = (
         opportunityId: record.opportunityId,
         deliverableDocumentId: record.deliverableDocumentId,
         ownerPrincipalId: record.ownerPrincipalId,
+        ...(record.cost === undefined ? {} : { cost: record.cost }),
+        ...(record.rate === undefined ? {} : { rate: record.rate }),
+        ...(record.price === undefined ? {} : { price: record.price }),
         state: record.state,
         nextAction: record.nextAction,
         version: record.version,
