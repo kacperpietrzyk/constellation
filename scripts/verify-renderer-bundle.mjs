@@ -164,6 +164,36 @@ import path from "node:path";
 //      tak samo, jak już podaje ścieżkę gorącą.
 //   4. Żadnego drugiego podniesienia w tej fali. Lot, który przekroczyłby
 //      330 000, zatrzymuje się i pyta.
+//
+// ── PRZEBAZOWANIE NA ZAMKNIĘCIU FALI C, 2026-07-31 ──────────────────────────
+// Warunek 2 obu podniesień wyżej. Zmierzone na `main` @43587ea po zmergowaniu
+// wszystkich piętnastu PR-ów fali, czystym rebuildem, cytat z linii skryptu:
+//
+//   ścieżka gorąca   631 114 B / 171 645 B gzip   (sufity 648 000 / 174 000)
+//   CSS gorący       176 258 B                    (sufit  200 000)
+//   JS łącznie     1 629 597 B                    (sufit 1 770 000)
+//   CSS łącznie      308 750 B                    (sufit  330 000)
+//   największy leniwy 603 238 B                   (sufit  700 000)
+//
+// TO JEST NOWY BASELINE. Kto czyta te liczby przy następnej fali, porównuje się
+// z nimi, a nie z buildem z 2026-07-28 — bo właśnie porównywanie z martwym
+// baselinem doprowadziło do 22 bajtów zapasu, których nikt nie zauważył.
+//
+// CO ZOSTAŁO Z ZAPASU, i to jest wynik do przeczytania, a nie do przemilczenia:
+//   gzip ścieżki gorącej   2 355 B  (1,4% sufitu)
+//   CSS łącznie           21 250 B  (6,4% sufitu)
+//   surowy JS ścieżki     16 886 B  · JS łącznie 140 403 B · leniwy 96 762 B
+//
+// DWIE RZECZY DO ROZSTRZYGNIĘCIA PRZED NASTĘPNĄ FALĄ, świadomie NIEROZSTRZYGNIĘTE
+// tutaj, bo podnoszenie sufitu bez roboty w ręku to ten sam nawyk, przeciwko
+// któremu stoi cały ten blok:
+//   • 2 355 B gzip nie pokryje żadnej fali ekranowej. Następna fala albo zaczyna
+//     od nazwanego, ZMIERZONEGO podniesienia z projektem w ręku, albo od rozmowy
+//     o tym, CO jest ładowane od razu. Nie od odkrycia w połowie, jak ta.
+//   • `totalStylesheetBytes` przestał być sufitem BEZPIECZEŃSTWA: model z planu
+//     daje mu ~30% zapasu, a 330 000 nad 308 750 to 6,4%. Albo dostaje rozmiar
+//     zgodny ze swoją rolą, albo przestaje być tak nazywany. Jedno albo drugie —
+//     nie zostawiać go w tym stanie po cichu.
 const limits = {
   // Ścieżka gorąca — twarda. Zapas liczony od baseline'u, nie „na wyrost".
   hotPathJavaScriptBytes: 648_000,
