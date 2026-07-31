@@ -41,6 +41,10 @@ const loadPeopleSurface = () => import("../people/PeopleSurface.js");
 export const PeopleSurface = lazy(() =>
   loadPeopleSurface().then((module) => ({ default: module.PeopleSurface })),
 );
+const loadPipelineSurface = () => import("../pipeline/PipelineSurface.js");
+export const PipelineSurface = lazy(() =>
+  loadPipelineSurface().then((module) => ({ default: module.PipelineSurface })),
+);
 const loadAccessSurface = async () => {
   await import("../access-surface.css");
   return import("../AccessSurface.js");
@@ -90,6 +94,7 @@ export const lazySurfaceLoaders = {
   access: loadAccessSurface,
   organizations: loadStrategicDepthSurface,
   people: loadPeopleSurface,
+  pipeline: loadPipelineSurface,
 } satisfies Record<LazyDesktopSurface, () => Promise<unknown>>;
 
 export const preloadSurface = (surface: SurfaceId) => {

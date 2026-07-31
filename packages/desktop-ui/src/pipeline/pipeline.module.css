@@ -1,0 +1,600 @@
+/* Pipeline. A CSS Module, so it travels with the lazy chunk instead of landing
+   on the head-linked sheet the window waits for.
+
+   Every colour is a token; there is no new one here. THE GRAMMAR OF THIS SCREEN
+   IS SHAPE, NOT HUE: a dashed border means "this number stands on an
+   assumption", a solid filled one means "somebody stated it". The word in the
+   badge and the `≈` before the amount carry the same distinction with no colour
+   at all, and the card's accessible name carries it a fourth time, in prose.
+
+   THE WINDOWS TEXT-SCALING TRAP, and where it is designed out. `.surface-scroll
+   > *` centres every child with `margin-inline: auto` (`styles.css:4404-4407`),
+   which turns off stretch and sizes the child `fit-content` — and `fit-content`
+   is clamped BELOW by `min-content`. A non-wrapping flex row's min-content is
+   the SUM of its children, so at 200% root font-size such a row sets a width
+   instead of taking one and the surface overflows itself with no descendant
+   overflowing anything. Three rules follow, and none of them is decoration:
+
+     1. every bar above the board wraps (`.crumbbar`, `.viewbar`, `.create`,
+        `.dealPanel`, `.moveGroup`, `.priceControls`);
+     2. the board — which really is a non-wrapping row, because a kanban board
+        that wraps is not a board — is held by `.scroller`, whose `overflow-x`
+        makes ITS min-content zero and whose `width: 100%` stops it depending on
+        how `fit-content` resolves;
+     3. no track anywhere is capped in `rem` except a fixed column, which is the
+        accepted geometry (`pipeline.css:25-30`) and is inside the scroller.
+
+   There is no `container-type` in this file and its absence is the fix rather
+   than an omission: a contained element's intrinsic width ignores its contents,
+   and under `margin-inline: auto` that resolves to zero. */
+
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Chrome above the board ──────────────────────────────────────────── */
+
+.crumbbar,
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+}
+
+.create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1 1 9rem;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.field input,
+.field select {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.stagesLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.stagesLink:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* A word, a border and a background — three carriers, so the warning survives a
+   monochrome screen. */
+.warnTag {
+  font-size: var(--text-2xs);
+  color: var(--status-warning);
+  padding: 0.0625rem 0.4375rem;
+  border-radius: var(--radius-full);
+  border: 1px dashed color-mix(in oklab, var(--status-warning) 40%, transparent);
+  background: var(--status-warning-bg);
+}
+
+.count {
+  margin-left: auto;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4375rem;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.split {
+  color: var(--text-disabled);
+  padding-left: 0.4375rem;
+  border-left: 1px solid var(--border-default);
+}
+
+/* ── The panel that carries every control ────────────────────────────── */
+
+/* It stands OUTSIDE the board on purpose. The board is one composite widget
+   with a single Tab stop; a control inside a card would add one per card and
+   would sit where the accessibility tree defines nothing. */
+.dealPanel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.dealPanelHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 14rem;
+}
+
+.dealPanelTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dealPanelLink {
+  font-size: var(--text-xs);
+  color: var(--text-link);
+  text-decoration: underline;
+}
+
+.dealPanelSub {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+}
+
+.moveGroup,
+.priceControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.moveButton {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+}
+
+.moveButton:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* The stage a deal already stands on is not a destination. It says so with a
+   fill and a stronger border, not only with a warmer colour. */
+.moveButton[aria-current="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.moveButton:disabled {
+  cursor: default;
+}
+
+/* ── The board ───────────────────────────────────────────────────────── */
+
+.scroller {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding-inline: var(--space-4);
+}
+
+.board {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+}
+
+/* The accepted geometry: a fixed column in a row that scrolls. The fourth
+   column being cut in half at 1440 px is a known, accepted consequence and
+   belongs to the cross-cutting interface-scaling thread, not to this sheet. */
+.column {
+  flex: none;
+  width: 19rem;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Won and lost stand on the board — winning a deal is dragging a card — but
+   they are not the funnel. A dashed edge says "archive". */
+.columnQuiet {
+  background: none;
+  border-style: dashed;
+}
+
+.columnStray {
+  border-color: color-mix(in oklab, var(--status-warning) 30%, transparent);
+}
+
+.columnStray .stage {
+  color: var(--status-warning);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.columnHead {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0.625rem 0.375rem;
+}
+
+.stage {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.stageCount {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stageSum {
+  grid-column: 1 / -1;
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.meter {
+  grid-column: 1 / -1;
+  display: block;
+  height: 2px;
+  margin-top: 0.125rem;
+  border-radius: 2px;
+  background: var(--border-default);
+  overflow: hidden;
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text-link);
+}
+
+.strayNote {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  line-height: var(--leading-snug);
+  padding: 0 0.625rem 0.375rem;
+}
+
+.strayNote kbd {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: 0 0.1875rem;
+}
+
+.columnBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-height: 3.5rem;
+  padding: 0 0.375rem 0.375rem;
+}
+
+/* Beside the listbox, never inside it: a `role="listbox"` carrying a child that
+   is not an option reads as a broken tree. */
+.columnEmpty {
+  font-size: var(--text-2xs);
+  color: var(--text-disabled);
+  padding: 0 0.625rem 0.5rem;
+}
+
+/* ── The card ────────────────────────────────────────────────────────── */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem 0.5625rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-content);
+  border: 1px solid var(--border-subtle);
+  cursor: grab;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+}
+
+.cardSelected {
+  background: var(--surface-selected);
+  border-color: var(--border-strong);
+}
+
+.client {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* WRAPS AND CLAMPS, never one ellipsized line. A truncated deal title is
+   indistinguishable from another deal at the same client. */
+.title {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+
+.amount {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* An estimate is lighter and carries `≈`. Shape and glyph, not hue. */
+.amountEstimate {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.amountNone {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-disabled);
+}
+
+.basis {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.375rem;
+  overflow-wrap: anywhere;
+}
+
+.basisOffer {
+  color: var(--text-link);
+  border-color: var(--border-strong);
+  background: var(--surface-selected);
+}
+
+/* THE DASHED EDGE IS THE GRAMMAR: this number stands on an assumption. The word
+   inside the badge says the same thing with no colour at all. */
+.basisDerived {
+  border-style: dashed;
+  border-color: var(--border-default);
+}
+
+.offer {
+  margin-top: 0.4375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.offerWaiting {
+  border-top-color: var(--border-default);
+}
+
+.offerHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: 0.25rem;
+}
+
+.offerState {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+}
+
+.offerVersions {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The sheet reads top to bottom as one chain: cost → price → what is left. The
+   term column is a ratio, not a rem cap, so it grows with the text instead of
+   forcing the card wider than the column. */
+.quote {
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.quoteRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.quoteRow + .quoteRow {
+  margin-top: 0.1875rem;
+}
+
+.quoteTerm {
+  color: var(--text-disabled);
+}
+
+.quoteValue {
+  color: var(--text-tertiary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.quoteAmount b {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: var(--text-xs);
+}
+
+.quoteValue .basis,
+.quoteValue .percent,
+.quoteValue .assumed {
+  margin-left: 0.3125rem;
+}
+
+.percent {
+  color: var(--text-quaternary);
+}
+
+/* "What is left" under a derived price wears the same dashed edge as the price
+   it came from, because it is the same class of number. */
+.assumed {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-disabled);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.375rem;
+  overflow-wrap: anywhere;
+}
+
+/* The rate stands beside the number it produced: a conversion whose rate is two
+   moves away is a number nobody can check. */
+.quoteNote {
+  display: block;
+  color: var(--text-disabled);
+  overflow-wrap: anywhere;
+}
+
+.waiting {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  color: var(--status-warning);
+  border: 1px dashed color-mix(in oklab, var(--status-warning) 34%, transparent);
+  background: var(--status-warning-bg);
+  border-radius: var(--radius-xs);
+  padding: 0.25rem 0.375rem;
+  overflow-wrap: anywhere;
+}
+
+.next {
+  margin-top: 0.4375rem;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  color: var(--text-tertiary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.4375rem;
+}
+
+.age {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.375rem;
+}
+
+.ageStale {
+  color: var(--status-warning);
+  border-color: color-mix(in oklab, var(--status-warning) 40%, transparent);
+}
+
+.avatar {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+/* ── Degradation ─────────────────────────────────────────────────────── */
+
+.emptyState {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.emptyState h2 {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.emptyState p {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+}

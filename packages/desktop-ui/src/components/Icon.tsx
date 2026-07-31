@@ -17,6 +17,7 @@ export type IconName =
   | "meetings"
   | "relationships"
   | "people"
+  | "pipeline"
   | "settings";
 
 export const Icon = ({ name }: { readonly name: IconName }) => {
@@ -48,6 +49,10 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     people: (
       <path d="M9 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M16 7.5a2.5 2.5 0 1 1 0 5M17 15c2.5.6 4 2.4 4 5" />
     ),
+    // Trzy kolumny malejącej wysokości: tablica, po której sprawa schodzi
+    // w dół lejka. Nie może nosić znaku „relationships" ani „people" — wszystkie
+    // trzy stoją w tej samej grupie nawigacji.
+    pipeline: <path d="M4 5h4v14H4zM10 5h4v10h-4zM16 5h4v6h-4z" />,
     settings: (
       <path d="M4 7h7M17 7h3M4 17h2M12 17h8M16 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM11 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
     ),

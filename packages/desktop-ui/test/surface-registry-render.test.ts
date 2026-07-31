@@ -211,7 +211,7 @@ test("every destination in the registry renders a surface in the shell work plan
   // gorącą. Liczba jest tu po to, żeby taka zmiana była widoczna.
   assert.equal(
     lazyDestinations.size,
-    8,
+    9,
     "Zmienił się podział na powierzchnie leniwe i ładowane od razu — potwierdź to świadomie i zaktualizuj też budżet ścieżki gorącej.",
   );
 });

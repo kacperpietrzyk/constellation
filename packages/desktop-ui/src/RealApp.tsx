@@ -43,6 +43,7 @@ import {
   OnboardingFlow,
   OrganizationContextLoader,
   PeopleSurface,
+  PipelineSurface,
   preloadSurface,
   SettingsSurface,
   StrategicDepthSurface,
@@ -762,11 +763,16 @@ export const RealApp = ({
       setDocumentInspectorOpen(false);
       setDocumentInspectorKind("document");
     }
-    // Two destinations draw strategic records now, so leaving one for the
-    // other must not drop the selection. Without `people` here, the search
-    // routing above sets a person and this effect wipes it on arrival — the
-    // record is lost one layer further up than trap 24, and just as quietly.
-    if (surface !== "organizations" && surface !== "people")
+    // Three destinations draw strategic records now, so leaving one for
+    // another must not drop the selection. Without each of them here, the
+    // search routing above sets a record and this effect wipes it on arrival —
+    // the record is lost one layer further up than trap 24, and just as
+    // quietly.
+    if (
+      surface !== "organizations" &&
+      surface !== "people" &&
+      surface !== "pipeline"
+    )
       setSelectedStrategicId(undefined);
     if (surface !== "history") setSelectedCaptureId(undefined);
     if (surface !== "inbox") setSelectedAttentionId(undefined);
@@ -2168,6 +2174,40 @@ export const RealApp = ({
               }}
             />
           )}
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    pipeline: () => (
+      <LazySurfaceBoundary label="Pipeline">
+        <Suspense fallback={<SurfaceLoadingState label="Pipeline" />}>
+          <PipelineSurface
+            client={client}
+            snapshot={state.snapshot}
+            selectedRecordId={selectedStrategicId}
+            // THE OPPORTUNITY RECORD IS A CONTEXT ON THIS SURFACE, exactly as
+            // the task record is a context on `tasks`. Neither half is handed
+            // in yet: no `ShellContext` carries an opportunity id, so nothing
+            // can ask for a record, and the screen that would draw one lands
+            // with the record lot as a commit after this PR. The slot is here
+            // and asserted so that lot has a seam to land on rather than a
+            // surface to rewrite.
+            onSelectRecord={selectStrategicInInspector}
+            onOpenOpportunity={(id) => {
+              // Until the record context exists, opening a deal means holding
+              // it — the board with THAT deal in hand. Navigating away and
+              // selecting nothing is the exact downgrade trap 24 describes.
+              openContext(destinationContext("pipeline", "Pipeline"));
+              selectStrategicInInspector(id);
+            }}
+            onOpenOrganization={(id, name) =>
+              openContext(organizationContext(id, name))
+            }
+            onNavigate={(next, label) =>
+              openContext(destinationContext(next, label))
+            }
+            onReload={reload}
+            onFailure={showFailure}
+          />
         </Suspense>
       </LazySurfaceBoundary>
     ),
@@ -4881,6 +4921,17 @@ export const RealApp = ({
                 );
                 selectStrategicInInspector(recordId);
               }
+            } else if (nextSurface === "pipeline") {
+              // Both halves of the repoint, in one place, the way the `people`
+              // branch below does it. `opportunity` and `offer` now point at
+              // the board rather than at the collection, and opening the
+              // destination without selecting the record would turn "open this
+              // deal" into "open the Pipeline screen" — silently, through the
+              // generic `else`. An offer selects THE OFFER: the board reads the
+              // offer sheet from the deal that owns it, and the inspector is
+              // what shows the record the search actually found.
+              openContext(destinationContext("pipeline", "Pipeline"));
+              selectStrategicInInspector(recordId);
             } else if (nextSurface === "people") {
               // Both halves of the repoint, in one place. Opening the
               // destination and stopping would turn "open this person" into

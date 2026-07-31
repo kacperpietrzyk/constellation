@@ -8,7 +8,7 @@
 // „Relationships" opisywało model danych, a nie robotę, więc jest teraz „CRM",
 // a „Work" nazywa się „Work Management", bo leżą tam też zadania bez projektu.
 //
-// CZEGO TU JESZCZE NIE MA, świadomie: `pipeline` i `renewals`.
+// CZEGO TU JESZCZE NIE MA, świadomie: `renewals`.
 // Każde z nich wchodzi razem ze swoim ekranem, w swojej fali — cel w nawigacji,
 // który prowadzi donikąd, jest gablotą, a nie zapowiedzią.
 //
@@ -72,6 +72,17 @@ export const desktopSurfaceRegistry = [
     group: "Work Management",
     shortcut: 5,
     loading: "eager",
+  },
+  {
+    // Lejek jako tablica. Cyfra 6 była zarezerwowana od przebudowy nawigacji
+    // i nic się przez nią nie przenumerowuje — wpis wchodzi razem ze swoim
+    // ekranem, bo cel prowadzący donikąd jest gablotą.
+    id: "pipeline",
+    label: "Pipeline",
+    icon: "pipeline",
+    group: "CRM",
+    shortcut: 6,
+    loading: "lazy",
   },
   {
     id: "organizations",
