@@ -5,44 +5,43 @@
 // field — that is what lets the whole module be asserted without a render. This
 // file is the other half: the single adapter from `workspace.bootstrapContext`
 // to the settings object those functions want. Pipeline, Renewals and the
-// opportunity record all need the same three values, and three screens each
-// reaching into the projection for them is the `restated-shape-drift` defect
-// class this repository has already paid for.
+// opportunity record all need the same values, and three screens each reaching
+// into the projection for them is the `restated-shape-drift` defect class this
+// repository has already paid for.
+//
+// EVERY VALUE HERE IS READ, AND NOTHING IS DEFAULTED. `CommercialDefaults` is
+// required on the projection and carries the EFFECTIVE values, never the stored
+// optionals (`commercial-defaults.ts:107-112`). A fallback in this file would be
+// a second copy of a default that already exists in one place, and the second
+// copy is the one that goes stale the day Settings moves.
+//
+// IN PARTICULAR, `homeCurrency` IS NEVER DERIVED FROM AN OFFER'S OWN `rate.to`.
+// That reads like a harmless default and it disables the guard that matters
+// most: `costInHome` refuses a rate whose `to` is not the home currency, and a
+// home currency taken FROM that rate makes the refusal unreachable by
+// construction. The failure it prevents has no visible symptom — converting a
+// dollar cost at the euro rate yields a plausible zloty amount, not an error —
+// so nothing downstream would ever notice.
 
-import type { Currency, MoneySettings } from "./money.js";
+import type { MoneySettings } from "./money.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
-
-/**
- * THE ONE GAP IN THIS FILE, and the only place in the renderer that carries it.
- *
- * Brief §2.3 decided that the workspace stores a home currency and an
- * allowed-currency list; the shipping of it was deferred to a small follow-on
- * backend PR — `Workspace.homeCurrency` + `CommercialDefaultsProjection` + two
- * more optional keys on `workspace.setCommercialDefaults` — which is not in
- * `main` yet. `CommercialDefaults` today is `{stages, markupPct, upliftPct}`
- * exactly.
- *
- * So the value is PINNED here, once, behind this comment. When the projection
- * grows the field, this constant dies and the line below it reads
- * `workspace.commercialDefaults.homeCurrency` — a one-line change inside this
- * function and nothing else in the renderer moves.
- *
- * WHAT THIS MUST NEVER BECOME is a per-offer fallback derived from the offer's
- * own `rate.to`. That reads like a harmless default and it disables the guard
- * that matters most: `costInHome` refuses a rate whose `to` is not the home
- * currency, and a home currency taken FROM that rate makes the refusal
- * unreachable by construction. The failure it prevents has no visible symptom —
- * converting a dollar cost at the euro rate yields a plausible zloty amount, not
- * an error — so nothing downstream would ever notice. One pinned value in one
- * function is wrong in a way a reader can see; a derived one is wrong in a way
- * nobody can.
- */
-const PINNED_HOME_CURRENCY: Currency = "PLN";
+import type { Currency } from "./money.js";
 
 /** What every CRM screen needs before it can print a number. */
 export interface CrmMoneySettings extends MoneySettings {
   /** How much a contract is projected to grow on renewal. Renewals reads it. */
   readonly upliftPct: number;
+  /**
+   * Which currencies this workspace records money in — what a picker offers,
+   * not what exists.
+   *
+   * NOTHING GUARANTEES `homeCurrency` IS A MEMBER OF THIS LIST. That is a named
+   * gap the settings PR reported rather than papered over, so a caller that
+   * needs the home currency to be offerable has to say so itself. `costInHome`
+   * is unaffected either way: it compares against `homeCurrency` directly and
+   * never consults this list.
+   */
+  readonly currencies: readonly Currency[];
 }
 
 export const readMoneySettings = (
@@ -50,11 +49,9 @@ export const readMoneySettings = (
 ): CrmMoneySettings => {
   const defaults = snapshot.bootstrap.workspace.commercialDefaults;
   return {
-    homeCurrency: PINNED_HOME_CURRENCY,
-    // Both of these ARE in the projection and are the effective values, never
-    // a stored optional — so no screen ever carries a second copy of the
-    // default and no screen can disagree with Settings.
+    homeCurrency: defaults.homeCurrency,
     markupPct: defaults.markupPct,
     upliftPct: defaults.upliftPct,
+    currencies: defaults.currencies,
   };
 };

@@ -146,7 +146,6 @@ const OfferSheet = ({
 }) => {
   const reading = card.offer;
   if (reading === undefined) return null;
-  const settings = { homeCurrency, markupPct, upliftPct: 0 };
   const head = (
     <div className={styles.offerHead}>
       <span className={styles.offerState}>
@@ -181,7 +180,7 @@ const OfferSheet = ({
       {head}
       <dl className={styles.quote}>
         <QuoteRow
-          note={conversionNote(reading, settings, timeZone)}
+          note={conversionNote(reading, { homeCurrency }, timeZone)}
           term="cost"
         >
           {cost === undefined ? (
@@ -505,7 +504,12 @@ export const PipelineSurface = ({
   const [draftNeed, setDraftNeed] = useState("");
   const [draftNextAction, setDraftNextAction] = useState("");
   const [draftEstimate, setDraftEstimate] = useState("");
-  const [draftCurrency, setDraftCurrency] = useState<Currency>("PLN");
+  // Undefined until somebody picks one: the default depends on the workspace,
+  // and reading a workspace value into `useState` would freeze it at whatever
+  // the first render happened to see.
+  const [draftCurrency, setDraftCurrency] = useState<Currency | undefined>(
+    undefined,
+  );
   const [priceDraft, setPriceDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [movePending, setMovePending] = useState(false);
@@ -522,6 +526,17 @@ export const PipelineSurface = ({
   const settings = readMoneySettings(snapshot);
   const stages: readonly PipelineStage[] =
     snapshot.bootstrap.workspace.commercialDefaults.stages;
+  // What the estimate picker offers, and which of them it starts on. NOTHING
+  // GUARANTEES the home currency is a member of the workspace's own list — the
+  // settings PR reported that gap rather than papering over it — so the picker
+  // starts on the home currency only when it is actually offered, and otherwise
+  // on the first currency that is. Selecting a value the list does not carry
+  // would leave the control blank and send an estimate in a currency nobody
+  // chose.
+  const offeredCurrencies = settings.currencies;
+  const preferredCurrency = offeredCurrencies.includes(settings.homeCurrency)
+    ? settings.homeCurrency
+    : offeredCurrencies[0];
   const relationships = readSlice(snapshot.relationships);
 
   const index = useMemo(
@@ -594,7 +609,10 @@ export const PipelineSurface = ({
     const estimate: Money | undefined =
       draftEstimate.trim() === "" || estimateMinor === undefined
         ? undefined
-        : { amountMinor: estimateMinor, currency: draftCurrency };
+        : {
+            amountMinor: estimateMinor,
+            currency: draftCurrency ?? preferredCurrency!,
+          };
     setBusy(true);
     void createOpportunity(client, snapshot, {
       organizationId: draftOrganizationId as StrategicRecordId,
@@ -777,11 +795,16 @@ export const PipelineSurface = ({
               onChange={(event) =>
                 setDraftCurrency(event.target.value as Currency)
               }
-              value={draftCurrency}
+              value={draftCurrency ?? preferredCurrency}
             >
-              <option value="PLN">PLN</option>
-              <option value="EUR">EUR</option>
-              <option value="USD">USD</option>
+              {/* The workspace's own list, never a third copy of the currency
+                  union written out by hand. `money.ts` defines the vocabulary,
+                  the workspace says which of it a picker offers. */}
+              {offeredCurrencies.map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
             </select>
           </label>
           <button

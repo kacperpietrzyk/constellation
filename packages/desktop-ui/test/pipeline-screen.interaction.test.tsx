@@ -12,6 +12,7 @@ import type { ScenarioFixtures } from "../src/client/scenario-client.js";
 
 import {
   offerDeliverableDocumentId,
+  populatedBootstrap,
   populatedRelationshipWorkspace,
   populatedShellQueries,
   principalId,
@@ -772,6 +773,73 @@ test("confirming a price stores it, and going back to the derived one CLEARS it"
     cleared.payload["price"],
     { basis: "derived" },
     "un-confirming did not send the derived basis, so the stored amount would survive behind a card reading as derived",
+  );
+});
+
+test("the money the screen prints comes from the WORKSPACE, not from a constant in the screen", async () => {
+  // A workspace that sums into euro and offers only two currencies. Nothing on
+  // this board may disagree with it: the home currency decides what a cost is
+  // converted INTO, and the list decides what a picker may offer. Both were
+  // pinned in the renderer until the settings landed, and a pin that survives
+  // its own removal is invisible to every other assertion here — every card
+  // still renders, every sum still adds, and the numbers are simply for the
+  // wrong currency.
+  const euroWorkspace = {
+    ...populatedBootstrap,
+    workspace: {
+      ...populatedBootstrap.workspace,
+      commercialDefaults: {
+        ...populatedBootstrap.workspace.commercialDefaults,
+        homeCurrency: "EUR" as const,
+        currencies: ["EUR", "USD"] as const,
+      },
+    },
+  };
+  await openBoard({
+    ...queries,
+    "workspace.bootstrapContext": projectionResponse(euroWorkspace),
+  });
+
+  // The confirmed offer's cost is EUR 34 500 and its stored rate converts
+  // EUR→PLN. Against a EUR home currency the cost needs no conversion at all,
+  // so the sheet prints it flat — and the rate that no longer applies is not
+  // used to produce a plausible number in the wrong currency.
+  const card = cardFor(confirmedDealId);
+  assert.match(
+    card.textContent ?? "",
+    /34,500 EUR/u,
+    "the cost is not printed in its own currency against a matching home currency",
+  );
+  assert.doesNotMatch(
+    card.textContent ?? "",
+    /148,695 PLN/u,
+    "the board converted a cost into a currency this workspace does not sum into — the home currency is still pinned in the renderer",
+  );
+
+  // And the estimate picker offers the workspace's own list, not a third copy
+  // of the currency union written out by hand in the screen.
+  await act(async () => {
+    [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => /new opportunity/iu.test(button.textContent ?? ""))
+      ?.click();
+  });
+  const picker = [
+    ...container.querySelectorAll<HTMLSelectElement>(
+      "[data-pipeline-surface] select",
+    ),
+  ].find((select) =>
+    [...select.options].some((option) => option.value === "EUR"),
+  );
+  assert.ok(picker, "the create form offers no currency at all");
+  assert.deepEqual(
+    [...picker.options].map((option) => option.value),
+    ["EUR", "USD"],
+    "the currency picker offers a hand-written list instead of the currencies this workspace records money in",
+  );
+  assert.equal(
+    picker.value,
+    "EUR",
+    "the picker does not start on the currency this workspace sums into",
   );
 });
 

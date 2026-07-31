@@ -197,7 +197,11 @@ export const readOffer = (
  */
 export const conversionNote = (
   reading: OfferReading,
-  settings: CrmMoneySettings,
+  // Only the home currency, because that is all this sentence names. Asking for
+  // the whole settings object would make every caller fabricate the parts it
+  // does not have, and a fabricated `upliftPct: 0` beside a real markup is the
+  // kind of filler that later reads as a fact.
+  settings: Pick<CrmMoneySettings, "homeCurrency">,
   timeZone: string | undefined,
 ): string | undefined => {
   const cost = reading.offer.cost;
