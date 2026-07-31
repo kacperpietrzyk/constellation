@@ -408,6 +408,35 @@ const text = (selector: string): string => {
   return node.textContent ?? "";
 };
 
+/**
+ * Type into a controlled field the way a person does.
+ *
+ * Assigning `node.value` directly does NOT reach React: React installs its own
+ * value tracker on the prototype descriptor and treats an unchanged tracked
+ * value as "no change", so the synthetic `input` event is dropped and the
+ * component's state never moves. The write then lands carrying whatever the
+ * draft held before — an empty string.
+ *
+ * This is not a hypothetical. The qualification write assertion below was
+ * GREEN while sending an empty body, because it checked the payload's KEY SET
+ * and a key holding "" is still a key. The estimate assertion is what caught
+ * it, by asserting the value rather than the shape. Both now go through here,
+ * and both assert what was actually sent.
+ */
+const typeInto = (
+  node: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+): void => {
+  const prototype =
+    node instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  assert.ok(setter, "no native value setter to bypass React's tracker with");
+  setter.call(node, value);
+  node.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
 const offerArticles = (): HTMLElement[] => [
   ...container.querySelectorAll<HTMLElement>("[data-offer]"),
 ];
@@ -446,6 +475,43 @@ test("a next action at the kernel's 1 000-character ceiling is readable in full 
   );
   assert.ok(body, "the next action is not on the record");
   assert.equal(body.textContent, LONG_NEXT_ACTION);
+});
+
+test("the value on the record says whether it came from an offer or from an estimate", async () => {
+  // The FIRST number a reader sees. A confirmed offer amount and somebody's
+  // guess are not the same claim, and printed bare they are the same string —
+  // an assumption rendered like a fact, which is the defect the offer sheet
+  // below spends four channels avoiding. Two channels here too: the word, and
+  // the `≈` that only an estimate carries.
+  //
+  // The seeded deal has an ACCEPTED offer with a confirmed price, so the answer
+  // is the offer's number and must say so.
+  await openRecord();
+  const block = container.querySelector<HTMLElement>(
+    "[data-opportunity-value]",
+  );
+  assert.ok(block, "the record shows no value at all");
+  assert.equal(block.dataset.valueBasis, "offer");
+  assert.match(block.textContent ?? "", /186,000 PLN from an offer/u);
+  assert.ok(
+    !(block.textContent ?? "").includes("≈"),
+    "a number taken from a confirmed offer must not be marked approximate",
+  );
+});
+
+test("a deal with no offer says so as an ESTIMATE rather than as an unlabelled number", async () => {
+  // `unstampedDeal` carries no offer at all. Without the basis on the block,
+  // this case and the one above render the same shape — which is the point.
+  await openRecord({ dealId: unstampedDealId });
+  const block = container.querySelector<HTMLElement>(
+    "[data-opportunity-value]",
+  );
+  assert.ok(block);
+  assert.equal(block.dataset.valueBasis, "estimate");
+  assert.match(
+    block.textContent ?? "",
+    /No value yet — neither an estimate nor a confirmed offer/u,
+  );
 });
 
 // ── Time in a stage is a different number from the deal's age ───────────────
@@ -692,8 +758,7 @@ test("writing the qualification sends only that field, against only this deal", 
     "the editor must open on the text that is stored, not on an empty box",
   );
   await act(async () => {
-    textarea.value = `${QUALIFICATION}\n\nDodatek.`;
-    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    typeInto(textarea, `${QUALIFICATION}\n\nDodatek.`);
   });
   const save = [...container.querySelectorAll("button")].find(
     (node) => (node.textContent ?? "").trim() === "Save",
@@ -706,10 +771,55 @@ test("writing the qualification sends only that field, against only this deal", 
   const envelope = sent[0];
   assert.ok(envelope);
   assert.equal(envelope.commandName, "opportunity.update");
-  assert.deepEqual(
-    Object.keys(envelope.payload as Record<string, unknown>).sort(),
-    ["opportunityId", "qualification"],
+  // The key set AND the value. A key holding an empty string is still a key,
+  // which is how this assertion once shone green over a write that sent
+  // nothing — see `typeInto`.
+  assert.deepEqual(envelope.payload, {
+    opportunityId: opportunityRecordId,
+    qualification: `${QUALIFICATION}\n\nDodatek.`,
+  });
+});
+
+test("the estimate is writable from the record, in minor units, and never as a zero", async () => {
+  // The one money field the DEAL owns, and the only screen that could write it.
+  // A deal with no estimate says nobody has put a number on it — never "0 PLN",
+  // which is a different claim entirely.
+  const { sent } = await openRecord({ dealId: unstampedDealId });
+  assert.match(
+    container.textContent ?? "",
+    /Nobody has put a number on this deal/u,
   );
+  const open = [...container.querySelectorAll("button")].find(
+    (node) => (node.textContent ?? "").trim() === "Estimate it",
+  );
+  assert.ok(open, "the deal's own value cannot be written from its record");
+  await act(async () => {
+    open.click();
+  });
+  const input = container.querySelector<HTMLInputElement>(
+    "#opportunity-estimate",
+  );
+  assert.ok(input);
+  await act(async () => {
+    typeInto(input, "120000");
+  });
+  const save = [...container.querySelectorAll("button")].find(
+    (node) => (node.textContent ?? "").trim() === "Save",
+  );
+  assert.ok(save);
+  await act(async () => {
+    save.click();
+  });
+  assert.equal(sent.length, 1);
+  const envelope = sent[0];
+  assert.ok(envelope);
+  assert.equal(envelope.commandName, "opportunity.update");
+  // MINOR units. A major-unit number here is off by a hundred and looks
+  // entirely plausible on the board, which is why it is asserted exactly.
+  assert.deepEqual(envelope.payload, {
+    opportunityId: unstampedDealId,
+    estimate: { amountMinor: 12_000_000, currency: "PLN" },
+  });
 });
 
 // ── The slices this record cannot fetch ─────────────────────────────────────

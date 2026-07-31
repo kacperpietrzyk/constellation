@@ -17,13 +17,14 @@ import type {
 } from "../client/workflow.js";
 import { updateOffer, updateOpportunity } from "../client/workflow.js";
 import {
+  fmtApprox,
   fmtMoney,
   type Money,
   type MoneySettings,
   type OfferPriceState,
 } from "../crm/money.js";
 import {
-  dealValue,
+  dealValueReading,
   indexRelationships,
   type OfferRecord,
   type OpportunityRecord,
@@ -285,6 +286,8 @@ export const OpportunityRecordScreen = ({
     string | undefined
   >(undefined);
   const [priceDraft, setPriceDraft] = useState("");
+  const [estimating, setEstimating] = useState(false);
+  const [estimateDraft, setEstimateDraft] = useState("");
 
   const select = (tab: RecordTab): void => {
     rememberTab(opportunity.id, tab);
@@ -329,7 +332,7 @@ export const OpportunityRecordScreen = ({
     timeZone,
     todayKey: dateKeyInZone(new Date(), timeZone),
   });
-  const value = dealValue(opportunity, index);
+  const value = dealValueReading(opportunity, index);
 
   // Undefined and empty are DIFFERENT facts. A failed load collapsed into an
   // empty list would put "Comments 0" on the tab beside a panel saying the
@@ -499,10 +502,18 @@ export const OpportunityRecordScreen = ({
           </span>
         </p>
         <p className={styles.figures}>
-          <span data-opportunity-value>
-            {value === null
+          {/* The first number a reader sees, and it SAYS WHICH KIND it is.
+              A confirmed offer amount and somebody's guess print as the same
+              string otherwise — an assumption rendered like a fact, which is
+              this repository's named defect and the thing the offer sheet below
+              spends four channels avoiding. Two channels here as well: the word,
+              and the `≈` that only an estimate carries. */}
+          <span data-opportunity-value data-value-basis={value.basis}>
+            {value.amount === null
               ? "No value yet — neither an estimate nor a confirmed offer"
-              : fmtMoney(value)}
+              : value.basis === "offer"
+                ? `${fmtMoney(value.amount)} from an offer`
+                : `${fmtApprox(value.amount)} estimated`}
           </span>
           <span aria-hidden="true" className={styles.sep}>
             ·
@@ -556,6 +567,90 @@ export const OpportunityRecordScreen = ({
                     </option>
                   ))}
                 </select>
+              </section>
+
+              <section className={styles.railSection}>
+                <h2 className={styles.railHeading}>Estimate</h2>
+                {/* The one money field the DEAL owns, as against the ones its
+                    offers own — and this record is the only screen that could
+                    ever write it: the Pipeline card has no room and no form.
+                    Leaving it readable but unwritable while an offer's price is
+                    both would be lopsided, so it is here.
+
+                    It is what the board falls back to when no offer has a
+                    confirmed price, which is why the block at the top says
+                    WHICH of the two it is showing. */}
+                {estimating ? (
+                  <form
+                    aria-label="Set the estimate"
+                    className={styles.priceForm}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const major = Number(estimateDraft);
+                      if (!Number.isFinite(major) || major < 0) return;
+                      setEstimating(false);
+                      write({
+                        estimate: {
+                          amountMinor: Math.round(major * 100),
+                          currency: HOME_CURRENCY,
+                        } satisfies Money,
+                      });
+                    }}
+                  >
+                    <label htmlFor="opportunity-estimate">
+                      What the deal is worth, {HOME_CURRENCY}
+                    </label>
+                    <input
+                      className={styles.input}
+                      id="opportunity-estimate"
+                      inputMode="decimal"
+                      onChange={(event) => setEstimateDraft(event.target.value)}
+                      type="text"
+                      value={estimateDraft}
+                    />
+                    <button
+                      className={styles.action}
+                      disabled={locked}
+                      type="submit"
+                    >
+                      Save
+                    </button>
+                    <button
+                      className={styles.textAction}
+                      onClick={() => setEstimating(false)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <small className={styles.railNote}>
+                      {/* Never a zero. Nobody having put a number on a deal is
+                          not the same as the deal being worth nothing. */}
+                      {opportunity.estimate === undefined
+                        ? "Nobody has put a number on this deal."
+                        : fmtMoney(opportunity.estimate)}
+                    </small>
+                    <button
+                      className={styles.textAction}
+                      disabled={locked}
+                      onClick={() => {
+                        setEstimateDraft(
+                          opportunity.estimate === undefined
+                            ? ""
+                            : String(opportunity.estimate.amountMinor / 100),
+                        );
+                        setEstimating(true);
+                      }}
+                      type="button"
+                    >
+                      {opportunity.estimate === undefined
+                        ? "Estimate it"
+                        : "Change the estimate"}
+                    </button>
+                  </>
+                )}
               </section>
 
               <section className={styles.railSection}>
@@ -650,7 +745,7 @@ export const OpportunityRecordScreen = ({
             {offers.length === 0 ? (
               <p className={styles.docEmpty}>
                 No offer on this deal yet. Its value is
-                {value === null
+                {value.amount === null
                   ? " not recorded either."
                   : " the estimate above."}
               </p>
