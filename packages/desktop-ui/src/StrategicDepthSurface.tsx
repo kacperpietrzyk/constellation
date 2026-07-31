@@ -517,14 +517,19 @@ export const StrategicDepthSurface = ({
     (record): record is Review => record.kind === "impact_review",
   );
   const supportRecords = [...decisions, ...recurrences];
+  // The rail's own slice, read as a slice. It used to be flattened to `[]` when
+  // the read failed, and the rail then printed "Review complete" over a list
+  // nobody had seen — a green all-clear produced by a failure, which is the one
+  // thing a screen is never allowed to do with an unavailable slice.
+  const radarSlice = readSlice(snapshot.radar);
   const radar = useMemo(
     () =>
-      snapshot.radar.kind === "ready"
-        ? snapshot.radar.data.items.filter(
+      radarSlice.available
+        ? radarSlice.data.items.filter(
             (record): record is Radar => record.kind === "radar_candidate",
           )
         : [],
-    [snapshot.radar],
+    [radarSlice],
   );
   const openConsequences = reviews.flatMap((review) =>
     review.consequences
@@ -1033,12 +1038,26 @@ export const StrategicDepthSurface = ({
               </button>
             </article>
           ))}
-          {radar.length + openConsequences.length === 0 && (
-            <div className="review-complete" role="status">
-              <span aria-hidden="true">✓</span>
-              <strong>Review complete</strong>
-              <p>New items appear only with a new source or context.</p>
+          {!radarSlice.available ? (
+            <div className="review-complete" role="alert">
+              <strong>The review list is unavailable</strong>
+              <p data-radar-unavailable>{radarSlice.message}</p>
+              <button
+                className="secondary-button compact"
+                onClick={() => void onReload()}
+                type="button"
+              >
+                Try again
+              </button>
             </div>
+          ) : (
+            radar.length + openConsequences.length === 0 && (
+              <div className="review-complete" role="status">
+                <span aria-hidden="true">✓</span>
+                <strong>Review complete</strong>
+                <p>New items appear only with a new source or context.</p>
+              </div>
+            )
           )}
           <footer>
             <span>

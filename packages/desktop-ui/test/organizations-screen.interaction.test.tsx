@@ -12,7 +12,13 @@ import {
   ProjectIdSchema,
   StrategicRecordIdSchema,
   TaskIdSchema,
+  type QueryProjection,
 } from "@constellation/contracts";
+
+type Projection<Kind extends QueryProjection["kind"]> = Extract<
+  QueryProjection,
+  { kind: Kind }
+>;
 
 import {
   populatedProjectList,
@@ -65,6 +71,12 @@ const blockedTaskId = TaskIdSchema.parse(
 );
 const watchedProjectId = ProjectIdSchema.parse(
   "00000000-0000-4000-8000-0000000000e6",
+);
+const currentFactId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000e7",
+);
+const staleFactId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000e8",
 );
 
 const strategicRecordBase = {
@@ -178,11 +190,60 @@ const work = {
   ],
 };
 
+/** The organisation record's own read. It is a TARGETED query, not a snapshot
+ *  slice, so the record page renders its unavailable branch without one — and
+ *  every assertion about "What we know" would then pass over a screen that
+ *  never drew a fact. Two facts, and they differ in exactly the thing the
+ *  section now has to carry: one is current, one is not. */
+const overview: Projection<"organization.operationalOverview"> = {
+  kind: "organization.operationalOverview",
+  organization: {
+    id: referencedOrganizationId,
+    spaceId,
+    name: "Northstar Industries",
+    relationshipState: "active",
+    version: 4,
+    updatedAt: "2026-07-20T10:00:00.000Z",
+  },
+  people: [],
+  opportunities: [],
+  offers: [],
+  renewals: [],
+  facts: [
+    {
+      id: currentFactId,
+      factType: "decision_maker",
+      value: "Marta Nowak decyduje o zakresie i o budżecie.",
+      verifiedAt: "2026-07-18T09:00:00.000Z",
+      staleAfter: "2026-10-18T09:00:00.000Z",
+      state: "current",
+      version: 1,
+      updatedAt: "2026-07-18T09:00:00.000Z",
+    },
+    {
+      id: staleFactId,
+      factType: "procurement_path",
+      value: "Zakupy idą przez dział prawny, dwa tygodnie na obieg.",
+      verifiedAt: "2026-02-11T09:00:00.000Z",
+      staleAfter: "2026-05-11T09:00:00.000Z",
+      state: "stale",
+      version: 1,
+      updatedAt: "2026-02-11T09:00:00.000Z",
+    },
+  ],
+  activeProjects: [],
+  openTasks: [],
+  meetings: [],
+  documents: [],
+  recentActivity: [],
+};
+
 const queries = {
   ...populatedShellQueries,
   "relationship.workspace": projectionResponse(relationships),
   "project.list": projectionResponse(projects),
   "work.overview": projectionResponse(work),
+  "organization.operationalOverview": projectionResponse(overview),
 };
 
 let container: HTMLDivElement;
@@ -397,9 +458,12 @@ test("C16 — the filter really removes rows, and there are two ways back out", 
     chip("all").click();
   });
   assert.equal(rows().length, total, "`Show all` did not clear the filter");
+  // Compared as a BOOLEAN, not as the node: `assert.equal(node, null)` hands
+  // vitest a DOM element to serialise for its diff and the worker dies without
+  // reporting anything — so the day this regresses is the day it says nothing.
   assert.equal(
-    container.querySelector('[data-org-filter="all"]'),
-    null,
+    container.querySelector('[data-org-filter="all"]') === null,
+    true,
     "`Show all` is offered when there is nothing to show all of",
   );
 
@@ -1005,5 +1069,99 @@ test("every kind the collection stopped drawing is still reachable through the i
     resolver.includes("snapshot.radar"),
     false,
     "the inspector learned to resolve a radar candidate — the review rail may now be retirable, which is a product decision and not a silent one",
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PART 2 — WHAT THE ORGANISATION RECORD ABSORBED.
+//
+// The retired ledger was called "Renewals and fact freshness", and freshness is
+// the half that had nowhere else to go: the collection no longer draws it, and a
+// fact's verification date is the difference between "stale" and "stale since
+// February". So the record's facts section became "What we know" and carries it.
+//
+// This is asserted on the MOUNTED record, not on the source, for the reason the
+// whole file exists — and it needs the record's own read in the fixtures, or the
+// page lands on its unavailable branch and every assertion below passes over a
+// screen that drew no fact at all.
+
+const openClientRecord = async (): Promise<HTMLElement> => {
+  await openOrganizations();
+  await waitForCondition(() => rows().length > 0, "no client row");
+  const row = rowFor(referencedOrganizationId);
+  await act(async () => {
+    row.click();
+    row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  await waitForCondition(
+    () => container.querySelector("[data-organization-fact]") !== null,
+    "the client record never drew a fact — the overview read did not land, so nothing below measures the section",
+  );
+  const section = container
+    .querySelector("#org-facts-title")
+    ?.closest("section");
+  assert.ok(section, "the facts section has no heading to find it by");
+  return section as HTMLElement;
+};
+
+test("the record's What we know carries each fact's freshness, which the retired ledger used to", async () => {
+  const section = await openClientRecord();
+
+  assert.match(
+    section.querySelector("#org-facts-title")?.textContent ?? "",
+    /What we know/u,
+    "the section the collection handed its facts to is still named after the field rather than after the question",
+  );
+
+  // THE DATE, beside the word for the state. "Stale" on its own does not say
+  // how stale, and a fact nobody has looked at since February is a different
+  // thing from one that went stale yesterday.
+  const stale = section.querySelector<HTMLElement>(
+    `[data-organization-fact="${staleFactId}"]`,
+  );
+  assert.ok(stale, "the stale fact is not on the record");
+  assert.match(
+    stale.textContent ?? "",
+    /verified.*Feb.*2026/su,
+    "a fact states its state but not when it was last checked, which is the half the retired ledger carried",
+  );
+
+  // AND THE COUNT, which is what the ledger's own heading answered: how much of
+  // what we know needs looking at again.
+  const freshness = section.querySelector<HTMLElement>(
+    "[data-organization-fact-freshness]",
+  );
+  assert.ok(freshness, "the section says nothing about how fresh it is");
+  assert.equal(
+    (freshness.textContent ?? "").trim(),
+    "1 of 2 to re-verify",
+    "the freshness count does not separate what is current from what is not",
+  );
+});
+
+test("an unavailable review list says so; it never reports the review complete", async () => {
+  const withoutRadar = { ...queries };
+  delete (withoutRadar as Record<string, unknown>)["radar.review"];
+  await openOrganizations(withoutRadar);
+  await waitForCondition(() => rows().length > 0, "no client row");
+
+  const rail = container
+    .querySelector("#review-title")
+    ?.closest("aside") as HTMLElement | null;
+  assert.ok(rail, "the review rail is not on the screen");
+  // "Review complete" over a list nobody could read is a green all-clear
+  // produced by a failure — the one thing a screen may never do with an
+  // unavailable slice. It used to say exactly that, because the rail flattened
+  // its own slice to an empty array.
+  assert.doesNotMatch(
+    rail.textContent ?? "",
+    /Review complete/u,
+    "the rail reported the review finished over a list it could not read",
+  );
+  const message = rail.querySelector<HTMLElement>("[data-radar-unavailable]");
+  assert.ok(message, "the rail turned an unavailable slice into a clean list");
+  assert.ok(
+    (message.textContent ?? "").trim().length > 20,
+    "the unavailable branch printed no reason",
   );
 });
