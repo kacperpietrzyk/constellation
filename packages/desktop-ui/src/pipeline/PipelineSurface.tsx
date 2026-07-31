@@ -509,6 +509,12 @@ export const PipelineSurface = ({
   const [priceDraft, setPriceDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [movePending, setMovePending] = useState(false);
+  // The deal the keyboard asked to move, as against the one the board has
+  // SELECTED. `M` must not select: selecting a strategic record opens the
+  // shell's context preview, and that panel takes the focus for itself
+  // (`inspector-header`, `tabIndex={-1}`) — so a gesture that selected first
+  // would hand the focus straight back out of the controls it just opened.
+  const [moveFor, setMoveFor] = useState<string | undefined>(undefined);
   const dragged = useRef<string | undefined>(undefined);
   const moveRef = useRef<HTMLButtonElement | null>(null);
 
@@ -540,8 +546,11 @@ export const PipelineSurface = ({
   }, [cards]);
 
   const selected = cards.find(
-    (card) => card.opportunity.id === selectedRecordId,
+    (card) => card.opportunity.id === (moveFor ?? selectedRecordId),
   );
+  const firstMoveTargetId = stages.find(
+    (stage) => stage.id !== selected?.opportunity.stage,
+  )?.id;
 
   const move = (card: PipelineCard, stageId: string) => {
     if (client === undefined || card.opportunity.stage === stageId) return;
@@ -577,7 +586,7 @@ export const PipelineSurface = ({
     if (!movePending) return;
     moveRef.current?.focus();
     setMovePending(false);
-  }, [movePending, selectedRecordId]);
+  }, [movePending, moveFor]);
 
   const submitDeal = () => {
     if (client === undefined || draftTitle.trim() === "") return;
@@ -817,11 +826,24 @@ export const PipelineSurface = ({
       {selected !== undefined && (
         // OUTSIDE the board. Every control the deal needs, in one place, so the
         // listbox holds nothing but options and the board keeps its single Tab
-        // stop.
+        // stop. `M` lands the focus on the first stage the deal is not already
+        // standing on, which is the first control it can actually press.
         <section
           aria-label={`Selected deal: ${selected.opportunity.title}`}
           className={styles.dealPanel}
           data-pipeline-deal-panel={selected.opportunity.id}
+          onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
+            // A control you cannot get out of is worse than no control. Escape
+            // closes the move panel and returns the focus to the card it was
+            // opened from, rather than dropping it at the top of the document.
+            if (event.key !== "Escape" || moveFor === undefined) return;
+            event.preventDefault();
+            const card = document.querySelector<HTMLElement>(
+              `[data-pipeline-card="${moveFor}"]`,
+            );
+            setMoveFor(undefined);
+            card?.focus();
+          }}
         >
           <div className={styles.dealPanelHead}>
             <span className={styles.dealPanelTitle}>
@@ -844,7 +866,7 @@ export const PipelineSurface = ({
             className={styles.moveGroup}
             role="group"
           >
-            {stages.map((stage, position) => (
+            {stages.map((stage) => (
               <button
                 aria-current={selected.opportunity.stage === stage.id}
                 className={styles.moveButton}
@@ -852,7 +874,12 @@ export const PipelineSurface = ({
                 disabled={busy || selected.opportunity.stage === stage.id}
                 key={stage.id}
                 onClick={() => move(selected, stage.id)}
-                ref={position === 0 ? moveRef : undefined}
+                // The first stage the deal is not already standing on. Focusing
+                // by position would land on a DISABLED button whenever the deal
+                // stands on the first stage, and `.focus()` on a disabled
+                // control is a silent no-op — which would make `M` do nothing
+                // for exactly the deals the funnel starts with.
+                ref={stage.id === firstMoveTargetId ? moveRef : undefined}
                 type="button"
               >
                 {stage.label}
@@ -936,7 +963,7 @@ export const PipelineSurface = ({
                 if (card !== undefined) move(card, stageId);
               }}
               onMoveRequest={(card) => {
-                onSelectRecord(card.opportunity.id);
+                setMoveFor(card.opportunity.id);
                 setMovePending(true);
               }}
               onOpen={openDeal}

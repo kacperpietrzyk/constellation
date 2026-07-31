@@ -7,10 +7,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test } from "vitest";
 
-import {
-  DocumentIdSchema,
-  StrategicRecordIdSchema,
-} from "@constellation/contracts";
+import { StrategicRecordIdSchema } from "@constellation/contracts";
 import type { ScenarioFixtures } from "../src/client/scenario-client.js";
 
 import {
@@ -61,9 +58,6 @@ const wrongPairOfferId = id("e7");
 const waitingDealId = id("e8");
 const waitingOfferId = id("e9");
 const strayDealId = id("ea");
-const strayOfferlessDocumentId = DocumentIdSchema.parse(
-  "00000000-0000-4000-8000-0000000000eb",
-);
 const euroDealId = id("ec");
 
 /** A stage id no default funnel configures, and it says so in its own name. The
@@ -659,6 +653,66 @@ test("moving a deal issues opportunity.update with the stage, from the keyboard 
   assert.equal(dragMoved.payload["stage"], "proposal");
 });
 
+test("M lands the focus on a control that can be pressed, even for a deal on the first stage", async () => {
+  // The seed with the euro deal is the one that puts a deal on `qualification`,
+  // the FIRST configured stage. Focusing the move group by position would land
+  // on that stage's own button, which is disabled — and `.focus()` on a disabled
+  // control is a silent no-op, so `M` would do nothing for exactly the deals the
+  // funnel starts with while the stray column goes on advertising the gesture.
+  await openBoard({
+    ...queries,
+    "relationship.workspace": projectionResponse(twoCurrencyRelationships),
+  });
+
+  const card = cardFor(euroDealId);
+  await act(async () => {
+    card.focus();
+    card.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "m", bubbles: true }),
+    );
+  });
+  const focused = document.activeElement as HTMLButtonElement | null;
+  assert.equal(
+    focused?.dataset.pipelineMove !== undefined,
+    true,
+    "M on a deal standing on the first configured stage moved the focus nowhere",
+  );
+  assert.equal(
+    focused?.disabled,
+    false,
+    "M focused a disabled stage button — the deal already stands on that stage, so the keyboard gesture does nothing at all",
+  );
+  assert.notEqual(
+    focused?.dataset.pipelineMove,
+    "qualification",
+    "the focused stage is the one the deal already stands on",
+  );
+
+  // AND THERE IS A WAY BACK OUT. A control you cannot leave is worse than no
+  // control, and the focus must land on the card it came from rather than at the
+  // top of the document.
+  await act(async () => {
+    focused?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+  });
+  // Compared as a BOOLEAN, not as the node. `assert.equal(node, null)` hands
+  // vitest a DOM element to serialise for its diff and the worker dies without
+  // reporting anything — the break-test for this very assertion produced
+  // "7 passed (15)" and an unhandled worker error instead of a failure.
+  assert.equal(
+    container.querySelector(`[data-pipeline-deal-panel="${euroDealId}"]`) ===
+      null,
+    true,
+    "Escape does not close the move panel",
+  );
+  assert.equal(
+    (document.activeElement as HTMLElement | null)?.dataset.pipelineCard,
+    euroDealId,
+    "leaving the move panel dropped the focus somewhere other than the card it was opened from",
+  );
+});
+
 test("confirming a price stores it, and going back to the derived one CLEARS it", async () => {
   await openBoard();
 
@@ -936,7 +990,3 @@ test("the Pipeline sheet keeps the declarations that hold a scrolling board insi
     "the offer sheet's term column is capped in rem again — a rem track doubles with the text while the card it lives in does not",
   );
 });
-
-// Referenced so the unused-id lint cannot claim these are dead weight; both are
-// records the board must be able to hold even though no assertion names them.
-void strayOfferlessDocumentId;
