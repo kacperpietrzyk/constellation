@@ -10,12 +10,21 @@ export type SurfaceDensity = "comfortable" | "compact";
  * nothing is logged — so the read below falls back to the retired key once and
  * the next write carries the preference forward under the new one.
  */
-export type DensitySurface = "tasks";
+export type DensitySurface = "tasks" | "pipeline" | "organizations";
 
 /** Where a density stored by 0.1.x still sits. Read from, never written to; it
- *  is emptied of meaning by the first write under the new key. */
-const retiredDensityKeys: Readonly<Record<DensitySurface, string>> = {
+ *  is emptied of meaning by the first write under the new key.
+ *
+ *  `null` is the honest entry for a surface that has no predecessor: nothing
+ *  was ever stored under any name for it. Pointing such a surface at an
+ *  invented key, or at its own current one, would look like a migration and
+ *  read nothing — which is the silent half of this trap wearing the costume of
+ *  the fix. The loud half survives either way: the record is total over
+ *  `DensitySurface`, so a new member without an entry fails to compile. */
+const retiredDensityKeys: Readonly<Record<DensitySurface, string | null>> = {
   tasks: "constellation.surface-density.work",
+  pipeline: null,
+  organizations: null,
 };
 
 interface DensityStorage {
@@ -42,12 +51,15 @@ export const readSurfaceDensity = (
   storage: DensityStorage | undefined = browserStorage(),
 ): SurfaceDensity => {
   try {
-    const stored = storage?.getItem(surfaceDensityStorageKey(surface));
     // Absent under the current key is where a preference stored before the
     // surface was renamed lives. `null` and a stored "comfortable" are the same
-    // answer here, so falling through on null costs nothing.
+    // answer here, so falling through on null costs nothing. A surface with no
+    // predecessor key falls through to nothing on purpose: it must not inherit
+    // another surface's stored choice.
+    const retired = retiredDensityKeys[surface];
     return parseSurfaceDensity(
-      stored ?? storage?.getItem(retiredDensityKeys[surface]),
+      storage?.getItem(surfaceDensityStorageKey(surface)) ??
+        (retired === null ? null : storage?.getItem(retired)),
     );
   } catch {
     return "comfortable";

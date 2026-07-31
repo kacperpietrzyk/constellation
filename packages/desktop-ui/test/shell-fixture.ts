@@ -4,6 +4,7 @@ import {
   AttentionSignalIdSchema,
   CaptureIdSchema,
   DEFAULT_WORKING_DAY,
+  DocumentIdSchema,
   FieldDefinitionIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
@@ -150,6 +151,21 @@ export const opportunityRecordId = StrategicRecordIdSchema.parse(
 );
 export const initiativeRecordId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-000000000024",
+);
+/** Oferta na szansie z tego fixture'u — bez niej arkusz oferty na Lejku nie
+ *  ma się z czego wziąć i cały ekran jest dla zestawu niewidoczny. */
+export const offerRecordId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000025",
+);
+/** Odnowienie — dokładnie z tego samego powodu, tylko dla całych Odnowień. */
+export const renewalRecordId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000026",
+);
+/** `deliverableDocumentId` jest w ramieniu oferty OBOWIĄZKOWY, a ten fixture
+ *  nie ma projekcji wiedzy — więc ten identyfikator celowo NIE rozwiązuje się
+ *  do dokumentu. Arkusz oferty ma to znieść, a nie założyć, że dokument jest. */
+export const offerDeliverableDocumentId = DocumentIdSchema.parse(
+  "00000000-0000-4000-8000-000000000027",
 );
 
 export const projectId = ProjectIdSchema.parse(
@@ -303,9 +319,53 @@ export const populatedRelationshipWorkspace: Projection<"relationship.workspace"
         stage: "qualified",
         nextAction: "Wyślij zakres warsztatu do akceptacji.",
         evidenceSourceIds: [],
-        offerIds: [],
+        offerIds: [offerRecordId],
         projectIds: [projectId],
         state: "open",
+      },
+      // Oferta i odnowienie: do 0.1.x tego zestawu nie było ani jednego z nich,
+      // więc arkusz oferty na Lejku i CAŁY ekran Odnowień były dla zestawu
+      // niewidoczne — a zdolność, której fixture nie pokazuje, jest nie do
+      // odróżnienia od niezbudowanej.
+      //
+      // PIENIĄDZ TU JESZCZE NIE STOI. Ramiona `offer` i `renewal` są `.strict()`
+      // i do B4 nie mają ani kosztu, ani kursu, ani ceny, ani wartości — pole
+      // dopisane tutaj wcześniej nie przeszłoby ani typechecku, ani parsowania.
+      // Kwoty dokłada tu B4 (lot A), nie ten PR.
+      {
+        ...strategicRecordBase,
+        id: offerRecordId,
+        kind: "offer",
+        title: "Wariant z dyżurem nocnym",
+        opportunityId: opportunityRecordId,
+        deliverableDocumentId: offerDeliverableDocumentId,
+        ownerPrincipalId: principalId,
+        state: "submitted",
+        nextAction: "Potwierdź termin ważności wyceny u dystrybucji.",
+      },
+      {
+        ...strategicRecordBase,
+        id: renewalRecordId,
+        kind: "renewal",
+        organizationId: referencedOrganizationId,
+        title: "Wsparcie i utrzymanie platformy",
+        scope: "Wsparcie 24/7, dwa środowiska, do 40 zgłoszeń miesięcznie",
+        // Data STAŁA, a zegar liczy się od dnia uruchomienia zestawu. Przy
+        // 90 dniach wyprzedzenia i wygaśnięciu 30 września okno wyprzedzenia
+        // otworzyło się 2 lipca 2026 — czyli od tamtej pory ten rekord stoi
+        // w sekcji „Time to start" i już z niej nie wyjdzie, bo czas idzie
+        // tylko w jedną stronę. To JEDYNA stabilna strona tego przejścia:
+        // rekord „przed wyprzedzeniem" wpadłby do drugiej sekcji w dniu, w
+        // którym nikt już nie patrzy, i test padłby bez zmiany kodu.
+        expiresAt: "2026-09-30T21:59:59.000Z",
+        leadTimeDays: 90,
+        ownerPrincipalId: principalId,
+        evidenceSourceIds: [],
+        // Zadanie, które w tym zestawie ISTNIEJE — inaczej „follow-up" jest
+        // identyfikatorem donikąd i wiersz nie ma czego pokazać.
+        followUpTaskId: waitingTaskId,
+        cycleKey: "northstar-support-2026",
+        state: "watching",
       },
       {
         ...strategicRecordBase,

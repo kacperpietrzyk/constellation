@@ -92,3 +92,52 @@ test("a density stored before the surface was renamed is read forward, not reset
     "comfortable",
   ]);
 });
+
+test("a surface with no predecessor never inherits another surface's stored choice", () => {
+  // Widening `DensitySurface` is the loud half of this trap and the compiler
+  // catches it: `retiredDensityKeys` is total over the union. The silent half
+  // is a correct-looking entry pointing somewhere it must not point — and the
+  // discriminating case is not "a new surface reads comfortable", which is
+  // true whatever the entry says. It is this: the retired key from the WORK
+  // rename holds "compact", and Pipeline must not pick it up. Pipeline never
+  // existed under any earlier name, so there is nothing of its own to carry
+  // forward.
+  const legacy = new Map([["constellation.surface-density.work", "compact"]]);
+  const storage = {
+    getItem: (key: string) => legacy.get(key) ?? null,
+    setItem() {},
+  };
+  assert.equal(readSurfaceDensity("pipeline", storage), "comfortable");
+  assert.equal(readSurfaceDensity("organizations", storage), "comfortable");
+  // Tasks still reads it, which is what makes the two lines above a real
+  // distinction rather than a storage stub that answers nothing.
+  assert.equal(readSurfaceDensity("tasks", storage), "compact");
+
+  // Each new surface has its own key, and a choice stored under it is read.
+  assert.equal(
+    surfaceDensityStorageKey("pipeline"),
+    "constellation.surface-density.pipeline",
+  );
+  assert.equal(
+    surfaceDensityStorageKey("organizations"),
+    "constellation.surface-density.organizations",
+  );
+  for (const surface of ["pipeline", "organizations"] as const) {
+    assert.equal(
+      readSurfaceDensity(surface, {
+        getItem: (key) =>
+          key === surfaceDensityStorageKey(surface) ? "compact" : null,
+        setItem() {},
+      }),
+      "compact",
+    );
+    let written: readonly [string, string] | undefined;
+    persistSurfaceDensity(surface, "compact", {
+      getItem: () => null,
+      setItem: (key, value) => {
+        written = [key, value];
+      },
+    });
+    assert.deepEqual(written, [surfaceDensityStorageKey(surface), "compact"]);
+  }
+});
