@@ -5,6 +5,7 @@ import {
   MarkupPctSchema,
   PipelineStagesSchema,
   UpliftPctSchema,
+  WorkspaceCurrenciesSchema,
 } from "./commercial-defaults.js";
 
 import {
@@ -55,6 +56,7 @@ import {
 } from "./meeting-loop.js";
 import { RecordNarrativeSchema } from "./narrative.js";
 import {
+  CurrencySchema,
   ExchangeRateInputSchema,
   MoneyInputSchema,
   OfferPriceInputSchema,
@@ -198,13 +200,30 @@ export const WorkspaceSetCommercialDefaultsCommandSchema =
         stages: PipelineStagesSchema.optional(),
         markupPct: MarkupPctSchema.optional(),
         upliftPct: UpliftPctSchema.optional(),
+        /**
+         * The two currency settings, added as optional keys on the command that
+         * already exists rather than as a command of their own: none of the
+         * eight registration lists moves, and a caller correcting the home
+         * currency does not restate the funnel.
+         *
+         * `currencies` REPLACES the whole list when present, on exactly the
+         * terms `stages` does.
+         */
+        homeCurrency: CurrencySchema.optional(),
+        currencies: WorkspaceCurrenciesSchema.optional(),
       })
       .strict()
+      // Every key is listed here, and the list is the reason this command can
+      // grow at all: a key added above but forgotten below parses, typechecks,
+      // registers nowhere new — and is refused at runtime with "must change at
+      // least one setting" the moment somebody sends it on its own.
       .refine(
         (payload) =>
           payload.stages !== undefined ||
           payload.markupPct !== undefined ||
-          payload.upliftPct !== undefined,
+          payload.upliftPct !== undefined ||
+          payload.homeCurrency !== undefined ||
+          payload.currencies !== undefined,
         {
           message:
             "workspace.setCommercialDefaults must change at least one setting.",

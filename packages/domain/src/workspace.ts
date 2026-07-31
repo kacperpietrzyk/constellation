@@ -4,7 +4,10 @@ import {
   type SpaceId,
   type TaskStatusId,
   type WorkspaceId,
+  type Currency,
   DEFAULT_WORKING_DAY,
+  DEFAULT_CURRENCIES,
+  DEFAULT_HOME_CURRENCY,
   DEFAULT_MARKUP_PCT,
   DEFAULT_PIPELINE_STAGES,
   DEFAULT_UPLIFT_PCT,
@@ -133,6 +136,10 @@ export const effectiveCommercialDefaults = (
   ),
   markupPct: workspace.markupPct ?? DEFAULT_MARKUP_PCT,
   upliftPct: workspace.upliftPct ?? DEFAULT_UPLIFT_PCT,
+  homeCurrency: workspace.homeCurrency ?? DEFAULT_HOME_CURRENCY,
+  // Kopia, nie ta sama tablica: projekcja nie oddaje na zewnątrz referencji do
+  // tego, co siedzi w rekordzie — dokładnie jak etapy wyżej.
+  currencies: [...(workspace.currencies ?? DEFAULT_CURRENCIES)],
 });
 
 /**
@@ -152,6 +159,8 @@ export const setWorkspaceCommercialDefaults = (
     readonly pipelineStages?: readonly PipelineStage[] | null;
     readonly markupPct?: number | null;
     readonly upliftPct?: number | null;
+    readonly homeCurrency?: Currency | null;
+    readonly currencies?: readonly Currency[] | null;
   },
   occurredAt: string,
 ): Workspace => {
@@ -159,11 +168,15 @@ export const setWorkspaceCommercialDefaults = (
     pipelineStages: _pipelineStages,
     markupPct: _markupPct,
     upliftPct: _upliftPct,
+    homeCurrency: _homeCurrency,
+    currencies: _currencies,
     ...base
   } = workspace;
   void _pipelineStages;
   void _markupPct;
   void _upliftPct;
+  void _homeCurrency;
+  void _currencies;
   const pipelineStages =
     changes.pipelineStages === undefined
       ? workspace.pipelineStages
@@ -176,11 +189,21 @@ export const setWorkspaceCommercialDefaults = (
     changes.upliftPct === undefined
       ? workspace.upliftPct
       : (changes.upliftPct ?? undefined);
+  const homeCurrency =
+    changes.homeCurrency === undefined
+      ? workspace.homeCurrency
+      : (changes.homeCurrency ?? undefined);
+  const currencies =
+    changes.currencies === undefined
+      ? workspace.currencies
+      : (changes.currencies ?? undefined);
   return {
     ...base,
     ...(pipelineStages === undefined ? {} : { pipelineStages }),
     ...(markupPct === undefined ? {} : { markupPct }),
     ...(upliftPct === undefined ? {} : { upliftPct }),
+    ...(homeCurrency === undefined ? {} : { homeCurrency }),
+    ...(currencies === undefined ? {} : { currencies }),
     version: workspace.version + 1,
     updatedAt: occurredAt,
   };
