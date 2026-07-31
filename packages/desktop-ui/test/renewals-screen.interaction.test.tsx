@@ -12,6 +12,7 @@ import {
 
 import type { ScenarioFixtures } from "../src/client/scenario-client.js";
 import {
+  populatedBootstrap,
   populatedRelationshipWorkspace,
   populatedShellQueries,
   principalId,
@@ -90,6 +91,7 @@ const renewal = (
     readonly termStartsAt: string;
     readonly termMonths: number;
     readonly cycleOrdinal: number;
+    readonly value: { readonly amountMinor: number; readonly currency: "PLN" };
   }>,
 ) => ({
   ...strategicRecordBase,
@@ -526,9 +528,12 @@ test("an unavailable relationship slice replaces the screen with its own reason"
   // AND NOT THE SECTIONS. An empty "Time to start" is computed from the
   // watching set; drawing it over a failed read says "nothing to do" when the
   // truth is "nothing could be asked".
-  assert.equal(
-    container.querySelector('[data-renewal-section="due"]'),
-    null,
+  // `=== null` inside `assert.ok`, never `assert.equal(node, null)`: the
+  // failing path of the latter serialises a DOM node and takes the whole
+  // worker down, so the assertion that should have named the defect reports a
+  // dead worker instead.
+  assert.ok(
+    container.querySelector('[data-renewal-section="due"]') === null,
     "the section headings rendered over a failed read, with zeroes beside them",
   );
 });
@@ -561,5 +566,346 @@ test("a renewal opens on the screen it was repointed at, selected by its own id"
     rowsIn("due")[0]?.getAttribute("aria-current"),
     "true",
     "selecting a contract by its own id highlights no row — the id the search routing hands over is not the one this list keys on",
+  );
+});
+
+// ── The two money branches, which had no data behind them until #194 ────────
+//
+// Both were BUILT AND UNEXERCISED, which is indistinguishable from unbuilt: the
+// renewal arm carried no amount, so `renewalOutlook` could only ever answer
+// `none`. It now carries `value`, and `opportunity_renews_renewal` is the edge
+// that names the deal which becomes the next term. The third test below is the
+// one that matters most — it proves the OTHER edge still cannot reach this
+// number.
+
+const renewingDealId = id("f1");
+const amendingDealId = id("f2");
+const renewsLinkId = id("f3");
+const amendsLinkId = id("f4");
+const valuedRenewalId = id("f5");
+
+/** 195 000 PLN a term. Chosen so the uplift lands on a round number the
+ *  rounding step can be seen in, and so the linked deal's amount below cannot
+ *  be confused with it. */
+const contractValue = { amountMinor: 195_000_00, currency: "PLN" as const };
+
+const deal = (record: {
+  readonly id: ReturnType<typeof id>;
+  readonly title: string;
+  readonly estimate: { readonly amountMinor: number; readonly currency: "PLN" };
+}) => ({
+  ...strategicRecordBase,
+  kind: "opportunity" as const,
+  organizationId: referencedOrganizationId,
+  personIds: [],
+  need: "Kontrakt konczy sie we wrzesniu.",
+  qualification: "Budzet potwierdzony.",
+  stage: "qualification",
+  nextAction: "Wyslij zakres kolejnego okresu.",
+  evidenceSourceIds: [],
+  offerIds: [],
+  projectIds: [],
+  state: "open" as const,
+  ...record,
+});
+
+const link = (
+  linkId: ReturnType<typeof id>,
+  linkType: "opportunity_amends_renewal" | "opportunity_renews_renewal",
+  sourceRecordId: string,
+  targetRecordId: string,
+) => ({
+  ...strategicRecordBase,
+  id: linkId,
+  kind: "work_link" as const,
+  linkType,
+  sourceRecordId,
+  targetRecordId,
+  state: "active" as const,
+});
+
+const valuedRenewal = renewal({
+  id: valuedRenewalId,
+  title: "Managed Support",
+  expiresAt: "2026-09-30T21:59:59.000Z",
+  leadTimeDays: 90,
+  value: contractValue,
+});
+
+const outlookOf = (): HTMLElement => {
+  const node = container.querySelector<HTMLElement>("[data-renewal-outlook]");
+  assert.ok(node, "the row prints no projection for the next term at all");
+  return node;
+};
+
+test("with no deal to renew it, the next term is the contract grown by the workspace uplift — rounded, marked, and named", async () => {
+  await openRenewals(queriesFor(withRenewals(valuedRenewal)));
+  await waitForCondition(
+    () => rowsIn("due").length > 0,
+    "Renewals drew no row, so the projection could not be read",
+  );
+
+  // What it is worth TODAY, exactly as recorded.
+  assert.match(
+    container.querySelector("[data-renewal-value]")?.textContent ?? "",
+    /now\s*195,000 PLN/u,
+    "the row does not say what the contract is worth today",
+  );
+
+  const outlook = outlookOf();
+  assert.equal(
+    outlook.dataset.renewalOutlook,
+    "uplift",
+    "a contract with no deal renewing it is not being projected from its own value",
+  );
+  // 195 000 × 1.05 = 204 750, ROUNDED to the 5 000 step = 205 000. The exact
+  // product is what an unrounded projection would print, and printing it would
+  // claim a precision an assumption does not have.
+  assert.match(
+    outlook.textContent ?? "",
+    /≈\s*205,000 PLN/u,
+    `the projection is not the rounded uplift: ${outlook.textContent ?? ""}`,
+  );
+  assert.doesNotMatch(
+    outlook.textContent ?? "",
+    /204,750/u,
+    "the projection prints the exact product, which is a precision an assumption does not have",
+  );
+  // A bare "%" is a number somebody eventually reads as the other percentage.
+  assert.match(
+    outlook.textContent ?? "",
+    /uplift 5%/u,
+    "the projection does not name which percentage it grew by",
+  );
+});
+
+test("a deal that renews the contract wins, is shown exactly, and carries a way to it", async () => {
+  const renewing = deal({
+    id: renewingDealId,
+    title: "Odnowienie Managed Support na kolejny okres",
+    // Deliberately NOT a multiple of the 5 000 rounding step and nowhere near
+    // the uplift's 205 000: if the row printed the projection instead, or
+    // rounded this, either would be visible in the string.
+    estimate: { amountMinor: 212_340_00, currency: "PLN" },
+  });
+  await openRenewals(
+    queriesFor({
+      ...withRenewals(valuedRenewal),
+      records: [
+        ...withRenewals(valuedRenewal).records,
+        renewing,
+        link(
+          renewsLinkId,
+          "opportunity_renews_renewal",
+          renewingDealId,
+          valuedRenewalId,
+        ),
+      ],
+    }),
+  );
+  await waitForCondition(
+    () => rowsIn("due").length > 0,
+    "Renewals drew no row, so the linked deal could not be read",
+  );
+
+  const outlook = outlookOf();
+  assert.equal(
+    outlook.dataset.renewalOutlook,
+    "estimate",
+    "a real deal for the next term lost to the projection",
+  );
+  assert.match(
+    outlook.textContent ?? "",
+    /212,340 PLN/u,
+    `the linked deal's amount is not shown exactly: ${outlook.textContent ?? ""}`,
+  );
+  assert.doesNotMatch(
+    outlook.textContent ?? "",
+    /≈|uplift/u,
+    "a real deal is being marked as an assumption",
+  );
+
+  // A number with no way to what it came from is a claim nobody can check.
+  const toDeal = outlook.querySelector<HTMLElement>(
+    `[data-renewal-deal="${renewingDealId}"]`,
+  );
+  assert.ok(toDeal, "the amount carries no way to the deal it came from");
+  await act(async () => {
+    toDeal.click();
+  });
+  await waitForCondition(
+    () => container.querySelector("[data-renewals-surface]") === null,
+    `opening the deal left the reader on Renewals: ${[...container.querySelectorAll("[data-surface]")].map((n) => (n as HTMLElement).dataset.surface).join(",")}`,
+  );
+});
+
+test("an amendment never becomes the renewal's value — the two edges stay apart", async () => {
+  // THE ASSERTION THIS PAIR OF EDGES EXISTS FOR. An amendment sells inside the
+  // running term and does not move the expiry, so its amount is not what the
+  // NEXT term is worth. Wired to the wrong edge the row would print 480,000 PLN
+  // — a number that looks entirely reasonable and is about something else.
+  const amending = deal({
+    id: amendingDealId,
+    title: "+180 licencji, bez wydluzenia okresu",
+    estimate: { amountMinor: 480_000_00, currency: "PLN" },
+  });
+  await openRenewals(
+    queriesFor({
+      ...withRenewals(valuedRenewal),
+      records: [
+        ...withRenewals(valuedRenewal).records,
+        amending,
+        link(
+          amendsLinkId,
+          "opportunity_amends_renewal",
+          amendingDealId,
+          valuedRenewalId,
+        ),
+      ],
+    }),
+  );
+  await waitForCondition(
+    () => rowsIn("due").length > 0,
+    "Renewals drew no row, so the two edges could not be told apart",
+  );
+
+  const outlook = outlookOf();
+  assert.equal(
+    outlook.dataset.renewalOutlook,
+    "uplift",
+    "an amendment is answering the question about the next term",
+  );
+  assert.doesNotMatch(
+    outlook.textContent ?? "",
+    /480,000/u,
+    "the amendment's amount is being printed as what the contract renews at",
+  );
+  // And it IS still on the row — as an amendment, which is what it is.
+  assert.ok(
+    container.querySelector(`[data-renewal-amendment="${amendingDealId}"]`),
+    "the amendment vanished from the row instead of being listed as one",
+  );
+});
+
+test("the currency picker offers what the WORKSPACE records money in, not a list written here", async () => {
+  // A hand-written currency list is the `restated-shape-drift` family, and money
+  // is where the drift produces a plausible number rather than an error — the
+  // Pipeline lot found a THIRD copy of this union. So the fixture below offers a
+  // list that is deliberately NOT the union: a picker built from a literal would
+  // still show three options and fail here.
+  //
+  // It also exercises #189's named gap — nothing enforces `homeCurrency` ∈
+  // `currencies`. The home currency here is not on offer, and preselecting it
+  // would leave the control displaying the first option while the state said
+  // another: a silent currency swap on a number about money.
+  const bootstrap = {
+    ...populatedBootstrap,
+    workspace: {
+      ...populatedBootstrap.workspace,
+      commercialDefaults: {
+        ...populatedBootstrap.workspace.commercialDefaults,
+        homeCurrency: "USD" as const,
+        currencies: ["EUR" as const, "PLN" as const],
+      },
+    },
+  };
+  // `createRenewal` needs an owner, and the owner is the current principal —
+  // which rides `workspace.access`, a slice the shared fixture does not carry.
+  // Without it the wrapper answers "unavailable" and never reaches the kernel,
+  // so this is part of the instrument rather than part of the scenario.
+  await openRenewals({
+    ...queriesFor(populatedRelationshipWorkspace),
+    "workspace.bootstrapContext": projectionResponse(bootstrap),
+    "workspace.access": projectionResponse({
+      kind: "workspace.access",
+      policyVersion: 1,
+      currentPrincipalId: principalId,
+      canManage: true,
+      members: [],
+    }),
+  });
+  await waitForCondition(
+    () => rowsIn("due").length > 0,
+    "Renewals never drew a row, so the create form could not be opened",
+  );
+
+  const open = [...container.querySelectorAll<HTMLElement>("button")].find(
+    (button) => button.textContent?.includes("New renewal"),
+  );
+  assert.ok(open, "there is no way to record a new contract");
+  await act(async () => {
+    open.click();
+  });
+
+  const form = container.querySelector<HTMLElement>(
+    'form[aria-label="New renewal"]',
+  );
+  assert.ok(form, "the create form never opened");
+  const picker = [...form.querySelectorAll<HTMLSelectElement>("select")].at(-1);
+  assert.ok(picker, "the create form offers no currency at all");
+  assert.deepEqual(
+    [...picker.options].map((option) => option.value),
+    ["EUR", "PLN"],
+    "the currency picker is not built from the workspace's own list",
+  );
+  // AND THE ASSERTION THAT CANNOT LIE. A `<select>` handed a value none of its
+  // options carries does not report that value back — the DOM quietly resolves
+  // to the first option, so reading `picker.value` here would report "EUR" even
+  // while the state that gets SENT still said "USD". The envelope is the seam:
+  // it is what the kernel receives.
+  const field = (label: string): HTMLInputElement => {
+    const node = [...form.querySelectorAll("label")]
+      .find((candidate) => candidate.textContent?.startsWith(label))
+      ?.querySelector("input");
+    assert.ok(node, `the create form has no "${label}" field`);
+    return node;
+  };
+  const setValue = (
+    node: HTMLInputElement | HTMLSelectElement,
+    next: string,
+  ) => {
+    const prototype =
+      node instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(node, next);
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    node.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  await act(async () => {
+    const client = form.querySelector("select");
+    assert.ok(client);
+    setValue(client, referencedOrganizationId);
+    setValue(field("Contract"), "Managed Support");
+    setValue(field("Scope"), "8x5, SLA 4h");
+    setValue(field("Expires"), "2027-03-31");
+    setValue(field("Worth per term"), "195000");
+  });
+  const submit = form.querySelector<HTMLButtonElement>("button[type=submit]");
+  assert.ok(submit, "the create form has no way to submit it");
+  assert.ok(
+    !submit.disabled,
+    "the create form stayed disabled after every required field was filled",
+  );
+  await act(async () => {
+    // A `submit` event, not a click: React listens for the event, and the
+    // implicit submission a button click produces in a browser is not
+    // something this DOM implementation performs.
+    form.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+  });
+  await waitForCondition(
+    () => issued.length > 0,
+    "recording the contract issued no command at all",
+  );
+  const payload = issued[0]?.payload as {
+    readonly value?: { readonly currency?: string };
+  };
+  assert.equal(
+    payload.value?.currency,
+    "EUR",
+    "a home currency the workspace does not offer was sent anyway, so the amount is recorded in a currency nobody picked",
   );
 });

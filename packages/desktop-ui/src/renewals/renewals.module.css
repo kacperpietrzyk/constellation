@@ -379,6 +379,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* What the contract is worth TODAY. A measurement somebody recorded, so it
+   wears no outline at all — the outlines beside it are what distinguish an
+   assumption from a real deal, and a third one here would flatten that. */
+.current {
+  white-space: nowrap;
+}
+
+.current b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .outlookNone {
   color: var(--text-disabled);
 }

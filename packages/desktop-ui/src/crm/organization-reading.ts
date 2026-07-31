@@ -49,6 +49,7 @@ import {
   opportunityValue,
   sumByCurrency,
   type Money,
+  type OpportunityValueInput,
   type OpportunityValueReading,
 } from "./money.js";
 
@@ -306,6 +307,26 @@ export const isOpenDeal = (deal: OpportunityRecord): boolean =>
   deal.state !== "rejected" && deal.state !== "lost";
 
 /**
+ * A deal in the vocabulary `money.ts` reasons about: an estimate, and every
+ * offer's state and price. Exported because THREE different questions are asked
+ * of it — "what is this deal worth" and "what kind of number is that" here, and
+ * "what will this contract be worth when it renews" on the Renewals screen,
+ * which hands the same object to `renewalOutlook`. One mapping, because a second
+ * copy of it is where an offer state or a price basis quietly stops being read
+ * on one screen only.
+ */
+export const opportunityValueInput = (
+  deal: OpportunityRecord,
+  index: RelationshipIndex,
+): OpportunityValueInput => ({
+  ...(deal.estimate === undefined ? {} : { estimate: deal.estimate }),
+  offers: (index.offersByOpportunity.get(deal.id) ?? []).map((offer) => ({
+    state: offer.state,
+    ...(offer.price === undefined ? {} : { price: offer.price }),
+  })),
+});
+
+/**
  * What a deal is worth AND what kind of number that is. One arithmetic module,
  * four screens.
  *
@@ -320,13 +341,7 @@ export const dealValueReading = (
   deal: OpportunityRecord,
   index: RelationshipIndex,
 ): OpportunityValueReading =>
-  opportunityValue({
-    ...(deal.estimate === undefined ? {} : { estimate: deal.estimate }),
-    offers: (index.offersByOpportunity.get(deal.id) ?? []).map((offer) => ({
-      state: offer.state,
-      ...(offer.price === undefined ? {} : { price: offer.price }),
-    })),
-  });
+  opportunityValue(opportunityValueInput(deal, index));
 
 /** The amount alone, for the rows that have room for one number. */
 export const dealValue = (

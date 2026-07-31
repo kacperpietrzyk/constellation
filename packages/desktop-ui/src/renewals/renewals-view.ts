@@ -25,18 +25,21 @@
 //     failed read — the surface renders the slice's own message instead, and
 //     the section headings never appear with a zero beside them.
 //
-// WHAT THIS FILE CANNOT SAY, and says nothing rather than something plausible:
-// A RENEWAL CARRIES NO MONEY. The projection's renewal arm is `.strict()` and
-// has no value field at all (`contracts/src/query.ts:589-605`), so
-// `renewalOutlook` is called with no `value` and no linked deal and can only
-// answer `none` today. The uplift projection and the linked-deal reading are
-// both built and both unreachable until a value lands on the record; see the
-// note on `outlookFor`.
+//  4. THE MONEY COMES FROM THE EDGE THAT RENEWS, NEVER FROM THE ONE THAT
+//     AMENDS. A contract carries two kinds of deal and the verb is the whole
+//     difference: `opportunity_amends_renewal` sells more inside the term that
+//     is running and does not move the expiry; `opportunity_renews_renewal` IS
+//     the next term. They are read into two separate buckets in one pass, and
+//     only the second one ever reaches `renewalOutlook` — printing an add-on's
+//     value as the contract's next-term worth is a number that looks reasonable
+//     and is about something else.
 
 import type { RelationshipWorkspaceProjection } from "../client/workflow.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 
 import {
+  isOpenDeal,
+  opportunityValueInput,
   renewalLead,
   type CrmProse,
   type OpportunityRecord,
@@ -52,8 +55,17 @@ import { daysUntil } from "../today-plan.js";
 type StrategicRecord = RelationshipWorkspaceProjection["records"][number];
 type TaskRecord = DesktopSnapshot["tasks"][number];
 
-/** The link type an amendment rides. One edge, named once. */
+// The two edges a contract can carry, named once each. They are DIFFERENT
+// QUESTIONS, not two spellings of one: `AMENDS` sells more inside the term that
+// is running and leaves the expiry alone; `RENEWS` is the term that comes next.
 const AMENDS = "opportunity_amends_renewal";
+const RENEWS = "opportunity_renews_renewal";
+
+const push = <T>(map: Map<string, T[]>, key: string, value: T): void => {
+  const bucket = map.get(key);
+  if (bucket === undefined) map.set(key, [value]);
+  else bucket.push(value);
+};
 
 /**
  * Where a contract stands, in the two units the screen prints: days to the
@@ -230,20 +242,40 @@ export const CLOSED_STATE_LABELS: Readonly<
  * rounding, the `≈` and the "a real deal beats a projection" rule are decided
  * in one place for four screens.
  *
- * IT CAN ONLY ANSWER `none` TODAY, and that is a gap rather than a design. The
- * renewal arm of the projection carries no amount, so there is nothing to apply
- * the uplift to; and the one renewal↔opportunity edge that exists means
- * AMENDMENT — a mid-contract sale that explicitly does not move the term — so
- * feeding it in here would print an add-on's value as the contract's renewal
- * value. That is the plausible-wrong-number this wave exists to stop, so it is
- * not done. Both branches are built and reported as unexercised.
+ * THE LINKED DEAL IS THE ONE THAT RENEWS, NEVER THE ONE THAT AMENDS, and the
+ * two edges exist so this reader can tell them apart. An amendment sells more
+ * inside the term that is already running and explicitly does not move the
+ * expiry; a renewing deal IS the next term. Handing the amendment to this
+ * function would print an add-on's value as the contract's next-term worth —
+ * a number that looks reasonable and is about something else, which is the
+ * failure this wave exists to kill. `opportunity_renews_renewal` is therefore
+ * the only edge that reaches this slot, and `opportunity_amends_renewal` is
+ * only ever rendered as the amendment list.
+ *
+ * With no renewing deal the answer falls back to the contract's own `value`
+ * grown by the workspace's uplift — rounded, marked `≈`, and naming the
+ * percentage, because it is an assumption rather than a measurement.
  */
-const outlookFor = (upliftPct: number): RenewalOutlookReading =>
-  // The input is empty because nothing on the record can fill it. Written as a
-  // call rather than as a constant so that the day an amount lands on the
-  // renewal this is one added key here and no new decision anywhere about
-  // rounding, about the `≈`, or about which number wins.
-  renewalOutlook({}, { upliftPct });
+const outlookFor = (
+  renewal: RenewalRecord,
+  renewing: OpportunityRecord | undefined,
+  index: RelationshipIndex,
+  upliftPct: number,
+): RenewalOutlookReading =>
+  renewalOutlook(
+    {
+      ...(renewal.value === undefined ? {} : { value: renewal.value }),
+      ...(renewing === undefined
+        ? {}
+        : {
+            opportunity: {
+              id: renewing.id,
+              ...opportunityValueInput(renewing, index),
+            },
+          }),
+    },
+    { upliftPct },
+  );
 
 const followUpFor = (
   renewal: RenewalRecord,
@@ -267,32 +299,61 @@ const followUpFor = (
 };
 
 /**
- * Amendments, from the one edge that carries them. The link's `state` is what
- * says whether it still holds: `work.linkRemove` flips it and leaves
- * `recordState` alone, so a detached link stays in the projection forever and
- * reading past it would count an amendment somebody removed.
+ * The deals hanging off each contract, KEPT APART BY THE VERB ON THE EDGE.
+ * One pass, two buckets, because the whole point of there being two link types
+ * is that a reader must pick one — merging them here would put the decision
+ * back where it was before the second edge existed.
+ *
+ * The link's `state` is what says whether it still holds: `work.linkRemove`
+ * flips it and leaves `recordState` alone, so a detached link stays in the
+ * projection forever and reading past it would count a deal somebody removed.
  */
-export const amendmentsByRenewal = (
+export interface RenewalDeals {
+  /** Sold inside the running term. Does not move the expiry, and never the
+   *  number the next term is projected from. */
+  readonly amendments: ReadonlyMap<string, AmendmentReading[]>;
+  /** The deal that becomes the next term. At most one per contract is read —
+   *  see `pickRenewing`. */
+  readonly renewing: ReadonlyMap<string, OpportunityRecord[]>;
+}
+
+export const dealsByRenewal = (
   records: readonly StrategicRecord[],
   index: RelationshipIndex,
-): ReadonlyMap<string, AmendmentReading[]> => {
-  const byRenewal = new Map<string, AmendmentReading[]>();
+): RenewalDeals => {
+  const amendments = new Map<string, AmendmentReading[]>();
+  const renewing = new Map<string, OpportunityRecord[]>();
   for (const record of records) {
     if (record.recordState !== "active") continue;
     if (record.kind !== "work_link") continue;
-    if (record.state !== "active" || record.linkType !== AMENDS) continue;
+    if (record.state !== "active") continue;
+    if (record.linkType !== AMENDS && record.linkType !== RENEWS) continue;
     const opportunity = index.opportunitiesById.get(record.sourceRecordId);
     if (opportunity === undefined) continue;
-    const reading: AmendmentReading = {
-      opportunity,
-      at: opportunity.createdAt,
-    };
-    const bucket = byRenewal.get(record.targetRecordId);
-    if (bucket === undefined) byRenewal.set(record.targetRecordId, [reading]);
-    else bucket.push(reading);
+    if (record.linkType === AMENDS)
+      push(amendments, record.targetRecordId, {
+        opportunity,
+        at: opportunity.createdAt,
+      });
+    else push(renewing, record.targetRecordId, opportunity);
   }
-  return byRenewal;
+  return { amendments, renewing };
 };
+
+/**
+ * A contract has ONE next term, so one of the linked renewing deals answers for
+ * it. A deal that was rejected or lost is not what the next term will be worth,
+ * and among the rest the most recently opened one is the live proposal — an
+ * older attempt at the same term is history, not the answer.
+ */
+const pickRenewing = (
+  deals: readonly OpportunityRecord[] | undefined,
+): OpportunityRecord | undefined =>
+  (deals ?? [])
+    .filter(isOpenDeal)
+    .toSorted((left, right) =>
+      right.createdAt.localeCompare(left.createdAt),
+    )[0];
 
 const accessibleNameFor = (
   renewal: RenewalRecord,
@@ -390,7 +451,7 @@ export const readRenewals = (
   upliftPct: number,
   prose: CrmProse,
 ): RenewalSections => {
-  const amendments = amendmentsByRenewal(records, index);
+  const deals = dealsByRenewal(records, index);
   const organizations = new Map(
     index.organizations.map((organization) => [organization.id, organization]),
   );
@@ -413,9 +474,14 @@ export const readRenewals = (
             ? undefined
             : people.get(organization.mainContactPersonId),
         clock,
-        outlook: outlookFor(upliftPct),
+        outlook: outlookFor(
+          renewal,
+          pickRenewing(deals.renewing.get(renewal.id)),
+          index,
+          upliftPct,
+        ),
         followUp,
-        amendments: amendments.get(renewal.id) ?? [],
+        amendments: deals.amendments.get(renewal.id) ?? [],
         term: termReading(renewal, clock),
         accessibleName: accessibleNameFor(
           renewal,

@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 
 import type { StrategicRecordId, TaskId } from "@constellation/contracts";
+
+import type { Currency } from "../crm/money.js";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
@@ -89,17 +91,24 @@ const Initials = ({ name }: { readonly name: string }) => (
 );
 
 /**
- * The money on a contract, and which KIND of number it is — said with two
- * different things rather than with two shades of one colour: a projection is
- * rounded, wears `≈` and names its percentage; a real linked deal is exact and
- * carries a way to the deal.
+ * The money on a contract: what it is worth now, and what the next term is
+ * likely to be worth.
  *
- * Only the third branch can be reached from today's data. The renewal arm of
- * the projection has no amount on it at all, so there is nothing to apply the
- * uplift to and no deal that answers "what will this be worth". The other two
- * are built because the arithmetic behind them already ships in `money.ts` and
- * is asserted there; they are reported as unexercised rather than left out, so
- * that landing the field is a projection change and not a screen change.
+ * WHICH KIND OF NUMBER THE SECOND ONE IS, said with two DIFFERENT THINGS rather
+ * than two shades of one colour. A projection is rounded, wears `≈`, names its
+ * percentage and stands in a dashed outline; a real linked deal is exact, wears
+ * a solid one, and carries a way to the deal — because a real offer beats a
+ * projection and that has to be visible across the room.
+ *
+ * The deal behind the second branch is the one that RENEWS the contract. An
+ * amendment sells inside the running term and never answers this question; the
+ * two edges exist so that the reader picks, and this reader picks in
+ * `renewals-view.ts` rather than here.
+ *
+ * The amounts are printed in the CONTRACT'S OWN currency and nothing here
+ * converts. `homeCurrency` says which single currency a MIXED total may be
+ * summed into; one contract is not a mixed total, and a conversion would need
+ * a rate, which a renewal does not carry.
  */
 const Outlook = ({
   reading,
@@ -110,35 +119,54 @@ const Outlook = ({
   readonly upliftPct: number;
   readonly onOpenOpportunity: (id: string) => void;
 }) => {
-  const { outlook, clock } = reading;
-  if (clock.closed) return null;
+  const { outlook, clock, renewal } = reading;
+  const current =
+    renewal.value === undefined ? null : (
+      <span className={styles.current} data-renewal-value>
+        {clock.closed ? "was" : "now"} <b>{fmtMoney(renewal.value)}</b>
+      </span>
+    );
+  // A closed contract has no "at renewal": the question was answered by
+  // closing it, and a projection beside a contract nobody is renewing is a
+  // number about a term that will not happen.
+  if (clock.closed) return current;
   if (outlook.basis === "none")
     return (
-      <span className={styles.outlookNone} data-renewal-outlook="none">
-        nothing to project from
-      </span>
+      <>
+        {current}
+        <span className={styles.outlookNone} data-renewal-outlook="none">
+          nothing to project from
+        </span>
+      </>
     );
   if (outlook.basis === "uplift")
     return (
-      <span className={styles.outlookAssumed} data-renewal-outlook="uplift">
-        at renewal <b>{fmtApprox(outlook.amount)}</b>
-        <span className={styles.basis}>{fmtUplift(upliftPct)}</span>
-      </span>
+      <>
+        {current}
+        <span className={styles.outlookAssumed} data-renewal-outlook="uplift">
+          at renewal <b>{fmtApprox(outlook.amount)}</b>
+          <span className={styles.basis}>{fmtUplift(upliftPct)}</span>
+        </span>
+      </>
     );
   return (
-    <span className={styles.outlookReal} data-renewal-outlook={outlook.basis}>
-      at renewal <b>{fmtMoney(outlook.amount)}</b>
-      <button
-        className={styles.basisLink}
-        onClick={() => {
-          if (outlook.opportunityId !== null)
-            onOpenOpportunity(outlook.opportunityId);
-        }}
-        type="button"
-      >
-        {outlook.basis === "offer" ? "from the offer" : "from the estimate"}
-      </button>
-    </span>
+    <>
+      {current}
+      <span className={styles.outlookReal} data-renewal-outlook={outlook.basis}>
+        at renewal <b>{fmtMoney(outlook.amount)}</b>
+        <button
+          className={styles.basisLink}
+          data-renewal-deal={outlook.opportunityId ?? undefined}
+          onClick={() => {
+            if (outlook.opportunityId !== null)
+              onOpenOpportunity(outlook.opportunityId);
+          }}
+          type="button"
+        >
+          {outlook.basis === "offer" ? "from the offer" : "from the estimate"}
+        </button>
+      </span>
+    </>
   );
 };
 
@@ -456,6 +484,10 @@ export const RenewalsSurface = ({
     title: "",
     scope: "",
     expiresAt: "",
+    // Major units, as typed. Empty means nobody put a number on this contract,
+    // which is a state and not a zero.
+    value: "",
+    currency: "",
   });
   const [amendment, setAmendment] = useState({
     title: "",
@@ -464,7 +496,26 @@ export const RenewalsSurface = ({
   });
 
   const timeZone = snapshot.bootstrap.workspace.timezone;
-  const upliftPct = snapshot.bootstrap.workspace.commercialDefaults.upliftPct;
+  // Every commercial number comes from the workspace's own settings, which the
+  // projection guarantees: `commercialDefaults` is REQUIRED, so there is no
+  // fallback here and no second copy of a default that would go stale the day
+  // Settings moves.
+  const commercial = snapshot.bootstrap.workspace.commercialDefaults;
+  const upliftPct = commercial.upliftPct;
+  // The picker offers exactly what the workspace records money in — no
+  // hand-written union, which is the `restated-shape-drift` family this repo
+  // has been bitten by three times, and money is where the drift produces a
+  // plausible number rather than an error.
+  //
+  // KNOWN GAP, named in #189 and handled rather than assumed: nothing enforces
+  // `homeCurrency` ∈ `currencies`. Preselecting a home currency the list does
+  // not offer would leave the control showing the FIRST option while the state
+  // says another — a silent currency swap on a number about money. So the
+  // preselection falls back to what is actually offered.
+  const currencies = commercial.currencies;
+  const defaultCurrency = currencies.includes(commercial.homeCurrency)
+    ? commercial.homeCurrency
+    : currencies[0];
   const relationships = readSlice(snapshot.relationships);
   const records = relationships.available ? relationships.data.records : [];
 
@@ -592,6 +643,20 @@ export const RenewalsSurface = ({
     // and then every number on the row is one off from the date on the form.
     const expiresAt = instantForZonedDate(draft.expiresAt, timeZone, "end");
     if (expiresAt === undefined) return;
+    // Minor units, integer, and rounded ONCE at the boundary — every amount in
+    // this product is an integer of the minor unit precisely so that money
+    // never travels as a float. A blank field stays absent: nobody having put
+    // a number on a contract is not the same as the contract being worth zero.
+    const typed = draft.value.trim();
+    const currency = draft.currency === "" ? defaultCurrency : draft.currency;
+    const value =
+      typed === "" || currency === undefined
+        ? undefined
+        : {
+            amountMinor: Math.round(Number(typed) * 100),
+            currency: currency as Currency,
+          };
+    if (typed !== "" && !Number.isFinite(Number(typed))) return;
     setBusy(true);
     void createRenewal(client, snapshot, {
       organizationId: draft.organizationId as StrategicRecordId,
@@ -599,6 +664,7 @@ export const RenewalsSurface = ({
       scope: draft.scope.trim(),
       expiresAt,
       evidenceSourceIds: [],
+      ...(value === undefined ? {} : { value }),
       // The state four of five real contracts sit in, and the one the screen
       // has a first-class row for. A renewal created with a task nobody wrote
       // would arrive already claiming somebody started it.
@@ -607,7 +673,14 @@ export const RenewalsSurface = ({
       setBusy(false);
       if (result.kind === "success") {
         setCreating(false);
-        setDraft({ organizationId: "", title: "", scope: "", expiresAt: "" });
+        setDraft({
+          organizationId: "",
+          title: "",
+          scope: "",
+          expiresAt: "",
+          value: "",
+          currency: "",
+        });
         await onReload();
       } else onFailure(result);
     });
@@ -772,6 +845,44 @@ export const RenewalsSurface = ({
               type="date"
               value={draft.expiresAt}
             />
+          </label>
+          {/* What the contract is worth per term. It is the number the NEXT
+              term is projected from, so without it the row can only say
+              "nothing to project from" — and until this field existed there
+              was no way to put one on a contract from the product at all. */}
+          <label className={styles.field}>
+            Worth per term
+            <input
+              inputMode="decimal"
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  value: event.target.value,
+                }))
+              }
+              type="number"
+              value={draft.value}
+            />
+          </label>
+          <label className={styles.field}>
+            Currency
+            <select
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  currency: event.target.value,
+                }))
+              }
+              value={
+                draft.currency === "" ? (defaultCurrency ?? "") : draft.currency
+              }
+            >
+              {currencies.map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
+            </select>
           </label>
           <button
             className="primary-button"
