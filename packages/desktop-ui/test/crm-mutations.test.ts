@@ -431,7 +431,11 @@ test("closing a started contract names BOTH the renewal and its follow-up task",
 
 test("closing a contract nobody has started names only the renewal", async () => {
   const sent: CommandEnvelope[] = [];
-  const { followUpTaskId: _dropped, ...noFollowUp } = startedRenewal;
+  // The key is DELETED rather than set to `undefined`: a renewal nobody has
+  // started does not carry the field at all, and the two are what this whole
+  // file is careful to tell apart.
+  const noFollowUp = { ...startedRenewal };
+  delete noFollowUp.followUpTaskId;
   const result = await resolveRenewal(
     recordingClient(sent),
     snapshotOf(),

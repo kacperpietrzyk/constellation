@@ -4060,8 +4060,10 @@ export const resolveRenewal = (
   if (renewal.followUpTaskId !== undefined && followUp === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
+      // Kept under the prose guard's 96 characters: the reason belongs in this
+      // function's own comment, not in a paragraph on a row.
       message:
-        "This contract's follow-up task is not loaded, so closing it cannot be saved safely. Reload and try again.",
+        "This contract's follow-up task is not loaded, so it cannot be closed yet. Reload and try again.",
     });
   return execute(
     client,
