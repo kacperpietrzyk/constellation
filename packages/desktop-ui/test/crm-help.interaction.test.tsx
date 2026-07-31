@@ -42,9 +42,25 @@ import {
 
 const KNOWN_TOPIC_IDS = new Set<string>(crmHelpTopics.map((topic) => topic.id));
 
-/** The name a screen reader would give the control. */
-const accessibleName = (element: Element): string =>
-  (element.getAttribute("aria-label") ?? element.textContent ?? "").trim();
+/* The name a screen reader would give the control.
+ *
+ * `textContent` ALONE IS NOT THAT NAME, and the difference is the whole point
+ * here: `<button><span aria-hidden="true">?</span></button>` has a text content
+ * of "?" and an accessible name of NOTHING. A check that fell back to
+ * `textContent` would call that button named, which is the shape of assertion
+ * this wave keeps catching — green while the guarantee is broken. So hidden
+ * subtrees are removed before the text is read, on a clone, so the assertion
+ * cannot alter the screen it is measuring.
+ */
+const accessibleName = (element: Element): string => {
+  const labelled = element.getAttribute("aria-label");
+  if (labelled !== null) return labelled.trim();
+  const clone = element.cloneNode(true) as Element;
+  for (const hidden of clone.querySelectorAll('[aria-hidden="true"]')) {
+    hidden.remove();
+  }
+  return (clone.textContent ?? "").trim();
+};
 
 let container: HTMLDivElement;
 let root: Root;
