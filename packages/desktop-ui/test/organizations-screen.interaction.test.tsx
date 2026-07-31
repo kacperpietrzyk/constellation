@@ -934,3 +934,76 @@ test("the Organizations sheet keeps the declarations that stop the surface sizin
     "the list stopped declaring its width, so it is sized by its rows instead of sizing them",
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RETIREMENT'S OTHER HALF: the kinds the collection stopped drawing must
+// still be REACHABLE. A screen that stops rendering a record kind takes it out
+// of the product unless something else can still open it, and the thing that
+// can is the shell inspector — reached from ⌘K, which routes by the record-kind
+// registry's `inspectorSurface` and then calls `selectStrategicInInspector`.
+
+test("every kind the collection stopped drawing is still reachable through the inspector", async () => {
+  const { getHumanRecordKindDescriptor } =
+    await import("@constellation/contracts");
+  // All five still point at this destination, which is the branch that ends in
+  // `selectStrategicInInspector` for anything that is not an organization
+  // (`RealApp.tsx:4869-4884`). Repointing one without a routing branch beside it
+  // compiles, passes every test, and silently downgrades "open this record" to
+  // "open that screen".
+  for (const kind of [
+    "relationship_fact",
+    "decision",
+    "impact_review",
+    "recurrence",
+    "radar_candidate",
+  ] as const) {
+    assert.equal(
+      getHumanRecordKindDescriptor(kind).inspectorSurface,
+      "organizations",
+      `${kind} no longer routes to a destination that opens it in the inspector`,
+    );
+  }
+
+  await openOrganizations();
+  await waitForCondition(() => rows().length > 0, "no client row");
+
+  // AND THE INSPECTOR REALLY RESOLVES ONE. The shell looks a selection up in
+  // `snapshot.relationships` and nothing else, so this is the half that a
+  // registry assertion alone cannot prove.
+  const fact = relationships.records.find(
+    (record) => record.kind === "relationship_fact",
+  );
+  const decision = relationships.records.find(
+    (record) => record.kind === "decision",
+  );
+  assert.equal(
+    fact === undefined && decision === undefined,
+    true,
+    "the fixture grew a fact or a decision — extend this test to select it rather than leaving the reach unproven",
+  );
+
+  // THE ONE THAT IS NOT REACHABLE, asserted as the finding it is rather than
+  // left to be discovered. A radar candidate rides `snapshot.radar`; the shell
+  // resolves a strategic selection against `snapshot.relationships` only
+  // (`RealApp.tsx:816-825`), so ⌘K on one opens this destination and selects
+  // nothing. That is true on `main` today and is why the review rail below the
+  // client list keeps its mount: it is the only place a radar candidate can be
+  // seen or resolved at all.
+  const realApp = readFileSync(
+    path.join(packageRoot, "src", "RealApp.tsx"),
+    "utf8",
+  );
+  const resolver = realApp.slice(
+    realApp.indexOf("const selectedStrategicRecord"),
+    realApp.indexOf("const selectedStrategicRecord") + 400,
+  );
+  assert.ok(
+    resolver.includes("snapshot?.relationships"),
+    "the inspector's resolver moved — re-check whether a radar candidate can now be selected",
+  );
+  assert.equal(
+    resolver.includes("snapshot.radar"),
+    false,
+    "the inspector learned to resolve a radar candidate — the review rail may now be retirable, which is a product decision and not a silent one",
+  );
+});
