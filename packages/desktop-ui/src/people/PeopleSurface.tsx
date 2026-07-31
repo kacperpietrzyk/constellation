@@ -282,16 +282,34 @@ const PeopleTable = ({
   readonly onSelect: (id: string) => void;
   readonly onOpen: (reading: PersonReading) => void;
 }) => (
-  <table className={styles.table}>
+  // A GRID, declared. The rows own a roving tab stop and carry a selected
+  // state, and `aria-selected` on a plain `<tr>` is not a combination the
+  // accessibility tree defines — a table that behaves like a widget has to say
+  // it is one.
+  <table aria-label="People" className={styles.table} role="grid">
     <thead>
-      <tr>
-        <th scope="col">Name</th>
-        <th scope="col">Role</th>
-        <th scope="col">Organization</th>
-        <th scope="col">Email</th>
-        <th scope="col">Deals</th>
-        <th scope="col">Meetings</th>
-        <th scope="col">Last met</th>
+      <tr role="row">
+        <th role="columnheader" scope="col">
+          Name
+        </th>
+        <th role="columnheader" scope="col">
+          Role
+        </th>
+        <th role="columnheader" scope="col">
+          Organization
+        </th>
+        <th role="columnheader" scope="col">
+          Email
+        </th>
+        <th role="columnheader" scope="col">
+          Deals
+        </th>
+        <th role="columnheader" scope="col">
+          Meetings
+        </th>
+        <th role="columnheader" scope="col">
+          Last met
+        </th>
       </tr>
     </thead>
     <tbody>
@@ -300,21 +318,27 @@ const PeopleTable = ({
         return (
           <tr
             {...nav}
-            aria-label={reading.accessibleName}
             aria-selected={reading.person.id === selectedRecordId}
             className={styles.tableRow}
             data-person-row={reading.person.id}
             key={reading.person.id}
             onClick={() => onSelect(reading.person.id)}
             onDoubleClick={() => onOpen(reading)}
+            role="row"
           >
-            <td className={styles.tableName}>{reading.person.name}</td>
-            <td>{reading.person.role ?? "—"}</td>
-            <td>{reading.organization?.name ?? NO_ORGANIZATION_GROUP}</td>
-            <td className={styles.mail}>{reading.person.email ?? "—"}</td>
-            <td>{reading.deals.length}</td>
-            <td>{reading.meetings.length}</td>
-            <td>
+            <td className={styles.tableName} role="gridcell">
+              {reading.person.name}
+            </td>
+            <td role="gridcell">{reading.person.role ?? "—"}</td>
+            <td role="gridcell">
+              {reading.organization?.name ?? NO_ORGANIZATION_GROUP}
+            </td>
+            <td className={styles.mail} role="gridcell">
+              {reading.person.email ?? "—"}
+            </td>
+            <td role="gridcell">{reading.deals.length}</td>
+            <td role="gridcell">{reading.meetings.length}</td>
+            <td role="gridcell">
               {reading.lastMetAt === undefined
                 ? "Never"
                 : formatDate(reading.lastMetAt, timeZone)}
@@ -585,7 +609,15 @@ export const PeopleSurface = ({
           timeZone={timeZone}
         />
       ) : (
-        <div aria-label="People" className={styles.list} role="listbox">
+        // The head stands OUTSIDE the listbox and each group owns its own,
+        // exactly as the accepted prototype does (`crm.js:485-498`). A listbox
+        // may hold only options and groups, and the head carries a real
+        // `<button>` — an interactive control inside a composite widget with a
+        // roving tab stop is undefined in the accessibility tree and dead to
+        // the arrow keys, because the row handler gates on
+        // `target === currentTarget`. The row indices still run unbroken across
+        // the boundaries: `useListNavigation` keys on the index, not on the DOM.
+        <div className={styles.list}>
           {groups.map((group: PeopleGroup, position) => {
             const base = groups
               .slice(0, position)
@@ -615,18 +647,27 @@ export const PeopleSurface = ({
                     )}
                   />
                 )}
-                {group.readings.map((reading, offset) => (
-                  <PersonRow
-                    index={base + offset}
-                    itemProps={itemProps}
-                    key={reading.person.id}
-                    onOpen={openPerson}
-                    onSelect={onSelectRecord}
-                    reading={reading}
-                    selected={reading.person.id === selectedRecordId}
-                    timeZone={timeZone}
-                  />
-                ))}
+                <div
+                  aria-label={
+                    group.organization === undefined
+                      ? "People with no organization recorded"
+                      : `People at ${group.organization.name}`
+                  }
+                  role="listbox"
+                >
+                  {group.readings.map((reading, offset) => (
+                    <PersonRow
+                      index={base + offset}
+                      itemProps={itemProps}
+                      key={reading.person.id}
+                      onOpen={openPerson}
+                      onSelect={onSelectRecord}
+                      reading={reading}
+                      selected={reading.person.id === selectedRecordId}
+                      timeZone={timeZone}
+                    />
+                  ))}
+                </div>
               </div>
             );
           })}
