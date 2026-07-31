@@ -31,6 +31,8 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
+import type { WorkContextKind } from "./record-narrative.js";
+import { LazySurfaceBoundary } from "./SurfaceLifecycleStates.js";
 import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -40,6 +42,16 @@ import {
   formatDateTime,
   recordKindLabels,
 } from "./i18n.js";
+
+// Areas and initiatives, which used to live on the work surface. Lazy for the
+// measured reason every panel on this screen is: Projects is an EAGER
+// destination, so a static import would put the forms, the rows and their
+// stylesheet into the first paint of everybody who never opens them. What stays
+// on the hot path is this handle and one button.
+const ProjectContextPanel = lazy(async () => ({
+  default: (await import("./projects/ProjectContextPanel.js"))
+    .ProjectContextPanel,
+}));
 
 const Mark = ({ kind }: { readonly kind: string }) => (
   <span className={`record-mark mark-${kind}`} aria-hidden="true" />
@@ -522,6 +534,10 @@ export const ProjectsSurface = ({
   onUnrelate,
   onEntityActivate,
   renderRecordScreen,
+  selectedContextId,
+  onSelectContext,
+  onReload,
+  onFailure,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -560,8 +576,17 @@ export const ProjectsSurface = ({
    *  the old detail flow in place rather than showing an empty record. */
   readonly renderRecordScreen?:
     ((slots: ProjectRecordSlots) => React.ReactNode) | undefined;
+  /** Areas and initiatives, which live here now that the work surface is going.
+   *  The selection is the SHELL's — picking one opens it in the inspector, the
+   *  same drawer a project opens into — so this screen holds neither the state
+   *  nor the write; it holds the panel that authors them. */
+  readonly selectedContextId: string | undefined;
+  readonly onSelectContext: (kind: WorkContextKind, id: string) => void;
+  readonly onReload: () => Promise<void>;
+  readonly onFailure: (failure: MutationFailure) => void;
 }) => {
   const [creating, setCreating] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [newOutcome, setNewOutcome] = useState("");
@@ -792,6 +817,21 @@ export const ProjectsSurface = ({
                 <span>Back to projects</span>
               </button>
             )}
+            {!fullView && (
+              <button
+                aria-controls={
+                  contextOpen ? "project-context-panel" : undefined
+                }
+                aria-expanded={contextOpen}
+                className="ghost-button"
+                onClick={() => setContextOpen((value) => !value)}
+                type="button"
+              >
+                <span>
+                  {contextOpen ? "Hide context" : "Areas and initiatives"}
+                </span>
+              </button>
+            )}
             <button
               ref={createTriggerRef}
               type="button"
@@ -806,6 +846,24 @@ export const ProjectsSurface = ({
           </div>
         }
       />
+      {contextOpen && !fullView && (
+        <div id="project-context-panel">
+          <LazySurfaceBoundary label="Areas and initiatives">
+            {/* Empty fallback on purpose: a spinner where a small panel is about
+                to be is more movement than the wait it reports. */}
+            <Suspense fallback={null}>
+              <ProjectContextPanel
+                client={client}
+                onFailure={onFailure}
+                onReload={onReload}
+                onSelectContext={onSelectContext}
+                selectedContextId={selectedContextId}
+                snapshot={snapshot}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
+        </div>
+      )}
       {creating && (
         <form
           id="project-create-form"

@@ -1,5 +1,17 @@
 export type RecordNarrativeKind = "area" | "initiative" | "project";
 
+/**
+ * The two kinds that are a CONTEXT for work rather than the work itself.
+ *
+ * It used to be declared on the work surface, which is being retired, and it
+ * lands here rather than anywhere else for a structural reason: this module
+ * imports nothing at all, so it cannot take part in a cycle, and the vocabulary
+ * is already its own — `RecordNarrativeKind` is exactly these two plus the
+ * project they sit above. Narrowing that union keeps the two definitions from
+ * drifting apart, which is this repo's named repeat defect.
+ */
+export type WorkContextKind = Exclude<RecordNarrativeKind, "project">;
+
 export interface RecordNarrativeGap {
   readonly marker: string;
   readonly detail: string;

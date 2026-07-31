@@ -17,14 +17,10 @@ import type {
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
-  createArea,
-  createInitiative,
   createSavedWorkView,
   deleteSavedWorkView,
   renameSavedWorkView,
   setSavedWorkViewLayout,
-  createWorkLink,
-  firstSpace,
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
@@ -46,8 +42,6 @@ import "./work-calendar.css";
 import "./work-density.css";
 import "./work-field-visibility.css";
 import "./work-timeline.css";
-
-export type WorkContextKind = "area" | "initiative";
 
 const shiftMonthKey = (monthKey: string, offset: number): string => {
   const [year, month] = monthKey.split("-").map(Number);
@@ -131,11 +125,9 @@ export const WorkSurface = ({
   snapshot,
   selectedTaskId,
   selectedProjectId,
-  selectedContextId,
   onSelectTask,
   onOpenTask,
   onSelectProject,
-  onSelectContext,
   onReload,
   onFailure,
 }: {
@@ -143,11 +135,9 @@ export const WorkSurface = ({
   readonly snapshot: DesktopSnapshot;
   readonly selectedTaskId: TaskId | undefined;
   readonly selectedProjectId: ProjectId | undefined;
-  readonly selectedContextId: string | undefined;
   readonly onSelectTask: (id: TaskId) => void;
   readonly onOpenTask: (id: TaskId) => void;
   readonly onSelectProject: (id: ProjectId) => void;
-  readonly onSelectContext: (kind: WorkContextKind, id: string) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
@@ -618,48 +608,6 @@ export const WorkSurface = ({
   // Popover forms reset by unmounting, so run() closes the matching popover
   // (and resets the form) only after the mutation reports success; a failure
   // keeps the draft on screen.
-  const submitArea = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const title = String(data.get("title") ?? "").trim();
-    const responsibility = String(data.get("responsibility") ?? "").trim();
-    if (!client) return;
-    if (!title) {
-      reportFirstEmptyRequiredField(form);
-      return;
-    }
-    // Pusta odpowiedzialność jest odrzucana przez kontrakt, więc pomijamy klucz
-    // zamiast wysyłać "" — rekord powstaje z jawną luką do uzupełnienia.
-    await run("area", () =>
-      createArea(
-        client,
-        snapshot,
-        title,
-        responsibility === "" ? undefined : responsibility,
-      ),
-    );
-  };
-  const submitInitiative = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const title = String(data.get("title") ?? "").trim();
-    const outcome = String(data.get("outcome") ?? "").trim();
-    if (!client) return;
-    if (!title) {
-      reportFirstEmptyRequiredField(form);
-      return;
-    }
-    await run("initiative", () =>
-      createInitiative(
-        client,
-        snapshot,
-        title,
-        outcome === "" ? undefined : outcome,
-      ),
-    );
-  };
   const submitView = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -753,29 +701,6 @@ export const WorkSurface = ({
     ).then((created) => {
       if (created) setViewFieldId("");
     });
-  };
-  const submitProjectLink = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const projectId = String(data.get("projectId") ?? "");
-    const target = String(data.get("target") ?? "");
-    const [kind, targetId] = target.split(":");
-    if (!client || !projectId || !targetId) return;
-    await run("link-project", () =>
-      createWorkLink(
-        client,
-        snapshot,
-        // This surface reads `work.overview` for the workspace's first Space,
-        // so that is the Space it writes into. Said out loud at the call site
-        // now that `createWorkLink` no longer decides it silently.
-        firstSpace(snapshot),
-        kind === "initiative"
-          ? "project_advances_initiative"
-          : "project_serves_area",
-        projectId,
-        targetId,
-      ),
-    );
   };
 
   const changeLayout = (layout: "list" | "board" | "timeline" | "calendar") => {
@@ -1255,132 +1180,6 @@ export const WorkSurface = ({
 
       <div className="work-thread">
         <section
-          className="work-context-column"
-          aria-labelledby="work-context-title"
-        >
-          <div className="work-section-heading">
-            <div>
-              <h2 id="work-context-title">Responsibility context</h2>
-            </div>
-            <span>
-              {countLabel(
-                projection.areas.length + projection.initiatives.length,
-                "entry",
-                "entries",
-              )}
-            </span>
-          </div>
-          {projection.areas.map((area) => (
-            <button
-              type="button"
-              className={`work-context-row area-row${
-                area.id === selectedContextId ? " selected" : ""
-              }`}
-              aria-pressed={area.id === selectedContextId}
-              key={area.id}
-              onClick={() => onSelectContext("area", area.id)}
-            >
-              <span className="work-node" aria-hidden="true">
-                A
-              </span>
-              <span className="work-row-copy">
-                <small>Area of responsibility</small>
-                <strong>{area.title}</strong>
-                <span>
-                  <NarrativeText
-                    kind="area"
-                    text={area.responsibility}
-                    needsReview={area.needsReview}
-                  />
-                </span>
-              </span>
-            </button>
-          ))}
-          {projection.initiatives.map((initiative) => (
-            <button
-              type="button"
-              className={`work-context-row initiative-row${
-                initiative.id === selectedContextId ? " selected" : ""
-              }`}
-              aria-pressed={initiative.id === selectedContextId}
-              key={initiative.id}
-              onClick={() => onSelectContext("initiative", initiative.id)}
-            >
-              <span className="work-node" aria-hidden="true">
-                I
-              </span>
-              <span className="work-row-copy">
-                <small>Initiative · outcome to close</small>
-                <strong>{initiative.title}</strong>
-                <span>
-                  <NarrativeText
-                    kind="initiative"
-                    text={initiative.intendedOutcome}
-                    needsReview={initiative.needsReview}
-                  />
-                </span>
-              </span>
-            </button>
-          ))}
-          {projection.areas.length + projection.initiatives.length === 0 && (
-            <WorkEmpty
-              title="No work context"
-              detail="Add a lasting area or an initiative with a concrete outcome."
-            />
-          )}
-          <div className="work-create-pair">
-            <InlinePopover
-              label="Add area"
-              panelLabel="Add area of responsibility"
-              open={openPopover === "area"}
-              onOpenChange={(next) => setOpenPopover(next ? "area" : undefined)}
-            >
-              <form onSubmit={(event) => void submitArea(event)}>
-                <input
-                  name="title"
-                  aria-label="Area name"
-                  placeholder="e.g. Client relationships"
-                  required
-                />
-                <textarea
-                  name="responsibility"
-                  aria-label="Lasting responsibility (optional)"
-                  placeholder="What do you stay responsible for? You can fill this in later."
-                />
-                <button disabled={busyIds.has("area") || !client}>
-                  {busyIds.has("area") ? "Saving…" : "Add"}
-                </button>
-              </form>
-            </InlinePopover>
-            <InlinePopover
-              label="Add initiative"
-              panelLabel="Add initiative"
-              open={openPopover === "initiative"}
-              onOpenChange={(next) =>
-                setOpenPopover(next ? "initiative" : undefined)
-              }
-            >
-              <form onSubmit={(event) => void submitInitiative(event)}>
-                <input
-                  name="title"
-                  aria-label="Initiative name"
-                  placeholder="e.g. Interactive alpha"
-                  required
-                />
-                <textarea
-                  name="outcome"
-                  aria-label="Intended outcome (optional)"
-                  placeholder="What outcome closes it? You can fill this in later."
-                />
-                <button disabled={busyIds.has("initiative") || !client}>
-                  {busyIds.has("initiative") ? "Saving…" : "Add"}
-                </button>
-              </form>
-            </InlinePopover>
-          </div>
-        </section>
-
-        <section
           className="work-delivery-column"
           aria-labelledby="work-delivery-title"
         >
@@ -1834,43 +1633,6 @@ export const WorkSurface = ({
               }
             />
           )}
-          <div className="work-link-tools">
-            <InlinePopover
-              label="Link project to context"
-              panelLabel="Link project to context"
-              open={openPopover === "link-project"}
-              onOpenChange={(next) =>
-                setOpenPopover(next ? "link-project" : undefined)
-              }
-            >
-              <form onSubmit={(event) => void submitProjectLink(event)}>
-                <select name="projectId" required aria-label="Project">
-                  <option value="">Choose project</option>
-                  {projection.projects.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </select>
-                <select name="target" required aria-label="Area or initiative">
-                  <option value="">Choose context</option>
-                  {projection.initiatives.map((item) => (
-                    <option key={item.id} value={`initiative:${item.id}`}>
-                      Initiative · {item.title}
-                    </option>
-                  ))}
-                  {projection.areas.map((item) => (
-                    <option key={item.id} value={`area:${item.id}`}>
-                      Area · {item.title}
-                    </option>
-                  ))}
-                </select>
-                <button disabled={busyIds.has("link-project") || !client}>
-                  {busyIds.has("link-project") ? "Saving…" : "Link"}
-                </button>
-              </form>
-            </InlinePopover>
-          </div>
         </section>
       </div>
     </div>

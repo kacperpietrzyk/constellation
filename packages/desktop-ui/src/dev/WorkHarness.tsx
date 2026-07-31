@@ -374,11 +374,9 @@ export const WorkHarness = () => {
         snapshot={snapshot}
         selectedTaskId={undefined}
         selectedProjectId={undefined}
-        selectedContextId={undefined}
         onSelectTask={() => undefined}
         onOpenTask={() => undefined}
         onSelectProject={() => undefined}
-        onSelectContext={() => undefined}
         onReload={async () => undefined}
         onFailure={() => undefined}
       />
