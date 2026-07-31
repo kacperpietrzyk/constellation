@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test } from "vitest";
 
 import {
+  CommentIdSchema,
   DocumentIdSchema,
   StrategicRecordIdSchema,
   type CommandEnvelope,
@@ -17,6 +18,7 @@ import {
   offerDeliverableDocumentId,
   opportunityRecordId,
   personRecordId,
+  populatedBootstrap,
   populatedRelationshipWorkspace,
   populatedShellQueries,
   principalId,
@@ -48,8 +50,17 @@ import {
 //
 // Everything below is therefore about what the screen READS and WRITES, mounted
 // in a real DOM against projections parsed by the real contract schemas and a
-// client that records real command envelopes. That is the whole of this file's
-// claim. It is not a claim that a Pipeline card opens this screen.
+// client that records real command envelopes and answers real queries. That is
+// the whole of this file's claim. It is not a claim that a Pipeline card opens
+// this screen.
+//
+// COMMENTS ARE REACHABLE NOW. `CommentTargetSchema` grew its `opportunity` arm,
+// so this record reads and writes its own conversation the way the organization
+// record does — a TARGETED fetch beside the record, not a slice threaded down
+// from a shell whose own comment target covers tasks and projects only. The
+// note that used to stand here explaining that the ready arm was unreachable is
+// gone with its reason: an explanation that outlives what it explained is how a
+// stale one gets believed.
 //
 // Every assertion here was broken on purpose before it was trusted, and the
 // failure message it produced is recorded in the pull request. An assertion
@@ -241,9 +252,37 @@ const relationships = {
   ],
 };
 
+/**
+ * A real grant, because permission is a STATED FACT on this panel rather than a
+ * default. The shared fixture leaves `workspace.access` unavailable, which makes
+ * `readCommentPermissions` answer `canComment: false` — correctly: the composer
+ * then says the scope is read-only instead of sitting greyed out. Every comment
+ * assertion below needs the other branch, so the grant is seeded here rather
+ * than in the shared fixture, where it would change what every other screen's
+ * tests start from.
+ */
+const access = {
+  kind: "workspace.access" as const,
+  policyVersion: 1,
+  currentPrincipalId: principalId,
+  canManage: true,
+  members: [
+    {
+      membershipId: "00000000-0000-4000-8000-0000000005d1",
+      principalId,
+      displayName: "Kacper",
+      role: "owner" as const,
+      status: "active" as const,
+      version: 1,
+      spaces: [],
+    },
+  ],
+};
+
 const queries = {
   ...populatedShellQueries,
   "relationship.workspace": projectionResponse(relationships),
+  "workspace.access": projectionResponse(access),
 };
 
 const noop = async (): Promise<void> => {};
@@ -254,10 +293,53 @@ const noop = async (): Promise<void> => {};
  * schema forbids leaves the recorder EMPTY — which is why every write assertion
  * below checks the recorded envelope and not just that a click happened.
  */
+const commentId = CommentIdSchema.parse("00000000-0000-4000-8000-0000000005c1");
+
+/** One open thread on the deal, in the projection's own shape. */
+const dealThread = {
+  id: commentId,
+  rootCommentId: commentId,
+  body: "Czy dyżur nocny jest w tej cenie, czy osobno?",
+  author: { principalId, displayName: "Kacper" },
+  mentionPrincipalIds: [],
+  attachments: [],
+  threadState: "open" as const,
+  version: 1,
+  createdAt: "2026-07-28T09:00:00.000Z",
+  updatedAt: "2026-07-28T09:00:00.000Z",
+  edited: false,
+};
+
 const recordingClient = (
   sent: CommandEnvelope[],
+  reads: RendererQuery[],
+  refuseComments: boolean,
 ): ConstellationRendererClient =>
   ({
+    // `comment.list` is a TARGETED fetch this record issues itself — the
+    // shell's own comment target covers tasks and projects only — so the read
+    // is answered here and its query envelope is recorded. That envelope is
+    // half the proof: a deal whose comments were fetched under the wrong
+    // discriminator would render somebody else's conversation.
+    runQuery: async (query: RendererQuery) => {
+      reads.push(query);
+      if (refuseComments)
+        return {
+          kind: "query_result",
+          result: {
+            contractVersion: 1,
+            queryId: "00000000-0000-4000-8000-0000000005c9",
+            kernelTime: "2026-07-31T12:00:00.000Z",
+            outcome: "refused",
+            diagnosticCode: "query.unsupported",
+          },
+        };
+      return projectionResponse({
+        kind: "comment.list",
+        target: query.parameters.target,
+        threads: [dealThread],
+      });
+    },
     executeCommand: async (command: CommandEnvelope) => {
       sent.push(command);
       return {
@@ -303,21 +385,55 @@ afterEach(() => {
   container.remove();
 });
 
+/** The query envelope shape `runQuery` is handed, narrowed to what is read. */
+interface RendererQuery {
+  readonly queryName: string;
+  readonly parameters: Record<string, unknown>;
+}
+
 interface Mounted {
   readonly snapshot: DesktopSnapshot;
   readonly sent: CommandEnvelope[];
+  readonly reads: RendererQuery[];
 }
 
 const openRecord = async (
   options: {
     readonly dealId?: string;
-    readonly comments?: string;
+    /** Refuse the `comment.list` read, the way a kernel predating the
+     *  opportunity target arm does. */
+    readonly refuseComments?: boolean;
+    /** What the workspace sums into, and what it records. */
+    readonly homeCurrency?: string;
+    readonly currencies?: readonly string[];
   } = {},
 ): Promise<Mounted> => {
   const { createScenarioClient } =
     await import("../src/client/scenario-client.js");
   const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
-  const readClient = createScenarioClient({ queries });
+  const readClient = createScenarioClient({
+    queries:
+      options.homeCurrency === undefined && options.currencies === undefined
+        ? queries
+        : {
+            ...queries,
+            "workspace.bootstrapContext": projectionResponse({
+              ...populatedBootstrap,
+              workspace: {
+                ...populatedBootstrap.workspace,
+                commercialDefaults: {
+                  ...populatedBootstrap.workspace.commercialDefaults,
+                  ...(options.homeCurrency === undefined
+                    ? {}
+                    : { homeCurrency: options.homeCurrency }),
+                  ...(options.currencies === undefined
+                    ? {}
+                    : { currencies: options.currencies }),
+                },
+              },
+            }),
+          },
+  });
   const snapshot = await loadDesktopSnapshot(readClient);
   assert.equal(
     snapshot.relationships.kind,
@@ -339,6 +455,7 @@ const openRecord = async (
   );
 
   const sent: CommandEnvelope[] = [];
+  const reads: RendererQuery[] = [];
   root = createRoot(container);
   mounted = true;
   await act(async () => {
@@ -346,50 +463,30 @@ const openRecord = async (
       createElement(OpportunityRecordScreen, {
         snapshot,
         opportunity,
-        client: recordingClient(sent),
+        client: recordingClient(sent, reads, options.refuseComments === true),
         onReload: noop,
         onFailure: () => {
           assert.fail("the write was refused");
         },
         busy: false,
-        // ALWAYS `unavailable`, and that is a FINDING rather than a shortcut.
-        // `CommentTargetSchema` (`contracts/src/command.ts:2332-2345`) has three
-        // arms — task, project, organization — and its own comment says the
-        // kernel "refuses a target that resolves to a Person, an Opportunity or
-        // any other strategic kind". So `comment.list` cannot be issued for a
-        // deal and `comment.add` cannot be written against one: the ready arm is
-        // UNREACHABLE against today's kernel, and a fixture that built one would
-        // be asserting a shape the product cannot produce.
-        comments: {
-          kind: "unavailable",
-          message:
-            options.comments ?? "Comments could not be read on this device.",
-        },
-        commentBusy: false,
-        canComment: true,
-        canResolve: true,
-        currentPrincipalId: principalId,
-        actorOf: () => ({
-          name: "Kacper",
-          short: "KP",
-          agent: false,
-          role: "member",
-        }),
-        mentionNameOf: () => "Kacper",
-        mentionCandidates: [],
-        onAddComment: async () => true,
-        onEditComment: async () => true,
-        onResolveComment: async () => true,
-        onAttachToComment: async () => undefined,
-        onInspectAttachment: async () => "available" as const,
-        onRestoreAttachment: async () => "available" as const,
         onBack: () => {},
         onOpenOrganization: () => {},
         onOpenProject: () => {},
       }),
     );
   });
-  return { snapshot, sent };
+  return { snapshot, sent, reads };
+};
+
+/** The comments are a FETCH, so the render that shows them is a frame later
+ *  than the mount. Without this every comment assertion would be measuring the
+ *  empty list the panel draws while the read is in flight. */
+const settleReads = async (): Promise<void> => {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+  }
 };
 
 const openTab = async (tab: string): Promise<void> => {
@@ -790,7 +887,7 @@ test("the estimate is writable from the record, in minor units, and never as a z
     /Nobody has put a number on this deal/u,
   );
   const open = [...container.querySelectorAll("button")].find(
-    (node) => (node.textContent ?? "").trim() === "Estimate it",
+    (node) => (node.textContent ?? "").trim() === "Set the estimate",
   );
   assert.ok(open, "the deal's own value cannot be written from its record");
   await act(async () => {
@@ -822,35 +919,172 @@ test("the estimate is writable from the record, in minor units, and never as a z
   });
 });
 
-// ── The slices this record cannot fetch ─────────────────────────────────────
+// ── The currency the workspace sums into ────────────────────────────────────
 
-test("a comments read that failed shows the slice's OWN reason, keeps the composer, and puts no count on the tab", async () => {
-  await openRecord({
-    comments: "Comments could not be read on this device.",
+test("the sheet converts into the currency the WORKSPACE is configured with, not a pinned one", async () => {
+  // THE DEFECT THIS EXISTS FOR IS INVISIBLE TO EVERY OTHER ASSERTION IN THIS
+  // FILE. A wrong home currency still renders every row, still shows a price,
+  // still subtracts — the numbers are simply in a currency nobody chose. The
+  // shape is right and the value is wrong, which is the only kind of defect a
+  // layout assertion cannot see.
+  //
+  // The seeded offers convert USD→PLN and EUR→PLN, so a workspace summing into
+  // PLN and a screen with `"PLN"` written into it agree BY ACCIDENT. Configure
+  // the workspace for EUR and they part company: `costInHome` refuses a rate
+  // whose `to` is not the home currency, so the sheet must now say the pair is
+  // wrong rather than print a złoty amount under a euro heading.
+  await openRecord({ homeCurrency: "EUR", currencies: ["EUR", "USD", "PLN"] });
+  await openTab("offers");
+  const derived = container.querySelector<HTMLElement>(
+    `[data-offer="${derivedOfferId}"]`,
+  );
+  assert.ok(derived);
+  const cost =
+    derived.querySelector('[data-offer-row="cost"]')?.textContent ?? "";
+  const price =
+    derived.querySelector('[data-offer-row="price"]')?.textContent ?? "";
+  // The dollar cost stands in dollars and names the pair it could not use.
+  assert.match(cost, /41,200 USD/u);
+  assert.match(cost, /the stored rate is USD→PLN, not USD→EUR/u);
+  // And the number that WOULD have been printed against a pinned PLN is gone.
+  assert.doesNotMatch(
+    cost,
+    /162,328/u,
+    "the cost was converted at a rate the workspace's home currency forbids",
+  );
+  assert.match(price, /not known yet/u);
+});
+
+test("an amount is written in a currency the workspace records", async () => {
+  await openRecord({ homeCurrency: "EUR", currencies: ["EUR", "USD", "PLN"] });
+  const open = [...container.querySelectorAll("button")].find((node) =>
+    (node.textContent ?? "").includes("the estimate"),
+  );
+  assert.ok(open, "the estimate cannot be written");
+  await act(async () => {
+    open.click();
   });
+  const picker = container.querySelector<HTMLSelectElement>(
+    "#opportunity-estimate-currency",
+  );
+  assert.ok(picker, "the estimate offers no currency");
+  // The options ARE the workspace's list — not a fourth hand-written copy of
+  // the currency union, which is what this projection field exists to prevent.
+  assert.deepEqual(
+    [...picker.options].map((option) => option.value),
+    ["EUR", "USD", "PLN"],
+  );
+  assert.equal(
+    picker.value,
+    "EUR",
+    "the picker did not open on the home currency",
+  );
+});
+
+test("a workspace summing into a currency it does not record is refused a control, not given a broken one", async () => {
+  // #189's NAMED GAP: nothing enforces that `homeCurrency` is a member of
+  // `currencies`. Starting a form here would offer to write an amount in a
+  // currency the workspace does not record. Reading is unaffected — a stored
+  // amount stays readable in whatever it was stored in.
+  await openRecord({ homeCurrency: "USD", currencies: ["PLN", "EUR"] });
+  assert.ok(
+    container.querySelector("[data-currency-misconfigured]"),
+    "the mismatch is not stated",
+  );
+  assert.equal(
+    [...container.querySelectorAll("button")].find((node) =>
+      (node.textContent ?? "").includes("the estimate"),
+    ),
+    undefined,
+    "a control was offered on a currency the workspace does not record",
+  );
+  // The record still READS. Withholding a control is not withholding the deal.
+  assert.match(container.textContent ?? "", /Qualification/u);
+});
+
+// ── Comments ────────────────────────────────────────────────────────────────
+
+test("a comment written on a deal reaches the kernel AS A DEAL", async () => {
+  const { sent } = await openRecord();
+  await settleReads();
+  await openTab("comments");
+  const field = container.querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Write a comment"]',
+  );
+  assert.ok(field, "the Comments tab offers no way to comment");
+  await act(async () => {
+    typeInto(field, "Dyżur nocny jest w tej cenie.");
+  });
+  await act(async () => {
+    field
+      .closest("form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  const added = sent.find((command) => command.commandName === "comment.add");
+  assert.ok(added, "writing a comment on a deal issued no command");
+  // The TARGET is the whole point. A strategic-record id does not say which
+  // kind it names, so the discriminator is the only thing the kernel can check
+  // what it found against — and it is the DEAL's id, not its client's, which is
+  // the slip that would otherwise land this conversation on the organization.
+  assert.deepEqual((added.payload as Record<string, unknown>)["target"], {
+    kind: "opportunity",
+    opportunityId: opportunityRecordId,
+  });
+  // Written against the DEAL's version. A comment is checked against the record
+  // it hangs on, and this envelope's key set is exact — one id too many is a
+  // version conflict rather than a partial success.
+  assert.deepEqual(added.expectedVersions, { [opportunityRecordId]: 4 });
+});
+
+test("the deal's conversation is FETCHED as a deal, not as its client", async () => {
+  const { reads } = await openRecord();
+  await settleReads();
+  await openTab("comments");
+  const read = reads.find((query) => query.queryName === "comment.list");
+  assert.ok(read, "the record never asked for its own comments");
+  // The read half of the same point. A list fetched under the wrong
+  // discriminator renders somebody else's conversation under this heading, and
+  // every visual assertion on this screen would stay green.
+  assert.deepEqual(read.parameters["target"], {
+    kind: "opportunity",
+    opportunityId: opportunityRecordId,
+  });
+  assert.match(
+    container.textContent ?? "",
+    /Czy dyżur nocny jest w tej cenie/u,
+  );
+});
+
+test("a kernel that refuses the deal target says so and still offers the composer", async () => {
+  // A workspace whose kernel predates the opportunity arm refuses this query.
+  // The tab is one of three here, so its absence would read as "this deal has
+  // no conversation" rather than "the conversation could not be read".
+  await openRecord({ refuseComments: true });
+  await settleReads();
   const tab = container.querySelector<HTMLElement>(
     '[data-record-tab="comments"]',
   );
   assert.ok(tab);
-  // A number is a claim, and there is nothing to claim it from. No number is
-  // the honest reading of a slice that never arrived — a zero would be a lie
-  // that looks exactly like a record nobody has written on.
+  // No number: a claim with nothing to claim it from.
   assert.equal(tab.textContent, "Comments");
   await openTab("comments");
   const status = container.querySelector('[role="status"]');
   assert.ok(status, "the failure is not stated at all");
-  assert.equal(
-    status.textContent,
-    "Comments could not be read on this device.",
+  assert.match(
+    status.textContent ?? "",
+    /unavailable/iu,
+    "the reason shown is not the read's own",
   );
-  // The write is checked against the RECORD's version, which this slice does
-  // not carry, so it still lands with no threads on screen. Losing the composer
-  // with the list was the expensive half of getting this wrong.
+  // The write is checked against the RECORD's version, which the list does not
+  // carry, so it still lands with no threads on screen.
   assert.ok(
-    container.querySelector("textarea"),
+    container.querySelector('textarea[aria-label="Write a comment"]'),
     "the composer went away with the list",
   );
 });
+
+// ── The slices this record cannot fetch ─────────────────────────────────────
 
 test("a linked project this reader cannot reach says so rather than offering a button that goes nowhere", async () => {
   await openRecord();

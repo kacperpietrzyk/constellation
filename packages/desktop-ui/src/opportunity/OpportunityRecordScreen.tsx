@@ -1,21 +1,25 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
 import type {
   Currency,
-  KnowledgeSourceId,
-  PrincipalId,
   ProjectId,
   StrategicRecordId,
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import type {
-  CommentListProjection,
-  DataSlice,
+  CommentTarget,
   DesktopSnapshot,
   MutationFailure,
 } from "../client/workflow.js";
-import { updateOffer, updateOpportunity } from "../client/workflow.js";
+import {
+  addComment,
+  editComment,
+  loadComments,
+  setCommentResolved,
+  updateOffer,
+  updateOpportunity,
+} from "../client/workflow.js";
 import {
   fmtApprox,
   fmtMoney,
@@ -31,17 +35,14 @@ import {
 } from "../crm/organization-reading.js";
 import { countLabel, dateKeyInZone, formatDate } from "../i18n.js";
 import {
-  RecordCommentsPanel,
-  type MentionCandidate,
-} from "../record/RecordCommentsPanel.js";
+  buildActorResolver,
+  buildMentionResolver,
+  readCommentPermissions,
+} from "../record/record-actors.js";
+import { RecordCommentsPanel } from "../record/RecordCommentsPanel.js";
 import {
   openThreadCount,
   restoreTab,
-  type AttachmentCustody,
-  type CommentActor,
-  type CommentAttachment,
-  type CommentThread,
-  type PendingAttachment,
   type RecordTab,
 } from "../record/record-tabs.js";
 import { RecordTabStrip } from "../record/RecordTabStrip.js";
@@ -154,26 +155,22 @@ const OPPORTUNITY_TABS: readonly RecordTab[] = [
 ];
 
 /**
- * The workspace's home currency — the ONE place this screen decides it, and a
- * NAMED GAP rather than a default.
+ * Which record this deal's comments belong to, in ONE place.
  *
- * `costInHome` converts *to* something, and that something is a workspace
- * setting: decision §2.3 accepted `homeCurrency` and an allowed-currency list
- * onto `Workspace`, and the scheduling amendment moved them out of both backend
- * lots into a follow-on PR that has not landed. `CommercialDefaultsProjection`
- * carries `{stages, markupPct, upliftPct}` and no currency.
- *
- * It is a single constant read once, and deliberately NOT a per-offer fallback
- * such as "convert to whatever the rate points at". That shape is what produces
- * a plausible amount in the wrong currency that nobody questions, which is the
- * exact failure `costInHome`'s pair guard exists to prevent — here a mismatched
- * pair still refuses, and refusing is the honest answer. The value is the
- * accepted prototype's own (`v3/data.js` `WORKSPACE_CONFIG.homeCurrency`).
- *
- * When the follow-on lands this becomes one field read off
- * `snapshot.bootstrap.workspace`, and nothing else on this screen moves.
+ * A `StrategicRecordId` does not say which kind it names, so the discriminator
+ * is the only thing the kernel can check what it found against — an
+ * `opportunityId` that resolves to a Person, a Renewal or an Offer is refused
+ * on the same path an organization target is. Three writes and one read reach
+ * for this, and the same shape restated four times is how one of them ends up
+ * naming a different record than the other three (the organization record's own
+ * helper says exactly this, and this is its sibling).
  */
-const HOME_CURRENCY: Currency = "PLN";
+const opportunityCommentTarget = (
+  opportunity: OpportunityRecord,
+): CommentTarget => ({
+  kind: "opportunity",
+  opportunityId: opportunity.id,
+});
 
 export interface OpportunityRecordScreenProps {
   /** Every reading comes off the snapshot, and it is passed whole for the reason
@@ -189,42 +186,6 @@ export interface OpportunityRecordScreenProps {
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
   readonly busy: boolean;
-  readonly comments: DataSlice<CommentListProjection>;
-  readonly commentBusy: boolean;
-  readonly canComment: boolean;
-  /** Settling anybody else's thread. The author may always settle their own,
-   *  which is why this and `currentPrincipalId` travel together. */
-  readonly canResolve: boolean;
-  readonly currentPrincipalId: PrincipalId | undefined;
-  readonly actorOf: (comment: CommentThread) => CommentActor;
-  readonly mentionNameOf: (principalId: string) => string;
-  readonly mentionCandidates: readonly MentionCandidate[];
-  /** All FOUR arguments are forwarded to the panel. A caller supplying a
-   *  two-parameter function is assignable here while silently dropping the last
-   *  two — the answer then lands as a fresh comment under a strip that promised
-   *  it was a reply, and the staged files never reach the write. */
-  readonly onAddComment: (
-    body: string,
-    mentions: readonly PrincipalId[],
-    parent?: CommentThread,
-    attachmentSourceIds?: readonly KnowledgeSourceId[],
-  ) => Promise<boolean>;
-  readonly onEditComment: (
-    comment: CommentThread,
-    body: string,
-    attachmentSourceIds?: readonly KnowledgeSourceId[],
-  ) => Promise<boolean>;
-  readonly onResolveComment: (
-    comment: CommentThread,
-    resolved: boolean,
-  ) => Promise<boolean>;
-  readonly onAttachToComment: () => Promise<PendingAttachment | undefined>;
-  readonly onInspectAttachment: (
-    attachment: CommentAttachment,
-  ) => Promise<AttachmentCustody>;
-  readonly onRestoreAttachment: (
-    attachment: CommentAttachment,
-  ) => Promise<AttachmentCustody>;
   readonly onBack: () => void;
   /** The NAME travels with the id because the shell names the tab it opens, and
    *  this screen has already resolved the record it was clicked on. */
@@ -258,20 +219,6 @@ export const OpportunityRecordScreen = ({
   onReload,
   onFailure,
   busy,
-  comments,
-  commentBusy,
-  canComment,
-  canResolve,
-  currentPrincipalId,
-  actorOf,
-  mentionNameOf,
-  mentionCandidates,
-  onAddComment,
-  onEditComment,
-  onResolveComment,
-  onAttachToComment,
-  onInspectAttachment,
-  onRestoreAttachment,
   onBack,
   onOpenOrganization,
   onOpenProject,
@@ -288,6 +235,20 @@ export const OpportunityRecordScreen = ({
   const [priceDraft, setPriceDraft] = useState("");
   const [estimating, setEstimating] = useState(false);
   const [estimateDraft, setEstimateDraft] = useState("");
+  const [estimateCurrency, setEstimateCurrency] = useState<Currency>();
+  const [priceCurrency, setPriceCurrency] = useState<Currency>();
+  // A record's comments are a TARGETED fetch, not a snapshot slice, so they are
+  // read HERE beside the record rather than threaded down from the shell — the
+  // same reason, and the same shape, as the organization record. It also means
+  // the whole capability is proved from this file: the shell's own comment
+  // target covers only tasks and projects, so a deal threaded through it would
+  // have been a fourth branch in the entry chunk for one screen.
+  const [comments, setComments] =
+    useState<Awaited<ReturnType<typeof loadComments>>>();
+  const [commentsFailure, setCommentsFailure] = useState<string | undefined>(
+    undefined,
+  );
+  const [commentBusy, setCommentBusy] = useState(false);
 
   const select = (tab: RecordTab): void => {
     rememberTab(opportunity.id, tab);
@@ -295,10 +256,27 @@ export const OpportunityRecordScreen = ({
   };
 
   const workspace = snapshot.bootstrap.workspace;
+  // REQUIRED on the projection since the currency settings landed, so there is
+  // no fallback here and none anywhere else on this screen: not an adapter
+  // default, not one per offer, not a `?? "PLN"`. A fallback is what makes a
+  // misconfigured workspace render every number in a currency nobody chose —
+  // right-shaped and wrong-valued, which no layout assertion can see.
   const settings: MoneySettings = {
-    homeCurrency: HOME_CURRENCY,
+    homeCurrency: workspace.commercialDefaults.homeCurrency,
     markupPct: workspace.commercialDefaults.markupPct,
   };
+  // What a picker may offer. NOT a union written here: a third hand-written
+  // copy of the currency vocabulary is what the Pipeline lot found in its own
+  // picker, and this is the field that exists so nobody needs one.
+  const currencies = workspace.commercialDefaults.currencies;
+  // #189's NAMED GAP: nothing enforces that `homeCurrency` is a member of
+  // `currencies`. A workspace configured that way would have this screen
+  // offering to write an amount in a currency the workspace does not record —
+  // so the amount controls are withheld and say why, rather than starting a
+  // form whose result is unrepresentable. Reading is unaffected: a stored
+  // amount stays readable in whatever currency it was stored in, which is the
+  // whole reason the read side is looser than the write side.
+  const homeCurrencyOffered = currencies.includes(settings.homeCurrency);
   const stages = workspace.commercialDefaults.stages;
   const timeZone = workspace.timezone;
 
@@ -338,7 +316,7 @@ export const OpportunityRecordScreen = ({
   // empty list would put "Comments 0" on the tab beside a panel saying the
   // comments could not be read — a number is a claim, and there is nothing to
   // claim it from.
-  const threads = comments.kind === "ready" ? comments.data.threads : undefined;
+  const threads = comments?.threads;
 
   const counts: Partial<Record<RecordTab, number>> = {
     offers: offers.length,
@@ -366,6 +344,58 @@ export const OpportunityRecordScreen = ({
     if (client === undefined) return;
     setWriting(true);
     void updateOffer(client, snapshot, offer, change).then(settle);
+  };
+
+  const commentTarget = opportunityCommentTarget(opportunity);
+  const { currentPrincipalId, canComment, canResolve } = readCommentPermissions(
+    snapshot.access,
+  );
+
+  useEffect(() => {
+    if (client === undefined) return;
+    let active = true;
+    void loadComments(client, snapshot, opportunityCommentTarget(opportunity))
+      .then((data) => {
+        if (!active) return;
+        setComments(data);
+        setCommentsFailure(undefined);
+      })
+      .catch((error: unknown) => {
+        // NOT swallowed, and that is the difference from the organization
+        // record. There the tab simply does not appear when the read is
+        // refused; here the tab is one of three and its absence would read as
+        // "this deal has no conversation" rather than "the conversation could
+        // not be read". A kernel predating the opportunity comment target
+        // refuses this query, and the reader is told so.
+        if (!active) return;
+        setCommentsFailure(
+          error instanceof Error ? error.message : "Comments are unavailable.",
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, opportunity, snapshot]);
+
+  /** One shape for all three comment writes. Each RE-READS the list on success
+   *  rather than patching it: the version the write expected has just moved,
+   *  and a list assembled from the old one refuses the NEXT write with a
+   *  version conflict nobody can explain. */
+  const settleComment = async (
+    api: ConstellationRendererClient,
+    result: { readonly kind: string },
+  ): Promise<boolean> => {
+    setCommentBusy(false);
+    if (result.kind !== "success") return false;
+    try {
+      setComments(await loadComments(api, snapshot, commentTarget));
+    } catch {
+      // The WRITE has already landed, so the answer stays true. Returning false
+      // here would leave the author's text sitting under a comment that DID
+      // post, and the retry double-posts it. The list is one read behind until
+      // the next one lands.
+    }
+    return true;
   };
 
   const openEditor = (field: Field): void => {
@@ -592,13 +622,13 @@ export const OpportunityRecordScreen = ({
                       write({
                         estimate: {
                           amountMinor: Math.round(major * 100),
-                          currency: HOME_CURRENCY,
+                          currency: estimateCurrency ?? settings.homeCurrency,
                         } satisfies Money,
                       });
                     }}
                   >
                     <label htmlFor="opportunity-estimate">
-                      What the deal is worth, {HOME_CURRENCY}
+                      What the deal is worth
                     </label>
                     <input
                       className={styles.input}
@@ -608,6 +638,26 @@ export const OpportunityRecordScreen = ({
                       type="text"
                       value={estimateDraft}
                     />
+                    <label
+                      className="sr-only"
+                      htmlFor="opportunity-estimate-currency"
+                    >
+                      Currency of the estimate
+                    </label>
+                    <select
+                      className={styles.select}
+                      id="opportunity-estimate-currency"
+                      onChange={(event) =>
+                        setEstimateCurrency(event.target.value as Currency)
+                      }
+                      value={estimateCurrency ?? settings.homeCurrency}
+                    >
+                      {currencies.map((currency) => (
+                        <option key={currency} value={currency}>
+                          {currency}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       className={styles.action}
                       disabled={locked}
@@ -632,23 +682,38 @@ export const OpportunityRecordScreen = ({
                         ? "Nobody has put a number on this deal."
                         : fmtMoney(opportunity.estimate)}
                     </small>
-                    <button
-                      className={styles.textAction}
-                      disabled={locked}
-                      onClick={() => {
-                        setEstimateDraft(
-                          opportunity.estimate === undefined
-                            ? ""
-                            : String(opportunity.estimate.amountMinor / 100),
-                        );
-                        setEstimating(true);
-                      }}
-                      type="button"
-                    >
-                      {opportunity.estimate === undefined
-                        ? "Estimate it"
-                        : "Change the estimate"}
-                    </button>
+                    {homeCurrencyOffered ? (
+                      <button
+                        className={styles.textAction}
+                        disabled={locked}
+                        onClick={() => {
+                          setEstimateDraft(
+                            opportunity.estimate === undefined
+                              ? ""
+                              : String(opportunity.estimate.amountMinor / 100),
+                          );
+                          setEstimateCurrency(
+                            opportunity.estimate?.currency ??
+                              settings.homeCurrency,
+                          );
+                          setEstimating(true);
+                        }}
+                        type="button"
+                      >
+                        {opportunity.estimate === undefined
+                          ? "Set the estimate"
+                          : "Change the estimate"}
+                      </button>
+                    ) : (
+                      <small
+                        className={styles.railNote}
+                        data-currency-misconfigured
+                      >
+                        This workspace sums into {settings.homeCurrency}, which
+                        is not one of the currencies it records. Amounts stay
+                        readable; setting one is withheld until Settings agree.
+                      </small>
+                    )}
                   </>
                 )}
               </section>
@@ -856,14 +921,15 @@ export const OpportunityRecordScreen = ({
                               basis: "confirmed",
                               price: {
                                 amountMinor: Math.round(major * 100),
-                                currency: HOME_CURRENCY,
+                                currency:
+                                  priceCurrency ?? settings.homeCurrency,
                               } satisfies Money,
                             };
                             writeOffer(offer, { price });
                           }}
                         >
                           <label htmlFor={`offer-price-${offer.id}`}>
-                            Agreed price, {HOME_CURRENCY}
+                            Agreed price
                           </label>
                           <input
                             className={styles.input}
@@ -875,6 +941,26 @@ export const OpportunityRecordScreen = ({
                             type="text"
                             value={priceDraft}
                           />
+                          <label
+                            className="sr-only"
+                            htmlFor={`offer-price-currency-${offer.id}`}
+                          >
+                            Currency of the agreed price
+                          </label>
+                          <select
+                            className={styles.select}
+                            id={`offer-price-currency-${offer.id}`}
+                            onChange={(event) =>
+                              setPriceCurrency(event.target.value as Currency)
+                            }
+                            value={priceCurrency ?? settings.homeCurrency}
+                          >
+                            {currencies.map((currency) => (
+                              <option key={currency} value={currency}>
+                                {currency}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             className={styles.action}
                             disabled={locked}
@@ -892,19 +978,26 @@ export const OpportunityRecordScreen = ({
                         </form>
                       ) : (
                         <>
-                          <button
-                            className={styles.textAction}
-                            disabled={locked}
-                            onClick={() => {
-                              setPriceDraft("");
-                              setConfirmingOfferId(offer.id);
-                            }}
-                            type="button"
-                          >
-                            {offer.price?.basis === "confirmed"
-                              ? "Change the agreed price"
-                              : "Confirm this price"}
-                          </button>
+                          {homeCurrencyOffered && (
+                            <button
+                              className={styles.textAction}
+                              disabled={locked}
+                              onClick={() => {
+                                setPriceDraft("");
+                                setPriceCurrency(
+                                  offer.price?.basis === "confirmed"
+                                    ? offer.price.price.currency
+                                    : settings.homeCurrency,
+                                );
+                                setConfirmingOfferId(offer.id);
+                              }}
+                              type="button"
+                            >
+                              {offer.price?.basis === "confirmed"
+                                ? "Change the agreed price"
+                                : "Confirm this price"}
+                            </button>
+                          )}
                           {offer.price?.basis === "confirmed" && (
                             // `{basis:"derived"}` is SENT, never treated as
                             // "nothing to change": the kernel turns it into a
@@ -941,34 +1034,105 @@ export const OpportunityRecordScreen = ({
           <>
             {/* A read that failed says so, and says it ABOVE the panel rather
                 than in place of it: the write is checked against the RECORD's
-                version, which this slice does not carry, so it still lands with
-                no threads on screen — and a reader whose only grant is `comment`
-                would otherwise be left with a sentence and nothing to type
-                into. */}
-            {comments.kind === "unavailable" && (
+                version, which the list does not carry, so it still lands with
+                no threads on screen — and a reader whose only grant is
+                `comment` would otherwise be left with a sentence and nothing to
+                type into. */}
+            {commentsFailure !== undefined && (
               <p className={screen.unavailable} role="status">
-                {comments.message}
+                {commentsFailure}
               </p>
             )}
-            <RecordCommentsPanel
-              actorOf={actorOf}
-              busy={commentBusy || busy}
-              canComment={canComment}
-              canResolve={canResolve}
-              currentPrincipalId={currentPrincipalId}
-              mentionCandidates={mentionCandidates}
-              mentionNameOf={(principalId) => mentionNameOf(principalId)}
-              onAttach={onAttachToComment}
-              onEdit={onEditComment}
-              onInspectAttachment={onInspectAttachment}
-              onResolve={onResolveComment}
-              onRestoreAttachment={onRestoreAttachment}
-              onSubmit={onAddComment}
-              recordKey={opportunity.id}
-              threads={threads ?? []}
-              threadsKnown={threads !== undefined}
-              timeZone={timeZone}
-            />
+            {client === undefined ? (
+              <p className={screen.unavailable} role="status">
+                This workspace is not connected, so comments cannot be read.
+              </p>
+            ) : (
+              <RecordCommentsPanel
+                actorOf={buildActorResolver(
+                  snapshot.agentAccess.kind === "ready"
+                    ? snapshot.agentAccess.data
+                    : undefined,
+                )}
+                busy={commentBusy || busy}
+                canComment={canComment}
+                canResolve={canResolve}
+                currentPrincipalId={currentPrincipalId}
+                mentionCandidates={
+                  snapshot.mentionCandidates.kind === "ready"
+                    ? snapshot.mentionCandidates.data.candidates.filter(
+                        (candidate) =>
+                          candidate.principalId !== currentPrincipalId,
+                      )
+                    : []
+                }
+                mentionNameOf={buildMentionResolver(
+                  snapshot.mentionCandidates.kind === "ready"
+                    ? snapshot.mentionCandidates.data
+                    : undefined,
+                  currentPrincipalId,
+                )}
+                onEdit={async (comment, body, attachmentSourceIds) => {
+                  setCommentBusy(true);
+                  // The mentions are carried over unchanged: an edit is a
+                  // correction to the text, and re-sending an empty list would
+                  // quietly un-name everybody the comment had woken.
+                  const result = await editComment(
+                    client,
+                    snapshot,
+                    comment.id,
+                    comment.version,
+                    body,
+                    comment.mentionPrincipalIds,
+                    attachmentSourceIds,
+                  );
+                  return settleComment(client, result);
+                }}
+                onResolve={async (comment, resolved) => {
+                  setCommentBusy(true);
+                  const result = await setCommentResolved(
+                    client,
+                    snapshot,
+                    comment,
+                    resolved,
+                  );
+                  return settleComment(client, result);
+                }}
+                // All FOUR arguments forwarded. A two-parameter function is
+                // assignable to this prop and drops the last two silently,
+                // which lands an answer as a fresh thread and leaves staged
+                // files behind — neither of which the panel can see from here.
+                onSubmit={async (
+                  body,
+                  mentions,
+                  parent,
+                  attachmentSourceIds,
+                ) => {
+                  setCommentBusy(true);
+                  const result = await addComment(
+                    client,
+                    snapshot,
+                    // The kind travels with the id. A strategic id does not say
+                    // what it names, so this discriminator is the only thing
+                    // the kernel can check what it found against.
+                    commentTarget,
+                    opportunity.version,
+                    body,
+                    mentions,
+                    parent,
+                    attachmentSourceIds,
+                  );
+                  return settleComment(client, result);
+                }}
+                recordKey={opportunity.id}
+                threads={threads ?? []}
+                // `undefined` is a list that never arrived, `[]` is a deal
+                // nobody has written on. Collapsed into one array for the
+                // panel, so the panel is told which it was.
+                threadsKnown={threads !== undefined}
+                timeZone={timeZone}
+              />
+            )}
           </>
         )}
       </RecordTabStrip>
