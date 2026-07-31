@@ -2352,13 +2352,31 @@ export const CommentTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("task"), taskId: TaskIdSchema }).strict(),
   z.object({ kind: z.literal("project"), projectId: ProjectIdSchema }).strict(),
   // An Organization is the third record kind with a screen of its own, and the
-  // `Comments` tab is one tab across all three. It is a StrategicRecord, so the
+  // `Comments` tab is one tab across all four. It is a StrategicRecord, so the
   // id alone does not say which kind it names — the kernel refuses a target
-  // that resolves to a Person, an Opportunity or any other strategic kind.
+  // that resolves to a Person, a Renewal or any other strategic kind.
   z
     .object({
       kind: z.literal("organization"),
       organizationId: StrategicRecordIdSchema,
+    })
+    .strict(),
+  // The fourth, and the deal is the record a team argues about most: the
+  // opportunity record screen carries the same `Comments` tab. Its own arm
+  // rather than a shared "strategic record" one, for the reason the
+  // organization arm has its own: the kind an id names is checked when the
+  // target is resolved, and only a discriminator the caller states can be
+  // checked against what was found. An `opportunityId` that resolves to a
+  // Person, a Renewal or an Offer is refused exactly as a Project id sent
+  // through the organization arm is.
+  //
+  // Deliberately NOT widened to every strategic kind: no accepted screen asks
+  // for a Person's or a Renewal's comment thread, and a union widened past its
+  // evidence is a promise nobody made.
+  z
+    .object({
+      kind: z.literal("opportunity"),
+      opportunityId: StrategicRecordIdSchema,
     })
     .strict(),
 ]);
