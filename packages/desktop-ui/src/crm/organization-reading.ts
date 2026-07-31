@@ -49,6 +49,7 @@ import {
   opportunityValue,
   sumByCurrency,
   type Money,
+  type OpportunityValueReading,
 } from "./money.js";
 
 type StrategicRecord = RelationshipWorkspaceProjection["records"][number];
@@ -304,18 +305,34 @@ export const indexRelationships = (
 export const isOpenDeal = (deal: OpportunityRecord): boolean =>
   deal.state !== "rejected" && deal.state !== "lost";
 
-/** What a deal is worth, offers included. One arithmetic module, four screens. */
-export const dealValue = (
+/**
+ * What a deal is worth AND what kind of number that is. One arithmetic module,
+ * four screens.
+ *
+ * The basis is carried rather than dropped because a confirmed offer amount and
+ * somebody's guess are not the same claim, and printed bare they are the same
+ * string. `opportunityValue` returns `{amount, basis}` for exactly this reason;
+ * a caller that only wants the amount takes `dealValue` below, which is this
+ * function with the basis thrown away — a collection row has room for one number
+ * and a record does not have that excuse.
+ */
+export const dealValueReading = (
   deal: OpportunityRecord,
   index: RelationshipIndex,
-): Money | null =>
+): OpportunityValueReading =>
   opportunityValue({
     ...(deal.estimate === undefined ? {} : { estimate: deal.estimate }),
     offers: (index.offersByOpportunity.get(deal.id) ?? []).map((offer) => ({
       state: offer.state,
       ...(offer.price === undefined ? {} : { price: offer.price }),
     })),
-  }).amount;
+  });
+
+/** The amount alone, for the rows that have room for one number. */
+export const dealValue = (
+  deal: OpportunityRecord,
+  index: RelationshipIndex,
+): Money | null => dealValueReading(deal, index).amount;
 
 /** "162,328 PLN · 40,000 EUR", or the honest absence. Never a zero: nobody
  *  having put a number on a deal is not the same as the deal being worth

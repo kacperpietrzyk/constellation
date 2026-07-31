@@ -20,6 +20,7 @@ import {
   navigateShellContext,
   openShellContext,
   openShellContextReportingEviction,
+  opportunityContext,
   organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
@@ -35,6 +36,9 @@ const documentId = DocumentIdSchema.parse(
 );
 const organizationId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-000000000004",
+);
+const opportunityId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000005",
 );
 
 describe("stable shell navigation", () => {
@@ -208,6 +212,13 @@ describe("stable shell navigation", () => {
       state,
       organizationContext(organizationId, "Poufna organizacja"),
     );
+    // Piąty rodzaj kontekstu, dołożony razem z ekranem rekordu szansy. Tytuł
+    // zakładki to NAZWA CUDZEJ PRACY — po utracie dostępu ma zniknąć razem
+    // z identyfikatorem, dokładnie tak jak trzy powyższe.
+    state = openShellContext(
+      state,
+      opportunityContext(opportunityId, "Poufna szansa"),
+    );
 
     const pruned = pruneInaccessibleShellContexts(
       state,
@@ -216,6 +227,7 @@ describe("stable shell navigation", () => {
         projectIds: new Set(),
         documentIds: new Set(),
         organizationIds: new Set(),
+        opportunityIds: new Set(),
       },
       cockpit,
     );
@@ -223,7 +235,10 @@ describe("stable shell navigation", () => {
     assert.deepEqual(pruned.tabs, [cockpit]);
     assert.deepEqual(pruned.history, [cockpit]);
     assert.equal(pruned.activeKey, cockpit.key);
-    assert.doesNotMatch(serializeShellNavigation(pruned), /Poufne|00000000/);
+    assert.doesNotMatch(
+      serializeShellNavigation(pruned),
+      /Poufne|Poufna|00000000/,
+    );
   });
 });
 

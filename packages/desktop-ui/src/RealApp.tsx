@@ -111,6 +111,14 @@ const ProjectRecordScreen = lazy(
 // several times the room the size gate leaves. A task nobody has opened costs
 // nothing.
 const TaskRecordScreen = lazy(() => import("./record/TaskRecordScreen.js"));
+// Lazy for the same measured reason as the two above, and the reason is the
+// gate rather than a preference: Pipeline is a lazy destination, but this file
+// is the ENTRY chunk, so a static import here would pull the record screen, its
+// stylesheet and the comments panel onto the first paint for every reader who
+// never opens a deal. The hot path has single-digit kilobytes left.
+const OpportunityRecordScreen = lazy(
+  () => import("./opportunity/OpportunityRecordScreen.js"),
+);
 // Lazy for the same reason, and the reason is measured: the panel's stylesheet
 // is eight kilobytes that a STATIC import would move onto the head-linked
 // sheet, against the six this retirement frees. The inspector rail is the third
@@ -194,6 +202,7 @@ import {
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
   serializeShellNavigation,
+  opportunityContext,
   taskContext,
   type ShellContext,
 } from "./client/shell-navigation.js";
@@ -849,10 +858,23 @@ export const RealApp = ({
             .map((record) => record.id)
         : [],
     );
+    const opportunityIds = new Set(
+      snapshot.relationships.kind === "ready"
+        ? snapshot.relationships.data.records
+            .filter((record) => record.kind === "opportunity")
+            .map((record) => record.id)
+        : [],
+    );
     setNavigation((current) =>
       pruneInaccessibleShellContexts(
         current,
-        { taskIds, projectIds, documentIds, organizationIds },
+        {
+          taskIds,
+          projectIds,
+          documentIds,
+          organizationIds,
+          opportunityIds,
+        },
         destinationContext("today", "Today"),
       ),
     );
@@ -1981,6 +2003,30 @@ export const RealApp = ({
           (item) => item.id === activeContext.taskId,
         )
       : undefined;
+  // The opened DEAL. Finding it is the mount's gate, exactly as it is for the
+  // task record: a screen that could not find its own record would have to
+  // invent a state the surface already has one for — and Pipeline's slot draws
+  // that state, saying what is missing rather than showing a board that ignores
+  // the request.
+  //
+  // No `record === true` beside the id, and that asymmetry with `recordTask` is
+  // the point: eleven call sites build a task context meaning "take me to this
+  // task", so the promotion there is opt-in. Every opportunity context in this
+  // program means the record, which is why `opportunityContext` is the only one
+  // that builds them and why carrying the id IS the request.
+  const recordOpportunity =
+    activeContext.opportunityId !== undefined &&
+    state.snapshot.relationships.kind === "ready"
+      ? state.snapshot.relationships.data.records.find(
+          // The KIND is tested inside the predicate rather than after it: an
+          // id alone does not say what it names, and a context restored from
+          // device state carries an id this session never resolved. A cast
+          // after a bare id match would hand the screen a Person.
+          (item): item is Extract<typeof item, { kind: "opportunity" }> =>
+            item.kind === "opportunity" &&
+            item.id === activeContext.opportunityId,
+        )
+      : undefined;
   // Whether the shell's comment slice is the one THIS record asked for. The
   // effect that follows the active context into `selectedTaskId` runs after the
   // commit, so there is one painted frame in which the record is the newly
@@ -2185,20 +2231,50 @@ export const RealApp = ({
             snapshot={state.snapshot}
             selectedRecordId={selectedStrategicId}
             // THE OPPORTUNITY RECORD IS A CONTEXT ON THIS SURFACE, exactly as
-            // the task record is a context on `tasks`. Neither half is handed
-            // in yet: no `ShellContext` carries an opportunity id, so nothing
-            // can ask for a record, and the screen that would draw one lands
-            // with the record lot as a commit after this PR. The slot is here
-            // and asserted so that lot has a seam to land on rather than a
-            // surface to rewrite.
+            // the task record is a context on `tasks`. Both halves are handed
+            // in here: the context carries the deal, and the screen that draws
+            // it is the slot below.
+            activeOpportunityId={activeContext.opportunityId}
+            renderRecordScreen={
+              recordOpportunity === undefined
+                ? undefined
+                : () => (
+                    <Suspense
+                      fallback={
+                        <p className="capacity-note">Opening the deal…</p>
+                      }
+                    >
+                      <OpportunityRecordScreen
+                        busy={false}
+                        client={client}
+                        onBack={() =>
+                          openContext(
+                            destinationContext("pipeline", "Pipeline"),
+                          )
+                        }
+                        onFailure={showFailure}
+                        onOpenOrganization={(id, name) =>
+                          openContext(organizationContext(id, name))
+                        }
+                        onOpenProject={(id, title) =>
+                          openContext(projectContext(id, title))
+                        }
+                        onReload={reload}
+                        opportunity={recordOpportunity}
+                        snapshot={state.snapshot}
+                      />
+                    </Suspense>
+                  )
+            }
             onSelectRecord={selectStrategicInInspector}
-            onOpenOpportunity={(id) => {
-              // Until the record context exists, opening a deal means holding
-              // it — the board with THAT deal in hand. Navigating away and
-              // selecting nothing is the exact downgrade trap 24 describes.
-              openContext(destinationContext("pipeline", "Pipeline"));
-              selectStrategicInInspector(id);
-            }}
+            onOpenOpportunity={(id, title) =>
+              // Opening a deal now means THE DEAL, not the board holding it.
+              // The context is what makes the tab reopen as the record and what
+              // lets ⌘K reach the same place — the board-with-it-selected state
+              // this replaced was the honest halfway house for the one release
+              // in which no context could carry a deal.
+              openContext(opportunityContext(id, title))
+            }
             onOpenOrganization={(id, name) =>
               openContext(organizationContext(id, name))
             }
@@ -4923,15 +4999,33 @@ export const RealApp = ({
               }
             } else if (nextSurface === "pipeline") {
               // Both halves of the repoint, in one place, the way the `people`
-              // branch below does it. `opportunity` and `offer` now point at
-              // the board rather than at the collection, and opening the
-              // destination without selecting the record would turn "open this
-              // deal" into "open the Pipeline screen" — silently, through the
-              // generic `else`. An offer selects THE OFFER: the board reads the
-              // offer sheet from the deal that owns it, and the inspector is
-              // what shows the record the search actually found.
-              openContext(destinationContext("pipeline", "Pipeline"));
-              selectStrategicInInspector(recordId);
+              // branch below does it — and this is the half that MOVED when the
+              // deal got a record screen.
+              //
+              // A DEAL opens its own record. Until a context could carry an
+              // opportunity there was nowhere for it to open, so this branch
+              // held the board with the deal selected: honest for that release,
+              // and still a downgrade of "open this deal" to "open the board".
+              // Now `opportunityContext` exists and ⌘K lands on the record.
+              //
+              // An OFFER stays on the board, deliberately. Its sheet is on the
+              // deal's record, but the record is named after the DEAL — sending
+              // a search hit for "Wariant z dyżurem" to a screen headed by
+              // another record is the same substitution trap 24 describes,
+              // pointing the other way. The board's inspector shows THE OFFER,
+              // which is the record the search actually found.
+              const record =
+                state.snapshot.relationships.kind === "ready"
+                  ? state.snapshot.relationships.data.records.find(
+                      (item) => item.id === recordId,
+                    )
+                  : undefined;
+              if (record?.kind === "opportunity") {
+                openContext(opportunityContext(record.id, record.title));
+              } else {
+                openContext(destinationContext("pipeline", "Pipeline"));
+                selectStrategicInInspector(recordId);
+              }
             } else if (nextSurface === "people") {
               // Both halves of the repoint, in one place. Opening the
               // destination and stopping would turn "open this person" into
