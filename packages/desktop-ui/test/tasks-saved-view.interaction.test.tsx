@@ -519,3 +519,254 @@ test("the shell hands Tasks the write its filter editor needs", async () => {
     "the editor opened onto no form once the shell wired it",
   );
 });
+
+/* ── KEEPING A VIEW ───────────────────────────────────────────────────────
+   Making one, renaming it, deleting it and writing the lens back — moved off
+   the retired work surface. Asserted through the shell and through the PAYLOAD:
+   the manager is lazy behind a trigger, and a screen that redraws itself and a
+   screen that SENDS what was chosen look identical. */
+
+/** Every command the shell issued while a test was running. */
+let issued: {
+  name: string;
+  payload: Record<string, unknown>;
+  expectedVersions: Record<string, number>;
+}[] = [];
+
+/** Tasks, reached from the navigation, with the commands captured. */
+const openTasksCapturing = async (): Promise<void> => {
+  const { RealApp } = await import("../src/RealApp.js");
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+  issued = [];
+  const client = createScenarioClient({
+    queries: savedViewShellQueries,
+    executeCommand: (command) => {
+      issued.push({
+        name: command.commandName,
+        payload: command.payload as Record<string, unknown>,
+        expectedVersions: (command.expectedVersions ?? {}) as Record<
+          string,
+          number
+        >,
+      });
+      return {
+        kind: "contract_rejected",
+        diagnosticCode: "contract.invalid",
+        issues: [{ path: "", code: "custom" }],
+      };
+    },
+  });
+  const snapshot = await loadDesktopSnapshot(client);
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(createElement(RealApp, { client, initialSnapshot: snapshot }));
+  });
+  const item = [
+    ...container.querySelectorAll<HTMLElement>(".nav-item[data-surface]"),
+  ].find((node) => node.dataset.surface === "tasks");
+  assert.ok(item, "no navigation target rendered for Tasks");
+  await act(async () => {
+    item.click();
+  });
+  await waitForCondition(
+    () => container.querySelectorAll("[data-task-row]").length > 0,
+    "Tasks never drew a single row into the work plane",
+  );
+  // The manager is its own chunk, so it lands a tick after the screen.
+  await waitForCondition(
+    () => managerTrigger("Save this view") !== undefined,
+    "Tasks draws no way to keep a view: the manager mounts only when the shell passes the three writes, and a Save that reaches nobody is worse than no Save",
+  );
+};
+
+const managerTrigger = (text: string): HTMLElement | undefined =>
+  [...container.querySelectorAll<HTMLElement>("button")].find(
+    (button) => (button.textContent ?? "").trim() === text,
+  );
+
+const clickNamed = async (text: string): Promise<void> => {
+  const button = managerTrigger(text);
+  assert.ok(button, `no control named “${text}” is in the view bar`);
+  await act(async () => {
+    button.click();
+  });
+};
+
+const popover = (): HTMLElement => {
+  const dialog = document.body.querySelector<HTMLElement>(
+    '[role="dialog"].inline-popover',
+  );
+  assert.ok(dialog, "the disclosure opened nothing");
+  return dialog;
+};
+
+const typeInto = async (field: HTMLInputElement, value: string) => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
+const lastCommand = (name: string) => {
+  const found = [...issued].reverse().find((command) => command.name === name);
+  assert.ok(found, `nothing issued a ${name} command`);
+  return found;
+};
+
+test("saving a view keeps the shape on screen, and nothing the reader did not choose", async () => {
+  await openTasksCapturing();
+
+  // Group and order the work first — "this view" has to mean something the
+  // reader can see before they name it.
+  await choose("tasks-group", "priority");
+  await choose("tasks-sort", "due");
+
+  await clickNamed("Save this view");
+  const dialog = popover();
+  const name = dialog.querySelector<HTMLInputElement>("#saved-view-name");
+  assert.ok(name, "the form asks for no name");
+  await typeInto(name, "Pilne, po terminie");
+  await act(async () => {
+    dialog.querySelector<HTMLButtonElement>("button[type=submit]")?.click();
+  });
+
+  const command = lastCommand("savedView.create");
+  assert.equal(command.payload.name, "Pilne, po terminie");
+  assert.equal(command.payload.groupBy, "priority");
+  // The screen and the kernel name the same three orders differently, and the
+  // translation lives in one place. A half-copied mapping is how a view saved
+  // as "by deadline" comes back sorted by title.
+  assert.equal(command.payload.sort, "due_asc");
+  // NO conditions. The gesture was "keep what I am looking at", and the reader
+  // was looking at all the work — inventing a filter here would store a view
+  // that hides work they never asked to hide.
+  assert.deepEqual(command.payload.filters, {});
+  // The one command whose kernel branch asserts an EMPTY expected-version map.
+  assert.deepEqual(command.expectedVersions, {});
+});
+
+test("an ungrouped view is stored with no grouping at all, never with the word", async () => {
+  await openTasksCapturing();
+  await choose("tasks-group", "none");
+  await clickNamed("Save this view");
+  const dialog = popover();
+  await typeInto(
+    dialog.querySelector<HTMLInputElement>("#saved-view-name")!,
+    "Wszystko luzem",
+  );
+  await act(async () => {
+    dialog.querySelector<HTMLButtonElement>("button[type=submit]")?.click();
+  });
+
+  // The contract spells ungrouped as the key being ABSENT. `"none"` is this
+  // screen's word for it and the kernel has never heard of it, so sending it
+  // is a rejection nobody can read.
+  const command = lastCommand("savedView.create");
+  assert.equal(
+    "groupBy" in command.payload,
+    false,
+    "ungrouped was stored as a value instead of as no value",
+  );
+});
+
+test("renaming and deleting act on the open view, at the version it is on", async () => {
+  await openTasksCapturing();
+  await choose("tasks-view", assigneeBoardViewId);
+  await waitForCondition(
+    () => managerTrigger("Rename") !== undefined,
+    "an open view offers no way to rename it",
+  );
+
+  await clickNamed("Rename");
+  const renameField =
+    popover().querySelector<HTMLInputElement>("#saved-view-rename");
+  assert.ok(renameField, "the rename form asks for no name");
+  // Seeded with what the view is called, so renaming is an edit and not a
+  // retype.
+  assert.notEqual(renameField.value, "");
+  await typeInto(renameField, "Moje, po osobie");
+  await act(async () => {
+    renameField
+      .closest("form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  const renamed = lastCommand("savedView.rename");
+  assert.equal(renamed.payload.savedViewId, assigneeBoardViewId);
+  assert.equal(renamed.payload.name, "Moje, po osobie");
+  assert.equal(renamed.expectedVersions[assigneeBoardViewId], 2);
+});
+
+test("deleting arms first, and stops being armed when the view underneath changes", async () => {
+  await openTasksCapturing();
+  await choose("tasks-view", assigneeBoardViewId);
+  await waitForCondition(
+    () => managerTrigger("Delete view") !== undefined,
+    "an open view offers no way to delete it",
+  );
+
+  // First click ARMS. The button says so, so the second click is never a
+  // surprise.
+  await clickNamed("Delete view");
+  assert.ok(
+    managerTrigger("Confirm delete"),
+    "the delete button gave no sign it was armed",
+  );
+  assert.equal(
+    issued.some((command) => command.name === "savedView.delete"),
+    false,
+    "the first click deleted the view outright",
+  );
+
+  // Switching views DISARMS it. On the surface this moved from, that reset
+  // lived on a different control entirely — the view chip's own click handler —
+  // so a rehome that took the button and left the reset would leave "Confirm
+  // delete" armed across a switch, and one more click would delete the WRONG
+  // view, successfully, with no error anywhere.
+  await choose("tasks-view", "");
+  await choose("tasks-view", assigneeBoardViewId);
+  await waitForCondition(
+    () => managerTrigger("Delete view") !== undefined,
+    "the manager never came back after the view changed",
+  );
+  assert.equal(
+    managerTrigger("Confirm delete"),
+    undefined,
+    "the armed delete survived a view switch and now points at another view",
+  );
+
+  await clickNamed("Delete view");
+  await clickNamed("Confirm delete");
+  const deleted = lastCommand("savedView.delete");
+  assert.equal(deleted.payload.savedViewId, assigneeBoardViewId);
+  assert.equal(deleted.expectedVersions[assigneeBoardViewId], 2);
+});
+
+test("the shape a reader lands on can be written back into the view they opened", async () => {
+  await openTasksCapturing();
+  await choose("tasks-view", assigneeBoardViewId);
+  await waitForCondition(
+    () => managerTrigger("Keep this shape") !== undefined,
+    "an open view offers no way to store the shape on screen",
+  );
+
+  // Regroup and reorder inside the open view, then keep it. Until this, a view
+  // could be opened as itself but never re-saved: the only `savedView.update`
+  // the renderer sent carried `layout` alone, so a reader who regrouped a view
+  // and came back found the old grouping — and nothing said so.
+  await choose("tasks-group", "status");
+  await choose("tasks-sort", "title");
+  await clickNamed("Keep this shape");
+
+  const command = lastCommand("savedView.update");
+  assert.equal(command.payload.savedViewId, assigneeBoardViewId);
+  assert.equal(command.payload.groupBy, "status");
+  assert.equal(command.payload.sort, "title_asc");
+  assert.equal(command.expectedVersions[assigneeBoardViewId], 2);
+});

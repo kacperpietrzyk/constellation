@@ -5,9 +5,11 @@ import type {
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
+import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import type {
   DesktopSnapshot,
+  MutationFailure,
   SavedWorkViewFilterChange,
 } from "../client/workflow.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
@@ -26,6 +28,7 @@ import {
   buildRows,
   groupTasks,
   groupingFromSavedView,
+  sortFromSavedView,
   groupingMakesColumns,
   layoutFromSavedView,
   resolveBoardInterlock,
@@ -66,6 +69,13 @@ const TaskCalendarLayout = lazy(async () => ({
 // the hot-path budget this rebuild refuses to raise has no room for it.
 const SavedViewFilterForm = lazy(async () => ({
   default: (await import("./SavedViewFilterForm.js")).SavedViewFilterForm,
+}));
+
+// Making, renaming and deleting a saved view — moved off the retired work
+// surface. Lazy for the same measured reason as the form above it: Tasks is an
+// eager destination, and the hot path has a few hundred bytes of gzip left.
+const SavedViewManager = lazy(async () => ({
+  default: (await import("./SavedViewManager.js")).SavedViewManager,
 }));
 
 // One collection of work, five lenses over it. The layout switcher changes how
@@ -124,6 +134,9 @@ export const TasksSurface = ({
   onPlanOnDay,
   onOpenCalendar,
   onSaveViewFilters,
+  client,
+  onReload,
+  onFailure,
 }: {
   readonly snapshot: DesktopSnapshot;
   /** The row the INSPECTOR is showing. Selecting is not opening. */
@@ -162,6 +175,12 @@ export const TasksSurface = ({
     view: WorkSavedView,
     change: SavedWorkViewFilterChange,
   ) => Promise<boolean>;
+  /** The three the view manager writes with. Optional together with the manager
+   *  itself: a harness mounting this surface to exercise the collection has no
+   *  client, and a Save that reaches nobody is worse than no Save. */
+  readonly client?: ConstellationRendererClient | undefined;
+  readonly onReload?: (() => Promise<void>) | undefined;
+  readonly onFailure?: ((failure: MutationFailure) => void) | undefined;
 }) => {
   const [layout, setLayout] = useState<TaskLayout>("list");
   const [grouping, setGrouping] = useState<TaskGroupBy>("status");
@@ -205,6 +224,7 @@ export const TasksSurface = ({
     if (view === undefined) return;
     const seeded = groupingFromSavedView(view.groupBy);
     setGrouping(seeded);
+    setSort(sortFromSavedView(view.sort));
     setLayout(layoutFromSavedView(view.layout, seeded, fieldDefinitions));
   };
 
@@ -485,6 +505,36 @@ export const TasksSurface = ({
             on Work (`WorkSurface.tsx:675-768`) and is not duplicated. The
             fallback is empty on purpose; a spinner where a small button will be
             is more movement than the wait it reports. */}
+        {/* Making and keeping a view, beside the picker that opens one. Drawn
+            only with the three writes wired: a Save that reaches nobody is
+            worse than no Save. Keyed on the view so the armed delete cannot
+            survive a switch — the reset used to live on a different control,
+            and one more click would have deleted the wrong view. */}
+        {onReload !== undefined && onFailure !== undefined && (
+          <LazySurfaceBoundary label="Saved views">
+            <Suspense fallback={null}>
+              <SavedViewManager
+                client={client}
+                grouping={grouping}
+                key={activeView?.id ?? "all"}
+                layout={activeLayout}
+                onFailure={onFailure}
+                onOpened={(savedViewId) =>
+                  openView(
+                    projection?.savedViews.find(
+                      (candidate) => candidate.id === savedViewId,
+                    ),
+                  )
+                }
+                onReload={onReload}
+                snapshot={snapshot}
+                sort={sort}
+                view={activeView}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
+        )}
+
         {activeView !== undefined && onSaveViewFilters !== undefined && (
           <LazySurfaceBoundary label="View filters">
             <Suspense fallback={null}>

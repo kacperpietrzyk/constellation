@@ -1,10 +1,7 @@
 import { DEFAULT_WORKING_DAY } from "@constellation/contracts";
-import { useMemo, useState } from "react";
-
-import type { RendererCommandResponse } from "@constellation/desktop-preload/client";
+import { useMemo } from "react";
 
 import { WorkSurface } from "../WorkSurface.js";
-import { createScenarioClient } from "../client/scenario-client.js";
 import type {
   DesktopSnapshot,
   SavedWorkViewLayout,
@@ -274,38 +271,17 @@ export const workHarnessSnapshot = {
   radar: { kind: "unavailable", message: "Scenario" },
 } as unknown as DesktopSnapshot;
 
-const commandResult = (
-  commandId: string,
-  savedViewId: string,
-  version: number,
-): RendererCommandResponse =>
-  ({
-    kind: "command_outcome",
-    outcome: {
-      contractVersion: 1,
-      commandId,
-      kernelTime: now,
-      outcome: "success",
-      replayed: false,
-      recordVersions: { [savedViewId]: version },
-      changedFields: ["layout"],
-      diagnosticCode: "savedView.updated",
-      projection: {
-        kind: "strategic.record_changed",
-        recordKind: "saved_view",
-        id: savedViewId,
-        version,
-      },
-    },
-  }) as unknown as RendererCommandResponse;
-
 if (workHarnessSnapshot.work.kind !== "ready") {
   throw new Error("Work harness requires a ready projection.");
 }
 const baseWork = workHarnessSnapshot.work.data;
 
 export const WorkHarness = () => {
-  const [layout, setLayout] = useState<SavedWorkViewLayout>("board");
+  // The layout switcher went to Tasks with the rest of view management, so
+  // nothing here changes it any more. The harness still mounts a stored board,
+  // which is what this surface DRAWS; choosing one is exercised where it now
+  // lives.
+  const layout: SavedWorkViewLayout = "board";
   const snapshot = useMemo(
     () =>
       ({
@@ -335,42 +311,9 @@ export const WorkHarness = () => {
       }) as unknown as DesktopSnapshot,
     [layout],
   );
-  const client = useMemo(
-    () =>
-      createScenarioClient({
-        queries: {},
-        executeCommand: (command) => {
-          if (
-            command.commandName === "savedView.update" &&
-            command.payload.savedViewId === ids.view2 &&
-            command.payload.layout !== undefined
-          ) {
-            setLayout(command.payload.layout);
-            return commandResult(
-              command.commandId,
-              command.payload.savedViewId,
-              command.payload.layout === "board"
-                ? 1
-                : command.payload.layout === "list"
-                  ? 2
-                  : command.payload.layout === "timeline"
-                    ? 3
-                    : 4,
-            );
-          }
-          return {
-            kind: "contract_rejected",
-            diagnosticCode: "contract.invalid",
-            issues: [],
-          } as RendererCommandResponse;
-        },
-      }),
-    [],
-  );
   return (
     <main className="app-shell" data-testid="work-harness">
       <WorkSurface
-        client={client}
         snapshot={snapshot}
         selectedTaskId={undefined}
         selectedProjectId={undefined}
@@ -378,7 +321,6 @@ export const WorkHarness = () => {
         onOpenTask={() => undefined}
         onSelectProject={() => undefined}
         onReload={async () => undefined}
-        onFailure={() => undefined}
       />
     </main>
   );

@@ -178,6 +178,41 @@ export const TASK_SORT_LABELS: Record<TaskSort, string> = {
 };
 
 /**
+ * The order a stored view asks for, and the order a stored view is given.
+ *
+ * The kernel and this screen name the same three orders differently, and the
+ * translation lives HERE — in one place, in both directions — rather than at
+ * each end. A screen carrying its own copy of half a mapping is how a view
+ * saved as "by deadline" comes back sorted by title, with neither side wrong on
+ * its own terms; that is this repo's named repeat defect.
+ *
+ * `manual` is the kernel's `updated_desc`, which is what "no order was chosen"
+ * has always meant on this side.
+ */
+export const sortFromSavedView = (
+  sort: WorkSavedView["sort"] | undefined,
+): TaskSort =>
+  sort === "due_asc" ? "due" : sort === "title_asc" ? "title" : "manual";
+
+export const savedViewSortOf = (
+  sort: TaskSort,
+): "updated_desc" | "due_asc" | "title_asc" =>
+  sort === "due" ? "due_asc" : sort === "title" ? "title_asc" : "updated_desc";
+
+/**
+ * The grouping a view is STORED with — the inverse of `groupingFromSavedView`
+ * above.
+ *
+ * Ungrouped is the key being absent, never the word: the contract has no
+ * `"none"`. This answers `null`, which `savedView.update` reads as "clear it"
+ * and which the create path turns into an omission.
+ */
+export const savedViewGroupByOf = (
+  grouping: TaskGroupBy,
+): NonNullable<WorkSavedView["groupBy"]> | null =>
+  grouping === "none" ? null : grouping;
+
+/**
  * How a task's plan stands, as three states told apart by SHAPE and not only by
  * colour: time is reserved for it, a day is chosen but no time is held, or
  * nobody has planned it. The reserved block carries a duration, which is why

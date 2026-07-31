@@ -2150,7 +2150,6 @@ export const RealApp = ({
       <LazySurfaceBoundary label="Saved views">
         <Suspense fallback={<SurfaceLoadingState label="Saved views" />}>
           <WorkSurface
-            client={client}
             snapshot={state.snapshot}
             selectedTaskId={selectedTaskId}
             selectedProjectId={selectedProjectId}
@@ -2161,7 +2160,6 @@ export const RealApp = ({
             }}
             onSelectProject={selectProjectInInspector}
             onReload={reload}
-            onFailure={showFailure}
           />
         </Suspense>
       </LazySurfaceBoundary>
@@ -2418,6 +2416,12 @@ export const RealApp = ({
           await refreshAfter("View conditions saved.");
           return true;
         }}
+        // Making, renaming and deleting a view live on this screen now. Handed
+        // straight through: the four wrappers are imported by the lazy manager
+        // itself, so no handler body for them lands in the entry chunk.
+        client={client}
+        onReload={reload}
+        onFailure={showFailure}
       />
     ),
     library: () => (

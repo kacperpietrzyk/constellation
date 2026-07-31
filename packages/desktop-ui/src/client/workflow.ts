@@ -1543,29 +1543,6 @@ export const renameSavedWorkView = (
         : undefined,
   );
 
-export const setSavedWorkViewLayout = (
-  client: ConstellationRendererClient,
-  snapshot: DesktopSnapshot,
-  savedViewId: string,
-  savedViewVersion: number,
-  layout: SavedWorkViewLayout,
-) =>
-  execute(
-    client,
-    {
-      ...commandBase(snapshot.bootstrap.workspace.id, {
-        [savedViewId]: savedViewVersion,
-      }),
-      commandName: "savedView.update",
-      payload: { savedViewId, layout },
-    },
-    (response) =>
-      response.outcome.outcome === "success" &&
-      response.outcome.projection.kind === "strategic.record_changed"
-        ? response.outcome.projection
-        : undefined,
-  );
-
 /** A saved view as the work overview projects it. Derived, never restated: the
  *  filter vocabulary has already drifted three times across the schema, the
  *  domain record and the create path above, and a fourth hand-written
@@ -1627,9 +1604,12 @@ export const savedWorkViewFilters = (
   ) as SavedWorkView["filters"];
 
 /**
- * Editing a stored view in place. `setSavedWorkViewLayout` above was the only
- * `savedView.update` the renderer had, so filters, sort and grouping were
- * writable once — at creation — and never again.
+ * Editing a stored view in place — the ONLY `savedView.update` the renderer
+ * sends, and now the only one it has. A narrow `setSavedWorkViewLayout` stood
+ * beside this and carried `layout` alone; it went with the work surface's layout
+ * switcher, because two wrappers over one command is how a screen that writes
+ * the layout and a screen that writes the grouping come to disagree about what
+ * a saved view is.
  *
  * Two kernel facts are encoded here rather than at the call sites, because
  * getting either wrong answers with a `command.precondition_failed` that names
@@ -1643,8 +1623,8 @@ export const savedWorkViewFilters = (
  *     case). Sending `{ groupBy: null }` on a view already stored as a board is
  *     therefore refused, and so is sending `{ layout: "board" }` on an
  *     ungrouped one. Neither is pre-empted here — the caller offering those two
- *     controls owes the reader the reason on screen, the way
- *     `WorkSurface.tsx:1583-1624` already does. A filters-only caller cannot
+ *     controls owes the reader the reason on screen, the way the Tasks view bar
+ *     does with its disabled Board button. A filters-only caller cannot
  *     reach the interlock at all: omitting both keys leaves the resulting
  *     values equal to the stored ones, which the kernel already accepted.
  *

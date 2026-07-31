@@ -666,7 +666,11 @@ describe("interaction recovery contracts", () => {
   });
 
   it("renders one saved Task set as an accessible board without implicit drag mutation", () => {
-    assert.match(workSurface, /setSavedWorkViewLayout/);
+    // The SWITCHER left with the rest of view management — choosing a layout,
+    // and storing the choice, is asserted from a click in
+    // `tasks-saved-view.interaction.test.tsx`. What this file still guards is
+    // the board itself: the interlock that refuses a board with no columns, and
+    // markup that does not move work by dragging it.
     assert.match(
       workSurface,
       /requestedLayout === "board" && groupBy === undefined/,
@@ -684,16 +688,12 @@ describe("interaction recovery contracts", () => {
     // An empty group still renders a cell, so the board shows the whole
     // grouping rather than silently dropping columns.
     assert.match(workSurface, /group\.tasks\.length === 0 \? \(\s*<p>/);
-    // Board without grouping is refused, and the reason is wired to the
-    // disabled control as its description rather than left as loose text.
-    assert.match(
-      workSurface,
-      /aria-describedby=\{\s*groupBy === undefined\s*\?\s*"work-board-requirement"/,
-    );
-    assert.match(
-      workSurface,
-      /groupBy === undefined && \(\s*<small id="work-board-requirement">/,
-    );
+    // Board-without-grouping being REFUSED, with the reason wired to the
+    // disabled control, moved to the Tasks view bar along with the switcher —
+    // `TasksSurface.tsx` carries `aria-describedby` and
+    // `id="tasks-board-requirement"`, and the mounted test clicks it. What
+    // stays here is the interlock this surface still applies when it DRAWS a
+    // stored board.
     assert.doesNotMatch(workSurface, /draggable=|onDrag|onDrop/);
     assert.match(
       workBoardStyles,
@@ -706,12 +706,6 @@ describe("interaction recovery contracts", () => {
   });
 
   it("projects Task timing on a non-draggable timeline without replacing Saved View order", () => {
-    // The layout switch is a pressed-state control that writes the layout, not
-    // a word on a button.
-    assert.match(
-      workSurface,
-      /aria-pressed=\{activeLayout === "timeline"\}[\s\S]{0,300}?changeLayout\("timeline"\)/,
-    );
     assert.match(
       workSurface,
       /className="work-task-timeline"\s+role="listbox"\s+aria-label="Next actions — timeline"/,
@@ -734,10 +728,6 @@ describe("interaction recovery contracts", () => {
   });
 
   it("renders every Saved View Task once in a navigable month calendar without invoking calendar writes", () => {
-    assert.match(
-      workSurface,
-      /aria-pressed=\{activeLayout === "calendar"\}[\s\S]{0,300}?changeLayout\("calendar"\)/,
-    );
     assert.match(workSurface, /<nav aria-label="Month navigation">/);
     assert.match(workSurface, /aria-label="Previous month"/);
     assert.match(workSurface, /aria-label="Next month"/);
