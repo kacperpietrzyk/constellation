@@ -34,6 +34,13 @@ const loadCalendarSurface = () => import("../CalendarSurface.js");
 export const CalendarSurface = lazy(() =>
   loadCalendarSurface().then((module) => ({ default: module.CalendarSurface })),
 );
+// Plain loader shape: the sheet is a CSS Module imported by the component, so
+// it travels with the chunk and never needs a second request or a second
+// globally unique name.
+const loadPeopleSurface = () => import("../people/PeopleSurface.js");
+export const PeopleSurface = lazy(() =>
+  loadPeopleSurface().then((module) => ({ default: module.PeopleSurface })),
+);
 const loadAccessSurface = async () => {
   await import("../access-surface.css");
   return import("../AccessSurface.js");
@@ -82,6 +89,7 @@ export const lazySurfaceLoaders = {
   settings: loadSettingsSurface,
   access: loadAccessSurface,
   organizations: loadStrategicDepthSurface,
+  people: loadPeopleSurface,
 } satisfies Record<LazyDesktopSurface, () => Promise<unknown>>;
 
 export const preloadSurface = (surface: SurfaceId) => {

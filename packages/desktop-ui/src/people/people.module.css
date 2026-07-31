@@ -1,0 +1,560 @@
+/* People. A CSS Module, so it travels with the lazy chunk instead of landing
+   on the head-linked sheet the window waits for — that mistake cost the
+   previous wave eight kilobytes of hot path.
+
+   Every colour is a token. There is no new one here: the shape of a reading
+   carries its meaning and the colour only reinforces it, so a monochrome
+   screen loses nothing. */
+
+.people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Chrome above the list ───────────────────────────────────────────── */
+
+/* WRAPPING IS NOT DECORATION HERE, it is what keeps the surface inside itself.
+   `.surface-scroll > *` centres every child with `margin-inline: auto`
+   (`styles.css:4404-4407`), so a child is sized `fit-content` — and
+   `fit-content` is clamped BELOW by min-content. A non-wrapping flex row's
+   min-content is the sum of its children, so at 200% text this bar stops being
+   able to fit the surface's content box and the surface overflows itself, with
+   no single descendant overflowing anything. A wrapping row's min-content is
+   its widest single child instead, which is a number that stays inside. */
+.crumbbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+}
+
+.create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1 1 10rem;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.field input,
+.field select {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.switcher {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* The pressed layout carries a FILL and a stronger border, not only a warmer
+   text colour: which layout is on has to survive a screen with no colour. */
+.switch {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0.125rem 0.625rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+}
+
+.switch[aria-selected="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The grouped list ────────────────────────────────────────────────── */
+
+/* NO `container-type: inline-size` here, and its absence is the fix rather than
+   an omission. The prototype's list is a container query host because it hides
+   a column at a breakpoint; this sheet has no `@container` rule at all, and the
+   declaration is not free: inline-size containment makes an element's own
+   intrinsic width ignore its contents, so as a `margin-inline: auto` child of
+   `.surface-scroll` this list resolved to a fit-content width of ZERO and every
+   group and row inside it overflowed a box with no width. The surface then
+   overflowed itself while no single descendant looked wrong relative to its
+   own content. */
+.list {
+  display: block;
+  /* AND it declares its own width rather than being sized by its rows.
+     `.surface-scroll > *` sets `margin-inline: auto`, and an auto cross-axis
+     margin turns off `stretch` — so without this the list takes a
+     content-based width, which for a grid of rows is the sum of their tracks
+     and is wider than the surface at any real text size. `100%` is definite,
+     so the row's `minmax(0, …)` tracks have a number to shrink against
+     instead of setting one. */
+  width: 100%;
+}
+
+.group {
+  display: block;
+}
+
+/* The head states the facts of the ORGANIZATION, because a person has no edge
+   to a project in this model and attributing somebody else's delivery to a
+   human would be an invented relationship.
+
+   It wraps for the same reason the two bars above do: five items in a row that
+   cannot wrap set a min-content width nothing can shrink. */
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.groupName {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-radius: var(--radius-xs);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupName:hover {
+  color: var(--text-link);
+}
+
+.groupCount {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+.groupFacts {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupSep {
+  color: var(--text-disabled);
+  margin: 0 0.25rem;
+}
+
+.groupSignal {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* The reason stands beside the badge as TEXT. In the prototype it lived in a
+   `title`, which does not exist for a keyboard or for touch — and a badge with
+   half the list reporting something stops carrying information on its own. */
+.groupWhy {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── The reading ─────────────────────────────────────────────────────── */
+
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: none;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.signalMark {
+  font-size: var(--text-2xs);
+  line-height: 1;
+}
+
+.signal_risk {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.signal_watch {
+  color: var(--status-warning);
+}
+
+.signal_good {
+  color: var(--text-tertiary);
+}
+
+.signal_none {
+  color: var(--text-disabled);
+}
+
+/* A declaration, not a reading — so it wears a border rather than a shape. */
+.state {
+  flex: none;
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.state_active {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+.state_prospect {
+  color: var(--status-info);
+}
+
+.state_inactive {
+  color: var(--text-disabled);
+  border-style: dashed;
+}
+
+/* ── A person's row ──────────────────────────────────────────────────── */
+
+.row {
+  display: grid;
+  /* PROPORTIONS, not rem caps, for every track but the avatar. A track capped
+     in rem is a width that doubles with the text while the row it lives in does
+     not, so above 200% the four cells stop fitting the row and the surface
+     overflows itself. Ratios always sum to the row at any text size and carry
+     the same intent: the name gets the most room, the date the least, and the
+     avatar — a glyph, not text — is the one thing that must not shrink. */
+  grid-template-columns:
+    1.5rem minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)
+    minmax(0, 0.6fr);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.4375rem var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowSelected {
+  background: var(--surface-selected);
+}
+
+/* The focus token is a SHADOW STACK, not a colour: `outline: … solid
+   var(--focus-ring)` is an invalid value and the whole declaration is dropped. */
+.row:focus-visible,
+.tableRow:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  flex: none;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+}
+
+.main {
+  min-width: 0;
+}
+
+.nameLine {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+/* `text-overflow` acts on a block box with text in it, not on a flex child —
+   so the name and the role each own the element that truncates, and the name
+   gives up its room LAST: it is the only thing this row is recognised by.
+
+   "Last" is expressed as a SHRINK WEIGHT, not as a floor. A `min-width` in rem
+   doubles with the text and becomes a width the cell cannot go under, which is
+   how a row stops fitting its own grid track at 200% — the same defect as the
+   bars above, one level down. The role gives up its room four times faster,
+   which is the same priority without the floor. */
+.name {
+  flex: 0 1 auto;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role {
+  flex: 0 4 auto;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.why {
+  display: block;
+  margin-top: 0.0625rem;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  margin-top: 0.0625rem;
+  font-size: var(--text-2xs);
+  color: var(--status-warning);
+  min-width: 0;
+}
+
+.waitingMark {
+  flex: none;
+  line-height: 1;
+}
+
+.clip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parts {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.part {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.4375rem;
+  white-space: nowrap;
+}
+
+.contact {
+  min-width: 0;
+}
+
+.mail {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.met {
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.met b {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* An absence that MEANS something says so in words. A dash rendered as densely
+   as content is emptiness dressed up as a reading. */
+.absent {
+  color: var(--text-disabled);
+  font-weight: 400;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────── */
+
+/* `table-layout: fixed`, and it is load-bearing rather than tidy. Under the
+   default `auto` algorithm a table's used width is at least its min-content,
+   and one unbroken email address sets a min-content nothing can talk down — the
+   table then renders wider than the surface at 200% text while every cell in it
+   looks correct against its own content. Fixed layout makes the declared width
+   the real one and hands the overflow to the cells, which already ellipsize. */
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* The shares are declared once, on the header row, because fixed layout reads
+   the first row and nothing else. */
+.colName {
+  width: 20%;
+}
+.colRole {
+  width: 16%;
+}
+.colOrganization {
+  width: 18%;
+}
+.colEmail {
+  width: 22%;
+}
+.colCount {
+  width: 8%;
+}
+.colDate {
+  width: 8%;
+}
+
+.table th {
+  text-align: left;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+/* The truncation lives on a BLOCK INSIDE the cell, not on the cell. A `<td>`
+   that clips its own text still reports the untruncated width up to the table,
+   and the table then reports scrollable overflow it cannot scroll — which is
+   the number the packaged text-scaling gate reads. An inner block clips for
+   real and contributes nothing. Same shape as `tasks/task-table.module.css`. */
+.cell {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableRow:hover {
+  background: var(--surface-hover);
+}
+
+.tableRow[aria-selected="true"] {
+  background: var(--surface-selected);
+}
+
+.tableName {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Nothing to show, and the two reasons for it ─────────────────────── */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.emptyState h2 {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.emptyState p {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  max-width: 32rem;
+}

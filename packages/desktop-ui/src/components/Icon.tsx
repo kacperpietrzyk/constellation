@@ -16,6 +16,7 @@ export type IconName =
   | "documents"
   | "meetings"
   | "relationships"
+  | "people"
   | "settings";
 
 export const Icon = ({ name }: { readonly name: IconName }) => {
@@ -40,6 +41,12 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
     relationships: (
       <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
+    ),
+    // Dwie sylwetki obok siebie: „relationships" niesie graf powiązań, a to są
+    // ludzie w nim. Ten sam cel w nawigacji nie może nosić tego samego znaku co
+    // Organizations, bo obie pozycje stoją w tej samej grupie.
+    people: (
+      <path d="M9 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M16 7.5a2.5 2.5 0 1 1 0 5M17 15c2.5.6 4 2.4 4 5" />
     ),
     settings: (
       <path d="M4 7h7M17 7h3M4 17h2M12 17h8M16 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM11 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />

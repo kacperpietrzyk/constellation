@@ -13,7 +13,7 @@ import {
 } from "../src/surface-registry.js";
 
 test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
-  assert.equal(desktopSurfaceRegistry.length, 12);
+  assert.equal(desktopSurfaceRegistry.length, 13);
   assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
   assert.equal(
     new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,
@@ -25,7 +25,7 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
   // Cyfry są PRZYPISANE DO CELÓW, nie rozdawane po kolei: docelowy zbiór ma
   // jedenaście celów, a klawiatura dziewięć skrótów, więc numeracja jest
   // zarezerwowana pod kształt docelowy i w trakcie fal zostają w niej dziury
-  // (6 czeka na Pipeline, 8 na People). Asercja o ciągłym [1..9] wymuszałaby
+  // (6 czeka na Pipeline; 8 zajęły People). Asercja o ciągłym [1..9] wymuszałaby
   // przenumerowanie skrótów przy każdej fali — czyli cyfrę, która zmienia
   // znaczenie pod ręką. Niezmiennik jest inny: cyfry są unikalne i mieszczą
   // się w zasięgu klawiatury.

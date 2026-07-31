@@ -6,7 +6,13 @@ import { z } from "zod";
 // desktopowej: kontrakty nie mają zależeć od powłoki, a agent czyta ten katalog
 // bez uruchomionej aplikacji.
 export type HumanRecordInspectorSurface =
-  "tasks" | "projects" | "history" | "library" | "meetings" | "organizations";
+  | "tasks"
+  | "projects"
+  | "history"
+  | "library"
+  | "meetings"
+  | "organizations"
+  | "people";
 
 export type HumanRecordSearchSource =
   "task" | "project" | "capture" | "source" | "document" | "strategic";
@@ -95,11 +101,15 @@ export const humanRecordKindRegistry = [
     inspectorSurface: "organizations",
   },
   {
+    // Osoba otwiera się na swoim własnym ekranie. Przepięcie tego pola bez
+    // gałęzi routingu w `RealApp.tsx` kompiluje się, przechodzi każdy test
+    // i po cichu zamienia „otwórz tę osobę" na „otwórz ekran Ludzie" — obie
+    // połowy zmieniają się razem albo żadna.
     id: "person",
     label: "Person",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "organizations",
+    inspectorSurface: "people",
   },
   {
     id: "opportunity",
