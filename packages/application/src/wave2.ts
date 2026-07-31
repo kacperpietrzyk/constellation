@@ -102,6 +102,7 @@ import {
   updateOpportunityDetails,
   updateRenewalTerm,
   updateOrganizationDetails,
+  updateDecisionDetails,
   updatePersonDetails,
   createInitiative,
   updateInitiativeOutcome,
@@ -215,6 +216,7 @@ export type Wave2Command = Extract<
       | "relationship.factCreate"
       | "relationship.factRemove"
       | "decision.create"
+      | "decision.update"
       | "decision.remove"
       | "decision.supersede"
       | "decision.resolveImpact"
@@ -546,6 +548,23 @@ export const isWave2CommandAuthorized = (
         command,
         organization?.workspaceId === command.workspaceId
           ? organization.spaceId
+          : undefined,
+      );
+    }
+    // The decision's own Space, not the client's: a payload `organizationId`
+    // is a claim this command makes about another record, and authorizing
+    // against a Space the caller names in the payload would let a reachable
+    // organisation vouch for a decision the grant cannot otherwise touch. The
+    // write path checks the two agree.
+    case "decision.update": {
+      const decision = view.getStrategicRecord(command.payload.decisionId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        decision?.workspaceId === command.workspaceId
+          ? decision.spaceId
           : undefined,
       );
     }
@@ -3376,6 +3395,89 @@ export const executeWave2Command = (
         {},
         {},
         strategicCreateUndo(command, record),
+      );
+    }
+    case "decision.update": {
+      const current = transaction.getStrategicRecord(
+        command.payload.decisionId,
+      );
+      // No `state` filter, deliberately. A superseded decision is precisely the
+      // old record this command exists to reach: the client record lists
+      // superseded decisions as the history of the relationship, so refusing to
+      // attribute one would leave exactly the entries a reader most wants to
+      // place. `state` itself stays out of the payload — `decision.supersede`
+      // owns it.
+      if (current?.kind !== "decision")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      // The same three terms `decision.create` checks, because an update that
+      // checked fewer would be the way a dead or foreign id gets onto a
+      // decision after the create refused it. An explicit null clears and needs
+      // no check — that is how a wrongly attributed decision is detached, and
+      // how the client it named becomes removable again.
+      if (
+        command.payload.organizationId !== undefined &&
+        command.payload.organizationId !== null
+      ) {
+        const organization = transaction.getStrategicRecord(
+          command.payload.organizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          organization.workspaceId !== current.workspaceId ||
+          organization.spaceId !== current.spaceId
+        )
+          return precondition(command, occurredAt);
+      }
+      const record = updateDecisionDetails(
+        current,
+        {
+          ...(command.payload.title === undefined
+            ? {}
+            : { title: command.payload.title }),
+          ...(command.payload.rationale === undefined
+            ? {}
+            : { rationale: command.payload.rationale }),
+          // `=== undefined`, never a truthiness test: `null` is the clear and a
+          // falsy check would drop it, refusing the detachment while reporting
+          // success.
+          ...(command.payload.organizationId === undefined
+            ? {}
+            : { organizationId: command.payload.organizationId }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        // The fields this command actually carried, as `relationship.
+        // personUpdate` does it: the receipt says what changed, not what could
+        // have.
+        Object.keys(command.payload).filter((field) => field !== "decisionId"),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "decision.restore_details",
+          decisionId: current.id,
+          priorTitle: current.title,
+          priorRationale: current.rationale,
+          ...(current.organizationId === undefined
+            ? {}
+            : { priorOrganizationId: current.organizationId }),
+          resultingVersion: record.version,
+        },
       );
     }
     case "decision.supersede": {
@@ -8700,6 +8802,8 @@ export const descriptorRecordIds = (
     case "workspace.restore_default_status":
     case "workspace.restore_commercial_defaults":
       return [descriptor.workspaceId];
+    case "decision.restore_details":
+      return [descriptor.decisionId];
     case "opportunity.restore_details":
       return [descriptor.opportunityId];
     case "opportunity.restore_offer_details":
@@ -9241,6 +9345,45 @@ const descriptorState = (
         available: true,
         recordIds: [person.id],
         versions: { [person.id]: person.version },
+      };
+    }
+    case "decision.restore_details": {
+      const decision = view.getStrategicRecord(descriptor.decisionId);
+      if (
+        decision?.kind !== "decision" ||
+        strategicRecordState(decision) !== "active" ||
+        decision.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // Same rule the person arm above follows, one kind further along: the
+      // compensation writes an organisation id back, so undoing a detachment
+      // after the client itself was removed would restore a reference pointing
+      // at nothing — through the undo path, at the exact guard the write path
+      // enforces.
+      if (descriptor.priorOrganizationId !== undefined) {
+        const organization = view.getStrategicRecord(
+          descriptor.priorOrganizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          strategicRecordState(organization) !== "active"
+        )
+          return {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+      }
+      return {
+        available: true,
+        recordIds: [decision.id],
+        versions: { [decision.id]: decision.version },
       };
     }
     case "relationship.restore_organization": {
@@ -10492,6 +10635,27 @@ const compensateDescriptor = (
       occurredAt,
     );
     transaction.updateStrategicRecord(restored, person.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "decision.restore_details") {
+    const decision = transaction.getStrategicRecord(
+      descriptor.decisionId,
+    ) as Extract<StrategicRecord, { kind: "decision" }>;
+    const restored = updateDecisionDetails(
+      decision,
+      {
+        title: descriptor.priorTitle,
+        rationale: descriptor.priorRationale,
+        // `?? null`, not the bare value: undoing an update that ATTACHED a
+        // client has to detach it again. Passing `undefined` would leave the
+        // new attribution in place while the receipt reported the change
+        // undone — and the client would stay unremovable for a reason no
+        // reader could find.
+        organizationId: descriptor.priorOrganizationId ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, decision.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "relationship.restore_organization") {

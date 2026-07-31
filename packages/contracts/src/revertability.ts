@@ -84,6 +84,10 @@ export const COMMAND_REVERTABILITY: Readonly<
   "relationship.factCreate": "always",
   "relationship.factRemove": "always",
   "decision.create": "always",
+  // Correcting prose or re-attributing a decision is the ordinary human act
+  // this command exists for, so it compensates like every other partial
+  // update. `decision.supersede` below stays "never" and keeps `state`.
+  "decision.update": "always",
   "decision.remove": "always",
   "decision.supersede": "never",
   "decision.resolveImpact": "never",

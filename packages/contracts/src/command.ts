@@ -1226,6 +1226,55 @@ export const DecisionCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * Correcting a decision that already exists.
+ *
+ * `organizationId` is why this command was written. #196 gave a decision the
+ * edge to a client but only at create, which left every decision already in
+ * the graph permanently unattributable: it could be opened by name and was
+ * listed on no client record. An edge only new records can hold is a section
+ * that fills up from today onward and never explains the past.
+ *
+ * `title` and `rationale` are here because they are the only other mutable
+ * prose a decision carries, and a command called `update` that cannot fix a
+ * typo is the kind of half-command a second command gets added beside six
+ * months later. Neither is `.nullable()`: a decision without a title or a
+ * rationale is not a state this record has — they are replaceable, not
+ * clearable, exactly as `name` is on `relationship.personUpdate`.
+ *
+ * `state` is deliberately ABSENT. `decision.supersede` owns that transition
+ * and is `revertability: "never"` because it writes a replacement, an impact
+ * review and the prior record's state together. A second path onto the same
+ * field, revertible where the first is not, is this repo's named drift family
+ * — the two would disagree about what "superseded" costs.
+ */
+export const DecisionUpdateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("decision.update"),
+  payload: z
+    .object({
+      decisionId: StrategicRecordIdSchema,
+      title: z.string().trim().min(1).max(500).optional(),
+      rationale: z.string().trim().min(1).max(8_000).optional(),
+      // Nullable where the two above are not: a decision wrongly attributed to
+      // a client has to be detachable, and "about no client in particular" is
+      // an ordinary state a decision is created in.
+      organizationId: StrategicRecordIdSchema.nullable().optional(),
+    })
+    .strict()
+    // Key-generic, as `relationship.renewalUpdate` is and
+    // `relationship.personUpdate` is not: a refine that enumerated the fields
+    // that existed when it was written refuses a caller who sets only the
+    // field added after it — silently, at the boundary, with the schema, the
+    // kernel and `tsc` all green.
+    .refine(
+      (payload) => Object.keys(payload).some((field) => field !== "decisionId"),
+      {
+        error: "decision.update must change at least one field.",
+      },
+    ),
+}).strict();
+export type DecisionUpdateCommand = z.infer<typeof DecisionUpdateCommandSchema>;
+
 const ImpactConsequenceSchema = z
   .object({
     recordId: z.uuid(),
@@ -2551,6 +2600,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   RelationshipFactCreateCommandSchema,
   RelationshipFactRemoveCommandSchema,
   DecisionCreateCommandSchema,
+  DecisionUpdateCommandSchema,
   DecisionRemoveCommandSchema,
   DecisionSupersedeCommandSchema,
   DecisionResolveImpactCommandSchema,

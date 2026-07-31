@@ -25,6 +25,7 @@ import {
   updateOffer,
   updateOpportunity,
   updateOrganization,
+  updateDecision,
   updatePerson,
   updateRenewalTerm,
   type DesktopSnapshot,
@@ -68,6 +69,12 @@ const principalId = PrincipalIdSchema.parse(
 const contactPersonId = personRecordId;
 const attachedTaskId = TaskIdSchema.parse(
   "00000000-0000-4000-8000-0000000000a2",
+);
+// A decision the fixture does not carry: the wrapper builds the envelope from
+// the id and version it is handed and never reads the record, so what this
+// asserts is the envelope, which is exactly what a defect here would corrupt.
+const decisionRecordId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000d1",
 );
 const startedRenewal = populatedRelationshipWorkspace.records.find(
   (record) => record.kind === "renewal",
@@ -906,4 +913,68 @@ test("the client a decision is about reaches decision.create, and is omitted whe
       (onlyEnvelope(unattributed).payload as Record<string, unknown>),
     false,
   );
+});
+
+// ── decision.update ─────────────────────────────────────────────────────────
+//
+// The regression this closes lives one layer down from the kernel: #194 found a
+// caller who set only the newest field refused as "nothing to change" by a
+// wrapper written before that field existed, with schema, kernel and `tsc` all
+// green. So each field travels ALONE through this boundary too.
+
+test("each field of decision.update travels alone through the wrapper", async () => {
+  for (const [change, keys] of [
+    [{ title: "Managed route for Orbit" }, ["decisionId", "title"]],
+    [{ rationale: "Night cover." }, ["decisionId", "rationale"]],
+    [
+      { organizationId: referencedOrganizationId },
+      ["decisionId", "organizationId"],
+    ],
+  ] as const) {
+    const sent: CommandEnvelope[] = [];
+    const result = await updateDecision(
+      recordingClient(sent),
+      snapshotOf(),
+      { id: decisionRecordId, version: 3 },
+      change,
+    );
+    assert.equal(result.kind, "success");
+    const envelope = onlyEnvelope(sent);
+    assert.equal(envelope.commandName, "decision.update");
+    assert.deepEqual(payloadKeys(envelope), [...keys].sort());
+    assert.deepEqual(versionKeys(envelope), [decisionRecordId]);
+  }
+});
+
+test("clearing the client sends an explicit null, not a dropped key", async () => {
+  const sent: CommandEnvelope[] = [];
+  // The detachment is the whole reason `organizationId` is nullable. A
+  // truthiness test in the wrapper's spread would drop this key, leaving the
+  // payload with `decisionId` alone — which the gate below answers as "nothing
+  // changed", refusing the one caller correcting a wrong attribution.
+  const result = await updateDecision(
+    recordingClient(sent),
+    snapshotOf(),
+    { id: decisionRecordId, version: 3 },
+    { organizationId: null },
+  );
+  assert.equal(result.kind, "success");
+  const envelope = onlyEnvelope(sent);
+  assert.deepEqual(payloadKeys(envelope), ["decisionId", "organizationId"]);
+  assert.equal(
+    (envelope.payload as Record<string, unknown>)["organizationId"],
+    null,
+  );
+});
+
+test("an empty change set is answered in words, and sends nothing", async () => {
+  const sent: CommandEnvelope[] = [];
+  const result = await updateDecision(
+    recordingClient(sent),
+    snapshotOf(),
+    { id: decisionRecordId, version: 3 },
+    {},
+  );
+  assert.equal(result.kind, "error");
+  assert.deepEqual(sent, []);
 });

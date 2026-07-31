@@ -65,6 +65,7 @@ export const CompensationKindSchema = z.enum([
   "knowledge.void_named_version",
   "relationship.restore_person",
   "relationship.restore_organization",
+  "decision.restore_details",
   "opportunity.restore_details",
   "opportunity.restore_offer_details",
   "relationship.restore_renewal_term",

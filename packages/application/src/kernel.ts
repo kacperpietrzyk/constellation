@@ -519,6 +519,7 @@ const isCurrentlyAuthorized = (
     case "relationship.factCreate":
     case "relationship.factRemove":
     case "decision.create":
+    case "decision.update":
     case "decision.remove":
     case "decision.supersede":
     case "decision.resolveImpact":
@@ -1022,6 +1023,7 @@ export class ApplicationKernel {
       case "relationship.factCreate":
       case "relationship.factRemove":
       case "decision.create":
+      case "decision.update":
       case "decision.remove":
       case "decision.supersede":
       case "decision.resolveImpact":
