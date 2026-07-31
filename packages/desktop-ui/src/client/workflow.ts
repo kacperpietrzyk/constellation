@@ -28,6 +28,14 @@ import {
   type CaptureId,
   type PrincipalId as AgentPrincipalId,
   type WorkLinkType,
+  // The command boundary's own money vocabulary. `src/crm/money.ts` states the
+  // same three shapes for the arithmetic the screens do without a client, and
+  // they are structurally identical on purpose — but what a command may CARRY
+  // is decided in contracts, so the payload types come from there.
+  type ExchangeRate,
+  type Money,
+  type OfferPrice,
+  type PipelineStage,
 } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
@@ -1322,6 +1330,53 @@ const commandBase = (
   correlationId: crypto.randomUUID(),
 });
 
+/**
+ * What a partial update answers when the caller changed nothing. Every
+ * `*Update` payload in the contract carries a `must change at least one field`
+ * refine, so an empty change set is refused either way — but it is refused by
+ * `CommandEnvelopeSchema.parse` inside `execute`, whose `catch` puts a
+ * ZodError's message in front of a person. That message is a JSON blob.
+ * `commandFailure` is where user-facing sentences live; this is the one case
+ * that never reaches it, so the sentence lives here instead.
+ */
+const nothingToChange = (): Promise<MutationResult<never>> =>
+  Promise.resolve({
+    kind: "error",
+    message: "Nothing changed, so nothing was saved.",
+  });
+
+/**
+ * The stage a new deal starts on: the FIRST column of the funnel this
+ * workspace actually configured. It used to be the literal `"discovery"`, which
+ * is a stage id the default list happens to contain and a renamed funnel need
+ * not — and `opportunity.create` is deliberately not validated against the
+ * configured list (importing a deal onto an unconfigured stage has to stay
+ * possible), so the wrong id would have been stored in silence and the card
+ * would have landed in the board's orphan column.
+ *
+ * `order` decides which column is first, not array position: the schema allows
+ * gaps in `order` precisely so a reorder can rewrite two numbers, which means
+ * `stages[0]` is not the leftmost column. The list is `min(1)` in the contract
+ * and the projection carries the EFFECTIVE value, so there is nothing to fall
+ * back to and no branch for an absent one.
+ */
+const firstConfiguredStage = (snapshot: DesktopSnapshot): string =>
+  snapshot.bootstrap.workspace.commercialDefaults.stages.reduce(
+    (first: PipelineStage, stage: PipelineStage) =>
+      stage.order < first.order ? stage : first,
+  ).id;
+
+/**
+ * How long before a contract expires the follow-up is due, when the caller does
+ * not say. It is a renderer default and nothing more: `leadTimeDays` is a field
+ * ON the renewal (`model.ts`), so a workspace-level default has nowhere to live
+ * — that is a standing finding (#186's findings list, `v3/screens/settings.js:126`),
+ * not a setting this reads. What changed is that the caller decides; the number
+ * is only what a caller who says nothing gets, and it is deliberately the same
+ * 30 that was hardcoded, so no existing call site quietly changes meaning.
+ */
+export const DEFAULT_RENEWAL_LEAD_TIME_DAYS = 30;
+
 // Intencja jest opcjonalna na tworzeniu, a pusty tekst zostaje odrzucony przez
 // kontrakt — klucz musi więc zniknąć z payloadu, nigdy nie pojechać jako "".
 export const createProject = (
@@ -1390,6 +1445,54 @@ export const setWorkspaceVoiceAudioRetention = (
         ? response.outcome.projection
         : undefined,
   );
+
+/**
+ * The funnel and the two percentages, partial by field: an absent key is left
+ * alone. Changing the markup must NOT restate the stage list — restating a list
+ * the caller did not mean to touch is how a stage goes missing, and it is the
+ * reason the command is partial rather than carrying all three settings at once.
+ *
+ * `stages` REPLACES the whole list when it is present. A caller adding one
+ * column sends the list it wants to end up with, including the columns it is
+ * keeping.
+ */
+export const setWorkspaceCommercialDefaults = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  change: {
+    readonly stages?: readonly PipelineStage[];
+    readonly markupPct?: number;
+    readonly upliftPct?: number;
+  },
+) => {
+  const payload = {
+    ...(change.stages === undefined ? {} : { stages: change.stages }),
+    ...(change.markupPct === undefined ? {} : { markupPct: change.markupPct }),
+    ...(change.upliftPct === undefined ? {} : { upliftPct: change.upliftPct }),
+  };
+  return Object.keys(payload).length === 0
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          // The three settings are fields on the Workspace record, so the
+          // Workspace is what this writes and what the kernel expects a version
+          // for — the same envelope `workspace.rename` sends.
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [snapshot.bootstrap.workspace.id]:
+              snapshot.bootstrap.workspace.version,
+          }),
+          commandName: "workspace.setCommercialDefaults",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind ===
+            "workspace.commercial_defaults_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
+};
 
 export const createArea = (
   client: ConstellationRendererClient,
@@ -2075,7 +2178,16 @@ export const setTaskOperationalState = (
 export const createOrganization = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
-  input: { readonly name: string; readonly nextAction?: string },
+  input: {
+    readonly name: string;
+    readonly nextAction?: string;
+    readonly relationshipState?: "prospect" | "active" | "inactive";
+    readonly segment?: string;
+    /** A calendar date — `2023-04-11`, not a timestamp. */
+    readonly since?: string;
+    /** The contact AT this organisation, not an owner on our side. */
+    readonly mainContactPersonId?: StrategicRecordId;
+  },
 ) => {
   const organizationId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -2087,10 +2199,15 @@ export const createOrganization = (
         organizationId,
         spaceId: firstSpace(snapshot),
         name: input.name,
-        relationshipState: "prospect",
+        relationshipState: input.relationshipState ?? "prospect",
         ...(input.nextAction === undefined || input.nextAction.trim() === ""
           ? {}
           : { nextAction: input.nextAction }),
+        ...(input.segment?.trim() ? { segment: input.segment.trim() } : {}),
+        ...(input.since === undefined ? {} : { since: input.since }),
+        ...(input.mainContactPersonId === undefined
+          ? {}
+          : { mainContactPersonId: input.mainContactPersonId }),
       },
     },
     (response) =>
@@ -2099,6 +2216,67 @@ export const createOrganization = (
         ? response.outcome.projection
         : undefined,
   );
+};
+
+/**
+ * Correcting an organisation. Partial by field: an absent key is left alone, an
+ * explicit `null` clears an optional one, and `name` can only be replaced.
+ *
+ * `null` on `mainContactPersonId` is the way the mutual reference with
+ * `person.organizationId` is untangled — each side blocks the other's removal,
+ * so clearing this is how one of the two records becomes removable.
+ *
+ * `externalId` is deliberately absent from this wrapper: it is import identity,
+ * stamped once and never rewritten, and no screen in this wave sets it.
+ */
+export const updateOrganization = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  organization: {
+    readonly id: StrategicRecordId;
+    readonly version: number;
+  },
+  change: {
+    readonly name?: string;
+    readonly relationshipState?: "prospect" | "active" | "inactive";
+    readonly nextAction?: string | null;
+    readonly segment?: string | null;
+    readonly since?: string | null;
+    readonly mainContactPersonId?: StrategicRecordId | null;
+  },
+) => {
+  const payload = {
+    organizationId: organization.id,
+    ...(change.name === undefined ? {} : { name: change.name }),
+    ...(change.relationshipState === undefined
+      ? {}
+      : { relationshipState: change.relationshipState }),
+    ...(change.nextAction === undefined
+      ? {}
+      : { nextAction: change.nextAction }),
+    ...(change.segment === undefined ? {} : { segment: change.segment }),
+    ...(change.since === undefined ? {} : { since: change.since }),
+    ...(change.mainContactPersonId === undefined
+      ? {}
+      : { mainContactPersonId: change.mainContactPersonId }),
+  };
+  return Object.keys(payload).length === 1
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [organization.id]: organization.version,
+          }),
+          commandName: "relationship.organizationUpdate",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind === "strategic.record_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
 };
 
 // The kinds a human can remove from the inspector, and the payload field each
@@ -2168,6 +2346,14 @@ export const createOpportunity = (
     readonly title: string;
     readonly need: string;
     readonly nextAction: string;
+    readonly qualification?: string;
+    /** Defaults to the first column of the configured funnel. */
+    readonly stage?: string;
+    readonly personIds?: readonly StrategicRecordId[];
+    /** Whose deal this is, as against who is named on it. */
+    readonly ownerPersonId?: StrategicRecordId;
+    /** What it is worth before any offer exists. Absent is a state, not a zero. */
+    readonly estimate?: Money;
   },
 ) => {
   const opportunityId = crypto.randomUUID() as StrategicRecordId;
@@ -2180,13 +2366,17 @@ export const createOpportunity = (
         opportunityId,
         spaceId: firstSpace(snapshot),
         organizationId: input.organizationId,
-        personIds: [],
+        personIds: input.personIds ?? [],
         title: input.title,
         need: input.need,
-        qualification: "Requires review",
-        stage: "discovery",
+        qualification: input.qualification ?? "Requires review",
+        stage: input.stage ?? firstConfiguredStage(snapshot),
         nextAction: input.nextAction,
         evidenceSourceIds: [],
+        ...(input.ownerPersonId === undefined
+          ? {}
+          : { ownerPersonId: input.ownerPersonId }),
+        ...(input.estimate === undefined ? {} : { estimate: input.estimate }),
       },
     },
     (response) =>
@@ -2195,6 +2385,77 @@ export const createOpportunity = (
         ? response.outcome.projection
         : undefined,
   );
+};
+
+/**
+ * Correcting a deal, and the ONLY way to move one between stages. Partial by
+ * field; `ownerPersonId` is the one key a `null` clears, because a deal can stop
+ * having a named owner without losing anything else.
+ *
+ * Two things the kernel does that a caller must not restate:
+ *
+ * - It stamps `stageEnteredAt` when — and only when — `stage` actually changes.
+ *   Re-sending the stage a deal already stands on does not restart that clock,
+ *   so a screen writing a whole form back cannot erase the number the field
+ *   exists to keep. Nothing here computes or sends it.
+ * - It refuses a move INTO a stage the funnel does not list. Standing on one is
+ *   fine — a retired stage keeps its deals readable — so this wrapper does not
+ *   pre-filter the id and lets the refusal arrive as `commandFailure`'s sentence.
+ *
+ * `state`, `offerIds` and `projectIds` are NOT here: they move through
+ * `opportunity.linkOutcomes` with the links they belong to. `externalId` and
+ * `organizationId` are not either — import identity is stamped once, and
+ * re-parenting a deal is a different act nobody asked for.
+ */
+export const updateOpportunity = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  opportunity: { readonly id: StrategicRecordId; readonly version: number },
+  change: {
+    readonly title?: string;
+    readonly need?: string;
+    readonly qualification?: string;
+    readonly stage?: string;
+    readonly nextAction?: string;
+    readonly ownerPersonId?: StrategicRecordId | null;
+    readonly personIds?: readonly StrategicRecordId[];
+    readonly estimate?: Money;
+  },
+) => {
+  const payload = {
+    opportunityId: opportunity.id,
+    ...(change.title === undefined ? {} : { title: change.title }),
+    ...(change.need === undefined ? {} : { need: change.need }),
+    ...(change.qualification === undefined
+      ? {}
+      : { qualification: change.qualification }),
+    ...(change.stage === undefined ? {} : { stage: change.stage }),
+    ...(change.nextAction === undefined
+      ? {}
+      : { nextAction: change.nextAction }),
+    ...(change.ownerPersonId === undefined
+      ? {}
+      : { ownerPersonId: change.ownerPersonId }),
+    ...(change.personIds === undefined ? {} : { personIds: change.personIds }),
+    ...(change.estimate === undefined ? {} : { estimate: change.estimate }),
+  };
+  return Object.keys(payload).length === 1
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [opportunity.id]: opportunity.version,
+          }),
+          commandName: "opportunity.update",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind === "strategic.record_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
 };
 
 const currentPrincipal = (
@@ -2212,6 +2473,8 @@ export const createPerson = (
     readonly organizationId?: StrategicRecordId;
     readonly role?: string;
     readonly email?: string;
+    /** Stored as given: every format this could refuse is one a real contact list holds. */
+    readonly phone?: string;
   },
 ) => {
   const personId = crypto.randomUUID() as StrategicRecordId;
@@ -2229,6 +2492,7 @@ export const createPerson = (
           : { organizationId: input.organizationId }),
         ...(input.role?.trim() ? { role: input.role.trim() } : {}),
         ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+        ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
       },
     },
     (response) =>
@@ -2239,6 +2503,53 @@ export const createPerson = (
   );
 };
 
+/**
+ * Correcting a person. Partial by field on the same terms as
+ * `updateOrganization`: absent leaves a field alone, `null` clears an optional
+ * one, `name` can only be replaced. `externalId` is left out for the same
+ * reason it is there.
+ */
+export const updatePerson = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  person: { readonly id: StrategicRecordId; readonly version: number },
+  change: {
+    readonly name?: string;
+    readonly organizationId?: StrategicRecordId | null;
+    readonly role?: string | null;
+    readonly email?: string | null;
+    readonly phone?: string | null;
+  },
+) => {
+  const payload = {
+    personId: person.id,
+    ...(change.name === undefined ? {} : { name: change.name }),
+    ...(change.organizationId === undefined
+      ? {}
+      : { organizationId: change.organizationId }),
+    ...(change.role === undefined ? {} : { role: change.role }),
+    ...(change.email === undefined ? {} : { email: change.email }),
+    ...(change.phone === undefined ? {} : { phone: change.phone }),
+  };
+  return Object.keys(payload).length === 1
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [person.id]: person.version,
+          }),
+          commandName: "relationship.personUpdate",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind === "strategic.record_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
+};
+
 export const createOffer = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -2247,6 +2558,13 @@ export const createOffer = async (
     readonly deliverableDocumentId: DocumentId;
     readonly title: string;
     readonly nextAction: string;
+    /** What the offer costs us. Absent is the common case — the quote is not back. */
+    readonly cost?: Money;
+    /** The rate this was quoted at. Its `from` should be the cost's currency. */
+    readonly rate?: ExchangeRate;
+    /** Only a CONFIRMED price is ever stored; a derived one is computed on screen. */
+    readonly price?: OfferPrice;
+    readonly state?: "draft" | "ready" | "submitted" | "accepted" | "declined";
   },
 ) => {
   const ownerPrincipalId = currentPrincipal(snapshot);
@@ -2267,8 +2585,11 @@ export const createOffer = async (
         deliverableDocumentId: input.deliverableDocumentId,
         title: input.title,
         ownerPrincipalId,
-        state: "draft",
+        state: input.state ?? "draft",
         nextAction: input.nextAction,
+        ...(input.cost === undefined ? {} : { cost: input.cost }),
+        ...(input.rate === undefined ? {} : { rate: input.rate }),
+        ...(input.price === undefined ? {} : { price: input.price }),
       },
     },
     (response) =>
@@ -2320,6 +2641,76 @@ export const createOffer = async (
   return linked;
 };
 
+/**
+ * The offer's own correction command — note the name: `opportunity.offerUpdate`,
+ * matching `offerCreate`/`offerRemove`, not `offer.update`. Until it existed an
+ * offer was frozen at create: its `state` could not walk
+ * draft → ready → submitted → accepted, and a cost that arrived when the
+ * distributor's quote finally came back could not be written down at all.
+ *
+ * **`price` has THREE caller intents, not two**, and the difference between two
+ * of them is invisible in a diff:
+ *
+ * - the key ABSENT leaves whatever is stored alone;
+ * - `{ basis: "confirmed", price }` stores that amount;
+ * - `{ basis: "derived" }` UN-CONFIRMS — the kernel turns it into a *clear*, so
+ *   derived has exactly ONE spelling on the record (absent), and un-confirming
+ *   can never leave a stale confirmed amount behind a card that reads as
+ *   derived.
+ *
+ * So `{ basis: "derived" }` must be SENT, never treated as "nothing to change".
+ * The spread below is what makes those two cases different requests.
+ *
+ * There is no transition graph on `state` and none is imposed here: `offerCreate`
+ * accepts all five with no ordering rule, and a client reopening a closed
+ * negotiation really does send an offer backwards. A rate whose `from` is not the
+ * cost's currency is likewise stored rather than refused — the pair check is
+ * structural in `convertMoney`, and refusing the write would make the one
+ * mismatched offer that needs correcting the one offer nobody can correct.
+ */
+export const updateOffer = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  offer: { readonly id: StrategicRecordId; readonly version: number },
+  change: {
+    readonly title?: string;
+    readonly state?: "draft" | "ready" | "submitted" | "accepted" | "declined";
+    readonly nextAction?: string;
+    readonly cost?: Money;
+    readonly rate?: ExchangeRate;
+    readonly price?: OfferPrice;
+  },
+) => {
+  const payload = {
+    offerId: offer.id,
+    ...(change.title === undefined ? {} : { title: change.title }),
+    ...(change.state === undefined ? {} : { state: change.state }),
+    ...(change.nextAction === undefined
+      ? {}
+      : { nextAction: change.nextAction }),
+    ...(change.cost === undefined ? {} : { cost: change.cost }),
+    ...(change.rate === undefined ? {} : { rate: change.rate }),
+    ...(change.price === undefined ? {} : { price: change.price }),
+  };
+  return Object.keys(payload).length === 1
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [offer.id]: offer.version,
+          }),
+          commandName: "opportunity.offerUpdate",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind === "strategic.record_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
+};
+
 export const createRenewal = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -2329,6 +2720,20 @@ export const createRenewal = (
     readonly scope: string;
     readonly expiresAt: string;
     readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+    /** Days before expiry the follow-up is due. See `DEFAULT_RENEWAL_LEAD_TIME_DAYS`. */
+    readonly leadTimeDays?: number;
+    /**
+     * `false` creates the contract in the "nobody has started this" state — no
+     * follow-up task, and none demanded. That state was unreachable until B7
+     * made `followUpTaskId` optional, and four of five real contracts sit in it.
+     * The `renewal_due` signal still fires; with no task to point at it points
+     * at the client.
+     */
+    readonly startFollowUp?: boolean;
+    /** The contract clock: when the term began, how long it runs, which cycle this is. */
+    readonly termStartsAt?: string;
+    readonly termMonths?: number;
+    readonly cycleOrdinal?: number;
   },
 ) => {
   const ownerPrincipalId = currentPrincipal(snapshot);
@@ -2338,7 +2743,8 @@ export const createRenewal = (
       message: "Cannot determine the renewal owner.",
     });
   const renewalId = crypto.randomUUID() as StrategicRecordId;
-  const followUpTaskId = crypto.randomUUID() as TaskId;
+  const followUpTaskId =
+    input.startFollowUp === false ? undefined : (crypto.randomUUID() as TaskId);
   return execute(
     client,
     {
@@ -2346,24 +2752,106 @@ export const createRenewal = (
       commandName: "relationship.renewalCreate",
       payload: {
         renewalId,
-        followUpTaskId,
+        ...(followUpTaskId === undefined ? {} : { followUpTaskId }),
         spaceId: firstSpace(snapshot),
         organizationId: input.organizationId,
         title: input.title,
         scope: input.scope,
         expiresAt: input.expiresAt,
-        leadTimeDays: 30,
+        leadTimeDays: input.leadTimeDays ?? DEFAULT_RENEWAL_LEAD_TIME_DAYS,
         ownerPrincipalId,
         evidenceSourceIds: input.evidenceSourceIds,
+        ...(input.termStartsAt === undefined
+          ? {}
+          : { termStartsAt: input.termStartsAt }),
+        ...(input.termMonths === undefined
+          ? {}
+          : { termMonths: input.termMonths }),
+        ...(input.cycleOrdinal === undefined
+          ? {}
+          : { cycleOrdinal: input.cycleOrdinal }),
         cycleKey: `${input.organizationId}:${input.expiresAt.slice(0, 10)}`,
       },
     },
     (response) =>
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind === "strategic.record_changed"
-        ? { renewalId, followUpTaskId }
+        ? {
+            renewalId,
+            ...(followUpTaskId === undefined ? {} : { followUpTaskId }),
+          }
         : undefined,
   );
+};
+
+/**
+ * The contract clock on a renewal that ALREADY exists, plus the one way out of
+ * the "nobody has started this" state. Create-only term fields would have left
+ * every renewal written before B7 permanently without a clock — a capability
+ * built and unreachable on real data.
+ *
+ * `cycleOrdinal` is the integer the screen prints as "term 3". It is NOT
+ * `cycleKey`, which stays what it has always been: the per-organisation
+ * uniqueness key behind the create-time duplicate check and the attention dedup
+ * key. Two concepts, two fields.
+ *
+ * `followUpTaskId` ATTACHES an existing task and is set once — a renewal that
+ * already carries one is refused rather than re-pointed, because re-pointing
+ * would leave the original task in the Tasks list attached to nothing while
+ * still wearing the renewal's deadline. Create the task with `createTask` first;
+ * this only attaches it.
+ *
+ * `expiresAt` and `leadTimeDays` are deliberately not here: moving either has to
+ * move the follow-up's deadline and the `renewal_due` signal with it, which is a
+ * larger change than the clock and nobody has asked for it.
+ */
+export const updateRenewalTerm = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  renewal: { readonly id: StrategicRecordId; readonly version: number },
+  change: {
+    readonly termStartsAt?: string;
+    readonly termMonths?: number;
+    readonly cycleOrdinal?: number;
+    readonly followUpTaskId?: TaskId;
+  },
+) => {
+  const payload = {
+    renewalId: renewal.id,
+    ...(change.termStartsAt === undefined
+      ? {}
+      : { termStartsAt: change.termStartsAt }),
+    ...(change.termMonths === undefined
+      ? {}
+      : { termMonths: change.termMonths }),
+    ...(change.cycleOrdinal === undefined
+      ? {}
+      : { cycleOrdinal: change.cycleOrdinal }),
+    ...(change.followUpTaskId === undefined
+      ? {}
+      : { followUpTaskId: change.followUpTaskId }),
+  };
+  return Object.keys(payload).length === 1
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          // Only the renewal's own version, even when a task is being attached:
+          // `relationship.renewalUpdate` does not write the task, it points at
+          // it. Contrast `relationship.renewalResolve` below, which COMPLETES
+          // the task in the same transaction and therefore expects both.
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [renewal.id]: renewal.version,
+          }),
+          commandName: "relationship.renewalUpdate",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind === "strategic.record_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
 };
 
 export const createRelationshipFact = (
@@ -3534,6 +4022,28 @@ export const resolveRadarCandidate = (
         : undefined,
   );
 
+/**
+ * Closing a renewal: renewed, not renewing, or irrelevant.
+ *
+ * **The envelope carries TWO versions when the renewal has a follow-up**, and
+ * that is not a detail. `relationship.renewalResolve` completes the follow-up
+ * task in the same transaction, so the kernel's `expected` map holds the renewal
+ * AND the task — and `expectedVersions` is an exact key-set match, so an
+ * envelope naming only the renewal is a version conflict, not a partial save.
+ * This wrapper sent only the renewal until now, which means every close of a
+ * started contract failed with "The change was not saved:
+ * record.version_conflict"; B7 made it work for the renewals that have no task
+ * and left the others exactly as broken. Asserted in
+ * `test/crm-mutations.test.ts` by key set, not by presence — a presence check is
+ * what stayed green over this for as long as the wrapper has existed.
+ *
+ * The task's version comes from `snapshot.tasks`, which is `task.list` capped at
+ * 100. A follow-up outside that page cannot be versioned here, so the wrapper
+ * says so and sends nothing rather than sending an envelope the kernel is
+ * certain to refuse: a sentence a person can act on instead of a conflict they
+ * cannot. The narrower read that would remove the cap is a noted gap, not
+ * something to invent here.
+ */
 export const resolveRenewal = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -3542,12 +4052,25 @@ export const resolveRenewal = (
     { kind: "renewal" }
   >,
   state: "renewed" | "not_renewing" | "irrelevant",
-) =>
-  execute(
+) => {
+  const followUp =
+    renewal.followUpTaskId === undefined
+      ? undefined
+      : snapshot.tasks.find((task) => task.id === renewal.followUpTaskId);
+  if (renewal.followUpTaskId !== undefined && followUp === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      // Kept under the prose guard's 96 characters: the reason belongs in this
+      // function's own comment, not in a paragraph on a row.
+      message:
+        "This contract's follow-up task is not loaded, so it cannot be closed yet. Reload and try again.",
+    });
+  return execute(
     client,
     {
       ...commandBase(snapshot.bootstrap.workspace.id, {
         [renewal.id]: renewal.version,
+        ...(followUp === undefined ? {} : { [followUp.id]: followUp.version }),
       }),
       commandName: "relationship.renewalResolve",
       payload: { renewalId: renewal.id, state },
@@ -3558,6 +4081,7 @@ export const resolveRenewal = (
         ? response.outcome.projection
         : undefined,
   );
+};
 
 export const generateRecurrenceOccurrence = (
   client: ConstellationRendererClient,
