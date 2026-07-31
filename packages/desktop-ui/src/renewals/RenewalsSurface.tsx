@@ -1,0 +1,913 @@
+import { useMemo, useState } from "react";
+
+import type { StrategicRecordId, TaskId } from "@constellation/contracts";
+import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
+
+import {
+  createOpportunity,
+  createRenewal,
+  createTask,
+  createWorkLink,
+  readSlice,
+  resolveRenewal,
+  updateRenewalTerm,
+  type DesktopSnapshot,
+  type MutationFailure,
+  type MutationResult,
+} from "../client/workflow.js";
+import { indexRelationships } from "../crm/organization-reading.js";
+import { fmtApprox, fmtMoney, fmtUplift } from "../crm/money.js";
+import { Icon } from "../components/Icon.js";
+import {
+  useListNavigation,
+  type ListNavigationItemProps,
+} from "../hooks/useListNavigation.js";
+import { countLabel, dateKeyInZone, formatDate } from "../i18n.js";
+import {
+  CLOSED_STATE_LABELS,
+  formatDayKey,
+  leadPhrase,
+  readRenewals,
+  relativeDays,
+  type RenewalReading,
+} from "./renewals-view.js";
+import styles from "./renewals.module.css";
+
+// RENEWALS. The screen answers "what do I have to start", and it answers it
+// with THREE SECTIONS rather than with a sort control: the sections ARE the
+// ordering, and a switch that switches nothing lies the same way the old
+// Organizations filter chip did.
+//
+// Each row LEADS WITH THE EXPIRY DATE — `ends Sep 30 · in 65 days`. "Time to
+// start" is what the screen organises by, carried by the section it stands in
+// and by the lead chip beside the date. That reading was reversed once during
+// the walkthrough and accepted on the third pass; the reason is that the
+// decision was about what the screen organises, not about which number is
+// fattest.
+//
+// The contract clock — "1 yr 10 mo of 2 yrs · term 3" — sits in SMALL PRINT at
+// the foot of the row, because it is context for the dates rather than a thing
+// to act on.
+//
+// WHAT THIS SCREEN DELIBERATELY DOES NOT HAVE: explanatory paragraphs (the rule
+// is said at the control it governs); a `Sort: Expiry` control; and a
+// bulk-select checkbox, because a renewal is not a record this list can select
+// in bulk — the selectable id would be the ORGANISATION's, which is not what
+// you are looking at.
+
+const CLOSE_OUTCOMES = [
+  ["renewed", "Renewed"],
+  ["not_renewing", "Not renewing"],
+  ["irrelevant", "No longer relevant"],
+] as const;
+
+type CloseOutcome = (typeof CLOSE_OUTCOMES)[number][0];
+
+/** The mark that leads a row. Shape first: it reads the same with no colour. */
+const SECTION_MARKS = {
+  due: "▲",
+  watching: "◷",
+  closed: "■",
+} as const;
+
+type SectionKind = keyof typeof SECTION_MARKS;
+
+const Initials = ({ name }: { readonly name: string }) => (
+  <span aria-hidden="true" className={styles.avatar}>
+    {name
+      .split(/\s+/u)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.slice(0, 1).toUpperCase())
+      .join("")}
+  </span>
+);
+
+/**
+ * The money on a contract, and which KIND of number it is — said with two
+ * different things rather than with two shades of one colour: a projection is
+ * rounded, wears `≈` and names its percentage; a real linked deal is exact and
+ * carries a way to the deal.
+ *
+ * Only the third branch can be reached from today's data. The renewal arm of
+ * the projection has no amount on it at all, so there is nothing to apply the
+ * uplift to and no deal that answers "what will this be worth". The other two
+ * are built because the arithmetic behind them already ships in `money.ts` and
+ * is asserted there; they are reported as unexercised rather than left out, so
+ * that landing the field is a projection change and not a screen change.
+ */
+const Outlook = ({
+  reading,
+  upliftPct,
+  onOpenOpportunity,
+}: {
+  readonly reading: RenewalReading;
+  readonly upliftPct: number;
+  readonly onOpenOpportunity: (id: string) => void;
+}) => {
+  const { outlook, clock } = reading;
+  if (clock.closed) return null;
+  if (outlook.basis === "none")
+    return (
+      <span className={styles.outlookNone} data-renewal-outlook="none">
+        nothing to project from
+      </span>
+    );
+  if (outlook.basis === "uplift")
+    return (
+      <span className={styles.outlookAssumed} data-renewal-outlook="uplift">
+        at renewal <b>{fmtApprox(outlook.amount)}</b>
+        <span className={styles.basis}>{fmtUplift(upliftPct)}</span>
+      </span>
+    );
+  return (
+    <span className={styles.outlookReal} data-renewal-outlook={outlook.basis}>
+      at renewal <b>{fmtMoney(outlook.amount)}</b>
+      <button
+        className={styles.basisLink}
+        onClick={() => {
+          if (outlook.opportunityId !== null)
+            onOpenOpportunity(outlook.opportunityId);
+        }}
+        type="button"
+      >
+        {outlook.basis === "offer" ? "from the offer" : "from the estimate"}
+      </button>
+    </span>
+  );
+};
+
+const RenewalRow = ({
+  reading,
+  section,
+  index,
+  itemProps,
+  selected,
+  timeZone,
+  upliftPct,
+  busy,
+  message,
+  onSelect,
+  onOpenOpportunity,
+  onOpenTask,
+  onStart,
+  onAmend,
+  onClose,
+}: {
+  readonly reading: RenewalReading;
+  readonly section: SectionKind;
+  readonly index: number;
+  readonly itemProps: (index: number) => ListNavigationItemProps;
+  readonly selected: boolean;
+  readonly timeZone: string | undefined;
+  readonly upliftPct: number;
+  readonly busy: boolean;
+  readonly message: string | undefined;
+  readonly onSelect: (id: string) => void;
+  readonly onOpenOpportunity: (id: string) => void;
+  readonly onOpenTask: (id: TaskId, title: string) => void;
+  readonly onStart: (reading: RenewalReading) => void;
+  readonly onAmend: (reading: RenewalReading) => void;
+  readonly onClose: (reading: RenewalReading, outcome: CloseOutcome) => void;
+}) => {
+  const [closing, setClosing] = useState(false);
+  const nav = itemProps(index);
+  const { renewal, clock, followUp, term } = reading;
+  const lead = leadPhrase(renewal, clock);
+  const closedLabel =
+    renewal.state === "watching"
+      ? undefined
+      : CLOSED_STATE_LABELS[renewal.state];
+
+  return (
+    <div
+      {...nav}
+      aria-label={reading.accessibleName}
+      aria-selected={selected}
+      className={`${styles.row} ${styles[`row_${section}`]} ${selected ? styles.rowSelected : ""}`}
+      data-renewal-row={renewal.id}
+      onClick={() => onSelect(renewal.id)}
+      role="option"
+    >
+      <span aria-hidden="true" className={styles.mark}>
+        {SECTION_MARKS[section]}
+      </span>
+      <div className={styles.main}>
+        <div className={styles.top}>
+          <span className={styles.client}>
+            {reading.organization?.name ?? "Unknown client"}
+          </span>
+          <span className={styles.title}>{renewal.title}</span>
+          <span className={styles.scope}>{renewal.scope}</span>
+          {closedLabel !== undefined && (
+            <span
+              className={`${styles.state} ${styles[`state_${renewal.state}`]}`}
+              data-renewal-state={renewal.state}
+            >
+              {closedLabel}
+            </span>
+          )}
+          {reading.mainContact !== undefined && (
+            <span
+              aria-label={`Main contact: ${reading.mainContact.name}`}
+              className={styles.contact}
+              role="img"
+            >
+              <Initials name={reading.mainContact.name} />
+            </span>
+          )}
+        </div>
+
+        {/* THE DATES LEAD. The lead window stands beside them because it is
+            what says whether the date is already your problem. */}
+        <div className={styles.dates} data-renewal-dates>
+          <b>
+            {clock.closed ? "ended" : "ends"}{" "}
+            {formatDate(renewal.expiresAt, timeZone)}
+          </b>
+          <span aria-hidden="true" className={styles.dot}>
+            ·
+          </span>
+          <span className={styles.relative}>
+            {relativeDays(clock.daysLeft)}
+          </span>
+          {lead !== undefined && (
+            <span
+              className={`${styles.lead} ${lead.open ? styles.leadOpen : ""}`}
+              data-renewal-lead={lead.open ? "open" : "waiting"}
+            >
+              <span aria-hidden="true" className={styles.leadMark}>
+                {lead.open ? "▲" : "◷"}
+              </span>
+              {lead.text}
+            </span>
+          )}
+        </div>
+
+        <div className={styles.money}>
+          <Outlook
+            onOpenOpportunity={onOpenOpportunity}
+            reading={reading}
+            upliftPct={upliftPct}
+          />
+        </div>
+
+        {/* The follow-up, and its state with it: "started but blocked for six
+            days" is not the same claim as "started". */}
+        {!clock.closed && (
+          <div className={styles.line}>
+            {followUp.kind === "none" ? (
+              <>
+                <span className={styles.followNone} data-renewal-follow="none">
+                  <span aria-hidden="true">◇</span> nobody has started this
+                </span>
+                <button
+                  className={styles.action}
+                  disabled={busy}
+                  onClick={() => onStart(reading)}
+                  type="button"
+                >
+                  Start
+                </button>
+              </>
+            ) : followUp.kind === "detached" ? (
+              <span
+                className={styles.followNone}
+                data-renewal-follow="detached"
+              >
+                <span aria-hidden="true">◇</span> its follow-up task is not on
+                this page
+              </span>
+            ) : (
+              <button
+                className={styles.follow}
+                data-renewal-follow="task"
+                onClick={() =>
+                  onOpenTask(followUp.task.id, followUp.task.title)
+                }
+                type="button"
+              >
+                <span className={styles.clip}>{followUp.task.title}</span>
+                <span className={styles.tag}>{followUp.task.status.label}</span>
+                {followUp.lateDays !== undefined && (
+                  <span className={`${styles.tag} ${styles.tagLate}`}>
+                    {followUp.lateDays} days late
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
+        {reading.amendments.map((amendment) => (
+          <div
+            className={styles.amendment}
+            data-renewal-amendment={amendment.opportunity.id}
+            key={amendment.opportunity.id}
+          >
+            <span aria-hidden="true">+</span>
+            <span className={styles.clip}>{amendment.opportunity.title}</span>
+            <span className={styles.when}>
+              {formatDate(amendment.at, timeZone)}
+            </span>
+            <button
+              className={styles.basisLink}
+              onClick={() => onOpenOpportunity(amendment.opportunity.id)}
+              type="button"
+            >
+              the opportunity
+            </button>
+          </div>
+        ))}
+
+        <div className={styles.foot}>
+          {term !== undefined && (
+            <>
+              <span className={styles.term} data-renewal-term>
+                {term.label}
+              </span>
+              <span
+                aria-label={`${term.label}, ${term.percent}% of the term elapsed`}
+                className={styles.bar}
+                role="img"
+              >
+                <i style={{ width: `${term.percent}%` }} />
+              </span>
+              {term.cycleOrdinal !== undefined && (
+                <span className={styles.cycle}>term {term.cycleOrdinal}</span>
+              )}
+            </>
+          )}
+          <span className={styles.spacer} />
+          {clock.canAmend && (
+            <>
+              <button
+                className={styles.action}
+                disabled={busy}
+                onClick={() => onAmend(reading)}
+                type="button"
+              >
+                Add to contract
+              </button>
+              {/* The rule stands AT the control it governs, which is the only
+                  place it is needed. */}
+              <span className={styles.hint}>no change to the term</span>
+            </>
+          )}
+          {!clock.closed &&
+            (closing ? (
+              <span
+                aria-label={`Close ${renewal.title}`}
+                className={styles.closeGroup}
+                data-renewal-close
+                role="group"
+              >
+                {CLOSE_OUTCOMES.map(([outcome, label]) => (
+                  <button
+                    className={styles.action}
+                    disabled={busy}
+                    key={outcome}
+                    onClick={() => onClose(reading, outcome)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
+            ) : (
+              <button
+                aria-expanded={false}
+                className={styles.action}
+                onClick={() => setClosing(true)}
+                type="button"
+              >
+                Close
+              </button>
+            ))}
+        </div>
+
+        {/* The refusal a person can act on, beside the control that produced
+            it. `resolveRenewal` completes the follow-up task in the same
+            transaction, so it needs the task's version — and a task outside
+            `task.list`'s 100-row page has none to give. The wrapper says so
+            instead of sending an envelope the kernel is certain to refuse, and
+            this is where it gets said. */}
+        {message !== undefined && (
+          <p className={styles.rowMessage} data-renewal-message role="status">
+            {message}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const RenewalsSurface = ({
+  client,
+  snapshot,
+  selectedRecordId,
+  onSelectRecord,
+  onOpenOrganization,
+  onOpenOpportunity,
+  onOpenTask,
+  onReload,
+  onFailure,
+}: {
+  readonly client: ConstellationRendererClient | undefined;
+  readonly snapshot: DesktopSnapshot;
+  readonly selectedRecordId: string | undefined;
+  readonly onSelectRecord: (id: string) => void;
+  readonly onOpenOrganization: (id: StrategicRecordId, name: string) => void;
+  readonly onOpenOpportunity: (id: string) => void;
+  readonly onOpenTask: (id: TaskId, title: string) => void;
+  readonly onReload: () => Promise<void> | void;
+  readonly onFailure: (failure: MutationFailure) => void;
+}) => {
+  const [showClosed, setShowClosed] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [amending, setAmending] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [rowMessage, setRowMessage] = useState<{
+    readonly id: string;
+    readonly message: string;
+  }>();
+  const [draft, setDraft] = useState({
+    organizationId: "",
+    title: "",
+    scope: "",
+    expiresAt: "",
+  });
+  const [amendment, setAmendment] = useState({
+    title: "",
+    need: "",
+    nextAction: "",
+  });
+
+  const timeZone = snapshot.bootstrap.workspace.timezone;
+  const upliftPct = snapshot.bootstrap.workspace.commercialDefaults.upliftPct;
+  const relationships = readSlice(snapshot.relationships);
+  const records = relationships.available ? relationships.data.records : [];
+
+  const index = useMemo(() => indexRelationships(records), [records]);
+  const sections = useMemo(
+    () =>
+      readRenewals(records, index, snapshot.tasks, upliftPct, {
+        timeZone,
+        todayKey: dateKeyInZone(new Date(), timeZone),
+      }),
+    [records, index, snapshot.tasks, upliftPct, timeZone],
+  );
+
+  const ordered = useMemo(
+    () => [
+      ...sections.due,
+      ...sections.watching,
+      ...(showClosed ? sections.closed : []),
+    ],
+    [sections, showClosed],
+  );
+
+  const openClient = (reading: RenewalReading) => {
+    if (reading.organization !== undefined)
+      onOpenOrganization(reading.organization.id, reading.organization.name);
+  };
+
+  const itemProps = useListNavigation({
+    itemCount: ordered.length,
+    onOpen: (position) => {
+      const reading = ordered[position];
+      if (reading !== undefined) openClient(reading);
+    },
+    onSelect: (position) => {
+      const reading = ordered[position];
+      if (reading !== undefined) onSelectRecord(reading.renewal.id);
+    },
+  });
+
+  const after = async (
+    reading: RenewalReading,
+    result: MutationResult<unknown>,
+  ) => {
+    setBusy(false);
+    if (result.kind === "success") {
+      setRowMessage(undefined);
+      await onReload();
+      return;
+    }
+    // The reason travels to the row that produced it. A toast is where a
+    // refusal about ONE contract goes to be missed, and this one names a state
+    // of that contract rather than a transport failure.
+    setRowMessage({ id: reading.renewal.id, message: result.message });
+    onFailure(result);
+  };
+
+  const close = (reading: RenewalReading, outcome: CloseOutcome) => {
+    if (client === undefined) return;
+    setBusy(true);
+    void resolveRenewal(client, snapshot, reading.renewal, outcome).then(
+      (result) => after(reading, result),
+    );
+  };
+
+  const start = (reading: RenewalReading) => {
+    if (client === undefined) return;
+    setBusy(true);
+    void createTask(client, snapshot, {
+      title: `Renewal: ${reading.renewal.title}`,
+      nextAction: "Agree the scope of the next term with the client.",
+    }).then(async (created) => {
+      if (created.kind !== "success") {
+        await after(reading, created);
+        return;
+      }
+      // Two commands, and the second is what makes the first mean anything: a
+      // task nobody attached is a task in the list with no contract behind it.
+      // If the attach fails the task stays and the row says so, which is a
+      // state somebody can fix — a silent rollback is not available here.
+      const attached = await updateRenewalTerm(
+        client,
+        snapshot,
+        reading.renewal,
+        { followUpTaskId: created.data.taskId },
+      );
+      await after(reading, attached);
+    });
+  };
+
+  const amend = (reading: RenewalReading) => {
+    if (client === undefined || reading.organization === undefined) return;
+    setBusy(true);
+    void createOpportunity(client, snapshot, {
+      organizationId: reading.organization.id,
+      title: amendment.title.trim(),
+      need: amendment.need.trim(),
+      nextAction: amendment.nextAction.trim(),
+    }).then(async (created) => {
+      if (created.kind !== "success") {
+        await after(reading, created);
+        return;
+      }
+      // The amendment IS the edge. An opportunity created and not linked is an
+      // ordinary deal at that client, which is a different thing from a change
+      // to this contract — so the link failing has to be visible.
+      const linked = await createWorkLink(
+        client,
+        snapshot,
+        reading.renewal.spaceId,
+        "opportunity_amends_renewal",
+        created.data.recordId,
+        reading.renewal.id,
+      );
+      setAmending(undefined);
+      setAmendment({ title: "", need: "", nextAction: "" });
+      await after(reading, linked);
+    });
+  };
+
+  const submitRenewal = () => {
+    if (client === undefined) return;
+    setBusy(true);
+    void createRenewal(client, snapshot, {
+      organizationId: draft.organizationId as StrategicRecordId,
+      title: draft.title.trim(),
+      scope: draft.scope.trim(),
+      expiresAt: `${draft.expiresAt}T00:00:00.000Z`,
+      evidenceSourceIds: [],
+      // The state four of five real contracts sit in, and the one the screen
+      // has a first-class row for. A renewal created with a task nobody wrote
+      // would arrive already claiming somebody started it.
+      startFollowUp: false,
+    }).then(async (result) => {
+      setBusy(false);
+      if (result.kind === "success") {
+        setCreating(false);
+        setDraft({ organizationId: "", title: "", scope: "", expiresAt: "" });
+        await onReload();
+      } else onFailure(result);
+    });
+  };
+
+  const header = (
+    <header className="surface-header">
+      <h1 id="surface-title" tabIndex={-1}>
+        Renewals
+      </h1>
+    </header>
+  );
+
+  if (!relationships.available)
+    return (
+      <div
+        className={`surface-scroll ${styles.renewals}`}
+        data-renewals-surface
+      >
+        {header}
+        <section className={styles.emptyState} role="status">
+          <div>
+            <h2>Renewals are unavailable</h2>
+            {/* The slice's own reason. The three section headings do NOT render
+                behind this: an empty "Time to start" is an answer computed from
+                the watching set, and printing it over a failed read would say
+                "nothing to do" when the truth is "nothing could be asked". */}
+            <p data-renewals-unavailable>{relationships.message}</p>
+          </div>
+          <button
+            className="secondary-button"
+            onClick={() => void onReload()}
+            type="button"
+          >
+            Try again
+          </button>
+        </section>
+      </div>
+    );
+
+  const renderRows = (
+    readings: readonly RenewalReading[],
+    section: SectionKind,
+    base: number,
+    label: string,
+  ) => (
+    <div aria-label={label} className={styles.list} role="listbox">
+      {readings.map((reading, offset) => (
+        <RenewalRow
+          busy={busy}
+          index={base + offset}
+          itemProps={itemProps}
+          key={reading.renewal.id}
+          message={
+            rowMessage?.id === reading.renewal.id
+              ? rowMessage.message
+              : undefined
+          }
+          onAmend={(target) => setAmending(target.renewal.id)}
+          onClose={close}
+          onOpenOpportunity={onOpenOpportunity}
+          onOpenTask={onOpenTask}
+          onSelect={onSelectRecord}
+          onStart={start}
+          reading={reading}
+          section={section}
+          selected={reading.renewal.id === selectedRecordId}
+          timeZone={timeZone}
+          upliftPct={upliftPct}
+        />
+      ))}
+    </div>
+  );
+
+  const amendTarget = ordered.find(
+    (reading) => reading.renewal.id === amending,
+  );
+
+  return (
+    <div className={`surface-scroll ${styles.renewals}`} data-renewals-surface>
+      {header}
+      <div className={styles.crumbbar}>
+        <button
+          aria-expanded={creating}
+          className="secondary-button"
+          onClick={() => setCreating((open) => !open)}
+          type="button"
+        >
+          <Icon name="capture" />
+          New renewal
+        </button>
+        <span aria-live="polite" className={styles.count} role="status">
+          {`${countLabel(sections.openCount, "contract")} open · ${sections.closed.length} closed this cycle`}
+        </span>
+      </div>
+
+      {creating && (
+        <form
+          aria-label="New renewal"
+          className={styles.create}
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitRenewal();
+          }}
+        >
+          <label className={styles.field}>
+            Client
+            <select
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  organizationId: event.target.value,
+                }))
+              }
+              required
+              value={draft.organizationId}
+            >
+              <option value="">Choose a client</option>
+              {index.organizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            Contract
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))
+              }
+              required
+              value={draft.title}
+            />
+          </label>
+          <label className={styles.field}>
+            Scope
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  scope: event.target.value,
+                }))
+              }
+              required
+              value={draft.scope}
+            />
+          </label>
+          <label className={styles.field}>
+            Expires
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  expiresAt: event.target.value,
+                }))
+              }
+              required
+              type="date"
+              value={draft.expiresAt}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={
+              busy ||
+              draft.organizationId === "" ||
+              draft.title.trim() === "" ||
+              draft.scope.trim() === "" ||
+              draft.expiresAt === ""
+            }
+            type="submit"
+          >
+            {busy ? "Adding…" : "Add contract"}
+          </button>
+        </form>
+      )}
+
+      {amendTarget !== undefined && (
+        <form
+          aria-label="Add to contract"
+          className={styles.create}
+          onSubmit={(event) => {
+            event.preventDefault();
+            amend(amendTarget);
+          }}
+        >
+          <label className={styles.field}>
+            What is being added
+            <input
+              onChange={(event) =>
+                setAmendment((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))
+              }
+              required
+              value={amendment.title}
+            />
+          </label>
+          <label className={styles.field}>
+            Why
+            <input
+              onChange={(event) =>
+                setAmendment((current) => ({
+                  ...current,
+                  need: event.target.value,
+                }))
+              }
+              required
+              value={amendment.need}
+            />
+          </label>
+          <label className={styles.field}>
+            Next step
+            <input
+              onChange={(event) =>
+                setAmendment((current) => ({
+                  ...current,
+                  nextAction: event.target.value,
+                }))
+              }
+              required
+              value={amendment.nextAction}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={
+              busy ||
+              amendment.title.trim() === "" ||
+              amendment.need.trim() === "" ||
+              amendment.nextAction.trim() === ""
+            }
+            type="submit"
+          >
+            {busy ? "Opening…" : "Open the amendment"}
+          </button>
+          <button
+            className="secondary-button"
+            onClick={() => setAmending(undefined)}
+            type="button"
+          >
+            Cancel
+          </button>
+        </form>
+      )}
+
+      <section className={styles.section} data-renewal-section="due">
+        <div className={styles.sectionHead}>
+          <h2>
+            Time to start{" "}
+            <span className={styles.n}>{sections.due.length}</span>
+          </h2>
+        </div>
+        {sections.due.length === 0 ? (
+          // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the
+          // watching set, which is why this can be said at all.
+          <div
+            className={styles.computedEmpty}
+            data-renewal-empty
+            role="status"
+          >
+            <p>
+              <b>No contract has entered its lead time.</b>
+            </p>
+            <p className={styles.sub}>
+              {sections.nextLead === undefined
+                ? "Nothing is being watched."
+                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens in ${sections.nextLead.days} days, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
+            </p>
+          </div>
+        ) : (
+          renderRows(sections.due, "due", 0, "Time to start")
+        )}
+      </section>
+
+      <section className={styles.section} data-renewal-section="watching">
+        <div className={styles.sectionHead}>
+          <h2>
+            Watching{" "}
+            <span className={styles.n}>{sections.watching.length}</span>
+          </h2>
+        </div>
+        {sections.watching.length === 0 ? (
+          <p className={styles.none}>Nothing is waiting for its lead time.</p>
+        ) : (
+          renderRows(
+            sections.watching,
+            "watching",
+            sections.due.length,
+            "Watching",
+          )
+        )}
+      </section>
+
+      <section className={styles.section} data-renewal-section="closed">
+        <div className={styles.sectionHead}>
+          <h2>
+            Closed this cycle{" "}
+            <span className={styles.n}>{sections.closed.length}</span>
+          </h2>
+          <button
+            aria-expanded={showClosed}
+            className={styles.more}
+            onClick={() => setShowClosed((open) => !open)}
+            type="button"
+          >
+            {showClosed ? "Hide" : "Show"}
+          </button>
+        </div>
+        {showClosed &&
+          (sections.closed.length === 0 ? (
+            <p className={styles.none}>Nothing has closed this cycle.</p>
+          ) : (
+            renderRows(
+              sections.closed,
+              "closed",
+              sections.due.length + sections.watching.length,
+              "Closed this cycle",
+            )
+          ))}
+      </section>
+    </div>
+  );
+};

@@ -1,0 +1,643 @@
+/* Renewals. A CSS Module, so the sheet travels with the lazy chunk instead of
+   landing on the head-linked stylesheet the window waits for.
+
+   Every colour is a token and no colour carries a reading on its own: the lead
+   window has its own mark and its own words, and the row's section mark is a
+   shape. A monochrome screen loses nothing here.
+
+   THE ROW IS TALL ON PURPOSE. It carries five things at once — who, when, for
+   how much, who started it, how much of the term is gone — and there are five
+   contracts on this screen, not five hundred. A task-list density would break
+   the hierarchy in which the DATES have to lead.
+
+   WHAT EVERY WRAPPING RULE BELOW IS FOR, said once. `.surface-scroll > *` sets
+   `margin-inline: auto` (`styles.css:4404-4407`), which turns off stretch and
+   sizes each surface child `fit-content` — and `fit-content` is clamped BELOW
+   by `min-content`. A non-wrapping flex row's min-content is the SUM of its
+   children, so at 200% root font size such a row stops being able to fit the
+   surface's content box and the surface overflows itself with no single
+   descendant overflowing anything. Every bar and every row line here wraps, the
+   grid uses ratios rather than rem caps, and the list declares `width: 100%` so
+   its tracks have a definite number to shrink against. */
+
+.renewals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Chrome above the sections ───────────────────────────────────────── */
+
+.crumbbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+}
+
+.count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1 1 10rem;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.field input,
+.field select {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ── The three sections ARE the ordering ─────────────────────────────── */
+
+.section {
+  padding-inline: var(--space-4);
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.sectionHead h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.n {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+.more {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.125rem 0.625rem;
+}
+
+.more:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.list {
+  display: block;
+  /* Definite, for the reason in the file header: an auto cross-axis margin
+     turns off stretch, and without a width the list is sized by the sum of its
+     rows' content. */
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
+  overflow: hidden;
+}
+
+/* ── A contract's row ────────────────────────────────────────────────── */
+
+.row {
+  display: grid;
+  /* A fixed lane for the mark and everything else in one shrinkable track.
+     `minmax(0, 1fr)` rather than `1fr` so the track may go under its content's
+     min-content width instead of setting one. */
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowSelected {
+  background: var(--surface-selected);
+}
+
+/* The focus token is a SHADOW STACK, not a colour: `outline: … solid
+   var(--focus-ring)` is an invalid value and the whole declaration is dropped. */
+.row:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* The section leaves a trace ON the row: once "Closed" is expanded and the list
+   is scrolled, the heading is off screen and the row still has to read alone. */
+.row_due {
+  box-shadow: inset 2px 0 0 var(--status-warning);
+}
+
+.row_closed {
+  opacity: 0.72;
+}
+
+.row_closed:hover {
+  opacity: 1;
+}
+
+.mark {
+  display: flex;
+  justify-content: center;
+  padding-top: 0.125rem;
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  color: var(--text-quaternary);
+}
+
+.row_due .mark {
+  color: var(--status-warning);
+}
+
+.row_closed .mark {
+  color: var(--text-disabled);
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ── 1. Client, contract, scope ──────────────────────────────────────── */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+}
+
+/* The client and the contract title are what the row is recognised by, so they
+   give up their room LAST — expressed as shrink weights rather than as rem
+   floors, because a floor in rem doubles with the text and becomes a width the
+   cell cannot go under. */
+.client {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client + .title::before {
+  content: "—";
+  color: var(--text-disabled);
+  margin-right: 0.4375rem;
+}
+
+/* The scope's own bound is 2 000 characters. One clamped line here, the whole
+   text on the record: 2 000 characters inline destroys the row header. */
+.scope {
+  flex: 0 6 auto;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A closed state is a DECLARATION somebody made, so it wears a pill rather than
+   the shape a computed reading wears. */
+.state {
+  flex: none;
+  font-size: var(--text-2xs);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.5rem;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  background: var(--surface-sunken);
+}
+
+.state_renewed {
+  color: var(--status-success);
+  background: var(--status-success-bg);
+}
+
+.state_not_renewing {
+  color: var(--text-tertiary);
+}
+
+.state_irrelevant {
+  color: var(--text-quaternary);
+}
+
+.contact {
+  flex: none;
+  margin-left: auto;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+}
+
+/* ── 2. THE DATES LEAD ───────────────────────────────────────────────── */
+
+.dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dates b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.dot {
+  color: var(--text-disabled);
+}
+
+.relative {
+  color: var(--text-tertiary);
+}
+
+.lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  font-size: var(--text-xs);
+  color: var(--text-quaternary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.5rem;
+}
+
+.leadMark {
+  font-size: var(--text-2xs);
+  line-height: 1;
+}
+
+/* "The window is open" carries a MARK and WORDS; the colour only reinforces. */
+.leadOpen {
+  color: var(--status-warning);
+  background: var(--status-warning-bg);
+  border-color: transparent;
+  font-weight: 500;
+}
+
+/* ── 3. Money: an assumption and a fact do not look alike ────────────── */
+
+.money {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+.outlookNone {
+  color: var(--text-disabled);
+}
+
+/* The difference is in the SHAPE — a dashed edge against a solid one, `≈`
+   against an amount to the unit — not in two shades of one colour. */
+.outlookAssumed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 0.125rem 0.625rem;
+}
+
+.outlookAssumed b {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.outlookReal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  padding: 0.125rem 0.625rem;
+  background: var(--surface-sunken);
+}
+
+.outlookReal b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.basis {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+}
+
+.basisLink {
+  font-size: var(--text-2xs);
+  color: var(--text-link);
+}
+
+.basisLink:hover {
+  text-decoration: underline;
+}
+
+/* ── 4. The follow-up ────────────────────────────────────────────────── */
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.1875rem 0.625rem;
+}
+
+.follow:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+
+/* Nobody having started this is a STATE, not an empty cell, so it has words. */
+.followNone {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-quaternary);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 0.1875rem 0.625rem;
+}
+
+.clip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+  padding: 0.0625rem 0.4375rem;
+  white-space: nowrap;
+}
+
+.tagLate {
+  color: var(--status-error);
+  background: var(--status-error-bg);
+}
+
+.amendment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border-left: 2px solid var(--border-default);
+  padding-left: 0.5rem;
+}
+
+.when {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 5. Controls, and the contract clock in small print ──────────────── */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.125rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.term {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bar {
+  /* A ratio of the row rather than a rem cap, with a floor small enough to stay
+     inside the row at any text size. */
+  flex: 0 1 6rem;
+  min-width: 2rem;
+  height: 0.1875rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--text-disabled);
+  border-radius: inherit;
+}
+
+.row_due .bar i {
+  background: var(--status-warning);
+}
+
+.cycle {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--text-disabled);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0 0.4375rem;
+  white-space: nowrap;
+}
+
+.action {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 0.1875rem 0.625rem;
+  white-space: nowrap;
+}
+
+.action:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+
+.action:disabled {
+  color: var(--text-disabled);
+}
+
+.closeGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* The rule stands at the control it governs rather than in a paragraph over
+   the list, which is where a rule goes to be scrolled past. */
+.hint {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  white-space: nowrap;
+}
+
+.rowMessage {
+  font-size: var(--text-xs);
+  color: var(--status-error);
+}
+
+/* ── Empty states ────────────────────────────────────────────────────── */
+
+/* An ANSWER, not an absence: both numbers inside are computed from the watching
+   set. It is styled as content rather than as a hole in the page for that
+   reason. */
+.computedEmpty {
+  padding: var(--space-4);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
+}
+
+.computedEmpty p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.sub {
+  margin-top: 0.375rem;
+  font-size: var(--text-xs);
+  color: var(--text-quaternary);
+}
+
+.none {
+  font-size: var(--text-sm);
+  color: var(--text-quaternary);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.emptyState {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.emptyState h2 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.emptyState p {
+  margin-top: 0.25rem;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}

@@ -8,9 +8,10 @@
 // „Relationships" opisywało model danych, a nie robotę, więc jest teraz „CRM",
 // a „Work" nazywa się „Work Management", bo leżą tam też zadania bez projektu.
 //
-// CZEGO TU JESZCZE NIE MA, świadomie: `renewals`.
-// Każde z nich wchodzi razem ze swoim ekranem, w swojej fali — cel w nawigacji,
-// który prowadzi donikąd, jest gablotą, a nie zapowiedzią.
+// LISTA „CZEGO TU JESZCZE NIE MA" JEST PUSTA i dlatego znikła: `pipeline`,
+// `people` i `renewals` weszły, każde razem ze swoim ekranem. Reguła, która ją
+// trzymała, zostaje — cel w nawigacji, który prowadzi donikąd, jest gablotą,
+// a nie zapowiedzią.
 //
 // CYFRY SĄ WYCZERPANE i to jest decyzja, nie awaria. Docelowy zbiór ma
 // jedenaście celów, a klawiatura daje dziewięć skrótów, więc numeracja jest
@@ -100,6 +101,18 @@ export const desktopSurfaceRegistry = [
     icon: "people",
     group: "CRM",
     shortcut: 8,
+    loading: "lazy",
+  },
+  {
+    // Kontrakty do odnowienia. Bez cyfry i to jest decyzja, nie przeoczenie:
+    // dziewięć skrótów jest przypisanych do kształtu docelowego, 6 i 8 należą
+    // do Pipeline i People, a Renewals osiąga się paletą — tak samo jak
+    // Library. Cel bez cyfry i tak stoi w nawigacji.
+    id: "renewals",
+    label: "Renewals",
+    icon: "renewals",
+    group: "CRM",
+    shortcut: null,
     loading: "lazy",
   },
   {

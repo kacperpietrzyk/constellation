@@ -45,6 +45,7 @@ import {
   PeopleSurface,
   PipelineSurface,
   preloadSurface,
+  RenewalsSurface,
   SettingsSurface,
   StrategicDepthSurface,
   TaskAttachmentsSection,
@@ -772,15 +773,17 @@ export const RealApp = ({
       setDocumentInspectorOpen(false);
       setDocumentInspectorKind("document");
     }
-    // Three destinations draw strategic records now, so leaving one for
-    // another must not drop the selection. Without each of them here, the
-    // search routing above sets a record and this effect wipes it on arrival —
-    // the record is lost one layer further up than trap 24, and just as
-    // quietly.
+    // FOUR destinations draw strategic records now, so leaving one for another
+    // must not drop the selection. Without each of them here, the search
+    // routing above sets a record and this effect wipes it on arrival — the
+    // record is lost one layer further up than trap 24, and just as quietly.
+    // Every CRM screen that repoints a record kind at itself adds itself here
+    // too; the pairing is three-part, not two.
     if (
       surface !== "organizations" &&
       surface !== "people" &&
-      surface !== "pipeline"
+      surface !== "pipeline" &&
+      surface !== "renewals"
     )
       setSelectedStrategicId(undefined);
     if (surface !== "history") setSelectedCaptureId(undefined);
@@ -2298,6 +2301,33 @@ export const RealApp = ({
             onOpenOrganization={(id, name) =>
               openContext(organizationContext(id, name))
             }
+            onReload={reload}
+            onFailure={showFailure}
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    renewals: () => (
+      <LazySurfaceBoundary label="Renewals">
+        <Suspense fallback={<SurfaceLoadingState label="Renewals" />}>
+          <RenewalsSurface
+            client={client}
+            snapshot={state.snapshot}
+            selectedRecordId={selectedStrategicId}
+            onSelectRecord={selectStrategicInInspector}
+            onOpenOrganization={(id, name) =>
+              openContext(organizationContext(id, name))
+            }
+            // An opportunity's inspector home is still `organizations` in
+            // `record-kind-registry.ts`; the Pipeline lot repoints it together
+            // with its own routing branch, and until then sending a deal
+            // anywhere else would be the downgrade trap 24 describes, authored
+            // from this end.
+            onOpenOpportunity={(id) => {
+              openContext(destinationContext("organizations", "Organizations"));
+              selectStrategicInInspector(id);
+            }}
+            onOpenTask={(id, title) => openContext(taskContext(id, title))}
             onReload={reload}
             onFailure={showFailure}
           />
@@ -5033,6 +5063,14 @@ export const RealApp = ({
               // exactly that, silently, and it is why `record-kind-registry`
               // and this branch change together or not at all.
               openContext(destinationContext("people", "People"));
+              selectStrategicInInspector(recordId);
+            } else if (nextSurface === "renewals") {
+              // The same pairing, for the contract. The Renewals row keys its
+              // selected state on the RENEWAL's id, which is the id arriving
+              // here — a screen keyed on the organisation would open with
+              // nothing highlighted and the repoint would be a downgrade
+              // wearing a new destination.
+              openContext(destinationContext("renewals", "Renewals"));
               selectStrategicInInspector(recordId);
             } else if (nextSurface === "meetings") {
               setSelectedMeetingId(recordId);
