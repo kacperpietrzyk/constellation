@@ -17,9 +17,16 @@ import type { CommentListProjection } from "../client/workflow.js";
 // application is worse than a plain name. "Discussion" was rejected for
 // sounding like a forum, which is the thing this deliberately is not.
 
+// `offers` is the fifth member and belongs to ONE record kind, which is why it
+// is here rather than in that screen's own file: the strip takes its labels from
+// this map and `restoreTab` validates against this list, so a tab declared
+// locally would render with no name and fall back to Overview on every reopen.
+// Each kind still declares its own SUBSET — `RECORD_TABS` is the vocabulary, not
+// the bar — so nothing grew a tab by this addition.
 export const RECORD_TABS = [
   "overview",
   "tasks",
+  "offers",
   "documents",
   "comments",
   "activity",
@@ -29,6 +36,7 @@ export type RecordTab = (typeof RECORD_TABS)[number];
 export const RECORD_TAB_LABELS: Record<RecordTab, string> = {
   overview: "Overview",
   tasks: "Tasks",
+  offers: "Offers",
   documents: "Documents",
   comments: "Comments",
   activity: "Activity",

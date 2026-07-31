@@ -1,0 +1,485 @@
+/* The opportunity record's own sheet. The record FRAME — the trail out, the
+   padding, the unavailable line — is `record/record-screen.module.css`, worn
+   unchanged: a fourth copy of the frame is how three record screens start
+   drifting apart.
+
+   EVERY RULE HERE IS WRITTEN AGAINST 200% ROOT FONT-SIZE, and that is not
+   politeness. The packaged smoke fails a surface when `scrollWidth` exceeds
+   `clientWidth` at 200% on a 1008 px window, and the mechanism is that
+   `styles.css` centres each surface child with `margin-inline: auto`, which
+   sizes it `fit-content` — clamped BELOW by `min-content`. A child whose
+   min-content exceeds the surface box therefore SETS a width instead of taking
+   one: it fits itself perfectly, reports no overflowing descendant, and pushes
+   the surface past its own box. So nothing below is a non-wrapping row, no grid
+   track is a bare `rem`, and every box that can hold a long word carries
+   `min-inline-size: 0`. */
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* The record names itself ONCE, and this is it. `overflow-wrap: anywhere`
+   rather than an ellipsis: a deal title runs to 500 characters and a truncated
+   one is indistinguishable from another deal at the same client. */
+.title {
+  margin: 0;
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 620;
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.head,
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.figures {
+  color: var(--text-tertiary);
+}
+
+.sep {
+  color: var(--text-quaternary);
+}
+
+.quiet {
+  color: var(--text-tertiary);
+}
+
+/* Colour is never the carrier: every one of these sits beside a WORD that says
+   the same thing — "not a configured stage", "not moving". */
+.warn {
+  color: var(--status-warning);
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.link:hover {
+  color: var(--text-primary);
+  text-decoration-thickness: 2px;
+}
+
+/* ── OVERVIEW ───────────────────────────────────────────────────────────── */
+
+/* The written record takes the remaining width and the rail is capped. The cap
+   is `minmax(0, 17rem)` and not `17rem`: a bare track is a floor as well as a
+   ceiling, so at 200% it would be 544 px of min-content inside a 472 px box and
+   the surface would set its own width. */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
+  align-items: start;
+  gap: var(--space-8);
+  min-inline-size: 0;
+}
+
+.docs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-inline-size: 0;
+}
+
+.doc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.docHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.docHeading {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* The BODY of the record. The LINE is limited and the height deliberately is
+   not — no clamp, no max-block-size, no expander. `qualification` is the CRM
+   analogue of an intended outcome and arrives at 1 400-3 000 characters; it is
+   kept off the Pipeline card for exactly that reason and it is read HERE, whole.
+   `pre-wrap` keeps the writer's own line breaks: re-flowing them is editing
+   somebody's text. */
+.prose {
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prose p {
+  margin: 0 0 var(--space-4);
+}
+
+.prose p:last-child {
+  margin-block-end: 0;
+}
+
+/* Absent, not empty. The dashed border says the space is meant to hold
+   something rather than that nothing belongs there. */
+.docEmpty {
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+}
+
+.textarea {
+  min-inline-size: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.action {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.action:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.action:disabled,
+.textAction:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.textAction {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.textAction:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+/* ── RAIL — the exits and the two settings that are not prose ───────────── */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-inline-size: 0;
+  padding-inline-start: var(--space-5);
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.railSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.railHeading {
+  margin: 0 0 var(--space-1);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.railNote {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.railRow {
+  display: block;
+  min-inline-size: 0;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.railRow:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.railRow:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+/* A select takes its intrinsic width from its LONGEST option, and a stage list
+   or a contact list is exactly where a long one lives. Capped and allowed to
+   shrink, or one option name sets the width of the whole surface. */
+.select,
+.input {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+}
+
+/* ── OFFERS ─────────────────────────────────────────────────────────────── */
+
+.offers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+}
+
+.offer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-inline-size: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+/* The leading offer is the current one, and order is the primary channel. The
+   border repeats it for a reader who arrived in the middle of the list; the
+   WORD "current version" beside the title is what carries it non-visually. */
+.offer[data-offer-lead="true"] {
+  border-color: var(--border-strong);
+}
+
+.offerHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.offerTitle {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 590;
+  overflow-wrap: anywhere;
+}
+
+.offerState,
+.offerLead {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* The waiting sentence REPLACES the sheet. It is a state of the work, not a
+   gap in the data, and a zero in its place would be a claim about the value of
+   the conversation. */
+.wait {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Named rows, never a table. A `td` reports its untruncated width upward even
+   when its content is clipped, which is one of the four shapes that fails the
+   scaling gate; and an amount without its name on a CRM screen reads as the
+   value of the deal, which is often a different number. */
+.quote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.quoteRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.quoteRow dt {
+  min-inline-size: 4rem;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.quoteRow dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* The reason a number is missing, or the rate a conversion was done at. Quiet,
+   but never absent: a blank beside "leaves" reads as "nothing is left". */
+.note {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+/* SHAPE, not hue. A dashed edge says "assumed" on a monochrome screen and in
+   forced colours; the chip's own text says it in words for everybody else. */
+.chip {
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  white-space: normal;
+}
+
+.chip_confirmed,
+.chip_measured {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.chip_derived,
+.chip_assumed {
+  border-style: dashed;
+  border-color: var(--border-default);
+  color: var(--text-tertiary);
+}
+
+.chip_none {
+  border-color: transparent;
+  color: var(--text-tertiary);
+}
+
+.offerActions,
+.priceForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.offerActions .select,
+.priceForm .input {
+  inline-size: auto;
+  max-inline-size: 14rem;
+  flex: 1 1 8rem;
+}
+
+.priceForm label {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* The rail stacks under the record long before the window is narrow, because
+   the canvas also narrows when the inspector opens. At 200% root font-size the
+   surface box is a fraction of this, so the stacked form is what the scaling
+   gate measures. */
+@container (max-width: 62rem) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+
+  .rail {
+    padding-block-start: var(--space-5);
+    padding-inline-start: 0;
+    border-block-start: 1px solid var(--border-subtle);
+    border-inline-start: 0;
+  }
+}
