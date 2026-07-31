@@ -128,9 +128,8 @@ const mountShell = async (
   queries: ScenarioFixtures["queries"] = populatedShellQueries,
 ): Promise<void> => {
   const { RealApp } = await import("../src/RealApp.js");
-  const { createScenarioClient } = await import(
-    "../src/client/scenario-client.js"
-  );
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
   const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
   const client = createScenarioClient({ queries });
   const snapshot = await loadDesktopSnapshot(client);
@@ -251,7 +250,11 @@ test("the board carries all three money topics from §1.3", async () => {
     board.querySelector("[data-pipeline-stray-count]"),
     "this fixture puts no deal on an unconfigured stage, so the tag its topic hangs on is absent",
   );
-  assertHelpContract(board, ["price-basis", "stage-sums", "unconfigured-stage"]);
+  assertHelpContract(board, [
+    "price-basis",
+    "stage-sums",
+    "unconfigured-stage",
+  ]);
 });
 
 test("Renewals carries the lead time and the amendment", async () => {
@@ -301,8 +304,7 @@ test("the deal's own record carries no help, and no tooltip either", async () =>
     card.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
   });
   await waitFor(
-    () =>
-      container.querySelector('[data-record-kind="opportunity"]') !== null,
+    () => container.querySelector('[data-record-kind="opportunity"]') !== null,
     "the deal never opened on its own record",
   );
   assertHelpContract(surfaceNode('[data-record-kind="opportunity"]'), []);
