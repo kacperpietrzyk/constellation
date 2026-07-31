@@ -356,18 +356,23 @@ test("C16 — the filter really removes rows, and there are two ways back out", 
   const total = rows().length;
   assert.ok(total >= 3, `only ${total} rows — filtering cannot be observed`);
 
-  // Chip counts come from the FULL set: they answer "how many are like this",
-  // not "how many do you see now".
-  const inactiveChip = chip("inactive");
   assert.match(
-    inactiveChip.textContent ?? "",
+    chip("inactive").textContent ?? "",
     /Inactive\s*1/u,
-    "the Inactive chip does not count the full set",
+    "the Inactive chip does not count the clients in that state",
   );
 
   await act(async () => {
     chip("prospect").click();
   });
+  // Counts come from the FULL set, and this is where that is observable: with
+  // the filter holding Prospect, an Inactive chip counted over the rows on
+  // screen would read 0 and stop being an answer to "how many are like this".
+  assert.match(
+    chip("inactive").textContent ?? "",
+    /Inactive\s*1/u,
+    "the chip counts were recomputed over the filtered rows, so they collapsed into the selection itself",
+  );
   // THE ROWS, not `aria-pressed`. The defect this replaces was a chip that
   // toggled its own pressed state and removed nothing.
   const shown = rows();

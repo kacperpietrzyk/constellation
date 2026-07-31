@@ -279,18 +279,16 @@ const OrganizationRowView = ({
             <span className={organizationStyles.absent}>No next step</span>
           )}
         </span>
-        {/* WHAT IS NOT HERE: the prototype's "next meeting …". Every meeting in
-            `relationship.workspace` is one that already happened, so a next
-            meeting would be a claim about a calendar this screen never read.
-            What it CAN say is when contact last happened, which the reading
-            already computed. */}
-        <span className={organizationStyles.sub}>
-          {row.reading.idleDays === undefined
-            ? "nothing recorded as contact"
-            : row.reading.idleDays === 0
-              ? "contact today"
-              : `last contact ${row.reading.idleDays} days ago`}
-        </span>
+        {/* WHAT IS NOT HERE, AND WHY THE SLOT IS EMPTY RATHER THAN FILLED.
+            The prototype prints "next meeting …" under the next step, or
+            "nothing in the calendar". Neither is sayable: every meeting record
+            in `relationship.workspace` is an IMPORTED one, which by
+            construction has already happened, so a next meeting would be a
+            claim about a calendar this screen never read.
+            The obvious substitute — when contact last happened — was drawn
+            here and taken out again: the reading's own reason already carries
+            it on every branch, and the same sentence twice in one row reads as
+            two facts. */}
       </span>
       {row.contactName === undefined ? (
         <span
