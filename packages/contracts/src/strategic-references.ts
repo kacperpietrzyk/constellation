@@ -73,6 +73,12 @@ export const strategicRecordReferences = (
       return record.organizationId === undefined ? [] : [record.organizationId];
     case "decision":
       return [
+        // Hand-added, and it had to be: the compile guard above is satisfied by
+        // an OPTIONAL key the moment the projection carries it, so a decision
+        // naming a client would have kept a dead organisation id after the
+        // organisation was removed — exactly the silence the `organization`
+        // arm's comment describes, one kind further along.
+        ...(record.organizationId === undefined ? [] : [record.organizationId]),
         ...(record.supersededById === undefined ? [] : [record.supersededById]),
         ...(record.linkedRecordIds ?? []),
       ];

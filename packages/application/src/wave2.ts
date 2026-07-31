@@ -3327,12 +3327,30 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
+      // On exactly the terms `relationship.factCreate` above checks its own:
+      // an id that is not an organisation in this Space is refused rather than
+      // stored, because a decision carrying a dead or foreign id would put a
+      // record on a client screen the client cannot be shown to hold. Absent is
+      // a different answer from wrong and stays allowed.
+      const decisionOrganization =
+        command.payload.organizationId === undefined
+          ? undefined
+          : transaction.getStrategicRecord(command.payload.organizationId);
+      if (
+        command.payload.organizationId !== undefined &&
+        (decisionOrganization?.kind !== "organization" ||
+          decisionOrganization.spaceId !== command.payload.spaceId)
+      )
+        return precondition(command, occurredAt);
       const record = createDecision({
         id: StrategicRecordIdSchema.parse(command.payload.decisionId),
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         title: command.payload.title,
         rationale: command.payload.rationale,
+        ...(decisionOrganization === undefined
+          ? {}
+          : { organizationId: decisionOrganization.id }),
         evidenceSourceIds: command.payload.evidenceSourceIds,
         linkedRecordIds: command.payload.linkedRecordIds,
         createdBy: context.principalId,
@@ -3347,7 +3365,14 @@ export const executeWave2Command = (
         idempotency,
         occurredAt,
         record,
-        ["title", "rationale", "evidenceSourceIds", "linkedRecordIds", "state"],
+        [
+          "title",
+          "rationale",
+          "organizationId",
+          "evidenceSourceIds",
+          "linkedRecordIds",
+          "state",
+        ],
         {},
         {},
         strategicCreateUndo(command, record),
@@ -3387,6 +3412,15 @@ export const executeWave2Command = (
         spaceId: prior.spaceId,
         title: command.payload.title,
         rationale: command.payload.rationale,
+        // Inherited, not re-supplied: `decision.supersede` names no client and
+        // never will — the replacement is the same decision taken again, and it
+        // is about whoever the prior one was about. Dropping it here would take
+        // the decision off the client screen at the moment it was replaced,
+        // which is the moment a reader most wants it, and no fixture that never
+        // supersedes could see the difference.
+        ...(prior.organizationId === undefined
+          ? {}
+          : { organizationId: prior.organizationId }),
         evidenceSourceIds: command.payload.evidenceSourceIds,
         linkedRecordIds: command.payload.consequences.map(
           (item) => item.recordId,
@@ -12148,6 +12182,23 @@ export const executeWave2Query = (
           left.state.localeCompare(right.state) ||
           left.factType.localeCompare(right.factType),
       );
+    // No state filter, deliberately, where `opportunities` above drops
+    // `rejected` and `lost`: a superseded decision is the history of the
+    // relationship, and the record dims it rather than hiding it. Newest first,
+    // because the reading order of a decision log is "what did we decide last".
+    const decisions = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<StrategicRecord, { readonly kind: "decision" }> =>
+          record.kind === "decision" &&
+          record.organizationId === organization.id,
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
     const meetings = strategicRecords
       .filter(
         (
@@ -12250,6 +12301,11 @@ export const executeWave2Query = (
       ...offers.map((record) => record.id),
       ...renewals.map((record) => record.id),
       ...facts.map((record) => record.id),
+      // This set is what `recentActivity` below filters events by. Leaving
+      // decisions out of it would show the decision on the record and leave
+      // "decided X" missing from the same screen's activity — one edge, two
+      // hand-maintained readers.
+      ...decisions.map((record) => record.id),
       ...meetings.map((record) => record.id),
       ...activeProjects.map((record) => record.id),
       ...openTasks.map((record) => record.id),
@@ -12366,6 +12422,23 @@ export const executeWave2Query = (
         verifiedAt: record.verifiedAt,
         staleAfter: record.staleAfter,
         state: record.state,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      // Every field hand-picked, like every other array here. `rationale` is
+      // carried in full rather than trimmed: "why" is the whole content of a
+      // decision, and the record prints it under the title.
+      decisions: decisions.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.title,
+        rationale: record.rationale,
+        state: record.state,
+        ...(record.supersededById === undefined
+          ? {}
+          : { supersededById: record.supersededById }),
+        ...(record.supersededAt === undefined
+          ? {}
+          : { supersededAt: record.supersededAt }),
         version: record.version,
         updatedAt: record.updatedAt,
       })),

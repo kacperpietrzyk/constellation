@@ -366,6 +366,17 @@ const organizationOverview: OrganizationOverviewProjection = {
       updatedAt: timestamp,
     },
   ],
+  decisions: [
+    {
+      id: decisionId,
+      title: "Wchodzimy w pilotaż zamiast pełnego wdrożenia",
+      rationale:
+        "Klient nie potwierdził budżetu na cały zakres, a pilotaż daje dowód wartości przed rozmową o odnowieniu.",
+      state: "current",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
   activeProjects: [
     {
       id: projectId,

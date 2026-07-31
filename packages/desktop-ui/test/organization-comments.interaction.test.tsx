@@ -69,6 +69,7 @@ const overview: Projection<"organization.operationalOverview"> = {
   offers: [],
   renewals: [],
   facts: [],
+  decisions: [],
   activeProjects: [],
   openTasks: [],
   meetings: [],

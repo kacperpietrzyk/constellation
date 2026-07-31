@@ -7246,3 +7246,224 @@ it("tells the deal that renews a contract from the deal that amends it", () => {
     "command.precondition_failed",
   );
 });
+
+// WAVE C, lot organisation edges. `decision` was the one of Wave C's homeless
+// kinds that turned out to have a real client edge to build. `recurrence` and
+// `impact_review` did NOT and got none — see the PR body; the honest answer for
+// those two was a finding, not a field.
+const decisionsOnOrganization = (
+  harness: ReferenceHarness,
+  organizationId: string,
+) => {
+  const overview = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "organization.operationalOverview",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space, organizationId },
+  });
+  if (
+    overview.kind !== "query_result" ||
+    overview.result.outcome !== "success" ||
+    overview.result.projection.kind !== "organization.operationalOverview"
+  )
+    assert.fail("Expected Organization overview");
+  return overview.result.projection;
+};
+
+it("a decision is taken about a client, and the client's record is where it is read", () => {
+  const { harness, organizationId } = dealHarness("decision-org");
+  const decisionId = uuid();
+
+  // `organizationId` travels ALONE: no other key of this payload changes, so a
+  // boundary that dropped or rejected exactly this one key has nothing else to
+  // hide behind.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-org-create"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.space,
+          title: "Managed route for Orbit",
+          rationale: "Their team cannot carry night cover themselves.",
+          organizationId,
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // Home one: the wide strategic projection, forced by `UnprojectableKeys`.
+  const projected = projectedRecords(harness).find(
+    (candidate) => candidate.id === decisionId,
+  );
+  if (projected?.kind !== "decision")
+    assert.fail("Expected the decision in relationship.workspace.");
+  assert.equal(
+    projected.organizationId,
+    organizationId,
+    "the edge survives the strict parse the published projection goes through",
+  );
+
+  // The receipt's `changedFields` is a hand-written literal beside the payload
+  // — the wave's recurring trap in miniature. Nothing makes it move with the
+  // schema, so without this assertion a write that set the client would be
+  // audited as if it had not.
+  assert.ok(
+    harness.store
+      .snapshot()
+      .auditReceipts?.some(
+        (receipt) =>
+          receipt.affectedRecordIds.includes(decisionId) &&
+          receipt.changedFields.includes("organizationId"),
+      ),
+    "and the receipt for the write names the field the write actually set",
+  );
+
+  // Home two: `organization.operationalOverview`, which restates its shapes by
+  // hand and forces nothing. This assertion IS the gate on that home.
+  const overview = decisionsOnOrganization(harness, organizationId);
+  assert.deepEqual(
+    overview.decisions.map((record) => ({
+      id: record.id,
+      title: record.title,
+      state: record.state,
+    })),
+    [
+      {
+        id: decisionId,
+        title: "Managed route for Orbit",
+        state: "current",
+      },
+    ],
+    "the decision reaches the client screen through the second projection home",
+  );
+  assert.equal(
+    overview.decisions[0]?.rationale,
+    "Their team cannot carry night cover themselves.",
+    "and carries the why, which is the whole content of a decision",
+  );
+
+  // The same edge feeds the activity feed, which filters by a hand-built set of
+  // related ids. Two readers, one edge, neither forced by the other.
+  assert.ok(
+    overview.recentActivity.some((event) => event.recordId === decisionId),
+    "and 'decided X' appears in the same screen's activity",
+  );
+
+  // A decision naming this client blocks removing it, exactly as a person does.
+  // The compile guard is satisfied by an optional key, so only this refusal
+  // proves `strategicRecordReferences` learned the new arm.
+  const refused = removeOrganization(
+    harness,
+    "decision-org-remove",
+    organizationId,
+  );
+  assert.equal(refused.outcome, "rejected");
+  if (refused.diagnosticCode !== "record.still_referenced")
+    throw new Error("Expected the blocked outcome.");
+  assert.ok(
+    refused.blockedBy?.some((entry) => entry.recordId === decisionId),
+    "and the decision is named among the records that block the removal",
+  );
+});
+
+it("superseding a decision keeps it on the client it was taken about", () => {
+  const { harness, organizationId, personId } = dealHarness("decision-carry");
+  const decisionId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-carry-create"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.space,
+          title: "Managed route for Orbit",
+          rationale: "Their team cannot carry night cover themselves.",
+          organizationId,
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const replacementDecisionId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-carry-supersede", { [decisionId]: 1 }),
+        commandName: "decision.supersede",
+        payload: {
+          priorDecisionId: decisionId,
+          replacementDecisionId,
+          impactReviewId: uuid(),
+          title: "Self-service route for Orbit",
+          rationale: "They hired a night shift.",
+          reason: "Their capability changed.",
+          evidenceSourceIds: [],
+          consequences: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // `decision.supersede` names no client and never will: the replacement is the
+  // same decision taken again. Inheriting is what keeps it on the record at the
+  // exact moment a reader most wants it — and no fixture that never supersedes
+  // could tell the difference.
+  const replacement = projectedRecords(harness).find(
+    (candidate) => candidate.id === replacementDecisionId,
+  );
+  if (replacement?.kind !== "decision")
+    assert.fail("Expected the replacement decision.");
+  assert.equal(
+    replacement.organizationId,
+    organizationId,
+    "the replacement inherits the client the prior decision was about",
+  );
+
+  // BOTH, and superseded is not filtered out the way a lost deal is: the record
+  // dims the old one, because "what did we decide, and what did we decide
+  // before that" is one question.
+  assert.deepEqual(
+    decisionsOnOrganization(harness, organizationId)
+      .decisions.map((record) => [record.title, record.state])
+      .sort((left, right) => left[0]!.localeCompare(right[0]!)),
+    [
+      ["Managed route for Orbit", "superseded"],
+      ["Self-service route for Orbit", "current"],
+    ],
+    "the client's record carries the replacement and the decision it replaced",
+  );
+
+  // An id that is not an organisation is refused rather than stored, on the
+  // terms relationship.factCreate refuses one. A dead or foreign id here would
+  // put a record on a client screen that client cannot be shown to hold.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-carry-wrong-kind"),
+        commandName: "decision.create",
+        payload: {
+          decisionId: uuid(),
+          spaceId: ids.space,
+          title: "Decision about a person",
+          rationale: "A person is not a client.",
+          organizationId: personId,
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+});
