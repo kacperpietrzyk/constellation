@@ -33,6 +33,7 @@ import {
   type OrganizationReading,
   type SignalKey,
 } from "./crm/organization-reading.js";
+import { CrmHelp } from "./crm/CrmHelp.js";
 import { Icon } from "./components/Icon.js";
 import {
   countSentence,
@@ -859,6 +860,14 @@ export const StrategicDepthSurface = ({
         >
           {countSentence(rows.length, allRows.length)}
         </span>
+        {/* HELP ON DEMAND (#35). §1.3 named the `Reading` column header, which
+            exists in the Table layout ONLY — the list layout leads with the
+            signal chip and has no header at all. A topic reachable from one of
+            two layouts is a topic half the readers cannot find, so it hangs in
+            the view bar, which both layouts carry, beside the reading of the
+            whole list. Outside the live region, so it is not re-announced with
+            every filter press. */}
+        <CrmHelp topic="relationship-reading" />
       </div>
       {allRows.length === 0 ? (
         <section className={organizationStyles.emptyState} role="status">

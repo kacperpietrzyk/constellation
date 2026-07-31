@@ -17,6 +17,7 @@ import {
   type MutationFailure,
   type MutationResult,
 } from "../client/workflow.js";
+import { CrmHelp } from "../crm/CrmHelp.js";
 import { indexRelationships } from "../crm/organization-reading.js";
 import { fmtApprox, fmtMoney, fmtUplift } from "../crm/money.js";
 import { Icon } from "../components/Icon.js";
@@ -398,8 +399,11 @@ const RenewalRow = ({
                 Add to contract
               </button>
               {/* The rule stands AT the control it governs, which is the only
-                  place it is needed. */}
+                  place it is needed. The topic behind the `?` answers what the
+                  hint raises rather than repeating it: the row already says the
+                  term does not move, and the topic says what IS created. */}
               <span className={styles.hint}>no change to the term</span>
+              <CrmHelp topic="amendment" />
             </>
           )}
           {/* The toggle STAYS, so `aria-expanded` can be true as well as false.
@@ -998,6 +1002,10 @@ export const RenewalsSurface = ({
             Time to start{" "}
             <span className={styles.n}>{sections.due.length}</span>
           </h2>
+          {/* The section, not the expiry date, organises this screen — so the
+              question "what is a lead time" belongs at the section heading and
+              nowhere else (#35). */}
+          <CrmHelp topic="lead-time" />
         </div>
         {sections.due.length === 0 ? (
           // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the

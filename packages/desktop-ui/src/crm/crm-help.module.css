@@ -1,0 +1,60 @@
+/* Help sits BESIDE the thing it explains and never competes with it: no
+   border, no fill, one step quieter than the reading it hangs on. The shared
+   `.inline-popover-trigger` chevron is dropped — this control opens a
+   sentence, not a menu, and the question mark in its own label is the
+   affordance. */
+
+.help {
+  display: inline-flex;
+  align-items: center;
+}
+
+.trigger.trigger {
+  border-color: transparent;
+  color: var(--text-tertiary);
+  padding: 0.2rem 0.35rem;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 0.2em;
+}
+
+.trigger.trigger::before {
+  content: none;
+}
+
+.trigger.trigger:hover {
+  color: var(--text-secondary);
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.term {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.panel p {
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.close {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-2xs);
+  padding: 0.3rem 0.65rem;
+}
+
+.close:hover {
+  background: var(--surface-hover);
+}

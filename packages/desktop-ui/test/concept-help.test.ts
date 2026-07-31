@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { conceptHelpTopics } from "../src/components/ConceptHelpDialog.js";
+import { crmHelpTopics } from "../src/crm/help-topics.js";
 
 const trimmed = (value: string): string => value.trim();
 
@@ -76,5 +77,60 @@ describe("contextual concept help contract", () => {
       count,
     );
     assert.equal(explanations.size, count);
+  });
+});
+
+/* THE 180-CHARACTER CAP FROM #35, AND WHOSE IT IS.
+ *
+ * The decision fixes 180 characters per topic. Until now that number was
+ * asserted NOWHERE — `prose-guard.test.ts` stated it in prose as the reason
+ * help is exempt from the shape guard, while the contract above enforces a ≥80
+ * floor and NO ceiling on `explanation` and again on `boundary`. The six
+ * shipped concept topics measure 117-149 + 98-142, so about 215-280 characters
+ * as a reader sees them: the cap was already exceeded by everything that ships.
+ *
+ * The ruling this lot implements: NEW CRM topics are capped, the six shipped
+ * ones are left alone (retrofitting them is real work and is not this wave's),
+ * and the assertion says so in its own name. A green run here claims exactly
+ * what it measured — the CRM topics — and nothing about the concept dialog.
+ *
+ * ONE PARAGRAPH is asserted as well as 180 characters. A cap on length alone
+ * is a cap two 179-character paragraphs walk straight through, which is the
+ * lecture-behind-one-click this number exists to prevent.
+ */
+describe("new CRM help topics (#35) — the six shipped concept topics are out of scope", () => {
+  const CRM_HELP_LIMIT = 180;
+
+  it("gives every new CRM topic one paragraph of at most 180 characters", () => {
+    const count = crmHelpTopics.length;
+    assert.ok(count > 0, "no CRM topic was measured — an empty sweep passes");
+    assert.equal(new Set(crmHelpTopics.map((topic) => topic.id)).size, count);
+    assert.equal(new Set(crmHelpTopics.map((topic) => topic.term)).size, count);
+    assert.equal(
+      new Set(crmHelpTopics.map((topic) => trimmed(topic.answer))).size,
+      count,
+      "two CRM topics answer with the same paragraph",
+    );
+
+    for (const topic of crmHelpTopics) {
+      const answer = trimmed(topic.answer);
+      assert.match(
+        topic.question,
+        /\?$/u,
+        `CRM topic ${topic.id} does not label its trigger with a question.`,
+      );
+      assert.ok(
+        answer.length >= 80,
+        `CRM topic ${topic.id} answers in ${answer.length} characters — that is a label, not an answer.`,
+      );
+      assert.ok(
+        answer.length <= CRM_HELP_LIMIT,
+        `CRM topic ${topic.id} is ${answer.length} characters — a topic over ${CRM_HELP_LIMIT} has become a lecture hidden one click away.`,
+      );
+      assert.ok(
+        !/\n/u.test(topic.answer),
+        `CRM topic ${topic.id} answers in more than one paragraph — the cap is 180 characters in ONE.`,
+      );
+    }
   });
 });
