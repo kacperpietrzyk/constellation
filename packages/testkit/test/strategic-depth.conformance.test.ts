@@ -6917,3 +6917,332 @@ it("corrects a deal's estimate through the same update command", () => {
     estimate,
   );
 });
+
+// A renewal's own worth. Two projection homes again, and only ONE of them is
+// guarded: `UnprojectableKeys` forces `value` into
+// `StrategicRecordProjectionSchema` and would not compile without it (verified
+// — the error names `value` by name), but
+// `organization.operationalOverview` restates the renewal shape and hand-picks
+// every field into a fresh literal, so a `value` that satisfies the compile
+// guard can reach the Organizations screen NOT AT ALL with nothing failing.
+// The overview assertions below are hand-written for exactly that reason and
+// were verified by deleting the mapper line.
+it("records what a contract is worth, through BOTH projection homes", () => {
+  const harness = removalHarness("renewal-value");
+  const organizationId = createOrganization(harness, "renewal-value");
+  const renewalId = uuid();
+  const value = { amountMinor: 45_000_00, currency: "PLN" as const };
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-value-create"),
+        commandName: "relationship.renewalCreate",
+        payload: {
+          renewalId,
+          spaceId: ids.space,
+          organizationId,
+          title: "Orbit monitoring",
+          scope: "24/7 detection and response",
+          expiresAt: "2026-09-30T00:00:00.000Z",
+          leadTimeDays: 90,
+          ownerPrincipalId: ids.principal,
+          evidenceSourceIds: [],
+          cycleKey: `${organizationId}:2026-09-30`,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const projectedRenewal = () => {
+    const record = projectedRecords(harness).find(
+      (candidate) => candidate.kind === "renewal" && candidate.id === renewalId,
+    );
+    if (record?.kind !== "renewal")
+      assert.fail("Expected the renewal in relationship.workspace.");
+    return record;
+  };
+  const overviewRenewal = () => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "organization.operationalOverview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, organizationId },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "organization.operationalOverview"
+    )
+      assert.fail("Expected the Organization overview");
+    const renewal = result.result.projection.renewals.find(
+      (candidate) => candidate.id === renewalId,
+    );
+    if (renewal === undefined)
+      assert.fail("Expected the renewal in the Organization overview.");
+    return renewal;
+  };
+
+  // A contract whose worth nobody has recorded is a real state and stays
+  // representable. It says nothing, rather than zero: a projected `0` would
+  // read as "this contract is worth nothing", which is a different claim.
+  assert.equal(projectedRenewal().value, undefined);
+  assert.equal(
+    overviewRenewal().value,
+    undefined,
+    "a renewal with no worth recorded still projects, and says nothing rather than zero",
+  );
+
+  // The newest key ALONE through the boundary. The at-least-one-field refine
+  // on this command is key-generic, but a refine that enumerated its keys
+  // would refuse this envelope while `tsc` stayed silent — so the ordinary
+  // case is written down rather than assumed. Nothing in a suite of refusals
+  // proves an acceptance.
+  const stamp = {
+    ...metadata("renewal-value-set", { [renewalId]: 1 }),
+    commandName: "relationship.renewalUpdate" as const,
+    payload: { renewalId, value },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), stamp)).outcome,
+    "success",
+    "value alone is a change",
+  );
+
+  assert.deepEqual(projectedRenewal().value, value);
+  assert.deepEqual(
+    overviewRenewal().value,
+    value,
+    "value reaches organization.operationalOverview",
+  );
+  // Pinned, not `> 0`: an assertion that a rounding or a conversion could
+  // satisfy with any number is not an assertion about this number. Minor
+  // units, so this is 45 000,00 PLN and not 4 500 000 of anything.
+  assert.equal(overviewRenewal().value?.amountMinor, 4_500_000);
+  assert.equal(overviewRenewal().value?.currency, "PLN");
+  // The WHOLE key set, not "value is in there". A presence check is what let
+  // a wrapper send one version where the kernel demanded two for as long as
+  // that wrapper existed; the same reasoning applies to a hand-picked mapper,
+  // which can drop a key as easily as it can gain one.
+  assert.deepEqual(Object.keys(overviewRenewal()).sort(), [
+    "expiresAt",
+    "id",
+    "leadTimeDays",
+    "scope",
+    "state",
+    "title",
+    "updatedAt",
+    "value",
+    "version",
+  ]);
+
+  // Undo. `UndoDescriptor` sits outside the compile guard entirely, so a
+  // forgotten `priorValue` — or a bare `descriptor.priorValue` instead of
+  // `?? null` — compiles, ships, and reports success while leaving the money
+  // on the record. Asserted as ABSENT rather than as changed: leaving the
+  // stale key on `...base` in `updateRenewalTerm` is invisible to a test that
+  // only checks the set path.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-value-undo", { [renewalId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: stamp.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(
+    projectedRenewal().value,
+    undefined,
+    "undoing the update that recorded a worth clears it",
+  );
+  assert.equal(overviewRenewal().value, undefined);
+  assert.equal(
+    "value" in overviewRenewal(),
+    false,
+    "and clears it by dropping the key, not by projecting an undefined one",
+  );
+
+  // At create as well, on the clock's own terms: a contract imported with its
+  // worth already known should not need a second command to say so.
+  const secondRenewalId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-value-create-with"),
+        commandName: "relationship.renewalCreate",
+        payload: {
+          renewalId: secondRenewalId,
+          spaceId: ids.space,
+          organizationId,
+          title: "Orbit response retainer",
+          scope: "Incident response retainer",
+          expiresAt: "2027-03-31T00:00:00.000Z",
+          leadTimeDays: 60,
+          ownerPrincipalId: ids.principal,
+          evidenceSourceIds: [],
+          cycleKey: `${organizationId}:2027-03-31`,
+          value: { amountMinor: 120_000_00, currency: "EUR" },
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const created = projectedRecords(harness).find(
+    (candidate) =>
+      candidate.kind === "renewal" && candidate.id === secondRenewalId,
+  );
+  assert.deepEqual(
+    created?.kind === "renewal" ? created.value : undefined,
+    { amountMinor: 12_000_000, currency: "EUR" },
+    "a worth recorded at create survives to the projection",
+  );
+});
+
+// The deal that BECOMES the next term, as against the deal that changes the
+// running one. Two edges, and the whole point of the second is that a reader
+// projecting the next term's worth can tell them apart: printing an
+// amendment's value as the renewal's is a number that looks reasonable and is
+// about something else.
+it("tells the deal that renews a contract from the deal that amends it", () => {
+  const harness = removalHarness("renewal-edges");
+  const organizationId = createOrganization(harness, "renewal-edges");
+  const renewalId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-edges-create"),
+        commandName: "relationship.renewalCreate",
+        payload: {
+          renewalId,
+          spaceId: ids.space,
+          organizationId,
+          title: "Orbit monitoring",
+          scope: "24/7 detection and response",
+          expiresAt: "2026-09-30T00:00:00.000Z",
+          leadTimeDays: 90,
+          ownerPrincipalId: ids.principal,
+          evidenceSourceIds: [],
+          cycleKey: `${organizationId}:2026-09-30`,
+          value: { amountMinor: 45_000_00, currency: "PLN" },
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const opportunity = (key: string, title: string) => {
+    const opportunityId = uuid();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key),
+          commandName: "opportunity.create",
+          payload: {
+            opportunityId,
+            spaceId: ids.space,
+            title,
+            organizationId,
+            personIds: [],
+            need: "Recorded so the edge has a real source.",
+            qualification: "Budget approved.",
+            stage: "proposal",
+            nextAction: "Send the paperwork.",
+            evidenceSourceIds: [],
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    return opportunityId;
+  };
+  const link = (
+    key: string,
+    linkType: string,
+    sourceRecordId: string,
+    targetRecordId: string,
+  ) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key),
+        commandName: "work.linkCreate",
+        payload: {
+          linkId: uuid(),
+          spaceId: ids.space,
+          linkType,
+          sourceRecordId,
+          targetRecordId,
+        },
+      }),
+    );
+
+  const amendment = opportunity("renewal-edges-amendment", "+180 licences");
+  const nextTerm = opportunity("renewal-edges-next-term", "Renewal 2026–2028");
+  assert.equal(
+    link(
+      "renewal-edges-amends",
+      "opportunity_amends_renewal",
+      amendment,
+      renewalId,
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    link(
+      "renewal-edges-renews",
+      "opportunity_renews_renewal",
+      nextTerm,
+      renewalId,
+    ).outcome,
+    "success",
+    "the deal that becomes the next term is its own edge",
+  );
+
+  // Both at once on ONE contract, and told apart by their type. A term can be
+  // amended twice and still be renewed, so the reader picks by linkType rather
+  // than by "the deal attached to this renewal".
+  const links = projectedRecords(harness).filter(
+    (record) =>
+      record.kind === "work_link" && record.targetRecordId === renewalId,
+  );
+  assert.deepEqual(
+    links
+      .map((record) =>
+        record.kind === "work_link"
+          ? `${record.linkType}:${record.sourceRecordId}`
+          : "",
+      )
+      .sort(),
+    [
+      `opportunity_amends_renewal:${amendment}`,
+      `opportunity_renews_renewal:${nextTerm}`,
+    ].sort(),
+    "the two edges coexist on one contract and stay distinguishable",
+  );
+
+  // Typed and directional, exactly as the amendment edge is: a renewal does
+  // not renew a deal.
+  assert.equal(
+    link(
+      "renewal-edges-reversed",
+      "opportunity_renews_renewal",
+      renewalId,
+      nextTerm,
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+  // And the source must be an Opportunity, not any strategic record that
+  // happens to be to hand.
+  assert.equal(
+    link(
+      "renewal-edges-wrong-source",
+      "opportunity_renews_renewal",
+      organizationId,
+      renewalId,
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+});

@@ -455,6 +455,36 @@ test("the contract clock is set on a renewal that already exists", async () => {
   );
 });
 
+// The wrapper carries a SECOND at-least-one-field gate, and it is the one that
+// enumerates: `payload` is built from named keys and the call short-circuits to
+// `nothingToChange` when only `renewalId` survives. The command's own refine is
+// key-generic and would have accepted this envelope — so a field added to the
+// command but not to the builder above is refused HERE, silently, with the
+// schema, the kernel and `tsc` all green. Hence: the newest key, alone.
+test("a contract's worth can be recorded on its own, without touching the clock", async () => {
+  const sent: CommandEnvelope[] = [];
+  const value = { amountMinor: 45_000_00, currency: "PLN" as const };
+  const result = await updateRenewalTerm(
+    recordingClient(sent),
+    snapshotOf(),
+    { id: renewalRecordId, version: 6 },
+    { value },
+  );
+  assert.equal(
+    result.kind,
+    "success",
+    "value alone is a change — not `nothing to change`",
+  );
+  const envelope = onlyEnvelope(sent);
+  assert.equal(envelope.commandName, "relationship.renewalUpdate");
+  assert.deepEqual(payloadKeys(envelope), ["renewalId", "value"]);
+  assert.deepEqual(
+    (envelope.payload as Record<string, unknown>)["value"],
+    value,
+    "amount and currency travel together, in minor units",
+  );
+});
+
 test("attaching a follow-up to a renewal expects the renewal's version ONLY", async () => {
   const sent: CommandEnvelope[] = [];
   const result = await updateRenewalTerm(

@@ -3030,6 +3030,9 @@ export const executeWave2Command = (
           ? {}
           : { cycleOrdinal: command.payload.cycleOrdinal }),
         cycleKey: command.payload.cycleKey,
+        ...(command.payload.value === undefined
+          ? {}
+          : { value: command.payload.value }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -3100,6 +3103,7 @@ export const executeWave2Command = (
           ...(record.termStartsAt === undefined ? [] : ["termStartsAt"]),
           ...(record.termMonths === undefined ? [] : ["termMonths"]),
           ...(record.cycleOrdinal === undefined ? [] : ["cycleOrdinal"]),
+          ...(record.value === undefined ? [] : ["value"]),
           "cycleKey",
           "state",
         ],
@@ -3153,6 +3157,9 @@ export const executeWave2Command = (
                   command.payload.followUpTaskId,
                 ),
               }),
+          ...(command.payload.value === undefined
+            ? {}
+            : { value: command.payload.value }),
         },
         occurredAt,
       );
@@ -3187,6 +3194,7 @@ export const executeWave2Command = (
           ...(current.followUpTaskId === undefined
             ? {}
             : { priorFollowUpTaskId: current.followUpTaskId }),
+          ...(current.value === undefined ? {} : { priorValue: current.value }),
           resultingVersion: record.version,
         },
       );
@@ -3651,10 +3659,14 @@ export const executeWave2Command = (
             sourceTask.workspaceId === command.workspaceId &&
             targetTask?.spaceId === command.payload.spaceId &&
             targetTask.workspaceId === command.workspaceId
-          : // The only edge whose SOURCE is a strategic record rather than a
-            // Project: an amendment is a deal attached to the contract it
-            // changes, so both ends live in the relationship graph.
-            command.payload.linkType === "opportunity_amends_renewal"
+          : // The two edges whose SOURCE is a strategic record rather than a
+            // Project: a deal attached to a contract, so both ends live in the
+            // relationship graph. They share this structural check and nothing
+            // else — `amends` sells more inside the running term, `renews`
+            // sells the term after it, and the reader that projects the next
+            // term's worth must not confuse them.
+            command.payload.linkType === "opportunity_amends_renewal" ||
+              command.payload.linkType === "opportunity_renews_renewal"
             ? sourceStrategic?.kind === "opportunity" &&
               sourceStrategic.spaceId === command.payload.spaceId &&
               sourceStrategic.workspaceId === command.workspaceId &&
@@ -10484,6 +10496,7 @@ const compensateDescriptor = (
         // a follow-up has to detach it, or the renewal stays started while the
         // receipt says the change was taken back.
         followUpTaskId: descriptor.priorFollowUpTaskId ?? null,
+        value: descriptor.priorValue ?? null,
       },
       occurredAt,
     );
@@ -12341,6 +12354,7 @@ export const executeWave2Query = (
         ...(record.cycleOrdinal === undefined
           ? {}
           : { cycleOrdinal: record.cycleOrdinal }),
+        ...(record.value === undefined ? {} : { value: record.value }),
         state: record.state,
         version: record.version,
         updatedAt: record.updatedAt,

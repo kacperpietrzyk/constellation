@@ -425,6 +425,7 @@ export const createRenewal = (
     readonly termMonths?: number;
     readonly cycleOrdinal?: number;
     readonly cycleKey: string;
+    readonly value?: Money;
   },
 ): Extract<StrategicRecord, { kind: "renewal" }> => ({
   ...base(input),
@@ -447,6 +448,7 @@ export const createRenewal = (
     ? {}
     : { cycleOrdinal: input.cycleOrdinal }),
   cycleKey: input.cycleKey,
+  ...(input.value === undefined ? {} : { value: input.value }),
   state: "watching",
 });
 
@@ -459,6 +461,11 @@ export const createRenewal = (
  * contract. `followUpTaskId` is here because "nobody has started this" needs a
  * way OUT of it; the kernel enforces that it is set once, so attaching a
  * follow-up never orphans one the create already made.
+ *
+ * `value` rides the same path rather than a command of its own: a renewal
+ * written before the field existed carries no worth at all, and a create-only
+ * value would have left every one of them permanently without one — the same
+ * unreachable-on-real-data shape the clock was added to escape.
  */
 export const updateRenewalTerm = (
   renewal: Extract<StrategicRecord, { kind: "renewal" }>,
@@ -467,20 +474,27 @@ export const updateRenewalTerm = (
     readonly termMonths?: number | null;
     readonly cycleOrdinal?: number | null;
     readonly followUpTaskId?: TaskId | null;
+    readonly value?: Money | null;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "renewal" }> => {
+  // `value` belongs in this destructure for the same reason the other four do:
+  // `...base` would otherwise carry the stale key past the clear branch, so
+  // clearing would report success and change nothing. That is invisible to a
+  // set test and shows up only on undo.
   const {
     termStartsAt: _termStartsAt,
     termMonths: _termMonths,
     cycleOrdinal: _cycleOrdinal,
     followUpTaskId: _followUpTaskId,
+    value: _value,
     ...base
   } = renewal;
   void _termStartsAt;
   void _termMonths;
   void _cycleOrdinal;
   void _followUpTaskId;
+  void _value;
   const termStartsAt =
     changes.termStartsAt === undefined
       ? renewal.termStartsAt
@@ -497,12 +511,15 @@ export const updateRenewalTerm = (
     changes.followUpTaskId === undefined
       ? renewal.followUpTaskId
       : (changes.followUpTaskId ?? undefined);
+  const value =
+    changes.value === undefined ? renewal.value : (changes.value ?? undefined);
   return {
     ...base,
     ...(termStartsAt === undefined ? {} : { termStartsAt }),
     ...(termMonths === undefined ? {} : { termMonths }),
     ...(cycleOrdinal === undefined ? {} : { cycleOrdinal }),
     ...(followUpTaskId === undefined ? {} : { followUpTaskId }),
+    ...(value === undefined ? {} : { value }),
     version: renewal.version + 1,
     updatedAt: occurredAt,
   };
