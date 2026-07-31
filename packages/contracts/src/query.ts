@@ -601,6 +601,8 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     termMonths: z.int().nonnegative().optional(),
     cycleOrdinal: z.int().positive().optional(),
     cycleKey: z.string(),
+    /** See the offer arm: looser than the command's bound, on purpose. */
+    value: MoneySchema.optional(),
     state: z.enum(["watching", "renewed", "not_renewing", "irrelevant"]),
   }).strict(),
   StrategicRecordBaseSchema.extend({
@@ -1814,6 +1816,12 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             termStartsAt: z.iso.datetime({ offset: true }).optional(),
             termMonths: z.int().nonnegative().optional(),
             cycleOrdinal: z.int().positive().optional(),
+            // The compile guard covers the OTHER projection home only. This
+            // key reaches a reader because it was hand-picked into the mapper
+            // and asserted by a hand-written test — nothing forces it. "This
+            // contract is worth 45 000 a term" is an Organizations sentence,
+            // and Organizations reads this query.
+            value: MoneySchema.optional(),
             state: z.enum([
               "watching",
               "renewed",

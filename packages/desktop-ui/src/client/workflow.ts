@@ -2746,6 +2746,7 @@ export const createRenewal = (
     readonly termStartsAt?: string;
     readonly termMonths?: number;
     readonly cycleOrdinal?: number;
+    readonly value?: Money;
   },
 ) => {
   const ownerPrincipalId = currentPrincipal(snapshot);
@@ -2783,6 +2784,7 @@ export const createRenewal = (
           ? {}
           : { cycleOrdinal: input.cycleOrdinal }),
         cycleKey: `${input.organizationId}:${input.expiresAt.slice(0, 10)}`,
+        ...(input.value === undefined ? {} : { value: input.value }),
       },
     },
     (response) =>
@@ -2816,6 +2818,10 @@ export const createRenewal = (
  * `expiresAt` and `leadTimeDays` are deliberately not here: moving either has to
  * move the follow-up's deadline and the `renewal_due` signal with it, which is a
  * larger change than the clock and nobody has asked for it.
+ *
+ * `value` is what the contract is worth per term, and it is the number the next
+ * term is projected from. It rides this command rather than one of its own so
+ * that a renewal written before the field existed can get one.
  */
 export const updateRenewalTerm = (
   client: ConstellationRendererClient,
@@ -2826,6 +2832,7 @@ export const updateRenewalTerm = (
     readonly termMonths?: number;
     readonly cycleOrdinal?: number;
     readonly followUpTaskId?: TaskId;
+    readonly value?: Money;
   },
 ) => {
   const payload = {
@@ -2842,7 +2849,12 @@ export const updateRenewalTerm = (
     ...(change.followUpTaskId === undefined
       ? {}
       : { followUpTaskId: change.followUpTaskId }),
+    ...(change.value === undefined ? {} : { value: change.value }),
   };
+  // This length check is the boundary the command's own refine is NOT: it is
+  // built from the named keys above, so a field left out of that builder is
+  // refused here as "nothing to change" while the command schema, the kernel
+  // and `tsc` all stay silent. Every key the command accepts belongs above.
   return Object.keys(payload).length === 1
     ? nothingToChange()
     : execute(

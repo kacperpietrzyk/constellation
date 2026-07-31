@@ -1114,6 +1114,11 @@ export const RelationshipRenewalCreateCommandSchema =
         termMonths: z.int().min(0).max(1_200).optional(),
         cycleOrdinal: z.int().min(1).max(1_000).optional(),
         cycleKey: z.string().trim().min(1).max(300),
+        /**
+         * What the contract is worth per term. Optional, because a contract
+         * whose worth nobody recorded is the ordinary state of imported data.
+         */
+        value: MoneyInputSchema.optional(),
       })
       .strict(),
   }).strict();
@@ -1127,6 +1132,12 @@ export const RelationshipRenewalCreateCommandSchema =
  * signal with it, which is a larger change than the clock, and nobody has asked
  * for it. Per-contract lead-time override is noted as a follow-on, not smuggled
  * in here.
+ *
+ * `value` is here rather than on a command of its own, on the clock's own
+ * grounds: create-only would leave every renewal that already exists without a
+ * worth for good. It cannot be CLEARED from here — like the clock fields, absent
+ * leaves alone and there is no null arm; clearing exists only in the
+ * compensation that undoes a command which added one.
  */
 export const RelationshipRenewalUpdateCommandSchema =
   CommandMetadataSchema.extend({
@@ -1141,8 +1152,13 @@ export const RelationshipRenewalUpdateCommandSchema =
         // that already carries one is refused, so attaching can never orphan
         // the task the create made.
         followUpTaskId: TaskIdSchema.optional(),
+        value: MoneyInputSchema.optional(),
       })
       .strict()
+      // Key-generic on purpose, not an enumerated list of the fields that
+      // happened to exist when it was written: a refine that named its keys
+      // would refuse a caller who sets only the field added after it, at the
+      // boundary, with nothing in the type system saying so.
       .refine(
         (payload) =>
           Object.keys(payload).some((field) => field !== "renewalId"),
@@ -1338,6 +1354,16 @@ export const WorkLinkTypeSchema = z.enum([
   // renewal. Without this edge the screen's `Add to contract` has nowhere to
   // write.
   "opportunity_amends_renewal",
+  // The deal that WILL BE the next term. Two edges, not one, and the verb is
+  // the whole difference: an amendment sells more inside the term that is
+  // running, a renewal sells the term that comes after it and moves the expiry
+  // with it. They are told apart here rather than by a flag on one edge because
+  // the reader that projects the next term's worth has to pick one of them, and
+  // printing an amendment's value as the renewal's is a number that looks
+  // reasonable and is about something else — the failure this wave exists to
+  // kill. The two coexist on one contract: a term can be amended twice and
+  // still be renewed.
+  "opportunity_renews_renewal",
 ]);
 
 export type WorkLinkType = z.infer<typeof WorkLinkTypeSchema>;

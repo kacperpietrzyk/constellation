@@ -868,6 +868,18 @@ export type StrategicRecord =
        */
       readonly cycleOrdinal?: number;
       readonly cycleKey: string;
+      /**
+       * What this contract is worth per term. Absent is a real state and stays
+       * representable: a contract whose worth nobody has recorded is the
+       * ordinary case on imported data, and demanding a number would have made
+       * it unwritable.
+       *
+       * It is the renewal's OWN value, which is what the projected next term is
+       * computed from. The value of a deal that renews it wins over this one
+       * where such a deal exists — but that is the reader's precedence rule,
+       * not a second field here.
+       */
+      readonly value?: Money;
       readonly state: "watching" | "renewed" | "not_renewing" | "irrelevant";
     })
   | (StrategicRecordBase & {
@@ -1066,6 +1078,12 @@ export type UndoDescriptor =
        * the command that attached a follow-up has to detach it again.
        */
       readonly priorFollowUpTaskId?: TaskId;
+      /**
+       * Absent means the renewal carried no worth before the update, so undoing
+       * the command that recorded one has to take it off again rather than
+       * leave a number behind while the receipt says the change was undone.
+       */
+      readonly priorValue?: Money;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
