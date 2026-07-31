@@ -81,6 +81,7 @@ const context = (): ExecutionContext =>
       "attention.inbox",
       "relationship.factCreate",
       "decision.create",
+      "decision.update",
       "fieldDef.create",
       "decision.supersede",
       "decision.resolveImpact",
@@ -7465,5 +7466,471 @@ it("superseding a decision keeps it on the client it was taken about", () => {
       }),
     ).diagnosticCode,
     "command.precondition_failed",
+  );
+});
+
+/** The decision as the published projection carries it — home one of two. */
+const decisionFromWorkspace = (
+  harness: ReferenceHarness,
+  decisionId: string,
+): Extract<
+  ReturnType<typeof projectedRecords>[number],
+  { kind: "decision" }
+> => {
+  const record = projectedRecords(harness).find(
+    (candidate) => candidate.kind === "decision" && candidate.id === decisionId,
+  );
+  if (record === undefined || record.kind !== "decision")
+    assert.fail("Expected the decision in relationship.workspace.");
+  return record;
+};
+
+// #196 gave `decision` the edge to a client but only at CREATE, which left
+// every decision already in the graph permanently unattributable: openable by
+// title in ⌘K and listed on no client record. This is that regression, closed.
+it("a decision written before the client edge existed is attributed after the fact", () => {
+  const { harness, organizationId } = dealHarness("decision-attribute");
+  const decisionId = uuid();
+  // Created with NO client, which is the state every decision in the real graph
+  // is in — the fixture has to start where the regression starts.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-attribute-create"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.space,
+          title: "Managed route for Orbit",
+          rationale: "Their team cannot carry night cover themselves.",
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(
+    decisionsOnOrganization(harness, organizationId).decisions,
+    [],
+    "the unattributed decision is on no client record — that IS the regression",
+  );
+
+  const attach = {
+    ...metadata("decision-attribute-set", { [decisionId]: 1 }),
+    commandName: "decision.update" as const,
+    // `organizationId` ALONE. A boundary that dropped or refused exactly this
+    // one key — the one added last — has nothing else to hide behind.
+    payload: { decisionId, organizationId },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), attach)).outcome,
+    "success",
+  );
+
+  // Home one: the wide strategic projection, forced by `UnprojectableKeys`.
+  assert.equal(
+    decisionFromWorkspace(harness, decisionId).organizationId,
+    organizationId,
+    "the edge an UPDATE wrote survives the strict parse the projection goes through",
+  );
+  // Home two: `organization.operationalOverview`, which restates its shapes by
+  // hand and forces nothing. #196 proved a CREATED decision reaches it; nothing
+  // in that proof says an updated one does.
+  const attached = decisionsOnOrganization(harness, organizationId);
+  assert.deepEqual(
+    attached.decisions.map((record) => record.id),
+    [decisionId],
+    "and the updated decision reaches the client screen through the second home",
+  );
+  assert.ok(
+    attached.recentActivity.some((event) => event.recordId === decisionId),
+    "and the same screen's activity, which filters by its own hand-built id set",
+  );
+
+  // The receipt's `changedFields` is derived from the payload, so it must name
+  // the one field sent and NOT the two that were not.
+  const receipt = harness.store
+    .snapshot()
+    .auditReceipts?.find((entry) => entry.commandId === attach.commandId);
+  assert.deepEqual(
+    [...(receipt?.changedFields ?? [])].sort(),
+    ["organizationId"],
+    "the receipt names the field the write actually set, and only that field",
+  );
+
+  // The removal guard is derived from the live record, so attaching has to make
+  // the client unremovable — the half that is easy to satisfy at create and
+  // forget on update.
+  const refused = removeOrganization(
+    harness,
+    "decision-attribute-remove",
+    organizationId,
+  );
+  assert.equal(refused.outcome, "rejected");
+  if (refused.diagnosticCode !== "record.still_referenced")
+    throw new Error("Expected the blocked outcome.");
+  assert.ok(
+    refused.blockedBy?.some((entry) => entry.recordId === decisionId),
+    "and the decision an update attributed is named among the blockers",
+  );
+
+  // Revertible, and the undo has to DETACH: the decision was about no client
+  // before, so a compensation that left the attribution in place would report
+  // success while changing nothing a reader can see.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-attribute-undo", { [decisionId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: attach.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(
+    decisionFromWorkspace(harness, decisionId).organizationId,
+    undefined,
+    "the undo takes the attribution back off rather than leaving it behind",
+  );
+  assert.deepEqual(
+    decisionsOnOrganization(harness, organizationId).decisions,
+    [],
+    "and the client record stops listing it",
+  );
+});
+
+// #189 found the enumerated "at least one field" gate on a command refine; #194
+// found the same shape one layer out, in the renderer wrapper. Each field has
+// to arrive ALONE, at both boundaries, and be applied.
+it("every field of decision.update travels alone, and the client one clears", () => {
+  const { harness, organizationId, personId } = dealHarness("decision-alone");
+  const decisionId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-alone-create"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.space,
+          title: "Managed route",
+          rationale: "Night cover.",
+          organizationId,
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const update = (
+    key: string,
+    version: number,
+    payload: object,
+  ): CommandOutcome =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key, { [decisionId]: version }),
+        commandName: "decision.update",
+        payload: { decisionId, ...payload },
+      }),
+    );
+
+  assert.equal(
+    update("decision-alone-title", 1, { title: "Managed route for Orbit" })
+      .outcome,
+    "success",
+  );
+  const afterTitle = decisionFromWorkspace(harness, decisionId);
+  assert.equal(afterTitle.title, "Managed route for Orbit");
+  assert.equal(
+    afterTitle.rationale,
+    "Night cover.",
+    "and a field the caller left out is left alone, not blanked",
+  );
+  assert.equal(
+    afterTitle.organizationId,
+    organizationId,
+    "and the client the caller did not mention stays attached",
+  );
+
+  assert.equal(
+    update("decision-alone-rationale", 2, {
+      rationale: "Their team cannot carry night cover themselves.",
+    }).outcome,
+    "success",
+  );
+  const afterRationale = decisionFromWorkspace(harness, decisionId);
+  assert.equal(
+    afterRationale.rationale,
+    "Their team cannot carry night cover themselves.",
+  );
+  assert.equal(afterRationale.title, "Managed route for Orbit");
+
+  // An explicit null, alone. This is the detachment a wrongly attributed
+  // decision needs, and the value a truthiness test silently drops.
+  assert.equal(
+    update("decision-alone-clear", 3, { organizationId: null }).outcome,
+    "success",
+  );
+  assert.equal(
+    decisionFromWorkspace(harness, decisionId).organizationId,
+    undefined,
+    "an explicit null detaches the decision from the client",
+  );
+  assert.deepEqual(
+    decisionsOnOrganization(harness, organizationId).decisions,
+    [],
+    "and the client record stops listing it",
+  );
+  // And the guard flips back — the half a one-directional test never reaches.
+  // The organisation is still blocked by the person the harness put on it, so
+  // the assertion is about WHO blocks it, not that it became removable: the
+  // detached decision has to be gone from that list.
+  const stillBlocked = removeOrganization(
+    harness,
+    "decision-alone-remove",
+    organizationId,
+  );
+  assert.equal(stillBlocked.outcome, "rejected");
+  if (stillBlocked.diagnosticCode !== "record.still_referenced")
+    throw new Error("Expected the blocked outcome.");
+  assert.ok(
+    !(stillBlocked.blockedBy ?? []).some(
+      (entry) => entry.recordId === decisionId,
+    ),
+    "the detached decision is no longer among the records that block removal",
+  );
+  assert.ok(
+    (stillBlocked.blockedBy ?? []).some((entry) => entry.recordId === personId),
+    "and the blocker that remains is the person, which nothing here detached",
+  );
+
+  // Nothing to change is refused on the ENVELOPE SCHEMA, before the kernel: the
+  // key-generic refine fires at the boundary, so a no-op never reaches a
+  // handler and never bumps a version.
+  assert.equal(
+    harness.kernel.execute(context(), {
+      ...metadata("decision-alone-empty", { [decisionId]: 4 }),
+      commandName: "decision.update",
+      payload: { decisionId },
+    }).kind,
+    "contract_rejected",
+  );
+  assert.equal(
+    decisionFromWorkspace(harness, decisionId).version,
+    4,
+    "and the refused no-op leaves the record exactly where it stood",
+  );
+});
+
+it("decision.update refuses the state supersede owns, and the ids create refuses", () => {
+  const { harness, organizationId, personId } = dealHarness("decision-refuse");
+  const decisionId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-refuse-create"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.space,
+          title: "Managed route",
+          rationale: "Night cover.",
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // `state` is not merely unread — `.strict()` REFUSES it, on the envelope
+  // schema, so the command never reaches a handler that could be tempted to
+  // honour it. Two write paths onto one field is this repo's named drift
+  // family, and `decision.supersede` — `revertability: "never"` — owns this one.
+  assert.equal(
+    harness.kernel.execute(context(), {
+      ...metadata("decision-refuse-state", { [decisionId]: 1 }),
+      commandName: "decision.update",
+      payload: { decisionId, state: "superseded" },
+    }).kind,
+    "contract_rejected",
+  );
+  assert.equal(
+    decisionFromWorkspace(harness, decisionId).state,
+    "current",
+    "and the decision stays in the state supersede alone can move it out of",
+  );
+
+  // An id that is not an organisation, on the terms `decision.create` refuses
+  // one: an update that checked less than the create is how a foreign id gets
+  // onto a decision after the create said no.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-refuse-kind", { [decisionId]: 1 }),
+        commandName: "decision.update",
+        payload: { decisionId, organizationId: personId },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+
+  // An organisation in a different Space of the same workspace. Reachable by
+  // id, refused all the same — the decision's Space is the boundary.
+  const foreignSpaceId = "18000000-0000-4000-8000-0000000009f1";
+  const foreignOrganizationId = "18000000-0000-4000-8000-0000000009f2";
+  harness.store.transact((transaction) => {
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected the Wave 2 reference transaction.");
+    transaction.insertSpace({
+      id: SpaceIdSchema.parse(foreignSpaceId),
+      workspaceId: context().workspaceId,
+      name: "Another Space",
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+    });
+    transaction.insertStrategicRecord({
+      id: StrategicRecordIdSchema.parse(foreignOrganizationId),
+      workspaceId: context().workspaceId,
+      spaceId: SpaceIdSchema.parse(foreignSpaceId),
+      kind: "organization",
+      name: "Client in another Space",
+      relationshipState: "active",
+      createdBy: context().principalId,
+      version: 1,
+      createdAt: "2026-07-31T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+    });
+  });
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-refuse-space", { [decisionId]: 1 }),
+        commandName: "decision.update",
+        payload: { decisionId, organizationId: foreignOrganizationId },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+
+  // A superseded decision IS updatable, deliberately: the client record shows
+  // superseded decisions as the history of the relationship, so refusing here
+  // would leave exactly the oldest entries — the ones this command exists for —
+  // unattributable for good.
+  const replacementDecisionId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-refuse-supersede", { [decisionId]: 1 }),
+        commandName: "decision.supersede",
+        payload: {
+          priorDecisionId: decisionId,
+          replacementDecisionId,
+          impactReviewId: uuid(),
+          title: "Self-service route",
+          rationale: "They hired their own night shift.",
+          reason: "Their staffing changed.",
+          evidenceSourceIds: [],
+          consequences: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-refuse-old", { [decisionId]: 2 }),
+        commandName: "decision.update",
+        payload: { decisionId, organizationId },
+      }),
+    ).outcome,
+    "success",
+  );
+  const superseded = decisionFromWorkspace(harness, decisionId);
+  assert.equal(superseded.organizationId, organizationId);
+  assert.equal(
+    superseded.state,
+    "superseded",
+    "and updating it does not move the state supersede put it in",
+  );
+  assert.deepEqual(
+    decisionsOnOrganization(harness, organizationId).decisions.map(
+      (record) => record.id,
+    ),
+    [decisionId],
+    "the history of the relationship is what the client record gains",
+  );
+});
+
+// The compensation for a DETACHMENT writes an organisation id back, so it is
+// only good while that organisation is still there. Nothing in the type system
+// says so — `UndoDescriptor` sits outside `UnprojectableKeys` entirely — and an
+// undo that restored a removed client would re-create the dead reference the
+// write path refuses to create, reached through the undo path.
+it("an undone detachment is unavailable once the client itself is gone", () => {
+  const harness = removalHarness("decision-detach-undo");
+  const organizationId = createOrganization(harness, "decision-detach-undo");
+  const decisionId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("decision-detach-undo-create"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.space,
+          title: "Managed route",
+          rationale: "Night cover.",
+          organizationId,
+          evidenceSourceIds: [],
+          linkedRecordIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const detach = {
+    ...metadata("decision-detach-undo-clear", { [decisionId]: 1 }),
+    commandName: "decision.update" as const,
+    payload: { decisionId, organizationId: null },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), detach)).outcome,
+    "success",
+  );
+  // Detaching is what makes the client removable — the guard flipping back is
+  // itself half of what this asserts.
+  assert.equal(
+    removeOrganization(harness, "decision-detach-undo-remove", organizationId)
+      .outcome,
+    "success",
+  );
+
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("decision-detach-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: detach.commandId },
+    }),
+  );
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    assert.fail("Expected an undo preview for the detachment");
+  assert.equal(
+    preview.projection.available,
+    false,
+    "the undo is refused rather than restoring a reference to a removed client",
+  );
+  assert.equal(
+    decisionFromWorkspace(harness, decisionId).organizationId,
+    undefined,
+    "and the decision is left detached, which is a state the graph can hold",
   );
 });

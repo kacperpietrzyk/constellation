@@ -2951,6 +2951,56 @@ export const createDecision = (
   );
 };
 
+/**
+ * Correcting a decision that already exists. Partial by field on the same
+ * terms as `updatePerson`: absent leaves a field alone, an explicit `null`
+ * clears the client edge, prose is replaced rather than cleared.
+ *
+ * The gate counts keys instead of naming them. Naming them is how #194's
+ * silent refusal happened one layer out from #189's: a caller who sets only
+ * the newest field is told "nothing changed" by a wrapper written before that
+ * field existed, and nothing in the schema, the kernel or `tsc` disagrees.
+ */
+export const updateDecision = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  decision: { readonly id: StrategicRecordId; readonly version: number },
+  change: {
+    readonly title?: string;
+    readonly rationale?: string;
+    readonly organizationId?: StrategicRecordId | null;
+  },
+) => {
+  const payload = {
+    decisionId: decision.id,
+    ...(change.title === undefined ? {} : { title: change.title }),
+    ...(change.rationale === undefined ? {} : { rationale: change.rationale }),
+    // `=== undefined`, not a truthiness test: `null` is the detachment, and a
+    // falsy check would drop it here and answer "nothing changed" to the one
+    // caller correcting a wrong attribution.
+    ...(change.organizationId === undefined
+      ? {}
+      : { organizationId: change.organizationId }),
+  };
+  return Object.keys(payload).length === 1
+    ? nothingToChange()
+    : execute(
+        client,
+        {
+          ...commandBase(snapshot.bootstrap.workspace.id, {
+            [decision.id]: decision.version,
+          }),
+          commandName: "decision.update",
+          payload,
+        },
+        (response) =>
+          response.outcome.outcome === "success" &&
+          response.outcome.projection.kind === "strategic.record_changed"
+            ? response.outcome.projection
+            : undefined,
+      );
+};
+
 export const supersedeDecision = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

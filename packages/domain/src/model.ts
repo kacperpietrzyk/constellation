@@ -1108,6 +1108,30 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "decision.restore_details";
+      readonly decisionId: StrategicRecordId;
+      // The whole prior state of everything `decision.update` can move — see
+      // `relationship.restore_person` above for why it is the whole state and
+      // not the fields that happened to change.
+      readonly priorTitle: string;
+      readonly priorRationale: string;
+      /**
+       * Absent means the decision was about no client in particular before the
+       * update, so undoing the command that ATTACHED one has to detach it
+       * again rather than leave the attribution behind while the receipt says
+       * the change was taken back. Restoring a present one writes an
+       * organisation id back, so — exactly as `priorOrganizationId` on
+       * `relationship.restore_person` — the compensation only stands while
+       * that organisation is still there.
+       */
+      readonly priorOrganizationId?: StrategicRecordId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "opportunity.restore_details";
       readonly opportunityId: StrategicRecordId;
       // The whole prior state of everything `opportunity.update` can move —

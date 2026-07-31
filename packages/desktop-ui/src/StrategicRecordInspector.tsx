@@ -2,6 +2,7 @@ import { strategicRecordReferences } from "@constellation/contracts";
 import type { ProjectId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
+import { DecisionClientSection } from "./components/DecisionClientSection.js";
 import { RecordRemovalSection } from "./components/RecordRemovalSection.js";
 import {
   recurrenceCadenceLabels,
@@ -67,6 +68,7 @@ export const StrategicRecordInspector = ({
   onSelectRecord,
   onOpenProject,
   onRemoved,
+  onUpdated,
   onRemoveFailure,
 }: {
   readonly record: StrategicRecord;
@@ -80,9 +82,20 @@ export const StrategicRecordInspector = ({
   readonly onSelectRecord: (id: string) => void;
   readonly onOpenProject: (id: ProjectId, title: string) => void;
   readonly onRemoved: (message: string) => Promise<void>;
+  // Refresh WITHOUT dropping the selection, where `onRemoved` clears it: a
+  // record that was corrected is still there, and the reader is still looking
+  // at it.
+  readonly onUpdated: (message: string) => Promise<void>;
   readonly onRemoveFailure: (result: MutationFailure) => void;
 }) => {
   const state = strategicRecordState(record);
+  // Every organisation in the Space the inspector was handed, which is the set
+  // the kernel will accept: it refuses an id that is not an organisation in
+  // this decision's own Space.
+  const organizations = records.filter(
+    (item): item is Extract<StrategicRecord, { kind: "organization" }> =>
+      item.kind === "organization",
+  );
   const organization =
     "organizationId" in record && record.organizationId !== undefined
       ? records.find((item) => item.id === record.organizationId)
@@ -267,11 +280,27 @@ export const StrategicRecordInspector = ({
         </section>
       )}
       {record.kind === "decision" && (
-        <section className="inspector-section provenance-block">
-          <p className="section-label">Rationale</p>
-          <blockquote>{record.rationale}</blockquote>
-          <p>This decision stays part of the versioned history.</p>
-        </section>
+        <>
+          <section className="inspector-section provenance-block">
+            <p className="section-label">Rationale</p>
+            <blockquote>{record.rationale}</blockquote>
+            <p>This decision stays part of the versioned history.</p>
+          </section>
+          {client !== undefined && (
+            // Keyed on the record: the control holds the pending choice in
+            // local state, and selecting a different decision has to start
+            // from that decision's own client, not the previous one's.
+            <DecisionClientSection
+              key={record.id}
+              client={client}
+              snapshot={snapshot}
+              decision={record}
+              organizations={organizations}
+              onUpdated={onUpdated}
+              onFailure={onRemoveFailure}
+            />
+          )}
+        </>
       )}
       {record.kind === "recurrence" && (
         <section className="inspector-section">

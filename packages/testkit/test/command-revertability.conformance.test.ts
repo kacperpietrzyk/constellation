@@ -517,6 +517,14 @@ describe("Command revertability", () => {
       versions(opportunityId),
     );
 
+    // Attributing a decision to a client after it was written — the case a
+    // create-only edge left every decision already in the graph without.
+    apply(
+      "decision.update",
+      { decisionId, organizationId },
+      versions(decisionId),
+    );
+
     apply("decision.remove", { decisionId }, versions(decisionId));
     apply("relationship.factRemove", { factId }, versions(factId));
     apply("opportunity.offerRemove", { offerId }, versions(offerId));

@@ -570,6 +570,42 @@ export const createDecision = (
   state: "current",
 });
 
+/**
+ * Correcting a decision in place: absent leaves a field alone, an explicit
+ * `null` clears the client edge.
+ *
+ * `organizationId` is destructured off the record before the rest is spread,
+ * on exactly the terms `updatePersonDetails` does it: an optional key that is
+ * merely overwritten with `undefined` stays present on the object, and a
+ * record carrying `organizationId: undefined` is not the same shape as one
+ * that never had the key — `.strict()` projections and key-counting readers
+ * both see the difference.
+ */
+export const updateDecisionDetails = (
+  decision: Extract<StrategicRecord, { kind: "decision" }>,
+  changes: {
+    readonly title?: string;
+    readonly rationale?: string;
+    readonly organizationId?: StrategicRecordId | null;
+  },
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "decision" }> => {
+  const { organizationId: _organizationId, ...base } = decision;
+  void _organizationId;
+  const organizationId =
+    changes.organizationId === undefined
+      ? decision.organizationId
+      : (changes.organizationId ?? undefined);
+  return {
+    ...base,
+    title: changes.title ?? decision.title,
+    rationale: changes.rationale ?? decision.rationale,
+    ...(organizationId === undefined ? {} : { organizationId }),
+    version: decision.version + 1,
+    updatedAt: occurredAt,
+  };
+};
+
 export const createArea = (
   input: Common & { readonly title: string; readonly responsibility?: string },
 ): Extract<StrategicRecord, { kind: "area" }> => ({

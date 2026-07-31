@@ -4847,6 +4847,10 @@ export const RealApp = ({
               await refreshAfter(message);
               setSelectedStrategicId(undefined);
             }}
+            // Refresh and KEEP the selection: the record the reader just
+            // corrected is still on screen, and dropping it here would answer a
+            // one-field correction by closing the inspector.
+            onUpdated={refreshAfter}
             onRemoveFailure={showFailure}
           />
         ) : (

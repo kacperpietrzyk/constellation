@@ -99,6 +99,7 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "relationship.factCreate",
   "relationship.factRemove",
   "decision.create",
+  "decision.update",
   "decision.remove",
   "decision.supersede",
   "decision.resolveImpact",
