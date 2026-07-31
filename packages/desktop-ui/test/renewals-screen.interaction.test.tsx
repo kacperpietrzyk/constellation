@@ -901,8 +901,20 @@ test("the currency picker offers what the WORKSPACE records money in, not a list
     "recording the contract issued no command at all",
   );
   const payload = issued[0]?.payload as {
-    readonly value?: { readonly currency?: string };
+    readonly value?: {
+      readonly amountMinor?: number;
+      readonly currency?: string;
+    };
   };
+  // The ONE piece of money arithmetic in this lot that does not happen inside
+  // `money.ts`: a form takes major units and the kernel takes an integer of
+  // minor units. Multiplying by the wrong power of ten, or leaving the product
+  // as a float, passes every other gate on this screen.
+  assert.equal(
+    payload.value?.amountMinor,
+    195_000_00,
+    "the amount somebody typed in major units is not the integer of minor units that was sent",
+  );
   assert.equal(
     payload.value?.currency,
     "EUR",

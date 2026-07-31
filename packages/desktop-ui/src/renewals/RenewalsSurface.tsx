@@ -854,12 +854,19 @@ export const RenewalsSurface = ({
             Worth per term
             <input
               inputMode="decimal"
+              // The command bounds the amount to non-negative
+              // (`MoneyInputSchema`), so the control refuses a negative here
+              // rather than letting it travel and come back as a toast about a
+              // rejected command. `step` admits the minor unit: the row prints
+              // whole major units, but a contract may be worth 195 000,50.
+              min={0}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
                   value: event.target.value,
                 }))
               }
+              step="0.01"
               type="number"
               value={draft.value}
             />
