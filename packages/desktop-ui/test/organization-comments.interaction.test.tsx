@@ -216,15 +216,20 @@ const openOrganization = async (): Promise<void> => {
     item.click();
   });
 
+  // Found by the row's own data anchor rather than by "a button whose text
+  // contains the name". The retired CRM ledger drew every record as a
+  // `<button>`; the rebuilt collection draws a client as an option row and the
+  // buttons on the screen now belong to the filter and the create panel, so the
+  // old query would find a filter chip and click it.
   await waitForCondition(
     () =>
-      [...container.querySelectorAll<HTMLElement>("button")].some((button) =>
-        button.textContent?.includes("Northstar Industries"),
-      ),
+      container.querySelector(
+        `[data-org-row="${referencedOrganizationId}"]`,
+      ) !== null,
     "Organizations never drew the fixture's organization",
   );
-  const row = [...container.querySelectorAll<HTMLElement>("button")].find(
-    (button) => button.textContent?.includes("Northstar Industries"),
+  const row = container.querySelector<HTMLElement>(
+    `[data-org-row="${referencedOrganizationId}"]`,
   );
   assert.ok(row);
   await act(async () => {

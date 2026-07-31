@@ -150,12 +150,17 @@ const openRemovalFor = async (
     item.click();
   });
 
-  const rowFor = (): HTMLButtonElement | undefined => {
+  // Found by the row's own data anchor. The retired CRM ledger drew every
+  // record as a `button[aria-pressed]`; the rebuilt collection draws a client as
+  // an option row carrying `aria-selected`, and the buttons left on the screen
+  // belong to the filter and the create panel — so the old query would find a
+  // filter chip and press it.
+  const rowFor = (): HTMLElement | undefined => {
     const plane = container.querySelector<HTMLElement>('[role="tabpanel"]');
     if (!plane) return undefined;
-    return [
-      ...plane.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
-    ].find((button) => (button.textContent ?? "").includes(labelOf(record)));
+    return [...plane.querySelectorAll<HTMLElement>("[data-org-row]")].find(
+      (row) => (row.textContent ?? "").includes(labelOf(record)),
+    );
   };
 
   let row = rowFor();
@@ -174,7 +179,7 @@ const openRemovalFor = async (
   // Bez tego zdania klik w niewłaściwy wiersz objawiłby się dopiero jako
   // niezgodny stan usuwania, czyli w miejscu, które nie wskazuje przyczyny.
   assert.equal(
-    row.getAttribute("aria-pressed"),
+    row.getAttribute("aria-selected"),
     "true",
     `selecting “${labelOf(record)}” did not mark its row as chosen`,
   );

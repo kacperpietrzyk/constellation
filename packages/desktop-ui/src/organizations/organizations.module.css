@@ -1,0 +1,529 @@
+/* Organizations. A CSS Module, so it travels with the lazy chunk instead of
+   landing on the head-linked sheet the window waits for.
+
+   Every colour is a token, and no token is new. The shape of a reading carries
+   its meaning and the colour only reinforces it, so a monochrome screen loses
+   nothing.
+
+   THE WHOLE SHEET IS WRITTEN AGAINST ONE GATE — the packaged text-scaling check
+   at `scripts/run-packaged-alpha-smoke.mjs:786-795`, which fails a surface when
+   `scrollWidth > clientWidth` at 200% root font-size. `styles.css:4404-4407`
+   centres each surface child with `margin-inline: auto`; an auto inline margin
+   turns off stretch and sizes the child `fit-content`, and `fit-content` is
+   clamped BELOW by `min-content`. So a child whose min-content exceeds the
+   surface content box SETS a width instead of taking one: it fits itself
+   perfectly — no overflowing descendant anywhere — while pushing the surface's
+   `scrollWidth` past its `clientWidth`. Three rules follow, and each is marked
+   where it applies: every bar wraps, every elastic track is a ratio rather than
+   a rem cap, and the table is on fixed layout with the truncation on a block
+   INSIDE each cell. */
+
+.organizations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Chrome above the list ───────────────────────────────────────────── */
+
+/* WRAPS. A non-wrapping flex row's min-content is the sum of its children;
+   a wrapping row's is its widest single child, which is a number that stays
+   inside the surface at any text size. */
+.crumbbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+}
+
+.create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-inline: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1 1 10rem;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.field input,
+.field select {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* The view bar holds a layout switch, a filter group and a live count. Three
+   groups that must not sit on one unbreakable line. */
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.switcher {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* The pressed layout carries a FILL and a stronger border, not only a warmer
+   text colour: which layout is on has to survive a screen with no colour. */
+.switch {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0.125rem 0.625rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+}
+
+.switch[aria-selected="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+/* ── The filter that really filters ──────────────────────────────────── */
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.filterKey {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0.0625rem 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+/* A held chip is filled AND bordered, never colour alone: which states the
+   filter holds is the one thing the reader has to be able to see to get back
+   out of it. */
+.chip[aria-pressed="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.chipCount {
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The second way out, and it appears only while there is something to get out
+   of. Unclicking the last chip is the first. */
+.showAll {
+  font-size: var(--text-xs);
+  color: var(--text-link);
+  padding: 0.0625rem 0.5rem;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The list ────────────────────────────────────────────────────────── */
+
+/* NO `container-type: inline-size`, and its absence is the fix rather than an
+   omission: inline-size containment makes an element's own intrinsic width
+   ignore its contents, so as a `margin-inline: auto` child this list would
+   resolve to a fit-content width of ZERO and every row inside it would overflow
+   a box with no width. It declares `100%` instead, which is definite — so the
+   rows' `minmax(0, …)` tracks have a number to shrink against rather than one
+   to set. */
+.list {
+  display: block;
+  width: 100%;
+}
+
+/* PROPORTIONS, not rem caps, for every track but the avatar. A track capped in
+   rem is a width that doubles with the text while the row it lives in does not,
+   so above 200% the cells stop fitting and the surface overflows itself. Ratios
+   sum to the row at any text size and carry the same intent: the name gets the
+   most room, the counts the least, and the avatar — a glyph, not text — is the
+   one thing that must not shrink.
+
+   THE SIGNAL LEADS. The reading comes before the name, because a list of
+   clients is read for what needs attention first and the name is what you
+   confirm once you are already looking (`v3/screens/crm.js:257-298`). */
+.row {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 0.9fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.9fr)
+    minmax(0, 1.1fr) minmax(0, 1.3fr) 1.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.4375rem var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowSelected {
+  background: var(--surface-selected);
+}
+
+/* The focus token is a SHADOW STACK, not a colour: `outline: … solid
+   var(--focus-ring)` is an invalid value and the whole declaration is dropped. */
+.row:focus-visible,
+.tableRow:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.main {
+  min-width: 0;
+}
+
+.nameLine {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+/* `text-overflow` acts on a block box with text in it, not on a flex child, so
+   the name owns the element that truncates — and it gives up its room LAST,
+   because the name is the only thing this row is recognised by. "Last" is a
+   SHRINK WEIGHT, not a `min-width` floor: a floor in rem doubles with the text
+   and becomes a width the cell cannot go under. */
+.name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.segment {
+  flex: 0 6 auto;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The reason, directly beneath the name and as VISIBLE text. In the prototype
+   it survived only inside a `title` in the Table layout (`crm.js:330`), and a
+   native tooltip does not exist for a keyboard or for touch — while the badge
+   on its own says nothing once half the list is reporting something. The reason
+   IS the information. */
+.why {
+  display: block;
+  margin-top: 0.0625rem;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.num {
+  min-width: 0;
+}
+
+.num b {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next {
+  min-width: 0;
+}
+
+.nextText {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An absence that MEANS something says so in words. A dash rendered as densely
+   as content is emptiness dressed up as a reading. */
+.absent {
+  color: var(--text-disabled);
+  font-weight: 400;
+}
+
+.soon {
+  color: var(--status-warning);
+}
+
+.late {
+  color: var(--status-error);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  flex: none;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+}
+
+.avatarNone {
+  border-style: dashed;
+  color: var(--text-disabled);
+}
+
+/* ── The reading ─────────────────────────────────────────────────────── */
+
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.signalMark {
+  flex: none;
+  font-size: var(--text-2xs);
+  line-height: 1;
+}
+
+.signal_risk {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.signal_watch {
+  color: var(--status-warning);
+}
+
+.signal_good {
+  color: var(--text-tertiary);
+}
+
+.signal_none {
+  color: var(--text-disabled);
+}
+
+/* A declaration, not a reading — so it wears a border rather than a shape. */
+.state {
+  flex: none;
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.state_active {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+.state_prospect {
+  color: var(--status-info);
+}
+
+.state_inactive {
+  color: var(--text-disabled);
+  border-style: dashed;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────── */
+
+/* `table-layout: fixed`, and it is load-bearing rather than tidy. Under the
+   default `auto` algorithm a table's used width is at least its min-content,
+   and one unbroken next-step sentence sets a min-content nothing can talk down
+   — the table then renders wider than the surface at 200% text while every cell
+   in it looks correct against its own content. */
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* Shares are declared once, on the header row, because fixed layout reads the
+   first row and nothing else.
+
+   SEGMENT IS NOT A COLUMN. A table compares fields, so it carries only what
+   every row can fill (`crm.js:306-309`); `segment` is optional in this product
+   and would be a column of dashes — emptiness rendered as densely as content,
+   which is the defect named on the same walkthrough. It stays in the list
+   layout, beside the name, where its absence costs nothing. */
+.colName {
+  width: 18%;
+}
+.colState {
+  width: 10%;
+}
+.colReading {
+  width: 16%;
+}
+.colDeals {
+  width: 14%;
+}
+.colProjects {
+  width: 11%;
+}
+.colRenewal {
+  width: 13%;
+}
+.colNext {
+  width: 18%;
+}
+
+.table th {
+  text-align: left;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  color: var(--text-quaternary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+/* The truncation lives on a BLOCK INSIDE the cell, not on the cell. A `<td>`
+   that clips its own text still reports the untruncated width up to the table,
+   and the table then reports scrollable overflow it cannot scroll — which is
+   the number the packaged text-scaling gate reads. An inner block clips for
+   real and contributes nothing. */
+.cell {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The reading's reason is a second line in the table too, and it is the reason
+   the Reading column is wide enough to hold one. It is the cell that carried
+   the `title` in the prototype. */
+.cellWhy {
+  display: block;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableRow:hover {
+  background: var(--surface-hover);
+}
+
+.tableRow[aria-selected="true"] {
+  background: var(--surface-selected);
+}
+
+.tableName {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Nothing to show, and the two reasons for it ─────────────────────── */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.emptyState h2 {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.emptyState p {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  max-width: 32rem;
+}

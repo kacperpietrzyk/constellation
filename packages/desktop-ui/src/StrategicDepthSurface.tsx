@@ -8,15 +8,16 @@ import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
   addComment,
+  createOrganization,
   directDeliveryProjects,
   editComment,
   generateRecurrenceOccurrence,
   loadComments,
   linkableDeliveryProjects,
   loadOrganizationOverview,
+  readSlice,
   resolveDecisionImpact,
   resolveRadarCandidate,
-  resolveRenewal,
   setCommentResolved,
   type CommentTarget,
   type DesktopSnapshot,
@@ -24,7 +25,32 @@ import {
   type OrganizationOverviewProjection,
   type RelationshipWorkspaceProjection,
 } from "./client/workflow.js";
-import { useListNavigation } from "./hooks/useListNavigation.js";
+import {
+  fmtTotals,
+  indexRelationships,
+  renewalPhrase,
+  type CrmProse,
+  type OrganizationReading,
+  type SignalKey,
+} from "./crm/organization-reading.js";
+import { Icon } from "./components/Icon.js";
+import {
+  countSentence,
+  filterOrganizations,
+  heldStatesSentence,
+  readOrganizations,
+  relationshipStateLabel,
+  rollUpDelivery,
+  stateCounts,
+  RELATIONSHIP_STATES,
+  type OrganizationRow,
+} from "./organizations/organizations-view.js";
+import organizationStyles from "./organizations/organizations.module.css";
+import { readProjects } from "./projects/project-view.js";
+import {
+  useListNavigation,
+  type ListNavigationItemProps,
+} from "./hooks/useListNavigation.js";
 import {
   buildActorResolver,
   buildMentionResolver,
@@ -35,6 +61,7 @@ import { RecordTabStrip } from "./record/RecordTabStrip.js";
 import { openThreadCount, type RecordTab } from "./record/record-tabs.js";
 import {
   countLabel,
+  dateKeyInZone,
   formatDate,
   formatDateTime,
   plural,
@@ -74,6 +101,376 @@ const StateMark = ({ state }: { readonly state: string }) => (
   </span>
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ORGANIZATIONS COLLECTION
+//
+// The export keeps its old name because the name is a SEAM: `shell/lazy-
+// surfaces.tsx` and `RealApp.tsx:2003` both reach for `module.StrategicDepth-
+// Surface`, and both files belong to other lots this wave. What the component
+// IS has changed completely — it is the client list, not the CRM ledger it was.
+//
+// WHAT THE COLLECTION STOPPED RENDERING, and where each kind went instead:
+// opportunities and offers to Pipeline, people to People, renewals to Renewals,
+// relationship facts to the organisation record's "What we know" below. Every
+// one of those had to ship before this did, which is why this lot merges last.
+//
+// WHAT IT STILL RENDERS, AND WHY — because "retire the kinds that now have a
+// home" leaves two that do not:
+//
+//  1. `decision`, `impact_review` and `recurrence` have NO edge to an
+//     organisation in this model. `decision` carries `linkedRecordIds`, which
+//     the only authoring path writes as `[]` (`client/workflow.ts:2925`);
+//     `impact_review` links two decisions; `recurrence` carries an optional
+//     `contextRecordId` nothing sets. So they cannot be attributed to a client
+//     and cannot move to the client's record — three sections that would be
+//     empty by construction is a capability nothing mounts, not a home.
+//  2. `radar_candidate` rides `snapshot.radar`, NOT `snapshot.relationships`,
+//     and the shell's inspector resolves a selection only against the latter
+//     (`RealApp.tsx:816-825`). The review rail is the only place in the product
+//     a radar candidate can be seen or resolved at all.
+//
+// Both are reported as findings rather than worked around, and both sit BELOW
+// the accepted screen so the client list is what the surface opens on.
+
+// Spelled as a mapped type rather than `Record<…>`: this file declares its own
+// local `Record` alias for a strategic record, which shadows the built-in.
+const SIGNAL_MARKS: { readonly [K in SignalKey]: string } = {
+  risk: "▲",
+  watch: "◧",
+  good: "■",
+  none: "□",
+};
+
+const LAYOUTS = [
+  ["list", "List"],
+  ["table", "Table"],
+] as const;
+type Layout = (typeof LAYOUTS)[number][0];
+
+const SignalChip = ({ reading }: { readonly reading: OrganizationReading }) => (
+  <span
+    className={`${organizationStyles.signal} ${organizationStyles[`signal_${reading.signal.key}`]}`}
+    data-relationship-signal={reading.signal.key}
+  >
+    <span aria-hidden="true" className={organizationStyles.signalMark}>
+      {SIGNAL_MARKS[reading.signal.key]}
+    </span>
+    {reading.signal.label}
+  </span>
+);
+
+const StatePill = ({ state }: { readonly state: string }) => (
+  <span
+    className={`${organizationStyles.state} ${organizationStyles[`state_${state}`]}`}
+  >
+    {relationshipStateLabel(state)}
+  </span>
+);
+
+const Initials = ({ name }: { readonly name: string }) => (
+  <span aria-hidden="true" className={organizationStyles.avatar}>
+    {name
+      .split(/\s+/u)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.slice(0, 1).toUpperCase())
+      .join("")}
+  </span>
+);
+
+/** What the row prints about the client's deliveries. `undefined` open tasks is
+ *  a FAILED READ of the work plane, not a zero — and it says so. */
+const projectPhrase = (row: OrganizationRow): string =>
+  row.delivery.openTasks === undefined
+    ? "open tasks unavailable"
+    : `${row.delivery.openTasks} open`;
+
+const OrganizationRowView = ({
+  row,
+  index,
+  itemProps,
+  selected,
+  onSelect,
+  onOpen,
+}: {
+  readonly row: OrganizationRow;
+  readonly index: number;
+  readonly itemProps: (index: number) => ListNavigationItemProps;
+  readonly selected: boolean;
+  readonly onSelect: (id: string) => void;
+  readonly onOpen: (row: OrganizationRow) => void;
+}) => {
+  const nav = itemProps(index);
+  const organization = row.reading.organization;
+  const phrase =
+    row.reading.lead === undefined
+      ? undefined
+      : renewalPhrase(row.reading.lead);
+  return (
+    <div
+      {...nav}
+      aria-label={row.accessibleName}
+      aria-selected={selected}
+      className={`${organizationStyles.row} ${selected ? organizationStyles.rowSelected : ""}`}
+      data-org-row={organization.id}
+      onClick={() => onSelect(organization.id)}
+      onDoubleClick={() => onOpen(row)}
+      role="option"
+    >
+      {/* THE READING LEADS, before the name. A list of clients is read for what
+          needs attention first; the name is what you confirm once you are
+          already looking. */}
+      <SignalChip reading={row.reading} />
+      <span className={organizationStyles.main}>
+        <span className={organizationStyles.nameLine}>
+          <span className={organizationStyles.name}>{organization.name}</span>
+          <StatePill state={organization.relationshipState} />
+          {organization.segment !== undefined && (
+            <span className={organizationStyles.segment}>
+              {organization.segment}
+            </span>
+          )}
+        </span>
+        {/* The reason, as visible text directly beneath the name. */}
+        <span className={organizationStyles.why} data-org-why>
+          {row.reading.signal.why.join(" · ")}
+        </span>
+      </span>
+      <span className={organizationStyles.num}>
+        {row.reading.deals.length === 0 ? (
+          <b className={organizationStyles.absent}>No open deal</b>
+        ) : (
+          <>
+            <b>{countLabel(row.reading.deals.length, "deal")}</b>
+            {/* Per currency, never one converted number. */}
+            <span className={organizationStyles.sub} data-org-deal-total>
+              {fmtTotals(row.reading.dealTotals)}
+            </span>
+          </>
+        )}
+      </span>
+      <span className={organizationStyles.num}>
+        {row.delivery.projectCount === 0 ? (
+          <b className={organizationStyles.absent}>No project</b>
+        ) : (
+          <>
+            <b>{countLabel(row.delivery.projectCount, "project")}</b>
+            <span className={organizationStyles.sub}>{projectPhrase(row)}</span>
+          </>
+        )}
+      </span>
+      <span className={organizationStyles.num}>
+        {phrase === undefined || row.reading.renewal === undefined ? (
+          <b className={organizationStyles.absent}>No contract watched</b>
+        ) : (
+          <>
+            <b className={organizationStyles[phrase.tone] ?? ""}>
+              {phrase.text}
+            </b>
+            <span className={organizationStyles.sub}>
+              {row.reading.renewal.title}
+            </span>
+          </>
+        )}
+      </span>
+      <span className={organizationStyles.next}>
+        <span className={organizationStyles.nextText}>
+          {organization.nextAction ?? (
+            <span className={organizationStyles.absent}>No next step</span>
+          )}
+        </span>
+        {/* WHAT IS NOT HERE: the prototype's "next meeting …". Every meeting in
+            `relationship.workspace` is one that already happened, so a next
+            meeting would be a claim about a calendar this screen never read.
+            What it CAN say is when contact last happened, which the reading
+            already computed. */}
+        <span className={organizationStyles.sub}>
+          {row.reading.idleDays === undefined
+            ? "nothing recorded as contact"
+            : row.reading.idleDays === 0
+              ? "contact today"
+              : `last contact ${row.reading.idleDays} days ago`}
+        </span>
+      </span>
+      {row.contactName === undefined ? (
+        <span
+          aria-hidden="true"
+          className={`${organizationStyles.avatar} ${organizationStyles.avatarNone}`}
+        >
+          —
+        </span>
+      ) : (
+        <Initials name={row.contactName} />
+      )}
+    </div>
+  );
+};
+
+const OrganizationsTable = ({
+  rows,
+  itemProps,
+  selectedRecordId,
+  onSelect,
+  onOpen,
+}: {
+  readonly rows: readonly OrganizationRow[];
+  readonly itemProps: (index: number) => ListNavigationItemProps;
+  readonly selectedRecordId: string | undefined;
+  readonly onSelect: (id: string) => void;
+  readonly onOpen: (row: OrganizationRow) => void;
+}) => (
+  // A GRID, declared. The rows own a roving tab stop and carry a selected
+  // state, and `aria-selected` on a plain `<tr>` is not a combination the
+  // accessibility tree defines.
+  <table
+    aria-label="Organizations"
+    className={organizationStyles.table}
+    role="grid"
+  >
+    <thead>
+      <tr role="row">
+        <th
+          className={organizationStyles.colName}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Organization</span>
+        </th>
+        <th
+          className={organizationStyles.colState}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Relationship</span>
+        </th>
+        <th
+          className={organizationStyles.colReading}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Reading</span>
+        </th>
+        <th
+          className={organizationStyles.colDeals}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Open deals</span>
+        </th>
+        <th
+          className={organizationStyles.colProjects}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Projects</span>
+        </th>
+        <th
+          className={organizationStyles.colRenewal}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Renewal</span>
+        </th>
+        <th
+          className={organizationStyles.colNext}
+          role="columnheader"
+          scope="col"
+        >
+          <span className={organizationStyles.cell}>Next step</span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((row, index) => {
+        const nav = itemProps(index);
+        const organization = row.reading.organization;
+        const phrase =
+          row.reading.lead === undefined
+            ? undefined
+            : renewalPhrase(row.reading.lead);
+        return (
+          <tr
+            {...nav}
+            aria-label={row.accessibleName}
+            aria-selected={organization.id === selectedRecordId}
+            className={organizationStyles.tableRow}
+            data-org-row={organization.id}
+            key={organization.id}
+            onClick={() => onSelect(organization.id)}
+            onDoubleClick={() => onOpen(row)}
+            role="row"
+          >
+            <td role="gridcell">
+              <span
+                className={`${organizationStyles.cell} ${organizationStyles.tableName}`}
+              >
+                {organization.name}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={organizationStyles.cell}>
+                <StatePill state={organization.relationshipState} />
+              </span>
+            </td>
+            {/* The reason is VISIBLE here. In the prototype the Table layout
+                carried it in a `title` and nowhere else — so the whole
+                informational content of the reading disappeared for a keyboard
+                and for touch the moment somebody switched layout. */}
+            <td role="gridcell">
+              <span className={organizationStyles.cell}>
+                <SignalChip reading={row.reading} />
+              </span>
+              <span className={organizationStyles.cellWhy} data-org-why>
+                {row.reading.signal.why.join(" · ")}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={organizationStyles.cell}>
+                {row.reading.deals.length === 0 ? (
+                  <span className={organizationStyles.absent}>
+                    No open deal
+                  </span>
+                ) : (
+                  `${row.reading.deals.length} · ${fmtTotals(row.reading.dealTotals)}`
+                )}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={organizationStyles.cell}>
+                {row.delivery.projectCount === 0 ? (
+                  <span className={organizationStyles.absent}>No project</span>
+                ) : (
+                  `${row.delivery.projectCount} · ${projectPhrase(row)}`
+                )}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={organizationStyles.cell}>
+                {phrase === undefined ? (
+                  <span className={organizationStyles.absent}>
+                    None watched
+                  </span>
+                ) : (
+                  phrase.text
+                )}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={organizationStyles.cell}>
+                {organization.nextAction ?? (
+                  <span className={organizationStyles.absent}>
+                    No next step
+                  </span>
+                )}
+              </span>
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+);
+
 export const StrategicDepthSurface = ({
   client,
   snapshot,
@@ -93,25 +490,35 @@ export const StrategicDepthSurface = ({
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
   const [busyId, setBusyId] = useState<string>();
-  const records =
-    snapshot.relationships.kind === "ready"
-      ? snapshot.relationships.data.records
-      : [];
-  const organizations = records.filter(
-    (record) => record.kind === "organization",
-  );
-  const opportunities = records.filter(
-    (record) => record.kind === "opportunity",
-  );
-  const offers = records.filter((record) => record.kind === "offer");
-  const people = records.filter((record) => record.kind === "person");
+  const [layout, setLayout] = useState<Layout>("list");
+  // The filter and the layout are state of the SCREEN, not of the route. Routed
+  // through navigation they would clear the selection and close the inspector on
+  // every click — and switching layout is exactly the moment you are looking at
+  // a selected record from the other side (`v3/screens/crm.js:219-224`).
+  const [held, setHeld] = useState<readonly string[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftState, setDraftState] = useState<
+    "prospect" | "active" | "inactive"
+  >("prospect");
+  const [draftSegment, setDraftSegment] = useState("");
+  const [draftNextAction, setDraftNextAction] = useState("");
+
+  const timeZone = snapshot.bootstrap.workspace.timezone;
+  const relationships = readSlice(snapshot.relationships);
+  const records = relationships.available ? relationships.data.records : [];
+
+  const index = useMemo(() => indexRelationships(records), [records]);
+
+  // Everything the collection still renders that is NOT an organization, and
+  // there are exactly two groups of it — see the block comment above the row
+  // components for why each has nowhere else to go.
   const decisions = records.filter((record) => record.kind === "decision");
-  const renewals = records.filter((record) => record.kind === "renewal");
-  const facts = records.filter((record) => record.kind === "relationship_fact");
+  const recurrences = records.filter((record) => record.kind === "recurrence");
   const reviews = records.filter(
     (record): record is Review => record.kind === "impact_review",
   );
-  const recurrences = records.filter((record) => record.kind === "recurrence");
+  const supportRecords = [...decisions, ...recurrences];
   const radar = useMemo(
     () =>
       snapshot.radar.kind === "ready"
@@ -126,37 +533,68 @@ export const StrategicDepthSurface = ({
       .filter((item) => item.state === "open")
       .map((item) => ({ review, item })),
   );
-  // Wiersze rekordów są wybieralne i zasilają inspector; nawigacja
-  // strzałkami działa na tym samym prymitywie co listy Pracy i kokpitu.
-  const orderedOpportunities = organizations.flatMap((organization) =>
-    opportunities.filter((item) => item.organizationId === organization.id),
-  );
-  const timelyRecords = [...renewals, ...facts];
-  const supportRecords = [...people, ...decisions, ...recurrences];
-  const selectAt =
-    (list: readonly Record[]) =>
-    (index: number): void => {
-      const record = list[index];
-      if (record) onSelectRecord(record.id);
+
+  // TODAY IS TAKEN IN THE WORKSPACE'S CALENDAR, not the machine's, and it is
+  // built INSIDE the memo rather than beside it: a fresh object every render
+  // would be a new dependency every render, and the memo would recompute
+  // without anything having changed.
+  //
+  // `readProjects` answers `undefined` when the work plane could not be read at
+  // all, and that `undefined` is carried all the way into the reading rather
+  // than flattened to a zero: a client whose deliveries failed to load must not
+  // come back saying "On track". The project COUNT survives, because the
+  // `project_serves_organization` link rides this same relationship slice.
+  const allRows = useMemo(() => {
+    const prose: CrmProse = {
+      timeZone: timeZone ?? "UTC",
+      todayKey: dateKeyInZone(new Date(), timeZone),
     };
-  const opportunityNav = useListNavigation({
-    itemCount: orderedOpportunities.length,
-    onOpen: selectAt(orderedOpportunities),
-    onSelect: selectAt(orderedOpportunities),
+    return readOrganizations(
+      index,
+      rollUpDelivery(index, readProjects(snapshot, prose)),
+      prose,
+    );
+  }, [index, snapshot, timeZone]);
+  const rows = filterOrganizations(allRows, held);
+  // FROM THE FULL SET. The chip answers "how many are like this", not "how many
+  // do you see now" — recomputed over the filtered rows it would collapse into
+  // the selection itself and stop being an answer.
+  const counts = stateCounts(allRows);
+
+  const openOrganization = (row: OrganizationRow) =>
+    onOpenOrganization(
+      row.reading.organization.id,
+      row.reading.organization.name,
+    );
+
+  const itemProps = useListNavigation({
+    itemCount: rows.length,
+    onOpen: (position) => {
+      const row = rows[position];
+      if (row !== undefined) openOrganization(row);
+    },
+    onSelect: (position) => {
+      const row = rows[position];
+      if (row !== undefined) onSelectRecord(row.reading.organization.id);
+    },
   });
-  const opportunityIndex = new Map(
-    orderedOpportunities.map((record, index) => [record.id, index]),
-  );
-  const timelyNav = useListNavigation({
-    itemCount: timelyRecords.length,
-    onOpen: selectAt(timelyRecords),
-    onSelect: selectAt(timelyRecords),
-  });
+
+  // The residual ledger owns a SECOND roving tab stop, because it is a second
+  // list: its rows are decisions and recurrences, not organizations, and one
+  // index shared across both would put the arrow keys on rows the reader is not
+  // looking at.
   const supportNav = useListNavigation({
     itemCount: supportRecords.length,
-    onOpen: selectAt(supportRecords),
-    onSelect: selectAt(supportRecords),
+    onOpen: (position) => {
+      const record = supportRecords[position];
+      if (record !== undefined) onSelectRecord(record.id);
+    },
+    onSelect: (position) => {
+      const record = supportRecords[position];
+      if (record !== undefined) onSelectRecord(record.id);
+    },
   });
+
   const act = async (id: string, action: () => Promise<unknown>) => {
     setBusyId(id);
     try {
@@ -200,408 +638,421 @@ export const StrategicDepthSurface = ({
     });
   };
 
-  return (
-    <div className="surface-scroll strategic-surface">
-      <header className="surface-header strategic-header">
-        <div>
-          <p className="eyebrow">Relationships and reviews</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Relationships
-          </h1>
-          <p>
-            Opportunities, offers, renewals and decisions keep their sources and
-            history.
-          </p>
-        </div>
-        <div className="strategic-summary" aria-label="Review status">
-          <strong>{radar.length + openConsequences.length}</strong>
-          <span>
-            {plural(
-              radar.length + openConsequences.length,
-              "item needs a decision",
-              "items need a decision",
-            )}
-          </span>
-        </div>
-      </header>
+  const submitOrganization = () => {
+    if (client === undefined || draftName.trim() === "") return;
+    void act("create:organization", async () => {
+      const result = await createOrganization(client, snapshot, {
+        name: draftName.trim(),
+        relationshipState: draftState,
+        ...(draftSegment.trim() === "" ? {} : { segment: draftSegment.trim() }),
+        ...(draftNextAction.trim() === ""
+          ? {}
+          : { nextAction: draftNextAction.trim() }),
+      });
+      if (result.kind === "success") {
+        setCreating(false);
+        setDraftName("");
+        setDraftSegment("");
+        setDraftNextAction("");
+        setDraftState("prospect");
+      } else onFailure(result);
+    });
+  };
 
-      {snapshot.relationships.kind === "ready" && (
-        <StrategicCreatePanel
-          client={client}
-          snapshot={snapshot}
-          records={records}
-          busy={busyId !== undefined}
-          onRun={async (id, operation) => {
-            let succeeded = false;
-            await act(`create:${id}`, async () => {
-              const result = await operation();
-              if (result.kind === "success") succeeded = true;
-              else onFailure(result);
-            });
-            return succeeded;
-          }}
-        />
-      )}
+  const header = (
+    <header className="surface-header">
+      <h1 id="surface-title" tabIndex={-1}>
+        Organizations
+      </h1>
+    </header>
+  );
 
-      {snapshot.relationships.kind === "unavailable" ? (
-        <section className="empty-state" role="status">
-          <span className="empty-glyph" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            >
-              <path d="M12 5v8M12 17v.5" />
-            </svg>
-          </span>
+  // The slice's OWN message, and a way to try again. Never an empty list: an
+  // unreadable workspace and a workspace with no clients in it are different
+  // answers and this screen has to say which one it is holding.
+  if (!relationships.available)
+    return (
+      <div
+        className={`surface-scroll ${organizationStyles.organizations}`}
+        data-organizations-surface
+      >
+        {header}
+        <section className={organizationStyles.emptyState} role="status">
           <div>
-            <h2>Relationships are unavailable</h2>
-            <p>{snapshot.relationships.message}</p>
+            <h2>Organizations are unavailable</h2>
+            <p data-organizations-unavailable>{relationships.message}</p>
           </div>
-          <button className="secondary-button" onClick={() => void onReload()}>
+          <button
+            className="secondary-button"
+            onClick={() => void onReload()}
+            type="button"
+          >
             Try again
           </button>
         </section>
-      ) : records.length === 0 ? (
-        <section className="strategic-empty" role="status">
-          <span aria-hidden="true">◇</span>
+      </div>
+    );
+
+  return (
+    <div
+      className={`surface-scroll ${organizationStyles.organizations}`}
+      data-organizations-surface
+    >
+      {header}
+      <div className={organizationStyles.crumbbar}>
+        <button
+          aria-expanded={creating}
+          className="secondary-button"
+          onClick={() => setCreating((open) => !open)}
+          type="button"
+        >
+          <Icon name="capture" />
+          New organization
+        </button>
+      </div>
+      {creating && (
+        <form
+          aria-label="New organization"
+          className={organizationStyles.create}
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitOrganization();
+          }}
+        >
+          <label className={organizationStyles.field}>
+            Name
+            <input
+              onChange={(event) => setDraftName(event.target.value)}
+              required
+              value={draftName}
+            />
+          </label>
+          <label className={organizationStyles.field}>
+            Relationship
+            <select
+              onChange={(event) =>
+                setDraftState(
+                  event.target.value as "prospect" | "active" | "inactive",
+                )
+              }
+              value={draftState}
+            >
+              {RELATIONSHIP_STATES.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={organizationStyles.field}>
+            Segment
+            <input
+              onChange={(event) => setDraftSegment(event.target.value)}
+              value={draftSegment}
+            />
+          </label>
+          <label className={organizationStyles.field}>
+            Next step
+            <input
+              onChange={(event) => setDraftNextAction(event.target.value)}
+              value={draftNextAction}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={busyId !== undefined || draftName.trim() === ""}
+            type="submit"
+          >
+            {busyId === "create:organization" ? "Adding…" : "Add organization"}
+          </button>
+        </form>
+      )}
+      <div className={organizationStyles.viewbar}>
+        <div
+          aria-label="Organizations layout"
+          className={organizationStyles.switcher}
+          role="tablist"
+        >
+          {LAYOUTS.map(([id, label]) => (
+            <button
+              aria-selected={layout === id}
+              className={organizationStyles.switch}
+              key={id}
+              onClick={() => setLayout(id)}
+              role="tab"
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* THE FILTER, AND BOTH WAYS OUT OF IT. The chips toggle, so unclicking
+            the last one clears it; `Show all` clears it in one press and appears
+            only while there is something to clear. A control a reader cannot get
+            out of is worse than no control. */}
+        <div
+          aria-label="Filter by relationship"
+          className={organizationStyles.filter}
+          role="group"
+        >
+          <span className={organizationStyles.filterKey}>Relationship</span>
+          {RELATIONSHIP_STATES.map(([id, label]) => (
+            <button
+              aria-pressed={held.includes(id)}
+              className={organizationStyles.chip}
+              data-org-filter={id}
+              key={id}
+              onClick={() =>
+                setHeld((current) =>
+                  current.includes(id)
+                    ? current.filter((entry) => entry !== id)
+                    : [...current, id],
+                )
+              }
+              type="button"
+            >
+              {label}
+              <span className={organizationStyles.chipCount}>
+                {counts.get(id) ?? 0}
+              </span>
+            </button>
+          ))}
+          {held.length > 0 && (
+            <button
+              className={organizationStyles.showAll}
+              data-org-filter="all"
+              onClick={() => setHeld([])}
+              type="button"
+            >
+              Show all
+            </button>
+          )}
+        </div>
+        <span
+          aria-live="polite"
+          className={organizationStyles.count}
+          data-org-count
+          role="status"
+        >
+          {countSentence(rows.length, allRows.length)}
+        </span>
+      </div>
+      {allRows.length === 0 ? (
+        <section className={organizationStyles.emptyState} role="status">
           <div>
-            <h2>Build the first relationship</h2>
-            <p>
-              A relationship links an organization to a confirmed need, an
-              offer, a project, a renewal and a decision, and every step keeps
-              its source. Open “Add record” and start with an organization; the
-              rest appear once there is something to attach them to.
-            </p>
+            <h2>No organizations yet</h2>
+            <p>An organization is a client you deal with, not a folder.</p>
           </div>
         </section>
-      ) : (
-        <div className="strategic-layout">
-          <div className="strategic-work-plane">
-            <section
-              className="strategic-thread"
-              aria-labelledby="thread-title"
-            >
-              <header className="section-heading">
-                <div>
-                  <h2 id="thread-title">From organization to project</h2>
-                </div>
-                <span>{countLabel(opportunities.length, "active thread")}</span>
-              </header>
-              {organizations.map((organization) => {
-                const related = opportunities.filter(
-                  (item) => item.organizationId === organization.id,
-                );
-                return (
-                  <article className="relationship-row" key={organization.id}>
-                    <div className="relationship-anchor">
-                      <span aria-hidden="true">O</span>
-                      <button
-                        type="button"
-                        className="relationship-select"
-                        aria-pressed={selectedRecordId === organization.id}
-                        onClick={() => onSelectRecord(organization.id)}
-                        onDoubleClick={() =>
-                          onOpenOrganization(organization.id, organization.name)
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          onOpenOrganization(
-                            organization.id,
-                            organization.name,
-                          );
-                        }}
-                      >
-                        <strong>{organization.name}</strong>
-                        <small>
-                          {organization.nextAction ?? "No next move"}
-                        </small>
-                      </button>
-                      <StateMark state={organization.relationshipState} />
-                    </div>
-                    <div className="relationship-branches">
-                      {related.length === 0 ? (
-                        <p>
-                          No opportunity is linked to this relationship yet.
-                        </p>
-                      ) : (
-                        related.map((opportunity) => (
-                          <div
-                            key={opportunity.id}
-                            className={`opportunity-line${
-                              selectedRecordId === opportunity.id
-                                ? " selected"
-                                : ""
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              className="opportunity-select"
-                              aria-pressed={selectedRecordId === opportunity.id}
-                              {...opportunityNav(
-                                opportunityIndex.get(opportunity.id) ?? 0,
-                              )}
-                              onClick={() => onSelectRecord(opportunity.id)}
-                            >
-                              <strong>{opportunity.title}</strong>
-                              <span>{opportunity.need}</span>
-                              <small>{opportunity.nextAction}</small>
-                            </button>
-                            <div className="opportunity-outcomes">
-                              <StateMark state={opportunity.state} />
-                              <button
-                                type="button"
-                                className="outcome-link"
-                                aria-label={`Show offers for ${opportunity.title} in the context panel`}
-                                onClick={() => onSelectRecord(opportunity.id)}
-                              >
-                                {countLabel(
-                                  opportunity.offerIds.length,
-                                  "offer",
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                className="outcome-link"
-                                aria-label={`Show projects for ${opportunity.title} in the context panel`}
-                                onClick={() => onSelectRecord(opportunity.id)}
-                              >
-                                {countLabel(
-                                  opportunity.projectIds.length,
-                                  "project",
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-
-            <section
-              className="strategic-ledger"
-              aria-labelledby="ledger-title"
-            >
-              <header className="section-heading">
-                <div>
-                  <h2 id="ledger-title">Renewals and fact freshness</h2>
-                </div>
-              </header>
-              {timelyRecords.map((record, index) => (
-                <div
-                  className={`ledger-row${
-                    selectedRecordId === record.id ? " selected" : ""
-                  }`}
-                  key={record.id}
-                >
-                  <button
-                    type="button"
-                    className="ledger-select"
-                    aria-pressed={selectedRecordId === record.id}
-                    {...timelyNav(index)}
-                    onClick={() => onSelectRecord(record.id)}
-                  >
-                    <span className="record-kind">
-                      {record.kind === "renewal"
-                        ? "Renewal"
-                        : "Relationship fact"}
-                    </span>
-                    <span className="ledger-copy">
-                      <strong>
-                        {record.kind === "renewal"
-                          ? record.title
-                          : record.factType}
-                      </strong>
-                      <small>
-                        {record.kind === "renewal"
-                          ? `${record.scope} · ${formatDate(record.expiresAt)}`
-                          : `${record.value} · verified ${formatDate(record.verifiedAt)}`}
-                      </small>
-                    </span>
-                  </button>
-                  <StateMark state={record.state} />
-                  {record.kind === "renewal" && record.state === "watching" && (
-                    <div className="ledger-actions">
-                      <button
-                        type="button"
-                        disabled={!client || busyId === record.id}
-                        onClick={() => {
-                          if (!client) return;
-                          void act(record.id, async () => {
-                            const result = await resolveRenewal(
-                              client,
-                              snapshot,
-                              record,
-                              "renewed",
-                            );
-                            if (result.kind !== "success") onFailure(result);
-                          });
-                        }}
-                      >
-                        Renewed
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {timelyRecords.length === 0 && (
-                <p className="strategic-quiet">
-                  Nothing time-bound to show yet.
-                </p>
-              )}
-            </section>
-
-            <section
-              className="strategic-ledger"
-              aria-labelledby="supporting-title"
-            >
-              <header className="section-heading">
-                <div>
-                  <h2 id="supporting-title">Supporting records</h2>
-                </div>
-              </header>
-              {supportRecords.map((record, index) => (
-                <div
-                  className={`ledger-row${
-                    selectedRecordId === record.id ? " selected" : ""
-                  }`}
-                  key={record.id}
-                >
-                  <button
-                    type="button"
-                    className="ledger-select"
-                    aria-pressed={selectedRecordId === record.id}
-                    {...supportNav(index)}
-                    onClick={() => onSelectRecord(record.id)}
-                  >
-                    <span className="record-kind">
-                      {recordKindLabels[record.kind] ?? record.kind}
-                    </span>
-                    <span className="ledger-copy">
-                      <strong>
-                        {record.kind === "person" ? record.name : record.title}
-                      </strong>
-                      <small>
-                        {record.kind === "person"
-                          ? [record.role, record.email]
-                              .filter(Boolean)
-                              .join(" · ") || "No further details"
-                          : record.kind === "decision"
-                            ? record.rationale
-                            : `${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
-                      </small>
-                    </span>
-                  </button>
-                  {record.kind === "recurrence" ? (
-                    <button
-                      type="button"
-                      className="ledger-action"
-                      disabled={!client || busyId === record.id}
-                      onClick={() => {
-                        if (!client) return;
-                        void act(record.id, async () => {
-                          const result = await generateRecurrenceOccurrence(
-                            client,
-                            snapshot,
-                            record,
-                          );
-                          if (result.kind !== "success") onFailure(result);
-                        });
-                      }}
-                    >
-                      Create occurrence
-                    </button>
-                  ) : (
-                    <StateMark
-                      state={
-                        record.kind === "person" ? "current" : record.state
-                      }
-                    />
-                  )}
-                </div>
-              ))}
-              {supportRecords.length === 0 && (
-                <p className="strategic-quiet">
-                  No supporting records in this Space.
-                </p>
-              )}
-            </section>
+      ) : rows.length === 0 ? (
+        <section className={organizationStyles.emptyState} role="status">
+          <div>
+            <h2>Nothing matches this filter</h2>
+            {/* The sentence names which states are being held, because "nothing
+                here" is not something a reader can act on. */}
+            <p>
+              {`The filter is holding ${heldStatesSentence(held)}, and no organization is in that state.`}
+            </p>
           </div>
-
-          <aside className="strategic-review" aria-labelledby="review-title">
-            <header>
-              <h2 id="review-title">To decide</h2>
-              <span>The list does not grow while you review it.</span>
-            </header>
-            {radar.map((candidate) => {
-              const radarBusy =
-                busyId === `${candidate.id}:saved` ||
-                busyId === `${candidate.id}:dismissed`;
-              return (
-                <article key={candidate.id} className="review-item">
-                  <span className="review-type">Knowledge radar</span>
-                  <strong>{candidate.title}</strong>
-                  <p>{candidate.relevance}</p>
-                  <div className="review-actions">
-                    <button
-                      className="secondary-button compact"
-                      disabled={radarBusy}
-                      onClick={() => resolveRadar(candidate, "saved")}
-                    >
-                      {busyId === `${candidate.id}:saved` ? "Saving…" : "Keep"}
-                    </button>
-                    <button
-                      className="secondary-button compact"
-                      disabled={radarBusy}
-                      onClick={() => resolveRadar(candidate, "dismissed")}
-                    >
-                      {busyId === `${candidate.id}:dismissed`
-                        ? "Saving…"
-                        : "Dismiss"}
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-            {openConsequences.map(({ review, item }) => (
-              <article
-                key={`${review.id}:${item.recordId}`}
-                className="review-item"
-              >
-                <span className="review-type">Decision impact</span>
-                <strong>
-                  {recordKindLabels[item.recordKind] ?? item.recordKind}
-                </strong>
-                <p>{review.reason}</p>
-                <button
-                  className="secondary-button compact"
-                  disabled={busyId === `${review.id}:${item.recordId}`}
-                  onClick={() => resolveImpact(review, item.recordId)}
-                >
-                  Mark impact as reviewed
-                </button>
-              </article>
-            ))}
-            {radar.length + openConsequences.length === 0 && (
-              <div className="review-complete" role="status">
-                <span aria-hidden="true">✓</span>
-                <strong>Review complete</strong>
-                <p>New items appear only with a new source or context.</p>
-              </div>
-            )}
-            <footer>
-              <span>{countLabel(offers.length, "offer")}</span>
-              <span>{countLabel(recurrences.length, "recurrence")}</span>
-            </footer>
-          </aside>
+          <button
+            className="secondary-button"
+            data-org-filter="all"
+            onClick={() => setHeld([])}
+            type="button"
+          >
+            Show all organizations
+          </button>
+        </section>
+      ) : layout === "table" ? (
+        <OrganizationsTable
+          itemProps={itemProps}
+          onOpen={openOrganization}
+          onSelect={onSelectRecord}
+          rows={rows}
+          selectedRecordId={selectedRecordId}
+        />
+      ) : (
+        <div
+          aria-label="Organizations"
+          className={organizationStyles.list}
+          role="listbox"
+        >
+          {rows.map((row, position) => (
+            <OrganizationRowView
+              index={position}
+              itemProps={itemProps}
+              key={row.reading.organization.id}
+              onOpen={openOrganization}
+              onSelect={onSelectRecord}
+              row={row}
+              selected={row.reading.organization.id === selectedRecordId}
+            />
+          ))}
         </div>
       )}
+
+      {/* ── What the retirement could not rehome ──────────────────────────
+          Everything below this line is the residue named in the block comment
+          above: the create panel (the only authoring path for the kinds with no
+          screen), the records with no edge to a client, and the review rail
+          whose items do not ride the relationship slice at all. */}
+      <StrategicCreatePanel
+        client={client}
+        snapshot={snapshot}
+        records={records}
+        busy={busyId !== undefined}
+        onRun={async (id, operation) => {
+          let succeeded = false;
+          await act(`create:${id}`, async () => {
+            const result = await operation();
+            if (result.kind === "success") succeeded = true;
+            else onFailure(result);
+          });
+          return succeeded;
+        }}
+      />
+
+      <div className="strategic-layout">
+        <div className="strategic-work-plane">
+          <section
+            className="strategic-ledger"
+            aria-labelledby="supporting-title"
+          >
+            <header className="section-heading">
+              <div>
+                <h2 id="supporting-title">Supporting records</h2>
+              </div>
+            </header>
+            {supportRecords.map((record, position) => (
+              <div
+                className={`ledger-row${
+                  selectedRecordId === record.id ? " selected" : ""
+                }`}
+                key={record.id}
+              >
+                <button
+                  type="button"
+                  className="ledger-select"
+                  aria-pressed={selectedRecordId === record.id}
+                  {...supportNav(position)}
+                  onClick={() => onSelectRecord(record.id)}
+                >
+                  <span className="record-kind">
+                    {recordKindLabels[record.kind] ?? record.kind}
+                  </span>
+                  <span className="ledger-copy">
+                    <strong>{record.title}</strong>
+                    <small>
+                      {record.kind === "decision"
+                        ? record.rationale
+                        : `${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
+                    </small>
+                  </span>
+                </button>
+                {record.kind === "recurrence" ? (
+                  <button
+                    type="button"
+                    className="ledger-action"
+                    disabled={!client || busyId === record.id}
+                    onClick={() => {
+                      if (!client) return;
+                      void act(record.id, async () => {
+                        const result = await generateRecurrenceOccurrence(
+                          client,
+                          snapshot,
+                          record,
+                        );
+                        if (result.kind !== "success") onFailure(result);
+                      });
+                    }}
+                  >
+                    Create occurrence
+                  </button>
+                ) : (
+                  <StateMark state={record.state} />
+                )}
+              </div>
+            ))}
+            {supportRecords.length === 0 && (
+              <p className="strategic-quiet">
+                No supporting records in this Space.
+              </p>
+            )}
+          </section>
+        </div>
+
+        <aside className="strategic-review" aria-labelledby="review-title">
+          <header>
+            <h2 id="review-title">To decide</h2>
+            <span>The list does not grow while you review it.</span>
+          </header>
+          {radar.map((candidate) => {
+            const radarBusy =
+              busyId === `${candidate.id}:saved` ||
+              busyId === `${candidate.id}:dismissed`;
+            return (
+              <article key={candidate.id} className="review-item">
+                <span className="review-type">Knowledge radar</span>
+                <strong>{candidate.title}</strong>
+                <p>{candidate.relevance}</p>
+                <div className="review-actions">
+                  <button
+                    className="secondary-button compact"
+                    disabled={radarBusy}
+                    onClick={() => resolveRadar(candidate, "saved")}
+                  >
+                    {busyId === `${candidate.id}:saved` ? "Saving…" : "Keep"}
+                  </button>
+                  <button
+                    className="secondary-button compact"
+                    disabled={radarBusy}
+                    onClick={() => resolveRadar(candidate, "dismissed")}
+                  >
+                    {busyId === `${candidate.id}:dismissed`
+                      ? "Saving…"
+                      : "Dismiss"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+          {openConsequences.map(({ review, item }) => (
+            <article
+              key={`${review.id}:${item.recordId}`}
+              className="review-item"
+            >
+              <span className="review-type">Decision impact</span>
+              <strong>
+                {recordKindLabels[item.recordKind] ?? item.recordKind}
+              </strong>
+              <p>{review.reason}</p>
+              <button
+                className="secondary-button compact"
+                disabled={busyId === `${review.id}:${item.recordId}`}
+                onClick={() => resolveImpact(review, item.recordId)}
+              >
+                Mark impact as reviewed
+              </button>
+            </article>
+          ))}
+          {radar.length + openConsequences.length === 0 && (
+            <div className="review-complete" role="status">
+              <span aria-hidden="true">✓</span>
+              <strong>Review complete</strong>
+              <p>New items appear only with a new source or context.</p>
+            </div>
+          )}
+          <footer>
+            <span>
+              {plural(
+                radar.length + openConsequences.length,
+                "item needs a decision",
+                "items need a decision",
+              )}
+            </span>
+          </footer>
+        </aside>
+      </div>
     </div>
   );
 };
@@ -1024,6 +1475,18 @@ export const OrganizationContextSurface = ({
           )}
         </section>
 
+        {/* WHAT WE KNOW — the section the retired collection handed over.
+            "Renewals and fact freshness" was where a fact's verification date
+            and its staleness were readable; the collection no longer draws it,
+            so the freshness comes here with the facts rather than disappearing.
+
+            IT HOLDS FACTS AND NOTHING ELSE, and that is a finding rather than a
+            choice. The plan put decisions here too, but a `decision` carries no
+            edge to an organisation: `linkedRecordIds` is written `[]` by the
+            only authoring path there is, `impact_review` links two decisions to
+            each other, and `recurrence`'s `contextRecordId` is optional and
+            unset. Three sections that could never fill would be worse than the
+            gap being named. */}
         <section
           className="organization-context__section"
           aria-labelledby="org-facts-title"
@@ -1031,9 +1494,14 @@ export const OrganizationContextSurface = ({
           <header>
             <div>
               <p className="section-label">Knowledge</p>
-              <h2 id="org-facts-title">Relationship facts</h2>
+              <h2 id="org-facts-title">What we know</h2>
             </div>
-            <span>{overview.facts.length}</span>
+            <span data-organization-fact-freshness>
+              {overview.facts.filter((fact) => fact.state !== "current")
+                .length === 0
+                ? `${overview.facts.length} verified`
+                : `${overview.facts.filter((fact) => fact.state !== "current").length} of ${overview.facts.length} to re-verify`}
+            </span>
           </header>
           {overview.facts.length === 0 ? (
             <EmptyOrganizationSection>
@@ -1042,12 +1510,17 @@ export const OrganizationContextSurface = ({
           ) : (
             <dl className="organization-context__facts">
               {overview.facts.map((fact) => (
-                <div key={fact.id}>
+                <div data-organization-fact={fact.id} key={fact.id}>
                   <dt>{fact.factType}</dt>
                   <dd>
                     {fact.value}
+                    {/* The date it was last checked, beside the word for its
+                        state. "Stale" on its own does not say how stale, and a
+                        fact nobody has looked at since spring is a different
+                        thing from one that went stale yesterday. */}
                     <small>
-                      {strategicStateLabels[fact.state] ?? fact.state}
+                      {strategicStateLabels[fact.state] ?? fact.state} ·
+                      verified {formatDate(fact.verifiedAt)}
                     </small>
                   </dd>
                 </div>
