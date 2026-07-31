@@ -12,7 +12,8 @@ export type HumanRecordInspectorSurface =
   | "library"
   | "meetings"
   | "organizations"
-  | "people";
+  | "people"
+  | "pipeline";
 
 export type HumanRecordSearchSource =
   "task" | "project" | "capture" | "source" | "document" | "strategic";
@@ -116,14 +117,20 @@ export const humanRecordKindRegistry = [
     label: "Opportunity",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "organizations",
+    // Deal ma teraz własny ekran — repoint jedzie PARĄ z gałęzią routingu
+    // wyszukiwania w `RealApp.tsx`. Sam repoint kompiluje się, przechodzi
+    // wszystkie testy i po cichu zamienia „otwórz tę szansę" na „otwórz Lejek".
+    inspectorSurface: "pipeline",
   },
   {
     id: "offer",
     label: "Offer",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "organizations",
+    // Oferta idzie tam, gdzie jest widoczna: arkusz oferty stoi na karcie
+    // szansy, a nie w kolekcji. Ten sam warunek co wyżej — obie połówki albo
+    // żadna.
+    inspectorSurface: "pipeline",
   },
   {
     id: "renewal",
