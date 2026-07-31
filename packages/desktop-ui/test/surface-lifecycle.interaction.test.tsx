@@ -63,6 +63,7 @@ vi.mock("../src/AccessSurface.js", () => lazyImports.hold("access"));
 vi.mock("../src/StrategicDepthSurface.js", () =>
   lazyImports.hold("organizations"),
 );
+vi.mock("../src/people/PeopleSurface.js", () => lazyImports.hold("people"));
 
 // Wyprowadzone z rejestru, nie z listy pisanej ręcznie: ręczna lista raz już
 // dała komplet zieleni przy czterech nieruszonych ekranach.

@@ -42,6 +42,7 @@ import {
   MeetingsSurface,
   OnboardingFlow,
   OrganizationContextLoader,
+  PeopleSurface,
   preloadSurface,
   SettingsSurface,
   StrategicDepthSurface,
@@ -761,7 +762,12 @@ export const RealApp = ({
       setDocumentInspectorOpen(false);
       setDocumentInspectorKind("document");
     }
-    if (surface !== "organizations") setSelectedStrategicId(undefined);
+    // Two destinations draw strategic records now, so leaving one for the
+    // other must not drop the selection. Without `people` here, the search
+    // routing above sets a person and this effect wipes it on arrival — the
+    // record is lost one layer further up than trap 24, and just as quietly.
+    if (surface !== "organizations" && surface !== "people")
+      setSelectedStrategicId(undefined);
     if (surface !== "history") setSelectedCaptureId(undefined);
     if (surface !== "inbox") setSelectedAttentionId(undefined);
   }, [surface]);
@@ -2162,6 +2168,23 @@ export const RealApp = ({
               }}
             />
           )}
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    people: () => (
+      <LazySurfaceBoundary label="People">
+        <Suspense fallback={<SurfaceLoadingState label="People" />}>
+          <PeopleSurface
+            client={client}
+            snapshot={state.snapshot}
+            selectedRecordId={selectedStrategicId}
+            onSelectRecord={selectStrategicInInspector}
+            onOpenOrganization={(id, name) =>
+              openContext(organizationContext(id, name))
+            }
+            onReload={reload}
+            onFailure={showFailure}
+          />
         </Suspense>
       </LazySurfaceBoundary>
     ),
@@ -4858,6 +4881,14 @@ export const RealApp = ({
                 );
                 selectStrategicInInspector(recordId);
               }
+            } else if (nextSurface === "people") {
+              // Both halves of the repoint, in one place. Opening the
+              // destination and stopping would turn "open this person" into
+              // "open the People screen" — the generic `else` below does
+              // exactly that, silently, and it is why `record-kind-registry`
+              // and this branch change together or not at all.
+              openContext(destinationContext("people", "People"));
+              selectStrategicInInspector(recordId);
             } else if (nextSurface === "meetings") {
               setSelectedMeetingId(recordId);
               openContext(destinationContext("meetings", "Meetings"));

@@ -8,7 +8,7 @@
 // „Relationships" opisywało model danych, a nie robotę, więc jest teraz „CRM",
 // a „Work" nazywa się „Work Management", bo leżą tam też zadania bez projektu.
 //
-// CZEGO TU JESZCZE NIE MA, świadomie: `pipeline`, `people` i `renewals`.
+// CZEGO TU JESZCZE NIE MA, świadomie: `pipeline` i `renewals`.
 // Każde z nich wchodzi razem ze swoim ekranem, w swojej fali — cel w nawigacji,
 // który prowadzi donikąd, jest gablotą, a nie zapowiedzią.
 //
@@ -79,6 +79,16 @@ export const desktopSurfaceRegistry = [
     icon: "relationships",
     group: "CRM",
     shortcut: 7,
+    loading: "lazy",
+  },
+  {
+    // Ludzie z grafu, nie użytkownicy aplikacji. Cyfra 8 była zarezerwowana od
+    // przebudowy nawigacji i nic się przez nią nie przenumerowuje.
+    id: "people",
+    label: "People",
+    icon: "people",
+    group: "CRM",
+    shortcut: 8,
     loading: "lazy",
   },
   {
