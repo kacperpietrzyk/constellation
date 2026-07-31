@@ -48,6 +48,8 @@ const capabilityScope = [
   "project.list",
   "relationship.organizationCreate",
   "relationship.personCreate",
+  "relationship.renewalCreate",
+  "opportunity.create",
   "task.list",
   "task.assign",
   "task.unassign",
@@ -542,7 +544,7 @@ describe("collaboration-safe policy kernel", () => {
   // Space scoping, the same version semantics and the same mention fan-out.
   // Until it was one, both the read and the write refused it at the contract
   // boundary — a malformed request rather than a rule anyone chose.
-  it("carries comments on an Organization on the terms work records have", () => {
+  it("carries comments on an Organization and on an Opportunity on the terms work records have", () => {
     const harness = createReferenceHarness();
     const ownerV1 = context("owner", 1, [ids.shared, ids.private]);
     harness.authorization.register(ownerV1);
@@ -900,6 +902,290 @@ describe("collaboration-safe policy kernel", () => {
     )
       assert.fail("Expected a refusal for an unreachable Organization.");
     assert.equal(unreachable.result.diagnosticCode, "authorization.denied");
+
+    // A deal is the fourth record kind with a `Comments` tab, and everything
+    // below is the Organization block above with `opportunity` in place of
+    // `organization`. Both ids are StrategicRecordIds, so the two arms are
+    // told apart by nothing but the kind the caller states and the kind the
+    // kernel finds.
+    const opportunityId = requestId();
+    const privateOpportunityId = requestId();
+    const renewalId = requestId();
+    for (const [key, id, spaceId, title] of [
+      ["shared-deal", opportunityId, ids.shared, "Lane plan rollout"],
+      ["private-deal", privateOpportunityId, ids.private, "Kestrel refinance"],
+    ] as const) {
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(ownerV2, {
+            ...metadata(key),
+            commandName: "opportunity.create",
+            payload: {
+              opportunityId: id,
+              spaceId,
+              title,
+              organizationId:
+                spaceId === ids.shared
+                  ? sharedOrganizationId
+                  : privateOrganizationId,
+              personIds: [],
+              need: "Decide whether the lane plan is bought this year.",
+              qualification: "Sponsor named, budget unconfirmed.",
+              stage: "qualified",
+              nextAction: "Send the scoped offer.",
+              evidenceSourceIds: [],
+            },
+          }),
+        ).outcome,
+        "success",
+      );
+    }
+    // A Renewal exists here to be REFUSED. It is the strategic kind nearest to
+    // a deal — same Space, same Organization, same id type — and it is the one
+    // a resolver that checked "is this a StrategicRecord" instead of "is this
+    // an Opportunity" would happily accept.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(ownerV2, {
+          ...metadata("shared-renewal"),
+          commandName: "relationship.renewalCreate",
+          payload: {
+            renewalId,
+            spaceId: ids.shared,
+            organizationId: sharedOrganizationId,
+            title: "Managed support renewal",
+            scope: "Managed support entitlement",
+            expiresAt: "2026-11-30T12:00:00.000Z",
+            leadTimeDays: 60,
+            ownerPrincipalId: ids.owner,
+            evidenceSourceIds: [],
+            cycleKey: "falcon-support:2026-11",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const opportunityCommentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("opportunity-comment", { [opportunityId]: 1 }),
+          commandName: "comment.add",
+          payload: {
+            commentId: opportunityCommentId,
+            target: { kind: "opportunity", opportunityId },
+            body: "Owner, they will not sign before the lane audit closes.",
+            mentionPrincipalIds: [ids.owner],
+          },
+        }),
+      ).diagnosticCode,
+      "comment.added",
+    );
+
+    const opportunityThreads = listComments(memberV2, {
+      kind: "opportunity",
+      opportunityId,
+    });
+    // `query_result` at all is half the assertion here for the same reason it
+    // is above: a target the contract does not carry never reaches the kernel
+    // and comes back as a contract rejection — a broken request, not a verdict.
+    if (
+      opportunityThreads.kind !== "query_result" ||
+      opportunityThreads.result.outcome !== "success" ||
+      opportunityThreads.result.projection.kind !== "comment.list"
+    )
+      assert.fail("Expected the Opportunity's comment thread.");
+    assert.deepEqual(opportunityThreads.result.projection.target, {
+      kind: "opportunity",
+      opportunityId,
+    });
+    assert.deepEqual(
+      opportunityThreads.result.projection.threads.map((thread) => thread.body),
+      ["Owner, they will not sign before the lane audit closes."],
+    );
+    // Two strategic records in one Space, and the Organization's thread did not
+    // grow: the id filter alone cannot tell those two apart, so this is what
+    // says the kind check ran before it.
+    const organizationThreadsAfterDeal = listComments(memberV2, {
+      kind: "organization",
+      organizationId: sharedOrganizationId,
+    });
+    if (
+      organizationThreadsAfterDeal.kind !== "query_result" ||
+      organizationThreadsAfterDeal.result.outcome !== "success" ||
+      organizationThreadsAfterDeal.result.projection.kind !== "comment.list"
+    )
+      assert.fail("Expected the Organization's comment thread.");
+    assert.deepEqual(
+      organizationThreadsAfterDeal.result.projection.threads.map(
+        (thread) => thread.id,
+      ),
+      [organizationCommentId],
+      "the deal's thread must not bleed into the Organization's",
+    );
+
+    const dealInbox = harness.kernel.query(ownerV2, {
+      contractVersion: 1,
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      queryName: "attention.inbox",
+      parameters: {},
+    });
+    if (
+      dealInbox.kind !== "query_result" ||
+      dealInbox.result.outcome !== "success" ||
+      dealInbox.result.projection.kind !== "attention.inbox"
+    )
+      assert.fail("Expected the owner's attention inbox.");
+    const dealMention = dealInbox.result.projection.items.find(
+      (item) => item.destination.kind === "opportunity",
+    );
+    assert.deepEqual(dealMention?.destination, {
+      kind: "opportunity",
+      opportunityId,
+    });
+    assert.equal(dealMention?.reason, "comment_mention");
+    // The headline branch nothing type-checks: an Opportunity carries `title`
+    // and no `name`, so it falls through the Organization's branch. A deal
+    // reading "Falcon Freight" would compile and ship.
+    assert.equal(
+      dealMention?.title,
+      "Lane plan rollout",
+      "a deal is titled, not named",
+    );
+
+    // A StrategicRecordId names a record of SOME strategic kind, and the arm
+    // the caller states is a claim about which one. Three kinds that are not an
+    // Opportunity, refused on the way in.
+    for (const [key, wrongId, what] of [
+      ["person-is-not-an-opportunity", personId, "a Person"],
+      ["renewal-is-not-an-opportunity", renewalId, "a Renewal"],
+      [
+        "organization-is-not-an-opportunity",
+        sharedOrganizationId,
+        "an Organization",
+      ],
+    ] as const) {
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(memberV2, {
+            ...metadata(key),
+            commandName: "comment.add",
+            payload: {
+              commentId: requestId(),
+              target: { kind: "opportunity", opportunityId: wrongId },
+              body: `Must not attach to ${what}`,
+              mentionPrincipalIds: [],
+            },
+          }),
+        ).diagnosticCode,
+        "command.precondition_failed",
+        `${what} accepted through the opportunity arm`,
+      );
+      const misread = listComments(memberV2, {
+        kind: "opportunity",
+        opportunityId: wrongId,
+      });
+      if (
+        misread.kind !== "query_result" ||
+        misread.result.outcome !== "rejected"
+      )
+        assert.fail(`${what} must not resolve as an Opportunity.`);
+      assert.equal(misread.result.diagnosticCode, "authorization.denied");
+    }
+    // And the reverse, so the two strategic arms cannot quietly collapse into
+    // one: a deal read through the organization arm resolves to nothing.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("opportunity-is-not-an-organization"),
+          commandName: "comment.add",
+          payload: {
+            commentId: requestId(),
+            target: { kind: "organization", organizationId: opportunityId },
+            body: "Must not attach to a deal through the organization arm",
+            mentionPrincipalIds: [],
+          },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+
+    // The member's spaceScope names the private Space; no grant backs it. Same
+    // answer as the private Organization above, and for the same reason.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("unreachable-opportunity-comment", {
+            [privateOpportunityId]: 1,
+          }),
+          commandName: "comment.add",
+          payload: {
+            commentId: requestId(),
+            target: {
+              kind: "opportunity",
+              opportunityId: privateOpportunityId,
+            },
+            body: "Must not reach the private Space",
+            mentionPrincipalIds: [],
+          },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+    const unreachableDeal = listComments(memberV2, {
+      kind: "opportunity",
+      opportunityId: privateOpportunityId,
+    });
+    if (
+      unreachableDeal.kind !== "query_result" ||
+      unreachableDeal.result.outcome !== "rejected"
+    )
+      assert.fail("Expected a refusal for an unreachable Opportunity.");
+    assert.equal(unreachableDeal.result.diagnosticCode, "authorization.denied");
+
+    // The thread reads back edited and resolved on the deal exactly as it does
+    // on the Organization: the four comment commands took a fourth target, not
+    // a fourth command, so this is what says the widened payload reaches them.
+    for (const [key, commandName, expected, diagnosticCode] of [
+      ["deal-comment-resolve", "comment.resolve", 1, "comment.resolved"],
+      ["deal-comment-reopen", "comment.reopen", 2, "comment.reopened"],
+    ] as const) {
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(memberV2, {
+            ...metadata(key, { [opportunityCommentId]: expected }),
+            commandName,
+            payload: { commentId: opportunityCommentId },
+          }),
+        ).diagnosticCode,
+        diagnosticCode,
+      );
+    }
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("deal-comment-edit", { [opportunityCommentId]: 3 }),
+          commandName: "comment.edit",
+          payload: {
+            commentId: opportunityCommentId,
+            body: "Owner, the lane audit closes on the 14th.",
+            mentionPrincipalIds: [ids.owner],
+          },
+        }),
+      ).diagnosticCode,
+      "comment.edited",
+    );
+    const storedDealComment = harness.store
+      .snapshot()
+      .comments?.find((comment) => comment.id === opportunityCommentId);
+    assert.equal(storedDealComment?.version, 4);
+    assert.deepEqual(storedDealComment?.target, {
+      kind: "opportunity",
+      opportunityId,
+    });
 
     // ADR-067 — the ORDER of the two checks is the assertion. A caller whose
     // grant never carried `comment.add` is told that even when the target it

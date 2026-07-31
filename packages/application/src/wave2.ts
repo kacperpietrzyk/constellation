@@ -949,7 +949,9 @@ export const isWave2CommandAuthorized = (
           ? view.getTask(target.taskId)
           : target.kind === "project"
             ? view.getProject(target.projectId)
-            : organizationRecord(view, target.organizationId);
+            : target.kind === "organization"
+              ? organizationRecord(view, target.organizationId)
+              : opportunityRecord(view, target.opportunityId);
       const spaceId =
         record?.workspaceId === command.workspaceId
           ? record.spaceId
@@ -1990,6 +1992,7 @@ const managedAttachments = (
 };
 
 type OrganizationRecord = Extract<StrategicRecord, { kind: "organization" }>;
+type OpportunityRecord = Extract<StrategicRecord, { kind: "opportunity" }>;
 
 // A StrategicRecordId names a record of SOME strategic kind, so a target that
 // says "organization" has to be checked against what the id actually resolves
@@ -2004,20 +2007,41 @@ const organizationRecord = (
   return record?.kind === "organization" ? record : undefined;
 };
 
+// The deal's own copy of the sentence above, and for the same reason: an
+// `opportunityId` is a StrategicRecordId, so "opportunity" is a claim the
+// caller makes and the kernel checks. Nothing here looks at `state` — a lost
+// deal is still a deal people write on, the same way `relationshipState` is
+// none of the organization helper's business.
+const opportunityRecord = (
+  view: ApplicationWave2ReadView,
+  opportunityId: StrategicRecordId,
+): OpportunityRecord | undefined => {
+  const record = view.getStrategicRecord(opportunityId);
+  return record?.kind === "opportunity" ? record : undefined;
+};
+
 const targetRecord = (
   view: ApplicationWave2ReadView,
   target: AttentionDestination,
 ):
-  Task | Project | NativeDocument | Capture | OrganizationRecord | undefined =>
+  | Task
+  | Project
+  | NativeDocument
+  | Capture
+  | OrganizationRecord
+  | OpportunityRecord
+  | undefined =>
   target.kind === "task"
     ? view.getTask(target.taskId)
     : target.kind === "project"
       ? view.getProject(target.projectId)
       : target.kind === "organization"
         ? organizationRecord(view, target.organizationId)
-        : target.kind === "document"
-          ? view.getDocument(target.documentId)
-          : view.getCapture(target.captureId);
+        : target.kind === "opportunity"
+          ? opportunityRecord(view, target.opportunityId)
+          : target.kind === "document"
+            ? view.getDocument(target.documentId)
+            : view.getCapture(target.captureId);
 
 // ADR-043 §4 — the read-side view of a target record: a removed Task must be
 // invisible, the same way the list primitives already hide it. targetRecord
@@ -2032,6 +2056,7 @@ const activeTargetRecord = (
   | NativeDocument
   | Capture
   | OrganizationRecord
+  | OpportunityRecord
   | undefined => {
   const record = targetRecord(view, target);
   return record !== undefined &&
@@ -2042,7 +2067,10 @@ const activeTargetRecord = (
 };
 
 // Each destination kind spells its headline differently: a Capture keeps the
-// text it was submitted with, an Organization is named rather than titled.
+// text it was submitted with, an Organization is named rather than titled, and
+// a deal is titled — which is why it falls through to the last branch and why a
+// conformance assertion pins the headline it produces. Nothing here fails to
+// compile if a kind lands in the wrong branch.
 const attentionTitle = (
   record: NonNullable<ReturnType<typeof activeTargetRecord>>,
 ): string =>
@@ -2192,7 +2220,9 @@ const targetId = (target: CommentTarget): string =>
     ? target.taskId
     : target.kind === "project"
       ? target.projectId
-      : target.organizationId;
+      : target.kind === "organization"
+        ? target.organizationId
+        : target.opportunityId;
 
 const eligibleMention = (
   view: ApplicationWave2ReadView,

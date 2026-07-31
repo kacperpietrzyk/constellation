@@ -100,7 +100,9 @@ export const commentTargetId = (target: CommentTarget): string =>
     ? target.taskId
     : target.kind === "project"
       ? target.projectId
-      : target.organizationId;
+      : target.kind === "organization"
+        ? target.organizationId
+        : target.opportunityId;
 export type ManagedAttachment =
   TaskListProjection["items"][number]["attachments"][number];
 

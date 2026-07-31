@@ -454,10 +454,17 @@ export type CommentTarget =
   | { readonly kind: "project"; readonly projectId: ProjectId }
   // An Organization is a StrategicRecord, so this id names a record of some
   // strategic kind and the kind it names is checked when the target is
-  // resolved, not by the type.
+  // resolved, not by the type. The same is true of the Opportunity below, and
+  // it is why the two are separate arms rather than one strategic arm: the
+  // discriminator is the only thing the resolver can check the found record
+  // against.
   | {
       readonly kind: "organization";
       readonly organizationId: StrategicRecordId;
+    }
+  | {
+      readonly kind: "opportunity";
+      readonly opportunityId: StrategicRecordId;
     };
 
 export type AttentionDestination =
