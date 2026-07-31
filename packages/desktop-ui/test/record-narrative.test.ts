@@ -37,6 +37,13 @@ const read = (relative: string): string =>
 
 const narrativeComponent = read("src/components/RecordNarrative.tsx");
 const workSurface = read("src/WorkSurface.tsx");
+// Areas and initiatives moved here when the work surface started being retired.
+// The read list is what makes the floor below non-vacuous, so it moves WITH the
+// markup rather than after it: leave it pointing at a file that no longer draws
+// a narrative and `drawn` falls to two, at which point the cheapest fix under
+// time pressure is to lower the floor — and lowering it is exactly how an
+// unwritten responsibility goes back to rendering as a blank line.
+const projectContextPanel = read("src/projects/ProjectContextPanel.tsx");
 const surfaces = read("src/Wave2Surfaces.tsx");
 const projectRecordOverview = read("src/record/ProjectRecordOverview.tsx");
 const realApp = read("src/RealApp.tsx");
@@ -134,20 +141,20 @@ describe("unwritten record narrative", () => {
 
   it("stops the Work forms from requiring a narrative before a record exists", () => {
     assert.doesNotMatch(
-      selfClosingElement(workSurface, 'name="responsibility"'),
+      selfClosingElement(projectContextPanel, 'name="responsibility"'),
       /required/,
     );
     assert.doesNotMatch(
-      selfClosingElement(workSurface, 'name="outcome"'),
+      selfClosingElement(projectContextPanel, 'name="outcome"'),
       /required/,
     );
     assert.doesNotMatch(
       selfClosingElement(surfaces, 'id="project-outcome"'),
       /required/,
     );
-    assert.match(workSurface, /if \(!title\) \{/);
-    assert.doesNotMatch(workSurface, /!title \|\| !responsibility/);
-    assert.doesNotMatch(workSurface, /!title \|\| !outcome/);
+    assert.match(projectContextPanel, /if \(!title\) \{/);
+    assert.doesNotMatch(projectContextPanel, /!title \|\| !responsibility/);
+    assert.doesNotMatch(projectContextPanel, /!title \|\| !outcome/);
     assert.doesNotMatch(surfaces, /title\.trim\(\) && newOutcome\.trim\(\)/);
   });
 
@@ -156,9 +163,12 @@ describe("unwritten record narrative", () => {
     // regression this guards: it turns an unwritten outcome into a blank line.
     const bareTextNode = (expression: string) =>
       new RegExp(`>\\s*\\{${expression.replaceAll(".", "\\.")}\\}\\s*<`);
-    assert.doesNotMatch(workSurface, bareTextNode("area.responsibility"));
     assert.doesNotMatch(
-      workSurface,
+      projectContextPanel,
+      bareTextNode("area.responsibility"),
+    );
+    assert.doesNotMatch(
+      projectContextPanel,
       bareTextNode("initiative.intendedOutcome"),
     );
     assert.doesNotMatch(workSurface, bareTextNode("project.intendedOutcome"));
@@ -174,8 +184,8 @@ describe("unwritten record narrative", () => {
     // through NarrativeText", not "every file must draw it forever".
     const drawn = (
       [
-        [workSurface, "area.responsibility"],
-        [workSurface, "initiative.intendedOutcome"],
+        [projectContextPanel, "area.responsibility"],
+        [projectContextPanel, "initiative.intendedOutcome"],
         [workSurface, "project.intendedOutcome"],
         [surfaces, "project.intendedOutcome"],
         [strategicSurface, "project.intendedOutcome"],
@@ -187,14 +197,29 @@ describe("unwritten record narrative", () => {
       drawn.length >= 3,
       `only ${drawn.length} narratives are drawn anywhere — the guard has nothing left to guard`,
     );
+    // The guarantee is that the narrative is handed to `NarrativeText` TOGETHER
+    // with the flag that decides between writing and a gap to fill. It used to
+    // be spelled as `text={…} needsReview=` — one regex over the whole file,
+    // which pinned the ORDER the two attributes happened to be written in and
+    // went red when a rehomed panel wrote them the other way round. Attribute
+    // order is not a guarantee; sharing one element is.
     for (const [source, expression] of drawn) {
-      assert.match(
-        source,
-        new RegExp(
-          `text=\\{${expression.replaceAll(".", "\\.")}\\}\\s+needsReview=`,
-        ),
-        expression,
+      const elements = source
+        .split("<NarrativeText")
+        .slice(1)
+        .map((rest) => rest.slice(0, rest.indexOf("/>")));
+      const drawing = elements.filter((element) =>
+        element.includes(`text={${expression}}`),
       );
+      assert.ok(
+        drawing.length > 0,
+        `${expression} is drawn somewhere other than inside a NarrativeText`,
+      );
+      for (const element of drawing)
+        assert.ok(
+          element.includes("needsReview="),
+          `${expression} reaches NarrativeText without saying whether it is written`,
+        );
     }
   });
 
