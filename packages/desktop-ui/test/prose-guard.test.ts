@@ -26,6 +26,15 @@ import {
 //   • POMOC NA ŻĄDANIE (#35) ma własny, twardszy kontrakt: temat mieści się
 //     w 180 znakach. Pomoc, która może rosnąć, wraca do bycia wykładem
 //     schowanym o klik dalej.
+//
+//     ZAKRES TEGO ZDANIA, dopisany przez lot pomocy, bo do dziś obiecywało
+//     więcej, niż ktokolwiek mierzył. Sufit 180 znaków NA TEMAT obowiązuje
+//     NOWE tematy CRM-u (`src/crm/help-topics.ts`) i jest sprawdzany
+//     w `concept-help.test.ts`. Sześć tematów okna pojęć powstało wcześniej
+//     i ma inny kształt — `explanation` + `boundary`, każde z podłogą ≥80
+//     znaków i BEZ sufitu, czyli ~215-280 znaków tak, jak je czyta człowiek.
+//     Świadomie zostają nietknięte; przepisanie ich to osobna robota.
+//     Test niżej mierzy ZDANIA w obu plikach pomocy, nie tematy.
 
 const packageRoot = ((): string => {
   let directory = path.dirname(fileURLToPath(import.meta.url));
@@ -54,13 +63,19 @@ const slashed = (file: string): string => file.split(/[\\/]/u).join("/");
 const DEV_ONLY = "src/dev/";
 /** Ekran Ustawień i jego lista sekcji — patrz komentarz wyżej. */
 const SETTINGS_BY_HAND = /(^|\/)([Ss]ettings[A-Za-z-]*)\.tsx?$/;
-/** Pomoc kontekstowa ma własny limit, nie ten. */
-const HELP_DIALOG = "ConceptHelpDialog.tsx";
+/** Pomoc kontekstowa ma własny limit, nie ten — i oba pliki, w których żyje. */
+const HELP_SOURCES = [
+  "components/ConceptHelpDialog.tsx",
+  "crm/help-topics.ts",
+] as const;
+
+const isHelpSource = (file: string): boolean =>
+  HELP_SOURCES.some((source) => slashed(file).endsWith(source));
 
 const inScope = (file: string): boolean =>
   !slashed(file).includes(DEV_ONLY) &&
   !SETTINGS_BY_HAND.test(slashed(file)) &&
-  !slashed(file).endsWith(HELP_DIALOG);
+  !isHelpSource(file);
 
 /**
  * Zdania dłuższe niż próg, które BYŁY w drzewie, zanim strażnik powstał —
@@ -174,25 +189,48 @@ test("no screen outside Settings lectures the reader (Settings is reviewed by ha
   );
 });
 
-test("on-demand help stays a topic, not a lecture behind one more click (#35)", () => {
+// NAZWA MÓWI, CO ZMIERZONO: pojedyncze ZDANIA w plikach pomocy, w obu.
+// Wersja sprzed lotu pomocy nazywała się „temat" i mówiła w komunikacie
+// „Help topics must fit in 180 characters", a liczyła zdania w jednym pliku —
+// więc na zielono twierdziła coś, czego nie sprawdziła. Sufit NA TEMAT jest
+// w `concept-help.test.ts` i dotyczy nowych tematów CRM-u.
+test("every sentence in the help copy fits the 180-character limit (#35)", () => {
   const HELP_LIMIT = 180;
-  const helpFile = path.join(sourceRoot, "components", HELP_DIALOG);
-  const prose = extractVisibleProse(helpFile, readFileSync(helpFile, "utf8"));
-  const sentences = prose.filter((candidate) => isSentence(candidate.text));
+  const helpFiles = HELP_SOURCES.map((source) =>
+    path.join(sourceRoot, ...source.split("/")),
+  );
+  const sentences = helpFiles.flatMap((helpFile) =>
+    extractVisibleProse(helpFile, readFileSync(helpFile, "utf8"))
+      .filter((candidate) => isSentence(candidate.text))
+      .map((candidate) => ({
+        ...candidate,
+        file: slashed(path.relative(sourceRoot, helpFile)),
+      })),
+  );
 
   assert.ok(
     sentences.length > 5,
-    `expected help topics to be found, got ${sentences.length} — an empty measurement is a broken instrument, not a pass`,
+    `expected help copy to be found, got ${sentences.length} — an empty measurement is a broken instrument, not a pass`,
   );
+  // Obie strony pomocy są naprawdę czytane, nie tylko ta większa.
+  for (const source of HELP_SOURCES) {
+    assert.ok(
+      sentences.some((candidate) => candidate.file === source),
+      `no sentence was read from ${source} — the sweep did not reach it`,
+    );
+  }
 
   const overlong = sentences
     .filter((candidate) => candidate.text.length > HELP_LIMIT)
-    .map((candidate) => `:${candidate.line} ${candidate.text.length} chars`);
+    .map(
+      (candidate) =>
+        `${candidate.file}:${candidate.line} ${candidate.text.length} chars`,
+    );
 
   assert.deepEqual(
     overlong,
     [],
-    `Help topics must fit in ${HELP_LIMIT} characters:\n${overlong.join("\n")}`,
+    `Help sentences must fit in ${HELP_LIMIT} characters:\n${overlong.join("\n")}`,
   );
 });
 

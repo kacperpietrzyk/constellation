@@ -14,6 +14,7 @@ import type {
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
+import { CrmHelp } from "../crm/CrmHelp.js";
 import {
   fmtApprox,
   fmtMargin,
@@ -830,9 +831,12 @@ export const PipelineSurface = ({
           Stages
         </button>
         {board.strayStageCount > 0 && (
-          <span className={styles.warnTag} data-pipeline-stray-count>
-            {`${board.strayStageCount} not configured`}
-          </span>
+          <>
+            <span className={styles.warnTag} data-pipeline-stray-count>
+              {`${board.strayStageCount} not configured`}
+            </span>
+            <CrmHelp topic="unconfigured-stage" />
+          </>
         )}
         <span
           aria-live="polite"
@@ -845,6 +849,15 @@ export const PipelineSurface = ({
             {`${board.pricedCount} from an offer, ${board.openCount - board.pricedCount} estimated`}
           </span>
         </span>
+        {/* HELP ON DEMAND (#35), and both triggers stand OUTSIDE the live
+            region: a button inside `role="status"` is re-announced every time
+            the reading changes. The per-currency topic hangs on this reading
+            rather than on a column head — §1.3 named the head, but the sums in
+            the heads and the sum here are the same `fmtTotals`, and the concept
+            is the board's, not one column's. Seven identical triggers would be
+            seven identical accessible names for one answer. */}
+        <CrmHelp topic="price-basis" />
+        <CrmHelp topic="stage-sums" />
       </div>
       {selected !== undefined && (
         // OUTSIDE the board. Every control the deal needs, in one place, so the
