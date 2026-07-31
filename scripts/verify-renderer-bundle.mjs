@@ -125,6 +125,45 @@ import path from "node:path";
 //      razu, a nie liczba do przesunięcia.
 //   4. Podaje się to, co się ZMIERZYŁO, a nie to, czego się spodziewa: czysty
 //      rebuild i cytat z własnej linii skryptu.
+// PODNIESIENIE SUFITU ARKUSZY, 2026-07-31, fala C (lot Renewals), za zgodą
+// koordynatora, po dowodzie że NIE MA CZEGO ODZYSKAĆ. Zmierzone, czysty rebuild
+// przed każdym odczytem, na tym worktree:
+//
+//   main @ 8b0eda0 (po #191)          293 605 B CSS łącznie — zapas 1 395 B
+//   + arkusz ekranu Odnowień            +9 711 B
+//                                     -----------
+//   drzewo tego PR-a                  303 316 B
+//
+// SEDNO, i jest to inne znalezisko niż przy ścieżce gorącej: 295 000 policzono
+// od baseline'u 225 460 B (`:74-77`, build z 2026-07-28), kiedy aplikacja nie
+// miała ANI JEDNEGO arkusza CRM. Fala C dołożyła ich pięć — wszystkie jako CSS
+// leniwych chunków, czyli dokładnie tam, gdzie miały trafić — i `main` doszedł
+// do 1 395 B zapasu SAM, zanim ten lot cokolwiek dodał. Organizations
+// przekroczyłby ten sufit nawet gdyby tego ekranu nie było. Sufit, który łamie
+// ZAPLANOWANA I ZAAKCEPTOWANA robota fali, nie łapie tycia — melduje, że jego
+// baseline jest starszy niż projekt.
+//
+// Dlaczego 330 000, a nie więcej: 303 316 B zmierzone z tym arkuszem, plus
+// Organizations (własny arkusz, ale oddaje 3 026 B ścieżki gorącej CSS) i lot
+// pomocy na żądanie — to rzutuje na ~312 000. 330 000 zostawia ~6% nad
+// rzutowanym stanem końcowym: dość, żeby fala się skończyła, ciasno na tyle,
+// żeby liczba dalej coś znaczyła.
+//
+// Dowód, że nie ma czego odzyskać, podany PRZED liczbą: arkusz Odnowień ma 61
+// klas zdefiniowanych i 61 używanych, zero martwych i zero brakujących; stoi
+// w rodzinie sąsiadów (Lejek 9 461 B, Ludzie 7 342 B, rekord szansy 7 090 B,
+// `access` 12 636 B).
+//
+// WARUNKI TEGO PODNIESIENIA, wiążące dla każdego, kto to czyta:
+//   1. To pokrywa POZOSTAŁĄ robotę fali C — Organizations i lot pomocy — i nic
+//      poza tym.
+//   2. Liczba jest PRZEBAZOWANA na zamknięciu fali, świadomie, tak jak `:74-77`
+//      zapisuje baseline z 2026-07-28. Sufit niesiony dalej na zwietrzałym
+//      baselinie jest dokładnie tym, jak do tego doszło.
+//   3. Każdy pozostały lot podaje ZMIERZONY `totalStylesheetBytes` i zapas —
+//      tak samo, jak już podaje ścieżkę gorącą.
+//   4. Żadnego drugiego podniesienia w tej fali. Lot, który przekroczyłby
+//      330 000, zatrzymuje się i pyta.
 const limits = {
   // Ścieżka gorąca — twarda. Zapas liczony od baseline'u, nie „na wyrost".
   hotPathJavaScriptBytes: 648_000,
@@ -132,7 +171,7 @@ const limits = {
   hotPathStylesheetBytes: 200_000,
   // Sufit bezpieczeństwa — ustawiony raz, z zapasem. Nie podnosić per PR.
   totalJavaScriptBytes: 1_770_000,
-  totalStylesheetBytes: 295_000,
+  totalStylesheetBytes: 330_000,
   // Osobny sufit na największy leniwy chunk. Uwaga na uzasadnienie: dla NOWEGO
   // chunka sufit sumy pada wcześniej (przy +409 899 B), więc ten limit nigdy
   // nie zadziała pierwszy w tym scenariuszu. Zarabia na siebie przy WZROŚCIE

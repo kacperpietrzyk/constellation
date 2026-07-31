@@ -13,7 +13,8 @@ export type HumanRecordInspectorSurface =
   | "meetings"
   | "organizations"
   | "people"
-  | "pipeline";
+  | "pipeline"
+  | "renewals";
 
 export type HumanRecordSearchSource =
   "task" | "project" | "capture" | "source" | "document" | "strategic";
@@ -137,7 +138,11 @@ export const humanRecordKindRegistry = [
     label: "Renewal",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "organizations",
+    // Repointed with the Renewals screen, and ONLY with it: the renderer's
+    // search routing ends in a generic `else` that opens the destination and
+    // loses the record, so this line and `RealApp.tsx`'s `renewals` branch
+    // change together or neither does.
+    inspectorSurface: "renewals",
   },
   {
     id: "relationship_fact",

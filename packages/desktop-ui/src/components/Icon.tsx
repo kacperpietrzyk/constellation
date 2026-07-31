@@ -18,6 +18,7 @@ export type IconName =
   | "relationships"
   | "people"
   | "pipeline"
+  | "renewals"
   | "settings";
 
 export const Icon = ({ name }: { readonly name: IconName }) => {
@@ -53,6 +54,13 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     // w dół lejka. Nie może nosić znaku „relationships" ani „people" — wszystkie
     // trzy stoją w tej samej grupie nawigacji.
     pipeline: <path d="M4 5h4v14H4zM10 5h4v10h-4zM16 5h4v6h-4z" />,
+    // Cykl, nie kalendarz i nie dokument: kontrakt wraca co okres, a klucz
+    // cyklu znaczy dokładnie to. Strzałka zamyka pętlę, wskazówki mówią, że
+    // pętla ma termin — obie pozycje CRM obok mają własne znaki, więc ten musi
+    // się różnić od `relationships` i od `people`.
+    renewals: (
+      <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1M20.5 4v4.5H16M12 8v4.4l2.8 1.7" />
+    ),
     settings: (
       <path d="M4 7h7M17 7h3M4 17h2M12 17h8M16 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM11 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
     ),
