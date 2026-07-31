@@ -236,6 +236,9 @@ export const createOpportunity = (
   qualification: input.qualification,
   ...(input.estimate === undefined ? {} : { estimate: input.estimate }),
   stage: input.stage,
+  // Stamped here so "how long has this sat in discovery" has an answer from
+  // the first day, rather than only for deals that have been moved once.
+  stageEnteredAt: input.occurredAt,
   nextAction: input.nextAction,
   evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort(),
   ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
@@ -243,6 +246,81 @@ export const createOpportunity = (
   projectIds: [],
   state: "open",
 });
+
+/**
+ * A correction, not a replacement: an absent field is left alone and an
+ * explicit null clears an optional one — the same contract
+ * `updateOrganizationDetails` implements, and deliberately NOT the one
+ * `updateProjectOutcome` uses, which reads absence as a clear.
+ *
+ * `state` and `offerIds`/`projectIds` are not here on purpose: they move
+ * through `linkOpportunityOutcomes` together with the links they belong to,
+ * and one field with two writers is the drift family this repo names.
+ */
+export const updateOpportunityDetails = (
+  opportunity: Extract<StrategicRecord, { kind: "opportunity" }>,
+  changes: {
+    readonly title?: string;
+    readonly need?: string;
+    readonly qualification?: string;
+    readonly stage?: string;
+    readonly nextAction?: string;
+    readonly ownerPersonId?: StrategicRecordId | null;
+    readonly personIds?: readonly StrategicRecordId[];
+    readonly estimate?: Money | null;
+    /** See `updatePersonDetails` — clearable only by a compensation. */
+    readonly stageEnteredAt?: string | null;
+  },
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "opportunity" }> => {
+  const {
+    ownerPersonId: _ownerPersonId,
+    stageEnteredAt: _stageEnteredAt,
+    estimate: _estimate,
+    ...base
+  } = opportunity;
+  void _ownerPersonId;
+  void _stageEnteredAt;
+  void _estimate;
+  const estimate =
+    changes.estimate === undefined
+      ? opportunity.estimate
+      : (changes.estimate ?? undefined);
+  const ownerPersonId =
+    changes.ownerPersonId === undefined
+      ? opportunity.ownerPersonId
+      : (changes.ownerPersonId ?? undefined);
+  const stage = changes.stage ?? opportunity.stage;
+  // Re-stamped only when the stage actually moves. Re-sending the stage a deal
+  // already stands in must not reset the clock — a screen that writes the whole
+  // form back would otherwise erase the very number this field exists to keep.
+  // A compensation overrides this by naming `stageEnteredAt` explicitly.
+  const stageEnteredAt =
+    changes.stageEnteredAt === undefined
+      ? stage === opportunity.stage
+        ? opportunity.stageEnteredAt
+        : occurredAt
+      : (changes.stageEnteredAt ?? undefined);
+  return {
+    ...base,
+    title: changes.title ?? opportunity.title,
+    need: changes.need ?? opportunity.need,
+    qualification: changes.qualification ?? opportunity.qualification,
+    stage,
+    ...(stageEnteredAt === undefined ? {} : { stageEnteredAt }),
+    nextAction: changes.nextAction ?? opportunity.nextAction,
+    ...(ownerPersonId === undefined ? {} : { ownerPersonId }),
+    ...(estimate === undefined ? {} : { estimate }),
+    // Deduped and sorted exactly as `createOpportunity` does it, or the same
+    // set of people would produce two different stored orders.
+    personIds:
+      changes.personIds === undefined
+        ? opportunity.personIds
+        : [...new Set(changes.personIds)].sort(),
+    version: opportunity.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const createOffer = (
   input: Common & {
@@ -269,6 +347,50 @@ export const createOffer = (
   state: input.state,
   nextAction: input.nextAction,
 });
+
+/**
+ * A correction, not a replacement — the `updateOrganizationDetails` contract.
+ *
+ * `price` is the field with three caller intents rather than two. Absent leaves
+ * the stored price alone; an explicit null clears it. The KERNEL turns an
+ * incoming `{ basis: "derived" }` into that null, so derived has exactly one
+ * spelling on the record — absent — and un-confirming a price can never leave a
+ * stale confirmed amount behind it.
+ */
+export const updateOfferDetails = (
+  offer: Extract<StrategicRecord, { kind: "offer" }>,
+  changes: {
+    readonly title?: string;
+    readonly cost?: Money | null;
+    readonly rate?: ExchangeRate | null;
+    readonly price?: OfferPrice | null;
+    readonly state?: Extract<StrategicRecord, { kind: "offer" }>["state"];
+    readonly nextAction?: string;
+  },
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "offer" }> => {
+  const { cost: _cost, rate: _rate, price: _price, ...base } = offer;
+  void _cost;
+  void _rate;
+  void _price;
+  const cost =
+    changes.cost === undefined ? offer.cost : (changes.cost ?? undefined);
+  const rate =
+    changes.rate === undefined ? offer.rate : (changes.rate ?? undefined);
+  const price =
+    changes.price === undefined ? offer.price : (changes.price ?? undefined);
+  return {
+    ...base,
+    title: changes.title ?? offer.title,
+    ...(cost === undefined ? {} : { cost }),
+    ...(rate === undefined ? {} : { rate }),
+    ...(price === undefined ? {} : { price }),
+    state: changes.state ?? offer.state,
+    nextAction: changes.nextAction ?? offer.nextAction,
+    version: offer.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const linkOpportunityOutcomes = (
   opportunity: Extract<StrategicRecord, { kind: "opportunity" }>,
@@ -298,7 +420,10 @@ export const createRenewal = (
     readonly leadTimeDays: number;
     readonly ownerPrincipalId: PrincipalId;
     readonly evidenceSourceIds: readonly KnowledgeSourceId[];
-    readonly followUpTaskId: TaskId;
+    readonly followUpTaskId?: TaskId;
+    readonly termStartsAt?: string;
+    readonly termMonths?: number;
+    readonly cycleOrdinal?: number;
     readonly cycleKey: string;
   },
 ): Extract<StrategicRecord, { kind: "renewal" }> => ({
@@ -311,10 +436,77 @@ export const createRenewal = (
   leadTimeDays: input.leadTimeDays,
   ownerPrincipalId: input.ownerPrincipalId,
   evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort(),
-  followUpTaskId: input.followUpTaskId,
+  ...(input.followUpTaskId === undefined
+    ? {}
+    : { followUpTaskId: input.followUpTaskId }),
+  ...(input.termStartsAt === undefined
+    ? {}
+    : { termStartsAt: input.termStartsAt }),
+  ...(input.termMonths === undefined ? {} : { termMonths: input.termMonths }),
+  ...(input.cycleOrdinal === undefined
+    ? {}
+    : { cycleOrdinal: input.cycleOrdinal }),
   cycleKey: input.cycleKey,
   state: "watching",
 });
+
+/**
+ * The contract clock, set after the fact. Create-only would have left every
+ * renewal that already exists without one, which is a capability built and
+ * unreachable on real data.
+ *
+ * Absent leaves alone, explicit null clears — the `updateOrganizationDetails`
+ * contract. `followUpTaskId` is here because "nobody has started this" needs a
+ * way OUT of it; the kernel enforces that it is set once, so attaching a
+ * follow-up never orphans one the create already made.
+ */
+export const updateRenewalTerm = (
+  renewal: Extract<StrategicRecord, { kind: "renewal" }>,
+  changes: {
+    readonly termStartsAt?: string | null;
+    readonly termMonths?: number | null;
+    readonly cycleOrdinal?: number | null;
+    readonly followUpTaskId?: TaskId | null;
+  },
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "renewal" }> => {
+  const {
+    termStartsAt: _termStartsAt,
+    termMonths: _termMonths,
+    cycleOrdinal: _cycleOrdinal,
+    followUpTaskId: _followUpTaskId,
+    ...base
+  } = renewal;
+  void _termStartsAt;
+  void _termMonths;
+  void _cycleOrdinal;
+  void _followUpTaskId;
+  const termStartsAt =
+    changes.termStartsAt === undefined
+      ? renewal.termStartsAt
+      : (changes.termStartsAt ?? undefined);
+  const termMonths =
+    changes.termMonths === undefined
+      ? renewal.termMonths
+      : (changes.termMonths ?? undefined);
+  const cycleOrdinal =
+    changes.cycleOrdinal === undefined
+      ? renewal.cycleOrdinal
+      : (changes.cycleOrdinal ?? undefined);
+  const followUpTaskId =
+    changes.followUpTaskId === undefined
+      ? renewal.followUpTaskId
+      : (changes.followUpTaskId ?? undefined);
+  return {
+    ...base,
+    ...(termStartsAt === undefined ? {} : { termStartsAt }),
+    ...(termMonths === undefined ? {} : { termMonths }),
+    ...(cycleOrdinal === undefined ? {} : { cycleOrdinal }),
+    ...(followUpTaskId === undefined ? {} : { followUpTaskId }),
+    version: renewal.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const createRelationshipFact = (
   input: Common & {

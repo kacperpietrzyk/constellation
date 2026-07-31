@@ -64,15 +64,21 @@ const context = (): ExecutionContext =>
       "opportunity.create",
       "relationship.personCreate",
       "opportunity.create",
+      "opportunity.update",
       "opportunity.offerCreate",
+      "opportunity.offerUpdate",
       "opportunity.linkOutcomes",
+      "workspace.setCommercialDefaults",
+      "workspace.bootstrapContext",
       "relationship.workspace",
       "person.list",
       "organization.list",
       "project.operationalOverview",
       "organization.operationalOverview",
       "relationship.renewalCreate",
+      "relationship.renewalUpdate",
       "relationship.renewalResolve",
+      "attention.inbox",
       "relationship.factCreate",
       "decision.create",
       "fieldDef.create",
@@ -5351,6 +5357,619 @@ it("hides a strategic record on either deletion axis, and nothing else", () => {
   assert.equal(sawLifecycleState, true);
 });
 
+/**
+ * Until this command existed a deal was frozen from creation to removal: no
+ * command carried `stage`, `need`, `qualification`, the owner or the next
+ * action, so a Pipeline board could show columns nobody could move a card
+ * between.
+ */
+const dealHarness = (
+  key: string,
+): {
+  readonly harness: ReferenceHarness;
+  readonly organizationId: string;
+  readonly personId: string;
+  readonly opportunityId: string;
+} => {
+  const harness = removalHarness(key);
+  const organizationId = createOrganization(harness, key);
+  const personId = createPerson(harness, key, organizationId);
+  const opportunityId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`${key}-opportunity`),
+        commandName: "opportunity.create",
+        payload: {
+          opportunityId,
+          spaceId: ids.space,
+          title: "Orbit monitoring extension",
+          organizationId,
+          personIds: [personId],
+          need: "Out-of-hours detection.",
+          qualification: "Sponsor named, budget unconfirmed.",
+          stage: "discovery",
+          nextAction: "Send the night-cover variant.",
+          evidenceSourceIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  return { harness, organizationId, personId, opportunityId };
+};
+
+const dealFromWorkspace = (
+  harness: ReferenceHarness,
+  opportunityId: string,
+): Extract<
+  ReturnType<typeof projectedRecords>[number],
+  { kind: "opportunity" }
+> => {
+  const record = projectedRecords(harness).find(
+    (candidate) =>
+      candidate.kind === "opportunity" && candidate.id === opportunityId,
+  );
+  if (record === undefined || record.kind !== "opportunity")
+    assert.fail("Expected the opportunity in relationship.workspace.");
+  return record;
+};
+
+const projectedRecords = (harness: ReferenceHarness) => {
+  const workspace = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "relationship.workspace",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    workspace.kind !== "query_result" ||
+    workspace.result.outcome !== "success" ||
+    workspace.result.projection.kind !== "relationship.workspace"
+  )
+    assert.fail("Expected relationship workspace");
+  return workspace.result.projection.records;
+};
+
+const dealFromOverview = (
+  harness: ReferenceHarness,
+  organizationId: string,
+  opportunityId: string,
+) => {
+  const overview = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "organization.operationalOverview",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space, organizationId },
+  });
+  if (
+    overview.kind !== "query_result" ||
+    overview.result.outcome !== "success" ||
+    overview.result.projection.kind !== "organization.operationalOverview"
+  )
+    assert.fail("Expected Organization overview");
+  const deal = overview.result.projection.opportunities.find(
+    (candidate) => candidate.id === opportunityId,
+  );
+  if (deal === undefined) assert.fail("Expected the deal on its own client.");
+  return deal;
+};
+
+it("moves a deal between stages and corrects one field without touching the rest", () => {
+  const { harness, organizationId, opportunityId } = dealHarness("deal-update");
+
+  const created = dealFromWorkspace(harness, opportunityId);
+  assert.ok(
+    created.stageEnteredAt,
+    "a deal is stamped with its stage entry at creation, not only when it first moves",
+  );
+
+  // ONE field. Everything the payload did not name has to stand exactly where
+  // it was — the absent-means-leave-alone contract, as against the
+  // absent-means-clear convention `updateProjectOutcome` uses.
+  const moved = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-update-stage", { [opportunityId]: 1 }),
+      commandName: "opportunity.update",
+      payload: { opportunityId, stage: "proposal" },
+    }),
+  );
+  assert.equal(moved.diagnosticCode, "strategic.record_changed");
+
+  const afterMove = dealFromWorkspace(harness, opportunityId);
+  assert.equal(afterMove.stage, "proposal");
+  assert.equal(
+    afterMove.need,
+    "Out-of-hours detection.",
+    "a field the payload never named is left alone",
+  );
+  assert.equal(afterMove.qualification, "Sponsor named, budget unconfirmed.");
+  assert.equal(afterMove.title, "Orbit monitoring extension");
+  assert.notEqual(
+    afterMove.stageEnteredAt,
+    created.stageEnteredAt,
+    "moving the stage re-stamps when the deal entered it",
+  );
+
+  // The second projection home restates the opportunity by hand, so this is the
+  // assertion that catches a field which satisfied the compile guard and
+  // reached the client's own screen not at all.
+  assert.equal(
+    dealFromOverview(harness, organizationId, opportunityId).stageEnteredAt,
+    afterMove.stageEnteredAt,
+    "and the stamp reaches organization.operationalOverview, the second home",
+  );
+
+  // Re-sending the stage the deal already stands in must not restart the clock:
+  // a screen writing a whole form back would otherwise erase the number.
+  const stamped = afterMove.stageEnteredAt;
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-update-same-stage", { [opportunityId]: 2 }),
+      commandName: "opportunity.update",
+      payload: { opportunityId, stage: "proposal", need: "Night cover." },
+    }),
+  );
+  const afterRestate = dealFromWorkspace(harness, opportunityId);
+  assert.equal(afterRestate.need, "Night cover.");
+  assert.equal(
+    afterRestate.stageEnteredAt,
+    stamped,
+    "re-sending the same stage leaves the entry moment where it was",
+  );
+});
+
+it("refuses to move a deal into a stage the workspace funnel does not list", () => {
+  const { harness, organizationId, opportunityId } =
+    dealHarness("deal-stage-guard");
+
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-stage-guard-stages", { [ids.workspace]: 1 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: {
+        stages: [
+          { id: "discovery", label: "Discovery", order: 0 },
+          { id: "proposal", label: "Proposal", order: 1 },
+        ],
+      },
+    }),
+  );
+
+  const refused = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-stage-guard-move", { [opportunityId]: 1 }),
+      commandName: "opportunity.update",
+      payload: { opportunityId, stage: "negotiation" },
+    }),
+  );
+  assert.equal(
+    refused.diagnosticCode,
+    "command.precondition_failed",
+    "a stage nobody configured is not a column this board has",
+  );
+  assert.equal(
+    dealFromWorkspace(harness, opportunityId).stage,
+    "discovery",
+    "and the refusal left the deal where it stood",
+  );
+
+  // Standing on a retired stage is NOT refused, and this is the half that keeps
+  // boot alive: reads are strict and stored payloads are never revalidated, so
+  // a read side narrowed to the configured set would make the deal unreadable
+  // and take the whole `relationship.workspace` answer down with it.
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-stage-guard-retire", { [ids.workspace]: 2 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: {
+        stages: [{ id: "proposal", label: "Proposal", order: 0 }],
+      },
+    }),
+  );
+  assert.equal(
+    dealFromWorkspace(harness, opportunityId).stage,
+    "discovery",
+    "the orphaned stage projects unchanged rather than being remapped or hidden",
+  );
+  assert.equal(
+    dealFromOverview(harness, organizationId, opportunityId).stage,
+    "discovery",
+    "through both projection homes",
+  );
+});
+
+it("takes back an opportunity update, including the stamp it added", () => {
+  const { harness, personId, opportunityId } = dealHarness("deal-undo");
+  const originalStamp = dealFromWorkspace(
+    harness,
+    opportunityId,
+  ).stageEnteredAt;
+
+  const update = {
+    ...metadata("deal-undo-update", { [opportunityId]: 1 }),
+    commandName: "opportunity.update" as const,
+    payload: {
+      opportunityId,
+      stage: "proposal",
+      title: "Orbit monitoring extension — night cover",
+      ownerPersonId: personId,
+    },
+  };
+  unwrap(harness.kernel.execute(context(), update));
+  const moved = dealFromWorkspace(harness, opportunityId);
+  assert.equal(moved.ownerPersonId, personId);
+
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: update.commandId },
+    }),
+  );
+  if (preview.outcome !== "preview") assert.fail("Expected a preview.");
+  assert.equal(preview.projection.available, true);
+  assert.equal(
+    preview.projection.compensationKind,
+    "opportunity.restore_details",
+  );
+
+  const undone = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-undo-apply", { [opportunityId]: 2 }),
+      commandName: "command.undo",
+      payload: { targetCommandId: update.commandId },
+    }),
+  );
+  assert.equal(undone.diagnosticCode, "command.undone");
+
+  const restored = dealFromWorkspace(harness, opportunityId);
+  assert.equal(restored.stage, "discovery");
+  assert.equal(restored.title, "Orbit monitoring extension");
+  assert.equal(
+    restored.ownerPersonId,
+    undefined,
+    "undoing an update that ADDED an owner takes the owner off, not just its value",
+  );
+  // The VALUE, not merely "it changed": a compensation that wrote a fresh third
+  // stamp would satisfy `notEqual` while still losing the moment the deal
+  // actually entered discovery, which is the whole point of the field.
+  assert.notEqual(originalStamp, moved.stageEnteredAt);
+  assert.equal(
+    restored.stageEnteredAt,
+    originalStamp,
+    "putting the stage back puts its ORIGINAL entry moment back, not a new one",
+  );
+});
+
+/**
+ * The contract clock and the state the kernel used to make unreachable: a
+ * renewal nobody has started. Four of five real contracts sit there, and until
+ * 0.2.0 `relationship.renewalCreate` demanded a follow-up task id, so the
+ * Renewals screen's `Start` action had nothing to act on and its empty state
+ * could not occur.
+ */
+it("records a contract term, and lets a renewal exist with nobody on it", () => {
+  const harness = removalHarness("renewal-term");
+  const organizationId = createOrganization(harness, "renewal-term");
+  const renewalId = uuid();
+
+  const created = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-term-create"),
+      commandName: "relationship.renewalCreate",
+      payload: {
+        renewalId,
+        spaceId: ids.space,
+        organizationId,
+        title: "Orbit monitoring",
+        scope: "24/7 detection and response",
+        expiresAt: "2026-09-30T00:00:00.000Z",
+        leadTimeDays: 90,
+        ownerPrincipalId: ids.principal,
+        evidenceSourceIds: [],
+        cycleKey: `${organizationId}:2026-09-30`,
+      },
+    }),
+  );
+  assert.equal(created.outcome, "success");
+
+  const stored = () => {
+    const record = (harness.store.snapshot().strategicRecords ?? []).find(
+      (candidate) => candidate.id === renewalId,
+    );
+    if (record?.kind !== "renewal") assert.fail("Expected the renewal.");
+    return record;
+  };
+  assert.equal(
+    stored().followUpTaskId,
+    undefined,
+    "a renewal created without a follow-up carries none",
+  );
+  assert.equal(
+    harness.store.snapshot().tasks.length,
+    0,
+    "and no task was invented on its behalf",
+  );
+
+  // The warning must NOT vanish with the task. A contract nobody has started is
+  // exactly the one that needs it, so it points at the client instead.
+  // Asserted through the READ, not through the store. This destination shape
+  // has never been projected for a renewal before, and `attention.inbox`
+  // strict-parses its destination union — a value the union had not been
+  // taught would fail on the way out and read as a broken inbox.
+  const inbox = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "attention.inbox",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: {},
+  });
+  if (
+    inbox.kind !== "query_result" ||
+    inbox.result.outcome !== "success" ||
+    inbox.result.projection.kind !== "attention.inbox"
+  )
+    assert.fail("Expected the attention inbox.");
+  // This harness holds exactly one renewal, so the reason identifies it.
+  const signal = inbox.result.projection.items.find(
+    (candidate) => candidate.reason === "renewal_due",
+  );
+  if (signal === undefined)
+    assert.fail(
+      "the renewal_due signal still fires with nobody on the renewal",
+    );
+  assert.deepEqual(
+    signal.destination,
+    { kind: "organization", organizationId },
+    "with no task to point at, the warning points at the client rather than vanishing",
+  );
+
+  // The clock, set on a renewal that already exists — the case a create-only
+  // field would have left permanently without one.
+  const update = {
+    ...metadata("renewal-term-update", { [renewalId]: 1 }),
+    commandName: "relationship.renewalUpdate" as const,
+    payload: {
+      renewalId,
+      termStartsAt: "2024-10-01T00:00:00.000Z",
+      termMonths: 24,
+      cycleOrdinal: 3,
+    },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), update)).outcome,
+    "success",
+  );
+
+  const projected = projectedRecords(harness).find(
+    (record) => record.kind === "renewal" && record.id === renewalId,
+  );
+  if (projected?.kind !== "renewal")
+    assert.fail("Expected the renewal in relationship.workspace.");
+  assert.equal(projected.termStartsAt, "2024-10-01T00:00:00.000Z");
+  assert.equal(projected.termMonths, 24);
+  assert.equal(
+    projected.cycleOrdinal,
+    3,
+    "the ordinal the screen prints as 'term 3', distinct from cycleKey",
+  );
+  assert.equal(
+    projected.cycleKey,
+    `${organizationId}:2026-09-30`,
+    "and cycleKey keeps its own meaning — the per-organization uniqueness key",
+  );
+  assert.equal(projected.followUpTaskId, undefined);
+
+  // The second projection home restates the renewal by hand, so nothing forces
+  // these keys to arrive there. This is the assertion that catches it.
+  const overview = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "organization.operationalOverview",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space, organizationId },
+  });
+  if (
+    overview.kind !== "query_result" ||
+    overview.result.outcome !== "success" ||
+    overview.result.projection.kind !== "organization.operationalOverview"
+  )
+    assert.fail("Expected Organization overview");
+  const overviewRenewal = overview.result.projection.renewals.find(
+    (candidate) => candidate.id === renewalId,
+  );
+  assert.equal(overviewRenewal?.termStartsAt, "2024-10-01T00:00:00.000Z");
+  assert.equal(overviewRenewal?.termMonths, 24);
+  assert.equal(overviewRenewal?.cycleOrdinal, 3);
+
+  // Undo puts the renewal back to having no clock at all, rather than freezing
+  // the values the update introduced.
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-term-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: update.commandId },
+    }),
+  );
+  if (preview.outcome !== "preview") assert.fail("Expected a preview.");
+  assert.equal(
+    preview.projection.compensationKind,
+    "relationship.restore_renewal_term",
+  );
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-term-undo", { [renewalId]: 2 }),
+      commandName: "command.undo",
+      payload: { targetCommandId: update.commandId },
+    }),
+  );
+  assert.equal(
+    stored().termMonths,
+    undefined,
+    "undoing the command that ADDED the term takes the key off the record",
+  );
+
+  // And a renewal nobody started can still be CLOSED. Refusing this would have
+  // made the state a trap: the screen offers Close on every row.
+  const closed = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-term-close", { [renewalId]: 3 }),
+      commandName: "relationship.renewalResolve",
+      payload: { renewalId, state: "renewed" },
+    }),
+  );
+  assert.equal(closed.outcome, "success");
+  assert.equal(stored().state, "renewed");
+});
+
+it("attaches a follow-up to a started renewal once, and links an amendment to it", () => {
+  const harness = removalHarness("renewal-start");
+  const organizationId = createOrganization(harness, "renewal-start");
+  const renewalId = uuid();
+  const followUpTaskId = uuid();
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-start-create"),
+        commandName: "relationship.renewalCreate",
+        payload: {
+          renewalId,
+          spaceId: ids.space,
+          organizationId,
+          title: "Orbit monitoring",
+          scope: "24/7 detection and response",
+          expiresAt: "2026-09-30T00:00:00.000Z",
+          leadTimeDays: 90,
+          ownerPrincipalId: ids.principal,
+          evidenceSourceIds: [],
+          cycleKey: `${organizationId}:2026-09-30`,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // `Start` on the screen: make a task, then attach it.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-start-task"),
+        commandName: "task.create",
+        payload: {
+          taskId: followUpTaskId,
+          spaceId: ids.space,
+          title: "Open the renewal conversation",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-start-attach", { [renewalId]: 1 }),
+        commandName: "relationship.renewalUpdate",
+        payload: { renewalId, followUpTaskId },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const secondTaskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-start-task-2"),
+        commandName: "task.create",
+        payload: {
+          taskId: secondTaskId,
+          spaceId: ids.space,
+          title: "A second follow-up nobody asked for",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const repointed = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-start-repoint", { [renewalId]: 2 }),
+      commandName: "relationship.renewalUpdate",
+      payload: { renewalId, followUpTaskId: secondTaskId },
+    }),
+  );
+  assert.equal(
+    repointed.diagnosticCode,
+    "command.precondition_failed",
+    "a follow-up is attached once: re-pointing would strand the first task",
+  );
+
+  // The amendment edge. Without it `Add to contract` has nowhere to write.
+  const opportunityId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-start-opportunity"),
+        commandName: "opportunity.create",
+        payload: {
+          opportunityId,
+          spaceId: ids.space,
+          title: "+180 licences, no change to the term",
+          organizationId,
+          personIds: [],
+          need: "More seats before the term ends.",
+          qualification: "Budget already approved.",
+          stage: "proposal",
+          nextAction: "Send the amended schedule.",
+          evidenceSourceIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const linkId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("renewal-start-link"),
+        commandName: "work.linkCreate",
+        payload: {
+          linkId,
+          spaceId: ids.space,
+          linkType: "opportunity_amends_renewal",
+          sourceRecordId: opportunityId,
+          targetRecordId: renewalId,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // The edge is directional and typed: the same link the other way round is a
+  // renewal amending a deal, which is not a thing.
+  const reversed = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-start-link-reversed"),
+      commandName: "work.linkCreate",
+      payload: {
+        linkId: uuid(),
+        spaceId: ids.space,
+        linkType: "opportunity_amends_renewal",
+        sourceRecordId: renewalId,
+        targetRecordId: opportunityId,
+      },
+    }),
+  );
+  assert.equal(reversed.diagnosticCode, "command.precondition_failed");
+});
+
 // B4 + the four fields Kacper accepted. The point of this test is the SECOND
 // projection home. `UnprojectableKeys` (`wave2.ts:10058`) forces every one of
 // these keys into `StrategicRecordProjectionSchema` and will not compile
@@ -5958,5 +6577,343 @@ it("undoes an update that ADDED one of the four fields by clearing it", () => {
     ).outcome,
     "success",
     "clearing the contact frees the person for removal",
+  );
+});
+
+/**
+ * The offer's own correction command. Until it existed an offer was frozen at
+ * create: `state` could not walk draft→ready→submitted→accepted, and a cost
+ * that arrived when the distributor's quote finally came back could not be
+ * written down at all.
+ */
+it("moves an offer's state and corrects its money after the quote comes back", () => {
+  const harness = removalHarness("offer-update");
+  const organizationId = createOrganization(harness, "offer-update");
+  const opportunityId = uuid();
+  const offerId = uuid();
+  const deliverableDocumentId = uuid();
+  for (const command of [
+    {
+      ...metadata("offer-update-opportunity"),
+      commandName: "opportunity.create" as const,
+      payload: {
+        opportunityId,
+        spaceId: ids.space,
+        title: "Orbit monitoring extension",
+        organizationId,
+        personIds: [],
+        need: "Out-of-hours detection.",
+        qualification: "Sponsor named.",
+        stage: "proposal",
+        nextAction: "Send the variant.",
+        evidenceSourceIds: [],
+      },
+    },
+    {
+      ...metadata("offer-update-document"),
+      commandName: "document.create" as const,
+      payload: {
+        documentId: deliverableDocumentId,
+        spaceId: ids.space,
+        title: "Orbit offer",
+        role: "deliverable" as const,
+      },
+    },
+    {
+      // Kacper's common case: the distributor's quote has not come back, so
+      // the offer exists with no money on it at all.
+      ...metadata("offer-update-offer"),
+      commandName: "opportunity.offerCreate" as const,
+      payload: {
+        offerId,
+        opportunityId,
+        deliverableDocumentId,
+        title: "Monitoring, 24/7",
+        ownerPrincipalId: ids.principal,
+        state: "draft" as const,
+        nextAction: "Chase the quote.",
+      },
+    },
+  ]) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+    );
+  }
+
+  const storedOffer = () => {
+    const record = (harness.store.snapshot().strategicRecords ?? []).find(
+      (candidate) => candidate.id === offerId,
+    );
+    if (record?.kind !== "offer") assert.fail("Expected the offer.");
+    return record;
+  };
+  const projectedOffer = () => {
+    const record = projectedRecords(harness).find(
+      (candidate) => candidate.kind === "offer" && candidate.id === offerId,
+    );
+    if (record?.kind !== "offer")
+      assert.fail("Expected the offer in relationship.workspace.");
+    return record;
+  };
+  const overviewOffer = () => {
+    const overview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "organization.operationalOverview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, organizationId },
+    });
+    if (
+      overview.kind !== "query_result" ||
+      overview.result.outcome !== "success" ||
+      overview.result.projection.kind !== "organization.operationalOverview"
+    )
+      assert.fail("Expected Organization overview");
+    const offer = overview.result.projection.offers.find(
+      (candidate) => candidate.id === offerId,
+    );
+    if (offer === undefined) assert.fail("Expected the offer on its client.");
+    return offer;
+  };
+
+  assert.equal(storedOffer().cost, undefined);
+
+  // The quote comes back. Cost and rate land on an offer that had neither, and
+  // the state walks forward — one command, and the fields it did not name are
+  // left alone.
+  const cost = { amountMinor: 28_400_00, currency: "EUR" as const };
+  const rate = {
+    from: "EUR" as const,
+    to: "PLN" as const,
+    rateMicros: 4_310_000,
+    at: "2026-07-18",
+  };
+  const quoted = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-update-quote", { [offerId]: 1 }),
+      commandName: "opportunity.offerUpdate",
+      payload: { offerId, cost, rate, state: "ready" },
+    }),
+  );
+  assert.equal(quoted.diagnosticCode, "strategic.record_changed");
+  assert.deepEqual(projectedOffer().cost, cost);
+  assert.deepEqual(projectedOffer().rate, rate);
+  assert.equal(projectedOffer().state, "ready");
+  assert.equal(
+    projectedOffer().nextAction,
+    "Chase the quote.",
+    "a field the payload never named is left alone",
+  );
+  // The second projection home restates the offer in its own literal, so this
+  // is the assertion that catches money written by UPDATE — a different claim
+  // from Lot A's, which only covers money written at create.
+  assert.deepEqual(overviewOffer().cost, cost);
+  assert.deepEqual(overviewOffer().rate, rate);
+
+  // Confirming a price stores it; un-confirming CLEARS it, so "derived" has
+  // exactly one spelling on the record and no stale confirmed amount can sit
+  // behind a card that reads as derived.
+  const price = {
+    basis: "confirmed" as const,
+    price: { amountMinor: 205_000_00, currency: "PLN" as const },
+  };
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-update-confirm", { [offerId]: 2 }),
+      commandName: "opportunity.offerUpdate",
+      payload: { offerId, price },
+    }),
+  );
+  assert.deepEqual(storedOffer().price, price);
+  assert.deepEqual(overviewOffer().price, price);
+
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-update-unconfirm", { [offerId]: 3 }),
+      commandName: "opportunity.offerUpdate",
+      payload: { offerId, price: { basis: "derived" } },
+    }),
+  );
+  assert.equal(
+    storedOffer().price,
+    undefined,
+    "un-confirming clears the stored price rather than storing a second spelling of derived",
+  );
+
+  // A state that goes BACKWARDS is accepted. There is no transition graph and
+  // none should be invented: a client reopening a closed negotiation is an
+  // ordinary event, and a refusal nobody asked for would pass the suite because
+  // nothing else asserts the ordinary case.
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-update-accept", { [offerId]: 4 }),
+      commandName: "opportunity.offerUpdate",
+      payload: { offerId, state: "accepted" },
+    }),
+  );
+  const reopened = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-update-reopen", { [offerId]: 5 }),
+      commandName: "opportunity.offerUpdate",
+      payload: { offerId, state: "draft" },
+    }),
+  );
+  assert.equal(
+    reopened.diagnosticCode,
+    "strategic.record_changed",
+    "an offer may go backwards; nothing here is a one-way door",
+  );
+  assert.equal(projectedOffer().state, "draft");
+
+  // A rate whose `from` is not the cost's currency is STORED by the update as
+  // it is by the create — the pair check is structural in `convertMoney`, and a
+  // second refusal here would make the mismatched offer unreachable through the
+  // one command that can correct it.
+  const mismatched = { amountMinor: 12_000_00, currency: "USD" as const };
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("offer-update-wrong-pair", { [offerId]: 6 }),
+        commandName: "opportunity.offerUpdate",
+        payload: { offerId, cost: mismatched },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(storedOffer().cost, mismatched);
+  assert.equal(convertMoney(mismatched, rate), undefined);
+});
+
+it("takes back an offer update, including the money it added", () => {
+  const harness = removalHarness("offer-undo");
+  const organizationId = createOrganization(harness, "offer-undo");
+  const opportunityId = uuid();
+  const offerId = uuid();
+  const deliverableDocumentId = uuid();
+  for (const command of [
+    {
+      ...metadata("offer-undo-opportunity"),
+      commandName: "opportunity.create" as const,
+      payload: {
+        opportunityId,
+        spaceId: ids.space,
+        title: "Orbit monitoring extension",
+        organizationId,
+        personIds: [],
+        need: "Out-of-hours detection.",
+        qualification: "Sponsor named.",
+        stage: "proposal",
+        nextAction: "Send the variant.",
+        evidenceSourceIds: [],
+      },
+    },
+    {
+      ...metadata("offer-undo-document"),
+      commandName: "document.create" as const,
+      payload: {
+        documentId: deliverableDocumentId,
+        spaceId: ids.space,
+        title: "Orbit offer",
+        role: "deliverable" as const,
+      },
+    },
+    {
+      ...metadata("offer-undo-offer"),
+      commandName: "opportunity.offerCreate" as const,
+      payload: {
+        offerId,
+        opportunityId,
+        deliverableDocumentId,
+        title: "Monitoring, 24/7",
+        ownerPrincipalId: ids.principal,
+        state: "draft" as const,
+        nextAction: "Chase the quote.",
+      },
+    },
+  ]) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+    );
+  }
+
+  const update = {
+    ...metadata("offer-undo-update", { [offerId]: 1 }),
+    commandName: "opportunity.offerUpdate" as const,
+    payload: {
+      offerId,
+      cost: { amountMinor: 28_400_00, currency: "EUR" as const },
+      price: {
+        basis: "confirmed" as const,
+        price: { amountMinor: 205_000_00, currency: "PLN" as const },
+      },
+      state: "ready" as const,
+    },
+  };
+  unwrap(harness.kernel.execute(context(), update));
+
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: update.commandId },
+    }),
+  );
+  if (preview.outcome !== "preview") assert.fail("Expected a preview.");
+  assert.equal(
+    preview.projection.compensationKind,
+    "opportunity.restore_offer_details",
+  );
+
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("offer-undo-apply", { [offerId]: 2 }),
+      commandName: "command.undo",
+      payload: { targetCommandId: update.commandId },
+    }),
+  );
+
+  const stored = (harness.store.snapshot().strategicRecords ?? []).find(
+    (candidate) => candidate.id === offerId,
+  );
+  if (stored?.kind !== "offer") assert.fail("Expected the offer.");
+  // The KEY is gone, not replaced by `{basis:"derived"}`. Those two read alike
+  // through `offerPriceState` and differently through a strict round-trip and
+  // through the org-overview mapper's `=== undefined` test, so the stored
+  // record is what this asserts.
+  assert.equal(
+    stored.cost,
+    undefined,
+    "undoing an update that ADDED a cost takes the key off the record",
+  );
+  assert.equal(stored.price, undefined);
+  assert.equal(stored.state, "draft", "and puts the prior state back");
+});
+
+it("corrects a deal's estimate through the same update command", () => {
+  const { harness, organizationId, opportunityId } =
+    dealHarness("deal-estimate");
+  const estimate = { amountMinor: 180_000_00, currency: "PLN" as const };
+  unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-estimate-set", { [opportunityId]: 1 }),
+      commandName: "opportunity.update",
+      payload: { opportunityId, estimate },
+    }),
+  );
+  const projected = dealFromWorkspace(harness, opportunityId);
+  assert.deepEqual(projected.estimate, estimate);
+  assert.equal(
+    projected.stage,
+    "discovery",
+    "setting the estimate moved nothing else",
+  );
+  // Written by UPDATE, read through the hand-written second home. Lot A asserts
+  // the create path; only this covers the correction path.
+  assert.deepEqual(
+    dealFromOverview(harness, organizationId, opportunityId).estimate,
+    estimate,
   );
 });

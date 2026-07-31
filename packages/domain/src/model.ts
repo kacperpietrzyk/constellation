@@ -43,6 +43,8 @@ import type {
   RelationCondition,
   WorkLinkType,
   WorkingDayContract,
+  CommercialDefaults as CommercialDefaultsContract,
+  PipelineStage as PipelineStageContract,
 } from "@constellation/contracts";
 
 /**
@@ -50,6 +52,13 @@ import type {
  * kontraktach, bo sięga po nie także renderer. Tutaj tylko nazwa domenowa.
  */
 export type WorkingDay = WorkingDayContract;
+
+/**
+ * Etapy lejka i dwa procenty — kształt i wartości domyślne mieszkają w
+ * kontraktach z tego samego powodu co dzień roboczy. Tutaj tylko nazwy domenowe.
+ */
+export type PipelineStage = PipelineStageContract;
+export type CommercialDefaults = CommercialDefaultsContract;
 
 export interface Workspace {
   readonly id: WorkspaceId;
@@ -60,6 +69,18 @@ export interface Workspace {
   readonly policyVersion?: number;
   readonly voiceAudioRetentionPolicy?: "delete_after_transcript" | "retain";
   readonly workingDay?: WorkingDay;
+  /**
+   * The funnel this workspace actually sells through. Absent means nobody has
+   * configured one and the default list applies — never "there are no stages",
+   * because a Pipeline with no columns is not a state the product has.
+   * `Opportunity.stage` stores a stage ID, so a rename leaves every deal where
+   * it stood.
+   */
+  readonly pipelineStages?: readonly PipelineStage[];
+  /** Percent added to cost to derive an offer price. Absent = the default. */
+  readonly markupPct?: number;
+  /** Percent a renewal is projected to grow by. Absent = the default. */
+  readonly upliftPct?: number;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -728,6 +749,21 @@ export type StrategicRecord =
        */
       readonly estimate?: Money;
       readonly stage: string;
+      /**
+       * When the deal entered the stage it is standing in. Stamped at create
+       * and re-stamped every time `stage` moves.
+       *
+       * This exists because "sat in discovery for 61 days" was accidentally
+       * correct only while `stage` could never change: age-in-stage equalled
+       * age-of-record. `opportunity.update` makes the stage mutable, and
+       * without this the sentence becomes a lie the screen states as a fact.
+       *
+       * Optional permanently, not pending a backfill: every deal written
+       * before this field existed entered its stage at a moment nobody
+       * recorded, and inventing `createdAt` for it would be a guess presented
+       * as data.
+       */
+      readonly stageEnteredAt?: string;
       readonly nextAction: string;
       readonly evidenceSourceIds: readonly KnowledgeSourceId[];
       readonly offerIds: readonly StrategicRecordId[];
@@ -784,7 +820,33 @@ export type StrategicRecord =
       readonly leadTimeDays: number;
       readonly ownerPrincipalId: PrincipalId;
       readonly evidenceSourceIds: readonly KnowledgeSourceId[];
-      readonly followUpTaskId: TaskId;
+      /**
+       * OPTIONAL since 0.2.0. "Nobody has started this" is a real state four of
+       * five contracts sit in, and it was unreachable while the kernel demanded
+       * a task at create. Widening a required field is safe for stored
+       * payloads; narrowing it back would not be.
+       */
+      readonly followUpTaskId?: TaskId;
+      /**
+       * When the current term began. Without it there is no answer to "how far
+       * into this contract am I", which is the question that decides whether
+       * the conversation is an amendment or a renewal.
+       */
+      readonly termStartsAt?: string;
+      /**
+       * How long the term runs, in months, as CONTRACT DATA rather than as a
+       * subtraction of the two dates. A contract renewed after it expired has
+       * more elapsed time than term, and a denominator computed from the
+       * calendar would print "1 yr 1 mo of 1 yr", which reads as a broken sum.
+       */
+      readonly termMonths?: number;
+      /**
+       * Which term this is — the "term 3" the screen prints. Deliberately NOT
+       * `cycleKey`: that is a uniqueness key per organization
+       * (`{organizationId}:{date}` as the renderer generates it) and is not an
+       * ordinal and never will be. Two concepts, two fields.
+       */
+      readonly cycleOrdinal?: number;
       readonly cycleKey: string;
       readonly state: "watching" | "renewed" | "not_renewing" | "irrelevant";
     })
@@ -967,6 +1029,69 @@ export type UndoDescriptor =
       // descriptor that omitted this would report success while leaving the
       // record stamped, which is worse than refusing.
       readonly priorExternalId?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "relationship.restore_renewal_term";
+      readonly renewalId: StrategicRecordId;
+      readonly priorTermStartsAt?: string;
+      readonly priorTermMonths?: number;
+      readonly priorCycleOrdinal?: number;
+      /**
+       * Absent means the renewal had nobody on it before the update, so undoing
+       * the command that attached a follow-up has to detach it again.
+       */
+      readonly priorFollowUpTaskId?: TaskId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "opportunity.restore_details";
+      readonly opportunityId: StrategicRecordId;
+      // The whole prior state of everything `opportunity.update` can move —
+      // see `relationship.restore_person` for why it is the whole state and
+      // not the fields that happened to change.
+      readonly priorTitle: string;
+      readonly priorNeed: string;
+      readonly priorQualification: string;
+      readonly priorStage: string;
+      readonly priorNextAction: string;
+      readonly priorPersonIds: readonly StrategicRecordId[];
+      readonly priorOwnerPersonId?: StrategicRecordId;
+      /**
+       * Absent means the deal predates stage stamping, so undoing an update
+       * that moved the stage has to take the stamp back off rather than leave
+       * a moment the deal never entered.
+       */
+      readonly priorStageEnteredAt?: string;
+      /** Absent means the deal carried no number before this update. */
+      readonly priorEstimate?: Money;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "opportunity.restore_offer_details";
+      readonly offerId: StrategicRecordId;
+      readonly priorTitle: string;
+      readonly priorState:
+        "draft" | "ready" | "submitted" | "accepted" | "declined";
+      readonly priorNextAction: string;
+      // Each absent means the offer did not carry that value before the update,
+      // so undoing the command that ADDED it has to take the key off again —
+      // not leave a cost, a rate or a confirmed price the caller just took back.
+      readonly priorCost?: Money;
+      readonly priorRate?: ExchangeRate;
+      readonly priorPrice?: OfferPrice;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -1269,6 +1394,27 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "workspace.restore_commercial_defaults";
+      // The whole prior state of all three settings, not the ones the command
+      // happened to send — same reason `relationship.restore_person` carries
+      // every field: a compensation that depended on which keys moved could
+      // only be understood by reading the command beside it.
+      //
+      // Each is OPTIONAL and absence is load-bearing: absent means the setting
+      // had never been written, so undoing the command that FIRST set it has to
+      // clear it. The apply arm passes `?? null` for exactly that reason
+      // (cf. `wave2.ts:9755-9761`); leaving the key behind would report success
+      // while the number the user just took back stayed on the record.
+      readonly priorPipelineStages?: readonly PipelineStage[];
+      readonly priorMarkupPct?: number;
+      readonly priorUpliftPct?: number;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "task.restore_parent";
       readonly taskId: TaskId;
       readonly priorParentTaskId?: TaskId;
@@ -1479,7 +1625,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "workspace.renamed"
         | "workspace.voice_audio_retention_changed"
         | "workspace.working_day_changed"
-        | "workspace.default_status_changed";
+        | "workspace.default_status_changed"
+        | "workspace.commercial_defaults_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: WorkspaceId;

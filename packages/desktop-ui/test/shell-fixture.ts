@@ -3,6 +3,7 @@
 import {
   AttentionSignalIdSchema,
   CaptureIdSchema,
+  DEFAULT_COMMERCIAL_DEFAULTS,
   DEFAULT_WORKING_DAY,
   DocumentIdSchema,
   FieldDefinitionIdSchema,
@@ -74,6 +75,7 @@ const emptyBootstrap: Projection<"workspace.bootstrapContext"> = {
     defaultTaskStatusId: statusId,
     voiceAudioRetentionPolicy: "delete_after_transcript",
     workingDay: DEFAULT_WORKING_DAY,
+    commercialDefaults: DEFAULT_COMMERCIAL_DEFAULTS,
     version: 1,
   },
   spaces: [{ id: spaceId, name: "Space", version: 1 }],
@@ -225,6 +227,7 @@ export const populatedBootstrap: Projection<"workspace.bootstrapContext"> = {
     // przy przebazowaniu; wariant ubogi przechodzi przez rzutowanie i nie
     // złapałby niczego.
     workingDay: DEFAULT_WORKING_DAY,
+    commercialDefaults: DEFAULT_COMMERCIAL_DEFAULTS,
     version: 4,
   },
   spaces: [{ id: spaceId, name: "Praca", version: 1 }],

@@ -70,11 +70,16 @@ export const COMMAND_REVERTABILITY: Readonly<
   "relationship.organizationUpdate": "always",
   "relationship.personRemove": "always",
   "opportunity.create": "always",
+  "opportunity.update": "always",
   "opportunity.remove": "always",
   "opportunity.offerCreate": "always",
+  "opportunity.offerUpdate": "always",
   "opportunity.offerRemove": "always",
   "opportunity.linkOutcomes": "never",
   "relationship.renewalCreate": "never",
+  // The clock is contract data a person types, and typing it wrong is the
+  // ordinary case; the create it hangs off stays uncompensated.
+  "relationship.renewalUpdate": "always",
   "relationship.renewalResolve": "never",
   "relationship.factCreate": "always",
   "relationship.factRemove": "always",
@@ -136,6 +141,9 @@ export const COMMAND_REVERTABILITY: Readonly<
   "taskStatus.archive": "always",
   "taskStatus.restore": "always",
   "workspace.setDefaultTaskStatus": "always",
+  // Renaming and reordering the funnel are exactly the operations a person
+  // takes back, and a markup typed one digit wrong is the other one.
+  "workspace.setCommercialDefaults": "always",
   "task.setStatus": "always",
   "task.setOperationalState": "always",
   "task.complete": "always",
