@@ -102,14 +102,24 @@ const reply = (
 const shownRoots = (state: CommentsState): readonly string[] =>
   state.kind === "threads" ? state.trees.map((tree) => tree.root.id) : [];
 
-test("the record wears exactly five tabs, in the agreed order", () => {
+// `offers` is the sixth member, added with the opportunity record — the first
+// record kind whose history of versions is a section rather than a chip on a
+// card. The list is the VOCABULARY, not any one record's bar: every kind names
+// its own subset, so nothing that shipped with five tabs grew a sixth.
+//
+// The whole list is pinned rather than a membership test, and deliberately: a
+// key is what lands in stored device state, in `data-record-tab` and in every
+// id on the strip, so a key added without a label leaves a nameless tab and a
+// label added without a key is dead. Both halves move together or the test
+// says so.
+test("the record's tab vocabulary is exactly these six, in the agreed order", () => {
   assert.deepEqual(
     [...RECORD_TABS],
-    ["overview", "tasks", "documents", "comments", "activity"],
+    ["overview", "tasks", "offers", "documents", "comments", "activity"],
   );
   assert.deepEqual(
     RECORD_TABS.map((key) => RECORD_TAB_LABELS[key]),
-    ["Overview", "Tasks", "Documents", "Comments", "Activity"],
+    ["Overview", "Tasks", "Offers", "Documents", "Comments", "Activity"],
   );
 });
 
