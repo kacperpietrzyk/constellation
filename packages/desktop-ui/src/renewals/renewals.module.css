@@ -55,6 +55,20 @@
   background: var(--surface-raised);
 }
 
+/* The form says what it will write to, on its own line so it survives the
+   fields wrapping underneath it. */
+.formTitle {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.formTitle b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .field {
   display: flex;
   flex-direction: column;

@@ -532,3 +532,34 @@ test("an unavailable relationship slice replaces the screen with its own reason"
     "the section headings rendered over a failed read, with zeroes beside them",
   );
 });
+
+test("a renewal opens on the screen it was repointed at, selected by its own id", async () => {
+  // BOTH HALVES OF THE REPOINT, in one place. `record-kind-registry` sends a
+  // renewal to this destination, and `RealApp`'s search routing selects the
+  // record on arrival — but the routing hands over the RENEWAL's id, so a row
+  // keyed on the organisation would open with nothing highlighted and the
+  // repoint would be a downgrade wearing a new destination.
+  const { getHumanRecordKindDescriptor } =
+    await import("@constellation/contracts");
+  assert.equal(
+    getHumanRecordKindDescriptor("renewal")?.inspectorSurface,
+    "renewals",
+    "a renewal no longer opens on its own screen",
+  );
+
+  await openRenewals();
+  await waitForCondition(
+    () => rowsIn("due").length > 0,
+    "Renewals drew no row, so selection could not be observed",
+  );
+  const row = rowsIn("due")[0];
+  assert.ok(row);
+  await act(async () => {
+    row.click();
+  });
+  assert.equal(
+    rowsIn("due")[0]?.getAttribute("aria-current"),
+    "true",
+    "selecting a contract by its own id highlights no row — the id the search routing hands over is not the one this list keys on",
+  );
+});

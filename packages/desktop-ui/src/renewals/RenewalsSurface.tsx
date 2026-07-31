@@ -22,7 +22,12 @@ import {
   useListNavigation,
   type ListNavigationItemProps,
 } from "../hooks/useListNavigation.js";
-import { countLabel, dateKeyInZone, formatDate } from "../i18n.js";
+import {
+  countLabel,
+  dateKeyInZone,
+  formatDate,
+  instantForZonedDate,
+} from "../i18n.js";
 import {
   CLOSED_STATE_LABELS,
   formatDayKey,
@@ -179,15 +184,25 @@ const RenewalRow = ({
       ? undefined
       : CLOSED_STATE_LABELS[renewal.state];
 
+  // A LIST, NOT A LISTBOX, and the difference is the reason this screen exists
+  // in the shape it does: the row carries real controls — `Start`, `Close` and
+  // its three outcomes, `Add to contract`, the follow-up, the amendment's deal.
+  // A listbox may hold only options and groups, and a focusable control inside
+  // a composite widget with a roving tab stop is undefined in the accessibility
+  // tree and dead to the arrow keys. People kept its one button OUTSIDE the
+  // listbox for exactly this; the accepted prototype reaches the same place from
+  // the other side, using `role="list"` with `aria-current` for the selection
+  // (`v3/screens/renewals.js:148`, `:184`). Selection is therefore `aria-current`
+  // and not `aria-selected`, which a `listitem` does not define.
   return (
     <div
       {...nav}
+      aria-current={selected ? "true" : undefined}
       aria-label={reading.accessibleName}
-      aria-selected={selected}
       className={`${styles.row} ${styles[`row_${section}`]} ${selected ? styles.rowSelected : ""}`}
       data-renewal-row={renewal.id}
       onClick={() => onSelect(renewal.id)}
-      role="option"
+      role="listitem"
     >
       <span aria-hidden="true" className={styles.mark}>
         {SECTION_MARKS[section]}
@@ -354,36 +369,41 @@ const RenewalRow = ({
               <span className={styles.hint}>no change to the term</span>
             </>
           )}
-          {!clock.closed &&
-            (closing ? (
-              <span
-                aria-label={`Close ${renewal.title}`}
-                className={styles.closeGroup}
-                data-renewal-close
-                role="group"
-              >
-                {CLOSE_OUTCOMES.map(([outcome, label]) => (
-                  <button
-                    className={styles.action}
-                    disabled={busy}
-                    key={outcome}
-                    onClick={() => onClose(reading, outcome)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </span>
-            ) : (
+          {/* The toggle STAYS, so `aria-expanded` can be true as well as false.
+              A control that announces "collapsed" and then disappears tells a
+              reader less than one that says nothing. */}
+          {!clock.closed && (
+            <span className={styles.closeGroup}>
               <button
-                aria-expanded={false}
+                aria-expanded={closing}
                 className={styles.action}
-                onClick={() => setClosing(true)}
+                onClick={() => setClosing((open) => !open)}
                 type="button"
               >
                 Close
               </button>
-            ))}
+              {closing && (
+                <span
+                  aria-label={`How ${renewal.title} ended`}
+                  className={styles.closeGroup}
+                  data-renewal-close
+                  role="group"
+                >
+                  {CLOSE_OUTCOMES.map(([outcome, label]) => (
+                    <button
+                      className={styles.action}
+                      disabled={busy}
+                      key={outcome}
+                      onClick={() => onClose(reading, outcome)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         {/* The refusal a person can act on, beside the control that produced
@@ -566,12 +586,18 @@ export const RenewalsSurface = ({
 
   const submitRenewal = () => {
     if (client === undefined) return;
+    // A date input answers a WALL-CLOCK day in the workspace's calendar, and a
+    // contract expires at the end of the day somebody picked. Stamping midnight
+    // UTC lands on the previous local day in every workspace west of Greenwich,
+    // and then every number on the row is one off from the date on the form.
+    const expiresAt = instantForZonedDate(draft.expiresAt, timeZone, "end");
+    if (expiresAt === undefined) return;
     setBusy(true);
     void createRenewal(client, snapshot, {
       organizationId: draft.organizationId as StrategicRecordId,
       title: draft.title.trim(),
       scope: draft.scope.trim(),
-      expiresAt: `${draft.expiresAt}T00:00:00.000Z`,
+      expiresAt,
       evidenceSourceIds: [],
       // The state four of five real contracts sit in, and the one the screen
       // has a first-class row for. A renewal created with a task nobody wrote
@@ -628,7 +654,7 @@ export const RenewalsSurface = ({
     base: number,
     label: string,
   ) => (
-    <div aria-label={label} className={styles.list} role="listbox">
+    <div aria-label={label} className={styles.list} role="list">
       {readings.map((reading, offset) => (
         <RenewalRow
           busy={busy}
@@ -765,13 +791,23 @@ export const RenewalsSurface = ({
 
       {amendTarget !== undefined && (
         <form
-          aria-label="Add to contract"
+          // The form NAMES the contract it will write to. It opens above the
+          // sections rather than inside the row, so with more than one contract
+          // under watch an unnamed form is a form pointing at whichever one you
+          // last pressed — and it writes a sale.
+          aria-label={`Add to ${amendTarget.renewal.title}`}
           className={styles.create}
           onSubmit={(event) => {
             event.preventDefault();
             amend(amendTarget);
           }}
         >
+          <p className={styles.formTitle}>
+            Add to <b>{amendTarget.renewal.title}</b>
+            {amendTarget.organization === undefined
+              ? ""
+              : ` · ${amendTarget.organization.name}`}
+          </p>
           <label className={styles.field}>
             What is being added
             <input
