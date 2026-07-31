@@ -103,6 +103,38 @@ export type DataSlice<T> =
       readonly diagnosticCode?: string;
     };
 
+/**
+ * What a screen has after reading one slice: the data, or the reason it is not
+ * there. One helper instead of the inline `kind === "ready"` test written at
+ * ninety-odd call sites — four CRM screens landing four more of them is how a
+ * screen ends up rendering an empty list where the honest answer is "this
+ * view's data is unavailable right now".
+ *
+ * `message` stays in the type on purpose, so dropping it is awkward. Render it.
+ * `StrategicDepthSurface.tsx:246-266` is the pattern to copy: it prints the
+ * slice's own message and offers a retry. `TasksSurface.tsx:357-368` is the
+ * one NOT to copy — it prints a fixed sentence, discards the message, and
+ * offers no retry despite holding `onReload`.
+ *
+ *   const records = readSlice(snapshot.relationships);
+ *   if (!records.available) {
+ *     return <SurfaceUnavailable message={records.message} onRetry={onReload} />;
+ *   }
+ *   const offers = records.data.records.filter((r) => r.kind === "offer");
+ *
+ * A zero, an empty list or a green reading in place of that message is the
+ * defect this exists to prevent: it says the answer is "nothing" when the
+ * answer is "we could not ask".
+ */
+export type SliceReading<T> =
+  | { readonly available: true; readonly data: T }
+  | { readonly available: false; readonly message: string };
+
+export const readSlice = <T>(slice: DataSlice<T>): SliceReading<T> =>
+  slice.kind === "ready"
+    ? { available: true, data: slice.data }
+    : { available: false, message: slice.message };
+
 export interface DesktopSnapshot {
   readonly build: DesktopBuildInfo;
   readonly bootstrap: BootstrapProjection;

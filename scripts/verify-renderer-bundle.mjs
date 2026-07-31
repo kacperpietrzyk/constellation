@@ -75,10 +75,60 @@ import path from "node:path";
 // agent/ui-ux-rebuild): ścieżka gorąca 593 640 B / 159 997 B gzip / CSS
 // 189 089 B; całość 1 360 102 B JS i 225 460 B CSS; największy leniwy chunk
 // 531 583 B (edytor).
+// PODNIESIENIE ŚCIEŻKI GORĄCEJ, 2026-07-31, fala C (lot S — nasada). Zmierzone,
+// czysty rebuild przed każdym odczytem, na tym worktree:
+//
+//   main @ 7bf3812, bez moich zmian     614 626 B / 167 978 B gzip
+//   + useSurfaceDensity (pułapka 30)    614 675 B / 168 003 B gzip
+//   + useListNavigation (Enter/spacja)  614 705 B / 168 018 B gzip
+//   + client/workflow.ts `readSlice`    bez zmiany — nic go jeszcze nie importuje,
+//                                       więc wypada przy tree-shakingu
+//
+// SEDNO, i to jest właściwe znalezisko: baseline wyżej (593 640 B / 159 997 B)
+// dostał 26 360 B surowych i 8 003 B gzip zapasu. Fale A i B zjadły z tego
+// 20 986 B i 7 981 B. Bramka zrobiła dokładnie to, do czego jest — i skończył
+// jej się zapas. To nie jest „brakuje 18 bajtów", tylko „przydział się wyczerpał
+// i nikt tego nie zauważył, dopóki następna fala nie poprosiła o miejsce".
+//
+// Podniesione OBIE liczby JS-owe, nie samo gzip: surowe 614 626 z 620 000 to
+// 5 374 B, a pięć PR-ów ekranowych przebiłoby i to. CSS zostaje na 200 000 —
+// 179 284 B daje 20 kB, a arkusze CRM-u to CSS Modules na leniwych chunkach.
+//
+// ROZMIAR NOWEGO SUFITU JEST WYLICZONY, a nie dobrany. Pierwsza wersja tego
+// bloku stała na 172 000 i nie liczyła jednej rzeczy: **`packages/contracts`
+// samo leży na ścieżce gorącej**, więc loty backendowe wydają z TEGO budżetu,
+// nie z żadnego innego. Zmierzył to lot B od strony backendu. Rachunek:
+//
+//   zapas pod 172 000 po moim własnym wydatku            3 982 B
+//   lot A, zmierzone i podane na PR #185                  +564 B
+//   lot B, cztery komendy (dziś doszło `offer.update`)  ~+1 400 B
+//   pięć PR-ów ekranowych (rejestr + ścieżki `Icon` +
+//     dyspozytor + nawigacja)                           ~+2 500 B
+//                                                       ----------
+//   spodziewana suma                                   ~ 4 464 B
+//
+// 172 000 nie mieści tego z góry wiadomego rachunku, a sufit policzony na
+// „nie starczy" gwarantowałby złamanie warunku 3 w połowie fali — czyli
+// dokładnie ten nawyk „podnieś liczbę, dopisz komentarz", przeciwko któremu
+// ten blok powstał. 174 000 to ≈ 6 kB nad `main` i zostawia ≈ 5 980 B po moim
+// własnym wydatku. Surowe idzie tym samym krokiem: 648 000.
+//
+// WARUNKI TEGO PODNIESIENIA, wiążące dla każdego, kto to czyta:
+//   1. To jest CAŁY przydział fali C — loty backendowe (A, B) i pięć PR-ów
+//      ekranowych: wpis do rejestru, człon `Icon.tsx` z danymi ścieżki, wpis
+//      w dyspozytorze, nawigacja. I nic poza tym.
+//   2. Każdy PR fali podaje ZMIERZONĄ liczbę gzip i pozostały zapas. Skrypt
+//      drukuje jedno i drugie, niezależnie od tego, czy przechodzi.
+//   3. Żadnego drugiego podniesienia w tej fali. PR, który przekroczyłby 174 000,
+//      zatrzymuje się i pyta. Jeżeli fala naprawdę potrzebuje więcej niż 6 kB
+//      gzip ładowanych od razu, to jest rozmowa o tym, CO jest ładowane od
+//      razu, a nie liczba do przesunięcia.
+//   4. Podaje się to, co się ZMIERZYŁO, a nie to, czego się spodziewa: czysty
+//      rebuild i cytat z własnej linii skryptu.
 const limits = {
   // Ścieżka gorąca — twarda. Zapas liczony od baseline'u, nie „na wyrost".
-  hotPathJavaScriptBytes: 620_000,
-  hotPathJavaScriptGzipBytes: 168_000,
+  hotPathJavaScriptBytes: 648_000,
+  hotPathJavaScriptGzipBytes: 174_000,
   hotPathStylesheetBytes: 200_000,
   // Sufit bezpieczeństwa — ustawiony raz, z zapasem. Nie podnosić per PR.
   totalJavaScriptBytes: 1_770_000,

@@ -56,6 +56,20 @@ export const useListNavigation = ({
       setFocusIndex(index);
     },
     onKeyDown: (event) => {
+      // The row's key block switches off when the focus is not on the row.
+      // A control INSIDE a row bubbles its own keydown up to this handler, and
+      // the `preventDefault()` calls below would eat its activation: pressing
+      // Enter on an in-row button would open the row's record instead of
+      // pressing the button. Renewals is the first screen that puts buttons in
+      // a row, and the accepted prototype names this fix as belonging to the
+      // shell rather than to the screen — otherwise every later screen with an
+      // in-row control copies the same workaround.
+      //
+      // `target !== currentTarget` is the per-row form of that rule: the row
+      // owns the tab stop, so the two are the same element exactly when the
+      // row itself has the focus. Gating the whole handler, not just Enter and
+      // Space, also leaves Home/End and the arrows to an in-row text field.
+      if (event.target !== event.currentTarget) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
         moveFocus(Math.min(index + 1, itemCount - 1));
