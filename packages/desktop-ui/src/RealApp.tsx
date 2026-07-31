@@ -205,7 +205,7 @@ import {
   type PreviewCondition,
   type SurfaceId,
 } from "./client/wave2-fixtures.js";
-import type { WorkContextKind } from "./WorkSurface.js";
+import type { WorkContextKind } from "./record-narrative.js";
 
 // Re-eksport, bo test kompletności mapy leniwych powierzchni importuje
 // `lazySurfaceLoaders` z tego modułu.
@@ -2154,14 +2154,12 @@ export const RealApp = ({
             snapshot={state.snapshot}
             selectedTaskId={selectedTaskId}
             selectedProjectId={selectedProjectId}
-            selectedContextId={selectedWorkContext?.id}
             onSelectTask={selectTaskInInspector}
             onOpenTask={(id) => {
               const task = tasks.find((item) => item.id === id);
               openContext(taskContext(id, task?.title ?? "Task"));
             }}
             onSelectProject={selectProjectInInspector}
-            onSelectContext={selectWorkContextInInspector}
             onReload={reload}
             onFailure={showFailure}
           />
@@ -2799,6 +2797,13 @@ export const RealApp = ({
             } else showFailure(result);
           });
         }}
+        // Areas and initiatives live on this screen now. The selection is the
+        // SHELL's, and the same one the work surface used to set — picking one
+        // opens it in the inspector drawer, beside the projects it holds.
+        selectedContextId={selectedWorkContext?.id}
+        onSelectContext={selectWorkContextInInspector}
+        onReload={reload}
+        onFailure={showFailure}
       />
     ),
     history: () => (
