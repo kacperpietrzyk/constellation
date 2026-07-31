@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState, type ReactNode } from "react";
 
 import type {
   FieldDefinitionId,
@@ -114,6 +114,8 @@ const groupingFromOption = (value: string): TaskGroupBy => {
 export const TasksSurface = ({
   snapshot,
   selectedTaskId,
+  activeTaskId,
+  renderRecordScreen,
   onOpenTask,
   onSelectTask,
   onCreateTask,
@@ -124,7 +126,24 @@ export const TasksSurface = ({
   onSaveViewFilters,
 }: {
   readonly snapshot: DesktopSnapshot;
+  /** The row the INSPECTOR is showing. Selecting is not opening. */
   readonly selectedTaskId: TaskId | undefined;
+  /** The task OPENED as a record — the shell's context id, which is a different
+   *  fact from the selected one. Reading `selectedTaskId` here instead would
+   *  promote a record on every single row click and there would be no way left
+   *  to merely look at a task.
+   *
+   *  Optional because only the shell holds a shell context: a harness mounting
+   *  this surface to exercise the collection has nothing to pass, and requiring
+   *  it would make every such mount declare it opens no record. */
+  readonly activeTaskId?: TaskId | undefined;
+  /** Renders the opened task. The caller builds the screen, because the two
+   *  slices it needs — the record's comments and the activity stream — are a
+   *  targeted fetch and a snapshot slice this surface never receives. Absent
+   *  while a task is open means the record could NOT be assembled, and the
+   *  branch below says so rather than falling back to the collection under the
+   *  wrong title. */
+  readonly renderRecordScreen?: (() => ReactNode) | undefined;
   readonly onOpenTask: (id: TaskId) => void;
   readonly onSelectTask: (id: TaskId) => void;
   readonly onCreateTask: (title: string) => Promise<boolean>;
@@ -301,6 +320,43 @@ export const TasksSurface = ({
       </div>
     );
 
+  // A task OPENED as a record takes the whole surface. The record brings its own
+  // `<h1>` — and its own `id="surface-title"`, which the shell uses both as the
+  // work plane's accessible name and as where focus lands after a destination
+  // change — so the surface header does not run for this view. Two level-one
+  // headings on one screen is not a styling difference, it is two records
+  // according to the outline.
+  //
+  // The `.surface-scroll` wrapper and the `data-tasks-surface` hook stay either
+  // way: they are how the shell scrolls this plane and how the packaged smoke
+  // finds it.
+  if (activeTaskId !== undefined)
+    return (
+      <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+        {renderRecordScreen === undefined ? (
+          // The record could not be assembled — the opened task is not in the
+          // work projection, so there is nothing to read it from. Said plainly
+          // rather than degraded into a thinner record: a screen missing half
+          // its reading still looks like a screen. The heading carries the id
+          // the record would have carried, because the failure case is exactly
+          // when a work plane with no name and no focus target is worst.
+          <>
+            <header className="surface-header">
+              <h1 id="surface-title" tabIndex={-1}>
+                This task could not be opened
+              </h1>
+            </header>
+            <p className={styles.unavailable}>
+              It is not in the work projection for this Space. Reload, or go
+              back to the task list.
+            </p>
+          </>
+        ) : (
+          renderRecordScreen()
+        )}
+      </div>
+    );
+
   const planned = rows.filter((row) => row.planState !== "unplanned").length;
 
   // The axes the switcher names, then every choice field a task can carry. A
@@ -329,14 +385,23 @@ export const TasksSurface = ({
   if (!groupingOptions.some((option) => option.value === groupingValue))
     groupingOptions.push({ value: groupingValue, label: "Stored field" });
 
-  // The board names its axis from a table keyed by the five words, which has no
-  // entry for a field — `TASK_GROUPING_LABELS[{ fieldId }]` is `undefined` and
-  // would draw an empty bold. Until the board can be handed the field's own
-  // label, a field grouping is announced with the sentence that is true of any
-  // non-status board: these columns are a lens, not a place. The drop rules do
-  // not read this — they read the columns (`TaskBoardLayout.tsx:217-218`).
-  const boardGrouping: TaskGrouping =
-    typeof grouping === "object" ? "none" : grouping;
+  // The board is handed the WORD, not the axis, because the label table is
+  // keyed by the five words and an object cannot key a `Record`:
+  // `TASK_GROUPING_LABELS[{ fieldId }]` is `undefined` and drew an empty bold
+  // where the axis should be named. Resolved here because this is where the
+  // definitions are. A retired field still names itself — it still draws real
+  // columns, the same stance `fieldOptions` takes — and only a field this
+  // workspace no longer carries at all falls back to "These", the sentence that
+  // is true of any non-status board. The drop rules do not read this: they read
+  // the columns (`TaskBoardLayout.tsx:217-218`).
+  const boardGroupingLabel =
+    typeof grouping === "object"
+      ? (fieldDefinitions.find(
+          (definition) => definition.id === grouping.fieldId,
+        )?.label ?? "These")
+      : grouping === "none"
+        ? "These"
+        : TASK_GROUPING_LABELS[grouping];
 
   return (
     <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
@@ -493,7 +558,7 @@ export const TasksSurface = ({
             {activeLayout === "board" ? (
               <TaskBoardLayout
                 firstRowIndexOfGroup={firstRowIndexOfGroup}
-                grouping={boardGrouping}
+                groupingLabel={boardGroupingLabel}
                 groups={groups}
                 itemProps={itemProps}
                 onAddToGroup={addToGroup}
@@ -502,6 +567,10 @@ export const TasksSurface = ({
                 onSelect={onSelectTask}
                 prose={prose}
                 selectedTaskId={selectedTaskId}
+                // A field grouping is an object and never equals "project", so
+                // the test the board used to make on the union reads correctly
+                // on the wider type without narrowing it first.
+                showProjects={grouping !== "project"}
               />
             ) : activeLayout === "table" ? (
               <TaskTableLayout

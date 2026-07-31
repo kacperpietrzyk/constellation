@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type {
+  FieldDefinitionId,
   PrincipalId,
   ProjectId,
   TaskId,
@@ -174,7 +175,13 @@ export const WorkSurface = ({
   >({});
   const projection = work.kind === "ready" ? work.data : undefined;
   const [activeViewId, setActiveViewId] = useState<string>();
-  const [viewFieldId, setViewFieldId] = useState("");
+  // Branded, and not as decoration: `SavedWorkViewFilters` is now DERIVED from
+  // the projection rather than restated beside it, and the projection brands
+  // this id. The hand-written copy typed it a bare `string`, so a filter set
+  // built here type-checked while carrying an id the query layer would not
+  // accept. The brand is lost crossing a `<select>` and restored below, the
+  // same way `TasksSurface` restores it.
+  const [viewFieldId, setViewFieldId] = useState<FieldDefinitionId | "">("");
   const [confirmingViewDelete, setConfirmingViewDelete] = useState(false);
   const [density, setDensity] = useSurfaceDensity("work");
   const timeZone = snapshot.bootstrap.workspace.timezone;
@@ -1352,7 +1359,9 @@ export const WorkSurface = ({
                 <select
                   aria-label="Field"
                   value={viewFieldId}
-                  onChange={(event) => setViewFieldId(event.target.value)}
+                  onChange={(event) =>
+                    setViewFieldId(event.target.value as FieldDefinitionId | "")
+                  }
                 >
                   <option value="">No field condition</option>
                   {(snapshot.bootstrap.fieldDefinitions ?? [])

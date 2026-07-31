@@ -23,6 +23,9 @@ export interface ShellContext {
   readonly projectId?: ProjectId;
   readonly documentId?: DocumentId;
   readonly organizationId?: StrategicRecordId;
+  /** Set when the context was opened AS A RECORD rather than merely navigated
+   *  to. See `taskContext` for why the promotion has to be asked for. */
+  readonly record?: boolean;
 }
 
 // Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
@@ -55,6 +58,8 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
     return false;
   if (!RESTORABLE_SURFACES.has(context.surface)) return false;
   if (context.taskId !== undefined && typeof context.taskId !== "string")
+    return false;
+  if (context.record !== undefined && typeof context.record !== "boolean")
     return false;
   if (context.projectId !== undefined && typeof context.projectId !== "string")
     return false;
@@ -240,11 +245,34 @@ export const destinationContext = (
   label: string,
 ): ShellContext => ({ key: `destination:${surface}`, label, surface });
 
-export const taskContext = (taskId: TaskId, label: string): ShellContext => ({
+/**
+ * A task in context — and, when it is asked for, the task opened as a RECORD.
+ *
+ * The promotion is OPT-IN, and that is the whole point of the flag. Eleven call
+ * sites build a task context and most of them mean "take me to this task": a
+ * capture that just became one, a signal activated from the operating system, a
+ * reference followed out of a document. Those want the collection with the task
+ * in hand. Only a deliberate open — Enter or a double click on a row, or a
+ * subtask followed out of a record — means "show me this task instead of the
+ * list".
+ *
+ * It was not opt-in for one CI cycle, and every one of those eleven started
+ * landing on a record: the packaged smoke turned a capture into a task and then
+ * looked for its row on a screen that had replaced the list with the record.
+ * The flag lives on the CONTEXT rather than in the shell's own state because a
+ * tab has to reopen as what it was; it survives serialization for the same
+ * reason.
+ */
+export const taskContext = (
+  taskId: TaskId,
+  label: string,
+  options: { readonly record?: boolean } = {},
+): ShellContext => ({
   key: `task:${taskId}`,
   label,
   surface: "tasks",
   taskId,
+  ...(options.record === true ? { record: true } : {}),
 });
 
 export const projectContext = (

@@ -13,6 +13,18 @@
   padding: var(--space-5) var(--space-6) var(--space-8);
 }
 
+/* The inline padding SHRINKS in a narrow window, and that is the point rather
+   than a detail. At 320 px this pane is about a hundred pixels wide; a fixed
+   `--space-6` on each side spends half of them on nothing, and the record then
+   overflows a box that was mostly margin. A viewport query rather than a
+   container one, because the element that carries this padding is itself the
+   container — `4cqi` here resolves against the box the padding is deciding. */
+@media (max-width: 40rem) {
+  .screen {
+    padding-inline: var(--space-2);
+  }
+}
+
 /* The way back and the record's own verbs on one line. The trail is first in
    the DOM as well as first on screen: it is the thing a reader who arrived by
    mistake wants, and it must not be behind four buttons in the tab order. */

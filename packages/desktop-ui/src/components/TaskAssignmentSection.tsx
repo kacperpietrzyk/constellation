@@ -18,10 +18,10 @@ import {
 // in an orphaned surface nothing imports. Every reachable screen showed the
 // assignee and none of them could set it.
 //
-// It lives in the task's inspector rail because a task has no record screen
-// yet — the rows on the Tasks collection say so in as many words ("a row says
-// who holds the work, the record screen is where it changes hands"). It is a
-// standalone component so it can move to a record tab without being rewritten.
+// It lives in the task's inspector rail because the rail is where a SELECTED
+// task is worked: opening a task promotes it to a record rather than retiring
+// the rail, so a task read beside its list must still change hands here. It is
+// a standalone component, so a record screen can mount the same one.
 
 /** The version the write must expect is the one read BEFORE the reload, so it
  *  is captured at submit rather than read again in the callback. */

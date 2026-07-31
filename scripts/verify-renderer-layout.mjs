@@ -128,6 +128,7 @@ const sweep = async (browser, { width, fontSize }) => {
     );
     const results = [];
     let recordPanels = 0;
+    const recordKinds = [];
     for (const id of ids) {
       // Settings is a MODE: entering it replaces the left column, so the nav
       // item for the next destination is not there to click. Without leaving
@@ -191,6 +192,18 @@ const sweep = async (browser, { width, fontSize }) => {
         await frame();
         measure(`${id}:${label}`);
       }
+      // Back to the lens the destination opens on, before opening a record.
+      // The sweep above leaves the surface on the LAST layout, and the last
+      // layout is not always one that draws rows — a calendar draws days. The
+      // record sweep below then found nothing to open and reported, in
+      // silence, that a screen had been measured when none had.
+      const first = lenses[0];
+      if (lenses.length > 0 && first instanceof HTMLElement) {
+        first.click();
+        await frame();
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        await frame();
+      }
 
       // A destination can also OPEN a record, and the record is a different
       // screen — its own header, its own tab bar, a reading column and a rail.
@@ -207,13 +220,34 @@ const sweep = async (browser, { width, fontSize }) => {
       // deliberate breaks (a 90rem minimum on the record screen, then on the
       // surface root) both passed. Stated rather than implied, so nobody reads
       // a green run here as a promise it does not make.
-      const row = work?.querySelector("[data-project-row]");
+      // TWO kinds of row open a record, and they do not open the same screen.
+      // A task record has three sections where a project has five, and its
+      // Overview is a reading column at full width beside a rail — the geometry
+      // that has already gone wrong on five surfaces when fixed tracks met real
+      // prose. Sweeping only `[data-project-row]` reported a pass for a screen
+      // this gate had never seen, which is the same mistake one kind earlier.
+      // Records are opened only at a width the PRODUCT can actually be at.
+      // `BrowserWindow` sets `minWidth: 760` (desktop-main/src/main.ts:111), so
+      // a 320 px window is a stress case for the collections — which do have to
+      // survive it, and are still swept there — and not a state a record can be
+      // read in. At 320 the sidebar alone is 220, leaving a hundred pixels: a
+      // record drawn into that is not a layout defect to fix but a window the
+      // OS refuses to make. The 200%-text pass is the real narrow-pane case and
+      // it DOES open records.
+      const row =
+        window.innerWidth >= 760
+          ? work?.querySelector("[data-project-row], [data-task-row]")
+          : null;
       if (row instanceof HTMLElement) {
         row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
         await frame();
         await new Promise((resolve) => setTimeout(resolve, 900));
         await frame();
-        measure(`${id}:record`);
+        const kind =
+          document
+            .querySelector("[data-record-kind]")
+            ?.getAttribute("data-record-kind") ?? "record";
+        measure(`${id}:${kind}`);
         // Every tab, because the panels differ in kind: a reading column, a
         // list of rows, a stream. The widest of them is where a narrow window
         // overflows, and it is not the one the record opens on.
@@ -227,12 +261,13 @@ const sweep = async (browser, { width, fontSize }) => {
           await frame();
           await new Promise((resolve) => setTimeout(resolve, 500));
           await frame();
-          measure(`${id}:record:${label}`);
+          measure(`${id}:${kind}:${label}`);
         }
+        if (tabs.length > 0) recordKinds.push(kind);
         recordPanels += tabs.length;
       }
     }
-    return { ids, results, recordPanels };
+    return { ids, results, recordPanels, recordKinds };
   }, fontSize);
 
   if (measured.ids.length < 5) {
@@ -258,11 +293,28 @@ const sweep = async (browser, { width, fontSize }) => {
   // swept Projects thirteen times without ever seeing it. A workspace whose
   // rows never rendered would now pass here in silence, so the count is a
   // failure rather than a shrug.
-  if (measured.recordPanels < 5) {
+  // The record guards apply only to a sweep that was ALLOWED to open records.
+  // Below the product's own minimum window width the sweep deliberately does
+  // not, and demanding a record there would turn a stated exclusion into a
+  // failure that never had anything to do with the layout.
+  const recordsExpected = width >= 760;
+  if (recordsExpected && measured.recordPanels < 5) {
     failures.push({
       surface: "-",
       reason: `only ${measured.recordPanels} record panels were measured — no project opened, so the record screen's geometry is untested and this pass says nothing about it`,
     });
+  }
+  // And a COUNT is not the guard, because two kinds of record open here and one
+  // of them has five sections against the other's three: eight panels and five
+  // panels both clear the number above while the task record goes unseen. The
+  // kinds are named instead, so a screen that stops opening fails by name.
+  for (const kind of recordsExpected ? ["project", "task"] : []) {
+    if (!measured.recordKinds.includes(kind)) {
+      failures.push({
+        surface: "-",
+        reason: `no ${kind} record opened, so that screen's geometry is untested and this pass says nothing about it`,
+      });
+    }
   }
   for (const entry of measured.results) {
     if (!entry.present) {
