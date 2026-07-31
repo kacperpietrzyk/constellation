@@ -408,11 +408,17 @@ describe("interaction recovery contracts", () => {
     assert.match(strategicSurface, /overview\.facts\.map/);
     assert.match(strategicSurface, /overview\.meetings\.map/);
     assert.match(strategicSurface, /overview\.documents\.map/);
-    assert.match(
-      strategicSurface,
-      /onDoubleClick=\{\(\) =>[\s\S]*onOpenOrganization/,
-    );
-    assert.match(strategicSurface, /event\.key !== "Enter"/);
+    // TWO ASSERTIONS LEFT THIS BLOCK WITH THE COLLECTION THEY BELONGED TO.
+    // `onDoubleClick=… onOpenOrganization` and `event.key !== "Enter"` both
+    // described the OLD ledger's hand-written open gesture, not the record page
+    // this `it()` is about — they only sat here because one file held both
+    // screens. The rebuilt collection opens a client through
+    // `useListNavigation`, the shell's one roving-tab-stop primitive, so there
+    // is no inline key handler left to match and a regex for one would fail an
+    // honest file. The guarantee itself is asserted where it can actually be
+    // observed — `organizations-screen.interaction.test.tsx` presses Enter on a
+    // real row and waits for the client context to open. Same move, and the
+    // same reason, as the pair recorded at :129-136 above.
     assert.match(realApp, /organizationContext\(id, name\)/);
     assert.match(strategicSurface, /loadOrganizationOverview\(/);
     assert.match(strategicSurface, /export const OrganizationContextLoader/);
@@ -504,12 +510,48 @@ describe("interaction recovery contracts", () => {
   // — RZUCA na brakującej kotwicy, więc sama przeprowadzka wywala zestaw. A
   // w drugą stronę: nagłówek skrócony do jednej kropki spełniał `[^<\s]` i
   // przechodził. Nowy test wymaga nazwy, która niesie litery.
-  it("makes Relations one raised work plane with a quieter review rail", () => {
+  // REPLACED, NOT PATCHED — "makes Relations one raised work plane with a
+  // quieter review rail" stood here and is gone, together with the screen it
+  // described. `Relations` was the CRM ledger: organizations and their
+  // opportunities in one thread, renewals and relationship facts in a second,
+  // people and decisions in a third. Wave C split it — opportunities and offers
+  // to Pipeline, people to People, renewals to Renewals, relationship facts to
+  // the organisation record — so six of that section's seven regexes now match
+  // a plane nothing draws.
+  //
+  // The precedent is the pair at :129-136 above, and the reason is the same one
+  // stated there. A regex over the source cannot tell a screen that renders
+  // from a screen that renders NOTHING: a lazy surface can ship completely empty
+  // and stay green in the per-id mount gate, the no-two-alike gate and the
+  // packaged smoke at the same time, because all three measure the Suspense
+  // fallback. `organizations-screen.interaction.test.tsx` mounts the real shell,
+  // clicks the real navigation item, waits for a real client row and asserts on
+  // the rendered tree — which is the only instrument that can see the difference.
+  //
+  // What survives here is the residue, and only the residue: the ledger that
+  // still holds the kinds with no home (decisions and recurrences carry no edge
+  // to an organisation) and the review rail (a radar candidate rides
+  // `snapshot.radar`, which the shell inspector never resolves against). Their
+  // geometry is still a shape claim about a file, so it is still asserted as one.
+  it("keeps the records with no home on a raised plane beside a quieter review rail", () => {
     assert.match(strategicSurface, /<div className="strategic-work-plane">/);
     assert.doesNotMatch(
       strategicSurface,
       /<main className="strategic-work-plane">/,
-      "The Relations work plane lives inside the shell's main landmark and must not create a second main landmark.",
+      "The residual work plane lives inside the shell's main landmark and must not create a second main landmark.",
+    );
+    // The residual plane, not the surface root, is the query container — and it
+    // declares a definite width. On the surface root, `container-type` plus the
+    // shell's `margin-inline: auto` sized it from nothing, which is the exact
+    // shape the packaged text-scaling gate fails.
+    assert.match(
+      styles,
+      /\.strategic-layout\s*\{[^}]*container-type:\s*inline-size[^}]*width:\s*100%/s,
+    );
+    assert.doesNotMatch(
+      styles,
+      /\.strategic-surface\s*\{/,
+      "`.strategic-surface` carried `container-type` on a `margin-inline: auto` child — the surface then sized itself from its contents and overflowed itself at 200% text.",
     );
     assert.match(
       styles,

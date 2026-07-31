@@ -2,31 +2,22 @@
   box-sizing: border-box;
 }
 
-.strategic-surface {
-  container-type: inline-size;
-}
-.strategic-header {
-  align-items: end;
-}
-.strategic-summary {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding-bottom: var(--space-1);
-  white-space: nowrap;
-}
-.strategic-summary strong {
-  font-size: var(--text-xl);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-.strategic-summary span,
 .strategic-review header > span,
 .strategic-quiet {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
+/* The residual layout is its own query container, and it declares a definite
+   width. `container-type: inline-size` used to sit on the surface root — which
+   is exactly the shape the packaged text-scaling gate fails: `.surface-scroll >
+   *` centres each child with `margin-inline: auto`, an auto inline margin turns
+   off stretch, and inline-size containment then makes the element's intrinsic
+   width ignore its contents, so it resolves to fit-content and can set a width
+   instead of taking one. `width: 100%` is definite, so containment has a number
+   to work from. */
 .strategic-layout {
+  container-type: inline-size;
+  width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
   gap: var(--space-5);
@@ -40,145 +31,16 @@
   background: var(--panel-reading-bg);
   box-shadow: var(--elevation-raised);
 }
-.strategic-review,
-.strategic-empty {
+.strategic-review {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
 }
-.strategic-thread,
 .strategic-ledger {
   padding: var(--space-5);
-}
-.strategic-ledger {
   border-top: 1px solid var(--border-subtle);
 }
-.relationship-row {
-  display: grid;
-  grid-template-columns: minmax(12rem, 0.38fr) minmax(0, 1fr);
-  gap: var(--space-5);
-  padding: var(--space-4) 0;
-  border-top: 1px solid var(--border-subtle);
-}
-.relationship-row:first-of-type {
-  border-top: 0;
-}
-.relationship-anchor {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  gap: var(--space-3);
-  align-content: start;
-}
-.relationship-anchor > span:first-child {
-  width: 2rem;
-  height: 2rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  background: var(--surface-raised);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
-}
-.relationship-select,
-.opportunity-select,
-.ledger-copy {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-1);
-}
-/* Rekordy strategiczne są wybieralnymi przyciskami zasilającymi shellowy
-   inspector — ten sam kontrakt select-vs-open co wiersze Pracy. */
-.relationship-select,
-.opportunity-select,
-.ledger-select {
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-.relationship-select,
-.opportunity-select {
-  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2));
-  padding: var(--space-1) var(--space-2);
-}
-.relationship-select:hover,
-.opportunity-select:hover,
-.ledger-select:hover {
-  background: var(--surface-hover);
-}
-.relationship-select:active,
-.opportunity-select:active,
-.ledger-select:active {
-  background: var(--surface-pressed);
-}
-.relationship-select[aria-pressed="true"] {
-  background: var(--surface-selected);
-  box-shadow: inset 0.125rem 0 0 var(--text-secondary);
-}
-.opportunity-line.selected,
-.ledger-row.selected {
-  background: var(--surface-selected);
-  box-shadow: inset 0.125rem 0 0 var(--text-secondary);
-}
-.relationship-anchor small,
-.opportunity-line span,
-.opportunity-line small,
-.ledger-row small {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-  text-overflow: ellipsis;
-}
-.relationship-anchor .strategic-state {
-  grid-column: 2;
-  justify-self: start;
-}
-.relationship-branches {
-  display: grid;
-  gap: var(--space-3);
-}
-.relationship-branches > p {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--text-sm);
-}
-.opportunity-line {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
-}
-.opportunity-outcomes {
-  display: grid;
-  justify-items: end;
-  align-content: start;
-  gap: var(--space-1);
-  color: var(--text-tertiary);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-/* Liczniki ofert i projektów prowadzą do podglądu kontekstu. */
-.outcome-link {
-  background: transparent;
-  border: 0;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-  padding: 0;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 0.2em;
-}
-.outcome-link:hover {
-  color: var(--text-primary);
-  text-decoration-color: currentColor;
+.strategic-ledger .section-heading {
+  margin-bottom: var(--space-2);
 }
 .strategic-state {
   display: inline-flex;
@@ -210,10 +72,6 @@
 .strategic-state--superseded {
   color: var(--text-tertiary);
 }
-.strategic-ledger .section-heading,
-.strategic-thread .section-heading {
-  margin-bottom: var(--space-2);
-}
 .ledger-row {
   min-height: 3.25rem;
   display: grid;
@@ -222,7 +80,21 @@
   align-items: center;
   border-top: 1px solid var(--border-subtle);
 }
+.ledger-copy {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+/* A strategic record is a selectable button feeding the shell inspector — the
+   same select-vs-open contract the Work rows use. */
 .ledger-select {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
   display: grid;
   grid-template-columns: 5rem minmax(0, 1fr);
   gap: var(--space-3);
@@ -230,6 +102,23 @@
   align-self: stretch;
   margin-inline: calc(-1 * var(--space-2));
   padding: var(--space-2);
+}
+.ledger-select:hover {
+  background: var(--surface-hover);
+}
+.ledger-select:active {
+  background: var(--surface-pressed);
+}
+.ledger-row.selected {
+  background: var(--surface-selected);
+  box-shadow: inset 0.125rem 0 0 var(--text-secondary);
+}
+.ledger-row small {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  text-overflow: ellipsis;
 }
 .record-kind,
 .review-type {
@@ -331,41 +220,8 @@
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
-.strategic-empty {
-  min-height: 14rem;
-  display: grid;
-  grid-template-columns: auto minmax(0, 32rem);
-  justify-content: center;
-  align-content: center;
-  gap: var(--space-4);
-  padding: var(--space-8);
-  background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-rest);
-}
-.strategic-empty > span {
-  color: var(--text-quaternary);
-  font-size: var(--text-display);
-}
-.strategic-empty h2,
-.strategic-empty p {
-  margin: 0;
-}
-.strategic-empty p {
-  margin-top: var(--space-2);
-  color: var(--text-tertiary);
-  line-height: 1.55;
-}
 @container (max-width: 780px) {
-  .strategic-header {
-    align-items: start;
-    flex-direction: column;
-  }
-  .strategic-summary {
-    min-width: 0;
-    justify-items: start;
-  }
-  .strategic-layout,
-  .relationship-row {
+  .strategic-layout {
     grid-template-columns: 1fr;
   }
   .strategic-review {
@@ -393,17 +249,13 @@
 }
 @media (forced-colors: active) {
   .strategic-work-plane,
-  .strategic-review,
-  .strategic-empty,
-  .opportunity-line {
+  .strategic-review {
     border: 1px solid CanvasText;
   }
   .strategic-state i {
     forced-color-adjust: none;
   }
-  .ledger-row.selected,
-  .opportunity-line.selected,
-  .relationship-select[aria-pressed="true"] {
+  .ledger-row.selected {
     outline: 1px solid Highlight;
   }
 }
