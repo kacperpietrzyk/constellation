@@ -11,6 +11,7 @@ import type { ScenarioFixtures } from "../src/client/scenario-client.js";
 import {
   ProjectIdSchema,
   StrategicRecordIdSchema,
+  KnowledgeSourceIdSchema,
   TaskIdSchema,
   type QueryProjection,
 } from "@constellation/contracts";
@@ -78,6 +79,21 @@ const currentFactId = StrategicRecordIdSchema.parse(
 const staleFactId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-0000000000e8",
 );
+const currentDecisionId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000e9",
+);
+const supersededDecisionId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000ea",
+);
+const radarCandidateId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000eb",
+);
+const ledgerRecurrenceId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000ed",
+);
+const unattributedDecisionId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000ee",
+);
 
 const strategicRecordBase = {
   workspaceId,
@@ -135,6 +151,34 @@ const relationships = {
       kind: "organization" as const,
       name: "Zenit Handel",
       relationshipState: "inactive" as const,
+    },
+    // A RECURRENCE and a DECISION in the same slice, and both are load-bearing.
+    // The recurrence is the only kind the ledger still holds, so without one
+    // the ledger is empty and "it holds exactly recurrences" passes over
+    // nothing. The decision is the negative half: it carries NO
+    // `organizationId` — the state every decision written before that edge
+    // existed is permanently in — so it is what proves decisions really left
+    // the ledger rather than the fixture simply having none.
+    {
+      ...strategicRecordBase,
+      id: ledgerRecurrenceId,
+      kind: "recurrence" as const,
+      title: "Przegląd kwartalny z Northstar",
+      taskTitle: "Umów i przygotuj przegląd kwartalny",
+      cadence: "monthly" as const,
+      nextDueAt: "2026-08-14T08:00:00.000Z",
+      state: "active" as const,
+    },
+    {
+      ...strategicRecordBase,
+      id: unattributedDecisionId,
+      kind: "decision" as const,
+      title: "Wycena tylko po potwierdzeniu zakresu",
+      rationale:
+        "Trzy wyceny z rzędu trzeba było poprawiać, bo zakres zmieniał się po ich wysłaniu.",
+      evidenceSourceIds: [],
+      linkedRecordIds: [],
+      state: "current" as const,
     },
     {
       ...strategicRecordBase,
@@ -231,11 +275,73 @@ const overview: Projection<"organization.operationalOverview"> = {
       updatedAt: "2026-02-11T09:00:00.000Z",
     },
   ],
+  /** Two decisions, differing in exactly what the section has to draw
+   *  differently: one still stands, one was replaced. A section proved on a
+   *  single current decision would pass with the superseded branch deleted. */
+  decisions: [
+    {
+      id: currentDecisionId,
+      title: "Jeden zespół wdrożeniowy zamiast dwóch równoległych",
+      rationale:
+        "Dwa zespoły dublowały ustalenia i klient dostawał dwie wersje statusu. Jeden zespół i jedna lista ustaleń kosztują tydzień opóźnienia na starcie i oszczędzają go przy każdym przeglądzie.",
+      state: "current",
+      version: 1,
+      updatedAt: "2026-07-22T11:00:00.000Z",
+    },
+    {
+      id: supersededDecisionId,
+      title: "Warsztat zdalny zamiast wizyty u klienta",
+      rationale:
+        "Zdalnie było taniej, ale sponsor nie pojawiał się na wywołaniach. Zastąpione decyzją o wizycie.",
+      state: "superseded",
+      supersededById: currentDecisionId,
+      supersededAt: "2026-07-22T11:00:00.000Z",
+      version: 2,
+      updatedAt: "2026-07-22T11:00:00.000Z",
+    },
+  ],
   activeProjects: [],
   openTasks: [],
   meetings: [],
   documents: [],
   recentActivity: [],
+};
+
+/** A radar candidate, IN THE RELATIONSHIP SLICE where the kernel really puts
+ *  one — not in a separate radar fixture. That is the whole point of the test
+ *  below: it is the record whose reach an earlier revision of this file got
+ *  wrong. */
+const radarRecord = {
+  ...strategicRecordBase,
+  id: radarCandidateId,
+  kind: "radar_candidate" as const,
+  sourceId: KnowledgeSourceIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000ec",
+  ),
+  materialKey: "eps-licensing-tiers",
+  title: "Nowe progi licencyjne u dystrybutora",
+  relevance:
+    "Dotyczy dwóch otwartych ofert; progi zmieniają się od października.",
+  state: "pending" as const,
+};
+
+/** ONE record object in BOTH slices, because that is where the kernel really
+ *  puts a radar candidate: `relationship.workspace` returns every live
+ *  strategic record, and `radar.review` is the rail's own narrower read. Two
+ *  hand-written copies would let the test's premise drift from its assertion. */
+const withRadarCandidate = {
+  ...populatedShellQueries,
+  "project.list": projectionResponse(projects),
+  "work.overview": projectionResponse(work),
+  "organization.operationalOverview": projectionResponse(overview),
+  "relationship.workspace": projectionResponse({
+    ...relationships,
+    records: [...relationships.records, radarRecord],
+  }),
+  "radar.review": projectionResponse({
+    kind: "radar.review" as const,
+    items: [radarRecord],
+  }),
 };
 
 const queries = {
@@ -852,30 +958,53 @@ test("a failed work plane is stated, never rendered as a healthy client", async 
   );
 });
 
-test("the kinds with no home are still on the screen after the retirement", async () => {
+test("what the retirement left behind is exactly recurrences and the review rail", async () => {
   await openOrganizations();
   await waitForCondition(() => rows().length > 0, "no client row");
 
   const surface = container.querySelector("[data-organizations-surface]");
   assert.ok(surface, "the surface is not mounted");
-  // The retirement is only for kinds that HAVE a home. `decision`,
-  // `impact_review` and `recurrence` carry no edge to an organisation, and a
-  // radar candidate rides `snapshot.radar` — which the shell inspector never
-  // resolves a selection against. Removing these regions would take built,
-  // reachable capability off the product with nothing replacing it.
+  // THE FINISHED SHAPE, pinned so a later reader does not have to reconstruct
+  // it. Opportunities, offers, people, renewals, facts and now decisions all
+  // have screens of their own. What is left below the client list is:
+  //
+  //   - `recurrence`, which repeats WORK and belongs to the project/area record
+  //     that does not exist yet. It has no edge to a client and is not getting
+  //     one, so this is its last stop rather than its home;
+  //   - the review rail, because a radar candidate can only be KEPT or
+  //     DISMISSED here — the shell inspector renders one but cannot resolve it,
+  //     and says so itself.
   assert.ok(
     surface.querySelector("#supporting-title"),
-    "the ledger holding the records with no home is gone",
+    "the recurrence ledger is gone, and a recurrence has no other screen to be reached from",
   );
   assert.ok(
     surface.querySelector("#review-title"),
-    "the review rail is gone, and a radar candidate has nowhere else to be seen or resolved",
+    "the review rail is gone, and a radar candidate has nowhere left to be kept or dismissed",
   );
   // And the create panel keeps its mount: it is the only authoring path there
-  // is for every one of those kinds.
+  // is for the kinds with no screen of their own.
   assert.ok(
     surface.querySelector(".strategic-create-toggle"),
-    "the create panel lost its mount, so four record kinds became unauthorable",
+    "the create panel lost its mount, so several record kinds became unauthorable",
+  );
+
+  // A RECURRENCE, and nothing else, in the ledger. Asserted as an exact set
+  // rather than "a decision is absent": a count passes over a wholesale swap of
+  // the row source, and an absence check passes over a source that dropped
+  // everything.
+  const kinds = new Set(
+    [...surface.querySelectorAll<HTMLElement>("[data-support-row]")].map(
+      (row) =>
+        relationships.records.find(
+          (record) => record.id === row.dataset.supportRow,
+        )?.kind,
+    ),
+  );
+  assert.deepEqual(
+    [...kinds].sort(),
+    ["recurrence"],
+    "the ledger holds something other than recurrences — decisions moved to the client record and everything else has a screen",
   );
 });
 
@@ -1028,47 +1157,50 @@ test("every kind the collection stopped drawing is still reachable through the i
     );
   }
 
-  await openOrganizations();
-  await waitForCondition(() => rows().length > 0, "no client row");
-
-  // AND THE INSPECTOR REALLY RESOLVES ONE. The shell looks a selection up in
-  // `snapshot.relationships` and nothing else, so this is the half that a
-  // registry assertion alone cannot prove.
-  const fact = relationships.records.find(
-    (record) => record.kind === "relationship_fact",
-  );
-  const decision = relationships.records.find(
-    (record) => record.kind === "decision",
-  );
+  // AND THE SLICE REALLY CARRIES THEM. The shell looks a selection up in
+  // `snapshot.relationships` and nowhere else, so a registry assertion alone
+  // proves half of the reach; this is the other half, and it goes through a
+  // real snapshot load so a record has to survive the query contract's own
+  // `.strict()` parse to count.
+  //
+  // THE UNATTRIBUTED DECISION IS THE ONE THAT MATTERS HERE. It carries no
+  // `organizationId` — the permanent state of every decision written before
+  // that edge existed — so it appears on no client record and, since decisions
+  // left the ledger, in no list at all. This is what proves it is still
+  // openable rather than gone.
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+  const snapshot = await loadDesktopSnapshot(createScenarioClient({ queries }));
   assert.equal(
-    fact === undefined && decision === undefined,
-    true,
-    "the fixture grew a fact or a decision — extend this test to select it rather than leaving the reach unproven",
+    snapshot.relationships.kind,
+    "ready",
+    "the relationship slice did not load, so the reach is unproven",
   );
+  const carried =
+    snapshot.relationships.kind === "ready"
+      ? snapshot.relationships.data.records.map((record) => record.id)
+      : [];
+  for (const [what, id] of [
+    ["a decision no client can claim", unattributedDecisionId],
+    ["a recurrence", ledgerRecurrenceId],
+  ] as const) {
+    assert.equal(
+      carried.includes(id),
+      true,
+      `${what} did not reach the slice the shell resolves a selection against, so nothing can open it`,
+    );
+  }
 
-  // THE ONE THAT IS NOT REACHABLE, asserted as the finding it is rather than
-  // left to be discovered. A radar candidate rides `snapshot.radar`; the shell
-  // resolves a strategic selection against `snapshot.relationships` only
-  // (`RealApp.tsx:816-825`), so ⌘K on one opens this destination and selects
-  // nothing. That is true on `main` today and is why the review rail below the
-  // client list keeps its mount: it is the only place a radar candidate can be
-  // seen or resolved at all.
+  // And the shell still looks a selection up in exactly that slice.
   const realApp = readFileSync(
     path.join(packageRoot, "src", "RealApp.tsx"),
     "utf8",
   );
-  const resolver = realApp.slice(
-    realApp.indexOf("const selectedStrategicRecord"),
-    realApp.indexOf("const selectedStrategicRecord") + 400,
-  );
-  assert.ok(
-    resolver.includes("snapshot?.relationships"),
-    "the inspector's resolver moved — re-check whether a radar candidate can now be selected",
-  );
-  assert.equal(
-    resolver.includes("snapshot.radar"),
-    false,
-    "the inspector learned to resolve a radar candidate — the review rail may now be retirable, which is a product decision and not a silent one",
+  assert.match(
+    realApp,
+    /const selectedStrategicRecord[\s\S]{0,300}snapshot\.relationships\.data\.records\.find/,
+    "the shell stopped resolving a selection against the relationship slice — re-check every kind the collection stopped drawing",
   );
 });
 
@@ -1163,5 +1295,160 @@ test("an unavailable review list says so; it never reports the review complete",
   assert.ok(
     (message.textContent ?? "").trim().length > 20,
     "the unavailable branch printed no reason",
+  );
+});
+
+test("the record's Decisions section carries the rationale, and a superseded decision stays on it", async () => {
+  const section = await openClientRecord();
+  const decisions = container
+    .querySelector("#org-decisions-title")
+    ?.closest("section") as HTMLElement | null;
+  assert.ok(
+    decisions,
+    "the organisation record has no Decisions section, so the edge #196 built has no reader",
+  );
+  assert.notEqual(
+    decisions,
+    section,
+    "Decisions and What we know are the same section — a decision has a rationale and no verification date, and folding them together loses one of the two",
+  );
+  // The region is labelled by its OWN heading. A pointer at the neighbouring
+  // one is not a missing reference, so the packaged smoke's aria check does not
+  // see it — the section simply announces itself as "What we know" and a reader
+  // navigating by region never finds the decisions.
+  assert.equal(
+    decisions.getAttribute("aria-labelledby"),
+    "org-decisions-title",
+    "the Decisions region is labelled by a heading that is not its own",
+  );
+
+  const current = decisions.querySelector<HTMLElement>(
+    `[data-organization-decision="${currentDecisionId}"]`,
+  );
+  assert.ok(
+    current,
+    "the decision taken about this client is not on its record",
+  );
+  // THE RATIONALE, not only the title. A decision without the reason behind it
+  // is a label, and the reason is the part somebody comes back for.
+  assert.match(
+    current.textContent ?? "",
+    /Dwa zespoły dublowały ustalenia/u,
+    "the decision is drawn as a title with no reason under it",
+  );
+
+  // AND THE REPLACED ONE IS STILL THERE. A decision that was superseded is the
+  // part of the history somebody asks about; the projection includes it on
+  // purpose and a screen that filters it throws that away.
+  const superseded = decisions.querySelector<HTMLElement>(
+    `[data-organization-decision="${supersededDecisionId}"]`,
+  );
+  assert.ok(
+    superseded,
+    "a superseded decision was filtered out of the record — that is the half of the history somebody comes back for",
+  );
+  // Told apart IN WORDS, not only by a shade: the state is beside the title.
+  assert.match(
+    superseded.textContent ?? "",
+    /Superseded/u,
+    "a replaced decision is distinguished only by colour, so it reads as current on a screen with none",
+  );
+});
+
+test("a client with no decision recorded says so without claiming none was taken", async () => {
+  const withoutDecisions = {
+    ...queries,
+    "organization.operationalOverview": projectionResponse({
+      ...overview,
+      decisions: [],
+    }),
+  };
+  await openOrganizations(withoutDecisions);
+  await waitForCondition(() => rows().length > 0, "no client row");
+  const row = rowFor(referencedOrganizationId);
+  await act(async () => {
+    row.click();
+    row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  await waitForCondition(
+    () => container.querySelector("#org-decisions-title") !== null,
+    "the record never drew the Decisions section",
+  );
+  const decisions = container
+    .querySelector("#org-decisions-title")
+    ?.closest("section") as HTMLElement | null;
+  assert.ok(decisions, "no Decisions section");
+  assert.equal(
+    decisions.querySelectorAll("[data-organization-decision]").length,
+    0,
+    "the empty case drew a decision",
+  );
+  // "recorded", not "taken". There is no `decision.update`, so every decision
+  // written before the edge existed is unattributable rather than absent — and
+  // the copy must not tell a reader nobody ever decided anything here.
+  assert.match(
+    decisions.textContent ?? "",
+    /No decision has been recorded against this client\./u,
+    "the empty state claims no decision was taken, which is a different and false statement",
+  );
+});
+
+test("a radar candidate IS selectable and rendered; what the rail owns is resolving it", async () => {
+  // THIS TEST REPLACES A FINDING THAT WAS WRONG. An earlier revision of this
+  // file asserted that a radar candidate could not be resolved by the shell
+  // inspector because it "rides `snapshot.radar`, not `snapshot.relationships`".
+  // It rides BOTH: `relationship.workspace` returns every live strategic record
+  // and `liveStrategicRecords` (`wave2.ts:1929-1936`) filters only `removed`
+  // and `deleted`, while a candidate's states are pending/saved/dismissed. So
+  // ⌘K selects one and the inspector draws it, which is what this asserts.
+  await openOrganizations(withRadarCandidate);
+  await waitForCondition(() => rows().length > 0, "no client row");
+
+  const rail = container
+    .querySelector("#review-title")
+    ?.closest("aside") as HTMLElement | null;
+  assert.ok(rail, "the review rail is not on the screen");
+  const keep = [...rail.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => (button.textContent ?? "").trim() === "Keep",
+  );
+  assert.ok(
+    keep,
+    "the rail offers no way to keep a candidate — and it is the only place in the product that does",
+  );
+
+  // THE HALF THE RAIL DOES NOT OWN: being seen. Proved by loading the snapshot
+  // the way the app does, so the candidate has to survive the query contract's
+  // own `.strict()` parse to count — asserting the fixture object back to
+  // itself would prove nothing.
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+  const snapshot = await loadDesktopSnapshot(
+    createScenarioClient({ queries: withRadarCandidate }),
+  );
+  assert.equal(
+    snapshot.relationships.kind,
+    "ready",
+    "the relationship slice did not load, so the reach is unproven",
+  );
+  const carried =
+    snapshot.relationships.kind === "ready" &&
+    snapshot.relationships.data.records.some(
+      (record) => record.id === radarCandidateId,
+    );
+  assert.equal(
+    carried,
+    true,
+    "a radar candidate did not reach `snapshot.relationships` — if this is real, the shell inspector cannot resolve one and the earlier finding was right after all",
+  );
+  // And the shell still looks a selection up in exactly that slice.
+  const realApp = readFileSync(
+    path.join(packageRoot, "src", "RealApp.tsx"),
+    "utf8",
+  );
+  assert.match(
+    realApp,
+    /const selectedStrategicRecord[\s\S]{0,300}snapshot\.relationships\.data\.records\.find/,
+    "the shell stopped resolving a selection against the relationship slice — re-check every kind the collection stopped drawing",
   );
 });

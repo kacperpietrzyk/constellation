@@ -111,26 +111,39 @@ const StateMark = ({ state }: { readonly state: string }) => (
 //
 // WHAT THE COLLECTION STOPPED RENDERING, and where each kind went instead:
 // opportunities and offers to Pipeline, people to People, renewals to Renewals,
-// relationship facts to the organisation record's "What we know" below. Every
-// one of those had to ship before this did, which is why this lot merges last.
+// relationship facts to the organisation record's "What we know" below, and
+// decisions to the "Decisions" section beside it once #196 built the edge that
+// makes a decision belong to a client. Every one of those had to ship before
+// this did, which is why this lot merges last.
 //
-// WHAT IT STILL RENDERS, AND WHY — because "retire the kinds that now have a
-// home" leaves two that do not:
+// WHAT IT STILL RENDERS, AND WHY. This is the sentence a reader in three months
+// needs, so it names all three and its reason for each:
 //
-//  1. `decision`, `impact_review` and `recurrence` have NO edge to an
-//     organisation in this model. `decision` carries `linkedRecordIds`, which
-//     the only authoring path writes as `[]` (`client/workflow.ts:2925`);
-//     `impact_review` links two decisions; `recurrence` carries an optional
-//     `contextRecordId` nothing sets. So they cannot be attributed to a client
-//     and cannot move to the client's record — three sections that would be
-//     empty by construction is a capability nothing mounts, not a home.
-//  2. `radar_candidate` rides `snapshot.radar`, NOT `snapshot.relationships`,
-//     and the shell's inspector resolves a selection only against the latter
-//     (`RealApp.tsx:816-825`). The review rail is the only place in the product
-//     a radar candidate can be seen or resolved at all.
+//  1. `recurrence` — deliberately has NO edge to an organisation and is not
+//     getting one. It belongs to the work it repeats, not to a client:
+//     `wave2.ts`'s project `referencedBy` branch already reaches it, the
+//     conformance seed hangs one off an `areaId`, and the accepted prototype
+//     draws no recurrence on the client record. Its home is the project/area
+//     side; the ledger below is where it is reachable TODAY, and moving it is
+//     a job for whoever builds that record, not a gap here.
+//  2. `impact_review` — reaches a client DERIVED, through
+//     `priorDecisionId → decision.organizationId`, and carries no edge of its
+//     own. No query performs that join and the accepted prototype renders no
+//     impact-review section, so it is AVAILABLE but NOT SERVED. Nothing is
+//     built for it here on purpose; the derivation is written down so the next
+//     reader does not have to find it again.
+//  3. `radar_candidate` — the rail below is where one is RESOLVED, and that is
+//     its only remaining reason. It is not unreachable: radar candidates ride
+//     `relationship.workspace` like every other strategic record, because
+//     `liveStrategicRecords` (`wave2.ts:1929-1936`) filters only `removed` and
+//     `deleted` while a candidate's states are pending/saved/dismissed — so
+//     ⌘K selects one and the shell inspector renders it. What the inspector
+//     cannot do is Keep or Dismiss it, and its own copy says as much:
+//     "This candidate is waiting for a decision in Organizations"
+//     (`StrategicRecordInspector.tsx:291-297`).
 //
-// Both are reported as findings rather than worked around, and both sit BELOW
-// the accepted screen so the client list is what the surface opens on.
+// All three sit BELOW the accepted screen, so the client list is what the
+// surface opens on.
 
 // Spelled as a mapped type rather than `Record<…>`: this file declares its own
 // local `Record` alias for a strategic record, which shadows the built-in.
@@ -508,15 +521,22 @@ export const StrategicDepthSurface = ({
 
   const index = useMemo(() => indexRelationships(records), [records]);
 
-  // Everything the collection still renders that is NOT an organization, and
-  // there are exactly two groups of it — see the block comment above the row
-  // components for why each has nowhere else to go.
-  const decisions = records.filter((record) => record.kind === "decision");
+  // Everything the collection still renders that is NOT an organization. It is
+  // now ONE kind — see the block comment above the row components for why.
+  //
+  // DECISIONS LEFT THIS LEDGER when they gained a home on the client record,
+  // and that has a consequence worth stating rather than discovering: there is
+  // no `decision.update`, so a decision written before #196 has no
+  // `organizationId` and can never gain one. It is not lost — ⌘K still opens it
+  // in the shell inspector, because `decision` routes to this destination and
+  // every live strategic record rides `relationship.workspace` — but it is no
+  // longer listed anywhere, and only a decision authored from here on appears
+  // on the client it was taken about.
   const recurrences = records.filter((record) => record.kind === "recurrence");
   const reviews = records.filter(
     (record): record is Review => record.kind === "impact_review",
   );
-  const supportRecords = [...decisions, ...recurrences];
+  const supportRecords = recurrences;
   // The rail's own slice, read as a slice. It used to be flattened to `[]` when
   // the read failed, and the rail then printed "Review complete" over a list
   // nobody had seen — a green all-clear produced by a failure, which is the one
@@ -923,7 +943,11 @@ export const StrategicDepthSurface = ({
           >
             <header className="section-heading">
               <div>
-                <h2 id="supporting-title">Supporting records</h2>
+                {/* Named for what is actually in it. It held people, decisions
+                    and recurrences; the first two have screens of their own and
+                    a recurrence repeats WORK, so this is the last stop before
+                    it moves to the project and area record that will own it. */}
+                <h2 id="supporting-title">Recurring work</h2>
               </div>
             </header>
             {supportRecords.map((record, position) => (
@@ -931,6 +955,7 @@ export const StrategicDepthSurface = ({
                 className={`ledger-row${
                   selectedRecordId === record.id ? " selected" : ""
                 }`}
+                data-support-row={record.id}
                 key={record.id}
               >
                 <button
@@ -946,39 +971,33 @@ export const StrategicDepthSurface = ({
                   <span className="ledger-copy">
                     <strong>{record.title}</strong>
                     <small>
-                      {record.kind === "decision"
-                        ? record.rationale
-                        : `${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
+                      {`${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
                     </small>
                   </span>
                 </button>
-                {record.kind === "recurrence" ? (
-                  <button
-                    type="button"
-                    className="ledger-action"
-                    disabled={!client || busyId === record.id}
-                    onClick={() => {
-                      if (!client) return;
-                      void act(record.id, async () => {
-                        const result = await generateRecurrenceOccurrence(
-                          client,
-                          snapshot,
-                          record,
-                        );
-                        if (result.kind !== "success") onFailure(result);
-                      });
-                    }}
-                  >
-                    Create occurrence
-                  </button>
-                ) : (
-                  <StateMark state={record.state} />
-                )}
+                <button
+                  type="button"
+                  className="ledger-action"
+                  disabled={!client || busyId === record.id}
+                  onClick={() => {
+                    if (!client) return;
+                    void act(record.id, async () => {
+                      const result = await generateRecurrenceOccurrence(
+                        client,
+                        snapshot,
+                        record,
+                      );
+                      if (result.kind !== "success") onFailure(result);
+                    });
+                  }}
+                >
+                  Create occurrence
+                </button>
               </div>
             ))}
             {supportRecords.length === 0 && (
               <p className="strategic-quiet">
-                No supporting records in this Space.
+                Nothing repeats on a cadence in this Space.
               </p>
             )}
           </section>
@@ -1084,6 +1103,10 @@ const emptySectionCopy = {
   tasks: "No open tasks in the client's active projects.",
   renewals: "No renewals need tracking.",
   facts: "No verified relationship facts yet.",
+  // Says "recorded", not "taken": decisions written before this client could
+  // carry one are not absent, they are unattributable, and the copy must not
+  // claim nobody ever decided anything about this relationship.
+  decisions: "No decision has been recorded against this client.",
   meetings: "No meetings are assigned to this organization.",
   documents: "No documents are linked to this organization.",
 } as const;
@@ -1492,18 +1515,79 @@ export const OrganizationContextSurface = ({
           )}
         </section>
 
-        {/* WHAT WE KNOW — the section the retired collection handed over.
-            "Renewals and fact freshness" was where a fact's verification date
-            and its staleness were readable; the collection no longer draws it,
-            so the freshness comes here with the facts rather than disappearing.
+        {/* DECISIONS — the second section the retired collection handed over,
+            and it exists because a lot built the edge it needed. `decision`
+            now carries an optional scalar `organizationId` on the same terms as
+            `renewal` and `relationship_fact`, and `organization.operational-
+            Overview` carries a hand-written `decisions` key and mapper. This
+            section is the only reader of either.
 
-            IT HOLDS FACTS AND NOTHING ELSE, and that is a finding rather than a
-            choice. The plan put decisions here too, but a `decision` carries no
-            edge to an organisation: `linkedRecordIds` is written `[]` by the
-            only authoring path there is, `impact_review` links two decisions to
-            each other, and `recurrence`'s `contextRecordId` is optional and
-            unset. Three sections that could never fill would be worse than the
-            gap being named. */}
+            SUPERSEDED DECISIONS ARE SHOWN, not filtered. A decision that was
+            replaced is the part of the history somebody asks about, so it is
+            drawn quieter rather than removed — the same call the projection
+            took when it included them.
+
+            THE LIMITATION, and it is not this screen's to fix: there is no
+            `decision.update`. Every decision written before that edge existed
+            has no `organizationId` and no way to gain one, so this section
+            fills only from decisions authored after it ships. */}
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-decisions-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Knowledge</p>
+              <h2 id="org-decisions-title">Decisions</h2>
+            </div>
+            <span>{overview.decisions.length}</span>
+          </header>
+          {overview.decisions.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.decisions}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__decisions">
+              {overview.decisions.map((decision) => (
+                <li
+                  className={
+                    decision.state === "superseded"
+                      ? "organization-decision organization-decision--superseded"
+                      : "organization-decision"
+                  }
+                  data-organization-decision={decision.id}
+                  key={decision.id}
+                >
+                  <span className="organization-decision__head">
+                    <strong>{decision.title}</strong>
+                    <span className="record-kind">
+                      {strategicStateLabels[decision.state] ?? decision.state}
+                    </span>
+                    <span>
+                      {formatDate(decision.supersededAt ?? decision.updatedAt)}
+                    </span>
+                  </span>
+                  {/* The RATIONALE, not only the title. A decision without the
+                      reason behind it is a label, and the reason is the part
+                      somebody comes back for. */}
+                  <p>{decision.rationale}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* WHAT WE KNOW — the first section the retired collection handed
+            over. "Renewals and fact freshness" was where a fact's verification
+            date and its staleness were readable; the collection no longer draws
+            it, so the freshness comes here with the facts rather than
+            disappearing.
+
+            IT HOLDS FACTS ONLY, and that is now a separation rather than a
+            shortage: decisions are a second kind of thing somebody recorded on
+            purpose, with a rationale under each, so they get the section above
+            instead of being folded in beside a verification date they do not
+            have. */}
         <section
           className="organization-context__section"
           aria-labelledby="org-facts-title"

@@ -172,6 +172,55 @@
   display: block;
   margin-top: var(--space-1);
 }
+/* Decisions. A list rather than a definition list, because a decision is one
+   thing with a reason under it — not a key and a value.
+
+   The tracks are RATIOS and the head wraps, for the reason the whole CRM sheet
+   is written that way: a rem cap doubles with the text while the box it sits in
+   does not, and a non-wrapping row's min-content is the sum of its children. */
+.organization-context__decisions {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.organization-decision {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.organization-decision__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.organization-decision__head > span:last-child {
+  margin-inline-start: auto;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+.organization-decision p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* Superseded is drawn QUIETER, never struck through and never removed: a
+   replaced decision is the part of the history somebody asks about, and a line
+   through prose is unreadable at this size. The state is also in words beside
+   the title, so nothing here depends on noticing a shade. */
+.organization-decision--superseded strong {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.organization-decision--superseded p {
+  color: var(--text-quaternary);
+}
 .organization-empty {
   padding: var(--space-3);
 }
