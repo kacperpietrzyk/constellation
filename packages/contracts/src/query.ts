@@ -49,6 +49,7 @@ import {
   RequestOriginSchema,
 } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
+import { ExchangeRateSchema, MoneySchema, OfferPriceSchema } from "./money.js";
 import { NeedsReviewSchema } from "./narrative.js";
 import {
   DEPENDENT_SAMPLE_LIMIT,
@@ -505,6 +506,19 @@ export const OrganizationRecordProjectionSchema =
     name: z.string(),
     relationshipState: z.enum(["prospect", "active", "inactive"]),
     nextAction: z.string().optional(),
+    // Free text, and looser than the command bound for the same reason
+    // `externalId` is: a projection that re-applied the write constraint would
+    // make an already-stored value unreadable the day that bound moves.
+    segment: z.string().optional(),
+    // A calendar date, not a timestamp: "client since 2023-04-11" is a day, and
+    // a time of day nobody recorded would be an invention. Bounded as a date at
+    // the command boundary and as a bare string here, like `segment` and
+    // `phone` beside it: this is a BOOT query, so a stored value the read side
+    // refused would not degrade a screen, it would fault the whole workspace.
+    since: z.string().optional(),
+    // The contact AT this organisation. See the domain arm for why this is not
+    // an owner on our side and why the column is `Main contact`.
+    mainContactPersonId: StrategicRecordIdSchema.optional(),
     // Deliberately looser than the command's bound, exactly like `role` and
     // `email` on the person arm: a projection that re-applied the write
     // constraint would make an already-stored value unreadable the day that
@@ -518,6 +532,9 @@ export const PersonRecordProjectionSchema = StrategicRecordBaseSchema.extend({
   organizationId: StrategicRecordIdSchema.optional(),
   role: z.string().optional(),
   email: z.string().optional(),
+  // As given. See the domain arm: a phone-number format this could not later
+  // loosen would make an already-stored number unreadable.
+  phone: z.string().optional(),
   externalId: z.string().optional(),
 }).strict();
 
@@ -534,6 +551,9 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     ownerPersonId: StrategicRecordIdSchema.optional(),
     need: z.string(),
     qualification: z.string(),
+    // What the deal is worth before any offer exists. Absent means nobody has
+    // put a number on it — never a zero.
+    estimate: MoneySchema.optional(),
     stage: z.string(),
     nextAction: z.string(),
     evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
@@ -549,6 +569,12 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     opportunityId: StrategicRecordIdSchema,
     deliverableDocumentId: DocumentIdSchema,
     ownerPrincipalId: PrincipalIdSchema,
+    cost: MoneySchema.optional(),
+    rate: ExchangeRateSchema.optional(),
+    // Both arms are readable forever even though only `confirmed` is written:
+    // absent is what every offer written before this landed carries, and
+    // narrowing a read-side union is the outage `money.ts` describes.
+    price: OfferPriceSchema.optional(),
     state: z.enum(["draft", "ready", "submitted", "accepted", "declined"]),
     nextAction: z.string(),
   }).strict(),
@@ -1674,6 +1700,18 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           name: z.string(),
           relationshipState: z.enum(["prospect", "active", "inactive"]),
           nextAction: z.string().optional(),
+          segment: z.string().optional(),
+          // See the guarded arm above: bounded on the way in, loose on the way
+          // out.
+          since: z.string().optional(),
+          // Resolved, not a bare id, on exactly the terms `owner` is resolved
+          // on the opportunities below: absent means no contact was named, or
+          // the one that was no longer resolves in this Space — never a dead
+          // id handed to a screen.
+          mainContact: z
+            .object({ id: StrategicRecordIdSchema, name: z.string() })
+            .strict()
+            .optional(),
           version: z.int().positive(),
           updatedAt: z.iso.datetime({ offset: true }),
         })
@@ -1685,6 +1723,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             name: z.string(),
             role: z.string().optional(),
             email: z.string().optional(),
+            phone: z.string().optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -1696,6 +1735,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: StrategicRecordIdSchema,
             title: z.string(),
             need: z.string(),
+            estimate: MoneySchema.optional(),
             stage: z.string(),
             nextAction: z.string(),
             // Whose deal this is, as against who is merely named on it. The id
@@ -1721,6 +1761,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             opportunityId: StrategicRecordIdSchema,
             deliverableDocumentId: DocumentIdSchema,
             ownerPrincipalId: PrincipalIdSchema,
+            cost: MoneySchema.optional(),
+            rate: ExchangeRateSchema.optional(),
+            price: OfferPriceSchema.optional(),
             state: z.enum([
               "draft",
               "ready",
