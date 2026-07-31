@@ -3,31 +3,12 @@ import {
   useMemo,
   useState,
   type CSSProperties,
-  type FormEvent,
   type ReactNode,
 } from "react";
 
-import type {
-  FieldDefinitionId,
-  PrincipalId,
-  ProjectId,
-  TaskId,
-  TaskStatusId,
-} from "@constellation/contracts";
-import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
-
-import {
-  createSavedWorkView,
-  deleteSavedWorkView,
-  renameSavedWorkView,
-  setSavedWorkViewLayout,
-  type DesktopSnapshot,
-  type MutationFailure,
-} from "./client/workflow.js";
-import {
-  InlinePopover,
-  reportFirstEmptyRequiredField,
-} from "./components/InlinePopover.js";
+import type { ProjectId, TaskId } from "@constellation/contracts";
+import { type DesktopSnapshot } from "./client/workflow.js";
+import { InlinePopover } from "./components/InlinePopover.js";
 import { NarrativeText } from "./components/RecordNarrative.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { useSurfaceDensity } from "./hooks/useSurfaceDensity.js";
@@ -121,7 +102,6 @@ const WorkEmpty = ({
 );
 
 export const WorkSurface = ({
-  client,
   snapshot,
   selectedTaskId,
   selectedProjectId,
@@ -129,9 +109,7 @@ export const WorkSurface = ({
   onOpenTask,
   onSelectProject,
   onReload,
-  onFailure,
 }: {
-  readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly selectedTaskId: TaskId | undefined;
   readonly selectedProjectId: ProjectId | undefined;
@@ -139,10 +117,8 @@ export const WorkSurface = ({
   readonly onOpenTask: (id: TaskId) => void;
   readonly onSelectProject: (id: ProjectId) => void;
   readonly onReload: () => Promise<void>;
-  readonly onFailure: (failure: MutationFailure) => void;
 }) => {
   const work = snapshot.work;
-  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const [openPopover, setOpenPopover] = useState<string>();
   const projection = work.kind === "ready" ? work.data : undefined;
   const [activeViewId, setActiveViewId] = useState<string>();
@@ -152,8 +128,6 @@ export const WorkSurface = ({
   // built here type-checked while carrying an id the query layer would not
   // accept. The brand is lost crossing a `<select>` and restored below, the
   // same way `TasksSurface` restores it.
-  const [viewFieldId, setViewFieldId] = useState<FieldDefinitionId | "">("");
-  const [confirmingViewDelete, setConfirmingViewDelete] = useState(false);
   const [density, setDensity] = useSurfaceDensity("work");
   const timeZone = snapshot.bootstrap.workspace.timezone;
   // The applied saved view is a deterministic client-side projection of the
@@ -539,43 +513,6 @@ export const WorkSurface = ({
     [activeLinks, projection],
   );
 
-  // Busy state is a set of operation ids, so concurrent mutations stay
-  // independent: a running operation disables only its own control and cannot
-  // re-enable another one that is still in flight. Operation ids double as
-  // popover ids, and success closes the popover only when it still belongs to
-  // the finished operation — a popover opened in the meantime keeps its draft.
-  // A rejected transport promise still lands in onFailure and never leaves the
-  // surface stuck in a busy state.
-  const run = async (
-    id: string,
-    operation: () => Promise<{ readonly kind: string }>,
-  ): Promise<boolean> => {
-    if (busyIds.has(id)) return false;
-    setBusyIds((current) => new Set(current).add(id));
-    try {
-      const result = await operation();
-      if (result.kind === "success") {
-        await onReload();
-        setOpenPopover((current) => (current === id ? undefined : current));
-        return true;
-      }
-      onFailure(result as MutationFailure);
-      return false;
-    } catch {
-      onFailure({
-        kind: "unavailable",
-        message: "Could not reach the data layer. Nothing changed — try again.",
-      });
-      return false;
-    } finally {
-      setBusyIds((current) => {
-        const next = new Set(current);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
   if (projection === undefined) {
     return (
       <div className="surface-scroll work-surface">
@@ -608,113 +545,6 @@ export const WorkSurface = ({
   // Popover forms reset by unmounting, so run() closes the matching popover
   // (and resets the form) only after the mutation reports success; a failure
   // keeps the draft on screen.
-  const submitView = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const name = String(data.get("name") ?? "").trim();
-    const state = String(data.get("state") ?? "");
-    const statusId = String(data.get("statusId") ?? "");
-    const priority = String(data.get("priority") ?? "");
-    const dueWindow = String(data.get("dueWindow") ?? "");
-    const assignee = String(data.get("assignee") ?? "");
-    const fieldPredicate = String(data.get("fieldPredicate") ?? "");
-    const relationProjectId = String(data.get("relationProjectId") ?? "");
-    const group = String(data.get("groupBy") ?? "");
-    const sort = String(data.get("sort") ?? "updated_desc") as
-      "updated_desc" | "due_asc" | "title_asc";
-    if (!client) return;
-    if (!name) {
-      reportFirstEmptyRequiredField(form);
-      return;
-    }
-    await run("view", () =>
-      createSavedWorkView(
-        client,
-        snapshot,
-        name,
-        {
-          ...(state === ""
-            ? {}
-            : {
-                operationalStates: [
-                  state as "actionable" | "waiting" | "blocked",
-                ],
-              }),
-          ...(statusId === "" ? {} : { statusIds: [statusId as TaskStatusId] }),
-          ...(priority === ""
-            ? {}
-            : {
-                priorities: [priority as "urgent" | "high" | "normal" | "low"],
-              }),
-          ...(dueWindow === ""
-            ? {}
-            : {
-                dueWindow: dueWindow as "overdue" | "today" | "this_week",
-              }),
-          ...(assignee === ""
-            ? {}
-            : assignee === "unassigned"
-              ? { unassigned: true }
-              : { assigneePrincipalIds: [assignee as PrincipalId] }),
-          // ADR-045. The condition goes to the kernel, which evaluates it; the
-          // surface only names the project it wants.
-          ...(relationProjectId === ""
-            ? {}
-            : {
-                relationConditions: [
-                  {
-                    path: "project" as const,
-                    predicate: {
-                      field: "id" as const,
-                      in: [relationProjectId as ProjectId],
-                    },
-                  },
-                ],
-              }),
-          ...(viewFieldId === "" || fieldPredicate === ""
-            ? {}
-            : {
-                fields: [
-                  {
-                    fieldId: viewFieldId,
-                    predicate:
-                      fieldPredicate === "set"
-                        ? { kind: "set" as const }
-                        : fieldPredicate === "empty"
-                          ? { kind: "empty" as const }
-                          : {
-                              kind: "choice_is" as const,
-                              option: fieldPredicate.slice("opt:".length),
-                            },
-                  },
-                ],
-              }),
-        },
-        sort,
-        group === ""
-          ? undefined
-          : group === "status" || group === "priority"
-            ? group
-            : { fieldId: group.slice("field:".length) },
-      ),
-    ).then((created) => {
-      if (created) setViewFieldId("");
-    });
-  };
-
-  const changeLayout = (layout: "list" | "board" | "timeline" | "calendar") => {
-    if (!client || activeView === undefined || layout === activeLayout) return;
-    void run(`view-layout:${activeView.id}`, () =>
-      setSavedWorkViewLayout(
-        client,
-        snapshot,
-        activeView.id,
-        activeView.version,
-        layout,
-      ),
-    );
-  };
 
   const assigneeNames = new Map(
     snapshot.assignmentCandidates.kind === "ready"
@@ -938,244 +768,16 @@ export const WorkSurface = ({
               key={view.id}
               className={`view-chip${activeViewId === view.id ? " active" : ""}`}
               aria-pressed={activeViewId === view.id}
-              onClick={() => {
-                setConfirmingViewDelete(false);
+              onClick={() =>
                 setActiveViewId((current) =>
                   current === view.id ? undefined : view.id,
-                );
-              }}
+                )
+              }
             >
               {view.name}
             </button>
           ))
         )}
-        {activeView !== undefined && (
-          <span className="view-chip-actions">
-            <InlinePopover
-              label="Rename"
-              panelLabel="Rename view"
-              open={openPopover === "view-rename"}
-              onOpenChange={(next) =>
-                setOpenPopover(next ? "view-rename" : undefined)
-              }
-            >
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const name = String(
-                    new FormData(event.currentTarget).get("name") ?? "",
-                  ).trim();
-                  if (!client || name === "" || name === activeView.name)
-                    return;
-                  void run("view-rename", () =>
-                    renameSavedWorkView(
-                      client,
-                      snapshot,
-                      activeView.id,
-                      activeView.version,
-                      name,
-                    ),
-                  );
-                }}
-              >
-                <input
-                  name="name"
-                  aria-label="New view name"
-                  defaultValue={activeView.name}
-                  maxLength={200}
-                  required
-                />
-                <button disabled={busyIds.has("view-rename") || !client}>
-                  {busyIds.has("view-rename") ? "Saving…" : "Save name"}
-                </button>
-              </form>
-            </InlinePopover>
-            <button
-              type="button"
-              className="view-chip-remove"
-              disabled={busyIds.has("view-delete") || !client}
-              onClick={() => {
-                if (!confirmingViewDelete) {
-                  setConfirmingViewDelete(true);
-                  return;
-                }
-                setConfirmingViewDelete(false);
-                if (!client) return;
-                void run("view-delete", () =>
-                  deleteSavedWorkView(
-                    client,
-                    snapshot,
-                    activeView.id,
-                    activeView.version,
-                  ),
-                ).then((deleted) => {
-                  if (deleted) setActiveViewId(undefined);
-                });
-              }}
-            >
-              {confirmingViewDelete ? "Confirm delete" : "Delete view"}
-            </button>
-          </span>
-        )}
-        <InlinePopover
-          label="Save view"
-          panelLabel="Save work view"
-          open={openPopover === "view"}
-          onOpenChange={(next) => setOpenPopover(next ? "view" : undefined)}
-        >
-          <form onSubmit={(event) => void submitView(event)}>
-            <input
-              name="name"
-              aria-label="View name"
-              placeholder="My waiting items"
-              required
-            />
-            <select name="state" aria-label="Task state" defaultValue="">
-              <option value="">Any state</option>
-              <option value="actionable">Actionable</option>
-              <option value="waiting">Waiting</option>
-              <option value="blocked">Blocked</option>
-            </select>
-            <select name="statusId" aria-label="Status" defaultValue="">
-              <option value="">Any status</option>
-              {snapshot.bootstrap.taskStatuses
-                .filter((status) => status.state !== "archived")
-                .map((status) => (
-                  <option key={status.id} value={status.id}>
-                    {status.label}
-                  </option>
-                ))}
-            </select>
-            <select name="priority" aria-label="Priority" defaultValue="">
-              <option value="">Any priority</option>
-              <option value="urgent">Urgent</option>
-              <option value="high">High</option>
-              <option value="normal">Normal</option>
-              <option value="low">Low</option>
-            </select>
-            <select name="dueWindow" aria-label="Deadline" defaultValue="">
-              <option value="">Any deadline</option>
-              <option value="overdue">Overdue</option>
-              <option value="today">Due today</option>
-              <option value="this_week">Due this week</option>
-            </select>
-            <select name="assignee" aria-label="Assignee" defaultValue="">
-              <option value="">Anyone</option>
-              <option value="unassigned">Unassigned</option>
-              {(snapshot.assignmentCandidates.kind === "ready"
-                ? snapshot.assignmentCandidates.data.candidates
-                : []
-              ).map((candidate) => (
-                <option
-                  key={candidate.principalId}
-                  value={candidate.principalId}
-                >
-                  {candidate.displayName}
-                </option>
-              ))}
-            </select>
-            {/* ADR-045. Filtering by a related Project — the kernel resolves
-                the relation, so the view means the same thing here and to an
-                MCP operator. Offered only when there is a Project to name. */}
-            {(projection?.projects ?? []).length > 0 && (
-              <select
-                name="relationProjectId"
-                aria-label="Project"
-                defaultValue=""
-              >
-                <option value="">Any project</option>
-                {(projection?.projects ?? []).map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.title}
-                  </option>
-                ))}
-              </select>
-            )}
-            {(snapshot.bootstrap.fieldDefinitions ?? []).some(
-              (definition) =>
-                definition.targetKind === "task" &&
-                definition.state !== "retired" &&
-                definition.type.kind !== "formula" &&
-                definition.type.kind !== "rollup",
-            ) && (
-              <>
-                <select
-                  aria-label="Field"
-                  value={viewFieldId}
-                  onChange={(event) =>
-                    setViewFieldId(event.target.value as FieldDefinitionId | "")
-                  }
-                >
-                  <option value="">No field condition</option>
-                  {(snapshot.bootstrap.fieldDefinitions ?? [])
-                    .filter(
-                      (definition) =>
-                        definition.targetKind === "task" &&
-                        definition.state !== "retired" &&
-                        definition.type.kind !== "formula" &&
-                        definition.type.kind !== "rollup",
-                    )
-                    .map((definition) => (
-                      <option key={definition.id} value={definition.id}>
-                        {definition.label}
-                      </option>
-                    ))}
-                </select>
-                {viewFieldId !== "" && (
-                  <select
-                    name="fieldPredicate"
-                    aria-label="Field condition"
-                    defaultValue="set"
-                  >
-                    <option value="set">Has a value</option>
-                    <option value="empty">Empty</option>
-                    {(snapshot.bootstrap.fieldDefinitions ?? [])
-                      .filter(
-                        (definition) =>
-                          definition.id === viewFieldId &&
-                          definition.type.kind === "choice",
-                      )
-                      .flatMap((definition) =>
-                        definition.type.kind === "choice"
-                          ? definition.type.options
-                          : [],
-                      )
-                      .map((option) => (
-                        <option key={option} value={`opt:${option}`}>
-                          = {option}
-                        </option>
-                      ))}
-                  </select>
-                )}
-              </>
-            )}
-            <select name="groupBy" aria-label="Grouping" defaultValue="">
-              <option value="">No grouping</option>
-              <option value="status">By status</option>
-              <option value="priority">By priority</option>
-              {(snapshot.bootstrap.fieldDefinitions ?? [])
-                .filter(
-                  (definition) =>
-                    definition.targetKind === "task" &&
-                    definition.state !== "retired" &&
-                    definition.type.kind === "choice",
-                )
-                .map((definition) => (
-                  <option key={definition.id} value={`field:${definition.id}`}>
-                    By field “{definition.label}”
-                  </option>
-                ))}
-            </select>
-            <select name="sort" aria-label="Order" defaultValue="updated_desc">
-              <option value="updated_desc">Recently changed</option>
-              <option value="due_asc">Earliest deadline</option>
-              <option value="title_asc">Alphabetical</option>
-            </select>
-            <button disabled={busyIds.has("view") || !client}>
-              {busyIds.has("view") ? "Saving…" : "Save"}
-            </button>
-          </form>
-        </InlinePopover>
       </nav>
 
       <div className="work-thread">
@@ -1193,63 +795,6 @@ export const WorkSurface = ({
                 {countLabel(visibleTasks.length, "task")}
                 {activeView !== undefined ? ` · view “${activeView.name}”` : ""}
               </span>
-              {activeView !== undefined && (
-                <fieldset className="work-layout-switch">
-                  <legend>View layout</legend>
-                  <button
-                    type="button"
-                    aria-pressed={activeLayout === "list"}
-                    disabled={
-                      busyIds.has(`view-layout:${activeView.id}`) || !client
-                    }
-                    onClick={() => changeLayout("list")}
-                  >
-                    List
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={activeLayout === "board"}
-                    aria-describedby={
-                      groupBy === undefined
-                        ? "work-board-requirement"
-                        : undefined
-                    }
-                    disabled={
-                      groupBy === undefined ||
-                      busyIds.has(`view-layout:${activeView.id}`) ||
-                      !client
-                    }
-                    onClick={() => changeLayout("board")}
-                  >
-                    Board
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={activeLayout === "timeline"}
-                    disabled={
-                      busyIds.has(`view-layout:${activeView.id}`) || !client
-                    }
-                    onClick={() => changeLayout("timeline")}
-                  >
-                    Timeline
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={activeLayout === "calendar"}
-                    disabled={
-                      busyIds.has(`view-layout:${activeView.id}`) || !client
-                    }
-                    onClick={() => changeLayout("calendar")}
-                  >
-                    Calendar
-                  </button>
-                  {groupBy === undefined && (
-                    <small id="work-board-requirement">
-                      Board needs a grouped view.
-                    </small>
-                  )}
-                </fieldset>
-              )}
               {activeLayout === "list" && (
                 <InlinePopover
                   label={`Fields · ${visibleListFields.length}`}
