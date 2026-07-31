@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { WorkingDaySchema as WorkingDayProjectionSchema } from "./working-day.js";
+import { CommercialDefaultsSchema as CommercialDefaultsProjectionSchema } from "./commercial-defaults.js";
 
 import {
   AuditReceiptIdSchema,
@@ -555,6 +556,13 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     // put a number on it — never a zero.
     estimate: MoneySchema.optional(),
     stage: z.string(),
+    /**
+     * When the deal entered the stage it stands in. Absent on deals written
+     * before the stage could move at all; a reader must say "unknown", never
+     * fall back to the record's own age, which is the number this field exists
+     * to stop being mistaken for.
+     */
+    stageEnteredAt: z.iso.datetime({ offset: true }).optional(),
     nextAction: z.string(),
     evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
     offerIds: z.array(StrategicRecordIdSchema),
@@ -587,7 +595,11 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     leadTimeDays: z.int().nonnegative(),
     ownerPrincipalId: PrincipalIdSchema,
     evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
-    followUpTaskId: TaskIdSchema,
+    /** Absent means nobody has started this renewal — a state, not a gap. */
+    followUpTaskId: TaskIdSchema.optional(),
+    termStartsAt: z.iso.datetime({ offset: true }).optional(),
+    termMonths: z.int().nonnegative().optional(),
+    cycleOrdinal: z.int().positive().optional(),
     cycleKey: z.string(),
     state: z.enum(["watching", "renewed", "not_renewing", "irrelevant"]),
   }).strict(),
@@ -1136,6 +1148,12 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           // żaden ekran nie ma powodu przepisywać u siebie domyślnych ośmiu
           // godzin. Domyślna wartość mieszka w jednym miejscu, w domenie.
           workingDay: WorkingDayProjectionSchema,
+          // WYMAGANE, nie opcjonalne, i z tego samego powodu co dzień roboczy:
+          // odczyt dostaje wartości SKUTECZNE, więc żaden ekran nie ma powodu
+          // trzymać u siebie drugiej kopii domyślnego lejka ani domyślnych 25%.
+          // Gdyby to było `.optional()`, mapper, który zapomni je ustawić,
+          // parsowałby się bez słowa, a każdy ekran pokazywałby pusty lejek.
+          commercialDefaults: CommercialDefaultsProjectionSchema,
           version: z.int().positive(),
         })
         .strict(),
@@ -1737,6 +1755,11 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             need: z.string(),
             estimate: MoneySchema.optional(),
             stage: z.string(),
+            // The second projection home restates the opportunity by hand, so
+            // this key reaches it only because it was put here deliberately —
+            // nothing forces it. "Sat in discovery for 61 days" is an
+            // Organizations sentence, and Organizations reads this query.
+            stageEnteredAt: z.iso.datetime({ offset: true }).optional(),
             nextAction: z.string(),
             // Whose deal this is, as against who is merely named on it. The id
             // has been writable since 0.1.5 but appeared in no projection a
@@ -1785,7 +1808,12 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             scope: z.string(),
             expiresAt: z.iso.datetime({ offset: true }),
             leadTimeDays: z.int().nonnegative(),
-            followUpTaskId: TaskIdSchema,
+            // Hand-picked into a fresh literal by the handler, so every key
+            // here reaches a reader only because it was put there on purpose.
+            followUpTaskId: TaskIdSchema.optional(),
+            termStartsAt: z.iso.datetime({ offset: true }).optional(),
+            termMonths: z.int().nonnegative().optional(),
+            cycleOrdinal: z.int().positive().optional(),
             state: z.enum([
               "watching",
               "renewed",
@@ -2047,6 +2075,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "automation_rule_changed",
               "automation_swept",
               "workspace_default_status_changed",
+              "workspace_commercial_defaults_changed",
               "task_completed",
               "task_reopened",
               "task_assigned",

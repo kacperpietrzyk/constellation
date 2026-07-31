@@ -1,4 +1,7 @@
-import { DEFAULT_WORKING_DAY } from "@constellation/contracts";
+import {
+  DEFAULT_COMMERCIAL_DEFAULTS,
+  DEFAULT_WORKING_DAY,
+} from "@constellation/contracts";
 import {
   AttentionSignalIdSchema,
   CommentIdSchema,
@@ -113,6 +116,7 @@ const client = createScenarioClient({
         // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
         // pomija, opisuje świat, którego nie ma, i wywala powłokę na starcie.
         workingDay: DEFAULT_WORKING_DAY,
+        commercialDefaults: DEFAULT_COMMERCIAL_DEFAULTS,
         version: 4,
       },
       spaces: [{ id: spaceId, name: "Praca", version: 1 }],

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { WorkingDaySchema as WorkingDayProjectionSchema } from "./working-day.js";
+import { CommercialDefaultsSchema as CommercialDefaultsProjectionSchema } from "./commercial-defaults.js";
 
 import {
   AuditReceiptIdSchema,
@@ -99,6 +100,7 @@ export const DiagnosticCodeSchema = z.enum([
   "taskStatus.created",
   "taskStatus.changed",
   "workspace.default_status_changed",
+  "workspace.commercial_defaults_changed",
   "task.status_changed",
   "task.operational_state_changed",
   "task.completed",
@@ -633,6 +635,20 @@ export const WorkspaceDefaultStatusChangedProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+/**
+ * Carries the EFFECTIVE settings after the change, not the keys the command
+ * happened to send: a caller that set only the markup still needs to know what
+ * funnel it is now looking at, and a receipt naming only what moved would make
+ * it go and ask.
+ */
+export const WorkspaceCommercialDefaultsChangedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.commercial_defaults_changed"),
+    workspaceId: WorkspaceIdSchema,
+    commercialDefaults: CommercialDefaultsProjectionSchema,
+    version: z.int().positive(),
+  })
+  .strict();
 export const TaskParentChangedProjectionSchema = z
   .object({
     kind: z.literal("task.parent_changed"),
@@ -876,6 +892,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TemplateChangedProjectionSchema,
   ProjectTemplateAppliedProjectionSchema,
   WorkspaceDefaultStatusChangedProjectionSchema,
+  WorkspaceCommercialDefaultsChangedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskOperationalStateChangedProjectionSchema,
   TaskCompletedProjectionSchema,
@@ -1195,6 +1212,12 @@ const WorkspaceDefaultStatusChangedSuccessOutcomeSchema =
     diagnosticCode: z.literal("workspace.default_status_changed"),
     projection: WorkspaceDefaultStatusChangedProjectionSchema,
   }).strict();
+const WorkspaceCommercialDefaultsChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.commercial_defaults_changed"),
+    projection: WorkspaceCommercialDefaultsChangedProjectionSchema,
+  }).strict();
 const TaskParentChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1386,6 +1409,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TemplateChangedSuccessOutcomeSchema,
   ProjectTemplateAppliedSuccessOutcomeSchema,
   WorkspaceDefaultStatusChangedSuccessOutcomeSchema,
+  WorkspaceCommercialDefaultsChangedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskOperationalStateChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,

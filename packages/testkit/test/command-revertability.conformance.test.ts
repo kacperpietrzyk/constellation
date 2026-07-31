@@ -177,6 +177,15 @@ describe("Command revertability", () => {
       versions(ids.workspace),
     );
 
+    // The funnel and the two percentages. Partial by field, so this exercises
+    // the case that matters: a command that sends only the markup must still
+    // record the stages it did not touch, or an undo would clear them.
+    apply(
+      "workspace.setCommercialDefaults",
+      { markupPct: 30 },
+      versions(ids.workspace),
+    );
+
     // Captures and Tasks.
     const routedCaptureId = captureText("Prepare the revertability sweep");
     const routedTaskId = String(
@@ -485,6 +494,28 @@ describe("Command revertability", () => {
       evidenceSourceIds: [sourceId],
       cycleKey: "support:2027-03",
     });
+    // The contract clock, set after the fact — the case a create-only field
+    // would have left every stored renewal without.
+    apply(
+      "relationship.renewalUpdate",
+      { renewalId, termStartsAt: "2025-04-01T12:00:00.000Z", termMonths: 24 },
+      versions(renewalId),
+    );
+
+    // Correcting an offer after the distributor's quote comes back — the other
+    // command that did not exist before 0.2.0.
+    apply(
+      "opportunity.offerUpdate",
+      { offerId, state: "submitted", nextAction: "Await the decision." },
+      versions(offerId),
+    );
+
+    // Moving a deal between stages, which until 0.2.0 no command could do.
+    apply(
+      "opportunity.update",
+      { opportunityId, nextAction: "Confirm the amended schedule." },
+      versions(opportunityId),
+    );
 
     apply("decision.remove", { decisionId }, versions(decisionId));
     apply("relationship.factRemove", { factId }, versions(factId));

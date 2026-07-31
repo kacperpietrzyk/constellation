@@ -1477,6 +1477,12 @@ const compensationCopy: Record<string, string> = {
   "relationship.restore_person": "Restore the previous person details",
   "relationship.restore_organization":
     "Restore the previous organization details",
+  "workspace.restore_commercial_defaults":
+    "Restore the previous pipeline stages and commercial defaults",
+  "opportunity.restore_details": "Restore the previous opportunity details",
+  "opportunity.restore_offer_details": "Restore the previous offer details",
+  "relationship.restore_renewal_term":
+    "Restore the previous contract term and follow-up",
   "relation.remove": "Remove the added relation",
   "relation.restore": "Restore the removed relation",
   "capture.undo_route": "Undo the capture routing",

@@ -46,6 +46,8 @@ import {
 } from "@constellation/contracts";
 import {
   effectiveWorkingDay,
+  effectiveCommercialDefaults,
+  setWorkspaceCommercialDefaults,
   completeTask,
   assignTask,
   createProject,
@@ -96,6 +98,9 @@ import {
   createDecision,
   createArea,
   updateAreaResponsibility,
+  updateOfferDetails,
+  updateOpportunityDetails,
+  updateRenewalTerm,
   updateOrganizationDetails,
   updatePersonDetails,
   createInitiative,
@@ -198,11 +203,14 @@ export type Wave2Command = Extract<
       | "relationship.organizationUpdate"
       | "relationship.personRemove"
       | "opportunity.create"
+      | "opportunity.update"
       | "opportunity.remove"
       | "opportunity.offerCreate"
+      | "opportunity.offerUpdate"
       | "opportunity.offerRemove"
       | "opportunity.linkOutcomes"
       | "relationship.renewalCreate"
+      | "relationship.renewalUpdate"
       | "relationship.renewalResolve"
       | "relationship.factCreate"
       | "relationship.factRemove"
@@ -264,6 +272,7 @@ export type Wave2Command = Extract<
       | "taskStatus.archive"
       | "taskStatus.restore"
       | "workspace.setDefaultTaskStatus"
+      | "workspace.setCommercialDefaults"
       | "task.setStatus"
       | "task.setOperationalState"
       | "task.complete"
@@ -478,6 +487,7 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "opportunity.update":
     case "opportunity.offerCreate":
     case "opportunity.linkOutcomes": {
       const opportunity = view.getStrategicRecord(
@@ -599,6 +609,19 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
+    case "opportunity.offerUpdate": {
+      // Scoped through the OFFER's own Space: this payload names the offer, not
+      // the opportunity, so it cannot ride the offerCreate/linkOutcomes arm.
+      const offer = view.getStrategicRecord(command.payload.offerId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        offer?.workspaceId === command.workspaceId ? offer.spaceId : undefined,
+      );
+    }
+    case "relationship.renewalUpdate":
     case "relationship.renewalResolve": {
       const record = view.getStrategicRecord(command.payload.renewalId);
       return authorized(
@@ -846,7 +869,8 @@ export const isWave2CommandAuthorized = (
     case "taskStatus.reorder":
     case "taskStatus.archive":
     case "taskStatus.restore":
-    case "workspace.setDefaultTaskStatus": {
+    case "workspace.setDefaultTaskStatus":
+    case "workspace.setCommercialDefaults": {
       // Workflow definitions are workspace-level shared configuration:
       // maintainers (owner/admin) publish them; the capability grant still
       // gates each operation for agents and humans alike.
@@ -2903,8 +2927,14 @@ export const executeWave2Command = (
     case "relationship.renewalCreate": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
-        transaction.getStrategicRecord(command.payload.renewalId) !==
-          undefined ||
+        transaction.getStrategicRecord(command.payload.renewalId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      // Only meaningful when a follow-up was asked for. The refusal protects the
+      // task this command is about to CREATE; with no task requested there is
+      // nothing to collide with.
+      if (
+        command.payload.followUpTaskId !== undefined &&
         transaction.getTask(command.payload.followUpTaskId) !== undefined
       )
         return precondition(command, occurredAt);
@@ -2953,7 +2983,22 @@ export const executeWave2Command = (
         leadTimeDays: command.payload.leadTimeDays,
         ownerPrincipalId: command.payload.ownerPrincipalId,
         evidenceSourceIds: command.payload.evidenceSourceIds,
-        followUpTaskId: TaskIdSchema.parse(command.payload.followUpTaskId),
+        ...(command.payload.followUpTaskId === undefined
+          ? {}
+          : {
+              followUpTaskId: TaskIdSchema.parse(
+                command.payload.followUpTaskId,
+              ),
+            }),
+        ...(command.payload.termStartsAt === undefined
+          ? {}
+          : { termStartsAt: command.payload.termStartsAt }),
+        ...(command.payload.termMonths === undefined
+          ? {}
+          : { termMonths: command.payload.termMonths }),
+        ...(command.payload.cycleOrdinal === undefined
+          ? {}
+          : { cycleOrdinal: command.payload.cycleOrdinal }),
         cycleKey: command.payload.cycleKey,
         createdBy: context.principalId,
         occurredAt,
@@ -2962,25 +3007,28 @@ export const executeWave2Command = (
         Date.parse(record.expiresAt) -
           record.leadTimeDays * 24 * 60 * 60 * 1_000,
       ).toISOString();
-      const task: Task = {
-        id: record.followUpTaskId,
-        workspaceId: record.workspaceId,
-        spaceId: record.spaceId,
-        title: `Review renewal: ${record.title}`,
-        // The follow-up carries the renewal review moment as its deadline so
-        // date-aware views surface it without a separate side list.
-        dueAt: reviewDueAt,
-        statusId: workspace.defaultTaskStatusId,
-        recordState: "active",
-        completionState: "open",
-        operationalState: "actionable",
-        createdBy: context.principalId,
-        version: 1,
-        createdAt: occurredAt,
-        updatedAt: occurredAt,
-      };
+      const task: Task | undefined =
+        record.followUpTaskId === undefined
+          ? undefined
+          : {
+              id: record.followUpTaskId,
+              workspaceId: record.workspaceId,
+              spaceId: record.spaceId,
+              title: `Review renewal: ${record.title}`,
+              // The follow-up carries the renewal review moment as its deadline
+              // so date-aware views surface it without a separate side list.
+              dueAt: reviewDueAt,
+              statusId: workspace.defaultTaskStatusId,
+              recordState: "active",
+              completionState: "open",
+              operationalState: "actionable",
+              createdBy: context.principalId,
+              version: 1,
+              createdAt: occurredAt,
+              updatedAt: occurredAt,
+            };
       transaction.insertStrategicRecord(record);
-      transaction.insertTask(task);
+      if (task !== undefined) transaction.insertTask(task);
       const signal = upsertAttention(
         dependencies,
         transaction,
@@ -2989,7 +3037,14 @@ export const executeWave2Command = (
           spaceId: record.spaceId,
           targetPrincipalId: record.ownerPrincipalId,
           reason: "renewal_due",
-          destination: { kind: "task", taskId: task.id },
+          // With no follow-up task, the warning points at the client instead of
+          // vanishing. A renewal nobody has started is precisely the one that
+          // most needs the warning, so dropping the signal would have inverted
+          // the point of making the task optional.
+          destination:
+            task === undefined
+              ? { kind: "organization", organizationId: record.organizationId }
+              : { kind: "task", taskId: task.id },
           sourceRecordId: record.id,
           deduplicationKey: `renewal:${record.id}:${record.cycleKey}`,
           urgency: "in_app",
@@ -3009,23 +3064,121 @@ export const executeWave2Command = (
           "expiresAt",
           "leadTimeDays",
           "evidenceSourceIds",
-          "followUpTaskId",
+          // Only when there is one. A receipt naming a field the record does
+          // not carry says what could have changed rather than what did.
+          ...(record.followUpTaskId === undefined ? [] : ["followUpTaskId"]),
+          ...(record.termStartsAt === undefined ? [] : ["termStartsAt"]),
+          ...(record.termMonths === undefined ? [] : ["termMonths"]),
+          ...(record.cycleOrdinal === undefined ? [] : ["cycleOrdinal"]),
           "cycleKey",
           "state",
         ],
-        { [task.id]: task.version, [signal.id]: signal.version },
-        { [task.id]: "task", [signal.id]: "attentionSignal" },
+        {
+          ...(task === undefined ? {} : { [task.id]: task.version }),
+          [signal.id]: signal.version,
+        },
+        {
+          ...(task === undefined ? {} : { [task.id]: "task" as const }),
+          [signal.id]: "attentionSignal",
+        },
+      );
+    }
+    case "relationship.renewalUpdate": {
+      const current = transaction.getStrategicRecord(command.payload.renewalId);
+      if (current?.kind !== "renewal") return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      if (command.payload.followUpTaskId !== undefined) {
+        // Set once. A renewal that already carries a follow-up is refused
+        // rather than re-pointed, because re-pointing would leave the task the
+        // create made attached to nothing while still sitting in the Tasks
+        // list, wearing the renewal's own deadline.
+        if (current.followUpTaskId !== undefined)
+          return precondition(command, occurredAt);
+        const task = transaction.getTask(command.payload.followUpTaskId);
+        if (
+          task === undefined ||
+          task.workspaceId !== current.workspaceId ||
+          task.spaceId !== current.spaceId
+        )
+          return precondition(command, occurredAt);
+      }
+      const record = updateRenewalTerm(
+        current,
+        {
+          ...(command.payload.termStartsAt === undefined
+            ? {}
+            : { termStartsAt: command.payload.termStartsAt }),
+          ...(command.payload.termMonths === undefined
+            ? {}
+            : { termMonths: command.payload.termMonths }),
+          ...(command.payload.cycleOrdinal === undefined
+            ? {}
+            : { cycleOrdinal: command.payload.cycleOrdinal }),
+          ...(command.payload.followUpTaskId === undefined
+            ? {}
+            : {
+                followUpTaskId: TaskIdSchema.parse(
+                  command.payload.followUpTaskId,
+                ),
+              }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        Object.keys(command.payload).filter((field) => field !== "renewalId"),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "relationship.restore_renewal_term",
+          renewalId: current.id,
+          ...(current.termStartsAt === undefined
+            ? {}
+            : { priorTermStartsAt: current.termStartsAt }),
+          ...(current.termMonths === undefined
+            ? {}
+            : { priorTermMonths: current.termMonths }),
+          ...(current.cycleOrdinal === undefined
+            ? {}
+            : { priorCycleOrdinal: current.cycleOrdinal }),
+          ...(current.followUpTaskId === undefined
+            ? {}
+            : { priorFollowUpTaskId: current.followUpTaskId }),
+          resultingVersion: record.version,
+        },
       );
     }
     case "relationship.renewalResolve": {
       const current = transaction.getStrategicRecord(command.payload.renewalId);
       if (current?.kind !== "renewal" || current.state !== "watching")
         return precondition(command, occurredAt);
-      const task = transaction.getTask(current.followUpTaskId);
-      if (task === undefined) return precondition(command, occurredAt);
+      // A renewal nobody started has no task to complete, and refusing to
+      // close it would make the "nobody has started this" state a trap: the
+      // screen offers Close on every row, and four of five real contracts sit
+      // there. A dangling id — a task removed under the renewal — is still a
+      // refusal, because that one is a broken reference, not a state.
+      const task =
+        current.followUpTaskId === undefined
+          ? undefined
+          : transaction.getTask(current.followUpTaskId);
+      if (current.followUpTaskId !== undefined && task === undefined)
+        return precondition(command, occurredAt);
       const expected = {
         [current.id]: current.version,
-        [task.id]: task.version,
+        ...(task === undefined ? {} : { [task.id]: task.version }),
       };
       if (!exactExpected(command, expected))
         return versionConflict(command, occurredAt, expected);
@@ -3036,12 +3189,14 @@ export const executeWave2Command = (
         updatedAt: occurredAt,
       };
       const updatedTask =
-        task.completionState === "completed"
+        task === undefined || task.completionState === "completed"
           ? task
           : completeTask(task, occurredAt);
       if (!transaction.updateStrategicRecord(record, current.version))
         return versionConflict(command, occurredAt, expected);
       if (
+        task !== undefined &&
+        updatedTask !== undefined &&
         updatedTask !== task &&
         !transaction.updateTask(updatedTask, task.version)
       )
@@ -3055,8 +3210,12 @@ export const executeWave2Command = (
         occurredAt,
         record,
         ["state"],
-        { [updatedTask.id]: updatedTask.version },
-        { [updatedTask.id]: "task" },
+        ...(updatedTask === undefined
+          ? ([{}, {}] as const)
+          : ([
+              { [updatedTask.id]: updatedTask.version },
+              { [updatedTask.id]: "task" as const },
+            ] as const)),
       );
     }
     case "relationship.factCreate": {
@@ -3453,22 +3612,35 @@ export const executeWave2Command = (
       const targetStrategic = transaction.getStrategicRecord(
         StrategicRecordIdSchema.parse(command.payload.targetRecordId),
       );
+      const sourceStrategic = transaction.getStrategicRecord(
+        StrategicRecordIdSchema.parse(command.payload.sourceRecordId),
+      );
       const valid =
         command.payload.linkType === "task_depends_on_task"
           ? sourceTask?.spaceId === command.payload.spaceId &&
             sourceTask.workspaceId === command.workspaceId &&
             targetTask?.spaceId === command.payload.spaceId &&
             targetTask.workspaceId === command.workspaceId
-          : sourceProject?.spaceId === command.payload.spaceId &&
-            sourceProject.workspaceId === command.workspaceId &&
-            targetStrategic?.spaceId === command.payload.spaceId &&
-            targetStrategic.workspaceId === command.workspaceId &&
-            ((command.payload.linkType === "project_advances_initiative" &&
-              targetStrategic.kind === "initiative") ||
-              (command.payload.linkType === "project_serves_area" &&
-                targetStrategic.kind === "area") ||
-              (command.payload.linkType === "project_serves_organization" &&
-                targetStrategic.kind === "organization"));
+          : // The only edge whose SOURCE is a strategic record rather than a
+            // Project: an amendment is a deal attached to the contract it
+            // changes, so both ends live in the relationship graph.
+            command.payload.linkType === "opportunity_amends_renewal"
+            ? sourceStrategic?.kind === "opportunity" &&
+              sourceStrategic.spaceId === command.payload.spaceId &&
+              sourceStrategic.workspaceId === command.workspaceId &&
+              targetStrategic?.kind === "renewal" &&
+              targetStrategic.spaceId === command.payload.spaceId &&
+              targetStrategic.workspaceId === command.workspaceId
+            : sourceProject?.spaceId === command.payload.spaceId &&
+              sourceProject.workspaceId === command.workspaceId &&
+              targetStrategic?.spaceId === command.payload.spaceId &&
+              targetStrategic.workspaceId === command.workspaceId &&
+              ((command.payload.linkType === "project_advances_initiative" &&
+                targetStrategic.kind === "initiative") ||
+                (command.payload.linkType === "project_serves_area" &&
+                  targetStrategic.kind === "area") ||
+                (command.payload.linkType === "project_serves_organization" &&
+                  targetStrategic.kind === "organization"));
       if (!valid) return precondition(command, occurredAt);
       const duplicate = transaction
         .listStrategicRecords(command.workspaceId, command.payload.spaceId)
@@ -4445,6 +4617,209 @@ export const executeWave2Command = (
         },
         undefined,
         { [record.id]: "strategicRecord" },
+      );
+    }
+    case "opportunity.update": {
+      const current = transaction.getStrategicRecord(
+        command.payload.opportunityId,
+      );
+      if (current?.kind !== "opportunity")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const workspace = transaction.getWorkspace(current.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      // Moving INTO a stage the funnel does not list is refused, exactly as
+      // `task.setStatus` refuses a move into an archived status. Standing on
+      // one is not: the stage the deal already carries is left alone, so a
+      // workspace that retired a stage keeps its deals readable and visible.
+      // `opportunity.create` is deliberately NOT validated the same way —
+      // importing a deal on a stage nobody has configured yet has to stay
+      // possible, and refusing it at import would be a new refusal nobody
+      // asked for.
+      if (
+        command.payload.stage !== undefined &&
+        command.payload.stage !== current.stage &&
+        !effectiveCommercialDefaults(workspace).stages.some(
+          (stage) => stage.id === command.payload.stage,
+        )
+      )
+        return precondition(command, occurredAt);
+      if (command.payload.personIds !== undefined) {
+        const people = command.payload.personIds.map((id) =>
+          transaction.getStrategicRecord(id),
+        );
+        if (
+          people.some(
+            (person) =>
+              person?.kind !== "person" || person.spaceId !== current.spaceId,
+          )
+        )
+          return precondition(command, occurredAt);
+      }
+      if (
+        command.payload.ownerPersonId !== undefined &&
+        command.payload.ownerPersonId !== null
+      ) {
+        const owner = transaction.getStrategicRecord(
+          command.payload.ownerPersonId,
+        );
+        // The owner is looked up across the Space, not among the deal's own
+        // contacts: a deal is owned by a colleague, who is generally not a
+        // contact at the client.
+        if (
+          owner?.kind !== "person" ||
+          owner.workspaceId !== current.workspaceId
+        )
+          return precondition(command, occurredAt);
+      }
+      const record = updateOpportunityDetails(
+        current,
+        {
+          ...(command.payload.title === undefined
+            ? {}
+            : { title: command.payload.title }),
+          ...(command.payload.need === undefined
+            ? {}
+            : { need: command.payload.need }),
+          ...(command.payload.qualification === undefined
+            ? {}
+            : { qualification: command.payload.qualification }),
+          ...(command.payload.stage === undefined
+            ? {}
+            : { stage: command.payload.stage }),
+          ...(command.payload.nextAction === undefined
+            ? {}
+            : { nextAction: command.payload.nextAction }),
+          ...(command.payload.ownerPersonId === undefined
+            ? {}
+            : { ownerPersonId: command.payload.ownerPersonId }),
+          ...(command.payload.personIds === undefined
+            ? {}
+            : { personIds: command.payload.personIds }),
+          ...(command.payload.estimate === undefined
+            ? {}
+            : { estimate: command.payload.estimate }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        Object.keys(command.payload).filter(
+          (field) => field !== "opportunityId",
+        ),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "opportunity.restore_details",
+          opportunityId: current.id,
+          priorTitle: current.title,
+          priorNeed: current.need,
+          priorQualification: current.qualification,
+          priorStage: current.stage,
+          priorNextAction: current.nextAction,
+          priorPersonIds: current.personIds,
+          ...(current.ownerPersonId === undefined
+            ? {}
+            : { priorOwnerPersonId: current.ownerPersonId }),
+          ...(current.stageEnteredAt === undefined
+            ? {}
+            : { priorStageEnteredAt: current.stageEnteredAt }),
+          ...(current.estimate === undefined
+            ? {}
+            : { priorEstimate: current.estimate }),
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "opportunity.offerUpdate": {
+      const current = transaction.getStrategicRecord(command.payload.offerId);
+      if (current?.kind !== "offer") return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      // No transition graph on `state`. `opportunity.offerCreate` accepts all
+      // five with no ordering rule, and inventing one here would be a refusal
+      // nobody asked for — the shape that passes a suite precisely because no
+      // test asserts the ordinary case is accepted. A negotiation a client
+      // reopens really does send an offer backwards.
+      //
+      // A rate whose `from` is not the cost's currency is likewise NOT refused,
+      // deliberately and identically to `offerCreate`: the pair check is
+      // structural in `convertMoney`, and a boundary refusal would make the
+      // mismatched offer unwritable and its degradation path unreachable.
+      const record = updateOfferDetails(
+        current,
+        {
+          ...(command.payload.title === undefined
+            ? {}
+            : { title: command.payload.title }),
+          ...(command.payload.cost === undefined
+            ? {}
+            : { cost: command.payload.cost }),
+          ...(command.payload.rate === undefined
+            ? {}
+            : { rate: command.payload.rate }),
+          // `{ basis: "derived" }` is an UN-CONFIRM, and it CLEARS the stored
+          // price rather than storing a second spelling of derived. Only a
+          // confirmed price is ever on the record; absence is what derived
+          // means, in one place.
+          ...(command.payload.price === undefined
+            ? {}
+            : {
+                price:
+                  command.payload.price.basis === "derived"
+                    ? null
+                    : command.payload.price,
+              }),
+          ...(command.payload.state === undefined
+            ? {}
+            : { state: command.payload.state }),
+          ...(command.payload.nextAction === undefined
+            ? {}
+            : { nextAction: command.payload.nextAction }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        Object.keys(command.payload).filter((field) => field !== "offerId"),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "opportunity.restore_offer_details",
+          offerId: current.id,
+          priorTitle: current.title,
+          priorState: current.state,
+          priorNextAction: current.nextAction,
+          ...(current.cost === undefined ? {} : { priorCost: current.cost }),
+          ...(current.rate === undefined ? {} : { priorRate: current.rate }),
+          ...(current.price === undefined ? {} : { priorPrice: current.price }),
+          resultingVersion: record.version,
+        },
       );
     }
     case "project.close":
@@ -7079,6 +7454,84 @@ export const executeWave2Command = (
         { [updated.id]: "workspace" },
       );
     }
+    case "workspace.setCommercialDefaults": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, { [workspace.id]: workspace.version })) {
+        return versionConflict(command, occurredAt, {
+          [workspace.id]: workspace.version,
+        });
+      }
+      const updated = setWorkspaceCommercialDefaults(
+        workspace,
+        {
+          ...(command.payload.stages === undefined
+            ? {}
+            : { pipelineStages: command.payload.stages }),
+          ...(command.payload.markupPct === undefined
+            ? {}
+            : { markupPct: command.payload.markupPct }),
+          ...(command.payload.upliftPct === undefined
+            ? {}
+            : { upliftPct: command.payload.upliftPct }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateWorkspace(updated, workspace.version)) {
+        return versionConflict(command, occurredAt, {
+          [workspace.id]: workspace.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "workspace.commercial_defaults_changed",
+          workspaceId: workspace.id,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: workspace.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        // Derived from the payload, not from the record, so the receipt says
+        // what changed rather than what could have.
+        Object.keys(command.payload),
+        {
+          diagnosticCode: "workspace.commercial_defaults_changed",
+          projection: {
+            kind: "workspace.commercial_defaults_changed",
+            workspaceId: workspace.id,
+            commercialDefaults: effectiveCommercialDefaults(updated),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: workspace.id,
+          spaceId: workspace.rootSpaceId,
+          kind: "workspace.restore_commercial_defaults",
+          // Absent stays absent: the descriptor records that the setting had
+          // never been written, so the undo clears it back to the default
+          // rather than freezing today's default as an explicit value.
+          ...(workspace.pipelineStages === undefined
+            ? {}
+            : { priorPipelineStages: workspace.pipelineStages }),
+          ...(workspace.markupPct === undefined
+            ? {}
+            : { priorMarkupPct: workspace.markupPct }),
+          ...(workspace.upliftPct === undefined
+            ? {}
+            : { priorUpliftPct: workspace.upliftPct }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "workspace" },
+      );
+    }
     case "task.setParent": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
@@ -8157,7 +8610,14 @@ export const descriptorRecordIds = (
     case "record.restore_field_value":
       return [descriptor.recordId];
     case "workspace.restore_default_status":
+    case "workspace.restore_commercial_defaults":
       return [descriptor.workspaceId];
+    case "opportunity.restore_details":
+      return [descriptor.opportunityId];
+    case "opportunity.restore_offer_details":
+      return [descriptor.offerId];
+    case "relationship.restore_renewal_term":
+      return [descriptor.renewalId];
     case "task.restore_calendar_block":
     case "task.restore_record_state":
     case "task.undo_create":
@@ -8581,7 +9041,8 @@ const descriptorState = (
             reason: "later_change",
           };
     }
-    case "workspace.restore_default_status": {
+    case "workspace.restore_default_status":
+    case "workspace.restore_commercial_defaults": {
       const workspace = view.getWorkspace(descriptor.workspaceId);
       return workspace?.version === descriptor.resultingVersion
         ? {
@@ -8722,6 +9183,57 @@ const descriptorState = (
             available: true,
             recordIds: [organization.id],
             versions: { [organization.id]: organization.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "relationship.restore_renewal_term": {
+      const renewal = view.getStrategicRecord(descriptor.renewalId);
+      return renewal?.kind === "renewal" &&
+        strategicRecordState(renewal) === "active" &&
+        renewal.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [renewal.id],
+            versions: { [renewal.id]: renewal.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "opportunity.restore_offer_details": {
+      const offer = view.getStrategicRecord(descriptor.offerId);
+      return offer?.kind === "offer" &&
+        strategicRecordState(offer) === "active" &&
+        offer.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [offer.id],
+            versions: { [offer.id]: offer.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "opportunity.restore_details": {
+      const opportunity = view.getStrategicRecord(descriptor.opportunityId);
+      return opportunity?.kind === "opportunity" &&
+        strategicRecordState(opportunity) === "active" &&
+        opportunity.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [opportunity.id],
+            versions: { [opportunity.id]: opportunity.version },
           }
         : {
             available: false,
@@ -9516,6 +10028,25 @@ const compensateDescriptor = (
     transaction.updateWorkspace(restored, workspace.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "workspace" };
+  } else if (descriptor.kind === "workspace.restore_commercial_defaults") {
+    const workspace = transaction.getWorkspace(
+      descriptor.workspaceId,
+    ) as Workspace;
+    // `?? null` per field, not the bare descriptor value: undoing a command
+    // that ADDED a setting has to take it off, and an absent key would leave
+    // it behind while reporting success (cf. the person/organization arms).
+    const restored = setWorkspaceCommercialDefaults(
+      workspace,
+      {
+        pipelineStages: descriptor.priorPipelineStages ?? null,
+        markupPct: descriptor.priorMarkupPct ?? null,
+        upliftPct: descriptor.priorUpliftPct ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateWorkspace(restored, workspace.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "workspace" };
   } else if (descriptor.kind === "task.restore_parent") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const restored = setTaskParent(
@@ -9893,6 +10424,76 @@ const compensateDescriptor = (
       occurredAt,
     );
     transaction.updateStrategicRecord(restored, organization.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "relationship.restore_renewal_term") {
+    const renewal = transaction.getStrategicRecord(
+      descriptor.renewalId,
+    ) as Extract<StrategicRecord, { kind: "renewal" }>;
+    const restored = updateRenewalTerm(
+      renewal,
+      {
+        termStartsAt: descriptor.priorTermStartsAt ?? null,
+        termMonths: descriptor.priorTermMonths ?? null,
+        cycleOrdinal: descriptor.priorCycleOrdinal ?? null,
+        // `?? null` as everywhere else here: undoing the command that ATTACHED
+        // a follow-up has to detach it, or the renewal stays started while the
+        // receipt says the change was taken back.
+        followUpTaskId: descriptor.priorFollowUpTaskId ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, renewal.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "opportunity.restore_offer_details") {
+    const offer = transaction.getStrategicRecord(descriptor.offerId) as Extract<
+      StrategicRecord,
+      { kind: "offer" }
+    >;
+    const restored = updateOfferDetails(
+      offer,
+      {
+        title: descriptor.priorTitle,
+        state: descriptor.priorState,
+        nextAction: descriptor.priorNextAction,
+        // `?? null` per field: undoing a command that ADDED a cost, a rate or a
+        // confirmed price has to take the key off, not leave the value behind
+        // while reporting success.
+        cost: descriptor.priorCost ?? null,
+        rate: descriptor.priorRate ?? null,
+        price: descriptor.priorPrice ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, offer.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "opportunity.restore_details") {
+    const opportunity = transaction.getStrategicRecord(
+      descriptor.opportunityId,
+    ) as Extract<StrategicRecord, { kind: "opportunity" }>;
+    const restored = updateOpportunityDetails(
+      opportunity,
+      {
+        title: descriptor.priorTitle,
+        need: descriptor.priorNeed,
+        qualification: descriptor.priorQualification,
+        stage: descriptor.priorStage,
+        nextAction: descriptor.priorNextAction,
+        personIds: descriptor.priorPersonIds,
+        ownerPersonId: descriptor.priorOwnerPersonId ?? null,
+        // Named explicitly, and `?? null` for the same reason as every other
+        // arm here: a deal that carried no stage stamp before the update must
+        // not keep the one the update wrote. Passing it also overrides the
+        // helper's re-stamp, so putting the stage back puts its entry moment
+        // back with it rather than restarting the clock at the undo.
+        stageEnteredAt: descriptor.priorStageEnteredAt ?? null,
+        estimate: descriptor.priorEstimate ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, opportunity.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "knowledge.restore_evidence") {
@@ -11652,6 +12253,9 @@ export const executeWave2Query = (
             ? {}
             : { estimate: record.estimate }),
           stage: record.stage,
+          ...(record.stageEnteredAt === undefined
+            ? {}
+            : { stageEnteredAt: record.stageEnteredAt }),
           nextAction: record.nextAction,
           ...(owner === undefined || owner.kind !== "person"
             ? {}
@@ -11681,7 +12285,18 @@ export const executeWave2Query = (
         scope: record.scope,
         expiresAt: record.expiresAt,
         leadTimeDays: record.leadTimeDays,
-        followUpTaskId: record.followUpTaskId,
+        ...(record.followUpTaskId === undefined
+          ? {}
+          : { followUpTaskId: record.followUpTaskId }),
+        ...(record.termStartsAt === undefined
+          ? {}
+          : { termStartsAt: record.termStartsAt }),
+        ...(record.termMonths === undefined
+          ? {}
+          : { termMonths: record.termMonths }),
+        ...(record.cycleOrdinal === undefined
+          ? {}
+          : { cycleOrdinal: record.cycleOrdinal }),
         state: record.state,
         version: record.version,
         updatedAt: record.updatedAt,
@@ -12141,6 +12756,8 @@ export const executeWave2Query = (
     "taskStatus.created": "task_status_definition_created",
     "taskStatus.changed": "task_status_definition_changed",
     "workspace.default_status_changed": "workspace_default_status_changed",
+    "workspace.commercial_defaults_changed":
+      "workspace_commercial_defaults_changed",
     "task.completed": "task_completed",
     "task.reopened": "task_reopened",
     "task.assigned": "task_assigned",

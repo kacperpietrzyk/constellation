@@ -6,6 +6,7 @@ import {
   type ApplicationCommandResponse,
 } from "@constellation/application";
 import {
+  CommandEnvelopeSchema,
   ExecutionContextSchema,
   DocumentIdSchema,
   WorkspaceIdSchema,
@@ -107,6 +108,7 @@ const context = (): ExecutionContext =>
       "taskStatus.archive",
       "taskStatus.restore",
       "workspace.setDefaultTaskStatus",
+      "workspace.setCommercialDefaults",
       "task.setStatus",
       "task.setOperationalState",
       "task.complete",
@@ -136,6 +138,7 @@ const context = (): ExecutionContext =>
       "activity.meaningful",
       "activity.changeFeed",
       "workspace.manageAccess",
+      "workspace.bootstrapContext",
       "capture.history",
       "command.previewUndo",
       "command.undo",
@@ -178,6 +181,26 @@ const setup = (): ReferenceHarness => {
   );
   assert.equal(result.outcome, "success");
   return harness;
+};
+
+/** The workspace as a reader receives it, with every setting already effective. */
+const bootstrapWorkspace = (harness: ReferenceHarness) => {
+  const response = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "workspace.bootstrapContext",
+    queryId: requestId(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: {},
+  });
+  assert.equal(response.kind, "query_result");
+  if (
+    response.kind !== "query_result" ||
+    response.result.outcome !== "success" ||
+    response.result.projection.kind !== "workspace.bootstrapContext"
+  )
+    assert.fail("Expected the bootstrap context.");
+  return response.result.projection.workspace;
 };
 
 const createTask = (harness: ReferenceHarness, title: string): TaskId => {
@@ -2307,6 +2330,196 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(byId.get(childA)?.parentTaskId, parentId);
     assert.equal(byId.get(childB)?.parentTaskId, parentId);
     assert.equal(byId.get(other)?.parentTaskId, undefined);
+  });
+
+  it("configures the funnel and the commercial percentages per workspace", () => {
+    const harness = setup();
+
+    // The effective values reach a reader before anybody configures anything.
+    // Required, not optional: a mapper that forgot them would otherwise parse
+    // silently and every screen would show an empty funnel.
+    const before = bootstrapWorkspace(harness);
+    assert.deepEqual(
+      before.commercialDefaults.stages.map((stage) => stage.id),
+      ["qualification", "discovery", "proposal", "negotiation", "won", "lost"],
+      "an unconfigured workspace reads the prototype's funnel, not an empty list",
+    );
+    assert.equal(before.commercialDefaults.markupPct, 25);
+    assert.equal(before.commercialDefaults.upliftPct, 5);
+
+    const stages = [
+      { id: "qualification", label: "Qualification", order: 0 },
+      { id: "distributor_quote", label: "Waiting for the quote", order: 1 },
+      { id: "proposal", label: "Proposal", order: 2 },
+    ];
+    const configured = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("commercial-stages", { [ids.workspace]: 1 }),
+        commandName: "workspace.setCommercialDefaults",
+        payload: { stages },
+      }),
+    );
+    assert.equal(
+      configured.diagnosticCode,
+      "workspace.commercial_defaults_changed",
+    );
+    if (
+      configured.outcome !== "success" ||
+      configured.projection.kind !== "workspace.commercial_defaults_changed"
+    )
+      assert.fail("Expected the commercial-defaults projection.");
+    assert.deepEqual(
+      configured.projection.commercialDefaults.stages.map(
+        (stage) => stage.label,
+      ),
+      ["Qualification", "Waiting for the quote", "Proposal"],
+      "the receipt carries the effective funnel, in column order",
+    );
+    assert.equal(
+      configured.projection.commercialDefaults.markupPct,
+      25,
+      "a receipt for a stage change still names the markup it did not touch",
+    );
+
+    // PARTIAL BY FIELD. Setting the markup alone must not restate the funnel,
+    // because restating a list nobody meant to change is how a stage is lost.
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("commercial-markup", { [ids.workspace]: 2 }),
+        commandName: "workspace.setCommercialDefaults",
+        payload: { markupPct: 40 },
+      }),
+    );
+    const afterMarkup = bootstrapWorkspace(harness);
+    assert.equal(afterMarkup.commercialDefaults.markupPct, 40);
+    assert.equal(
+      afterMarkup.commercialDefaults.upliftPct,
+      5,
+      "a setting nobody has written still reads as its default",
+    );
+    assert.deepEqual(
+      afterMarkup.commercialDefaults.stages.map((stage) => stage.id),
+      ["qualification", "distributor_quote", "proposal"],
+      "changing the markup left the funnel exactly where it was",
+    );
+
+    // Ordering is data, not the order the array happened to arrive in.
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("commercial-reorder", { [ids.workspace]: 3 }),
+        commandName: "workspace.setCommercialDefaults",
+        payload: {
+          stages: [
+            { id: "proposal", label: "Proposal", order: 0 },
+            { id: "qualification", label: "Qualification", order: 1 },
+            {
+              id: "distributor_quote",
+              label: "Waiting for the quote",
+              order: 2,
+            },
+          ],
+        },
+      }),
+    );
+    assert.deepEqual(
+      bootstrapWorkspace(harness).commercialDefaults.stages.map(
+        (stage) => stage.id,
+      ),
+      ["proposal", "qualification", "distributor_quote"],
+      "a reorder moves the columns",
+    );
+
+    // The schema is what refuses a broken funnel, so it refuses before the
+    // kernel is reached. Assert the refusal is about the labels, not merely
+    // that something was rejected.
+    const duplicateLabels = CommandEnvelopeSchema.safeParse({
+      ...metadata("commercial-duplicate", { [ids.workspace]: 4 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: {
+        stages: [
+          { id: "won", label: "Won", order: 0 },
+          { id: "won_late", label: "won", order: 1 },
+        ],
+      },
+    });
+    assert.equal(duplicateLabels.success, false);
+    assert.match(
+      JSON.stringify(duplicateLabels.error?.issues ?? []),
+      /must not repeat a stage label/,
+      "two columns spelled the same way is the defect stages exist to prevent",
+    );
+
+    const emptyChange = CommandEnvelopeSchema.safeParse({
+      ...metadata("commercial-empty", { [ids.workspace]: 4 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: {},
+    });
+    assert.equal(emptyChange.success, false);
+    assert.match(
+      JSON.stringify(emptyChange.error?.issues ?? []),
+      /must change at least one setting/,
+    );
+  });
+
+  it("takes back a commercial-defaults change, including one that added a setting", () => {
+    const harness = setup();
+
+    // The FIRST write of the uplift. Nothing was stored before it, so undoing
+    // it has to leave the workspace with no uplift written at all — not with
+    // today's default frozen in as an explicit value.
+    const firstWrite = {
+      ...metadata("commercial-undo-first", { [ids.workspace]: 1 }),
+      commandName: "workspace.setCommercialDefaults" as const,
+      payload: { upliftPct: 12, markupPct: 33 },
+    };
+    unwrap(harness.kernel.execute(context(), firstWrite));
+    assert.equal(bootstrapWorkspace(harness).commercialDefaults.upliftPct, 12);
+
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("commercial-undo-preview"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: firstWrite.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") assert.fail("Expected a preview.");
+    assert.equal(preview.projection.available, true);
+    // Names the compensation. Nothing else in the repo pins a descriptor kind
+    // to `CompensationKindSchema` despite `recovery.ts:32-34` claiming a
+    // conformance test does, so a missing enum entry would otherwise ship and
+    // throw the first time a human opened the undo affordance.
+    assert.equal(
+      preview.projection.compensationKind,
+      "workspace.restore_commercial_defaults",
+    );
+
+    const undone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("commercial-undo", { [ids.workspace]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: firstWrite.commandId },
+      }),
+    );
+    assert.equal(undone.diagnosticCode, "command.undone");
+
+    const workspace = harness.store
+      .snapshot()
+      .workspaces.find((candidate) => candidate.id === ids.workspace);
+    assert.equal(
+      workspace?.upliftPct,
+      undefined,
+      "undoing the command that ADDED the uplift takes the key off the record",
+    );
+    assert.equal(
+      workspace?.markupPct,
+      undefined,
+      "and the markup it added in the same command with it",
+    );
+    assert.equal(
+      bootstrapWorkspace(harness).commercialDefaults.upliftPct,
+      5,
+      "so the reader is back on the default, not on the number that was taken back",
+    );
   });
 
   it("configures workspace Task statuses without rewriting existing Tasks", () => {

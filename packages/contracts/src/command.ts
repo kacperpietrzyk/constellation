@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import { WorkingDaySchema } from "./working-day.js";
+import {
+  MarkupPctSchema,
+  PipelineStagesSchema,
+  UpliftPctSchema,
+} from "./commercial-defaults.js";
 
 import {
   CausationIdSchema,
@@ -160,6 +165,54 @@ export const WorkspaceSetWorkingDayCommandSchema = CommandMetadataSchema.extend(
 ).strict();
 export type WorkspaceSetWorkingDayCommand = z.infer<
   typeof WorkspaceSetWorkingDayCommandSchema
+>;
+
+/**
+ * PARTIAL BY FIELD, like `relationship.organizationUpdate`: an absent key is
+ * left alone. The alternative — one command carrying all three settings — would
+ * make changing the markup restate the stage list, and restating a list you did
+ * not mean to touch is exactly how a stage goes missing.
+ *
+ * All three ride one command because each is one value on the Workspace record
+ * (`v3/data.js:692-698` carries them in one config block), and a second command
+ * for a single integer buys nothing but another eight registration-list
+ * entries. `homeCurrency` and the allowed-currency list belong here too and are
+ * deliberately deferred: they need the currency union that B4 (Lot A) owns, and
+ * two definitions of one union is the drift family this repo has been bitten by
+ * three times. They arrive as two more optional keys on this payload.
+ *
+ * Nothing here refuses removing a stage that still holds deals. A stored
+ * `stage` no configured definition matches must stay readable — reads are
+ * strict and stored payloads are never revalidated (`command.ts:1044-1049`) —
+ * so the orphan is visible on the board rather than fatal, and `Kacper will add
+ * and rename stages` makes it the normal case, not the edge one. What IS
+ * refused is moving a deal INTO an unconfigured stage; that lives on
+ * `opportunity.update`, mirroring `task.setStatus` refusing a move into an
+ * archived status (`wave2.ts:7164-7171`).
+ */
+export const WorkspaceSetCommercialDefaultsCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("workspace.setCommercialDefaults"),
+    payload: z
+      .object({
+        stages: PipelineStagesSchema.optional(),
+        markupPct: MarkupPctSchema.optional(),
+        upliftPct: UpliftPctSchema.optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          payload.stages !== undefined ||
+          payload.markupPct !== undefined ||
+          payload.upliftPct !== undefined,
+        {
+          message:
+            "workspace.setCommercialDefaults must change at least one setting.",
+        },
+      ),
+  }).strict();
+export type WorkspaceSetCommercialDefaultsCommand = z.infer<
+  typeof WorkspaceSetCommercialDefaultsCommandSchema
 >;
 
 const MembershipRoleSchema = z.enum(["admin", "member", "guest"]);
@@ -866,6 +919,56 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * Partial by field, like `relationship.organizationUpdate`: an omitted key is
+ * left alone, and at least one must be present.
+ *
+ * What it deliberately does NOT accept:
+ * - `state`, `offerIds`, `projectIds` — they move through
+ *   `opportunity.linkOutcomes` together with the links they belong to. Two
+ *   write paths for one field is this repo's named drift family, and it would
+ *   make "can this change be undone" depend on which command wrote it, which
+ *   an agent cannot see from the catalog.
+ * - `externalId` — import identity, unique per Space and per kind and the only
+ *   re-run protection there is. Changing it after the fact turns a second
+ *   import into a duplicate.
+ * - `organizationId` — re-parenting a deal to another client is a different
+ *   act, and nobody asked for it.
+ *
+ * `stage` is validated against the workspace's configured funnel by the kernel,
+ * not by this schema: the list lives on the Workspace record, and a payload
+ * schema cannot read it.
+ */
+export const OpportunityUpdateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("opportunity.update"),
+  payload: z
+    .object({
+      opportunityId: StrategicRecordIdSchema,
+      title: z.string().trim().min(1).max(500).optional(),
+      need: z.string().trim().min(1).max(4_000).optional(),
+      qualification: z.string().trim().min(1).max(2_000).optional(),
+      stage: z.string().trim().min(1).max(120).optional(),
+      // B4's field, reachable by the command that corrects a deal. It was held
+      // back only until `Money` existed; it now does, so leaving it out would
+      // mean a whole PR for one payload key.
+      estimate: MoneyInputSchema.optional(),
+      nextAction: z.string().trim().min(1).max(1_000).optional(),
+      // Nullable here and only here: a deal can stop having a named owner
+      // without the record losing anything else.
+      ownerPersonId: StrategicRecordIdSchema.nullable().optional(),
+      personIds: z.array(StrategicRecordIdSchema).max(100).optional(),
+    })
+    .strict()
+    .refine(
+      (payload) =>
+        Object.keys(payload).some((field) => field !== "opportunityId"),
+      { message: "opportunity.update must change at least one field." },
+    ),
+}).strict();
+export type OpportunityUpdateCommand = z.infer<
+  typeof OpportunityUpdateCommandSchema
+>;
+
 export const OpportunityRemoveCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("opportunity.remove"),
   payload: z.object({ opportunityId: StrategicRecordIdSchema }).strict(),
@@ -914,6 +1017,53 @@ export const OpportunityLinkOutcomesCommandSchema =
       .strict(),
   }).strict();
 
+/**
+ * The offer's own correction command. Until it existed an offer was frozen at
+ * create: its `state` could not walk draft→ready→submitted→accepted, and a cost
+ * that arrived after the quote came back could not be written down.
+ *
+ * Partial by field, on the same terms as every other update here.
+ *
+ * `price` is the one field where absent and "derived" are different requests.
+ * Omitting the key leaves whatever is stored alone. Sending
+ * `{ basis: "derived" }` UN-CONFIRMS: the kernel clears the stored price, so
+ * derived has exactly ONE spelling on the record — absent — and there is never a
+ * stale confirmed amount sitting behind a card that reads as derived. The read
+ * side keeps accepting both arms forever, because offers written before this
+ * may already carry an explicit `{basis:"derived"}`.
+ *
+ * A rate whose `from` is not the cost's currency is STORED, not refused —
+ * matching `opportunity.offerCreate` deliberately. The pair check is structural
+ * in `convertMoney`, and refusing the write would make the mismatched offer
+ * unwritable, which is precisely the degradation the screen has to be shown
+ * handling.
+ */
+export const OpportunityOfferUpdateCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("opportunity.offerUpdate"),
+    payload: z
+      .object({
+        offerId: StrategicRecordIdSchema,
+        title: z.string().trim().min(1).max(500).optional(),
+        cost: MoneyInputSchema.optional(),
+        rate: ExchangeRateInputSchema.optional(),
+        price: OfferPriceInputSchema.optional(),
+        state: z
+          .enum(["draft", "ready", "submitted", "accepted", "declined"])
+          .optional(),
+        nextAction: z.string().trim().min(1).max(1_000).optional(),
+      })
+      .strict()
+      .refine(
+        (payload) => Object.keys(payload).some((field) => field !== "offerId"),
+        { message: "opportunity.offerUpdate must change at least one field." },
+      ),
+  },
+).strict();
+export type OpportunityOfferUpdateCommand = z.infer<
+  typeof OpportunityOfferUpdateCommandSchema
+>;
+
 export const OpportunityOfferRemoveCommandSchema = CommandMetadataSchema.extend(
   {
     commandName: z.literal("opportunity.offerRemove"),
@@ -927,7 +1077,12 @@ export const RelationshipRenewalCreateCommandSchema =
     payload: z
       .object({
         renewalId: StrategicRecordIdSchema,
-        followUpTaskId: TaskIdSchema,
+        // OPTIONAL since 0.2.0. Omit it and no follow-up task is created and
+        // none is demanded: a contract nobody has started yet is a state the
+        // Renewals screen shows first-class, and it was unreachable while this
+        // was required. The renewal_due signal still fires; with no task to
+        // point at, it points at the organization instead.
+        followUpTaskId: TaskIdSchema.optional(),
         spaceId: SpaceIdSchema,
         organizationId: StrategicRecordIdSchema,
         title: z.string().trim().min(1).max(500),
@@ -936,10 +1091,50 @@ export const RelationshipRenewalCreateCommandSchema =
         leadTimeDays: z.int().min(0).max(3_650),
         ownerPrincipalId: PrincipalIdSchema,
         evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+        termStartsAt: z.iso.datetime({ offset: true }).optional(),
+        termMonths: z.int().min(0).max(1_200).optional(),
+        cycleOrdinal: z.int().min(1).max(1_000).optional(),
         cycleKey: z.string().trim().min(1).max(300),
       })
       .strict(),
   }).strict();
+
+/**
+ * The contract clock on a renewal that already exists, plus the one way out of
+ * the "nobody has started this" state.
+ *
+ * Partial by field. `expiresAt` and `leadTimeDays` are deliberately absent:
+ * moving either has to move the follow-up task's deadline and the renewal_due
+ * signal with it, which is a larger change than the clock, and nobody has asked
+ * for it. Per-contract lead-time override is noted as a follow-on, not smuggled
+ * in here.
+ */
+export const RelationshipRenewalUpdateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.renewalUpdate"),
+    payload: z
+      .object({
+        renewalId: StrategicRecordIdSchema,
+        termStartsAt: z.iso.datetime({ offset: true }).optional(),
+        termMonths: z.int().min(0).max(1_200).optional(),
+        cycleOrdinal: z.int().min(1).max(1_000).optional(),
+        // Attaches a follow-up to a renewal that has none. Set once: a renewal
+        // that already carries one is refused, so attaching can never orphan
+        // the task the create made.
+        followUpTaskId: TaskIdSchema.optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          Object.keys(payload).some((field) => field !== "renewalId"),
+        {
+          message: "relationship.renewalUpdate must change at least one field.",
+        },
+      ),
+  }).strict();
+export type RelationshipRenewalUpdateCommand = z.infer<
+  typeof RelationshipRenewalUpdateCommandSchema
+>;
 
 export const RelationshipRenewalResolveCommandSchema =
   CommandMetadataSchema.extend({
@@ -1118,6 +1313,12 @@ export const WorkLinkTypeSchema = z.enum([
   // does not know a delivery is running at it.
   "project_serves_organization",
   "task_depends_on_task",
+  // A mid-contract change is a SALE — it has value, cost and margin — and it
+  // does not move the term or the expiry. So it is an Opportunity attached to
+  // the Renewal it amends, not a new kind of record and not a field on the
+  // renewal. Without this edge the screen's `Add to contract` has nowhere to
+  // write.
+  "opportunity_amends_renewal",
 ]);
 
 export type WorkLinkType = z.infer<typeof WorkLinkTypeSchema>;
@@ -2232,6 +2433,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceRenameCommandSchema,
   WorkspaceSetVoiceAudioRetentionCommandSchema,
   WorkspaceSetWorkingDayCommandSchema,
+  WorkspaceSetCommercialDefaultsCommandSchema,
   WorkspaceMemberAddCommandSchema,
   WorkspaceMemberSetAccessCommandSchema,
   WorkspaceMemberRevokeCommandSchema,
@@ -2269,11 +2471,14 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   RelationshipPersonRemoveCommandSchema,
   RelationshipOrganizationUpdateCommandSchema,
   OpportunityCreateCommandSchema,
+  OpportunityUpdateCommandSchema,
   OpportunityRemoveCommandSchema,
   OpportunityOfferCreateCommandSchema,
+  OpportunityOfferUpdateCommandSchema,
   OpportunityOfferRemoveCommandSchema,
   OpportunityLinkOutcomesCommandSchema,
   RelationshipRenewalCreateCommandSchema,
+  RelationshipRenewalUpdateCommandSchema,
   RelationshipRenewalResolveCommandSchema,
   RelationshipFactCreateCommandSchema,
   RelationshipFactRemoveCommandSchema,

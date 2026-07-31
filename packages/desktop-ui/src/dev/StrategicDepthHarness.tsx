@@ -8,6 +8,7 @@ import {
   TaskStatusIdSchema,
   WorkspaceIdSchema,
   DEFAULT_WORKING_DAY,
+  DEFAULT_COMMERCIAL_DEFAULTS,
 } from "@constellation/contracts";
 
 import {
@@ -227,6 +228,7 @@ const snapshot: DesktopSnapshot = {
       defaultTaskStatusId: statusId,
       voiceAudioRetentionPolicy: "delete_after_transcript",
       workingDay: DEFAULT_WORKING_DAY,
+      commercialDefaults: DEFAULT_COMMERCIAL_DEFAULTS,
       version: 1,
     },
     spaces: [{ id: spaceId, name: "Praca", version: 1 }],

@@ -48,6 +48,7 @@ import {
 } from "@constellation/contracts";
 import {
   effectiveWorkingDay,
+  effectiveCommercialDefaults,
   createLocalWorkspace,
   awaitVoiceTranscript,
   writeVoiceTranscript,
@@ -506,11 +507,14 @@ const isCurrentlyAuthorized = (
     case "relationship.organizationUpdate":
     case "relationship.personRemove":
     case "opportunity.create":
+    case "opportunity.update":
     case "opportunity.remove":
     case "opportunity.offerCreate":
+    case "opportunity.offerUpdate":
     case "opportunity.offerRemove":
     case "opportunity.linkOutcomes":
     case "relationship.renewalCreate":
+    case "relationship.renewalUpdate":
     case "relationship.renewalResolve":
     case "relationship.factCreate":
     case "relationship.factRemove":
@@ -572,6 +576,7 @@ const isCurrentlyAuthorized = (
     case "taskStatus.archive":
     case "taskStatus.restore":
     case "workspace.setDefaultTaskStatus":
+    case "workspace.setCommercialDefaults":
     case "task.setStatus":
     case "task.setOperationalState":
     case "task.complete":
@@ -1005,11 +1010,14 @@ export class ApplicationKernel {
       case "relationship.organizationUpdate":
       case "relationship.personRemove":
       case "opportunity.create":
+      case "opportunity.update":
       case "opportunity.remove":
       case "opportunity.offerCreate":
+      case "opportunity.offerUpdate":
       case "opportunity.offerRemove":
       case "opportunity.linkOutcomes":
       case "relationship.renewalCreate":
+      case "relationship.renewalUpdate":
       case "relationship.renewalResolve":
       case "relationship.factCreate":
       case "relationship.factRemove":
@@ -1071,6 +1079,7 @@ export class ApplicationKernel {
       case "taskStatus.archive":
       case "taskStatus.restore":
       case "workspace.setDefaultTaskStatus":
+      case "workspace.setCommercialDefaults":
       case "task.setStatus":
       case "task.setOperationalState":
       case "task.complete":
@@ -3187,6 +3196,7 @@ export class ApplicationKernel {
           voiceAudioRetentionPolicy:
             workspace.voiceAudioRetentionPolicy ?? "delete_after_transcript",
           workingDay: effectiveWorkingDay(workspace),
+          commercialDefaults: effectiveCommercialDefaults(workspace),
           version: workspace.version,
         },
         spaces: spaces.map((space) => ({

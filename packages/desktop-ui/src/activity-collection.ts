@@ -40,6 +40,8 @@ export const activityLabels: Record<ActivityItem["activityType"], string> = {
   automation_swept: "Automation checked the waiting deadlines",
   task_status_definition_changed: "Changed a task status definition",
   workspace_default_status_changed: "Changed the default task status",
+  workspace_commercial_defaults_changed:
+    "Changed the pipeline stages or the commercial defaults",
   task_completed: "Completed a task",
   task_reopened: "Reopened a task",
   task_assigned: "Assigned a task",
@@ -82,6 +84,7 @@ const categoryByType: Record<
   automation_swept: "work",
   task_status_definition_changed: "work",
   workspace_default_status_changed: "work",
+  workspace_commercial_defaults_changed: "work",
   task_completed: "work",
   task_reopened: "work",
   task_assigned: "work",
