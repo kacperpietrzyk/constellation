@@ -12,6 +12,7 @@ import {
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
+import type { ScenarioFixtures } from "../src/client/scenario-client.js";
 import type { DesktopSnapshot } from "../src/client/workflow.js";
 import { OpportunityRecordScreen } from "../src/opportunity/OpportunityRecordScreen.js";
 import {
@@ -284,6 +285,34 @@ const queries = {
   "relationship.workspace": projectionResponse(relationships),
   "workspace.access": projectionResponse(access),
 };
+
+/**
+ * The shell's own query set, with a `search.global` answer seeded.
+ *
+ * ⌘K goes through the real overlay and the real routing branch in `RealApp`,
+ * so the search has to answer with the deal — a scenario client that refuses
+ * `search.global` would leave the ⌘K half of the chain unproved while looking
+ * exactly like a pass.
+ */
+const shellQueries = (): ScenarioFixtures["queries"] => ({
+  ...queries,
+  "search.global": projectionResponse({
+    kind: "search.global",
+    normalizedQuery: "program",
+    items: [
+      {
+        recordKind: "opportunity" as const,
+        recordId: opportunityRecordId,
+        spaceId,
+        title: deal.title,
+        snippet: "Program porządkowania bezpieczeństwa informacji",
+        matchedFields: ["title" as const],
+        score: 10,
+        updatedAt: base.updatedAt,
+      },
+    ],
+  }),
+});
 
 const noop = async (): Promise<void> => {};
 
@@ -1100,5 +1129,221 @@ test("a linked project this reader cannot reach says so rather than offering a b
   assert.match(
     container.textContent ?? "",
     /Nothing has been turned into a project yet/u,
+  );
+});
+
+// ── THE CHAIN, END TO END ───────────────────────────────────────────────────
+//
+// Everything above mounts the screen directly, and says so. THIS section does
+// not: it mounts the real shell, clicks the real card and drives the real
+// search overlay, because the thing being proved is a SEAM and not a component.
+//
+// The failure it guards is trap 24, and the whole point of it is that it is
+// invisible: `record-kind-registry` pointing `opportunity` at `pipeline`
+// compiles, passes every test in this repository, and silently turns "open this
+// deal" into "open the Pipeline screen". The board renders, a card is there, the
+// reader is on the right surface — and the record they asked for never opened.
+// Both halves of the repoint change together or neither does, and this is what
+// says so.
+
+const mountShell = async (): Promise<void> => {
+  const { RealApp } = await import("../src/RealApp.js");
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+  const client = createScenarioClient({ queries: shellQueries() });
+  const snapshot = await loadDesktopSnapshot(client);
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(createElement(RealApp, { client, initialSnapshot: snapshot }));
+  });
+};
+
+const waitFor = async (
+  ready: () => boolean,
+  message: string,
+): Promise<void> => {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (ready()) return;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+  assert.fail(message);
+};
+
+const goTo = async (surface: string): Promise<void> => {
+  const item = [
+    ...container.querySelectorAll<HTMLElement>(".nav-item[data-surface]"),
+  ].find((node) => node.dataset.surface === surface);
+  assert.ok(item, `no navigation target rendered for ${surface}`);
+  await act(async () => {
+    item.click();
+  });
+};
+
+/** The record that is on screen, by the anchor only this screen writes. */
+const openedRecord = (): HTMLElement | null =>
+  container.querySelector<HTMLElement>('[data-record-kind="opportunity"]');
+
+test("opening a deal from a Pipeline card lands on THAT deal's record", async () => {
+  await mountShell();
+  await goTo("pipeline");
+  await waitFor(
+    () => container.querySelector("[data-pipeline-card]") !== null,
+    "the board never mounted",
+  );
+  // The board is a board FIRST. If this were already the record, the assertion
+  // below would prove nothing about opening one.
+  assert.equal(openedRecord(), null, "the board opened as a record");
+
+  const card = container.querySelector<HTMLElement>(
+    `[data-pipeline-card="${opportunityRecordId}"]`,
+  );
+  assert.ok(card, "the seeded deal has no card on the board");
+  await act(async () => {
+    card.click();
+    card.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  await waitFor(
+    () => openedRecord() !== null,
+    "opening a card did not open the record — it held the board instead",
+  );
+
+  // THAT deal, not merely A record. The board carries two deals, and a mount
+  // that resolved the wrong one would satisfy every structural check above.
+  const record = openedRecord();
+  assert.ok(record);
+  assert.match(
+    record.querySelector("h1")?.textContent ?? "",
+    /Program porządkowania bezpieczeństwa informacji/u,
+  );
+  assert.ok(
+    record.querySelector('[data-opportunity-field="qualification"]'),
+    "the record opened without the body it exists to carry",
+  );
+});
+
+test("⌘K on a deal opens THAT deal's record, not the screen it lives on", async () => {
+  await mountShell();
+  await act(async () => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+        bubbles: true,
+      }),
+    );
+  });
+  const field = container.querySelector<HTMLInputElement>(
+    'input[type="search"], .search-overlay input, dialog input',
+  );
+  assert.ok(field, "⌘K opened no search field");
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  assert.ok(setter);
+  await act(async () => {
+    setter.call(field, "Program");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await waitFor(
+    () =>
+      [...container.querySelectorAll("button, [role='option']")].some((node) =>
+        (node.textContent ?? "").includes(
+          "Program porządkowania bezpieczeństwa informacji",
+        ),
+      ),
+    "the search never offered the seeded deal",
+  );
+  const hit = [
+    ...container.querySelectorAll<HTMLElement>("button, [role='option']"),
+  ].find((node) =>
+    (node.textContent ?? "").includes(
+      "Program porządkowania bezpieczeństwa informacji",
+    ),
+  );
+  assert.ok(hit);
+  await act(async () => {
+    hit.click();
+  });
+  await waitFor(
+    () => openedRecord() !== null,
+    "⌘K on a deal opened the Pipeline SCREEN rather than the deal's record — the exact downgrade the paired repoint exists to prevent",
+  );
+  assert.match(
+    openedRecord()?.querySelector("h1")?.textContent ?? "",
+    /Program porządkowania bezpieczeństwa informacji/u,
+  );
+});
+
+test("a saved tab whose deal id names something else does not open that thing as a deal", async () => {
+  // REACHABLE, and that is the point of writing it. `opportunityContext` is
+  // only ever built from a record already known to be a deal — but a session is
+  // restored from device state, and `restoreShellNavigation` validates that the
+  // id is a STRING, not what it names. A workspace where the id was reassigned,
+  // or a saved state written by hand, hands this mount an organization under an
+  // `opportunity:` key.
+  //
+  // Without the kind test in the mount's lookup, `find` matches on the id alone
+  // and the record screen is handed an ORGANIZATION: it would read
+  // `qualification` and `stage` off a record that has neither, and every
+  // structural assertion in this file would still pass.
+  localStorage.setItem(
+    "constellation.shell-navigation",
+    JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          {
+            key: `opportunity:${referencedOrganizationId}`,
+            label: "Northstar Industries",
+            surface: "pipeline",
+            opportunityId: referencedOrganizationId,
+          },
+        ],
+        activeKey: `opportunity:${referencedOrganizationId}`,
+        history: [
+          {
+            key: `opportunity:${referencedOrganizationId}`,
+            label: "Northstar Industries",
+            surface: "pipeline",
+            opportunityId: referencedOrganizationId,
+          },
+        ],
+        historyIndex: 0,
+      },
+    }),
+  );
+  await mountShell();
+  // Settle whatever the shell decides to do with the restored tab — the point
+  // is what it must NOT do, so the wait is on the shell being past its first
+  // paint rather than on any particular landing.
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+  // TWO independent guards stand here and the order is worth knowing. The
+  // prune fires first: an id that is not in the deal set drops the tab
+  // entirely, so the session falls back rather than opening anything. The kind
+  // test in the mount's own lookup is the second, for the frame before a
+  // snapshot has arrived to prune against.
+  //
+  // What must never happen is the one thing both exist to stop: an ORGANIZATION
+  // rendered on the deal's record screen, where it would be read for a
+  // `qualification` and a `stage` it does not have.
+  assert.equal(
+    openedRecord(),
+    null,
+    "an organization was opened as a deal, on the deal's own record screen",
+  );
+  assert.doesNotMatch(
+    container.textContent ?? "",
+    /Northstar Industries/u,
+    "the restored tab kept a client's name under a deal's key",
   );
 });

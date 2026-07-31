@@ -23,6 +23,14 @@ export interface ShellContext {
   readonly projectId?: ProjectId;
   readonly documentId?: DocumentId;
   readonly organizationId?: StrategicRecordId;
+  /** The deal opened AS A RECORD. No `record` flag beside it, and the absence is
+   *  the design: a task context is built at eleven call sites that mostly mean
+   *  "take me to this task", so the promotion there has to be asked for. Every
+   *  opportunity context in this program is built by somebody who means the
+   *  record — the board holds a merely-SELECTED deal in the inspector instead,
+   *  and never in a context. So carrying the id IS the request, and a second
+   *  boolean would only be a way to build a context that asks for nothing. */
+  readonly opportunityId?: StrategicRecordId;
   /** Set when the context was opened AS A RECORD rather than merely navigated
    *  to. See `taskContext` for why the promotion has to be asked for. */
   readonly record?: boolean;
@@ -73,6 +81,11 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
     typeof context.organizationId !== "string"
   )
     return false;
+  if (
+    context.opportunityId !== undefined &&
+    typeof context.opportunityId !== "string"
+  )
+    return false;
   // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
   // wpis nigdy nie zostałby przycięty przez pruneInaccessibleShellContexts.
   if (context.key.startsWith("task:") && context.taskId === undefined)
@@ -84,6 +97,11 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (
     context.key.startsWith("organization:") &&
     context.organizationId === undefined
+  )
+    return false;
+  if (
+    context.key.startsWith("opportunity:") &&
+    context.opportunityId === undefined
   )
     return false;
   return true;
@@ -203,6 +221,7 @@ export const pruneInaccessibleShellContexts = (
     readonly projectIds: ReadonlySet<ProjectId>;
     readonly documentIds: ReadonlySet<DocumentId>;
     readonly organizationIds: ReadonlySet<StrategicRecordId>;
+    readonly opportunityIds: ReadonlySet<StrategicRecordId>;
   },
   fallback: ShellContext,
 ): ShellNavigationState => {
@@ -213,7 +232,12 @@ export const pruneInaccessibleShellContexts = (
     (context.documentId === undefined ||
       access.documentIds.has(context.documentId)) &&
     (context.organizationId === undefined ||
-      access.organizationIds.has(context.organizationId));
+      access.organizationIds.has(context.organizationId)) &&
+    // A deal removed, or in a Space this reader lost, must not leave a tab that
+    // reopens onto a record nothing can find. The record screen's own gate is
+    // "the surface found it"; this is the gate for the tab that outlived it.
+    (context.opportunityId === undefined ||
+      access.opportunityIds.has(context.opportunityId));
   const tabs = state.tabs.filter(accessible);
   if (tabs.length === 0) return createShellNavigation(fallback);
   const activeKey = tabs.some((tab) => tab.key === state.activeKey)
@@ -303,6 +327,24 @@ export const organizationContext = (
   label,
   surface: "organizations",
   organizationId,
+});
+
+/**
+ * A deal in context, and it is always the RECORD.
+ *
+ * The surface is `pipeline` because that is where the record lives — a context
+ * on the board exactly as the task record is a context on `tasks`. It is not a
+ * destination of its own: a nav target that is a record is a display case, and
+ * `DesktopSurface` is the only vocabulary `ShellContext.surface` accepts.
+ */
+export const opportunityContext = (
+  opportunityId: StrategicRecordId,
+  label: string,
+): ShellContext => ({
+  key: `opportunity:${opportunityId}`,
+  label,
+  surface: "pipeline",
+  opportunityId,
 });
 
 export const createShellNavigation = (
