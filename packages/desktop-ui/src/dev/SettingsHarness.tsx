@@ -1,6 +1,6 @@
 import { SettingsSurface } from "../SettingsSurface.js";
 import { createScenarioClient } from "../client/scenario-client.js";
-import { workHarnessSnapshot } from "./WorkHarness.js";
+import { workHarnessSnapshot } from "./harness-snapshot.js";
 
 const counts = {
   taskStatuses: 1,

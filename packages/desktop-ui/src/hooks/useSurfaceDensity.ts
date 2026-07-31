@@ -1,7 +1,22 @@
 import { useState } from "react";
 
 export type SurfaceDensity = "comfortable" | "compact";
-export type DensitySurface = "work";
+/**
+ * Which surface a stored density belongs to.
+ *
+ * It was the single literal `"work"`, and that surface is gone. Widening the
+ * union alone would have silently reset every stored choice — `getItem` answers
+ * null, `parseSurfaceDensity(null)` answers "comfortable", nothing throws and
+ * nothing is logged — so the read below falls back to the retired key once and
+ * the next write carries the preference forward under the new one.
+ */
+export type DensitySurface = "tasks";
+
+/** Where a density stored by 0.1.x still sits. Read from, never written to; it
+ *  is emptied of meaning by the first write under the new key. */
+const retiredDensityKeys: Readonly<Record<DensitySurface, string>> = {
+  tasks: "constellation.surface-density.work",
+};
 
 interface DensityStorage {
   readonly getItem: (key: string) => string | null;
@@ -27,8 +42,12 @@ export const readSurfaceDensity = (
   storage: DensityStorage | undefined = browserStorage(),
 ): SurfaceDensity => {
   try {
+    const stored = storage?.getItem(surfaceDensityStorageKey(surface));
+    // Absent under the current key is where a preference stored before the
+    // surface was renamed lives. `null` and a stored "comfortable" are the same
+    // answer here, so falling through on null costs nothing.
     return parseSurfaceDensity(
-      storage?.getItem(surfaceDensityStorageKey(surface)),
+      stored ?? storage?.getItem(retiredDensityKeys[surface]),
     );
   } catch {
     return "comfortable";

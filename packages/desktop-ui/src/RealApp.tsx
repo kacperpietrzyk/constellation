@@ -45,7 +45,6 @@ import {
   SettingsSurface,
   StrategicDepthSurface,
   TaskAttachmentsSection,
-  WorkSurface,
   WorkspaceRecovery,
 } from "./shell/lazy-surfaces.js";
 import {
@@ -2143,24 +2142,6 @@ export const RealApp = ({
               }}
             />
           )}
-        </Suspense>
-      </LazySurfaceBoundary>
-    ),
-    work: () => (
-      <LazySurfaceBoundary label="Saved views">
-        <Suspense fallback={<SurfaceLoadingState label="Saved views" />}>
-          <WorkSurface
-            snapshot={state.snapshot}
-            selectedTaskId={selectedTaskId}
-            selectedProjectId={selectedProjectId}
-            onSelectTask={selectTaskInInspector}
-            onOpenTask={(id) => {
-              const task = tasks.find((item) => item.id === id);
-              openContext(taskContext(id, task?.title ?? "Task"));
-            }}
-            onSelectProject={selectProjectInInspector}
-            onReload={reload}
-          />
         </Suspense>
       </LazySurfaceBoundary>
     ),

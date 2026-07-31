@@ -34,10 +34,6 @@ const loadCalendarSurface = () => import("../CalendarSurface.js");
 export const CalendarSurface = lazy(() =>
   loadCalendarSurface().then((module) => ({ default: module.CalendarSurface })),
 );
-const loadWorkSurface = () => import("../WorkSurface.js");
-export const WorkSurface = lazy(() =>
-  loadWorkSurface().then((module) => ({ default: module.WorkSurface })),
-);
 const loadAccessSurface = async () => {
   await import("../access-surface.css");
   return import("../AccessSurface.js");
@@ -84,7 +80,6 @@ export const lazySurfaceLoaders = {
   meetings: loadMeetingsSurface,
   activity: loadActivitySurface,
   settings: loadSettingsSurface,
-  work: loadWorkSurface,
   access: loadAccessSurface,
   organizations: loadStrategicDepthSurface,
 } satisfies Record<LazyDesktopSurface, () => Promise<unknown>>;

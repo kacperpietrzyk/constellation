@@ -770,3 +770,156 @@ test("the shape a reader lands on can be written back into the view they opened"
   assert.equal(command.payload.sort, "title_asc");
   assert.equal(command.expectedVersions[assigneeBoardViewId], 2);
 });
+
+/* ── THE TABLE'S COLUMNS, AND HOW TIGHT THE ROWS ARE ──────────────────────
+   The two device-local preferences that came off the work surface with the rest.
+   They are not saved-view state and never reach the kernel, so they are asserted
+   from the SCREEN rather than from a payload. */
+
+const columnsTrigger = (): HTMLElement | undefined =>
+  [...container.querySelectorAll<HTMLElement>("button")].find((button) =>
+    (button.textContent ?? "").trim().startsWith("Columns ·"),
+  );
+
+const headings = (): string[] =>
+  [...container.querySelectorAll("thead th")].map((cell) =>
+    (cell.textContent ?? "").trim(),
+  );
+
+const openTable = async (): Promise<void> => {
+  await openTasksCapturing();
+  const table = [
+    ...container.querySelectorAll<HTMLElement>("[data-layout]"),
+  ].find((node) => node.dataset.layout === "table");
+  assert.ok(table, "Tasks offers no table lens");
+  await act(async () => {
+    table.click();
+  });
+  await waitForCondition(
+    () => container.querySelector("thead th") !== null,
+    "the table lens never drew a heading",
+  );
+};
+
+test("the table draws only the columns this view is set to, and never loses the title", async () => {
+  await openTable();
+  // Every built-in column, and the workspace's own field beside them — a field
+  // column is the one thing the table could not offer before this, and the one
+  // reason the choice could not simply be dropped when the older screen went.
+  assert.deepEqual(headings(), [
+    "Status",
+    "Title",
+    "Project",
+    "Plan",
+    "Deadline",
+    "State",
+    "Priority",
+    "Owner",
+    "Rodzaj pracy",
+  ]);
+
+  const trigger = columnsTrigger();
+  assert.ok(trigger, "the table offers no way to choose its columns");
+  await act(async () => {
+    trigger.click();
+  });
+  const dialog = popover();
+
+  // The title and the status shape are NOT on offer. The title is what a row
+  // is, and the shape is the one mark rows are told apart by; a table that can
+  // hide either draws rows nobody can read.
+  const offered = [...dialog.querySelectorAll("label")].map((label) =>
+    (label.textContent ?? "").trim(),
+  );
+  assert.equal(offered.includes("Title"), false);
+  assert.equal(offered.includes("Status"), false);
+  assert.ok(offered.includes("Owner"));
+
+  const owner = [...dialog.querySelectorAll("label")].find(
+    (label) => (label.textContent ?? "").trim() === "Owner",
+  );
+  await act(async () => {
+    owner?.querySelector("input")?.click();
+  });
+
+  // Gone from the head AND from every row: a heading removed while the cells
+  // stay puts every value in the wrong column, which no count can see.
+  assert.equal(headings().includes("Owner"), false);
+  const widths = new Set(
+    [...container.querySelectorAll("tbody tr")].map(
+      (row) => row.querySelectorAll("td").length,
+    ),
+  );
+  assert.deepEqual(
+    [...widths],
+    [headings().length],
+    "a row has a different number of cells than the head has columns",
+  );
+
+  // KEPT, not just applied. A choice that survives only as long as the window
+  // is open is a choice the reader makes again every morning, and nothing on
+  // screen tells them it was not stored.
+  const kept: unknown = JSON.parse(
+    localStorage.getItem("constellation.task-columns.all") ?? "null",
+  );
+  assert.ok(
+    Array.isArray(kept) && !kept.includes("owner"),
+    "the column turned off was not written down, so it is back at the next launch",
+  );
+});
+
+test("a column choice belongs to the view it was made on", async () => {
+  await openTable();
+  await act(async () => {
+    columnsTrigger()?.click();
+  });
+  const owner = [...popover().querySelectorAll("label")].find(
+    (label) => (label.textContent ?? "").trim() === "Owner",
+  );
+  await act(async () => {
+    owner?.querySelector("input")?.click();
+  });
+  assert.equal(headings().includes("Owner"), false);
+
+  // Opening a stored view opens ITS columns, not the ones the reader was just
+  // looking at. The choice is per view — a reader who narrows a view to
+  // "waiting on somebody" wants the person column there and nowhere else.
+  // The stored view opens as the BOARD it was saved as, so the table has to be
+  // asked for again — which is itself the older guarantee, working.
+  await choose("tasks-view", assigneeBoardViewId);
+  await act(async () => {
+    [...container.querySelectorAll<HTMLElement>("[data-layout]")]
+      .find((node) => node.dataset.layout === "table")
+      ?.click();
+  });
+  await waitForCondition(
+    () => container.querySelector("thead th") !== null,
+    "switching views left the table without a head",
+  );
+  assert.ok(
+    headings().includes("Owner"),
+    "the column turned off on one view followed the reader onto another",
+  );
+});
+
+test("compact changes the spacing and nothing a reader can see", async () => {
+  await openTasksCapturing();
+  const surface = container.querySelector<HTMLElement>("[data-tasks-surface]");
+  assert.ok(surface, "the Tasks surface has no element to carry the density");
+  // Named, because a switch that stores a preference nothing reads is the
+  // defect this repo has already shipped once: the attribute is what any
+  // stylesheet answers.
+  assert.equal(surface.dataset.density, "comfortable");
+
+  await act(async () => {
+    [...container.querySelectorAll<HTMLElement>("button")]
+      .find((button) => (button.textContent ?? "").trim() === "Compact")
+      ?.click();
+  });
+  assert.equal(surface.dataset.density, "compact");
+  assert.equal(
+    localStorage.getItem("constellation.surface-density.tasks"),
+    "compact",
+    "the choice was not kept, so it is gone the next time the window opens",
+  );
+});

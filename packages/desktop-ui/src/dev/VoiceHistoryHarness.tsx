@@ -13,7 +13,7 @@ import {
 import { CaptureHistoryDetail, HistorySurface } from "../Wave2Surfaces.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
-import { workHarnessSnapshot } from "./WorkHarness.js";
+import { workHarnessSnapshot } from "./harness-snapshot.js";
 
 const captureId = CaptureIdSchema.parse("00000000-0000-4000-8000-000000000951");
 const principalId = PrincipalIdSchema.parse(

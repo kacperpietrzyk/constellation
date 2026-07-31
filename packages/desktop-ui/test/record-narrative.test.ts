@@ -36,7 +36,6 @@ const read = (relative: string): string =>
   readFileSync(path.join(root, relative), "utf8");
 
 const narrativeComponent = read("src/components/RecordNarrative.tsx");
-const workSurface = read("src/WorkSurface.tsx");
 // Areas and initiatives moved here when the work surface started being retired.
 // The read list is what makes the floor below non-vacuous, so it moves WITH the
 // markup rather than after it: leave it pointing at a file that no longer draws
@@ -171,7 +170,6 @@ describe("unwritten record narrative", () => {
       projectContextPanel,
       bareTextNode("initiative.intendedOutcome"),
     );
-    assert.doesNotMatch(workSurface, bareTextNode("project.intendedOutcome"));
     assert.doesNotMatch(surfaces, bareTextNode("project.intendedOutcome"));
     assert.doesNotMatch(
       strategicSurface,
@@ -186,7 +184,6 @@ describe("unwritten record narrative", () => {
       [
         [projectContextPanel, "area.responsibility"],
         [projectContextPanel, "initiative.intendedOutcome"],
-        [workSurface, "project.intendedOutcome"],
         [surfaces, "project.intendedOutcome"],
         [strategicSurface, "project.intendedOutcome"],
       ] as const

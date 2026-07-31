@@ -74,14 +74,6 @@ export const desktopSurfaceRegistry = [
     loading: "eager",
   },
   {
-    id: "work",
-    label: "Saved views",
-    icon: "work",
-    group: "Work Management",
-    shortcut: null,
-    loading: "lazy",
-  },
-  {
     id: "organizations",
     label: "Organizations",
     icon: "relationships",
@@ -177,6 +169,10 @@ export const retiredDesktopSurfaces: Readonly<Record<string, DesktopSurface>> =
     // „Relacje" były jedną zakładką na cztery różne pytania; ekran klienta jest
     // z nich najbliższy temu, po co ludzie tam wchodzili.
     relationships: "organizations",
+    // „Zapisane widoki" były osobnym ekranem nad tą samą kolekcją co Zadania.
+    // Zapisany widok otwiera się dziś NA Zadaniach — to ta sama praca, oglądana
+    // przez soczewkę — więc zakładka wskazująca tam ma dokąd trafić.
+    work: "tasks",
   };
 
 // Cel wskazany identyfikatorem, który mógł pochodzić z poprzedniej wersji.

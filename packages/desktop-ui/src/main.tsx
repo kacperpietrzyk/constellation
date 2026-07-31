@@ -94,13 +94,6 @@ const render = async (): Promise<void> => {
   }
   if (
     import.meta.env.DEV &&
-    new URLSearchParams(window.location.search).get("surface") === "work"
-  ) {
-    const { WorkHarness } = await import("./dev/WorkHarness.js");
-    content = <WorkHarness />;
-  }
-  if (
-    import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "settings"
   ) {
     const { SettingsHarness } = await import("./dev/SettingsHarness.js");
