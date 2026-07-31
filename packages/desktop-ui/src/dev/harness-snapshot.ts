@@ -1,11 +1,13 @@
 import { DEFAULT_WORKING_DAY } from "@constellation/contracts";
-import { useMemo } from "react";
 
-import { WorkSurface } from "../WorkSurface.js";
-import type {
-  DesktopSnapshot,
-  SavedWorkViewLayout,
-} from "../client/workflow.js";
+import type { DesktopSnapshot } from "../client/workflow.js";
+
+// The development snapshot the harnesses share.
+//
+// It was declared inside `WorkHarness`, which is gone with the surface it drew —
+// but three other harnesses import it, so it moves rather than dying. Nothing
+// here is a fixture for a TEST: `?surface=` harnesses are development-only and
+// compile out of the package, and the suites build their own data.
 
 const ids = {
   workspace: "00000000-0000-4000-8000-000000000401",
@@ -270,58 +272,3 @@ export const workHarnessSnapshot = {
   relationships: { kind: "unavailable", message: "Scenario" },
   radar: { kind: "unavailable", message: "Scenario" },
 } as unknown as DesktopSnapshot;
-
-if (workHarnessSnapshot.work.kind !== "ready") {
-  throw new Error("Work harness requires a ready projection.");
-}
-const baseWork = workHarnessSnapshot.work.data;
-
-export const WorkHarness = () => {
-  // The layout switcher went to Tasks with the rest of view management, so
-  // nothing here changes it any more. The harness still mounts a stored board,
-  // which is what this surface DRAWS; choosing one is exercised where it now
-  // lives.
-  const layout: SavedWorkViewLayout = "board";
-  const snapshot = useMemo(
-    () =>
-      ({
-        ...workHarnessSnapshot,
-        work: {
-          ...workHarnessSnapshot.work,
-          data: {
-            ...baseWork,
-            savedViews: baseWork.savedViews.map((view) =>
-              view.id === ids.view2
-                ? {
-                    ...view,
-                    layout,
-                    version:
-                      layout === "board"
-                        ? 1
-                        : layout === "list"
-                          ? 2
-                          : layout === "timeline"
-                            ? 3
-                            : 4,
-                  }
-                : view,
-            ),
-          },
-        },
-      }) as unknown as DesktopSnapshot,
-    [layout],
-  );
-  return (
-    <main className="app-shell" data-testid="work-harness">
-      <WorkSurface
-        snapshot={snapshot}
-        selectedTaskId={undefined}
-        selectedProjectId={undefined}
-        onSelectTask={() => undefined}
-        onOpenTask={() => undefined}
-        onSelectProject={() => undefined}
-        onReload={async () => undefined}
-      />
-    </main>
-  );
-};

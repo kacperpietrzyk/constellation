@@ -6,13 +6,7 @@ import { z } from "zod";
 // desktopowej: kontrakty nie mają zależeć od powłoki, a agent czyta ten katalog
 // bez uruchomionej aplikacji.
 export type HumanRecordInspectorSurface =
-  | "work"
-  | "tasks"
-  | "projects"
-  | "history"
-  | "library"
-  | "meetings"
-  | "organizations";
+  "tasks" | "projects" | "history" | "library" | "meetings" | "organizations";
 
 export type HumanRecordSearchSource =
   "task" | "project" | "capture" | "source" | "document" | "strategic";
@@ -161,28 +155,38 @@ export const humanRecordKindRegistry = [
     label: "Area",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "organizations",
+    // Zmiana zachowania, świadoma: Obszar to kontekst PRACY, nie klient.
+    // Wskazywał na Relacje, bo tam kiedyś leżały wszystkie rekordy
+    // strategiczne; od przeniesienia Obszarów i Inicjatyw na ekran Projektów
+    // wyszukiwanie prowadziło jedyny rodzaj tej pary w inne miejsce niż
+    // drugi. To jedyny z czterech, który da się wyszukać, więc jedyny, który
+    // ktoś mógł zobaczyć trafiającego nie tam.
+    inspectorSurface: "projects",
   },
   {
     id: "initiative",
     label: "Initiative",
     searchable: false,
     searchSource: null,
-    inspectorSurface: "work",
+    // Obszary i inicjatywy mieszkają na ekranie Projektów: projekt jest
+    // jedyną rzeczą, którą się pod nie podpina.
+    inspectorSurface: "projects",
   },
   {
     id: "work_link",
     label: "Work link",
     searchable: false,
     searchSource: null,
-    inspectorSurface: "work",
+    inspectorSurface: "projects",
   },
   {
     id: "saved_view",
     label: "Saved view",
     searchable: false,
     searchSource: null,
-    inspectorSurface: "work",
+    // Zapisany widok otwiera się NA Zadaniach — to soczewka nad tą kolekcją,
+    // a nie osobny ekran.
+    inspectorSurface: "tasks",
   },
   {
     id: "recurrence",

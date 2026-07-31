@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { describe, it } from "node:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,30 +54,6 @@ const accessStyles = readFileSync(
   "utf8",
 );
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
-const workSurface = readFileSync(
-  path.join(root, "src", "WorkSurface.tsx"),
-  "utf8",
-);
-const workBoardStyles = readFileSync(
-  path.join(root, "src", "work-board.css"),
-  "utf8",
-);
-const workTimelineStyles = readFileSync(
-  path.join(root, "src", "work-timeline.css"),
-  "utf8",
-);
-const workCalendarStyles = readFileSync(
-  path.join(root, "src", "work-calendar.css"),
-  "utf8",
-);
-const workDensityStyles = readFileSync(
-  path.join(root, "src", "work-density.css"),
-  "utf8",
-);
-const workFieldVisibilityStyles = readFileSync(
-  path.join(root, "src", "work-field-visibility.css"),
-  "utf8",
-);
 const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
@@ -650,200 +626,36 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("keeps the Work list linear while separating context from its reading plane", () => {
-    assert.match(
-      styles,
-      /\.work-context-column\s*\{[^}]*background:\s*var\(--surface-sunken\);[^}]*border:[^;]+;[^}]*border-radius:[^;]+;[^}]*padding:/s,
+  // The six sections that read `WorkSurface.tsx` went with the file. Five of
+  // them measured that surface's own board, timeline, calendar and list, which
+  // Tasks now draws through `src/tasks/` — with mounted tests of its own, which
+  // is a stronger instrument than a regex over a file. The SIXTH carried a rule
+  // that is not about any one surface, so it is here rather than gone.
+  it("lets a compact density change spacing, and never what a reader can see", () => {
+    // A "density" that sets `display` or `visibility` HIDES work, and one that
+    // sets `font-size` shrinks the writing. Either turns a preference about how
+    // much fits on screen into a preference about what a reader is allowed to
+    // see. Read off every sheet that answers the attribute, so a new surface
+    // adopting density is covered the day it does rather than the day somebody
+    // remembers to add it here.
+    const sheets = readdirSync(path.join(root, "src", "tasks"))
+      .filter((name) => name.endsWith(".css"))
+      .map((name) =>
+        readFileSync(path.join(root, "src", "tasks", name), "utf8"),
+      );
+    const compactRules = sheets.flatMap((sheet) => [
+      ...sheet.matchAll(/\[data-density="compact"\][^{]*\{([^}]*)\}/g),
+    ]);
+    assert.ok(
+      compactRules.length > 0,
+      "no stylesheet answers the density attribute, so the switch changes nothing and this guard has nothing to guard",
     );
-    assert.match(
-      styles,
-      /\.work-delivery-column\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*border:[^;]+;[^}]*box-shadow:\s*var\(--elevation-rest\);[^}]*padding:/s,
-    );
-    assert.match(
-      styles,
-      /\.work-context-row,\s*\.work-project-row,\s*\.work-task-row\s*\{[^}]*border-top:[^;]+;[^}]*background:\s*transparent;/s,
-    );
-  });
-
-  it("renders one saved Task set as an accessible board without implicit drag mutation", () => {
-    // The SWITCHER left with the rest of view management — choosing a layout,
-    // and storing the choice, is asserted from a click in
-    // `tasks-saved-view.interaction.test.tsx`. What this file still guards is
-    // the board itself: the interlock that refuses a board with no columns, and
-    // markup that does not move work by dragging it.
-    assert.match(
-      workSurface,
-      /requestedLayout === "board" && groupBy === undefined/,
-    );
-    // The board is one composite widget with an accessible name, and each
-    // column is a named group inside it.
-    assert.match(
-      workSurface,
-      /className="work-task-board"\s+role="listbox"\s+aria-label="Next actions — board"/,
-    );
-    assert.match(
-      workSurface,
-      /className="work-board-column"\s+role="group"\s+aria-label=\{group\.label\}/,
-    );
-    // An empty group still renders a cell, so the board shows the whole
-    // grouping rather than silently dropping columns.
-    assert.match(workSurface, /group\.tasks\.length === 0 \? \(\s*<p>/);
-    // Board-without-grouping being REFUSED, with the reason wired to the
-    // disabled control, moved to the Tasks view bar along with the switcher —
-    // `TasksSurface.tsx` carries `aria-describedby` and
-    // `id="tasks-board-requirement"`, and the mounted test clicks it. What
-    // stays here is the interlock this surface still applies when it DRAWS a
-    // stored board.
-    assert.doesNotMatch(workSurface, /draggable=|onDrag|onDrop/);
-    assert.match(
-      workBoardStyles,
-      /\.work-task-board\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/s,
-    );
-    assert.match(
-      workBoardStyles,
-      /@container \(max-width: 38\.75rem\)[\s\S]*?\.work-task-board\s*\{[^}]*grid-auto-columns:\s*minmax\(13\.25rem, 82%\)/s,
-    );
-  });
-
-  it("projects Task timing on a non-draggable timeline without replacing Saved View order", () => {
-    assert.match(
-      workSurface,
-      /className="work-task-timeline"\s+role="listbox"\s+aria-label="Next actions — timeline"/,
-    );
-    assert.match(workSurface, /visibleTasks\.map\(\(task, index\) =>/);
-    assert.match(workSurface, /task\.startAt \?\? task\.dueAt/);
-    assert.match(workSurface, /task\.dueAt \?\? task\.startAt/);
-    // A task with no dates still gets a row, marked as unscheduled instead of
-    // being dropped off the axis.
-    assert.match(workSurface, /className="work-timeline-unscheduled"/);
-    assert.doesNotMatch(workSurface, /draggable=|onDrag|onDrop|onResize/);
-    assert.match(
-      workTimelineStyles,
-      /\.work-task-timeline\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/s,
-    );
-    assert.match(
-      workTimelineStyles,
-      /\.work-timeline-content\s*\{[^}]*min-width:\s*36rem/s,
-    );
-  });
-
-  it("renders every Saved View Task once in a navigable month calendar without invoking calendar writes", () => {
-    assert.match(workSurface, /<nav aria-label="Month navigation">/);
-    assert.match(workSurface, /aria-label="Previous month"/);
-    assert.match(workSurface, /aria-label="Next month"/);
-    assert.match(workSurface, /task\.dueAt \?\? task\.startAt/);
-    assert.match(workSurface, /calendarTasksByDate\.set/);
-    // "Every Task once" is the bucketing, not the bucket labels: a task lands
-    // in the month grid or in exactly one of three overflow buckets, and all
-    // three are rendered.
-    assert.match(workSurface, /calendarUndatedTasks\.push\(task\)/);
-    assert.match(workSurface, /calendarBeforeTasks\.push\(task\)/);
-    assert.match(workSurface, /calendarAfterTasks\.push\(task\)/);
-    assert.match(
-      workSurface,
-      /const calendarOverflowGroups = \[[\s\S]{0,200}?tasks: calendarBeforeTasks[\s\S]{0,200}?tasks: calendarAfterTasks[\s\S]{0,200}?tasks: calendarUndatedTasks/,
-    );
-    assert.match(workSurface, /calendarOverflowGroups\.map\(/);
-    assert.match(workSurface, /setCalendarMonthKey/);
-    assert.doesNotMatch(
-      workSurface,
-      /previewCalendarBlocks|confirmCalendarBlocks|calendarWriter|draggable=|onDrag|onDrop/,
-    );
-    assert.match(
-      workCalendarStyles,
-      /\.work-calendar-scroll\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/s,
-    );
-    assert.match(
-      workCalendarStyles,
-      /\.work-calendar-grid\s*\{[^}]*grid-template-columns:\s*repeat\(7,/s,
-    );
-  });
-
-  it("changes only Work spacing through a local per-surface density preference", () => {
-    assert.match(workSurface, /useSurfaceDensity\("work"\)/);
-    assert.match(workSurface, /data-density=\{density\}/);
-    // A named fieldset with two mutually pressed options — the accessible name
-    // is the guarantee that this control is findable at all.
-    assert.match(
-      workSurface,
-      /<fieldset className="work-density-switch">\s*<legend>Work surface density<\/legend>/,
-    );
-    assert.match(
-      workSurface,
-      /aria-pressed=\{density === "comfortable"\}[\s\S]{0,200}?setDensity\("comfortable"\)/,
-    );
-    assert.match(
-      workSurface,
-      /aria-pressed=\{density === "compact"\}[\s\S]{0,200}?setDensity\("compact"\)/,
-    );
-    assert.match(
-      workDensityStyles,
-      /\.work-surface\[data-density="compact"\] \.work-context-row/,
-    );
-    assert.match(
-      workDensityStyles,
-      /\.work-surface\[data-density="compact"\] \.work-board-column/,
-    );
-    assert.match(
-      workDensityStyles,
-      /\.work-surface\[data-density="compact"\] \.work-timeline-row/,
-    );
-    assert.match(
-      workDensityStyles,
-      /\.work-surface\[data-density="compact"\] \.work-calendar-day/,
-    );
-    assert.match(
-      workDensityStyles,
-      /@container \(max-width: 38\.75rem\)[\s\S]*?\.work-header\s*\{[^}]*flex-direction:\s*column/,
-    );
-    for (const match of workDensityStyles.matchAll(
-      /\.work-surface\[data-density="compact"\][^{]+\{([^}]*)\}/g,
-    )) {
+    for (const rule of compactRules)
       assert.doesNotMatch(
-        match[1] ?? "",
+        rule[1] ?? "",
         /display\s*:|visibility\s*:|font-size\s*:/,
         "compact density may change spacing but must not hide content or shrink type",
       );
-    }
-  });
-
-  it("configures personal Work list fields without hiding title, state, or narrow labels", () => {
-    assert.match(workSurface, /useWorkListFieldVisibility\(/);
-    assert.match(workSurface, /activeView\?\.id \?\? "all"/);
-    // Structural half of "without hiding title": the toggleable field list is
-    // real, and no entry in it can switch the title off.
-    assert.match(workSurface, /\{ key: "context", label: "Context" \}/);
-    assert.doesNotMatch(
-      workSurface,
-      /\{ key: "title",/,
-      "The title must not be one of the fields a person can switch off.",
-    );
-    // Copy half, kept on purpose: this is the promise the panel makes about
-    // what stays visible and about the choice being device-local rather than a
-    // change to the shared Saved View. The doesNotMatch below enforces the
-    // second half of that promise.
-    assert.match(workSurface, /Title and action state always show\./);
-    assert.match(workSurface, /This choice is local\s+to this device\./);
-    assert.match(workSurface, /type="checkbox"/);
-    assert.match(workSurface, /onClick=\{resetListFields\}/);
-    assert.match(workSurface, /className="work-list-field-headings"/);
-    assert.match(workSurface, /className="work-list-field-cell"/);
-    assert.doesNotMatch(
-      workSurface,
-      /setSavedWorkView.*Field|commandName:\s*"savedView\.update"[\s\S]*visible/,
-    );
-    assert.match(
-      workFieldVisibilityStyles,
-      /\.work-list-field-headings,[\s\S]*?grid-template-columns:\s*repeat\(/,
-    );
-    assert.match(
-      workFieldVisibilityStyles,
-      /@container \(max-width: 64rem\)[\s\S]*?\.work-list-columns\s*\{[^}]*display:\s*none/s,
-    );
-    assert.match(
-      workFieldVisibilityStyles,
-      /\.work-list-field-cell > small\s*\{[^}]*display:\s*block/s,
-    );
   });
 
   it("collapses labelled navigation groups without hiding rail destinations or hidden focus targets", () => {

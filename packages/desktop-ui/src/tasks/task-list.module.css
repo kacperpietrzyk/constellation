@@ -222,3 +222,18 @@
     transition: none;
   }
 }
+
+/* Compact changes SPACING and nothing else.
+
+   Not a stylistic limit — a hard one, and it has its own assertion. A "density"
+   that sets `display` or `visibility` HIDES work, and one that sets `font-size`
+   shrinks the writing; either turns a preference about how much fits on screen
+   into a preference about what a reader is allowed to see. The rule came off
+   the retired work surface with the switch, and so did its guard.
+
+   `:global` because the attribute sits on the surface's own wrapper, which the
+   screen names with a plain `data-*` hook rather than through this module. */
+:global([data-density="compact"]) .row {
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+}

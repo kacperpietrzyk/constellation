@@ -13,12 +13,14 @@ import type {
   SavedWorkViewFilterChange,
 } from "../client/workflow.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
+import { useSurfaceDensity } from "../hooks/useSurfaceDensity.js";
 import { countLabel, dateKeyInZone } from "../i18n.js";
 import {
   LazySurfaceBoundary,
   SurfaceLoadingState,
 } from "../SurfaceLifecycleStates.js";
 import { TaskListLayout } from "./TaskListLayout.js";
+import type { TaskColumnKey } from "./task-columns.js";
 import { matchesSavedView, matchesSearch } from "./task-filters.js";
 import {
   TASK_GROUPING_LABELS,
@@ -187,6 +189,9 @@ export const TasksSurface = ({
   const [sort, setSort] = useState<TaskSort>("manual");
   const [activeViewId, setActiveViewId] = useState<string>();
   const [search, setSearch] = useState("");
+  // How tight the rows are, per device. It was the work surface's, keyed on the
+  // literal "work"; the stored preference is read forward, not reset.
+  const [density, setDensity] = useSurfaceDensity("tasks");
 
   const timeZone = snapshot.bootstrap.workspace.timezone;
   const work = snapshot.work;
@@ -209,6 +214,25 @@ export const TasksSurface = ({
     (view) => view.id === activeViewId,
   );
 
+  // Which columns the TABLE draws, per saved view and per device — the columns
+  // a workspace declares as fields included. Keyed on the view, exactly as it
+  // was: a reader who narrows a view to "waiting on somebody" wants the person
+  // column there and nowhere else.
+  const taskFields = fieldDefinitions.filter(
+    (definition) => definition.targetKind === "task",
+  );
+  // ONE piece of state, and deliberately nothing else. What a column is, how it
+  // is stored and what this workspace can offer all live in `task-columns.ts`,
+  // which is imported by the TABLE and by the CHOOSER — both lazy — and by
+  // nothing on this screen. Tasks is an eager destination with a few hundred
+  // bytes of hot path left, and the storage code is bigger than that.
+  //
+  // `undefined` means "not chosen this session", which is the reader's stored
+  // choice, which is every column. Reset when the view changes, because the
+  // choice belongs to the view.
+  const [chosenColumns, setChosenColumns] =
+    useState<readonly TaskColumnKey[]>();
+
   // A view SEEDS the lens; it does not hold it. Opening one draws the board it
   // was stored as, and the switcher is free the moment it is open — which is
   // also why this is done on the change and not derived every render: a lens
@@ -221,6 +245,10 @@ export const TasksSurface = ({
   // to make.
   const openView = (view: WorkSavedView | undefined): void => {
     setActiveViewId(view?.id);
+    // The columns belong to the VIEW, so the session's choice does not follow
+    // the reader across one. What the next view opens with is what they stored
+    // for it.
+    setChosenColumns(undefined);
     if (view === undefined) return;
     const seeded = groupingFromSavedView(view.groupBy);
     setGrouping(seeded);
@@ -424,7 +452,11 @@ export const TasksSurface = ({
         : TASK_GROUPING_LABELS[grouping];
 
   return (
-    <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+    <div
+      className={`surface-scroll ${styles.tasks}`}
+      data-density={density}
+      data-tasks-surface
+    >
       <header className="surface-header">
         <h1 id="surface-title" tabIndex={-1}>
           Tasks
@@ -515,9 +547,14 @@ export const TasksSurface = ({
             <Suspense fallback={null}>
               <SavedViewManager
                 client={client}
+                chosenColumns={chosenColumns}
+                density={density}
+                fields={taskFields}
                 grouping={grouping}
                 key={activeView?.id ?? "all"}
                 layout={activeLayout}
+                onChooseColumns={setChosenColumns}
+                onDensity={setDensity}
                 onFailure={onFailure}
                 onOpened={(savedViewId) =>
                   openView(
@@ -530,6 +567,7 @@ export const TasksSurface = ({
                 snapshot={snapshot}
                 sort={sort}
                 view={activeView}
+                viewKey={activeView?.id ?? "all"}
               />
             </Suspense>
           </LazySurfaceBoundary>
@@ -624,12 +662,15 @@ export const TasksSurface = ({
               />
             ) : activeLayout === "table" ? (
               <TaskTableLayout
+                chosenColumns={chosenColumns}
+                fields={taskFields}
                 itemProps={itemProps}
                 onOpen={onOpenTask}
                 onSelect={onSelectTask}
                 prose={prose}
                 rows={rows}
                 selectedTaskId={selectedTaskId}
+                viewKey={activeView?.id ?? "all"}
               />
             ) : activeLayout === "timeline" ? (
               <TaskTimelineLayout

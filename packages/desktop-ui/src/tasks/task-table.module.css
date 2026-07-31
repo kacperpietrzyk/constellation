@@ -352,3 +352,10 @@
     animation: none;
   }
 }
+
+/* Compact changes SPACING and nothing else — see the note in
+   `task-list.module.css`, which carries the rule and the reason. */
+:global([data-density="compact"]) .table td,
+:global([data-density="compact"]) .table th {
+  padding-block: var(--space-1);
+}

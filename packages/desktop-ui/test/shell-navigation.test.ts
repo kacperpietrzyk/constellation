@@ -178,7 +178,7 @@ describe("stable shell navigation", () => {
   });
 
   it("restores bounded tabs and rejects corrupt or unknown destinations", () => {
-    let state = createShellNavigation(destinationContext("work", "Praca"));
+    let state = createShellNavigation(destinationContext("tasks", "Tasks"));
     state = openShellContext(state, taskContext(taskId, "Zadanie Alpha"));
     const restored = restoreShellNavigation(
       serializeShellNavigation(state),
@@ -253,6 +253,18 @@ describe("shell navigation across a version upgrade", () => {
             label: "Relacje",
             surface: "relationships",
           },
+          // „Zapisane widoki" zniknęły później niż tamte cztery — razem
+          // z ekranem, który był jedynym miejscem, gdzie widok dało się
+          // założyć. Otwiera się dziś NA Zadaniach, więc zakładka ma dokąd
+          // trafić. Ta pozycja jest tu, bo cała zapisana sesja jest
+          // odrzucana ZBIOROWO: `isRestorableShellContext` nie zna
+          // powierzchni, `tabs.length` się nie zgadza i powłoka startuje od
+          // zera — bez awarii, więc bez śladu.
+          {
+            key: "destination:work",
+            label: "Zapisane widoki",
+            surface: "work",
+          },
         ],
         activeKey: "destination:attention",
         history: [
@@ -267,7 +279,7 @@ describe("shell navigation across a version upgrade", () => {
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.surface),
-      ["today", "inbox", "library", "organizations"],
+      ["today", "inbox", "library", "organizations", "tasks"],
     );
     // Etykieta i klucz idą razem z celem. Zapis niesie WŁASNĄ kopię napisu,
     // więc bez tego pierwsze uruchomienie po przebudowie pokazuje angielską
@@ -276,7 +288,7 @@ describe("shell navigation across a version upgrade", () => {
     // raz.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.label),
-      ["Today", "Inbox", "Library", "Organizations"],
+      ["Today", "Inbox", "Library", "Organizations", "Tasks"],
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.key),
@@ -285,6 +297,7 @@ describe("shell navigation across a version upgrade", () => {
         "destination:inbox",
         "destination:library",
         "destination:organizations",
+        "destination:tasks",
       ],
     );
     // Zapisany `activeKey` wskazywał starą nazwę; gdyby nie przeszedł tej samej

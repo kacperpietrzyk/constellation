@@ -31,6 +31,7 @@ import {
   SurfaceLoadingState,
 } from "./SurfaceLifecycleStates.js";
 import type { LoadState } from "./shell/load-state.js";
+import { resolveDesktopSurface } from "@constellation/desktop-preload/surface-registry";
 import { navItems } from "./shell/nav-items.js";
 import { taskPriorityLabels } from "./task-priority-labels.js";
 import {
@@ -45,7 +46,6 @@ import {
   SettingsSurface,
   StrategicDepthSurface,
   TaskAttachmentsSection,
-  WorkSurface,
   WorkspaceRecovery,
 } from "./shell/lazy-surfaces.js";
 import {
@@ -246,8 +246,14 @@ export const RealApp = ({
   );
   const [navigation, setNavigation] = useState(() => {
     const parameters = new URLSearchParams(window.location.search);
+    // Through the RETIRED map, not straight at the registry. A detached window
+    // carries its destination in the query string, and a window opened before an
+    // upgrade still names the surface it was opened on — which is the case the
+    // map exists for. Matching the registry alone sent it to Today instead of to
+    // the screen that took the work over.
     const requested = navItems.find(
-      (item) => item.id === parameters.get("destination"),
+      (item) =>
+        item.id === resolveDesktopSurface(parameters.get("destination")),
     );
     const fallback = destinationContext(
       requested?.id ?? "today",
@@ -266,10 +272,23 @@ export const RealApp = ({
       const parsed = JSON.parse(
         localStorage.getItem("constellation.favorites") ?? "[]",
       ) as unknown;
+      // Same map, same reason, and this one is the quieter loss: a favourite
+      // pinned to a surface that has since been renamed was DROPPED from the
+      // rail on first launch after the upgrade — no error, nothing to notice,
+      // just one fewer pin than yesterday. Deduplicated because two retired ids
+      // can resolve onto one successor.
       return Array.isArray(parsed)
-        ? parsed.filter((item): item is SurfaceId =>
-            navItems.some((entry) => entry.id === item),
-          )
+        ? [
+            ...new Set(
+              parsed.flatMap((item) => {
+                const resolved = resolveDesktopSurface(item);
+                return resolved !== undefined &&
+                  navItems.some((entry) => entry.id === resolved)
+                  ? [resolved as SurfaceId]
+                  : [];
+              }),
+            ),
+          ]
         : (["today", "tasks"] satisfies readonly SurfaceId[]);
     } catch {
       return ["today", "tasks"] satisfies readonly SurfaceId[];
@@ -2143,24 +2162,6 @@ export const RealApp = ({
               }}
             />
           )}
-        </Suspense>
-      </LazySurfaceBoundary>
-    ),
-    work: () => (
-      <LazySurfaceBoundary label="Saved views">
-        <Suspense fallback={<SurfaceLoadingState label="Saved views" />}>
-          <WorkSurface
-            snapshot={state.snapshot}
-            selectedTaskId={selectedTaskId}
-            selectedProjectId={selectedProjectId}
-            onSelectTask={selectTaskInInspector}
-            onOpenTask={(id) => {
-              const task = tasks.find((item) => item.id === id);
-              openContext(taskContext(id, task?.title ?? "Task"));
-            }}
-            onSelectProject={selectProjectInInspector}
-            onReload={reload}
-          />
         </Suspense>
       </LazySurfaceBoundary>
     ),

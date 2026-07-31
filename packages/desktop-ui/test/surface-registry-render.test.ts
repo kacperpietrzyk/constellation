@@ -211,7 +211,7 @@ test("every destination in the registry renders a surface in the shell work plan
   // gorącą. Liczba jest tu po to, żeby taka zmiana była widoczna.
   assert.equal(
     lazyDestinations.size,
-    8,
+    7,
     "Zmienił się podział na powierzchnie leniwe i ładowane od razu — potwierdź to świadomie i zaktualizuj też budżet ścieżki gorącej.",
   );
 });
@@ -233,7 +233,7 @@ test("every lazy destination has a loader, and the ones that can be resolved her
   // modułu wygląda dokładnie jak poprawnie ładująca się. Rozwiązujemy loader
   // ręcznie.
   //
-  // ZASIĘG POWIEDZIANY WPROST: cztery moduły (`work`, `activity`, `access`,
+  // ZASIĘG POWIEDZIANY WPROST: trzy moduły (`activity`, `access`,
   // `relationships`) importują CSS na najwyższym poziomie, czego `node --test`
   // nie rozwiąże — nie ma w tym repo haka ładującego arkusze. Dla nich zostaje
   // sama kompletność klucza. „Zielone" nie ma znaczyć więcej, niż zmierzono.

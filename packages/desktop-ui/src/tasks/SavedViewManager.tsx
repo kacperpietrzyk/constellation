@@ -11,6 +11,27 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 import { InlinePopover } from "../components/InlinePopover.js";
+import type { SurfaceDensity } from "../hooks/useSurfaceDensity.js";
+import {
+  availableTaskColumns,
+  persistTaskColumns,
+  taskColumnsFor,
+  toggledTaskColumn,
+  type TaskColumnKey,
+} from "./task-columns.js";
+
+/** What each built-in column is called. It lives HERE and not beside the keys,
+ *  because only this chooser reads it and this chooser is lazy — a table of
+ *  English strings imported by the Tasks screen would be paid for on first paint
+ *  by every reader who never opens it. */
+const COLUMN_LABELS: Readonly<Record<string, string>> = {
+  project: "Project",
+  plan: "Plan",
+  deadline: "Deadline",
+  state: "State",
+  priority: "Priority",
+  owner: "Owner",
+};
 import {
   savedViewGroupByOf,
   savedViewSortOf,
@@ -57,6 +78,12 @@ export const SavedViewManager = ({
   onOpened,
   onReload,
   onFailure,
+  chosenColumns,
+  fields,
+  viewKey,
+  onChooseColumns,
+  density,
+  onDensity,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -72,7 +99,31 @@ export const SavedViewManager = ({
   readonly onOpened: (savedViewId: string) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
+  /** The two DEVICE-local preferences that came off the same surface. They are
+   *  not saved-view state and never travel to the kernel — which is exactly why
+   *  they ride in this component rather than in one of their own: Tasks is an
+   *  eager destination with a few hundred bytes of hot path left, and a second
+   *  lazy boundary beside this one would cost more than the controls do. */
+  readonly chosenColumns: readonly TaskColumnKey[] | undefined;
+  readonly viewKey: string;
+  readonly onChooseColumns: (columns: readonly TaskColumnKey[]) => void;
+  /** The workspace fields a column may name, so a heading reads as the field
+   *  rather than as its id. */
+  readonly fields: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly state?: string | undefined;
+  }[];
+  readonly density: SurfaceDensity;
+  readonly onDensity: (density: SurfaceDensity) => void;
 }) => {
+  const availableColumns = availableTaskColumns(fields);
+  const columns = taskColumnsFor(chosenColumns, viewKey, availableColumns);
+  const chooseColumns = (next: readonly TaskColumnKey[]): void => {
+    onChooseColumns(next);
+    persistTaskColumns(viewKey, next);
+  };
+
   const [busy, setBusy] = useState<string>();
   const [openPopover, setOpenPopover] = useState<string>();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -253,6 +304,71 @@ export const SavedViewManager = ({
           </button>
         </>
       )}
+
+      {/* Which columns the TABLE draws, kept per view. It chose LIST fields on
+          the surface it came from, and moving it to the table is the substance
+          of the move rather than a detail of it: the table is the layout that
+          answers field by field, and choosing columns on a layout that has none
+          was the older screen working around not having one. */}
+      <InlinePopover
+        label={`Columns · ${columns.length}`}
+        onOpenChange={(next) => setOpenPopover(next ? "columns" : undefined)}
+        open={openPopover === "columns"}
+        panelLabel={`Columns in the table — ${view?.name ?? "All work"}`}
+      >
+        <div className={styles.form}>
+          <p className={styles.note}>
+            Title and status always show. Kept for this view, on this device.
+          </p>
+          {availableColumns.map((key) => (
+            <label className={styles.choice} key={key}>
+              <input
+                checked={columns.includes(key)}
+                onChange={() =>
+                  chooseColumns(
+                    toggledTaskColumn(columns, key, availableColumns),
+                  )
+                }
+                type="checkbox"
+              />
+              {key.startsWith("field:")
+                ? (fields.find((definition) => `field:${definition.id}` === key)
+                    ?.label ?? key.slice("field:".length))
+                : (COLUMN_LABELS[key] ?? key)}
+            </label>
+          ))}
+          <button
+            className={styles.action}
+            onClick={() => chooseColumns(availableColumns)}
+            type="button"
+          >
+            Show all
+          </button>
+        </div>
+      </InlinePopover>
+
+      {/* Row height, per device. Compact may change SPACING only — never
+          `display`, `visibility` or `font-size` — because density that hides
+          content or shrinks type is not density. */}
+      <fieldset className={styles.density}>
+        <legend className="sr-only">Row height</legend>
+        <button
+          aria-pressed={density === "comfortable"}
+          className={styles.action}
+          onClick={() => onDensity("comfortable")}
+          type="button"
+        >
+          Comfortable
+        </button>
+        <button
+          aria-pressed={density === "compact"}
+          className={styles.action}
+          onClick={() => onDensity("compact")}
+          type="button"
+        >
+          Compact
+        </button>
+      </fieldset>
     </div>
   );
 };
