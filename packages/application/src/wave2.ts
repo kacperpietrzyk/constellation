@@ -4295,17 +4295,18 @@ export const executeWave2Command = (
         document.workspaceId !== command.workspaceId ||
         document.spaceId !== opportunity.spaceId ||
         owner === undefined ||
-        owner.status === "revoked" ||
-        // The rate must be FOR this cost. A dollar cost converted at the euro
-        // rate produces a plausible złoty amount, not an error — nobody would
-        // ever see it, so the refusal is structural and lives here, at the one
-        // boundary that can still say no. A rate with no cost is refused for
-        // the same reason: there is nothing for it to convert, and storing it
-        // would leave a number the screen would have to guess the meaning of.
-        (command.payload.rate !== undefined &&
-          command.payload.rate.from !== command.payload.cost?.currency)
+        owner.status === "revoked"
       )
         return precondition(command, occurredAt);
+      // Deliberately NOT refused here: a rate whose `from` is not the cost's
+      // currency. The pair check is structural in `convertMoney`, which returns
+      // undefined rather than a plausible amount (decision §2.1 asks for the
+      // type or ONE guarded function, and that is the function). Refusing the
+      // write as well would make the mismatched offer unwritable — and it is on
+      // the seed list precisely because the screen has to be shown handling it,
+      // so a boundary refusal would leave the degradation path unreachable and
+      // green. An offer carrying a rate with no cost is storable for the same
+      // reason: it is a real intermediate state, not a contradiction.
       const record = createOffer({
         id: StrategicRecordIdSchema.parse(command.payload.offerId),
         workspaceId: command.workspaceId,

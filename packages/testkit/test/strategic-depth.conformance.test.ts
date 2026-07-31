@@ -13,6 +13,7 @@ import {
   SpaceIdSchema,
   StrategicRecordIdSchema,
   StrategicRecordProjectionSchema,
+  convertMoney,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -5592,51 +5593,73 @@ it("carries money and the four CRM fields through BOTH projection homes", () => 
     "price reaches organization.operationalOverview",
   );
 
-  // The rate is FOR the cost. A dollar cost converted at the euro rate yields a
-  // plausible złoty amount, not an error — so the refusal is structural, and it
-  // is made at the boundary rather than remembered by every reader.
+  // An offer whose stored rate is for the WRONG PAIR is a real record, and the
+  // kernel stores it. It is on the seed list for the wave on purpose: a dollar
+  // cost converted at the euro rate yields a plausible złoty amount rather than
+  // an error, so the screen has to be shown refusing to convert it — and it
+  // cannot be shown doing that if the state is unwritable. The guard is
+  // structural in `convertMoney` (decision §2.1: the type or ONE guarded
+  // function), not a second refusal at the boundary that would make the
+  // degradation path unreachable and leave it green.
+  const mismatchedOfferId = uuid();
+  const mismatchedCost = { amountMinor: 12_000_00, currency: "USD" as const };
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
         ...metadata("money-offer-wrong-pair"),
         commandName: "opportunity.offerCreate",
         payload: {
-          offerId: uuid(),
+          offerId: mismatchedOfferId,
           opportunityId,
           deliverableDocumentId,
-          title: "Mismatched offer",
+          title: "Quoted against last month's euro rate",
           ownerPrincipalId: ids.principal,
-          cost: { amountMinor: 12_000_00, currency: "USD" },
+          cost: mismatchedCost,
           rate,
           state: "draft",
-          nextAction: "Should never be written.",
+          nextAction: "Re-quote at the dollar rate.",
         },
       }),
-    ).diagnosticCode,
-    "command.precondition_failed",
-    "a rate whose `from` is not the cost's currency is refused",
+    ).outcome,
+    "success",
+    "an offer whose rate is for the wrong pair is storable — the seed list needs it",
   );
-  // And a rate with nothing to convert is refused for the same reason: there
-  // is no cost for it to be the rate OF.
+  const mismatched = overview().offers.find(
+    (offer) => offer.id === mismatchedOfferId,
+  );
+  assert.deepEqual(
+    mismatched?.cost,
+    mismatchedCost,
+    "and it reads back through organization.operationalOverview intact",
+  );
+  assert.deepEqual(mismatched?.rate, rate);
+  // …and this is what the reader does with it. `undefined`, not a number.
+  assert.equal(convertMoney(mismatchedCost, rate), undefined);
+  // A rate with nothing to convert yet is storable for the same reason: it is
+  // an intermediate state, not a contradiction.
+  const rateOnlyOfferId = uuid();
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
         ...metadata("money-offer-rate-without-cost"),
         commandName: "opportunity.offerCreate",
         payload: {
-          offerId: uuid(),
+          offerId: rateOnlyOfferId,
           opportunityId,
           deliverableDocumentId,
-          title: "Rate without a cost",
+          title: "Rate agreed, quote still outstanding",
           ownerPrincipalId: ids.principal,
           rate,
           state: "draft",
-          nextAction: "Should never be written.",
+          nextAction: "Chase the quote.",
         },
       }),
-    ).diagnosticCode,
-    "command.precondition_failed",
-    "a rate with no cost is refused",
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    overview().offers.find((offer) => offer.id === rateOnlyOfferId)?.cost,
+    undefined,
   );
   // The state Kacper named as his common one: the distributor's quote has not
   // come back. An offer with no money at all is a first-class record.

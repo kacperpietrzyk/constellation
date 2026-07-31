@@ -32,11 +32,15 @@ it("tells an agent that money is in minor units and a rate is in millionths", ()
   assert.match(offerCreate, /"enum":\["PLN","EUR","USD"\]/);
   assert.match(schemaOf("opportunity.create"), /Amount in MINOR units/);
 
-  // The cross-field rule the schema cannot express: an offer's rate has to be
-  // the rate FOR its cost. `command.precondition_failed` is deliberately
-  // merged with every other precondition, so an agent that hit this refusal
-  // would have no way to learn why without the guidance saying so. An
-  // under-specified catalog has already misled a real migration agent once.
-  assert.match(catalog.guidance.command ?? "", /rate whose from is not the/);
+  // The cross-field expectation the schema cannot express, and — just as
+  // important — the fact that NOTHING enforces it: a mismatched pair is
+  // storable, and the consequence is that no reader will convert it. An agent
+  // that learned only "send a rate" would write one for the wrong pair, see it
+  // accepted, and never find out. An under-specified catalog has already misled
+  // a real migration agent once.
+  assert.match(
+    catalog.guidance.command ?? "",
+    /nothing refuses one that is not/,
+  );
   assert.match(catalog.guidance.command ?? "", /absent price means derived/);
 });

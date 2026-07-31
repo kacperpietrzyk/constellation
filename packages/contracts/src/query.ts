@@ -511,8 +511,11 @@ export const OrganizationRecordProjectionSchema =
     // make an already-stored value unreadable the day that bound moves.
     segment: z.string().optional(),
     // A calendar date, not a timestamp: "client since 2023-04-11" is a day, and
-    // a time of day nobody recorded would be an invention.
-    since: z.iso.date().optional(),
+    // a time of day nobody recorded would be an invention. Bounded as a date at
+    // the command boundary and as a bare string here, like `segment` and
+    // `phone` beside it: this is a BOOT query, so a stored value the read side
+    // refused would not degrade a screen, it would fault the whole workspace.
+    since: z.string().optional(),
     // The contact AT this organisation. See the domain arm for why this is not
     // an owner on our side and why the column is `Main contact`.
     mainContactPersonId: StrategicRecordIdSchema.optional(),
@@ -1698,7 +1701,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           relationshipState: z.enum(["prospect", "active", "inactive"]),
           nextAction: z.string().optional(),
           segment: z.string().optional(),
-          since: z.iso.date().optional(),
+          // See the guarded arm above: bounded on the way in, loose on the way
+          // out.
+          since: z.string().optional(),
           // Resolved, not a bare id, on exactly the terms `owner` is resolved
           // on the opportunities below: absent means no contact was named, or
           // the one that was no longer resolves in this Space — never a dead
