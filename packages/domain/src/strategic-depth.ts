@@ -553,6 +553,7 @@ export const createDecision = (
   input: Common & {
     readonly title: string;
     readonly rationale: string;
+    readonly organizationId?: StrategicRecordId;
     readonly evidenceSourceIds: readonly KnowledgeSourceId[];
     readonly linkedRecordIds: readonly string[];
   },
@@ -561,6 +562,9 @@ export const createDecision = (
   kind: "decision",
   title: input.title,
   rationale: input.rationale,
+  ...(input.organizationId === undefined
+    ? {}
+    : { organizationId: input.organizationId }),
   evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort(),
   linkedRecordIds: [...new Set(input.linkedRecordIds)].sort(),
   state: "current",

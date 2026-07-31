@@ -16,6 +16,7 @@ import {
   DEFAULT_RENEWAL_LEAD_TIME_DAYS,
   createOffer,
   createOpportunity,
+  createDecision,
   createOrganization,
   createPerson,
   createRenewal,
@@ -860,6 +861,49 @@ test("a phone reaches relationship.personCreate, trimmed, and is absent when bla
   });
   assert.equal(
     "phone" in (onlyEnvelope(blank).payload as Record<string, unknown>),
+    false,
+  );
+});
+
+test("the client a decision is about reaches decision.create, and is omitted when nobody named one", async () => {
+  const sent: CommandEnvelope[] = [];
+  const result = await createDecision(
+    recordingClient(sent),
+    snapshotOf(),
+    "Managed route for Orbit",
+    "Their team cannot carry night cover themselves.",
+    [],
+    StrategicRecordIdSchema.parse(referencedOrganizationId),
+  );
+  assert.equal(result.kind, "success");
+  const payload = onlyEnvelope(sent).payload as Record<string, unknown>;
+  // Asserted by the WHOLE key set, per rule 1 at the top of this file: this
+  // wrapper is the only path that writes a decision, and a key it drops is a
+  // client section that stays empty forever while every kernel test stays
+  // green.
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "decisionId",
+    "evidenceSourceIds",
+    "linkedRecordIds",
+    "organizationId",
+    "rationale",
+    "spaceId",
+    "title",
+  ]);
+  assert.equal(payload["organizationId"], referencedOrganizationId);
+
+  // Spread-in-or-omitted, per rule 2: a decision about no client in particular
+  // must not send the key holding `undefined`.
+  const unattributed: CommandEnvelope[] = [];
+  await createDecision(
+    recordingClient(unattributed),
+    snapshotOf(),
+    "Stop quoting weekend cover by default",
+    "Nobody bought it twice running.",
+  );
+  assert.equal(
+    "organizationId" in
+      (onlyEnvelope(unattributed).payload as Record<string, unknown>),
     false,
   );
 });

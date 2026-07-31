@@ -1215,6 +1215,11 @@ export const DecisionCreateCommandSchema = CommandMetadataSchema.extend({
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
       rationale: z.string().trim().min(1).max(8_000),
+      // The client this decision is about, when it is about one. Named as an
+      // organisation rather than dropped into `linkedRecordIds`, which carries
+      // no kind — see the domain arm. Optional: a decision about nothing in
+      // particular stays writable exactly as before.
+      organizationId: StrategicRecordIdSchema.optional(),
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
       linkedRecordIds: z.array(z.uuid()).max(200),
     })

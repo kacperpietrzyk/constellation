@@ -896,6 +896,23 @@ export type StrategicRecord =
       readonly kind: "decision";
       readonly title: string;
       readonly rationale: string;
+      /**
+       * The client this decision was taken about, when it was taken about one.
+       *
+       * A scalar edge rather than a membership test on `linkedRecordIds`, on
+       * the terms `renewal` and `relationship_fact` already carry theirs: those
+       * two share one arm of `strategicRecordReferences` precisely because the
+       * id is named as an organisation and nothing has to guess. An entry in
+       * `linkedRecordIds` carries no kind, so a reader wanting "the decisions
+       * about this client" would have to resolve every id in every decision and
+       * infer — which is not a filter, and is unprojectable without a join.
+       *
+       * OPTIONAL because a decision that belongs to nobody in particular is the
+       * ordinary case: the kind predates clients entirely, and demanding an
+       * organisation would have made every existing authoring path illegal.
+       * `linkedRecordIds` stays exactly what it was and is NOT repurposed.
+       */
+      readonly organizationId?: StrategicRecordId;
       readonly evidenceSourceIds: readonly KnowledgeSourceId[];
       readonly linkedRecordIds: readonly string[];
       readonly state: "current" | "superseded";

@@ -2921,6 +2921,11 @@ export const createDecision = (
   title: string,
   rationale: string,
   evidenceSourceIds: readonly KnowledgeSourceId[] = [],
+  // The client the decision is about, when the author named one. Threaded all
+  // the way through rather than left to the kernel's default: an edge the only
+  // authoring path cannot write is a section that is empty forever, which is
+  // the failure this lot exists to avoid.
+  organizationId?: StrategicRecordId,
 ) => {
   const decisionId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -2933,6 +2938,7 @@ export const createDecision = (
         spaceId: firstSpace(snapshot),
         title,
         rationale,
+        ...(organizationId === undefined ? {} : { organizationId }),
         evidenceSourceIds,
         linkedRecordIds: [],
       },

@@ -516,6 +516,7 @@ export const StrategicCreatePanel = ({
                     const rationale = value(data, "rationale");
                     if (!title || !rationale) return;
                     const sourceId = value(data, "sourceId");
+                    const organizationId = value(data, "organizationId");
                     return () =>
                       createDecision(
                         client!,
@@ -523,6 +524,9 @@ export const StrategicCreatePanel = ({
                         title,
                         rationale,
                         sourceId ? [sourceId as KnowledgeSourceId] : [],
+                        organizationId
+                          ? (organizationId as StrategicRecordId)
+                          : undefined,
                       );
                   })
                 }
@@ -539,6 +543,23 @@ export const StrategicCreatePanel = ({
                   placeholder="Why?"
                   required
                 />
+                {/* NOT `required`, unlike the fact above: a decision about no
+                    client in particular is the ordinary case. The empty option
+                    is first and stays first — a `<select>` with no chosen value
+                    submits its FIRST option, so a list starting with a real
+                    organisation would file every unattributed decision under
+                    whichever client happens to sort first. */}
+                <select
+                  name="organizationId"
+                  aria-label="Client the decision is about"
+                >
+                  <option value="">No client</option>
+                  {organizations.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
                 <select name="sourceId" aria-label="Source for the decision">
                   <option value="">No source</option>
                   {sources.map((item) => (

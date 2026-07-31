@@ -619,6 +619,11 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("decision"),
     title: z.string(),
     rationale: z.string(),
+    // Forced here by `UnprojectableKeys`, and also what makes the shell
+    // inspector read "Decision in the Acme relationship": that sentence is
+    // built from `organizationId` on whatever record is selected, so the
+    // published record has to carry the edge, not merely the kernel's copy.
+    organizationId: StrategicRecordIdSchema.optional(),
     evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
     linkedRecordIds: z.array(z.uuid()),
     state: z.enum(["current", "superseded"]),
@@ -1842,6 +1847,33 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             verifiedAt: z.iso.datetime({ offset: true }),
             staleAfter: z.iso.datetime({ offset: true }),
             state: z.enum(["current", "stale", "conflicted"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      // The decisions taken about this client, beside the facts verified about
+      // it — the pair the accepted organisation record renders together.
+      //
+      // Nothing forces this key: `UnprojectableKeys` guards the wide strategic
+      // projection and does not reach a query that restates its shapes by hand,
+      // so this array and the mapper line that fills it are the whole reason a
+      // decision reaches the client screen. Deleting either leaves an empty
+      // section and a green build.
+      //
+      // SUPERSEDED DECISIONS ARE INCLUDED, unlike `rejected`/`lost`
+      // opportunities above: the record shows them struck through, and a
+      // decision that was replaced is the part of the history a person asks
+      // about. `state` is what the screen dims by.
+      decisions: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            rationale: z.string(),
+            state: z.enum(["current", "superseded"]),
+            supersededById: StrategicRecordIdSchema.optional(),
+            supersededAt: z.iso.datetime({ offset: true }).optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
