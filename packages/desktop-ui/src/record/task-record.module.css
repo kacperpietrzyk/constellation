@@ -158,6 +158,19 @@ button.chip:hover {
   font-size: var(--text-xs);
 }
 
+/* Where an authoring control sits among readings. It gets its own row rather
+   than sharing one, in both places it is used: beside the plan sentence and
+   under the dependency list. The triggers are chips of unpredictable width —
+   one carries a state name, the other three words — and wrapped in beside prose
+   they read as part of the sentence they follow. */
+.operations {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
+
 /* ── OVERVIEW ──────────────────────────────────────────────────────────── */
 
 .overview {

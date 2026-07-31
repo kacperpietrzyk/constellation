@@ -6,12 +6,14 @@ import type {
   ProjectId,
   TaskId,
 } from "@constellation/contracts";
+import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import type {
   AuditReceiptProjection,
   CommentListProjection,
   DataSlice,
   DesktopSnapshot,
+  MutationFailure,
   WorkOverviewProjection,
 } from "../client/workflow.js";
 import { dateKeyInZone, formatDateTime } from "../i18n.js";
@@ -43,6 +45,7 @@ import {
   type RecordTab,
 } from "./record-tabs.js";
 import { RecordTabStrip } from "./RecordTabStrip.js";
+import { TaskDependencyPanel, TaskStatePanel } from "./TaskOperationsPanel.js";
 import screen from "./record-screen.module.css";
 import styles from "./task-record.module.css";
 
@@ -54,11 +57,17 @@ import styles from "./task-record.module.css";
 // reason: the hot path has about a kilobyte of gzip left, and this file plus its
 // stylesheet plus the comments panel are several times that.
 //
-// What it deliberately does NOT do is edit. The inspector rail stays open beside
-// this screen and owns every operation on a task — attachments, assignment,
-// reservation, removal and the inline context editor. Everything here is a
-// READING or an exit. Rebuilding one of those controls would give the task two
-// places to answer the same question, which is this repo's named repeat defect.
+// It edits almost nothing, and the exception is named rather than left to be
+// discovered. The inspector rail stays open beside this screen and owns
+// attachments, assignment, reservation, removal and the inline context editor;
+// rebuilding one of those here would give the task two places to answer one
+// question, which is this repo's named repeat defect.
+//
+// The two it DOES author — operational state and dependencies — the rail does
+// not have and cannot host: the rail's task is a `task.list` item, and both
+// commands need the version of the `work.overview` task, which is the `task`
+// prop below. They were the last two operations left on the retired work
+// surface, and this is where they landed.
 
 /**
  * Which tab each TASK record was left on.
@@ -245,6 +254,12 @@ export interface TaskRecordScreenProps {
    *  find its own record would have to invent a state for that, and the surface
    *  already has one. */
   readonly task: WorkTask;
+  /** The three the two authoring panels need, and nothing wider. They already
+   *  exist at the mount — the shell hands the same three to every surface that
+   *  writes — so naming them here adds no handler body to the entry chunk. */
+  readonly client: ConstellationRendererClient | undefined;
+  readonly onReload: () => Promise<void>;
+  readonly onFailure: (failure: MutationFailure) => void;
   /** This task's audit receipt, when one has been fetched. */
   readonly receipt: AuditReceiptProjection | undefined;
   readonly comments: DataSlice<CommentListProjection>;
@@ -302,6 +317,9 @@ export interface TaskRecordScreenProps {
 export const TaskRecordScreen = ({
   snapshot,
   task,
+  client,
+  onReload,
+  onFailure,
   receipt,
   comments,
   busy,
@@ -426,6 +444,11 @@ export const TaskRecordScreen = ({
   const due = dueSentence(task, prose);
   const priority = task.priority ?? "normal";
 
+  /** What the two authoring panels need to write, assembled once. Both take the
+   *  same four, so a change to the contract lands in one place rather than in
+   *  two mounts that can disagree. */
+  const wiring = { client, snapshot, onReload, onFailure };
+
   /** The other end of a dependency, drawn once for each direction. A link whose
    *  other end is not in this Space's work says so rather than drawing a blank
    *  row: the id is real, the title is what is missing. */
@@ -530,6 +553,12 @@ export const TaskRecordScreen = ({
         {planned !== undefined && (
           <p className={styles.authorship}>{planned}</p>
         )}
+        {/* Beside the state it changes. An empty fallback on purpose: a spinner
+            where a small chip is about to be is more movement than the wait it
+            reports. */}
+        <div className={styles.operations}>
+          <TaskStatePanel task={task} wiring={wiring} />
+        </div>
       </header>
 
       <RecordTabStrip
@@ -668,6 +697,20 @@ export const TaskRecordScreen = ({
                           "it depends on this task",
                         ),
                       )}
+                    </div>
+                  )}
+                  {/* Only where the work plane was actually read. Offering to
+                      attach a dependency over a slice that did not arrive would
+                      pick from an empty list and detach from nothing. */}
+                  {workKnown && (
+                    <div className={styles.operations}>
+                      <TaskDependencyPanel
+                        blockedBy={blockedBy}
+                        blocks={blocks}
+                        task={task}
+                        tasks={tasks}
+                        wiring={wiring}
+                      />
                     </div>
                   )}
                 </section>

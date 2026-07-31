@@ -25,7 +25,6 @@ import {
   setSavedWorkViewLayout,
   createWorkLink,
   firstSpace,
-  setTaskOperationalState,
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
@@ -40,12 +39,7 @@ import {
   useWorkListFieldVisibility,
   type WorkListFieldKey,
 } from "./hooks/useWorkListFieldVisibility.js";
-import {
-  countLabel,
-  dateKeyInZone,
-  formatDate,
-  instantForZonedDate,
-} from "./i18n.js";
+import { countLabel, dateKeyInZone, formatDate } from "./i18n.js";
 
 import "./work-board.css";
 import "./work-calendar.css";
@@ -90,12 +84,6 @@ const fullDateLabel = (dateKey: string): string =>
     dateStyle: "full",
     timeZone: "UTC",
   }).format(new Date(`${dateKey}T12:00:00.000Z`));
-
-const stateLabel = {
-  actionable: "Actionable",
-  waiting: "Waiting",
-  blocked: "Blocked",
-} as const;
 
 const coreWorkListFields: readonly {
   readonly key: WorkListFieldKey;
@@ -166,13 +154,6 @@ export const WorkSurface = ({
   const work = snapshot.work;
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const [openPopover, setOpenPopover] = useState<string>();
-  const [waitingDraft, setWaitingDraft] = useState<Record<string, string>>({});
-  const [waitingDirectionDraft, setWaitingDirectionDraft] = useState<
-    Record<string, "waiting_on_them" | "we_owe">
-  >({});
-  const [waitingExpectedDraft, setWaitingExpectedDraft] = useState<
-    Record<string, string>
-  >({});
   const projection = work.kind === "ready" ? work.data : undefined;
   const [activeViewId, setActiveViewId] = useState<string>();
   // Branded, and not as decoration: `SavedWorkViewFilters` is now DERIVED from
@@ -796,56 +777,6 @@ export const WorkSurface = ({
       ),
     );
   };
-  const submitDependency = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const taskId = String(data.get("taskId") ?? "");
-    const dependencyId = String(data.get("dependencyId") ?? "");
-    if (!client || !taskId || !dependencyId) return;
-    if (taskId === dependencyId) {
-      const field = form.elements.namedItem("dependencyId");
-      if (field instanceof HTMLSelectElement) {
-        field.setCustomValidity("A task cannot depend on itself.");
-        field.reportValidity();
-        field.addEventListener("change", () => field.setCustomValidity(""), {
-          once: true,
-        });
-      }
-      return;
-    }
-    await run("link-dependency", () =>
-      createWorkLink(
-        client,
-        snapshot,
-        firstSpace(snapshot),
-        "task_depends_on_task",
-        taskId,
-        dependencyId,
-      ),
-    );
-  };
-  const applyTaskState = (
-    task: (typeof projection.tasks)[number],
-    state: "actionable" | "waiting" | "blocked",
-    waitingLabel?: string,
-    waitingDetails?: {
-      readonly direction?: "waiting_on_them" | "we_owe";
-      readonly expectedAt?: string;
-    },
-  ) => {
-    if (!client) return;
-    void run(`state:${task.id}`, () =>
-      setTaskOperationalState(
-        client,
-        snapshot,
-        task,
-        state,
-        waitingLabel,
-        waitingDetails,
-      ),
-    );
-  };
 
   const changeLayout = (layout: "list" | "board" | "timeline" | "calendar") => {
     if (!client || activeView === undefined || layout === activeLayout) return;
@@ -1021,119 +952,6 @@ export const WorkSurface = ({
             ))}
           </span>
         )}
-        <InlinePopover
-          label={stateLabel[task.operationalState]}
-          panelLabel={`Change task state: ${task.title}`}
-          triggerClassName="task-state-trigger"
-          open={openPopover === `state:${task.id}`}
-          onOpenChange={(next) =>
-            setOpenPopover(next ? `state:${task.id}` : undefined)
-          }
-        >
-          <div className="task-state-actions">
-            <button
-              type="button"
-              disabled={busyIds.has(`state:${task.id}`) || !client}
-              onClick={() => applyTaskState(task, "actionable")}
-            >
-              Actionable
-            </button>
-            <input
-              value={waitingDraft[task.id] ?? task.waitingOn?.label ?? ""}
-              onChange={(event) =>
-                setWaitingDraft((current) => ({
-                  ...current,
-                  [task.id]: event.target.value,
-                }))
-              }
-              placeholder="Who or what are you waiting on?"
-              aria-label={`Waiting reason: ${task.title}`}
-            />
-            <select
-              value={
-                waitingDirectionDraft[task.id] ??
-                task.waitingOn?.direction ??
-                "waiting_on_them"
-              }
-              aria-label={`Waiting direction: ${task.title}`}
-              onChange={(event) =>
-                setWaitingDirectionDraft((current) => ({
-                  ...current,
-                  [task.id]: event.target.value as "waiting_on_them" | "we_owe",
-                }))
-              }
-            >
-              <option value="waiting_on_them">Waiting on them</option>
-              <option value="we_owe">We owe</option>
-            </select>
-            <input
-              type="date"
-              value={
-                waitingExpectedDraft[task.id] ??
-                (task.waitingOn?.expectedAt === undefined
-                  ? ""
-                  : dateKeyInZone(
-                      task.waitingOn.expectedAt,
-                      snapshot.bootstrap.workspace.timezone,
-                    ))
-              }
-              aria-label={`Waiting review date: ${task.title}`}
-              onChange={(event) =>
-                setWaitingExpectedDraft((current) => ({
-                  ...current,
-                  [task.id]: event.target.value,
-                }))
-              }
-            />
-            <button
-              type="button"
-              disabled={
-                busyIds.has(`state:${task.id}`) ||
-                !client ||
-                !(waitingDraft[task.id] ?? task.waitingOn?.label)?.trim()
-              }
-              onClick={() => {
-                const expectedDate =
-                  waitingExpectedDraft[task.id] ??
-                  (task.waitingOn?.expectedAt === undefined
-                    ? ""
-                    : dateKeyInZone(
-                        task.waitingOn.expectedAt,
-                        snapshot.bootstrap.workspace.timezone,
-                      ));
-                const expectedAt =
-                  expectedDate === ""
-                    ? undefined
-                    : instantForZonedDate(
-                        expectedDate,
-                        snapshot.bootstrap.workspace.timezone,
-                        "end",
-                      );
-                applyTaskState(
-                  task,
-                  "waiting",
-                  waitingDraft[task.id] ?? task.waitingOn?.label,
-                  {
-                    direction:
-                      waitingDirectionDraft[task.id] ??
-                      task.waitingOn?.direction ??
-                      "waiting_on_them",
-                    ...(expectedAt === undefined ? {} : { expectedAt }),
-                  },
-                );
-              }}
-            >
-              Set waiting
-            </button>
-            <button
-              type="button"
-              disabled={busyIds.has(`state:${task.id}`) || !client}
-              onClick={() => applyTaskState(task, "blocked")}
-            >
-              Blocked
-            </button>
-          </div>
-        </InlinePopover>
       </article>
     );
   };
@@ -2049,38 +1867,6 @@ export const WorkSurface = ({
                 </select>
                 <button disabled={busyIds.has("link-project") || !client}>
                   {busyIds.has("link-project") ? "Saving…" : "Link"}
-                </button>
-              </form>
-            </InlinePopover>
-            <InlinePopover
-              label="Add task dependency"
-              panelLabel="Add task dependency"
-              open={openPopover === "link-dependency"}
-              onOpenChange={(next) =>
-                setOpenPopover(next ? "link-dependency" : undefined)
-              }
-            >
-              <form onSubmit={(event) => void submitDependency(event)}>
-                <select name="taskId" required aria-label="Dependent task">
-                  <option value="">Dependent task</option>
-                  {projection.tasks.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </select>
-                <select name="dependencyId" required aria-label="Required task">
-                  <option value="">Requires task</option>
-                  {projection.tasks.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </select>
-                <button disabled={busyIds.has("link-dependency") || !client}>
-                  {busyIds.has("link-dependency")
-                    ? "Saving…"
-                    : "Add dependency"}
                 </button>
               </form>
             </InlinePopover>
