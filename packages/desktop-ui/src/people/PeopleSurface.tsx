@@ -289,26 +289,26 @@ const PeopleTable = ({
   <table aria-label="People" className={styles.table} role="grid">
     <thead>
       <tr role="row">
-        <th role="columnheader" scope="col">
-          Name
+        <th className={styles.colName} role="columnheader" scope="col">
+          <span className={styles.cell}>Name</span>
         </th>
-        <th role="columnheader" scope="col">
-          Role
+        <th className={styles.colRole} role="columnheader" scope="col">
+          <span className={styles.cell}>Role</span>
         </th>
-        <th role="columnheader" scope="col">
-          Organization
+        <th className={styles.colOrganization} role="columnheader" scope="col">
+          <span className={styles.cell}>Organization</span>
         </th>
-        <th role="columnheader" scope="col">
-          Email
+        <th className={styles.colEmail} role="columnheader" scope="col">
+          <span className={styles.cell}>Email</span>
         </th>
-        <th role="columnheader" scope="col">
-          Deals
+        <th className={styles.colCount} role="columnheader" scope="col">
+          <span className={styles.cell}>Deals</span>
         </th>
-        <th role="columnheader" scope="col">
-          Meetings
+        <th className={styles.colCount} role="columnheader" scope="col">
+          <span className={styles.cell}>Meetings</span>
         </th>
-        <th role="columnheader" scope="col">
-          Last met
+        <th className={styles.colDate} role="columnheader" scope="col">
+          <span className={styles.cell}>Last met</span>
         </th>
       </tr>
     </thead>
@@ -326,22 +326,36 @@ const PeopleTable = ({
             onDoubleClick={() => onOpen(reading)}
             role="row"
           >
-            <td className={styles.tableName} role="gridcell">
-              {reading.person.name}
-            </td>
-            <td role="gridcell">{reading.person.role ?? "—"}</td>
             <td role="gridcell">
-              {reading.organization?.name ?? NO_ORGANIZATION_GROUP}
+              <span className={`${styles.cell} ${styles.tableName}`}>
+                {reading.person.name}
+              </span>
             </td>
-            <td className={styles.mail} role="gridcell">
-              {reading.person.email ?? "—"}
-            </td>
-            <td role="gridcell">{reading.deals.length}</td>
-            <td role="gridcell">{reading.meetings.length}</td>
             <td role="gridcell">
-              {reading.lastMetAt === undefined
-                ? "Never"
-                : formatDate(reading.lastMetAt, timeZone)}
+              <span className={styles.cell}>{reading.person.role ?? "—"}</span>
+            </td>
+            <td role="gridcell">
+              <span className={styles.cell}>
+                {reading.organization?.name ?? NO_ORGANIZATION_GROUP}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={`${styles.cell} ${styles.mail}`}>
+                {reading.person.email ?? "—"}
+              </span>
+            </td>
+            <td role="gridcell">
+              <span className={styles.cell}>{reading.deals.length}</span>
+            </td>
+            <td role="gridcell">
+              <span className={styles.cell}>{reading.meetings.length}</span>
+            </td>
+            <td role="gridcell">
+              <span className={styles.cell}>
+                {reading.lastMetAt === undefined
+                  ? "Never"
+                  : formatDate(reading.lastMetAt, timeZone)}
+              </span>
             </td>
           </tr>
         );

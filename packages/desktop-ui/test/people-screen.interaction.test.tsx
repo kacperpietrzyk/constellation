@@ -1,4 +1,7 @@
 import { strict as assert } from "node:assert";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -507,5 +510,79 @@ test("a person opened from elsewhere is still in hand on arrival", async () => {
     again?.getAttribute("aria-selected"),
     "true",
     "the selected person was dropped on the way back to People",
+  );
+});
+
+// THE TWO DECLARATIONS THAT BROKE THE PACKAGED TEXT-SCALING GATE, pinned.
+//
+// Neither is visible to the interaction harness: happy-dom computes no layout,
+// so `scrollWidth` and `clientWidth` are both zero here and an assertion about
+// them would measure nothing while looking like a measurement. What CAN be
+// asserted without a browser is the SHAPE of the sheet — and the shape is the
+// whole defect. Both properties below made this surface wider than the box it
+// sits in at 200% root font-size, with no descendant overflowing anything,
+// which is exactly the report the Windows job produced.
+//
+// The real gate is `scripts/run-packaged-alpha-smoke.mjs:786-795`, on three
+// operating systems. This is the cheap guard that fails in one second instead
+// of fifteen minutes.
+// Walked up from this file rather than taken from `import.meta.url` directly:
+// the Vitest harness rewrites that to an http URL, and `readFileSync` then
+// fails with a message about schemes rather than about the sheet.
+const packageRoot = (() => {
+  let directory = path.dirname(
+    fileURLToPath(import.meta.url.replace(/^http[^/]*\/\/[^/]+/u, "file://")),
+  );
+  while (!existsSync(path.join(directory, "src", "styles.css"))) {
+    const parent = path.dirname(directory);
+    assert.notEqual(parent, directory, "desktop-ui package root not found");
+    directory = parent;
+  }
+  return directory;
+})();
+
+// Comments stripped FIRST. Both of these declarations are explained in the
+// sheet by name, and a guard that reads the explanation as the thing it forbids
+// fires on the fix rather than on the defect — which is how a guard gets
+// deleted instead of fixed.
+const peopleSheet = readFileSync(
+  path.join(packageRoot, "src", "people", "people.module.css"),
+  "utf8",
+).replace(/\/\*[\s\S]*?\*\//gu, "");
+
+const declarationsOf = (selector: string): string => {
+  const at = peopleSheet.indexOf(`${selector} {`);
+  assert.notEqual(at, -1, `${selector} is not in the People sheet any more`);
+  return peopleSheet.slice(at, peopleSheet.indexOf("}", at));
+};
+
+test("the People sheet keeps the two declarations that made the surface wider than itself", () => {
+  // 1. Inline-size containment makes an element's own intrinsic width ignore
+  //    its contents. `.surface-scroll > *` centres every child with
+  //    `margin-inline: auto`, which turns off `stretch`, so a contained list
+  //    resolved to a fit-content width of ZERO and every row inside it
+  //    overflowed a box with no width.
+  assert.equal(
+    /container-type/u.test(peopleSheet),
+    false,
+    "`container-type` is back in the People sheet — with `margin-inline: auto` above it that sizes the list from nothing and the surface overflows itself",
+  );
+  // 2. A row track capped in rem is a width that doubles with the text while
+  //    the row it lives in does not. Every elastic track is a ratio.
+  const tracks = /grid-template-columns:([^;]*);/u.exec(
+    declarationsOf(".row"),
+  )?.[1];
+  assert.ok(tracks, "the People row stopped being a grid");
+  assert.equal(
+    (tracks.match(/rem/gu) ?? []).length,
+    1,
+    "a People row track other than the avatar is sized in rem again — a rem cap doubles with the text while the row it lives in does not, so the cells stop fitting and the surface overflows itself",
+  );
+  // 3. Automatic table layout takes its width from the widest unbreakable cell,
+  //    and one email address is enough to push the table past the surface.
+  assert.equal(
+    /table-layout: fixed/u.test(declarationsOf(".table")),
+    true,
+    "the People table went back to automatic layout — one long email then sets a width the surface cannot hold",
   );
 });

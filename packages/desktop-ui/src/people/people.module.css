@@ -14,8 +14,17 @@
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
+/* WRAPPING IS NOT DECORATION HERE, it is what keeps the surface inside itself.
+   `.surface-scroll > *` centres every child with `margin-inline: auto`
+   (`styles.css:4404-4407`), so a child is sized `fit-content` — and
+   `fit-content` is clamped BELOW by min-content. A non-wrapping flex row's
+   min-content is the sum of its children, so at 200% text this bar stops being
+   able to fit the surface's content box and the surface overflows itself, with
+   no single descendant overflowing anything. A wrapping row's min-content is
+   its widest single child instead, which is a number that stays inside. */
 .crumbbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding-inline: var(--space-4);
@@ -55,6 +64,7 @@
 
 .viewbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   padding-inline: var(--space-4);
@@ -62,6 +72,7 @@
 
 .switcher {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.125rem;
   padding: 0.125rem;
@@ -95,9 +106,25 @@
 
 /* ── The grouped list ────────────────────────────────────────────────── */
 
+/* NO `container-type: inline-size` here, and its absence is the fix rather than
+   an omission. The prototype's list is a container query host because it hides
+   a column at a breakpoint; this sheet has no `@container` rule at all, and the
+   declaration is not free: inline-size containment makes an element's own
+   intrinsic width ignore its contents, so as a `margin-inline: auto` child of
+   `.surface-scroll` this list resolved to a fit-content width of ZERO and every
+   group and row inside it overflowed a box with no width. The surface then
+   overflowed itself while no single descendant looked wrong relative to its
+   own content. */
 .list {
   display: block;
-  container-type: inline-size;
+  /* AND it declares its own width rather than being sized by its rows.
+     `.surface-scroll > *` sets `margin-inline: auto`, and an auto cross-axis
+     margin turns off `stretch` — so without this the list takes a
+     content-based width, which for a grid of rows is the sum of their tracks
+     and is wider than the surface at any real text size. `100%` is definite,
+     so the row's `minmax(0, …)` tracks have a number to shrink against
+     instead of setting one. */
+  width: 100%;
 }
 
 .group {
@@ -106,9 +133,13 @@
 
 /* The head states the facts of the ORGANIZATION, because a person has no edge
    to a project in this model and attributing somebody else's delivery to a
-   human would be an invented relationship. */
+   human would be an invented relationship.
+
+   It wraps for the same reason the two bars above do: five items in a row that
+   cannot wrap set a min-content width nothing can shrink. */
 .groupHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -243,9 +274,15 @@
 
 .row {
   display: grid;
+  /* PROPORTIONS, not rem caps, for every track but the avatar. A track capped
+     in rem is a width that doubles with the text while the row it lives in does
+     not, so above 200% the four cells stop fitting the row and the surface
+     overflows itself. Ratios always sum to the row at any text size and carry
+     the same intent: the name gets the most room, the date the least, and the
+     avatar — a glyph, not text — is the one thing that must not shrink. */
   grid-template-columns:
-    1.5rem minmax(0, 1fr) minmax(0, 13rem) minmax(0, 13rem)
-    7rem;
+    1.5rem minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)
+    minmax(0, 0.6fr);
   align-items: center;
   gap: var(--space-3);
   width: 100%;
@@ -298,17 +335,24 @@
 
 /* `text-overflow` acts on a block box with text in it, not on a flex child —
    so the name and the role each own the element that truncates, and the name
-   gives up its room LAST: it is the only thing this row is recognised by. */
+   gives up its room LAST: it is the only thing this row is recognised by.
+
+   "Last" is expressed as a SHRINK WEIGHT, not as a floor. A `min-width` in rem
+   doubles with the text and becomes a width the cell cannot go under, which is
+   how a row stops fitting its own grid track at 200% — the same defect as the
+   bars above, one level down. The role gives up its room four times faster,
+   which is the same priority without the floor. */
 .name {
   flex: 0 1 auto;
-  min-width: 5.5rem;
+  flex-shrink: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .role {
-  flex: 0 1 auto;
+  flex: 0 4 auto;
   min-width: 0;
   font-size: var(--text-2xs);
   color: var(--text-quaternary);
@@ -414,11 +458,39 @@
 
 /* ── Table ───────────────────────────────────────────────────────────── */
 
+/* `table-layout: fixed`, and it is load-bearing rather than tidy. Under the
+   default `auto` algorithm a table's used width is at least its min-content,
+   and one unbroken email address sets a min-content nothing can talk down — the
+   table then renders wider than the surface at 200% text while every cell in it
+   looks correct against its own content. Fixed layout makes the declared width
+   the real one and hands the overflow to the cells, which already ellipsize. */
 .table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--text-xs);
   color: var(--text-secondary);
+}
+
+/* The shares are declared once, on the header row, because fixed layout reads
+   the first row and nothing else. */
+.colName {
+  width: 20%;
+}
+.colRole {
+  width: 16%;
+}
+.colOrganization {
+  width: 18%;
+}
+.colEmail {
+  width: 22%;
+}
+.colCount {
+  width: 8%;
+}
+.colDate {
+  width: 8%;
 }
 
 .table th {
@@ -436,10 +508,19 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
+}
+
+/* The truncation lives on a BLOCK INSIDE the cell, not on the cell. A `<td>`
+   that clips its own text still reports the untruncated width up to the table,
+   and the table then reports scrollable overflow it cannot scroll — which is
+   the number the packaged text-scaling gate reads. An inner block clips for
+   real and contributes nothing. Same shape as `tasks/task-table.module.css`. */
+.cell {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 0;
 }
 
 .tableRow:hover {
