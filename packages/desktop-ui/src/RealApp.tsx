@@ -2213,6 +2213,11 @@ export const RealApp = ({
                     busy={busyTaskId === recordTask.id}
                     canComment={canComment}
                     canResolve={canResolveComments}
+                    // The three the record's own authoring panels need. Handed
+                    // straight through — writing a handler body here would put
+                    // it in the entry chunk, which is the one place in this
+                    // program with no room.
+                    client={client}
                     commentBusy={commentBusy}
                     // The shell's slice, and only while it IS this record's —
                     // otherwise the pending line, which is the true thing to say
@@ -2274,6 +2279,7 @@ export const RealApp = ({
                         settleCommentWrite(commentTarget, result),
                       );
                     }}
+                    onFailure={showFailure}
                     onInspectAttachment={inspectManagedAttachment}
                     // The record resolved the row that was clicked, so the tab
                     // it opens is named after the work rather than after a
@@ -2297,6 +2303,7 @@ export const RealApp = ({
                         settleCommentWrite(commentTarget, result),
                       );
                     }}
+                    onReload={reload}
                     onRestoreAttachment={restoreManagedAttachment}
                     receipt={receipts[recordTask.id]}
                     snapshot={state.snapshot}

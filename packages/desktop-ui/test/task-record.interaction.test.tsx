@@ -7,6 +7,7 @@ import { afterEach, beforeEach, test, vi } from "vitest";
 import {
   CommentIdSchema,
   PrincipalIdSchema,
+  SpaceIdSchema,
   StrategicRecordIdSchema,
   TaskAssignmentIdSchema,
   TaskIdSchema,
@@ -17,6 +18,7 @@ import type { RendererQueryResponse } from "@constellation/desktop-preload/clien
 import { assertNoNode } from "./dom-assert.js";
 import {
   inProgressStatusId,
+  populatedBootstrap,
   populatedPlanDayKey,
   populatedShellQueries,
   populatedWorkOverview,
@@ -314,13 +316,51 @@ const links: Projection<"work.overview">["links"] = [
   },
 ];
 
+/**
+ * What stands in the way of each task, for the two that are not simply
+ * actionable.
+ *
+ * Written down because the record can now CHANGE it, and every assertion about
+ * that change needs a task the change starts from. A fixture where every task is
+ * actionable renders the authoring panel's seeded state exactly never: the drafts
+ * fall back to what the task already says, and with nothing said they fall back
+ * to empty — which is the one case that cannot catch a panel that erases a
+ * recorded reason.
+ *
+ * The waiting one carries the WHOLE composite. A label without a direction and a
+ * date proves nothing about re-sending the two fields a reader did not touch.
+ */
+const waitingOn: Partial<
+  Record<string, Projection<"work.overview">["tasks"][number]["waitingOn"]>
+> = {
+  [blockerTaskId]: {
+    kind: "external",
+    label: "Sponsorka — decyzja o budżecie",
+    direction: "waiting_on_them",
+    expectedAt: "2026-08-10T21:59:59.999Z",
+  },
+};
+
+const operationalStates: Partial<
+  Record<
+    string,
+    Projection<"work.overview">["tasks"][number]["operationalState"]
+  >
+> = {
+  [blockerTaskId]: "waiting",
+  [dependentTaskId]: "blocked",
+};
+
 const work: Projection<"work.overview"> = {
   ...populatedWorkOverview,
   tasks: taskItems.map((item) => ({
     id: item.id,
     title: item.title,
     statusId: item.status.id,
-    operationalState: "actionable" as const,
+    operationalState: operationalStates[item.id] ?? ("actionable" as const),
+    ...(waitingOn[item.id] === undefined
+      ? {}
+      : { waitingOn: waitingOn[item.id] }),
     completionState: item.completionState,
     ...(item.startAt === undefined ? {} : { startAt: item.startAt }),
     ...(item.plannedBy === undefined ? {} : { plannedBy: item.plannedBy }),
@@ -446,8 +486,34 @@ const refused: RendererQueryResponse = {
   issues: [{ path: "target", code: "custom" }],
 };
 
+/**
+ * TWO Spaces, and the work's own is deliberately not the first.
+ *
+ * `work.linkCreate` is checked by the kernel against the Space named in its
+ * payload, and the renderer's wrapper refuses to guess one — the hardcoded
+ * "first Space" default was removed because a record outside it turned a
+ * legitimate link into a silent rejection. With one Space in the fixture, the
+ * task's own Space and the workspace's first are the same string, so an
+ * assertion that the right one was sent cannot fail and proves nothing.
+ *
+ * Named `Archiwum` rather than something neutral so a screen that renders a
+ * Space name is caught saying the wrong one out loud.
+ */
+const otherSpaceId = SpaceIdSchema.parse(
+  "00000000-0000-4000-8000-00000000ef01",
+);
+
+const bootstrap: Projection<"workspace.bootstrapContext"> = {
+  ...populatedBootstrap,
+  spaces: [
+    { id: otherSpaceId, name: "Archiwum", version: 1 },
+    ...populatedBootstrap.spaces,
+  ],
+};
+
 const queries = {
   ...populatedShellQueries,
+  "workspace.bootstrapContext": projectionResponse(bootstrap),
   "workspace.access": projectionResponse(access),
   "work.overview": projectionResponse(work),
   "task.list": projectionResponse({
@@ -1318,4 +1384,266 @@ test("both directions of a dependency are on screen, said in words", async () =>
       BLOCKER_TITLE,
     "a dependency cannot be opened from the record that names it",
   );
+});
+
+/* ── AUTHORING ────────────────────────────────────────────────────────────
+   The two operations the retired work surface was the only home for. They are
+   asserted through the PAYLOAD and not through the screen: a panel that redraws
+   itself and a panel that SENDS what was chosen look identical, and every defect
+   these guard against is one where the screen looked right. */
+
+/** The popover trigger, by the name a reader sees on it. */
+const openPopoverNamed = async (
+  scope: ParentNode,
+  label: string,
+): Promise<HTMLElement> => {
+  const trigger = [...scope.querySelectorAll<HTMLElement>("button")].find(
+    (button) => (button.textContent ?? "").trim().startsWith(label),
+  );
+  assert.ok(trigger, `the record offers no control named ${label}`);
+  await act(async () => {
+    trigger.click();
+  });
+  // Portaled to <body>, so it is deliberately NOT looked for inside the record.
+  const dialog = document.body.querySelector<HTMLElement>(
+    '[role="dialog"].inline-popover',
+  );
+  assert.ok(dialog, `${label} opened nothing`);
+  return dialog;
+};
+
+/** React's own value tracker swallows a plain assignment, so a test that skipped
+ *  the native setter would assert about the value the control started with. */
+const setValue = async (
+  field: HTMLInputElement | HTMLSelectElement,
+  value: string,
+): Promise<void> => {
+  await act(async () => {
+    const prototype =
+      field instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(
+      field,
+      value,
+    );
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+};
+
+const controlNamed = <Element extends HTMLElement>(
+  scope: ParentNode,
+  id: string,
+): Element => {
+  const found = scope.querySelector<Element>(`#${id}`);
+  assert.ok(found, `the panel drew no control with id ${id}`);
+  return found;
+};
+
+const lastCommand = (name: string) => {
+  const found = [...issued].reverse().find((command) => command.name === name);
+  assert.ok(found, `nothing issued a ${name} command`);
+  return found;
+};
+
+const submitFormOf = async (field: HTMLElement): Promise<void> => {
+  await act(async () => {
+    field
+      .closest("form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+};
+
+test("setting a task to waiting sends who, which way round, and until when", async () => {
+  const opened = await openRecord();
+  const dialog = await openPopoverNamed(opened, "State:");
+
+  await setValue(
+    controlNamed<HTMLInputElement>(dialog, "task-waiting-label"),
+    "Marta z prawnego",
+  );
+  await setValue(
+    controlNamed<HTMLSelectElement>(dialog, "task-waiting-direction"),
+    "we_owe",
+  );
+  await setValue(
+    controlNamed<HTMLInputElement>(dialog, "task-waiting-expected"),
+    "2026-08-12",
+  );
+
+  await act(async () => {
+    buttonIn(dialog, "Set waiting")?.click();
+  });
+
+  const command = lastCommand("task.setOperationalState");
+  assert.equal(command.payload.operationalState, "waiting");
+  // All THREE parts, not just the label. Each one is separately droppable in
+  // the assembly, and each drop leaves a command the kernel still accepts.
+  assert.deepEqual(command.payload.waitingOn, {
+    kind: "external",
+    label: "Marta z prawnego",
+    direction: "we_owe",
+    // End of that day in the workspace zone: a review date is a deadline for
+    // looking again, so it is not due until the day is over.
+    expectedAt: "2026-08-12T21:59:59.999Z",
+  });
+  // The version this write is checked against does not travel in the payload,
+  // and it is the WORK plane's — the one this screen holds and the inspector
+  // rail, which carries a `task.list` item, does not have.
+  assert.equal(command.expectedVersions[openedTaskId], 3);
+});
+
+test("changing only the review date keeps the reason and the direction already recorded", async () => {
+  // A task that is ALREADY waiting, with the whole composite on it.
+  const opened = await openRecord(blockerTaskId);
+  const dialog = await openPopoverNamed(opened, "State:");
+
+  // Seeded from the record rather than from empty, so a reader can see what is
+  // stored before touching anything.
+  assert.equal(
+    controlNamed<HTMLInputElement>(dialog, "task-waiting-label").value,
+    "Sponsorka — decyzja o budżecie",
+  );
+
+  await setValue(
+    controlNamed<HTMLInputElement>(dialog, "task-waiting-expected"),
+    "2026-09-01",
+  );
+  await act(async () => {
+    buttonIn(dialog, "Set waiting")?.click();
+  });
+
+  // The kernel replaces `waitingOn` WHOLESALE. Drafts seeded empty would send a
+  // composite with the reason missing and quietly erase what somebody wrote.
+  assert.deepEqual(lastCommand("task.setOperationalState").payload.waitingOn, {
+    kind: "external",
+    label: "Sponsorka — decyzja o budżecie",
+    direction: "waiting_on_them",
+    expectedAt: "2026-09-01T21:59:59.999Z",
+  });
+});
+
+test("actionable clears the recorded reason, and says so before the click", async () => {
+  const opened = await openRecord(blockerTaskId);
+  const dialog = await openPopoverNamed(opened, "State:");
+
+  // The panel says what the button does. This one erases writing, and a toast
+  // afterwards is not a warning.
+  assert.ok(
+    (dialog.textContent ?? "").includes(
+      "Actionable clears who this task waits on",
+    ),
+    "the button that erases a recorded reason does not say so",
+  );
+
+  await act(async () => {
+    buttonIn(dialog, "Actionable")?.click();
+  });
+
+  const command = lastCommand("task.setOperationalState");
+  assert.equal(command.payload.operationalState, "actionable");
+  // Break-tested, and the result is worth writing down: this needs BOTH guards
+  // broken before it goes red — the panel passing a label to a non-waiting
+  // state, AND `setTaskOperationalState` dropping its `operationalState ===
+  // "waiting"` condition. Either one alone keeps the payload clean, so a single
+  // mutation of either file comes back green. That is a double guard rather
+  // than a decorative assertion, and it is said here because a later reader
+  // testing one half would otherwise conclude this measures nothing.
+  assert.equal(
+    "waitingOn" in command.payload,
+    false,
+    "clearing the state carried the old reason along with it",
+  );
+});
+
+test("a dependency is added in the direction the record reads it back", async () => {
+  const opened = await openRecord();
+  const dialog = await openPopoverNamed(opened, "Edit dependencies");
+
+  const picker = controlNamed<HTMLSelectElement>(dialog, "task-dependency");
+  const offered = [...picker.options].map((option) => option.textContent);
+  // Refusing after the click is a rule the reader has to discover first.
+  // Neither the task itself nor a task it is already linked to is on offer.
+  assert.equal(
+    offered.includes(OPENED_TITLE),
+    false,
+    "the task is offered as its own dependency",
+  );
+  assert.equal(
+    offered.includes(BLOCKER_TITLE),
+    false,
+    "a task this one already depends on is offered a second time",
+  );
+  assert.equal(
+    offered.includes(DEPENDENT_TITLE),
+    false,
+    "a task already depending on this one is offered as a dependency of it",
+  );
+  assert.ok(
+    offered.includes(OTHER_TITLE),
+    "no unlinked task is offered at all",
+  );
+
+  await setValue(picker, otherTaskId);
+  await submitFormOf(picker);
+
+  const command = lastCommand("work.linkCreate");
+  assert.equal(command.payload.linkType, "task_depends_on_task");
+  // Source depends on target. Reversed, the link still draws — under the OTHER
+  // heading, with confident wording and identical counts, which no assertion
+  // about the NUMBER of dependencies could ever see.
+  assert.equal(command.payload.sourceRecordId, openedTaskId);
+  assert.equal(command.payload.targetRecordId, otherTaskId);
+  // The Space the kernel checks both ends against, named by the caller: the
+  // opened task's own, read off `task.list`, not the workspace's first.
+  assert.equal(command.payload.spaceId, spaceId);
+  // The one command on this page whose kernel branch asserts an EMPTY expected
+  // version map — naming a version is a rejection, not a stricter check.
+  assert.deepEqual(command.expectedVersions, {});
+});
+
+test("a dependency can be taken off, from either side, at the version it is on", async () => {
+  const opened = await openRecord();
+  const dialog = await openPopoverNamed(opened, "Edit dependencies");
+
+  // Both directions are detachable and each says which one it is: the edge is
+  // one record, and the task at the other end of "it depends on this task" is
+  // just as entitled to have it taken off. Until this, nothing anywhere in the
+  // product could detach a task dependency at all.
+  const rows = [...dialog.querySelectorAll("li")];
+  const outgoing = rows.find((row) =>
+    (row.textContent ?? "").includes(BLOCKER_TITLE),
+  );
+  const incoming = rows.find((row) =>
+    (row.textContent ?? "").includes(DEPENDENT_TITLE),
+  );
+  assert.ok(outgoing, "the dependency this task waits for cannot be detached");
+  assert.ok(incoming, "the dependency waiting on this task cannot be detached");
+  assert.ok(
+    (outgoing.textContent ?? "").includes("this task depends on it"),
+    "the detach row does not say which way the link points",
+  );
+  // A link somebody already removed is not offered for removal a second time.
+  assert.equal(
+    rows.some((row) => (row.textContent ?? "").includes(DROPPED_TITLE)),
+    false,
+    "a dependency that was already detached is offered for detaching",
+  );
+
+  await act(async () => {
+    outgoing.querySelector("button")?.click();
+  });
+
+  const command = lastCommand("work.linkRemove");
+  assert.equal(
+    command.payload.linkId,
+    "00000000-0000-4000-8000-00000000ed01",
+    "detaching took off a different link than the row that was clicked",
+  );
+  // The LINK's own version and nothing else — the mirror of `work.linkCreate`
+  // just above, which refuses one.
+  assert.deepEqual(command.expectedVersions, {
+    "00000000-0000-4000-8000-00000000ed01": 1,
+  });
 });

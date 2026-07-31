@@ -1,0 +1,84 @@
+/* The two controls that author a task's state and its dependencies, inside the
+   shared inline popover. The popover itself supplies the panel chrome — border,
+   surface, shadow and position — so nothing here restates it; these rules lay
+   out the fields within it and nothing else.
+
+   Sized against the popover rather than the record: the panel is portaled to
+   <body>, so it never inherits the record's column and cannot be measured
+   against it. */
+
+.panel {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 16rem;
+  max-inline-size: 22rem;
+}
+
+/* Labels carry the question. The controls underneath are wide enough for a real
+   answer — a person's name and a company's name are both longer than the width
+   a shrink-to-fit select would take. */
+.field {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.panel input,
+.panel select {
+  min-inline-size: 0;
+  inline-size: 100%;
+}
+
+/* The three state buttons span the panel so they read as one choice made three
+   ways, rather than as three unrelated actions sharing a row. */
+.wide {
+  inline-size: 100%;
+}
+
+/* Said beside the button that does it, not after the fact in a toast: choosing
+   Actionable drops the recorded reason, and a reader who has just typed one
+   deserves to know before the click rather than after. */
+.note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+/* A separated block, because detaching is destructive and adding is not. The
+   rule is the only thing between them and it is doing real work. */
+.detachList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  border-block-start: 1px solid var(--panel-raised-border);
+  padding: var(--space-2) 0 0;
+  list-style: none;
+}
+
+.detachRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* The title may be a full sentence and the direction is a second line under it.
+   `min-inline-size: 0` alone is not enough — a long unbroken word (a Polish
+   compound at this size is easily wider than the panel) overflows a flex child
+   that is allowed to shrink but not told it may break. */
+.detachLabel {
+  display: grid;
+  min-inline-size: 0;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.detachMeta {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
