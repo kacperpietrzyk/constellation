@@ -117,7 +117,7 @@ const Outlook = ({
 }: {
   readonly reading: RenewalReading;
   readonly upliftPct: number;
-  readonly onOpenOpportunity: (id: string) => void;
+  readonly onOpenOpportunity: (id: StrategicRecordId, title: string) => void;
 }) => {
   const { outlook, clock, renewal } = reading;
   const current =
@@ -158,8 +158,8 @@ const Outlook = ({
           className={styles.basisLink}
           data-renewal-deal={outlook.opportunityId ?? undefined}
           onClick={() => {
-            if (outlook.opportunityId !== null)
-              onOpenOpportunity(outlook.opportunityId);
+            if (reading.renewing !== undefined)
+              onOpenOpportunity(reading.renewing.id, reading.renewing.title);
           }}
           type="button"
         >
@@ -197,7 +197,7 @@ const RenewalRow = ({
   readonly busy: boolean;
   readonly message: string | undefined;
   readonly onSelect: (id: string) => void;
-  readonly onOpenOpportunity: (id: string) => void;
+  readonly onOpenOpportunity: (id: StrategicRecordId, title: string) => void;
   readonly onOpenTask: (id: TaskId, title: string) => void;
   readonly onStart: (reading: RenewalReading) => void;
   readonly onAmend: (reading: RenewalReading) => void;
@@ -355,7 +355,12 @@ const RenewalRow = ({
             </span>
             <button
               className={styles.basisLink}
-              onClick={() => onOpenOpportunity(amendment.opportunity.id)}
+              onClick={() =>
+                onOpenOpportunity(
+                  amendment.opportunity.id,
+                  amendment.opportunity.title,
+                )
+              }
               type="button"
             >
               the opportunity
@@ -466,7 +471,7 @@ export const RenewalsSurface = ({
   readonly selectedRecordId: string | undefined;
   readonly onSelectRecord: (id: string) => void;
   readonly onOpenOrganization: (id: StrategicRecordId, name: string) => void;
-  readonly onOpenOpportunity: (id: string) => void;
+  readonly onOpenOpportunity: (id: StrategicRecordId, title: string) => void;
   readonly onOpenTask: (id: TaskId, title: string) => void;
   readonly onReload: () => Promise<void> | void;
   readonly onFailure: (failure: MutationFailure) => void;

@@ -733,9 +733,19 @@ test("a deal that renews the contract wins, is shown exactly, and carries a way 
   await act(async () => {
     toDeal.click();
   });
+  // NOT just "somewhere else" — ON THE DEAL. A deal has had its own record
+  // since #191, and sending it to the board with the record selected was the
+  // honest halfway house only while no context could carry a deal. Asserting
+  // "left Renewals" alone would stay green if this link went back to the board,
+  // or to the organisation, which is the substitution trap 24 describes
+  // pointing the other way.
   await waitForCondition(
-    () => container.querySelector("[data-renewals-surface]") === null,
-    `opening the deal left the reader on Renewals: ${[...container.querySelectorAll("[data-surface]")].map((n) => (n as HTMLElement).dataset.surface).join(",")}`,
+    () => container.querySelector('[data-record-kind="opportunity"]') !== null,
+    `opening the deal did not open the deal's own record: ${[...container.querySelectorAll("[data-surface]")].map((node) => (node as HTMLElement).dataset.surface).join(",")}`,
+  );
+  assert.ok(
+    container.querySelector("[data-renewals-surface]") === null,
+    "the deal's record opened without leaving Renewals behind",
   );
 });
 

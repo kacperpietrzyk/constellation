@@ -2318,15 +2318,14 @@ export const RealApp = ({
             onOpenOrganization={(id, name) =>
               openContext(organizationContext(id, name))
             }
-            // An opportunity's inspector home is still `organizations` in
-            // `record-kind-registry.ts`; the Pipeline lot repoints it together
-            // with its own routing branch, and until then sending a deal
-            // anywhere else would be the downgrade trap 24 describes, authored
-            // from this end.
-            onOpenOpportunity={(id) => {
-              openContext(destinationContext("organizations", "Organizations"));
-              selectStrategicInInspector(id);
-            }}
+            // A deal has its own record since #191, so opening one from here
+            // opens THE DEAL. Sending it to the board with the record selected
+            // was the honest halfway house while no context could carry a deal;
+            // leaving it that way now would be the substitution trap 24
+            // describes, authored from this end.
+            onOpenOpportunity={(id, title) =>
+              openContext(opportunityContext(id, title))
+            }
             onOpenTask={(id, title) => openContext(taskContext(id, title))}
             onReload={reload}
             onFailure={showFailure}

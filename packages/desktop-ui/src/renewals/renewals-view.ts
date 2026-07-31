@@ -222,6 +222,10 @@ export interface RenewalReading {
   readonly mainContact: PersonRecord | undefined;
   readonly clock: ContractClock;
   readonly outlook: RenewalOutlookReading;
+  /** The deal that becomes the next term, when one is linked. Carried so the
+   *  row can NAME it: opening a deal opens its own record now, and a record
+   *  context needs a label. */
+  readonly renewing: OpportunityRecord | undefined;
   readonly followUp: FollowUpReading;
   readonly amendments: readonly AmendmentReading[];
   readonly term: TermReading | undefined;
@@ -466,6 +470,7 @@ export const readRenewals = (
       const organization = organizations.get(renewal.organizationId);
       const clock = contractClock(renewal, prose);
       const followUp = followUpFor(renewal, tasks, prose);
+      const renewing = pickRenewing(deals.renewing.get(renewal.id));
       readings.push({
         renewal,
         organization,
@@ -474,12 +479,8 @@ export const readRenewals = (
             ? undefined
             : people.get(organization.mainContactPersonId),
         clock,
-        outlook: outlookFor(
-          renewal,
-          pickRenewing(deals.renewing.get(renewal.id)),
-          index,
-          upliftPct,
-        ),
+        outlook: outlookFor(renewal, renewing, index, upliftPct),
+        renewing,
         followUp,
         amendments: deals.amendments.get(renewal.id) ?? [],
         term: termReading(renewal, clock),
