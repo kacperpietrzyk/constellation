@@ -1,9 +1,13 @@
 import { z } from "zod";
 
+import { type Currency, CurrencySchema } from "./money.js";
+
 /**
- * The three workspace numbers that decide what the funnel looks like and what a
+ * The workspace settings that decide what the funnel looks like and what a
  * number on a deal means: the pipeline stages, the markup a derived price is
- * computed with, and the uplift a renewal is projected by.
+ * computed with, the uplift a renewal is projected by, and the two currency
+ * settings — which currency a column of mixed money is summed INTO, and which
+ * currencies a picker offers.
  *
  * ONE shape for the command, the outcome and every read — the same rule
  * `working-day.ts` states for the same reason: a shape restated across several
@@ -76,6 +80,32 @@ export const MarkupPctSchema = z.int().min(0).max(1_000);
 export const UpliftPctSchema = z.int().min(0).max(1_000);
 
 /**
+ * Which currencies this workspace records money in. It does NOT restate the
+ * vocabulary — every member comes from `CurrencySchema` in `money.ts`, which is
+ * the one definition of the union (a second list of currency strings is the
+ * `restated-shape-drift` family this repo has been bitten by three times, and
+ * money is the shape where the drift produces a plausible number rather than an
+ * error). This list says which of those a picker offers, not which exist.
+ *
+ * Shared between the command and the read, exactly as `PipelineStagesSchema`
+ * is, and non-empty for the same reason a funnel is: "no currencies at all" is
+ * not a state the product has — it is a picker that cannot be used.
+ *
+ * The upper bound is deliberately far above the union's own size. This schema
+ * gates reads as well as writes and ADDITIVE-ONLY means a bound may be widened
+ * but never lowered (`command.ts:1279-1283`), so a bound pinned to today's
+ * three members would have to move the day a fourth currency is added — and a
+ * bound that has to move is a bound that will be forgotten.
+ */
+export const WorkspaceCurrenciesSchema = z
+  .array(CurrencySchema)
+  .min(1)
+  .max(24)
+  .refine((currencies) => new Set(currencies).size === currencies.length, {
+    message: "currencies must not repeat a currency.",
+  });
+
+/**
  * What a read receives: the EFFECTIVE values, never the stored optionals. The
  * projection is required for the reason `query.ts:1109-1111` gives for the
  * working day — a screen that had to fall back would be the second copy of the
@@ -86,6 +116,16 @@ export const CommercialDefaultsSchema = z
     stages: PipelineStagesSchema,
     markupPct: MarkupPctSchema,
     upliftPct: UpliftPctSchema,
+    /**
+     * What `costInHome` converts TO, and what a column of mixed money is summed
+     * into. It does NOT make a rate's pair implicit: an `ExchangeRate` still
+     * names its own `from` and `to`, and `convertMoney` still refuses the
+     * mismatch. Belt and braces — the guarded converter is what prevents the
+     * wrong-pair conversion; this is what a screen asks when it needs to know
+     * which single currency a total is allowed to be in.
+     */
+    homeCurrency: CurrencySchema,
+    currencies: WorkspaceCurrenciesSchema,
   })
   .strict();
 
@@ -117,6 +157,17 @@ export const DEFAULT_MARKUP_PCT = 25;
 export const DEFAULT_UPLIFT_PCT = 5;
 
 /**
+ * `v3/data.js:697` — `homeCurrency: "PLN"`. Taken from the prototype's
+ * `WORKSPACE_CONFIG`, not invented: the workspace this product was specified
+ * against sells in złoty and buys some of what it sells in euro and dollars,
+ * which is the entire reason `costInHome` exists.
+ */
+export const DEFAULT_HOME_CURRENCY: Currency = "PLN";
+
+/** `v3/data.js:696` — `currencies: ["PLN", "EUR", "USD"]`, in that order. */
+export const DEFAULT_CURRENCIES: readonly Currency[] = ["PLN", "EUR", "USD"];
+
+/**
  * Stands in contracts and not in the domain, and for the same reason
  * `DEFAULT_WORKING_DAY` does: the renderer reaches for it too — the dev
  * harnesses build projections by hand — and the domain is not reachable from
@@ -126,4 +177,6 @@ export const DEFAULT_COMMERCIAL_DEFAULTS: CommercialDefaults = {
   stages: [...DEFAULT_PIPELINE_STAGES],
   markupPct: DEFAULT_MARKUP_PCT,
   upliftPct: DEFAULT_UPLIFT_PCT,
+  homeCurrency: DEFAULT_HOME_CURRENCY,
+  currencies: [...DEFAULT_CURRENCIES],
 };

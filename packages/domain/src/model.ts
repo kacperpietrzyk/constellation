@@ -35,6 +35,7 @@ import type {
   KnowledgeSourceId,
   NamedDocumentVersionId,
   StrategicRecordId,
+  Currency,
   Money,
   ExchangeRate,
   OfferPrice,
@@ -81,6 +82,18 @@ export interface Workspace {
   readonly markupPct?: number;
   /** Percent a renewal is projected to grow by. Absent = the default. */
   readonly upliftPct?: number;
+  /**
+   * The currency a mixed column is summed INTO and the one `costInHome`
+   * converts to. Absent = the default. It does not make any stored rate's pair
+   * implicit — a rate names its own `from` and `to` and always did.
+   */
+  readonly homeCurrency?: Currency;
+  /**
+   * Which currencies a picker offers. Absent = the default list. The vocabulary
+   * itself is `Currency`; this is a subset of it, never a second list of
+   * strings.
+   */
+  readonly currencies?: readonly Currency[];
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -1395,7 +1408,7 @@ export type UndoDescriptor =
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly kind: "workspace.restore_commercial_defaults";
-      // The whole prior state of all three settings, not the ones the command
+      // The whole prior state of all five settings, not the ones the command
       // happened to send — same reason `relationship.restore_person` carries
       // every field: a compensation that depended on which keys moved could
       // only be understood by reading the command beside it.
@@ -1408,6 +1421,8 @@ export type UndoDescriptor =
       readonly priorPipelineStages?: readonly PipelineStage[];
       readonly priorMarkupPct?: number;
       readonly priorUpliftPct?: number;
+      readonly priorHomeCurrency?: Currency;
+      readonly priorCurrencies?: readonly Currency[];
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

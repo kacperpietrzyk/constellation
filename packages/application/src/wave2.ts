@@ -7474,6 +7474,12 @@ export const executeWave2Command = (
           ...(command.payload.upliftPct === undefined
             ? {}
             : { upliftPct: command.payload.upliftPct }),
+          ...(command.payload.homeCurrency === undefined
+            ? {}
+            : { homeCurrency: command.payload.homeCurrency }),
+          ...(command.payload.currencies === undefined
+            ? {}
+            : { currencies: command.payload.currencies }),
         },
         occurredAt,
       );
@@ -7527,6 +7533,12 @@ export const executeWave2Command = (
           ...(workspace.upliftPct === undefined
             ? {}
             : { priorUpliftPct: workspace.upliftPct }),
+          ...(workspace.homeCurrency === undefined
+            ? {}
+            : { priorHomeCurrency: workspace.homeCurrency }),
+          ...(workspace.currencies === undefined
+            ? {}
+            : { priorCurrencies: workspace.currencies }),
           resultingVersion: updated.version,
         },
         { [updated.id]: "workspace" },
@@ -10041,6 +10053,8 @@ const compensateDescriptor = (
         pipelineStages: descriptor.priorPipelineStages ?? null,
         markupPct: descriptor.priorMarkupPct ?? null,
         upliftPct: descriptor.priorUpliftPct ?? null,
+        homeCurrency: descriptor.priorHomeCurrency ?? null,
+        currencies: descriptor.priorCurrencies ?? null,
       },
       occurredAt,
     );

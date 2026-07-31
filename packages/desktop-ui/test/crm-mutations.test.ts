@@ -354,6 +354,76 @@ test("replacing the funnel sends the whole list and neither percentage", async (
   );
 });
 
+test("the two currency settings travel on the same partial command", async () => {
+  // The wrapper takes five settings and spreads each one in by hand, so a key
+  // accepted by the signature and forgotten in the payload compiles, typechecks
+  // and sends a command that changes nothing — the shape `resolveRenewal` sat
+  // in for as long as it existed. Assert the WHOLE key set, never a presence
+  // check, and send each currency key alone: alone is the only shape that can
+  // see it dropped.
+  const home: CommandEnvelope[] = [];
+  assert.equal(
+    (
+      await setWorkspaceCommercialDefaults(
+        recordingClient(home),
+        snapshotOf(),
+        {
+          homeCurrency: "EUR",
+        },
+      )
+    ).kind,
+    "success",
+  );
+  assert.deepEqual(payloadKeys(onlyEnvelope(home)), ["homeCurrency"]);
+  assert.equal(
+    (onlyEnvelope(home).payload as Record<string, unknown>)["homeCurrency"],
+    "EUR",
+  );
+
+  const list: CommandEnvelope[] = [];
+  assert.equal(
+    (
+      await setWorkspaceCommercialDefaults(
+        recordingClient(list),
+        snapshotOf(),
+        {
+          currencies: ["PLN", "EUR"],
+        },
+      )
+    ).kind,
+    "success",
+  );
+  assert.deepEqual(payloadKeys(onlyEnvelope(list)), ["currencies"]);
+  assert.deepEqual(
+    (onlyEnvelope(list).payload as Record<string, unknown>)["currencies"],
+    ["PLN", "EUR"],
+  );
+
+  // Both together, beside a percentage, because that is what a Settings screen
+  // saving one section actually sends — and the whole-key-set assertion is what
+  // proves the currency keys did not quietly replace the funnel.
+  const both: CommandEnvelope[] = [];
+  assert.equal(
+    (
+      await setWorkspaceCommercialDefaults(
+        recordingClient(both),
+        snapshotOf(),
+        {
+          homeCurrency: "USD",
+          currencies: ["USD", "EUR"],
+          markupPct: 30,
+        },
+      )
+    ).kind,
+    "success",
+  );
+  assert.deepEqual(payloadKeys(onlyEnvelope(both)), [
+    "currencies",
+    "homeCurrency",
+    "markupPct",
+  ]);
+});
+
 // ── relationship.renewalUpdate ──────────────────────────────────────────────
 
 test("the contract clock is set on a renewal that already exists", async () => {

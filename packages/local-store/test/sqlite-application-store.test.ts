@@ -72,6 +72,7 @@ const context = (): ExecutionContext =>
       "workspace.createLocal",
       "workspace.rename",
       "workspace.bootstrapContext",
+      "workspace.setCommercialDefaults",
       "capture.submitText",
       "capture.routeAsTask",
       "capture.history",
@@ -3662,6 +3663,67 @@ describe("narrative-less records in the durable store", () => {
       assert.deepEqual(offer.cost, cost);
       assert.deepEqual(offer.rate, rate);
       assert.deepEqual(offer.price, price);
+      reopenedDatabase.close();
+    });
+  });
+
+  // The same measurement for the WORKSPACE record, which lives in its own
+  // table and is not a strategic record at all. `workspaces` is a blob on the
+  // same terms — `sqlite-application-store.ts`'s `schemaV1` lifts only `id`
+  // and `version` into columns — and neither currency setting is ever a SQL
+  // predicate, which is why `LOCAL_STORE_SCHEMA_VERSION` stays 24. Asserted
+  // across a real restart rather than reasoned about.
+  it("round-trips the workspace currency settings across a restart at schema 24", () => {
+    withDatabase((filename) => {
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "workspace.setCommercialDefaults",
+              { homeCurrency: "EUR", currencies: ["EUR", "USD"] },
+              "currency-settings",
+              { [ids.workspace]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        firstDatabase.prepare("PRAGMA user_version;").get()?.["user_version"],
+        LOCAL_STORE_SCHEMA_VERSION,
+      );
+      assert.equal(LOCAL_STORE_SCHEMA_VERSION, 24);
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const result = reopened.kernel.query(
+        context(),
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "workspace.bootstrapContext",
+          queryId: wave2RequestId(),
+          workspaceId: ids.workspace,
+          consistency: "local_authoritative",
+          parameters: {},
+        }),
+      );
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "workspace.bootstrapContext"
+      )
+        throw new Error("Expected the bootstrap projection.");
+      const defaults = result.result.projection.workspace.commercialDefaults;
+      assert.equal(defaults.homeCurrency, "EUR");
+      assert.deepEqual(defaults.currencies, ["EUR", "USD"]);
       reopenedDatabase.close();
     });
   });

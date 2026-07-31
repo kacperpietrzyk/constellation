@@ -35,6 +35,7 @@ import {
   type ExchangeRate,
   type Money,
   type OfferPrice,
+  type Currency,
   type PipelineStage,
 } from "@constellation/contracts";
 import type {
@@ -1447,14 +1448,15 @@ export const setWorkspaceVoiceAudioRetention = (
   );
 
 /**
- * The funnel and the two percentages, partial by field: an absent key is left
- * alone. Changing the markup must NOT restate the stage list — restating a list
- * the caller did not mean to touch is how a stage goes missing, and it is the
- * reason the command is partial rather than carrying all three settings at once.
+ * The funnel, the two percentages and the two currency settings, partial by
+ * field: an absent key is left alone. Changing the markup must NOT restate the
+ * stage list — restating a list the caller did not mean to touch is how a stage
+ * goes missing, and it is the reason the command is partial rather than
+ * carrying every setting at once.
  *
- * `stages` REPLACES the whole list when it is present. A caller adding one
- * column sends the list it wants to end up with, including the columns it is
- * keeping.
+ * `stages` and `currencies` each REPLACE the whole list when present. A caller
+ * adding one column, or one currency, sends the list it wants to end up with,
+ * including the entries it is keeping.
  */
 export const setWorkspaceCommercialDefaults = (
   client: ConstellationRendererClient,
@@ -1463,12 +1465,20 @@ export const setWorkspaceCommercialDefaults = (
     readonly stages?: readonly PipelineStage[];
     readonly markupPct?: number;
     readonly upliftPct?: number;
+    readonly homeCurrency?: Currency;
+    readonly currencies?: readonly Currency[];
   },
 ) => {
   const payload = {
     ...(change.stages === undefined ? {} : { stages: change.stages }),
     ...(change.markupPct === undefined ? {} : { markupPct: change.markupPct }),
     ...(change.upliftPct === undefined ? {} : { upliftPct: change.upliftPct }),
+    ...(change.homeCurrency === undefined
+      ? {}
+      : { homeCurrency: change.homeCurrency }),
+    ...(change.currencies === undefined
+      ? {}
+      : { currencies: change.currencies }),
   };
   return Object.keys(payload).length === 0
     ? nothingToChange()

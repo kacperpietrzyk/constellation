@@ -2346,6 +2346,16 @@ describe("Wave 2 reference semantics", () => {
     );
     assert.equal(before.commercialDefaults.markupPct, 25);
     assert.equal(before.commercialDefaults.upliftPct, 5);
+    assert.equal(
+      before.commercialDefaults.homeCurrency,
+      "PLN",
+      "an unconfigured workspace reads the prototype's home currency",
+    );
+    assert.deepEqual(
+      before.commercialDefaults.currencies,
+      ["PLN", "EUR", "USD"],
+      "and the prototype's currency list, in the order it names them",
+    );
 
     const stages = [
       { id: "qualification", label: "Qualification", order: 0 },
@@ -2519,6 +2529,208 @@ describe("Wave 2 reference semantics", () => {
       bootstrapWorkspace(harness).commercialDefaults.upliftPct,
       5,
       "so the reader is back on the default, not on the number that was taken back",
+    );
+  });
+
+  it("carries the two currency settings from the command to both projection homes", () => {
+    const harness = setup();
+
+    // THE TRAP THIS TEST EXISTS FOR. `homeCurrency` and `currencies` are
+    // OPTIONAL keys added to a command that already existed, so `.strict()`
+    // accepts them, the payload type compiles and none of the eight
+    // registration lists moves — and if the payload's own
+    // "must change at least one setting" refine had not been widened from three
+    // keys to five, a Settings screen writing ONLY the home currency would be
+    // refused at the boundary with a message about changing nothing. Each new
+    // key therefore goes through the boundary ALONE, which is the only shape
+    // that can see it.
+    const homeAlone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("currency-home-alone", { [ids.workspace]: 1 }),
+        commandName: "workspace.setCommercialDefaults",
+        payload: { homeCurrency: "EUR" },
+      }),
+    );
+    if (
+      homeAlone.outcome !== "success" ||
+      homeAlone.projection.kind !== "workspace.commercial_defaults_changed"
+    )
+      assert.fail("Expected the commercial-defaults projection.");
+    // The SECOND projection home. `bootstrapContext` and this receipt both
+    // alias `CommercialDefaultsSchema` and both handlers call
+    // `effectiveCommercialDefaults`, so unlike B4's fields there is no
+    // hand-picked restatement to drift — but the receipt is what a screen reads
+    // to update itself without a refetch, so it is asserted rather than assumed.
+    assert.equal(
+      homeAlone.projection.commercialDefaults.homeCurrency,
+      "EUR",
+      "the receipt carries the home currency the command just set",
+    );
+    assert.deepEqual(
+      homeAlone.projection.commercialDefaults.currencies,
+      ["PLN", "EUR", "USD"],
+      "a receipt for a home-currency change still names the list it did not touch",
+    );
+
+    // The stored value REACHES THE READER. The break this pins is silent: an
+    // `effectiveCommercialDefaults` that returned `DEFAULT_HOME_CURRENCY`
+    // instead of `workspace.homeCurrency ?? DEFAULT_HOME_CURRENCY` compiles,
+    // every schema still parses, and the workspace simply never changes its
+    // home currency.
+    const afterHome = bootstrapWorkspace(harness);
+    assert.equal(
+      afterHome.commercialDefaults.homeCurrency,
+      "EUR",
+      "the configured home currency reaches workspace.bootstrapContext",
+    );
+
+    const listAlone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("currency-list-alone", { [ids.workspace]: 2 }),
+        commandName: "workspace.setCommercialDefaults",
+        payload: { currencies: ["EUR", "USD"] },
+      }),
+    );
+    assert.equal(
+      listAlone.diagnosticCode,
+      "workspace.commercial_defaults_changed",
+    );
+    const afterList = bootstrapWorkspace(harness);
+    assert.deepEqual(
+      afterList.commercialDefaults.currencies,
+      ["EUR", "USD"],
+      "the configured currency list reaches workspace.bootstrapContext",
+    );
+    // PARTIAL BY FIELD, across the seam between the old keys and the new ones.
+    assert.equal(
+      afterList.commercialDefaults.homeCurrency,
+      "EUR",
+      "replacing the currency list left the home currency where it was",
+    );
+    assert.equal(
+      afterList.commercialDefaults.markupPct,
+      25,
+      "and neither currency key disturbed a percentage nobody has written",
+    );
+    assert.deepEqual(
+      afterList.commercialDefaults.stages.map((stage) => stage.id),
+      ["qualification", "discovery", "proposal", "negotiation", "won", "lost"],
+      "nor the funnel",
+    );
+
+    // The vocabulary has ONE definition. A fourth currency is not a string the
+    // command may invent — it is a member added to `CurrencySchema` in
+    // `money.ts`, which is what stops a second list of currency strings from
+    // existing at all.
+    const unknownCurrency = CommandEnvelopeSchema.safeParse({
+      ...metadata("currency-unknown", { [ids.workspace]: 3 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: { currencies: ["PLN", "GBP"] },
+    });
+    assert.equal(
+      unknownCurrency.success,
+      false,
+      "a currency outside the one union is refused at the boundary",
+    );
+
+    const repeated = CommandEnvelopeSchema.safeParse({
+      ...metadata("currency-repeated", { [ids.workspace]: 3 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: { currencies: ["PLN", "PLN"] },
+    });
+    assert.equal(repeated.success, false);
+    assert.match(
+      JSON.stringify(repeated.error?.issues ?? []),
+      /must not repeat a currency/,
+      "a picker offering the same currency twice is the defect the refine prevents",
+    );
+
+    const emptyList = CommandEnvelopeSchema.safeParse({
+      ...metadata("currency-empty-list", { [ids.workspace]: 3 }),
+      commandName: "workspace.setCommercialDefaults",
+      payload: { currencies: [] },
+    });
+    assert.equal(
+      emptyList.success,
+      false,
+      "no currencies at all is a picker that cannot be used, not a state",
+    );
+  });
+
+  it("takes back a currency change that added the setting", () => {
+    const harness = setup();
+
+    // The FIRST write of either currency key. Nothing was stored before it, so
+    // undoing it must leave the workspace with neither key on the record — not
+    // with today's defaults frozen in as explicit values, which is what an undo
+    // arm that passed the bare descriptor value instead of `?? null` would do.
+    const firstWrite = {
+      ...metadata("currency-undo-first", { [ids.workspace]: 1 }),
+      commandName: "workspace.setCommercialDefaults" as const,
+      payload: { homeCurrency: "USD" as const, currencies: ["USD"] as const },
+    };
+    unwrap(harness.kernel.execute(context(), firstWrite));
+    assert.equal(
+      bootstrapWorkspace(harness).commercialDefaults.homeCurrency,
+      "USD",
+    );
+
+    const undone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("currency-undo", { [ids.workspace]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: firstWrite.commandId },
+      }),
+    );
+    assert.equal(undone.diagnosticCode, "command.undone");
+
+    const workspace = harness.store
+      .snapshot()
+      .workspaces.find((candidate) => candidate.id === ids.workspace);
+    assert.equal(
+      workspace?.homeCurrency,
+      undefined,
+      "undoing the command that ADDED the home currency takes the key off the record",
+    );
+    assert.equal(
+      workspace?.currencies,
+      undefined,
+      "and the list it added in the same command with it",
+    );
+    assert.equal(
+      bootstrapWorkspace(harness).commercialDefaults.homeCurrency,
+      "PLN",
+      "so the reader is back on the default, not on the currency that was taken back",
+    );
+    assert.deepEqual(
+      bootstrapWorkspace(harness).commercialDefaults.currencies,
+      ["PLN", "EUR", "USD"],
+    );
+
+    // A REPLACEMENT, not a first write: the prior values are what comes back.
+    const replacement = {
+      ...metadata("currency-undo-replace", { [ids.workspace]: 3 }),
+      commandName: "workspace.setCommercialDefaults" as const,
+      payload: { homeCurrency: "EUR" as const },
+    };
+    unwrap(harness.kernel.execute(context(), replacement));
+    const second = {
+      ...metadata("currency-undo-second", { [ids.workspace]: 4 }),
+      commandName: "workspace.setCommercialDefaults" as const,
+      payload: { homeCurrency: "USD" as const },
+    };
+    unwrap(harness.kernel.execute(context(), second));
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("currency-undo-second-undo", { [ids.workspace]: 5 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: second.commandId },
+      }),
+    );
+    assert.equal(
+      bootstrapWorkspace(harness).commercialDefaults.homeCurrency,
+      "EUR",
+      "undoing a replacement restores the previous home currency rather than clearing it",
     );
   });
 
