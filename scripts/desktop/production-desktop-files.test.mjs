@@ -32,6 +32,55 @@ test("the development entry is built but pruned from the package", () => {
   assert.equal(PRODUCTION_DESKTOP_FILES.has("dev-main.js"), false);
 });
 
+test("every module the allowlist keeps can still find what it imports", () => {
+  // The SAME closure check `package-alpha.mjs` runs while staging, hoisted to
+  // where it costs seconds instead of an eight-minute packaging job.
+  //
+  // It was written because that is exactly how it was met: a new
+  // `production-main.js` import of a new sibling module passed format, lint,
+  // typecheck, 806 node tests, 268 interaction tests and the bundle gate, and
+  // then failed packaging on all three platforms with
+  // `PRODUCTION_DESKTOP_IMPORT_MISSING`. The list here is hand-maintained
+  // beside code that moves — the defect family Wave D is closing — so the
+  // cheapest honest fix is to make its failure arrive early.
+  const built = path.join(root, "packages", "desktop-main", "dist", "src");
+  assert.equal(
+    fs.existsSync(built),
+    true,
+    "run npm run build first — this test measures the built output",
+  );
+  let checked = 0;
+  for (const entry of PRODUCTION_DESKTOP_FILES) {
+    const sourcePath = path.join(built, entry);
+    // A name in the allowlist that no longer exists is its own defect: the
+    // pruning loop would keep nothing, and every import assertion below would
+    // pass over a file that is not there.
+    assert.equal(
+      fs.existsSync(sourcePath),
+      true,
+      `${entry} is on the packaged allowlist and is not in the build.`,
+    );
+    const source = fs.readFileSync(sourcePath, "utf8");
+    for (const [, specifier] of source.matchAll(
+      /(?:from\s+|import\()\s*["'](\.[^"']+\.js)["']/g,
+    )) {
+      checked += 1;
+      assert.equal(
+        PRODUCTION_DESKTOP_FILES.has(path.basename(specifier)),
+        true,
+        `${entry} imports ${specifier}, which packaging prunes — add it to PRODUCTION_DESKTOP_FILES.`,
+      );
+    }
+  }
+  // An empty measurement is an instrument failure, not a result: if the regex
+  // ever stopped matching, this test would report success having compared
+  // nothing at all.
+  assert.ok(
+    checked > 20,
+    `Only ${checked} relative imports were found across the packaged set — this test is no longer reading them.`,
+  );
+});
+
 test("packaging reads the allowlist from this module", () => {
   const source = fs.readFileSync(
     path.join(root, "scripts", "package-alpha.mjs"),
