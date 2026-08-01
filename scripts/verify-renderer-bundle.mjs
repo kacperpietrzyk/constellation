@@ -194,6 +194,53 @@ import path from "node:path";
 //     daje mu ~30% zapasu, a 330 000 nad 308 750 to 6,4%. Albo dostaje rozmiar
 //     zgodny ze swoją rolą, albo przestaje być tak nazywany. Jedno albo drugie —
 //     nie zostawiać go w tym stanie po cichu.
+//
+// ── PODNIESIENIE SUFITU ARKUSZY, 2026-08-01, fala D (lot S1) ────────────────
+// Rozstrzygnięcie drugiego z dwóch pytań zostawionych wyżej otwartych, podjęte
+// PRZED robotą fali, z projektem w ręku — a nie w jej połowie. Rachunek stoi
+// nad liczbą, bo to on jest uzasadnieniem, nie ona:
+//
+//   sufit dotychczasowy                                        330 000 B
+//   main @3cfc099, zmierzone czystym rebuildem                 308 750 B  (zapas 21 250 B, 6,4%)
+//   wycofanie `history` oddaje NA SUMIE                             ≈ 0 B
+//   ---------------------------------------------------------------------
+//   w co fala D ma się zmieścić                                  21 250 B
+//   ile fala ekranowa NAPRAWDĘ kosztuje (fala C, zmierzone
+//     end-to-end: 269 711 B @7bf3812 → 308 750 B @3cfc099)       39 039 B
+//
+// Nie mieści się, a luka nie jest marginalna — jest prawie dwukrotna. Oddanie
+// jest zerowe, bo wycofanie `history` to SCALENIE TREŚCI: reguły `.history-*`
+// nie znikają, tylko obsługują ten sam rejestr jako odczyt Biblioteki. (Sam
+// `hotPathStylesheetBytes` oddaje realnie, i to jest inna liczba.)
+//
+// Rzutowany stan końcowy fali D, po stawce fali C: ~348 000 B. Model, którym
+// ten sufit jest opisany w `:23-28`, to baseline × ok. 1,30:
+//
+//   348 000 × 1,30 ≈ 452 000  →  450 000
+//
+// CO TA LICZBA ZNACZY, i to jest ważniejsze niż ona sama: `totalStylesheetBytes`
+// znowu JEST SUFITEM BEZPIECZEŃSTWA. Łapie „ktoś wciągnął framework CSS"
+// i przestaje łapać „doszedł zaplanowany ekran". Koszt jest nazwany wprost
+// i jest tym samym, który bliźniaczy sufit JS-owy ma przyjęty od początku
+// (`:26-28` — pojedyncza przypadkowa zależność poniżej ~400 kB przechodzi po
+// cichu): tutaj przejdzie po cichu pojedynczy zabłąkany arkusz poniżej ~100 kB.
+//
+// WARUNKI TEGO PODNIESIENIA, wiążące dla każdego, kto to czyta:
+//   1. USTAWIONE RAZ i **NIE PRZEBAZOWANE NA ZAMKNIĘCIU TEJ FALI**. To jest
+//      świadome uchylenie warunku 2 podniesienia z 2026-07-31 (`:157-166`)
+//      — dla TEJ jednej liczby i tylko dla niej; ścieżka gorąca dalej podlega
+//      przebazowaniu. Powód: przebazowywanie sufitu bezpieczeństwa po każdej
+//      fali jest dokładnie tym, co zamieniło go w przydział na falę, i to
+//      dlatego trzeba go dziś podnosić o 36%.
+//   2. To pokrywa CAŁĄ falę D — trzy arkusze ekranowe (Notatki, Źródła,
+//      Historia wrzutek jako odczyt), style węzłów obrazka i tabeli oraz
+//      sekcję importu w Ustawieniach. I nic poza tym.
+//   3. Każdy lot fali podaje ZMIERZONY `totalStylesheetBytes` i zapas — obok
+//      `hotPathJavaScriptGzipBytes`, oraz obok `totalJavaScriptBytes`, który
+//      jest drugą najciaśniejszą liczbą w tym pliku (zapas 140 403 B) i o
+//      którego podanie nie proszono dotąd żadnego lotu.
+//   4. Żadnego drugiego podniesienia w tej fali. Lot, który przekroczyłby
+//      450 000, zatrzymuje się i pyta.
 const limits = {
   // Ścieżka gorąca — twarda. Zapas liczony od baseline'u, nie „na wyrost".
   hotPathJavaScriptBytes: 648_000,
@@ -201,7 +248,7 @@ const limits = {
   hotPathStylesheetBytes: 200_000,
   // Sufit bezpieczeństwa — ustawiony raz, z zapasem. Nie podnosić per PR.
   totalJavaScriptBytes: 1_770_000,
-  totalStylesheetBytes: 330_000,
+  totalStylesheetBytes: 450_000,
   // Osobny sufit na największy leniwy chunk. Uwaga na uzasadnienie: dla NOWEGO
   // chunka sufit sumy pada wcześniej (przy +409 899 B), więc ten limit nigdy
   // nie zadziała pierwszy w tym scenariuszu. Zarabia na siebie przy WZROŚCIE

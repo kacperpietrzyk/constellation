@@ -13,6 +13,7 @@ import type {
 import {
   MAX_DOCUMENT_TEXT_LENGTH,
   RICH_DOCUMENT_FRAGMENT_ROOT,
+  STRUCTURED_DOCUMENT_HEADING_LEVELS,
   documentEntityReferences,
   documentPlainText,
 } from "@constellation/realtime-documents";
@@ -107,7 +108,15 @@ export default function ProjectRichBody({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({ undoRedo: false, link: { openOnClick: false } }),
+        StarterKit.configure({
+          undoRedo: false,
+          link: { openOnClick: false },
+          // Poziomy nagłówków biorą się z kontraktu treści, nie z domyślnych
+          // ustawień StarterKita: walidator i edytor mają przyjmować ten sam
+          // zbiór, a przepisanie go tutaj z powrotem na literał odtworzyłoby
+          // dokładnie to rozejście, które ta stała zamyka.
+          heading: { levels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS] },
+        }),
         Placeholder.configure({
           placeholder: "Expand the outcome into plan, context and decisions.",
         }),

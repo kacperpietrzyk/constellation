@@ -13,7 +13,9 @@ import {
 } from "../src/surface-registry.js";
 
 test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
-  assert.equal(desktopSurfaceRegistry.length, 15);
+  // Czternaście, nie piętnaście: `history` wsiąkł w `library` w fali
+  // Knowledge — scalenie treści, a nie skasowanie ekranu.
+  assert.equal(desktopSurfaceRegistry.length, 14);
   assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
   assert.equal(
     new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,

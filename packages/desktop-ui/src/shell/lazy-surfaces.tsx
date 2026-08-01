@@ -4,10 +4,12 @@ import { type LazyDesktopSurface } from "@constellation/desktop-preload/surface-
 
 import { type SurfaceId } from "../client/wave2-fixtures.js";
 
-const loadDocumentsSurface = () => import("../DocumentsSurface.js");
-export const DocumentsSurface = lazy(() =>
-  loadDocumentsSurface().then((module) => ({
-    default: module.DocumentsSurface,
+// Biblioteka jest jednym celem o trzech odczytach, więc leniwy chunk zaczyna
+// się od jej powłoki, a nie od jednego ekranu dokumentów.
+const loadLibraryShell = () => import("../library/LibraryShell.js");
+export const LibraryShell = lazy(() =>
+  loadLibraryShell().then((module) => ({
+    default: module.LibraryShell,
   })),
 );
 export const TaskAttachmentsSection = lazy(() =>
@@ -93,7 +95,7 @@ export const WorkspaceRecovery = lazy(() =>
 // nie rozwiąże. Sprawdzaj obecność klucza, nie wynik wywołania.
 export const lazySurfaceLoaders = {
   calendar: loadCalendarSurface,
-  library: loadDocumentsSurface,
+  library: loadLibraryShell,
   meetings: loadMeetingsSurface,
   activity: loadActivitySurface,
   settings: loadSettingsSurface,

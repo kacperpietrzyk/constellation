@@ -13,6 +13,27 @@ import {
 } from "@constellation/desktop-preload/surface-registry";
 
 const MAX_TABS = 7;
+
+// Trzy odczyty jednego celu nawigacji. Biblioteka jest JEDNYM celem — decyzja
+// D-1 fali Knowledge — a Notatki, Źródła i Historia wrzutek są sposobami jej
+// czytania, nie osobnymi zakładkami. Zamrożony prototyp niósł dokładnie ten
+// kształt (`v3/app.js:1371-1374`, segmentowany przełącznik).
+//
+// Słownik stoi TUTAJ, a nie w `src/library/`, i to jest decyzja ZMIERZONA:
+// powłoka nawigacji leży na ścieżce gorącej, więc import z leniwego katalogu
+// Biblioteki kazał rolldownowi wydzielić z chunka wejściowego wspólny chunk
+// preładowany. Zmierzone: ścieżka gorąca spadła o 3 177 B surowych, a URosła
+// o 606 B po gzipie — bo dwadzieścia jeden chunków kompresuje się gorzej niż
+// dwadzieścia. Kierunek zależności idzie więc od Biblioteki do powłoki i nigdy
+// odwrotnie.
+export const libraryReadings = ["notes", "sources", "captures"] as const;
+
+export type LibraryReading = (typeof libraryReadings)[number];
+
+export const isLibraryReading = (value: unknown): value is LibraryReading =>
+  typeof value === "string" &&
+  (libraryReadings as readonly string[]).includes(value);
+
 const MAX_HISTORY = 32;
 
 export interface ShellContext {
@@ -34,6 +55,20 @@ export interface ShellContext {
   /** Set when the context was opened AS A RECORD rather than merely navigated
    *  to. See `taskContext` for why the promotion has to be asked for. */
   readonly record?: boolean;
+  /** Który odczyt Biblioteki ma się otworzyć. Biblioteka jest JEDNYM celem
+   *  o trzech odczytach, a dwa wywołania — wrzutka głosowa i wrzutka otwarta
+   *  z Inboxa — mają trafić na Historię wrzutek, nie na domyślne Notatki.
+   *  Przed wycofaniem celu `history` niosły to identyfikatorem powierzchni;
+   *  po wycofaniu samo `surface: "library"` kompiluje się i wysyła człowieka
+   *  nie tam, bez ani jednego błędu.
+   *
+   *  Pole siedzi na KONTEKŚCIE, a nie w stanie powłoki, z tego samego powodu
+   *  co `record` przy zadaniu: zakładka ma się otworzyć jako to, czym była,
+   *  więc przeżywa serializację. Nie wymaga podbicia
+   *  `NAVIGATION_STATE_VERSION` — zapis bez tego pola czyta się dalej, a to
+   *  z nim czyta starsza wersja, bo walidacja nie odrzuca nadmiarowych
+   *  kluczy. */
+  readonly libraryReading?: LibraryReading;
 }
 
 // Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
@@ -84,6 +119,14 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (
     context.opportunityId !== undefined &&
     typeof context.opportunityId !== "string"
+  )
+    return false;
+  // Odczyt spoza słownika odrzuca CAŁY zapis, tak samo jak nieznana
+  // powierzchnia: napis, którego powłoka nie zna, wpadłby do przełącznika
+  // i nie wyrenderował żadnego z trzech odczytów.
+  if (
+    context.libraryReading !== undefined &&
+    !isLibraryReading(context.libraryReading)
   )
     return false;
   // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
@@ -268,6 +311,26 @@ export const destinationContext = (
   surface: SurfaceId,
   label: string,
 ): ShellContext => ({ key: `destination:${surface}`, label, surface });
+
+/**
+ * Biblioteka otwarta NA KONKRETNYM ODCZYCIE.
+ *
+ * Klucz jest ten sam co u zwykłego celu (`destination:library`), i to jest
+ * zamierzone: Biblioteka to jeden cel, więc otwarcie jej z inną etykietą
+ * podmienia tę samą zakładkę, zamiast robić drugą pod tym samym ekranem.
+ * `openShellContextReportingEviction` podmienia istniejącą zakładkę CAŁYM
+ * nowym kontekstem, więc żądany odczyt dojeżdża także wtedy, gdy Biblioteka
+ * jest już otwarta.
+ */
+export const libraryReadingContext = (
+  reading: LibraryReading,
+  label: string,
+): ShellContext => ({
+  key: "destination:library",
+  label,
+  surface: "library",
+  libraryReading: reading,
+});
 
 /**
  * A task in context — and, when it is asked for, the task opened as a RECORD.

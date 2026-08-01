@@ -44,7 +44,8 @@ const openLabels: {
   opportunity: openVerb("opportunity", "opportunity"),
   document: openVerb("document", "document"),
   // Wrzut nie prowadzi do rekordu, tylko do HISTORII wrzucania — tam widać, co
-  // się z nim stało. Rejestr zna ten rodzaj pod `inspectorSurface: "history"`.
+  // się z nim stało. Rejestr zna ten rodzaj pod `inspectorSurface: "library"`
+  // — Historia wrzutek jest odczytem Biblioteki, nie własnym celem.
   capture: `${openVerb("capture", "capture")} history`,
 };
 
