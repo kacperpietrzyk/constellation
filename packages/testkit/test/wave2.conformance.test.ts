@@ -5412,6 +5412,182 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(removed.result.outcome, "rejected");
   });
 
+  /* WHAT EACH NOTE IS ABOUT, ON THE LIST READ — the axis the Notes screen
+   * rotates onto in `Record` mode, and the projection home of the field.
+   *
+   * `NativeDocument` has no `UnprojectableKeys` guard, so a field added to a
+   * hand-picked literal is silent the day somebody drops it. This is that
+   * field's own assertion, and it is broken FROM THE HANDLER LITERAL rather
+   * than from the schema: deleting it from the schema makes `.strict()` throw,
+   * which is a louder and different failure and would let a broken assertion
+   * look proven.
+   *
+   * THREE PROPERTIES, and the third is the one worth the file:
+   *
+   *   1. A note names the records its body names — one, several, or none —
+   *      and a note with none carries an EMPTY array rather than no key, so a
+   *      reader never has to tell "no references" from "field not projected".
+   *   2. THE LABEL IS RESOLVED AT READ TIME. Rename the record and the same
+   *      read says the new name, with nothing written on the note. That is
+   *      the whole Obsidian argument: the link never carried the name.
+   *   3. A LINK INTO A SPACE THIS READER CANNOT SEE IS ABSENT. Not a bare id,
+   *      not a blank label, not a longer array than the rows beside it — any
+   *      of those three answers whether a record outside the caller's reach
+   *      exists, which is the channel `RejectedOutcomeSchema` stays `.strict()`
+   *      to close.
+   */
+  it("names what each note is about, resolved at read time and redacted across a Space", () => {
+    const harness = setup();
+    const documentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("references-note"),
+          commandName: "document.create",
+          payload: {
+            documentId,
+            spaceId: ids.rootSpace,
+            title: "What the rollout depends on",
+            role: "note",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const quietId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("references-quiet-note"),
+          commandName: "document.create",
+          payload: {
+            documentId: quietId,
+            spaceId: ids.rootSpace,
+            title: "A note about nothing in particular",
+            role: "note",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const taskId = createTask(harness, "Confirm the egress rules");
+
+    const hiddenSpaceId = SpaceIdSchema.parse(
+      "10000000-0000-4000-8000-00000000dc51",
+    );
+    const hiddenProjectId = ProjectIdSchema.parse(
+      "10000000-0000-4000-8000-00000000dc52",
+    );
+    harness.store.transact((transaction) => {
+      if (!isApplicationWave2Transaction(transaction))
+        throw new Error("Expected the Wave 2 reference transaction.");
+      transaction.insertSpace({
+        id: hiddenSpaceId,
+        workspaceId: context().workspaceId,
+        name: "Hidden synthetic Space",
+        version: 1,
+        createdAt: "2026-08-01T12:00:00.000Z",
+      });
+      transaction.insertProject({
+        id: hiddenProjectId,
+        workspaceId: context().workspaceId,
+        spaceId: hiddenSpaceId,
+        title: "SECRET_PROJECT_TITLE",
+        intendedOutcome: "SECRET_PROJECT_OUTCOME",
+        lifecycle: "active",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-08-01T12:00:00.000Z",
+        updatedAt: "2026-08-01T12:00:00.000Z",
+      });
+    });
+    // BOTH links on ONE note, so the redaction is not merely "an unreadable
+    // note vanished": the very same row must carry the readable reference and
+    // drop the other one.
+    harness.store.replaceDocumentEntityLinks(documentId as never, [
+      {
+        workspaceId: ids.workspace as never,
+        spaceId: ids.rootSpace as never,
+        documentId: documentId as never,
+        targetKind: "task",
+        targetId: taskId,
+        updatedAt: "2026-08-01T12:00:00.000Z",
+      },
+      {
+        workspaceId: ids.workspace as never,
+        spaceId: ids.rootSpace as never,
+        documentId: documentId as never,
+        targetKind: "project",
+        targetId: hiddenProjectId,
+        updatedAt: "2026-08-01T12:00:00.000Z",
+      },
+    ]);
+
+    const knowledgeList = () => {
+      const response = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "knowledge.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        response.kind !== "query_result" ||
+        response.result.outcome !== "success" ||
+        response.result.projection.kind !== "knowledge.list"
+      )
+        assert.fail("Expected the knowledge list.");
+      return response.result.projection;
+    };
+    const referencesOf = (id: string) => {
+      const row = knowledgeList().documents.find((item) => item.id === id);
+      if (row === undefined) assert.fail(`No note ${id} on the list.`);
+      return row.references;
+    };
+
+    assert.deepEqual(referencesOf(documentId), [
+      {
+        targetKind: "task",
+        targetId: taskId,
+        label: "Confirm the egress rules",
+      },
+    ]);
+    assert.deepEqual(
+      referencesOf(quietId),
+      [],
+      "a note about no record carries an empty list, never a missing key",
+    );
+    // The redaction, said over the WHOLE answer and not just over the field:
+    // a leak through any other projected string would pass the assertion above.
+    assert.equal(
+      JSON.stringify(knowledgeList()).includes("SECRET"),
+      false,
+      "the unreachable Project's name reached a reader who may not see it",
+    );
+    assert.equal(
+      JSON.stringify(knowledgeList()).includes(hiddenProjectId),
+      false,
+      "the unreachable Project's id reached a reader who may not see it",
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("references-task-rename", { [taskId]: 1 }),
+          commandName: "task.updateDetails",
+          payload: { taskId, title: "Confirm the renamed egress rules" },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.deepEqual(
+      referencesOf(documentId).map((reference) => reference.label),
+      ["Confirm the renamed egress rules"],
+      "the label is resolved at read time; nothing was written on the note",
+    );
+  });
+
   /* DECISION #32 IN THE KERNEL — THE READER SUPPRESSES, AND THE NOTE IS NEVER
    * TOUCHED.
    *

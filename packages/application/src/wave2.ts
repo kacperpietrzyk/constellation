@@ -12809,6 +12809,54 @@ export const executeWave2Query = (
       query.parameters.spaceId,
     );
     const folderCounts = folderNoteCounts(folders, documents);
+    // WHAT EACH NOTE IS ABOUT, read ONCE for the whole answer rather than once
+    // per note — the same shape `knowledgeSourceReferences` above already pays
+    // for, and for the same reason: a per-row read turns one list into N scans.
+    //
+    // THE LABEL IS RESOLVED HERE AND NEVER STORED. `DocumentEntityLink` carries
+    // `{targetKind, targetId}` and deliberately no title (`domain/src/model.ts`),
+    // so a rename reaches every note that names the record and a record that
+    // left this caller's reach stops being nameable. Caching the label onto the
+    // link would read as a performance win and would reintroduce both the stale
+    // title and the post-revocation leak the model refuses.
+    //
+    // AND A LINK THIS CALLER MAY NOT RESOLVE IS ABSENT — not a bare id, not a
+    // blank row, not a count larger than the rows beside it. Any of those three
+    // would answer whether a record outside the caller's Space exists, which is
+    // the same channel `RejectedOutcomeSchema` is kept `.strict()` to close.
+    const listedDocumentIds = new Set(documents.map((document) => document.id));
+    const documentReferences = new Map<
+      string,
+      {
+        targetKind: DocumentEntityTargetKind;
+        targetId: string;
+        label: string;
+      }[]
+    >();
+    for (const link of view.listDocumentEntityLinks(query.workspaceId)) {
+      // The link store is workspace-wide; this answer is one Space's. A note
+      // outside it is not filtered later — it never enters the map.
+      if (!listedDocumentIds.has(link.documentId)) continue;
+      const target = resolveDocumentEntityTarget(
+        view,
+        query.workspaceId,
+        link.targetKind,
+        link.targetId,
+      );
+      if (
+        target === undefined ||
+        !canViewSpace(view, context, query.workspaceId, target.spaceId)
+      )
+        continue;
+      const row = {
+        targetKind: link.targetKind,
+        targetId: link.targetId,
+        label: target.label,
+      };
+      const held = documentReferences.get(link.documentId);
+      if (held === undefined) documentReferences.set(link.documentId, [row]);
+      else held.push(row);
+    }
     return querySuccess(query, kernelTime, freshness, {
       kind: "knowledge.list",
       spaceId: query.parameters.spaceId,
@@ -12873,6 +12921,7 @@ export const executeWave2Query = (
             ? {}
             : { folderId: document.folderId }),
           role: document.role ?? "document",
+          references: documentReferences.get(document.id) ?? [],
           evidenceCount:
             (document.evidence?.sourceIds.length ?? 0) +
             (document.evidence?.noteDocumentIds.length ?? 0),

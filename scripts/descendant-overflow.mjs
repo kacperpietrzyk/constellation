@@ -143,50 +143,24 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     },
     thread: "Settings poza sekcją Notes fali D",
   },
-  // ── Library: powłoka o STAŁYCH torach nie mieści się w wąskim oknie ───────
-  // ZNALEZISKO TEGO LOTU, i widać je dopiero od tego PR-a. Powłoka Library ma
-  // `grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr)`
-  // (`styles.css`), więc sama biblioteka żąda 17 rem niezależnie od okna:
-  // przy 320 px kolumna robocza ma 256 px, a przy tekście 200% te 17 rem to
-  // 544 px w 584 px. Bramka nie mogła tego zobaczyć, bo harness rysował
-  // Library PUSTĄ — bez wybranego dokumentu zamiast edytora rysuje się panel
-  // powitalny, więc PŁASZCZYZNA PISANIA NIE BYŁA MIERZONA ANI RAZU.
+  // ── Library: DŁUG SPŁACONY, i dlatego nie ma tu wpisu ────────────────────
+  // Stał tu wpis `library / div.document-editor-shell` z sufitami 494 (200%)
+  // i 274 (okno 320 px) — powłoka Biblioteki o stałych torach, która nigdy nie
+  // mieściła się w wąskim oknie. Właścicielem był lot ekranu Notatek fali D
+  // i wpis miał zniknąć DOPIERO wtedy, kiedy wyląduje zadeklarowana kolejność
+  // zwijania paneli. Wyladował: `notes.module.css` deklaruje, w jakiej
+  // kolejności panele ustępują i dlaczego, a `document-editor-shell` dostał
+  // `grid-template-columns: minmax(0, 1fr)` — niejawny tor `auto` był
+  // wymiarowany MAX-CONTENTEM treści, więc jeden niełamliwy napis w notatce
+  // rozpychał całą powłokę.
   //
-  // WŁAŚCICIEL JEST W TEJ FALI, i brief już go nazwał: ekran Notatek ma
-  // dowieźć ZADEKLAROWANĄ KOLEJNOŚĆ ZWIJANIA paneli dla 364 px (300%)
-  // i ~540 px (własne minimum okna produktu). Ten pomiar jest dowodem, że
-  // wymaganie dotyczy już DWÓCH torów, nie dopiero trzech. Wpis znika,
-  // kiedy ta kolejność wyląduje — nie wcześniej i nie przez podniesienie
-  // sufitu.
-  //
-  // BYŁ TU DRUGI WPIS: `div.knowledge-layout` z sufitami 470 · 262, ten sam
-  // defekt widziany metryką PIERWSZEGO DZIECKA. Został USUNIĘTY, i nie
-  // dlatego, że dług spłacono. Wpis zmierzono na drzewie SPRZED PR #201:
-  // lot S2 odbił się od `main` @3cfc099, a powłoka Biblioteki (#201) weszła
-  // do `main` PRZED nim, więc rejestr wylądował opisując korzeń, którego
-  // już nie było. Od #201 pierwszym dzieckiem powierzchni jest `div._shell`
-  // (`library/LibraryShell.tsx`), a pole odczytu `.reading` ma `overflow:
-  // auto` (`library/library.module.css`) — więc korzeń WCHŁANIA to
-  // przepełnienie i nie da się go tam już zmierzyć. Zmierzone: żaden przelot
-  // nie melduje przepełnienia korzenia na żadnej powierzchni.
-  //
-  // Dług NIE ZNIKNĄŁ i dalej pada z tego samego miejsca: `document-editor-shell`
-  // mierzy się na `main` @1edcf40 dokładnie na swoich sufitach (+494 przy 200%,
-  // +274 przy 320 px). Jeden wpis zamiast dwóch, ten sam pomiar.
-  //
-  // To jest STRAŻNIK REJESTRU, który zadziałał: „ten wpis nie został ani razu
-  // dopasowany" to dokładnie ta wiadomość, którą miał wysłać, kiedy bramka
-  // przestaje widzieć ekran. Nie należy go wyciszać — należy wpis poprawić.
-  {
-    surface: "library",
-    signature: "div.document-editor-shell",
-    ceilings: {
-      "text scaled to 200%": 494,
-      "a 320 px window": 274,
-    },
-    thread:
-      "fala D, lot ekranu Notatek — ta sama wada widziana od strony płaszczyzny pisania",
-  },
+  // WPIS ZNIKA, BO ELEMENT PRZESTAŁ SIĘ PRZEPEŁNIAĆ, a nie dlatego, że bramka
+  // przestała go widzieć — i to jest rozróżnienie, które ten rejestr już raz
+  // pomylił. Element dalej jest mierzony w każdym przelocie (płaszczyzna
+  // pisania rysuje się na Notatkach zawsze, bo ekran otwiera najnowszą notatkę
+  // węzła), a od tego PR-a Library jest mierzona dodatkowo przy 364 px
+  // (tekst 300%) i przy własnym minimalnym oknie produktu.
+
   // ── ekran rekordu Zadania: przepełnienie przy DOMYŚLNYM rozmiarze ─────────
   // Te trzy NIE SĄ artefaktem skalowania i wpisy mówią to wprost, bo inaczej
   // trafią do wątku skalowania interfejsu i zostaną odłożone drugi raz.

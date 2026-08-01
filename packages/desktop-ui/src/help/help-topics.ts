@@ -35,7 +35,8 @@ export type HelpTopicId =
   | "amendment"
   | "attached-notes"
   | "sources"
-  | "source-availability";
+  | "source-availability"
+  | "note-arrangement";
 
 export type HelpTopic = {
   readonly id: HelpTopicId;
@@ -91,6 +92,17 @@ export const helpTopics: readonly HelpTopic[] = [
     question: "What does Detach do?",
     answer:
       "A note is here because it names this meeting. Detach takes it off this meeting only: the note keeps its own text, and every other place it appears is untouched.",
+  },
+  {
+    // #30. The one thing the switcher cannot say for itself: it never changes
+    // WHICH notes are listed, and under Record a note is read more than once.
+    // A reader who thinks Record filters will trust a shorter list than they
+    // have, and one who counts the headings will not trust the total.
+    id: "note-arrangement",
+    term: "Arranging notes",
+    question: "What does this reorder?",
+    answer:
+      "It regroups the same notes; the folder you picked is the only filter. Under Record a note appears once per record it names, so the groups add up to more than the list.",
   },
   {
     id: "amendment",

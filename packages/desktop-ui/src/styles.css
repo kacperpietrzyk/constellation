@@ -4820,6 +4820,8 @@ kbd {
 }
 .history-ledger > header h3 {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: var(--text-sm);
   font-weight: 630;
 }
@@ -5801,6 +5803,13 @@ kbd {
 }
 .document-canvas {
   width: min(100%, 50rem);
+  /* The census says what real notes are made of: paragraphs and text, no
+     structure, and markdown kept AS TEXT — table rows of pipes and bare URLs
+     that never contain a break opportunity. `anywhere` rather than
+     `break-word` because only `anywhere` takes those strings out of the
+     min-content width; with `break-word` the box still ASKS for the longest
+     URL and overflows its parent while wrapping prettily inside itself. */
+  overflow-wrap: anywhere;
   min-height: 100%;
   justify-self: center;
   padding: clamp(2.5rem, 7vw, 5.5rem) clamp(2rem, 8vw, 6rem);
@@ -5906,9 +5915,15 @@ kbd {
 .knowledge-library > header {
   background: var(--panel-reading-bg);
 }
+/* `overflow-wrap: anywhere` on a heading is here for the 364 px case and it is
+   the only value that helps: a single word at 300% text is wider than the panel
+   and carries no break opportunity, so `break-word` would still let the box ASK
+   for the whole word and push the surface. Measured on the Library harness. */
 .knowledge-library h1,
 .knowledge-editor-header h2 {
   margin: var(--space-1) 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: var(--text-xl);
   letter-spacing: -0.025em;
@@ -6135,8 +6150,12 @@ kbd {
   font-style: normal;
   font-weight: 750;
 }
+/* The third grid in this stack whose implicit `auto` column was sized by its
+   content rather than by its box. Declared, so a long title or an unbreakable
+   string in the writing plane cannot set the editor's width. */
 .knowledge-editor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   background: var(--surface-canvas);
@@ -6252,9 +6271,17 @@ kbd {
   border-radius: var(--radius-xs);
   background: var(--surface-selected);
 }
+/* `grid-template-columns: minmax(0, 1fr)` is the whole fix for a debt this
+   screen carried into two waves: an implicit `auto` track is sized by the
+   content's MAX-CONTENT width, so one unbreakable string in a note pushed the
+   track — and with it this shell — past its own box. Measured on the Library
+   harness before the change: +494 px with text at 200%, +274 px in a 320 px
+   window, on a surface whose reading pane is the only elastic thing it has.
+   `minmax(0, 1fr)` says the track may be as narrow as its box. */
 .knowledge-writing-plane > .document-editor-frame > .document-editor-shell,
 .knowledge-writing-plane > .document-editor-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   min-width: 0;
   min-height: 30rem;

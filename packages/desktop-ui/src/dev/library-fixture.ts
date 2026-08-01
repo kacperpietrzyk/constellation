@@ -166,7 +166,13 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — runbook uruchomienia środowiska po stronie klienta",
     role: "note" as const,
     version: 4,
-    updatedAt: "2026-07-30T09:12:00.000Z",
+    // NAJŚWIEŻSZA NOTATKA W ZBIORZE, i to nie jest kosmetyka. Ekran Notatek
+    // otwiera najnowszą notatkę WIDOCZNĄ w wybranym węźle, a treść w tej
+    // fiksturze niesie wyłącznie ta jedna (`libraryNoteState`). Gdyby najnowsza
+    // była którakolwiek inna, płaszczyzna pisania rysowałaby się PUSTA,
+    // a strażnik `libraryNoteBody` bramki układu — ten, który powstał dokładnie
+    // po takim pustym pomiarze — złapałby to jako awarię przyrządu.
+    updatedAt: "2026-07-31T12:40:00.000Z",
   },
   {
     id: libraryDocumentIds.network,
@@ -477,18 +483,72 @@ export const librarySources = () => [
 ];
 
 /** Skróty, które Library czyta obok listy dokumentów. */
-export const librarySummaries = () =>
-  documentShapes.map((item, index) => ({
+/**
+ * CO KTÓRA NOTATKA NAZYWA — oś, na którą przełącznik obraca listę w trybie
+ * `Record`, i jedyny kształt w tej fiksturze, którego prawdziwy zbiór nie ma
+ * ANI RAZU (spis: zero odwołań do encji w 17 dokumentach). Jest tu z tego
+ * samego powodu co `screenshot` i `unavailable` wyżej: rotacji, której żadna
+ * fikstura nie wykonuje, nie da się odróżnić od niezbudowanej — a inline `[[`
+ * wszedł do `main` dopiero w tej fali, więc zero w zbiorze mówi „nie było czym
+ * napisać", a nie „nikt nie chce".
+ *
+ * KSZTAŁT JEST DOBRANY POD WŁAŚCIWOŚĆ, KTÓREJ EKRAN MUSI DOWIEŚĆ: notatka
+ * o DWÓCH odwołaniach czyta się pod DWOMA nagłówkami, notatka bez odwołań ma
+ * swój własny, i suma rozmiarów grup jest większa od liczby notatek. Fikstura,
+ * w której każda notatka ma najwyżej jedno odwołanie, przechodzi zliczanie
+ * wierszy i nie wykonuje ani jednego rozmnożenia.
+ *
+ * Odwołanie na notatce `runbook` to DOKŁADNIE to, które niesie jej treść
+ * (`libraryNoteBody`) — lista i tekst nie mogą mówić dwóch różnych rzeczy
+ * o tej samej notatce.
+ *
+ * ETYKIETY PRZYCHODZĄ Z ZEWNĄTRZ, tak jak w kernelu: `DocumentEntityLink` nie
+ * niesie tytułu, a projekcja rozwiązuje go przy odczycie. Fikstura z własnym,
+ * wpisanym tytułem rekordu opisywałaby inny kontrakt niż ten, który mierzy.
+ */
+export interface LibraryReferenceTargets {
+  readonly task: { readonly id: string; readonly label: string };
+  readonly project: { readonly id: string; readonly label: string };
+}
+
+const documentReferences = (
+  targets: LibraryReferenceTargets,
+): ReadonlyMap<
+  DocumentId,
+  readonly { targetKind: "task" | "project"; targetId: string; label: string }[]
+> => {
+  const task = {
+    targetKind: "task" as const,
+    targetId: targets.task.id,
+    label: targets.task.label,
+  };
+  const project = {
+    targetKind: "project" as const,
+    targetId: targets.project.id,
+    label: targets.project.label,
+  };
+  return new Map([
+    [libraryDocumentIds.runbook, [task]],
+    [libraryDocumentIds.network, [task, project]],
+    [libraryDocumentIds.handover, [project]],
+  ]);
+};
+
+export const librarySummaries = (targets: LibraryReferenceTargets) => {
+  const references = documentReferences(targets);
+  return documentShapes.map((item, index) => ({
     id: item.id,
     title: item.title,
     ...(item.folderId === undefined ? {} : { folderId: item.folderId }),
     role: item.role,
+    references: [...(references.get(item.id) ?? [])],
     evidenceCount: index % 3,
     namedVersionCount: item.role === "deliverable" ? 2 : 0,
     staleEvidence: index === 2,
     version: item.version,
     updatedAt: item.updatedAt,
   }));
+};
 
 /**
  * PO JEDNYM Z KAŻDEGO stanu przetwarzania, bo etykiety historii rozgałęziają
