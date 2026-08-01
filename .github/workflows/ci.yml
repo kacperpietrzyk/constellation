@@ -96,9 +96,27 @@ jobs:
   # własny zestaw sufitów dla trzeciego renderowania czcionek to inny rejestr,
   # nie inna wartość. Tę stronę niesie paczkowany smoke, który chodzi na
   # Windowsie na wydanej aplikacji. Zapisane jako świadoma luka, nie przeoczenie.
+  #
+  # OBRAZ RUNNERA JEST PRZYPIĘTY Z NAZWY, a nie wzięty jako `macos-latest`,
+  # i to z dokładnie tego samego powodu, dla którego przypięta jest wersja
+  # Playwrighta. `macos-latest` to ETYKIETA, którą GitHub PRZESTAWIA na nowy
+  # obraz (macos-14 → macos-15 → macos-26 → …). Przestawienie zmienia stos
+  # czcionek systemu, a tabela wyżej mierzy, co robi inny stos czcionek: do
+  # 24 px różnicy, trzy fałszywe naruszenia i inne liczby fali E. Skutek
+  # byłby taki sam jak dwóch asercji, które ta fala już złapała — `main`
+  # czerwony z rana, bez ani jednej zmiany w kodzie, a pierwsza diagnoza
+  # brzmi „ktoś zepsuł układ". Przy WYMAGANYM checku zamraża to każdy PR.
+  #
+  # Zmierzone na przebiegu 30703971698: `Image: macos-26-arm64`.
+  #
+  # KIEDY GITHUB WYCOFA TEN OBRAZ, rejestr trzeba ZMIERZYĆ OD NOWA — nie
+  # przestawić etykiety, żeby się zbudowało. Przestawienie po cichu przepisuje
+  # jedenaście sufitów i trzy liczby, które cytują dokumenty poza tym repo.
+  # Procedura jest ta sama, którą ten PR wykonał: `LAYOUT_DESCENDANT_REPORT=1`
+  # najpierw, dopiero potem sufity.
   layout:
     name: Renderer layout
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 20
 
     env:
