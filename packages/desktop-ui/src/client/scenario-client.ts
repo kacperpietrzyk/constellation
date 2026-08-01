@@ -3,6 +3,7 @@ import {
   DataHomeStatusSchema,
   DeviceIdSchema,
   DocumentRevisionIdSchema,
+  type DocumentId,
   LOCAL_ONLY_PROVIDER_ID,
   WorkspaceIdSchema,
   type QueryEnvelope,
@@ -20,6 +21,14 @@ export interface ScenarioFixtures {
   readonly executeCommand?: (
     command: CommandEnvelope,
   ) => RendererCommandResponse | Promise<RendererCommandResponse>;
+  /**
+   * Stan Yjs, od którego zaczyna edytor treści. Domyślnie go NIE MA i to jest
+   * poprawne dla scenariuszy, które treści nie oglądają — ale wtedy edytor
+   * rysuje się pusty, a pusty edytor nie ma geometrii do zmierzenia. Zwracany
+   * jest tą samą drogą, którą oddaje go most preload (`openDocument.state`),
+   * więc scenariusz nie mierzy innej ścieżki niż aplikacja.
+   */
+  readonly documentState?: (documentId: DocumentId) => Uint8Array | undefined;
 }
 
 /** Deterministic UI fixture adapter. It returns scripted contract outcomes only. */
@@ -208,11 +217,15 @@ export const createScenarioClient = (
     }),
   listDocumentRevisions: async () => [],
   listCollaborativeContentRevisions: async () => [],
-  openDocument: async () => ({
-    mode: "local",
-    pendingUpdateCount: 0,
-    searchIndexState: "current",
-  }),
+  openDocument: async ({ documentId }) => {
+    const state = fixtures.documentState?.(documentId);
+    return {
+      mode: "local",
+      ...(state === undefined ? {} : { state }),
+      pendingUpdateCount: 0,
+      searchIndexState: "current",
+    };
+  },
   openCollaborativeContent: async () => ({
     mode: "local",
     pendingUpdateCount: 0,
