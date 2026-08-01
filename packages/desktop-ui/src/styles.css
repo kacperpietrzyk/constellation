@@ -6128,6 +6128,65 @@ kbd {
   display: block;
   min-height: 30rem;
 }
+/* The suggestion list is positioned against this frame, which is why it exists
+   at all: `position: relative` has to sit on a box that wraps the canvas
+   without changing its layout. `display: contents` would remove the containing
+   block and the list would anchor to the page. */
+.document-editor-frame {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+.inline-suggestion-panel {
+  position: absolute;
+  z-index: 30;
+  min-width: 16rem;
+  max-width: 28rem;
+  padding: var(--space-1);
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--overlay-shadow);
+  max-height: 15rem;
+}
+.inline-suggestion-option {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  cursor: default;
+  border-radius: var(--radius-sm);
+}
+.inline-suggestion-option.active {
+  background: var(--surface-selected);
+}
+.inline-suggestion-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The kind is carried by the word, not by the colour: a note and an
+   organization can share a label, and the difference has to survive both a
+   monochrome display and a screen reader. */
+.inline-suggestion-kind {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.inline-suggestion-empty {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.document-suggestion-trigger {
+  border-radius: var(--radius-xs);
+  background: var(--surface-selected);
+}
+.knowledge-writing-plane > .document-editor-frame > .document-editor-shell,
 .knowledge-writing-plane > .document-editor-shell {
   display: grid;
   width: 100%;

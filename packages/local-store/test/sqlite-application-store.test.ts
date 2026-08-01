@@ -3507,7 +3507,7 @@ describe("narrative-less records in the durable store", () => {
   // field on a strategic record needs NO migration — a migration is needed
   // only when a field must be filterable in SQL, and nothing in Wave C filters
   // on money. This test is what makes that a measurement rather than a claim.
-  it("round-trips money and the new CRM fields across a restart at schema 24", () => {
+  it("round-trips money and the new CRM fields across a restart at the current schema", () => {
     withDatabase((filename) => {
       const organizationId = "00000000-0000-4000-8000-000000000190";
       const personId = "00000000-0000-4000-8000-000000000191";
@@ -3704,7 +3704,7 @@ describe("narrative-less records in the durable store", () => {
   // and `version` into columns — and neither currency setting is ever a SQL
   // predicate, which is why neither is a COLUMN on `workspaces`. Asserted
   // across a real restart rather than reasoned about.
-  it("round-trips the workspace currency settings across a restart at schema 24", () => {
+  it("round-trips the workspace currency settings across a restart at the current schema", () => {
     withDatabase((filename) => {
       const firstDatabase = new DatabaseSync(filename);
       const first = createKernel(firstDatabase);

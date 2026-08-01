@@ -9,6 +9,7 @@ import type {
   ProjectId,
   SpaceId,
   WorkspaceId,
+  DocumentEntityTargetKind,
 } from "@constellation/contracts";
 import type { StrategicRecord } from "@constellation/domain";
 import type { StructuredDocument } from "@constellation/realtime-documents";
@@ -74,8 +75,7 @@ export const buildExchangeManifest = (input: {
     | {
         readonly content: StructuredDocument;
         readonly entityReferences: readonly {
-          readonly targetKind:
-            "task" | "project" | "person" | "organization" | "meeting";
+          readonly targetKind: DocumentEntityTargetKind;
           readonly targetId: string;
         }[];
       }
@@ -87,8 +87,7 @@ export const buildExchangeManifest = (input: {
     | {
         readonly content: StructuredDocument;
         readonly entityReferences: readonly {
-          readonly targetKind:
-            "task" | "project" | "person" | "organization" | "meeting";
+          readonly targetKind: DocumentEntityTargetKind;
           readonly targetId: string;
         }[];
       }

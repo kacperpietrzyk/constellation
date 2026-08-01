@@ -33,6 +33,7 @@ import type {
   Capability,
   AgentRunId,
   AgentHandoffId,
+  DocumentEntityTargetKind,
   KnowledgeSourceId,
   NamedDocumentVersionId,
   StrategicRecordId,
@@ -640,8 +641,13 @@ export interface NativeDocument {
   readonly updatedAt: string;
 }
 
-export type DocumentEntityTargetKind =
-  "task" | "project" | "person" | "organization" | "meeting";
+/**
+ * Re-exported, not restated. The vocabulary lives in
+ * `@constellation/contracts` beside the schema that validates it; a second
+ * spelling here is how five arms drifted apart across seven files before
+ * Wave D.
+ */
+export type { DocumentEntityTargetKind } from "@constellation/contracts";
 
 /**
  * A local, rebuildable projection of one stable entity reference stored in a

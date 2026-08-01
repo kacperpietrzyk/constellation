@@ -10,6 +10,7 @@ import {
   type SpaceId,
   type TaskId,
   type WorkspaceId,
+  type DocumentEntityTargetKind,
 } from "@constellation/contracts";
 import {
   parseStructuredDocument,
@@ -44,8 +45,7 @@ interface StarterProject {
 }
 
 interface StarterEntityReference {
-  readonly targetKind:
-    "task" | "project" | "person" | "organization" | "meeting";
+  readonly targetKind: DocumentEntityTargetKind;
   readonly targetId: string;
   readonly targetKey: string;
 }

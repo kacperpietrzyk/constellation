@@ -1,6 +1,11 @@
 import * as Y from "yjs";
 
 import {
+  DOCUMENT_ENTITY_REFERENCE_KINDS,
+  type DocumentEntityReferenceKind,
+} from "./entity-vocabulary.js";
+
+import {
   replaceStructuredDocumentInYjs as replaceImportedStructuredDocument,
   structuredDocumentFromYjs as importStructuredDocument,
   type StructuredDocument,
@@ -13,8 +18,8 @@ export const RICH_DOCUMENT_FRAGMENT_ROOT = "rich-content";
 export const DOCUMENT_FORMAT_METADATA_ROOT = "constellation-document";
 
 export type DocumentContentFormat = "plain-v1" | "rich-v1";
-export type DocumentEntityReferenceKind =
-  "task" | "project" | "person" | "organization" | "meeting";
+export type { DocumentEntityReferenceKind };
+
 export interface DocumentEntityReference {
   readonly targetKind: DocumentEntityReferenceKind;
   readonly targetId: string;
@@ -154,13 +159,9 @@ export const documentPlainText = (document: Y.Doc): string => {
     .join("\n");
 };
 
-const entityReferenceKinds = new Set<DocumentEntityReferenceKind>([
-  "task",
-  "project",
-  "person",
-  "organization",
-  "meeting",
-]);
+const entityReferenceKinds = new Set<DocumentEntityReferenceKind>(
+  DOCUMENT_ENTITY_REFERENCE_KINDS,
+);
 
 export const documentEntityReferences = (
   document: Y.Doc,

@@ -95,7 +95,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 25;
+export const LOCAL_STORE_SCHEMA_VERSION = 26;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -1015,6 +1015,48 @@ const schemaV25 = `
     ON folders(parent_folder_id, id);
 `;
 
+// A note can now link to another note, so `document` joins the five kinds the
+// CHECK froze into the table definition. SQLite cannot alter a CHECK in place
+// and the table has to keep its name, so this is the documented rebuild: new
+// table under a working name, copy, drop the old one, rename. `schemaV24` is
+// the precedent for the copy; the difference is that it could rename the table
+// it was replacing and this one cannot.
+//
+// The table is `content_entity_links`, NOT `document_entity_links`. The v21
+// table of that name was dropped by v23, which widened the same rows to carry
+// a project body as well as a document; `document_entity_links` has not
+// existed in a live database for two schema versions. Wave D's recon cites
+// `:726` — the v21 CHECK — as the constraint to rebuild, and rebuilding that
+// one migrates a table nothing reads.
+//
+// v21 and v23 stay frozen. Regenerating an old migration's text from today's
+// vocabulary would make the schema a database has already run depend on what
+// the current build believes, which is the opposite of what a migration is for.
+// `document-entity-vocabulary.test.ts` reads the CHECK back out of a live
+// database and compares it to `DOCUMENT_ENTITY_TARGET_KINDS`, so an arm added
+// to the contract without a migration fails there instead of silently
+// rejecting every write of the new kind at runtime.
+const schemaV26 = `
+  CREATE TABLE content_entity_links_v26 (
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('document', 'project')),
+    owner_id TEXT NOT NULL,
+    target_kind TEXT NOT NULL CHECK (target_kind IN ('task', 'project', 'person', 'organization', 'meeting', 'document')),
+    target_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (owner_kind, owner_id, target_kind, target_id)
+  ) STRICT;
+  INSERT INTO content_entity_links_v26
+    (workspace_id, space_id, owner_kind, owner_id, target_kind, target_id, updated_at)
+  SELECT workspace_id, space_id, owner_kind, owner_id, target_kind, target_id, updated_at
+  FROM content_entity_links;
+  DROP TABLE content_entity_links;
+  ALTER TABLE content_entity_links_v26 RENAME TO content_entity_links;
+  CREATE INDEX content_entity_links_target
+    ON content_entity_links(workspace_id, target_kind, target_id, owner_kind, owner_id);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -1041,6 +1083,7 @@ const localStoreMigrations = [
   schemaV23,
   schemaV24,
   schemaV25,
+  schemaV26,
 ] as const;
 
 export interface LocalCoordinationState {
