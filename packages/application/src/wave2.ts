@@ -263,6 +263,7 @@ export type Wave2Command = Extract<
       | "meeting.editWorkItem"
       | "meeting.correctWorkItemResponsibility"
       | "meeting.addWorkItem"
+      | "meeting.detachNote"
       | "project.updateOutcome"
       | "project.updateDetails"
       | "task.create"
@@ -841,7 +842,16 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.editWorkItem":
     case "meeting.correctWorkItemResponsibility":
-    case "meeting.addWorkItem": {
+    case "meeting.addWorkItem":
+    // `meeting.detachNote` sits with them ON PURPOSE, and this is decision
+    // #32's authorization half. Detaching writes on the MEETING and nothing
+    // on the note, so it asks for the meeting's Space and asks NOTHING about
+    // the note's — a reader who may only view a note (or cannot see it at
+    // all) can still say it does not belong on a meeting they operate. The
+    // opposite design, editing the reference out of the note's body, would
+    // have made this the one screen operation that needs edit access to
+    // somebody else's writing.
+    case "meeting.detachNote": {
       const record = view.getStrategicRecord(command.payload.meetingId);
       // A target that is not there still has to ask the policy, or these arms
       // become the oracle the helper below was changed to close: refusing here
@@ -5929,6 +5939,79 @@ export const executeWave2Command = (
         },
       );
     }
+    case "meeting.detachNote": {
+      const current = transaction.getStrategicRecord(command.payload.meetingId);
+      if (current?.kind !== "meeting") return precondition(command, occurredAt);
+      if (!exactExpected(command, { [current.id]: current.version })) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      const meeting = current.meeting;
+      const detachedNoteIds = meeting.detachedNoteIds ?? [];
+      const priorDetached = detachedNoteIds.includes(
+        command.payload.documentId,
+      );
+      // Already in the asked-for state: refuse rather than bump a version for
+      // nothing. `meeting.promoteWorkItem` above answers the same question the
+      // same way — an operation whose effect has already happened is a
+      // precondition failure, not a silent success that costs the caller its
+      // expectedVersions on the next command.
+      if (priorDetached === command.payload.detached)
+        return precondition(command, occurredAt);
+      const nextDetachedNoteIds = command.payload.detached
+        ? [...detachedNoteIds, command.payload.documentId]
+        : detachedNoteIds.filter((id) => id !== command.payload.documentId);
+      // An empty list is spelled as ABSENCE, so a meeting that had one note
+      // detached and then put back is shaped exactly like one that never had
+      // anything detached. Two spellings of "nothing is suppressed" is how a
+      // re-import merge acquires a branch nobody tests. The key is dropped by
+      // destructuring rather than by a conditional spread, because
+      // `...meeting` has already carried the old value in.
+      const { detachedNoteIds: _prior, ...meetingBase } = meeting;
+      void _prior;
+      const updated: ImportedMeeting = {
+        ...meetingBase,
+        ...(nextDetachedNoteIds.length === 0
+          ? {}
+          : { detachedNoteIds: nextDetachedNoteIds }),
+        version: meeting.version + 1,
+        updatedAt: occurredAt,
+      };
+      const record: StrategicRecord = {
+        ...current,
+        meeting: updated,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version)) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["detachedNoteIds"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "meeting.restore_note_attachment",
+          meetingId: current.id,
+          documentId: command.payload.documentId,
+          priorDetached,
+          resultingVersion: record.version,
+        },
+      );
+    }
     case "meeting.promoteWorkItem": {
       const current = transaction.getStrategicRecord(command.payload.meetingId);
       if (current?.kind !== "meeting") return precondition(command, occurredAt);
@@ -9369,6 +9452,9 @@ export const descriptorRecordIds = (
       return [descriptor.meetingId, descriptor.createdTaskId];
     case "meeting.restore_work_item":
     case "meeting.restore_routing":
+    // The note is NOT in this list on purpose: undoing a detach changes the
+    // meeting and leaves the note untouched, exactly as the command did.
+    case "meeting.restore_note_attachment":
       return [descriptor.meetingId];
     case "meeting.restore_participant_links":
       return [descriptor.meetingId, ...descriptor.createdPersonIds];
@@ -9723,6 +9809,7 @@ const descriptorState = (
     }
     case "meeting.restore_routing":
     case "meeting.restore_work_item":
+    case "meeting.restore_note_attachment":
     case "meeting.restore_participant_links": {
       const meeting = view.getStrategicRecord(descriptor.meetingId);
       return meeting?.kind === "meeting" &&
@@ -10794,6 +10881,28 @@ const compensateDescriptor = (
           : record.meeting.missingComponents.length > 0
             ? "partial"
             : "ready",
+        version: record.meeting.version + 1,
+        updatedAt: occurredAt,
+      },
+      version: record.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateStrategicRecord(restored, record.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "meeting.restore_note_attachment") {
+    const record = transaction.getStrategicRecord(
+      descriptor.meetingId,
+    ) as Extract<StrategicRecord, { kind: "meeting" }>;
+    const { detachedNoteIds: current, ...meetingBase } = record.meeting;
+    const restoredIds = descriptor.priorDetached
+      ? [...(current ?? []), descriptor.documentId]
+      : (current ?? []).filter((id) => id !== descriptor.documentId);
+    const restored: StrategicRecord = {
+      ...record,
+      meeting: {
+        ...meetingBase,
+        ...(restoredIds.length === 0 ? {} : { detachedNoteIds: restoredIds }),
         version: record.meeting.version + 1,
         updatedAt: occurredAt,
       },
@@ -12606,6 +12715,13 @@ export const executeWave2Query = (
     );
     if (target === undefined)
       return queryRejected(query, kernelTime, "authorization.denied");
+    // Read ONCE for the whole answer, not once per row: both sets are
+    // workspace-wide and a backlink list is unbounded.
+    const agentPrincipalIds = new Set(
+      view
+        .listAgentGrants(query.workspaceId)
+        .map((grant) => grant.agentPrincipalId),
+    );
     const items = view
       .listDocumentEntityLinks(
         query.workspaceId,
@@ -12620,6 +12736,15 @@ export const executeWave2Query = (
           !canViewSpace(view, context, query.workspaceId, source.spaceId)
         )
           return [];
+        const membership = view.getMembership(
+          query.workspaceId,
+          source.createdBy,
+        );
+        // Exactly `comment.list`'s rule: a revoked or unknown author is named
+        // by a placeholder and their principal id is withheld, so a read of a
+        // note never becomes a read of who is still in the workspace.
+        const visibleAuthor =
+          membership !== undefined && membership.status !== "revoked";
         return [
           {
             documentId: source.id,
@@ -12629,6 +12754,13 @@ export const executeWave2Query = (
               ? {}
               : { folderId: source.folderId }),
             role: source.role ?? "document",
+            author: {
+              ...(visibleAuthor ? { principalId: source.createdBy } : {}),
+              displayName: visibleAuthor
+                ? (membership.displayName ?? "Workspace member")
+                : "Former member",
+              authoredByAgent: agentPrincipalIds.has(source.createdBy),
+            },
             updatedAt: source.updatedAt,
           },
         ];

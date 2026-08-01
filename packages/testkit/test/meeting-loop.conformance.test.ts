@@ -15,6 +15,7 @@ import {
 } from "@constellation/application";
 import {
   CalendarCapabilitySchema,
+  DocumentIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
@@ -832,6 +833,49 @@ test("re-import keeps a routed Space instead of snapping back to the caller's", 
   });
   assert.equal(corrected.outcome, "corrected");
   assert.equal(corrected.meeting.spaceId, routedSpaceId);
+});
+
+/* DECISION #32 — A JAMIE RE-DELIVERY MUST NOT PUT BACK WHAT A READER TOOK OFF.
+ *
+ * `importJamie` rebuilds the whole `ImportedMeeting` from the source and then
+ * carries the workspace-owned fields forward by hand: the routed Space, the
+ * routing, and `participants[].personId`. `detachedNoteIds` belongs in exactly
+ * that list, and leaving it out is SILENT — the meeting still imports, the
+ * detached note simply comes back. Nothing but this test would notice.
+ */
+test("re-import keeps a note the reader detached instead of resurrecting it", () => {
+  const { service, repository } = createHarness();
+  const applied = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({ hash: "e".repeat(64), taskId: "task-1" }),
+  });
+  assert.notEqual(applied.outcome, "rejected");
+  const detachedNoteId = DocumentIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000c6",
+  );
+  const state = repository.load(workspaceId);
+  assert.ok(
+    repository.save(workspaceId, state.revision, {
+      ...state,
+      revision: state.revision + 1,
+      meetings: state.meetings.map((meeting) => ({
+        ...meeting,
+        detachedNoteIds: [detachedNoteId],
+      })),
+    }),
+  );
+  const corrected = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({
+      hash: "d".repeat(64),
+      taskId: "task-1",
+      taskTitle: "Confirm rollout owner once more",
+    }),
+  });
+  assert.equal(corrected.outcome, "corrected");
+  assert.deepEqual(corrected.meeting.detachedNoteIds, [detachedNoteId]);
 });
 
 test("Jamie due dates reach the work item and clear when the source drops them", () => {

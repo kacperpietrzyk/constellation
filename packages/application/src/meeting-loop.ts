@@ -618,6 +618,15 @@ export class MeetingLoopService {
             ? participant
             : { ...participant, personId: linked.personId };
         }),
+        // Decision #32, and it belongs in exactly this list: what a reader
+        // took off a meeting is workspace-owned, so a Jamie re-delivery must
+        // not resurrect it. Dropping this line is silent — the meeting still
+        // imports, the note simply comes back — which is why it is asserted
+        // by re-importing after a detach rather than by reading the code.
+        ...(current?.detachedNoteIds === undefined ||
+        current.detachedNoteIds.length === 0
+          ? {}
+          : { detachedNoteIds: current.detachedNoteIds }),
         ...(current?.projectId === undefined
           ? {}
           : { projectId: current.projectId }),

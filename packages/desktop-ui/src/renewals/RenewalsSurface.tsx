@@ -17,7 +17,7 @@ import {
   type MutationFailure,
   type MutationResult,
 } from "../client/workflow.js";
-import { CrmHelp } from "../crm/CrmHelp.js";
+import { TopicHelp } from "../help/TopicHelp.js";
 import { indexRelationships } from "../crm/organization-reading.js";
 import { fmtApprox, fmtMoney, fmtUplift } from "../crm/money.js";
 import { Icon } from "../components/Icon.js";
@@ -403,7 +403,7 @@ const RenewalRow = ({
                   hint raises rather than repeating it: the row already says the
                   term does not move, and the topic says what IS created. */}
               <span className={styles.hint}>no change to the term</span>
-              <CrmHelp topic="amendment" />
+              <TopicHelp topic="amendment" />
             </>
           )}
           {/* The toggle STAYS, so `aria-expanded` can be true as well as false.
@@ -1005,7 +1005,7 @@ export const RenewalsSurface = ({
           {/* The section, not the expiry date, organises this screen — so the
               question "what is a lead time" belongs at the section heading and
               nowhere else (#35). */}
-          <CrmHelp topic="lead-time" />
+          <TopicHelp topic="lead-time" />
         </div>
         {sections.due.length === 0 ? (
           // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the

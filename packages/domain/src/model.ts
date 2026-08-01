@@ -1452,6 +1452,20 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "meeting.restore_note_attachment";
+      readonly meetingId: StrategicRecordId;
+      readonly documentId: DocumentId;
+      // The value the flag held BEFORE the command, not the opposite of what
+      // it holds now: `meeting.detachNote` carries both directions, so undoing
+      // a re-attach must put the suppression back rather than assume detach.
+      readonly priorDetached: boolean;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "project.unapply_template";
       readonly projectId: ProjectId;
       readonly templateId: ProjectTemplateId;

@@ -802,6 +802,14 @@ describe("Command revertability", () => {
       { meetingId, personIdPool: [uuid()] },
       versions(meetingId),
     );
+    // #32: the note need not exist here and deliberately is not created. The
+    // suppression is a statement about THIS MEETING, so the command touches
+    // no document and its compensation restores no document either.
+    apply(
+      "meeting.detachNote",
+      { meetingId, documentId: uuid(), detached: true },
+      versions(meetingId),
+    );
 
     // capture.process reaches two different routing paths depending on its
     // destination, so "always" is only true if both of them compensate.

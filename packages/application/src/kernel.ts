@@ -553,6 +553,7 @@ const isCurrentlyAuthorized = (
     case "meeting.editWorkItem":
     case "meeting.correctWorkItemResponsibility":
     case "meeting.addWorkItem":
+    case "meeting.detachNote":
     case "project.updateOutcome":
     case "project.updateDetails":
     case "task.create":
@@ -1062,6 +1063,7 @@ export class ApplicationKernel {
       case "meeting.editWorkItem":
       case "meeting.correctWorkItemResponsibility":
       case "meeting.addWorkItem":
+      case "meeting.detachNote":
       case "project.updateOutcome":
       case "project.updateDetails":
       case "task.create":

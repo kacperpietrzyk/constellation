@@ -127,6 +127,7 @@ export const CapabilitySchema = z.enum([
   "meeting.editWorkItem",
   "meeting.correctWorkItemResponsibility",
   "meeting.addWorkItem",
+  "meeting.detachNote",
   "task.create",
   "task.updateDetails",
   "task.setParent",
@@ -323,6 +324,11 @@ export const CAPABILITY_DELEGATION: Readonly<
   "meeting.editWorkItem": "operate",
   "meeting.correctWorkItemResponsibility": "operate",
   "meeting.addWorkItem": "operate",
+  // Ordinary meeting work, and deliberately NOT graded by the note's own
+  // access: detaching says what belongs on THIS meeting, it writes nothing
+  // on the note, and a reader who may only view a note must still be able
+  // to take it off a meeting they operate.
+  "meeting.detachNote": "operate",
   "task.create": "operate",
   "task.updateDetails": "operate",
   "task.setParent": "operate",

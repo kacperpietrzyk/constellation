@@ -1839,11 +1839,13 @@ kbd {
 }
 .inspector .meeting-result-detail-header,
 .inspector .meeting-result-transcript > header,
+.inspector .meeting-result-notes > header,
 .inspector .meeting-result-work > header {
   align-items: flex-start;
   flex-direction: column;
 }
-.inspector .meeting-work-item {
+.inspector .meeting-work-item,
+.inspector .meeting-attached-note {
   grid-template-columns: 1fr;
   align-items: start;
 }
@@ -3733,6 +3735,9 @@ kbd {
 }
 .meeting-result-summary,
 .meeting-result-transcript,
+/* Decision #32's section is the work section's twin, so it joins each rule
+   rather than growing a parallel block that drifts from it. */
+.meeting-result-notes,
 .meeting-result-work {
   display: grid;
   gap: var(--space-4);
@@ -3740,6 +3745,7 @@ kbd {
 }
 .meeting-result-summary > h4,
 .meeting-result-transcript h4,
+.meeting-result-notes h4,
 .meeting-result-work h4 {
   margin: 0;
   font-size: var(--text-md);
@@ -3753,6 +3759,7 @@ kbd {
   background: var(--surface-sunken);
 }
 .meeting-result-transcript > header,
+.meeting-result-notes > header,
 .meeting-result-work > header {
   display: flex;
   justify-content: space-between;
@@ -3760,6 +3767,7 @@ kbd {
   gap: var(--space-4);
 }
 .meeting-result-transcript > header p,
+.meeting-result-notes > header p,
 .meeting-result-work > header p {
   margin: var(--space-1) 0 0;
   color: var(--text-quaternary);
@@ -3850,7 +3858,8 @@ kbd {
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
-.meeting-work-items {
+.meeting-work-items,
+.meeting-attached-notes {
   display: grid;
   gap: 0;
   margin: 0;
@@ -3858,7 +3867,8 @@ kbd {
   list-style: none;
   border-top: 1px solid var(--border-subtle);
 }
-.meeting-work-item {
+.meeting-work-item,
+.meeting-attached-note {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-4);
@@ -3929,6 +3939,10 @@ kbd {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-sm);
+}
+.meeting-block-unavailable {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
 }
 .meeting-add-trigger {
   justify-self: start;
@@ -4170,11 +4184,13 @@ kbd {
   }
   .meeting-result-detail-header,
   .meeting-result-transcript > header,
+  .meeting-result-notes > header,
   .meeting-result-work > header {
     align-items: flex-start;
     flex-direction: column;
   }
-  .meeting-work-item {
+  .meeting-work-item,
+  .meeting-attached-note {
     grid-template-columns: 1fr;
     align-items: start;
   }

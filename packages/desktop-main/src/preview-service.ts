@@ -109,6 +109,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "meeting.editWorkItem",
   "meeting.correctWorkItemResponsibility",
   "meeting.addWorkItem",
+  "meeting.detachNote",
   "project.operationalOverview",
   "organization.operationalOverview",
   "task.create",

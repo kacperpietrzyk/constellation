@@ -13,8 +13,14 @@ import { createPortal } from "react-dom";
 
 import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
 import { CalendarConsentDialog } from "./components/CalendarConsentDialog.js";
+import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel, formatWeekdayTime } from "./i18n.js";
+import { countLabel, formatDate, formatWeekdayTime } from "./i18n.js";
+import {
+  attachedNoteAuthorship,
+  attachedNotesFor,
+  type MeetingBacklink,
+} from "./meetings/attached-notes.js";
 
 type MeetingState =
   | { readonly kind: "loading" }
@@ -35,6 +41,9 @@ type MeetingWorkItem = CompletedMeeting["workItems"][number];
 
 const staleRefreshNotice =
   "Could not refresh meetings. Showing the last safe state.";
+
+// A focus target that is not a document id and can never collide with one.
+const REATTACH_FOCUS = "\u0000reattach";
 
 const healthLabel = (meeting: CompletedMeeting) => {
   switch (meeting.triage) {
@@ -192,6 +201,25 @@ export const MeetingsSurface = ({
     "task" | "waiting" | "decision" | "note" | "follow_up"
   >("task");
   const [newItemTitle, setNewItemTitle] = useState("");
+  // What points at the selected meeting, read once per selection. Keyed by
+  // meeting id so a slower read for a meeting the reader has already left
+  // cannot paint its notes under a different heading.
+  const [backlinks, setBacklinks] = useState<{
+    readonly meetingId: string;
+    readonly items: readonly MeetingBacklink[];
+  }>();
+  // The note the reader has just taken off, kept only while they stay on this
+  // meeting. It is NOT the list showing a detached note again — the list no
+  // longer holds it — it is the reversal of the action they just took, put
+  // where their hands already are and where the focus goes.
+  const [justDetached, setJustDetached] = useState<MeetingBacklink>();
+  // Where the focus must land once the list has been re-rendered without the
+  // row the control lived on. Holding the intent rather than calling `focus()`
+  // straight away is what makes it survive the refetch: the element the reader
+  // pressed is gone by the time React commits the new list.
+  const detachRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const reattachRef = useRef<HTMLButtonElement | null>(null);
+  const pendingFocusRef = useRef<string | undefined>(undefined);
   // Routing destinations are read lazily for the selected meeting's Space, so
   // an unrouted meeting never pays for them and the Jamie plane stays first.
   const [routingOptions, setRoutingOptions] = useState<{
@@ -247,7 +275,14 @@ export const MeetingsSurface = ({
           queryName,
           queryId: crypto.randomUUID(),
           workspaceId: meeting.workspaceId,
-          correlationId: crypto.randomUUID(),
+          // A LIVE DEFECT ON `main`, found by writing the read beside it: this
+          // envelope carried `correlationId` — which a QUERY envelope does not
+          // have — and omitted the required `consistency`, so
+          // `QueryEnvelopeSchema.parse` threw inside the async `read`, the
+          // rejection landed in the `catch` below, and the Project and Client
+          // selects have been permanently empty. `meeting.route` was
+          // unreachable from the interface, with nothing red anywhere.
+          consistency: "local_projection",
           parameters: { spaceId: meeting.spaceId },
         }),
       );
@@ -280,11 +315,75 @@ export const MeetingsSurface = ({
       // reports that it has nothing to offer rather than failing the view.
       .catch(() => setRoutingOptions({ projects: [], organizations: [] }));
   };
+  /* DECISION #32's read, and it needed no backend: `document.backlinks`
+   * already answers "which notes point at this meeting" and this screen has
+   * never asked it. Read per selected meeting rather than for the whole list —
+   * a backlink read is one query per meeting and the collection shows many.
+   */
+  const loadAttachedNotes = (meeting: ImportedMeeting) => {
+    void client
+      .runQuery(
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "document.backlinks",
+          queryId: crypto.randomUUID(),
+          workspaceId: meeting.workspaceId,
+          consistency: "local_projection",
+          parameters: { targetKind: "meeting", targetId: meeting.id },
+        }),
+      )
+      .then((response) => {
+        const projection =
+          response.kind === "contract_rejected" ||
+          response.result.outcome !== "success"
+            ? undefined
+            : response.result.projection;
+        setBacklinks({
+          meetingId: meeting.id,
+          items:
+            projection?.kind === "document.backlinks" ? projection.items : [],
+        });
+      })
+      // A meeting whose notes cannot be read is still a readable meeting. The
+      // section says it has nothing rather than the screen failing.
+      .catch(() => setBacklinks({ meetingId: meeting.id, items: [] }));
+  };
+  const setNoteAttachment = async (
+    meeting: ImportedMeeting,
+    note: MeetingBacklink,
+    detached: boolean,
+  ): Promise<boolean> => {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "meeting.detachNote",
+        commandId: crypto.randomUUID(),
+        workspaceId: meeting.workspaceId,
+        // The meeting version rides in the key, exactly as the work-item
+        // corrections do it: a detach repeated after an undo must not collide
+        // with the first attempt's fingerprint and become unrepeatable.
+        idempotencyKey: `meeting.detachNote:${meeting.id}:${note.documentId}:${detached}:v${meeting.version}`,
+        expectedVersions: { [meeting.id]: meeting.version },
+        correlationId: crypto.randomUUID(),
+        payload: {
+          meetingId: meeting.id,
+          documentId: note.documentId,
+          detached,
+        },
+      }),
+    );
+    return (
+      response.kind !== "contract_rejected" &&
+      response.outcome.outcome === "success"
+    );
+  };
   const selectResult = (index: number) => {
     if (state.kind !== "ready") return;
     const meeting = state.data.completed[index];
     if (meeting === undefined) return;
     loadRoutingOptions(meeting);
+    loadAttachedNotes(meeting);
+    setJustDetached(undefined);
     setSelectedMeetingId(meeting.id);
     onMeetingSelected(meeting.id);
     setVisibleTranscriptMeetingId(undefined);
@@ -333,6 +432,19 @@ export const MeetingsSurface = ({
   };
   useEffect(load, [client]);
   useEffect(loadJamieStatus, [client]);
+  // The row a control lived on is gone by the time this runs, so the intent is
+  // recorded at the press and consumed here, once the new list is committed.
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (pending === undefined) return;
+    const target =
+      pending === REATTACH_FOCUS
+        ? reattachRef.current
+        : (detachRefs.current.get(pending) ?? null);
+    if (target === null) return;
+    pendingFocusRef.current = undefined;
+    target.focus();
+  }, [backlinks, justDetached]);
   // Collection rows expose a bounded preview to both layout and assistive
   // technology. The complete source remains available only in the selected
   // inspector reading view.
@@ -359,6 +471,8 @@ export const MeetingsSurface = ({
     );
     if (meeting === undefined) return;
     loadRoutingOptions(meeting);
+    loadAttachedNotes(meeting);
+    setJustDetached(undefined);
     setSelectedMeetingId(meeting.id);
     onMeetingSelected(meeting.id);
     onInspectorOpen();
@@ -412,6 +526,14 @@ export const MeetingsSurface = ({
   const selectedMeeting = surface.completed.find(
     (meeting) => meeting.id === selectedMeetingId,
   );
+  // The read is the author's fact; the subtraction is the reader's. Both are
+  // spelled in `attachedNotesFor`, which is what the assertion measures.
+  const attachedNotes =
+    selectedMeeting === undefined ||
+    backlinks === undefined ||
+    backlinks.meetingId !== selectedMeeting.id
+      ? []
+      : attachedNotesFor(selectedMeeting, backlinks.items);
   const calendarCapability = (
     <div
       className={`calendar-capability calendar-capability--${surface.capability.availability}`}
@@ -1250,6 +1372,130 @@ export const MeetingsSurface = ({
                       )}
                     </section>
 
+                    {/* DECISION #32. No acceptance gate anywhere in here: the
+                        notes are listed because they already point at this
+                        meeting, and the only operation offered is removal. */}
+                    <section
+                      className="meeting-result-notes"
+                      aria-labelledby="meeting-result-notes-title"
+                    >
+                      <header>
+                        <div>
+                          <h4 id="meeting-result-notes-title">
+                            Notes on this meeting
+                          </h4>
+                          <p>Already attached. Nothing waits to be accepted.</p>
+                        </div>
+                        <TopicHelp topic="attached-notes" />
+                      </header>
+                      {attachedNotes.length === 0 ? (
+                        <p className="meeting-result-empty-copy">
+                          No note points at this meeting yet. A note reaches it
+                          by naming it while it is being written.
+                        </p>
+                      ) : (
+                        <ul className="meeting-attached-notes">
+                          {attachedNotes.map((note) => (
+                            <li
+                              className="meeting-attached-note"
+                              key={note.documentId}
+                            >
+                              <div className="meeting-work-item-copy">
+                                <span>
+                                  {note.author.authoredByAgent
+                                    ? "Agent"
+                                    : "Note"}
+                                </span>
+                                <strong>{note.title}</strong>
+                                <small>
+                                  {attachedNoteAuthorship(
+                                    note,
+                                    formatDate(note.updatedAt),
+                                  )}
+                                </small>
+                              </div>
+                              <div className="meeting-item-actions">
+                                <button
+                                  className="secondary-button"
+                                  data-meeting-detach={note.documentId}
+                                  disabled={busyItemId !== undefined}
+                                  ref={(element) => {
+                                    detachRefs.current.set(
+                                      note.documentId,
+                                      element,
+                                    );
+                                  }}
+                                  onClick={() => {
+                                    setBusyItemId(note.documentId);
+                                    void setNoteAttachment(
+                                      selectedMeeting,
+                                      note,
+                                      true,
+                                    ).then((changed) => {
+                                      setBusyItemId(undefined);
+                                      if (!changed) {
+                                        setNotice(
+                                          "Could not detach the note. The result may have changed since — refresh and try again.",
+                                        );
+                                        return;
+                                      }
+                                      setJustDetached(note);
+                                      // Decided at the press, consumed after
+                                      // the commit: the row this button lives
+                                      // on is gone by then, and the reversal
+                                      // is where the hands already are.
+                                      pendingFocusRef.current = REATTACH_FOCUS;
+                                      load();
+                                    });
+                                  }}
+                                >
+                                  Detach
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {justDetached !== undefined && (
+                        <p
+                          className="meeting-result-empty-copy"
+                          data-meeting-detached={justDetached.documentId}
+                        >
+                          Detached “{justDetached.title}”. The note itself is
+                          unchanged.{" "}
+                          <button
+                            className="quiet-button"
+                            data-meeting-reattach={justDetached.documentId}
+                            disabled={busyItemId !== undefined}
+                            ref={reattachRef}
+                            type="button"
+                            onClick={() => {
+                              setBusyItemId(justDetached.documentId);
+                              void setNoteAttachment(
+                                selectedMeeting,
+                                justDetached,
+                                false,
+                              ).then((changed) => {
+                                setBusyItemId(undefined);
+                                if (!changed) {
+                                  setNotice(
+                                    "Could not put the note back. The result may have changed since — refresh and try again.",
+                                  );
+                                  return;
+                                }
+                                pendingFocusRef.current =
+                                  justDetached.documentId;
+                                setJustDetached(undefined);
+                                load();
+                              });
+                            }}
+                          >
+                            Put it back
+                          </button>
+                        </p>
+                      )}
+                    </section>
+
                     {newItemMeetingId === selectedMeeting.id ? (
                       <form
                         className="meeting-add-item"
@@ -1374,7 +1620,14 @@ export const MeetingsSurface = ({
                   key={`${event.calendarExternalId}:${event.eventExternalId}`}
                 >
                   <div className="meeting-time">
-                    <strong>{formatWeekdayTime(event.startsAt)}</strong>
+                    {/* An instant, marked up as one. It was a bare `<strong>`,
+                        which is the only timestamp on this screen that a
+                        reader's software could not recognise as a time. */}
+                    <strong>
+                      <time dateTime={event.startsAt}>
+                        {formatWeekdayTime(event.startsAt)}
+                      </time>
+                    </strong>
                     <span>
                       {event.isAllDay
                         ? "All day"
@@ -1424,11 +1677,6 @@ export const MeetingsSurface = ({
                     disabled={
                       !surface.capability.canWriteOwnedBlocks || event.isAllDay
                     }
-                    title={
-                      !surface.capability.canWriteOwnedBlocks
-                        ? "The provider does not allow writing owned blocks."
-                        : undefined
-                    }
                     onClick={() => {
                       const startsAt = new Date(
                         Date.parse(event.startsAt) - 30 * 60_000,
@@ -1457,6 +1705,16 @@ export const MeetingsSurface = ({
                   >
                     Preview block
                   </button>
+                  {/* #35 forbids a `title=` as the only carrier of an
+                      explanation: it does not exist for a keyboard, for touch,
+                      or for anybody not hovering, and the reason a control is
+                      dead is exactly what those readers need. This sentence
+                      used to be one. */}
+                  {!surface.capability.canWriteOwnedBlocks && (
+                    <small className="meeting-block-unavailable">
+                      This calendar does not allow writing blocks.
+                    </small>
+                  )}
                 </article>
               ))
             )}

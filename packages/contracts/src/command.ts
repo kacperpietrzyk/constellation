@@ -1998,6 +1998,39 @@ export const MeetingCorrectWorkItemResponsibilityCommandSchema =
       .strict(),
   }).strict();
 
+/* DECISION #32 — THE AGENT ATTACHES BY ITSELF, THE HUMAN DETACHES.
+ *
+ * There is no acceptance gate: an agent's note hangs off the meeting the
+ * moment it carries a reference to it, and the only operation the screen
+ * offers is taking it off. This command is that operation, and it is a real
+ * suppression edge rather than an edit to the note's body — see
+ * `ImportedMeetingSchema.detachedNoteIds` for the two reasons, of which the
+ * load-bearing one is that a body edit would make detaching require EDIT
+ * access to somebody else's note.
+ *
+ * ONE COMMAND CARRIES BOTH DIRECTIONS, and `meeting.correctWorkItemResponsibility`
+ * beside it is the precedent: `name: string | null` sets or clears one fact in
+ * one command rather than in two that can drift. `detached` is that fact here.
+ * Undo through the journal restores the prior value either way; the boolean is
+ * what makes an immediate "put it back" reachable from the screen without the
+ * activity timeline.
+ *
+ * `expectedVersions` carries the MEETING's version alone. The note is not
+ * changed by this command, so its version is not a precondition of it — two
+ * readers detaching two different notes from one meeting conflict, which is
+ * correct, and a note being edited while it is detached does not.
+ */
+export const MeetingDetachNoteCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("meeting.detachNote"),
+  payload: z
+    .object({
+      meetingId: StrategicRecordIdSchema,
+      documentId: DocumentIdSchema,
+      detached: z.boolean(),
+    })
+    .strict(),
+}).strict();
+
 export const MeetingAddWorkItemCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("meeting.addWorkItem"),
   payload: z
@@ -2711,6 +2744,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   MeetingEditWorkItemCommandSchema,
   MeetingCorrectWorkItemResponsibilityCommandSchema,
   MeetingAddWorkItemCommandSchema,
+  MeetingDetachNoteCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,

@@ -53,6 +53,7 @@ export const CompensationKindSchema = z.enum([
   "meeting.restore_routing",
   "meeting.restore_work_item",
   "meeting.restore_participant_links",
+  "meeting.restore_note_attachment",
   "task.restore_operational_state",
   "work_link.restore_state",
   "savedView.restore_definition",

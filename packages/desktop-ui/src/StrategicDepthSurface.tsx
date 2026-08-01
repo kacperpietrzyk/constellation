@@ -33,7 +33,7 @@ import {
   type OrganizationReading,
   type SignalKey,
 } from "./crm/organization-reading.js";
-import { CrmHelp } from "./crm/CrmHelp.js";
+import { TopicHelp } from "./help/TopicHelp.js";
 import { Icon } from "./components/Icon.js";
 import {
   countSentence,
@@ -867,7 +867,7 @@ export const StrategicDepthSurface = ({
             the view bar, which both layouts carry, beside the reading of the
             whole list. Outside the live region, so it is not re-announced with
             every filter press. */}
-        <CrmHelp topic="relationship-reading" />
+        <TopicHelp topic="relationship-reading" />
       </div>
       {allRows.length === 0 ? (
         <section className={organizationStyles.emptyState} role="status">

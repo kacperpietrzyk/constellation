@@ -82,6 +82,7 @@ const context = (): ExecutionContext =>
       "opportunity.linkOutcomes",
       "decision.create",
       "meeting.upsertImported",
+      "meeting.detachNote",
       "relationship.workspace",
       "task.create",
       "task.updateDetails",
@@ -5409,6 +5410,205 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(removed.kind, "query_result");
     if (removed.kind !== "query_result") return;
     assert.equal(removed.result.outcome, "rejected");
+  });
+
+  /* DECISION #32 IN THE KERNEL — THE READER SUPPRESSES, AND THE NOTE IS NEVER
+   * TOUCHED.
+   *
+   * Three properties, and the second is the one the ruling turns on:
+   *
+   *   1. `document.backlinks` names the note's AUTHOR, and says when that
+   *      author is an agent. #32 removed the acceptance gate and left visible
+   *      authorship in its place, so a projection without it cannot carry the
+   *      decision.
+   *   2. DETACHING NEEDS NO WRITE ON THE NOTE. Proved twice over, because
+   *      either half alone is weak: the caller's grant carries NO document
+   *      write capability at all, and the note's own version does not move.
+   *      Had detach been "remove the reference from the body" — the cheaper
+   *      shape recon offered — both halves would fail, which is precisely why
+   *      the ruling chose a suppression edge.
+   *   3. The compensation restores the prior value rather than the opposite of
+   *      the current one, so undoing a re-attach puts the suppression back.
+   */
+  it("detaches a note from a meeting without any write on the note, and undoes it", () => {
+    const harness = setup();
+    const meetingId = requestId();
+    const documentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("detach-document"),
+          commandName: "document.create",
+          payload: {
+            documentId,
+            spaceId: ids.rootSpace,
+            title: "What the room agreed about the rollout",
+            role: "note",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const noteVersion = () =>
+      harness.store.snapshot().documents?.find((doc) => doc.id === documentId)
+        ?.version;
+    const versionBefore = noteVersion();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("detach-meeting"),
+          commandName: "meeting.upsertImported",
+          payload: {
+            meeting: {
+              id: meetingId,
+              workspaceId: ids.workspace,
+              spaceId: ids.rootSpace,
+              connectionId: "jamie-detach",
+              externalMeetingId: "meeting-detach",
+              title: "Northstar delivery review",
+              startedAt: "2026-07-20T09:00:00.000Z",
+              participants: [],
+              workItems: [],
+              contentHash: "c".repeat(64),
+              triage: "ready",
+              missingComponents: [],
+              version: 1,
+              updatedAt: "2026-07-20T10:00:00.000Z",
+            },
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    harness.store.replaceDocumentEntityLinks(documentId as never, [
+      {
+        workspaceId: ids.workspace as never,
+        spaceId: ids.rootSpace as never,
+        documentId: documentId as never,
+        targetKind: "meeting",
+        targetId: meetingId,
+        updatedAt: "2026-07-21T20:00:00.000Z",
+      },
+    ]);
+    const backlinks = () => {
+      const response = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "document.backlinks",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { targetKind: "meeting", targetId: meetingId },
+      });
+      if (
+        response.kind !== "query_result" ||
+        response.result.outcome !== "success" ||
+        response.result.projection.kind !== "document.backlinks"
+      )
+        assert.fail("Expected the meeting's backlinks.");
+      return response.result.projection.items;
+    };
+    // 1. Authorship reaches the reader, and the human owner is not an agent.
+    assert.equal(backlinks().length, 1);
+    assert.equal(backlinks()[0]?.author.principalId, ids.principal);
+    assert.equal(backlinks()[0]?.author.authoredByAgent, false);
+    assert.ok((backlinks()[0]?.author.displayName ?? "").length > 0);
+
+    // 2. A grant that cannot write a document at all. `document.create`
+    //    succeeded above under the full context; under this one it is refused,
+    //    and the detach beside it still applies.
+    const readerContext = ExecutionContextSchema.parse({
+      ...context(),
+      capabilityScope: context().capabilityScope.filter(
+        (capability) =>
+          capability !== "document.create" && capability !== "document.remove",
+      ),
+    });
+    harness.authorization.register(readerContext);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(readerContext, {
+          ...metadata("detach-refused-write"),
+          commandName: "document.create",
+          payload: {
+            documentId: requestId(),
+            spaceId: ids.rootSpace,
+            title: "A note this grant may not write",
+            role: "note",
+          },
+        }),
+      ).diagnosticCode,
+      "authorization.denied",
+    );
+    const meetingVersion = () =>
+      harness.store
+        .snapshot()
+        .strategicRecords?.find((record) => record.id === meetingId)?.version ??
+      0;
+    const detach = {
+      ...metadata("detach-note", { [meetingId]: meetingVersion() }),
+      commandName: "meeting.detachNote" as const,
+      payload: { meetingId, documentId, detached: true },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(readerContext, detach)).outcome,
+      "success",
+    );
+    // The note did not move. A body edit would have bumped it.
+    assert.equal(noteVersion(), versionBefore);
+    // The suppression is a fact ON THE MEETING, and the note keeps its own
+    // reference: `document.backlinks` still answers with it, because what the
+    // note is about is not what belongs on this meeting.
+    assert.equal(backlinks().length, 1);
+    const detachedIds = () => {
+      const record = harness.store
+        .snapshot()
+        .strategicRecords?.find((candidate) => candidate.id === meetingId);
+      return record?.kind === "meeting"
+        ? (record.meeting.detachedNoteIds ?? [])
+        : undefined;
+    };
+    assert.deepEqual(detachedIds(), [documentId]);
+
+    // Repeating it is refused rather than bumping a version for nothing.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(readerContext, {
+          ...metadata("detach-note-again", { [meetingId]: meetingVersion() }),
+          commandName: "meeting.detachNote",
+          payload: { meetingId, documentId, detached: true },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+
+    // 3. Undo, and it restores the PRIOR value.
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("detach-undo-preview", {}),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: detach.commandId },
+      }),
+    );
+    if (
+      preview.outcome !== "preview" ||
+      preview.projection.kind !== "undo.previewed"
+    )
+      assert.fail("Expected a detach undo preview");
+    assert.equal(
+      preview.projection.compensationKind,
+      "meeting.restore_note_attachment",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("detach-undo", preview.projection.requiredVersions),
+          commandName: "command.undo",
+          payload: { targetCommandId: detach.commandId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.deepEqual(detachedIds(), []);
   });
 
   it("compensates task.create so a Task an agent created can be taken back", () => {

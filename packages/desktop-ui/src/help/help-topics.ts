@@ -1,4 +1,4 @@
-/* HELP ON DEMAND FOR THE CRM SCREENS (#35).
+/* HELP ON DEMAND (#35) — THE 180-CHARACTER TOPICS, FOR EVERY SCREEN.
  *
  * A topic hangs on ONE thing a reader can point at, and it is the SECOND
  * resort: every anchor below already says what it is in visible text, and the
@@ -8,25 +8,35 @@
  * dialog splits a topic into `explanation` + `boundary`, each with a ≥80
  * character floor and no ceiling — about 215-280 characters as the reader sees
  * them. #35 caps a topic at 180 characters, so the two shapes cannot share an
- * array. New CRM topics are therefore ONE paragraph of at most 180 characters,
+ * array. Topics here are therefore ONE paragraph of at most 180 characters,
  * asserted in `test/concept-help.test.ts` under a name that says whose cap it
  * is. The six shipped concept topics are knowingly left alone: retrofitting
- * them is real work and it is not this lot's.
+ * them is real work and it is not this wave's.
+ *
+ * THIS ARRAY WAS CALLED `helpTopics` AND LIVED IN `src/crm/`, and the name
+ * was renamed rather than copied the moment a second family of screens needed
+ * it. A second array with the same contract is the restated-shape defect this
+ * repo has already met in three waves; keeping the CRM name over a Meetings
+ * topic would instead have made the cap assertion's own name — "the six
+ * shipped concept topics are out of scope" — say CRM about something that is
+ * not CRM, and an assertion whose name lies is the other failure this wave
+ * keeps finding.
  *
  * The `question` is the trigger's own visible label, so the button always has
  * an accessible name and the name always matches the panel it opens.
  */
 
-export type CrmHelpTopicId =
+export type HelpTopicId =
   | "price-basis"
   | "stage-sums"
   | "unconfigured-stage"
   | "relationship-reading"
   | "lead-time"
-  | "amendment";
+  | "amendment"
+  | "attached-notes";
 
-export type CrmHelpTopic = {
-  readonly id: CrmHelpTopicId;
+export type HelpTopic = {
+  readonly id: HelpTopicId;
   /** What the topic is called, above the answer. */
   readonly term: string;
   /** The trigger's label. A question, because that is what a reader has. */
@@ -35,7 +45,7 @@ export type CrmHelpTopic = {
   readonly answer: string;
 };
 
-export const crmHelpTopics: readonly CrmHelpTopic[] = [
+export const helpTopics: readonly HelpTopic[] = [
   {
     id: "price-basis",
     term: "Derived and confirmed prices",
@@ -72,6 +82,15 @@ export const crmHelpTopics: readonly CrmHelpTopic[] = [
       "A lead time is the notice a contract needs before it expires. The screen is organised by the day that notice opens, because that is when the work starts.",
   },
   {
+    // #32. The one thing the row cannot say for itself: what Detach costs.
+    // A reader who thinks it edits the agent's note will not press it.
+    id: "attached-notes",
+    term: "Attached notes",
+    question: "What does Detach do?",
+    answer:
+      "A note is here because it names this meeting. Detach takes it off this meeting only: the note keeps its own text, and every other place it appears is untouched.",
+  },
+  {
     id: "amendment",
     term: "Amendment",
     question: "What does this create?",
@@ -80,5 +99,5 @@ export const crmHelpTopics: readonly CrmHelpTopic[] = [
   },
 ];
 
-export const crmHelpTopic = (id: CrmHelpTopicId): CrmHelpTopic | undefined =>
-  crmHelpTopics.find((topic) => topic.id === id);
+export const helpTopic = (id: HelpTopicId): HelpTopic | undefined =>
+  helpTopics.find((topic) => topic.id === id);
