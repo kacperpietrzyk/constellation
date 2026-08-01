@@ -564,6 +564,25 @@ export const SettingsSurface = ({
         });
         return;
       }
+      if (result.outcome === "would_overwrite") {
+        setNotesExportMessage({
+          tone: "alert",
+          text:
+            `${countLabel(result.count, "file")} in ${result.directoryLabel} ` +
+            `would be replaced, so nothing was written. Choose an empty folder.`,
+        });
+        return;
+      }
+      if (result.outcome === "partial") {
+        setNotesExportMessage({
+          tone: "alert",
+          text:
+            `Stopped after ${countLabel(result.written.notes, "note")} and ` +
+            `${countLabel(result.written.attachments, "picture")} in ${result.directoryLabel}. ` +
+            `Those files are on disk; your notes are unchanged.`,
+        });
+        return;
+      }
       if (result.outcome !== "success") {
         setNotesExportMessage({
           tone: "alert",

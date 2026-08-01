@@ -2747,20 +2747,44 @@ const startProductionDesktop = async (): Promise<void> => {
     const root = chosen.filePaths[0];
     if (chosen.canceled || root === undefined)
       return { outcome: "cancelled" } as const;
+    const resolvedRoot = path.resolve(root);
+    const directoryLabel = path.basename(resolvedRoot);
+    const target = (relative: string): string => {
+      const absolute = path.resolve(resolvedRoot, ...relative.split("/"));
+      // Defence in depth. Every name is sanitised where it is built, and this
+      // refuses to write outside the chosen folder anyway — a title is the one
+      // part of a path a person controls with no rules at all.
+      if (
+        absolute !== resolvedRoot &&
+        !absolute.startsWith(resolvedRoot + path.sep)
+      )
+        throw new Error("MARKDOWN_EXPORT_PATH_ESCAPED");
+      return absolute;
+    };
+
+    // LOOK BEFORE WRITING. `showOpenDialog` has no overwrite confirmation and
+    // `writeFileSync` truncates, and the gesture this export invites is
+    // "point it at my Obsidian vault" — so an unchecked run replaces somebody
+    // else's files with no warning, no count and no undo. Silent loss is the
+    // one failure mode this feature cannot have, and that has to hold for the
+    // files it finds as well as the ones it writes.
+    let collisions = 0;
     try {
-      const resolvedRoot = path.resolve(root);
-      const target = (relative: string): string => {
-        const absolute = path.resolve(resolvedRoot, ...relative.split("/"));
-        // Defence in depth. Every name is sanitised where it is built, and
-        // this refuses to write outside the chosen folder anyway — a title is
-        // the one part of a path a person controls with no rules at all.
-        if (
-          absolute !== resolvedRoot &&
-          !absolute.startsWith(resolvedRoot + path.sep)
-        )
-          throw new Error("MARKDOWN_EXPORT_PATH_ESCAPED");
-        return absolute;
-      };
+      for (const file of [...built.notes, ...built.attachments])
+        if (existsSync(target(file.path))) collisions += 1;
+    } catch {
+      return { outcome: "failure" } as const;
+    }
+    if (collisions > 0)
+      return {
+        outcome: "would_overwrite",
+        directoryLabel,
+        count: collisions,
+      } as const;
+
+    let notesWritten = 0;
+    let attachmentsWritten = 0;
+    try {
       for (const note of built.notes) {
         const absolute = target(note.path);
         mkdirSync(path.dirname(absolute), { recursive: true });
@@ -2768,20 +2792,32 @@ const startProductionDesktop = async (): Promise<void> => {
           encoding: "utf8",
           mode: 0o600,
         });
+        notesWritten += 1;
       }
       for (const attachment of built.attachments) {
         const absolute = target(attachment.path);
         mkdirSync(path.dirname(absolute), { recursive: true });
         writeFileSync(absolute, attachment.bytes, { mode: 0o600 });
+        attachmentsWritten += 1;
       }
-      return {
-        outcome: "success",
-        directoryLabel: path.basename(resolvedRoot),
-        counts: built.counts,
-      } as const;
     } catch {
-      return { outcome: "failure" } as const;
+      // Files are already on disk. "Nothing was written" would be true of the
+      // notes and false of the folder, and the person would find out by
+      // opening it. An unbounded folder tree (#30) times an 80-character
+      // segment crosses Windows's path limit and lands here.
+      return notesWritten + attachmentsWritten === 0
+        ? ({ outcome: "failure" } as const)
+        : ({
+            outcome: "partial",
+            directoryLabel,
+            written: { notes: notesWritten, attachments: attachmentsWritten },
+          } as const);
     }
+    return {
+      outcome: "success",
+      directoryLabel,
+      counts: built.counts,
+    } as const;
   });
   ipcMain.handle(DESKTOP_CHANNELS.checkForRelease, (event) => {
     assertTrustedSender(event);

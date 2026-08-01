@@ -340,6 +340,34 @@ export type NotesMarkdownExportResult =
         readonly missingAttachments: number;
       };
     }
+  | {
+      /**
+       * The chosen folder ALREADY holds files this export would replace, and
+       * nothing was written. The intended gesture is "point it at my vault",
+       * and a truncating write there destroys somebody's writing with no
+       * warning and no undo — so the collision is counted first and the export
+       * refuses. A person who does mean to replace them empties the folder,
+       * which is a thing they can decide; an overwrite that already happened
+       * is not.
+       */
+      readonly outcome: "would_overwrite";
+      readonly directoryLabel: string;
+      readonly count: number;
+    }
+  | {
+      /**
+       * Writing stopped part-way. Reachable without exotic input: unbounded
+       * folder nesting (#30) times an 80-character segment crosses Windows's
+       * path limit and throws mid-loop. Reporting "nothing was written" would
+       * be true of the notes and false of the folder.
+       */
+      readonly outcome: "partial";
+      readonly directoryLabel: string;
+      readonly written: {
+        readonly notes: number;
+        readonly attachments: number;
+      };
+    }
   | { readonly outcome: "cancelled" | "failure" };
 
 export interface ConstellationRendererClient {

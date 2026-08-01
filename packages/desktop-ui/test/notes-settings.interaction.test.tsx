@@ -42,8 +42,11 @@ afterEach(() => {
 
 const mountSettings = async (
   result: {
-    readonly outcome: "success" | "cancelled" | "failure";
+    readonly outcome:
+      "success" | "cancelled" | "failure" | "would_overwrite" | "partial";
     readonly directoryLabel?: string;
+    readonly count?: number;
+    readonly written?: Readonly<Record<string, number>>;
     readonly counts?: Readonly<Record<string, number>>;
   } = {
     outcome: "success",
@@ -174,6 +177,46 @@ test("what did NOT come out is reported in the same breath as what did", async (
   assert.ok(alert, "an export that lost two notes reported no loss");
   assert.match(alert.textContent ?? "", /2 could not be read/u);
   assert.match(alert.textContent ?? "", /1 links? point at records/u);
+});
+
+test("an export that would replace existing files writes nothing and counts them", async () => {
+  // The gesture this invites is "point it at my Obsidian vault", and the save
+  // dialog offers no overwrite confirmation while the write truncates. An
+  // export that destroyed somebody's existing files with no warning would be
+  // the same silent loss this whole feature exists to refuse.
+  await mountSettings({
+    outcome: "would_overwrite",
+    directoryLabel: "Vault",
+    count: 4,
+  });
+  await act(async () => {
+    exportButton().click();
+  });
+  const alert = container.querySelector<HTMLElement>(
+    '[data-settings-category="notes"] [role="alert"]',
+  );
+  assert.ok(alert, "an export that would overwrite four files said nothing");
+  assert.match(alert.textContent ?? "", /4 files/u);
+  assert.match(alert.textContent ?? "", /nothing was written/u);
+});
+
+test("an export that stopped part-way says what is already on disk", async () => {
+  // "Nothing was written" would be true of the notes and false of the folder,
+  // and the person would find out by opening it.
+  await mountSettings({
+    outcome: "partial",
+    directoryLabel: "Vault",
+    written: { notes: 12, attachments: 1 },
+  });
+  await act(async () => {
+    exportButton().click();
+  });
+  const alert = container.querySelector<HTMLElement>(
+    '[data-settings-category="notes"] [role="alert"]',
+  );
+  assert.ok(alert, "a half-finished export reported nothing");
+  assert.match(alert.textContent ?? "", /Stopped after 12 notes/u);
+  assert.match(alert.textContent ?? "", /on disk/u);
 });
 
 test("a cancelled export says nothing was written", async () => {

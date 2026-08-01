@@ -279,6 +279,16 @@ export const buildMarkdownExport = (
       spaces.length > 1
         ? uniqueName(markdownExportName(space.name), rootTaken)
         : "";
+    // Reserved AGAIN inside this Space's own root, not only at the top: with
+    // more than one Space the unfiled notes go to `<Space>/Unfiled`, and the
+    // top-level reservation never reaches that directory — so a real folder
+    // named `Unfiled` inside the Space would claim the same path and the two
+    // would merge into one indistinguishable directory.
+    if (spaceRoot !== "") {
+      const reserved = takenIn(spaceRoot);
+      reserved.add(UNFILED_DIRECTORY.toLowerCase());
+      reserved.add(ATTACHMENT_DIRECTORY.toLowerCase());
+    }
     const joined = (directory: string): string =>
       spaceRoot === "" ? directory : `${spaceRoot}/${directory}`;
     const foldersById = new Map(

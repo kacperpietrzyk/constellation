@@ -445,6 +445,45 @@ describe("the bulk markdown export", () => {
     assert.doesNotMatch(result.notes[0]!.contents, /Cennik/u);
   });
 
+  it("keeps Unfiled apart from a folder of that name inside a Space, too", () => {
+    // The top-level reservation does not reach `<Space>/Unfiled`, so without a
+    // second one the unfiled notes and a real folder called "Unfiled" merge
+    // into one directory nobody can tell apart afterwards.
+    const shared = {
+      folders: [{ id: uuid("10"), name: UNFILED_DIRECTORY }],
+      documents: [
+        {
+          id: uuid("20"),
+          title: "W folderze",
+          updatedAt: "2026-08-01T09:00:00.000Z",
+          folderId: uuid("10"),
+        },
+        {
+          id: uuid("21"),
+          title: "Bez folderu",
+          updatedAt: "2026-08-01T09:00:00.000Z",
+        },
+      ],
+    };
+    const result = plan({
+      spaces: [
+        space({ spaceId: uuid("a"), name: "Praca", ...shared }),
+        space({ spaceId: uuid("b"), name: "Prywatne" }),
+      ],
+      content: {
+        [uuid("20")]: [paragraph("A")],
+        [uuid("21")]: [paragraph("B")],
+      },
+    });
+    assert.deepEqual(
+      result.notes.map((note) => note.path),
+      [
+        `Praca/${UNFILED_DIRECTORY} (2)/W folderze.md`,
+        `Praca/${UNFILED_DIRECTORY}/Bez folderu.md`,
+      ],
+    );
+  });
+
   it("gives every Space its own directory only when there is more than one", () => {
     const one = space({
       spaceId: uuid("a"),
