@@ -1289,7 +1289,11 @@ kbd {
 .surface-header > * {
   min-width: 0;
 }
-.surface-header h1 {
+/* Historia wrzutek jest ODCZYTEM Biblioteki, a nie własnym celem, więc jej
+   nagłówek zjeżdża na `h2` pod `h1` powłoki. Wygląd zostaje ten sam: poziom
+   nagłówka niesie hierarchię dokumentu, nie rozmiar liter. */
+.surface-header h1,
+.surface-header h2 {
   margin: 0.42rem 0 0.3rem;
   font-size: var(--text-display);
   font-weight: 590;
@@ -4260,7 +4264,8 @@ kbd {
 .wave2-header {
   margin-bottom: var(--space-6);
 }
-.wave2-header h1 {
+.wave2-header h1,
+.wave2-header h2 {
   text-wrap: balance;
 }
 .reading-panel {
@@ -4797,7 +4802,7 @@ kbd {
   align-items: baseline;
   gap: var(--space-2);
 }
-.history-ledger > header h2 {
+.history-ledger > header h3 {
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 630;
@@ -6781,7 +6786,8 @@ kbd {
     height: 2.75rem;
     min-height: 2.75rem;
   }
-  .wave2-header h1 {
+  .wave2-header h1,
+  .wave2-header h2 {
     hyphens: auto;
     overflow-wrap: normal;
   }
@@ -6794,7 +6800,8 @@ kbd {
   }
 }
 @media (max-width: 30rem) {
-  .wave2-header h1 {
+  .wave2-header h1,
+  .wave2-header h2 {
     font-size: 1.75rem;
   }
 }

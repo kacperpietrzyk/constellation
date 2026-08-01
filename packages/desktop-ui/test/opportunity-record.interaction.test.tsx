@@ -87,6 +87,10 @@ const unstampedDealId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-0000000005b6",
 );
 
+// Dziesięć dni w milisekundach. Stoi osobno, żeby fixture i asercja czytały tę
+// samą liczbę, zamiast powtarzać ją w dwóch miejscach.
+const TEN_DAYS_IN_MILLISECONDS = 10 * 24 * 60 * 60 * 1_000;
+
 const base = {
   workspaceId,
   spaceId,
@@ -141,7 +145,13 @@ const deal = {
   qualification: QUALIFICATION,
   stage: "negotiation",
   // Ten days ago against a record created eighteen months ago. See `base`.
-  stageEnteredAt: "2026-07-21T09:00:00.000Z",
+  //
+  // Liczone OD ZEGARA, nie wpisane datą. Ekran czyta `new Date()`
+  // (`OpportunityRecordScreen.tsx:311`), więc wpisana data znaczy „dziesięć
+  // dni" wyłącznie w dniu, w którym ktoś ją wpisał: `2026-07-21` przechodziło
+  // 31 lipca i padało 1 sierpnia na `main`, bez żadnej zmiany w kodzie.
+  // Asercja mierzy CZAS, a nie zdarzenie, więc fixture musi iść za zegarem.
+  stageEnteredAt: new Date(Date.now() - TEN_DAYS_IN_MILLISECONDS).toISOString(),
   nextAction: LONG_NEXT_ACTION,
   evidenceSourceIds: [],
   offerIds: [],

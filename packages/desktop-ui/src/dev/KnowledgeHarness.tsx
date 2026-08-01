@@ -18,7 +18,8 @@ import {
 } from "@constellation/contracts";
 import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
 
-import { DocumentsSurface } from "../DocumentsSurface.js";
+import { LibraryShell } from "../library/LibraryShell.js";
+import type { LibraryReading } from "../client/shell-navigation.js";
 import { createScenarioClient } from "../client/scenario-client.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 
@@ -262,13 +263,11 @@ const snapshot: DesktopSnapshot = {
 export const KnowledgeHarness = () => {
   const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorKind, setInspectorKind] = useState<"document" | "source">(
-    "document",
-  );
+  const [inspectorKind, setInspectorKind] = useState<LibraryReading>("notes");
   return (
     <main className="meetings-harness-shell">
       <div className="meetings-harness-work">
-        <DocumentsSurface
+        <LibraryShell
           client={client}
           snapshot={snapshot}
           inspectorHost={inspectorHost}
@@ -279,6 +278,13 @@ export const KnowledgeHarness = () => {
           onEntityActivate={() => undefined}
           onReload={async () => undefined}
           onFailure={() => undefined}
+          captureHistory={{
+            selectedCaptureId: undefined,
+            busy: false,
+            onSelectCapture: () => undefined,
+            onUndo: () => undefined,
+            onDeleteVoiceAudio: () => undefined,
+          }}
         />
       </div>
       <aside
@@ -288,7 +294,7 @@ export const KnowledgeHarness = () => {
         <header className="inspector-header">
           <div>
             <span>Podgląd kontekstu</span>
-            <small>{inspectorKind === "source" ? "Źródło" : "Dokument"}</small>
+            <small>{inspectorKind === "sources" ? "Źródło" : "Dokument"}</small>
           </div>
           <button
             className="icon-button surface-inspector-close"

@@ -9,8 +9,6 @@ import {
 } from "react";
 
 import type {
-  CaptureId,
-  CommandId,
   PrincipalId,
   ProjectId,
   RelationId,
@@ -36,12 +34,8 @@ import { LazySurfaceBoundary } from "./SurfaceLifecycleStates.js";
 import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import {
-  countLabel,
-  formatDate,
-  formatDateTime,
-  recordKindLabels,
-} from "./i18n.js";
+import { InlineState, Mark } from "./components/InlineState.js";
+import { countLabel, formatDate, recordKindLabels } from "./i18n.js";
 
 // Areas and initiatives, which used to live on the work surface. Lazy for the
 // measured reason every panel on this screen is: Projects is an EAGER
@@ -52,10 +46,6 @@ const ProjectContextPanel = lazy(async () => ({
   default: (await import("./projects/ProjectContextPanel.js"))
     .ProjectContextPanel,
 }));
-
-const Mark = ({ kind }: { readonly kind: string }) => (
-  <span className={`record-mark mark-${kind}`} aria-hidden="true" />
-);
 
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
 
@@ -81,46 +71,6 @@ const SurfaceHeader = ({
     {action}
   </header>
 );
-
-// Tone separates a benign empty ("no open work this week") from a genuine
-// warning. Amber is reserved for warnings only (tokens.md), so the default is
-// neutral: a forgotten tone degrades to calm, never a false alarm.
-type InlineStateTone = "neutral" | "info" | "warning";
-
-const InlineState = ({
-  title,
-  detail,
-  action,
-  tone = "neutral",
-  headingLevel = "h3",
-}: {
-  readonly title: string;
-  readonly detail: string;
-  readonly action?: React.ReactNode;
-  readonly tone?: InlineStateTone;
-  readonly headingLevel?: "h2" | "h3";
-}) => {
-  const Heading = headingLevel;
-  return (
-    <div
-      className={`empty-state empty-state--${tone}`}
-      role={tone === "warning" ? "alert" : "status"}
-    >
-      <span className="empty-glyph">
-        <Mark
-          kind={
-            tone === "warning" ? "warning" : tone === "info" ? "info" : "empty"
-          }
-        />
-      </span>
-      <div>
-        <Heading>{title}</Heading>
-        <p>{detail}</p>
-      </div>
-      {action}
-    </div>
-  );
-};
 
 export const TasksSurface = ({
   snapshot,
@@ -965,205 +915,6 @@ export const ProjectsSurface = ({
           onOpenProject={onOpenProject}
           onSelectProject={onSelectProject}
         />
-      )}
-    </div>
-  );
-};
-
-export type HistoryCapture = DesktopSnapshot["captures"][number];
-
-const captureKindLabel = (capture: HistoryCapture): string =>
-  capture.original.kind === "text"
-    ? "Text"
-    : capture.original.kind === "url"
-      ? "Link"
-      : capture.original.kind === "screenshot"
-        ? "Screenshot"
-        : capture.original.kind === "managed_file"
-          ? "Managed file"
-          : capture.original.kind === "voice_note"
-            ? "Voice note"
-            : "File reference";
-
-const captureResultLabel = (capture: HistoryCapture): string =>
-  capture.processingState === "routed_as_task"
-    ? "Task created"
-    : capture.processingState === "routed_as_knowledge_source"
-      ? "Knowledge source created"
-      : capture.processingState === "needs_review"
-        ? "Needs a decision"
-        : capture.processingState === "awaiting_transcript"
-          ? "Waiting for the transcript"
-          : capture.processingState === "transcript_ready"
-            ? capture.audioState === "retained"
-              ? "Transcript ready · audio kept"
-              : capture.audioState === "deleted"
-                ? "Transcript ready · audio deleted"
-                : "Transcript ready · deleting audio"
-            : capture.processingState === "unclassified"
-              ? "Kept without a classification"
-              : "Waiting to be processed";
-
-const captureCustodyLabel = (capture: HistoryCapture): string =>
-  capture.original.kind === "managed_file" ||
-  capture.original.kind === "screenshot" ||
-  capture.original.kind === "voice_note"
-    ? `Encrypted copy · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("en-US")} KB · SHA-256 integrity`
-    : "Local state confirmed";
-
-export const CaptureHistoryDetail = ({
-  capture,
-  timezone,
-  undoCommandId,
-  busy,
-  onUndo,
-  onDeleteVoiceAudio,
-}: {
-  readonly capture: HistoryCapture;
-  readonly timezone: string;
-  readonly undoCommandId?: CommandId;
-  readonly busy: boolean;
-  readonly onUndo: (targetCommandId: CommandId) => void;
-  readonly onDeleteVoiceAudio: (captureId: CaptureId, version: number) => void;
-}) => (
-  <div className="inspector-body capture-history-detail">
-    <span className="record-status">
-      <i />
-      {captureResultLabel(capture)}
-    </span>
-    <h2>{capture.originalText}</h2>
-    <p className="record-summary">
-      {captureKindLabel(capture)} · saved{" "}
-      {formatDateTime(capture.capturedAt, timezone)}
-    </p>
-    <section className="inspector-section provenance-block">
-      <p className="section-label">Processing steps</p>
-      <ol className="processing-timeline">
-        <li className="done">
-          <i />
-          <div>
-            <strong>Original saved</strong>
-            <span>{captureCustodyLabel(capture)}</span>
-          </div>
-        </li>
-        <li className="current">
-          <i />
-          <div>
-            <strong>{captureResultLabel(capture)}</strong>
-            <span>
-              {capture.processingState === "transcript_ready"
-                ? capture.transcript.text
-                : capture.originalText}
-            </span>
-            {capture.processingState === "transcript_ready" && (
-              <small>
-                Written by {capture.transcript.writtenByKind} ·{" "}
-                {formatDateTime(capture.transcript.writtenAt, timezone)}
-                {capture.transcript.hostRunId
-                  ? " · run " + capture.transcript.hostRunId
-                  : ""}
-              </small>
-            )}
-          </div>
-        </li>
-      </ol>
-    </section>
-    <section className="inspector-section capture-history-actions">
-      <p className="section-label">Available actions</p>
-      <button
-        className="secondary-button"
-        disabled={undoCommandId === undefined}
-        title={
-          undoCommandId === undefined
-            ? "No reversible command for this Capture"
-            : undefined
-        }
-        onClick={() => undoCommandId && onUndo(undoCommandId)}
-      >
-        Preview undo
-      </button>
-      {capture.processingState === "transcript_ready" &&
-        capture.audioState === "retained" && (
-          <button
-            className="secondary-button"
-            disabled={busy}
-            onClick={() => onDeleteVoiceAudio(capture.id, capture.version)}
-          >
-            {busy ? "Deleting…" : "Delete the kept audio"}
-          </button>
-        )}
-    </section>
-  </div>
-);
-
-export const HistorySurface = ({
-  snapshot,
-  selectedCaptureId,
-  onSelectCapture,
-}: {
-  readonly snapshot: DesktopSnapshot;
-  readonly selectedCaptureId: CaptureId | undefined;
-  readonly onSelectCapture: (captureId: CaptureId) => void;
-}) => {
-  const captureNav = useListNavigation({
-    itemCount: snapshot.captures.length,
-    onOpen: (index) => {
-      const capture = snapshot.captures[index];
-      if (capture) onSelectCapture(capture.id);
-    },
-    onSelect: (index) => {
-      const capture = snapshot.captures[index];
-      if (capture) onSelectCapture(capture.id);
-    },
-  });
-  return (
-    <div className="surface-scroll history-surface">
-      <SurfaceHeader
-        kicker="Kept originals"
-        title="Capture history"
-        description="What was processed stays checkable, and reversible when versions match."
-      />
-      {snapshot.captures.length === 0 ? (
-        <InlineState
-          headingLevel="h2"
-          title="Capture history is empty"
-          detail="The first Quick Capture will appear here with what it became."
-        />
-      ) : (
-        <section className="history-ledger" aria-label="Kept captures">
-          <header>
-            <div>
-              <h2>Kept originals</h2>
-              <span>{countLabel(snapshot.captures.length, "capture")}</span>
-            </div>
-            <span>Select a row to see its steps</span>
-          </header>
-          <div className="history-list">
-            {snapshot.captures.map((capture, index) => (
-              <button
-                type="button"
-                className={`history-row${selectedCaptureId === capture.id ? " selected" : ""}`}
-                key={capture.id}
-                aria-pressed={selectedCaptureId === capture.id}
-                {...captureNav(index)}
-                onClick={() => onSelectCapture(capture.id)}
-              >
-                <Mark kind="capture" />
-                <span className="history-row-copy">
-                  <span>{captureKindLabel(capture)}</span>
-                  <strong>{capture.originalText}</strong>
-                  <small>{captureResultLabel(capture)}</small>
-                </span>
-                <time dateTime={capture.capturedAt}>
-                  {formatDateTime(
-                    capture.capturedAt,
-                    snapshot.bootstrap.workspace.timezone,
-                  )}
-                </time>
-              </button>
-            ))}
-          </div>
-        </section>
       )}
     </div>
   );

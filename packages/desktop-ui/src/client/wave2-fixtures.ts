@@ -133,7 +133,9 @@ const baseSearch: readonly SearchFixture[] = [
     kind: "Capture",
     title: "Check the renewal terms",
     detail: "Original · iPhone · 09:18",
-    surface: "history",
+    // Wrzutka otwiera się w Bibliotece, na odczycie Historii wrzutek: cel
+    // `history` wsiąkł w `library` w fali Knowledge.
+    surface: "library",
   },
 ] as const;
 
@@ -157,7 +159,7 @@ export const buildSearchFixtures = (
       capture.processingState === "routed_as_task"
         ? "Processed as a task"
         : "Awaiting a decision",
-    surface: "history" as const,
+    surface: "library" as const,
   })),
   ...baseSearch,
 ];

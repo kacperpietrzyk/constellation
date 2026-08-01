@@ -12,6 +12,19 @@ import {
 } from "./yjs-document-adapter.js";
 
 export const STRUCTURED_DOCUMENT_SCHEMA_VERSION = 1 as const;
+
+// Poziomy nagłówków, JEDNA lista dla walidatora i dla obu edytorów. Do fali D
+// walidator przyjmował `[1, 2, 3]`, a StarterKit oferował sześć poziomów wraz
+// ze skrótami `Mod-Alt-N` — więc notatka z h4 wyglądała poprawnie temu, kto ją
+// pisał, i była TRWALE NIECZYTELNA ORAZ NIEZAPISYWALNA dla każdego agenta:
+// `parseStructuredDocument` odrzucał ją w całości. Rozejście nie miało żadnego
+// strażnika i wyszło dopiero z ręcznego porównania obu schematów.
+//
+// Dlatego stała jest EKSPORTOWANA i wołana po nazwie w obu miejscach, a nie
+// przepisana z powrotem na literał: `StarterKit.configure({ heading: { levels } })`
+// w `library/KnowledgeEditor.tsx` i `ProjectRichBody.tsx` czyta stąd, więc
+// zwężenie jednej strony przestaje być zmianą kompilującą się po cichu.
+export const STRUCTURED_DOCUMENT_HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 export const MAX_STRUCTURED_DOCUMENT_BYTES = 512 * 1024;
 const MAX_DOCUMENT_NODES = 20_000;
 const MAX_URL_LENGTH = 2_048;
@@ -249,7 +262,11 @@ const assertNodes = (
       if (!isRecord(node.attrs))
         throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
       exactKeys(node.attrs, ["level"]);
-      if (![1, 2, 3].includes(Number(node.attrs.level)))
+      if (
+        !(STRUCTURED_DOCUMENT_HEADING_LEVELS as readonly number[]).includes(
+          Number(node.attrs.level),
+        )
+      )
         throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
     } else if (node.type === "orderedList") {
       if (node.attrs !== undefined) {
