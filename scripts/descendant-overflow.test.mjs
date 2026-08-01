@@ -74,7 +74,12 @@ test("a scroller that declares itself is a contract, one that does not is a defe
 
 test("a registry entry accepts the overflow it was measured at", () => {
   const registry = [
-    { surface: "tasks", signature: "span._chip", overflowPx: 56, thread: "x" },
+    {
+      surface: "tasks",
+      signature: "span._chip",
+      ceilings: { "text scaled to 200%": 56 },
+      thread: "x",
+    },
   ];
   const decision = classifyDescendantOverflow(
     measurement({ surface: "tasks", signature: "span._chip", overflowPx: 56 }),
@@ -84,12 +89,57 @@ test("a registry entry accepts the overflow it was measured at", () => {
   assert.equal(decision.thread, "x");
 });
 
+test("a ceiling belongs to ONE pass — a pass with no ceiling is a new overflow", () => {
+  // Jeden sufit wzięty z najgorszego przelotu dawał darmowy wzrost na
+  // pozostałych: `span._chipDashed` ma 56 px przy 200% i 32 px przy pełnym
+  // oknie, więc wspólna liczba 56 przepuszczałaby 24 px pogorszenia dokładnie
+  // przy szerokości, przy której ekranu się używa.
+  const registry = [
+    {
+      surface: "tasks",
+      signature: "span._chip",
+      ceilings: { "text scaled to 200%": 56, "a full-size window": 32 },
+      thread: "x",
+    },
+  ];
+  const atFullSize = (overflowPx) =>
+    classifyDescendantOverflow(
+      measurement({
+        surface: "tasks",
+        signature: "span._chip",
+        overflowPx,
+        pass: "a full-size window",
+      }),
+      registry,
+    ).verdict;
+  assert.equal(atFullSize(32), "known");
+  assert.equal(atFullSize(56), "violation");
+  // I przelot, którego wpis w ogóle nie wymienia, nie jest zwolniony.
+  assert.equal(
+    classifyDescendantOverflow(
+      measurement({
+        surface: "tasks",
+        signature: "span._chip",
+        overflowPx: 5,
+        pass: "a 320 px window",
+      }),
+      registry,
+    ).verdict,
+    "violation",
+  );
+});
+
 test("a registry entry is a CEILING, not an exemption", () => {
   // To jest różnica między rejestrem długu a zwolnieniem: wpis, który
   // przepuszcza dowolną wartość, pozwala następnej fali pogorszyć ten sam
   // element po cichu.
   const registry = [
-    { surface: "tasks", signature: "span._chip", overflowPx: 56, thread: "x" },
+    {
+      surface: "tasks",
+      signature: "span._chip",
+      ceilings: { "text scaled to 200%": 56 },
+      thread: "x",
+    },
   ];
   const stillFine = classifyDescendantOverflow(
     measurement({
@@ -124,8 +174,18 @@ test("a registry entry covers the destination's lenses and records, not a bare l
 
 test("an entry no pass ever met is reported, because a dead register is worse than none", () => {
   const registry = [
-    { surface: "tasks", signature: "span._gone", overflowPx: 10, thread: "x" },
-    { surface: "tasks", signature: "span._chip", overflowPx: 56, thread: "x" },
+    {
+      surface: "tasks",
+      signature: "span._gone",
+      ceilings: { "text scaled to 200%": 10 },
+      thread: "x",
+    },
+    {
+      surface: "tasks",
+      signature: "span._chip",
+      ceilings: { "text scaled to 200%": 56 },
+      thread: "x",
+    },
   ];
   const unused = unusedRegistryEntries(new Set(["tasks|span._chip"]), registry);
   assert.deepEqual(
@@ -141,7 +201,12 @@ test("every shipped registry entry names an owning thread and a measured ceiling
   for (const entry of KNOWN_DESCENDANT_OVERFLOWS) {
     assert.equal(typeof entry.surface, "string");
     assert.equal(typeof entry.signature, "string");
-    assert.ok(Number.isInteger(entry.overflowPx) && entry.overflowPx > 0);
+    const ceilings = Object.entries(entry.ceilings);
+    assert.ok(ceilings.length > 0, `no ceiling: ${entry.signature}`);
+    for (const [pass, px] of ceilings) {
+      assert.ok(pass.length > 0);
+      assert.ok(Number.isInteger(px) && px > 0);
+    }
     assert.ok(entry.thread.length > 20, `thread too vague: ${entry.thread}`);
   }
 });

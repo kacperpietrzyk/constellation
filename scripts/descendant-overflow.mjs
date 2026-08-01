@@ -69,6 +69,14 @@ export const KNOWN_OVERFLOW_TOLERANCE_PX = 8;
  * `tasks`, `tasks:board` i `tasks:task:overview`, bo to ta sama powierzchnia
  * oglądana w innym obiektywie, a rozbicie na etykiety dałoby rejestr, którego
  * nikt nie przeczyta.
+ *
+ * SUFIT JEST OSOBNY DLA KAŻDEGO PRZELOTU, i to nie jest ozdoba. Jeden sufit
+ * wzięty z najgorszego przelotu przepuszczałby po cichu wzrost na pozostałych:
+ * `span._chipDashed` ma 56 px przy 200% i 32 px przy pełnym oknie, więc wspólna
+ * liczba 56 dawałaby 24 px darmowego wzrostu dokładnie tam, gdzie ten defekt
+ * jest najbardziej dotkliwy — przy szerokości, przy której ekranu się używa.
+ * Przelot NIEWYMIENIONY w `ceilings` znaczy „ten element NIE PRZEPEŁNIA się
+ * tutaj" i przepełnienie na nim pada, tak jak każde nowe.
  */
 export const KNOWN_DESCENDANT_OVERFLOWS = [
   // ── wątek skalowania interfejsu (recon fali D §3e) ────────────────────────
@@ -80,43 +88,59 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   {
     surface: "projects",
     signature: "div._row",
-    overflowPx: 194,
+    ceilings: {
+      "text scaled to 200%": 194,
+    },
     thread: "skalowanie interfejsu (recon fali D §3e) — wiersz kolekcji",
   },
   {
     surface: "tasks",
     signature: "span._plan._plan_unplanned",
-    overflowPx: 65,
+    ceilings: {
+      "text scaled to 200%": 65,
+      "a 320 px window": 15,
+    },
     thread: "skalowanie interfejsu (recon fali D §3e) — znacznik planu",
   },
   {
     surface: "tasks",
     signature: "div._cellHead",
-    overflowPx: 86,
+    ceilings: {
+      "text scaled to 200%": 86,
+    },
     thread: "skalowanie interfejsu (recon fali D §3e) — nagłówek dnia",
   },
   {
     surface: "access",
     signature: "div.member-list",
-    overflowPx: 18,
+    ceilings: {
+      "a 320 px window": 18,
+    },
     thread: "fala E — powierzchnia `access`, poza zakresem fali D",
   },
   {
     surface: "activity",
     signature: "h3",
-    overflowPx: 53,
+    ceilings: {
+      "text scaled to 200%": 53,
+    },
     thread: "fala E — powierzchnia `activity`, poza zakresem fali D",
   },
   {
     surface: "activity",
     signature: "p",
-    overflowPx: 33,
+    ceilings: {
+      "text scaled to 200%": 33,
+    },
     thread: "fala E — powierzchnia `activity`, poza zakresem fali D",
   },
   {
     surface: "settings",
     signature: "form.status-create",
-    overflowPx: 117,
+    ceilings: {
+      "text scaled to 200%": 117,
+      "a 320 px window": 117,
+    },
     thread: "Settings poza sekcją Notes fali D",
   },
   // ── Library: powłoka o STAŁYCH torach nie mieści się w wąskim oknie ───────
@@ -141,16 +165,22 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   {
     surface: "library",
     signature: "div.knowledge-layout",
-    overflowPx: 470,
+    ceilings: {
+      "text scaled to 200%": 470,
+      "a 320 px window": 262,
+    },
     thread:
-      "fala D, lot ekranu Notatek — zadeklarowana kolejność zwijania paneli (brief §3e); zmierzone 470 px przy 200% i 262 px przy 320 px",
+      "fala D, lot ekranu Notatek — zadeklarowana kolejność zwijania paneli (brief §3e); korzeń powierzchni, metryka pierwszego dziecka",
   },
   {
     surface: "library",
     signature: "div.document-editor-shell",
-    overflowPx: 494,
+    ceilings: {
+      "text scaled to 200%": 494,
+      "a 320 px window": 274,
+    },
     thread:
-      "fala D, lot ekranu Notatek — zadeklarowana kolejność zwijania paneli (brief §3e); ta sama wada widziana od strony płaszczyzny pisania",
+      "fala D, lot ekranu Notatek — ta sama wada widziana od strony płaszczyzny pisania",
   },
   // ── ekran rekordu Zadania: przepełnienie przy DOMYŚLNYM rozmiarze ─────────
   // Te trzy NIE SĄ artefaktem skalowania i wpisy mówią to wprost, bo inaczej
@@ -165,23 +195,32 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   {
     surface: "tasks",
     signature: "span._chipDashed",
-    overflowPx: 56,
+    ceilings: {
+      "text scaled to 200%": 56,
+      "a full-size window": 32,
+    },
     thread:
-      "fala E — ekran rekordu Zadania, defekt przy DOMYŚLNYM rozmiarze okna (+32 px przy 1440)",
+      "fala E — ekran rekordu Zadania, defekt przy DOMYŚLNYM rozmiarze okna",
   },
   {
     surface: "tasks",
     signature: "p._unavailable",
-    overflowPx: 78,
+    ceilings: {
+      "text scaled to 200%": 78,
+      "a full-size window": 44,
+    },
     thread:
-      "fala E — ekran rekordu Zadania, defekt przy DOMYŚLNYM rozmiarze okna (+44 px przy 1440)",
+      "fala E — ekran rekordu Zadania, defekt przy DOMYŚLNYM rozmiarze okna",
   },
   {
     surface: "tasks",
     signature: "article._entry",
-    overflowPx: 162,
+    ceilings: {
+      "text scaled to 200%": 162,
+      "a full-size window": 89,
+    },
     thread:
-      "fala E — komentarze na rekordzie Zadania, defekt przy DOMYŚLNYM rozmiarze okna (+89 px przy 1440)",
+      "fala E — komentarze na rekordzie Zadania, defekt przy DOMYŚLNYM rozmiarze okna",
   },
 ];
 
@@ -204,16 +243,20 @@ export const classifyDescendantOverflow = (
   const entry = registry.find(
     (candidate) =>
       matchesSurface(surface, candidate.surface) &&
-      candidate.signature === signature &&
-      (candidate.pass === undefined || candidate.pass === pass),
+      candidate.signature === signature,
   );
   if (entry === undefined) return { verdict: "violation" };
-  if (overflowPx > entry.overflowPx + KNOWN_OVERFLOW_TOLERANCE_PX) {
+  // Brak sufitu DLA TEGO PRZELOTU nie znaczy „wolno": znaczy, że ten element
+  // się tutaj nie przepełniał, więc właśnie zaczął.
+  const ceiling = entry.ceilings[pass];
+  if (ceiling === undefined)
+    return { verdict: "violation", thread: entry.thread };
+  if (overflowPx > ceiling + KNOWN_OVERFLOW_TOLERANCE_PX) {
     return {
       verdict: "violation",
       // Osobny komunikat, bo to inna wiadomość niż „nowe przepełnienie":
       // ten element jest w rejestrze i właśnie zrobił się GORSZY.
-      regressedFrom: entry.overflowPx,
+      regressedFrom: ceiling,
       thread: entry.thread,
     };
   }

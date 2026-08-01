@@ -543,10 +543,17 @@ const sweep = async (browser, { width, fontSize, label }) => {
     }
     failures.push({
       surface: descendant.surface,
+      // DWA lekarstwa, nie jedno, i to rozróżnienie jest tu z powodu: skrót
+      // `overflow: auto` ustawia RÓWNIEŻ `overflow-x`, więc panel, który chce
+      // się przewijać wyłącznie w pionie (`.knowledge-library` ma dokładnie
+      // ten skrót), trafia tutaj z komunikatem proponującym deklarację —
+      // a wzięcie jej byłoby kłamstwem, do którego namówiła bramka.
       reason:
         `descendant ${descendant.signature} overflows its own box by ${descendant.overflowPx} px ` +
-        `(overflow-x: ${descendant.overflowX}). If it is meant to scroll sideways, declare it with ` +
-        `[${HORIZONTAL_SCROLL_ATTRIBUTE}]; otherwise it is a layout defect`,
+        `(overflow-x: ${descendant.overflowX}). If it is MEANT to scroll sideways, declare it with ` +
+        `[${HORIZONTAL_SCROLL_ATTRIBUTE}]. If it only ever wanted to scroll VERTICALLY, say ` +
+        `overflow-y: auto rather than the shorthand — the attribute would be a lie. ` +
+        `Otherwise it is a layout defect`,
     });
   }
   for (const entry of measured.results) {
