@@ -221,6 +221,10 @@ const snapshot: DesktopSnapshot = {
     data: {
       kind: "knowledge.list",
       spaceId,
+      // Empty on purpose. B8 gives this projection a folder tree; building a
+      // fixture tree with the depth and the counts a screen needs belongs to
+      // the lot that owns this harness, not to the one that added the field.
+      folders: [],
       sources: [
         {
           id: sourceId,

@@ -47,6 +47,11 @@ const context = (): ExecutionContext =>
       "capture.history",
       "task.list",
       "audit.receipt",
+      // Seeded by the record-family mirror test below, which needs the store
+      // to actually hold a folder, a filed note and a task.
+      "folder.create",
+      "document.create",
+      "task.create",
     ],
     origin: "desktop",
   });
@@ -800,5 +805,121 @@ describe("self-hosted Hub core", () => {
       scopeHubSnapshot(revoked, ids.workspace, memberContext),
       undefined,
     );
+  });
+
+  /**
+   * THE MIRROR IS TOTAL — every record family the Hub snapshot declares
+   * survives scoping, and this is derived from the schema rather than listed.
+   *
+   * `toHubSnapshot` is guarded by construction: it SPREADS the whole
+   * `ReferenceStateSnapshot` into a `.strict()` parse, so a family the store
+   * grows and the schema does not know throws the moment anything publishes.
+   * `scopeHubSnapshot` has no such protection — it hand-writes an object
+   * literal of nineteen families, and a family left out of it is DEFAULTED
+   * BACK by `.default([])` on the way through `toHubSnapshot`. The key is
+   * present, the array is empty, nothing throws, and every existing test
+   * passes: the family exists on the device and never leaves it. Verified by
+   * removing `folders` from that literal — 265 tests stayed green.
+   *
+   * This is the same hand-written-list-beside-a-closed-vocabulary shape this
+   * project keeps meeting, so the guard watches the SHAPE: for a principal who
+   * can see the whole workspace, the scoped projection must carry exactly what
+   * the unscoped mirror carries, family for family, with the family names read
+   * off the schema. A twentieth family added to the schema and forgotten in
+   * the literal fails here without anybody adding a line.
+   */
+  it("carries every record family the schema declares through scoping, not a hand-picked list", () => {
+    const harness = createReferenceHarness();
+    harness.authorization.register(context());
+    const run = (commandName: string, payload: object, key: string) => {
+      const result = harness.kernel.execute(context(), {
+        contractVersion: 1,
+        commandName,
+        commandId: uuid(),
+        workspaceId: ids.workspace,
+        idempotencyKey: key,
+        expectedVersions: {},
+        correlationId: uuid(),
+        payload,
+      });
+      assert.equal(result.kind, "command_outcome");
+      if (result.kind !== "command_outcome") return;
+      assert.equal(result.outcome.outcome, "success", commandName);
+    };
+    run(
+      "workspace.createLocal",
+      {
+        workspaceId: ids.workspace,
+        rootSpaceId: ids.space,
+        ownerPrincipalId: ids.principal,
+        name: "Mirror workspace",
+        timezone: "Europe/Warsaw",
+      },
+      "mirror-bootstrap",
+    );
+    const folderId = uuid();
+    run(
+      "folder.create",
+      { folderId, spaceId: ids.space, name: "Clients" },
+      "mirror-folder",
+    );
+    run(
+      "document.create",
+      {
+        documentId: uuid(),
+        spaceId: ids.space,
+        title: "A filed note",
+        role: "note",
+        folderId,
+      },
+      "mirror-document",
+    );
+    run(
+      "task.create",
+      { taskId: uuid(), spaceId: ids.space, title: "A task" },
+      "mirror-task",
+    );
+
+    const state = harness.store.snapshot();
+    const mirror = toHubSnapshot(state);
+    const scoped = scopeHubSnapshot(mirror, ids.workspace, context());
+    assert.ok(scoped, "the owner can see the whole workspace");
+
+    const rows = (
+      snapshot: typeof mirror,
+      family: string,
+    ): readonly unknown[] =>
+      snapshot[family as keyof typeof snapshot] as readonly unknown[];
+    const families = Object.keys(HubWorkspaceSnapshotSchema.shape).filter(
+      (key) => key !== "format",
+    );
+    // NON-EMPTY, not equal in size. Some families narrow further for a reason
+    // that has nothing to do with the mirror — `idempotencyRecords` are keyed
+    // per principal, so even the owner sees fewer than the workspace holds —
+    // and an equality check would report those deliberate narrowings as
+    // defects. What a family missing from the literal produces is not "fewer",
+    // it is ALWAYS ZERO, which is exactly what this catches.
+    const measured = families.filter(
+      (family) => rows(mirror, family).length > 0,
+    );
+    // An empty measurement is an instrument failure rather than a result: a
+    // family empty on both sides passes while proving nothing. So the guard
+    // states how much it actually measured, and names the family this change
+    // adds — if the seeding above ever stops producing rows, this fails here
+    // instead of reporting a green sweep over nothing.
+    assert.ok(
+      measured.includes("folders"),
+      "the folder family must carry a row, or this guard is not measuring it",
+    );
+    assert.ok(
+      measured.length >= 8,
+      `only ${measured.length} families carried rows; the seeding above has stopped working`,
+    );
+    for (const family of measured) {
+      assert.ok(
+        rows(scoped, family).length > 0,
+        `${family} did not survive scoping — a family missing from the hand-written literal in scopeHubSnapshot is defaulted back to an empty array and never leaves the device`,
+      );
+    }
   });
 });

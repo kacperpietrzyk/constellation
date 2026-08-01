@@ -59,29 +59,41 @@
 //     przykładu, a etykiety historii rozgałęziają się na wszystkich siedmiu.
 //     Ta sama reguła: jest tu po jednym z KAŻDEGO z siedmiu.
 //
-// CZEGO TU NIE MA, i to jest ZNALEZISKO, a nie przeoczenie: FOLDERÓW oraz
-// przypięcia notatki do Projektu WIDOCZNEGO NA LIŚCIE. `document.list` jest
-// `.strict()` i nie ma `folderId`; `Folder` nie jest jeszcze rekordem. Notatkę
-// przy Projekcie da się dziś pokazać wyłącznie przez
-// `project.operationalOverview.relatedDocuments` — i tak jest zrobiona; to jest
-// prawdziwy odczyt, nie wymysł.
+//   4. LICZBA STOJĄCA OBOK LISTY JEST Z NIEJ WYLICZONA, nigdy wpisana.
+//      Dopisana ręcznie potrafi się z tą listą nie zgadzać, a wtedy liczniki
+//      ekranu są niemierzalne: nie wiadomo, czy ekran źle liczy, czy fikstura
+//      źle mówi. Ta klasa wady wyszła w tej fali osiem razy. Dotyczy dziś
+//      obu liczników drzewa folderów niżej.
 //
-// KTO TO ROZSZERZA: LOT EKRANU NOTATEK, nie ten lot i nie lot folderów.
-// B8 jest właścicielem modelu, nie fikstury, a ekran Notatek jest pierwszym,
-// który naprawdę potrzebuje ZMIERZYĆ GEOMETRIĘ drzewa folderów — i do tego
-// czasu projekcja B8 już istnieje. `libraryDocuments` niżej jest tym jednym
-// miejscem: dokłada się `folderId` do kształtu i drzewo do osobnej odpowiedzi.
+// CZEGO TU NIE MA, i to jest ZNALEZISKO, a nie przeoczenie: przypięcia notatki
+// do Projektu WIDOCZNEGO NA LIŚCIE. Notatkę przy Projekcie da się dziś pokazać
+// wyłącznie przez `project.operationalOverview.relatedDocuments` — i tak jest
+// zrobiona; to jest prawdziwy odczyt, nie wymysł.
+//
+// FOLDERY BYŁY DRUGĄ POZYCJĄ NA TEJ LIŚCIE i już nią nie są. Dopisał je LOT
+// B8, nie lot ekranu Notatek, na którego ten nagłówek czekał — nie z ochoty,
+// tylko dlatego, że `folders` jest WYMAGANYM członkiem `knowledge.list`, więc
+// od chwili, w której obie zmiany spotkały się w jednym drzewie, harness
+// przestał się kompilować. `tsc` złapał to dokładnie tak, jak miał: fikstura
+// typowana KONTRAKTEM nie da się przemilczeć.
+//
+// Co z tego zostaje dla lotu ekranu Notatek: kształt drzewa jest tu po to, żeby
+// dało się ZMIERZYĆ JEGO GEOMETRIĘ, i nic ponadto. Punkt 3 obowiązuje bez
+// zmian — zielony przebieg na tym drzewie nie mówi, że drzewo na ekranie jest
+// poprawne.
 import {
   AttentionSignalIdSchema,
   CaptureIdSchema,
   CapturePayloadIdSchema,
   DocumentIdSchema,
+  FolderIdSchema,
   KnowledgeSourceIdSchema,
   type CaptureId,
   type CapturePayloadId,
   type PrincipalId,
   type TaskId,
   type DocumentId,
+  type FolderId,
   type KnowledgeSourceId,
   type SpaceId,
 } from "@constellation/contracts";
@@ -102,6 +114,17 @@ const captureId = (suffix: string): CaptureId =>
   CaptureIdSchema.parse(`00000000-0000-4000-8000-0000000007${suffix}`);
 const payloadId = (suffix: string): CapturePayloadId =>
   CapturePayloadIdSchema.parse(`00000000-0000-4000-8000-0000000006${suffix}`);
+const folderId = (suffix: string): FolderId =>
+  FolderIdSchema.parse(`00000000-0000-4000-8000-0000000005${suffix}`);
+
+export const libraryFolderIds = {
+  clients: folderId("01"),
+  orbit: folderId("02"),
+  rollout: folderId("03"),
+  acceptance: folderId("04"),
+  support: folderId("05"),
+  policies: folderId("06"),
+} as const;
 
 export const libraryDocumentIds = {
   runbook: documentId("01"),
@@ -120,9 +143,26 @@ export const libraryDocumentIds = {
  * samej górze. Krótkie tytuły w każdym wierszu to była właśnie ta fikstura,
  * która nie pokazała, jak wygląda lista, kiedy tekst nie mieści się w kolumnie.
  */
-const documentShapes = [
+/**
+ * Typ jawny, nie `as const`: `folderId` jest OPCJONALNE, a przy `as const`
+ * tablica staje się unią, w której notatka spoza drzewa nie ma tego klucza
+ * wcale — i każdy odczyt `shape.folderId` przestaje się kompilować. To jest ta
+ * sama reguła, która każe wstawiać klucz opcjonalny rozsypaniem albo wcale:
+ * `exactOptionalPropertyTypes` nie pozwala go trzymać z `undefined`.
+ */
+interface DocumentShape {
+  readonly id: DocumentId;
+  readonly folderId?: FolderId;
+  readonly title: string;
+  readonly role: "note" | "document" | "deliverable";
+  readonly version: number;
+  readonly updatedAt: string;
+}
+
+const documentShapes: readonly DocumentShape[] = [
   {
     id: libraryDocumentIds.runbook,
+    folderId: libraryFolderIds.rollout,
     title: "Orbit — runbook uruchomienia środowiska po stronie klienta",
     role: "note" as const,
     version: 4,
@@ -130,6 +170,7 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.network,
+    folderId: libraryFolderIds.rollout,
     title: "Orbit — architektura sieci, adresacja i reguły wyjścia",
     role: "note" as const,
     version: 2,
@@ -137,6 +178,7 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.handover,
+    folderId: libraryFolderIds.support,
     title: "Orbit — dokumentacja powdrożeniowa dla zespołu utrzymania",
     role: "deliverable" as const,
     version: 7,
@@ -144,6 +186,7 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.identity,
+    folderId: libraryFolderIds.orbit,
     // 199 znaków: górna granica zmierzona na prawdziwych tytułach. Wiersz
     // listy musi to przeżyć, a do tej pory nikt tego nie oglądał.
     title:
@@ -154,6 +197,7 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.retention,
+    folderId: libraryFolderIds.policies,
     title: "Orbit — polityka retencji nagrań i dowodów",
     role: "note" as const,
     version: 1,
@@ -161,6 +205,7 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.migration,
+    folderId: libraryFolderIds.policies,
     title: "Orbit — plan migracji danych z poprzedniego systemu",
     role: "document" as const,
     version: 5,
@@ -168,6 +213,8 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.inventory,
+    // JEDYNA notatka poza drzewem. `folderId` PUSTE to Unfiled — miejsce,
+    // nie brak, i osobna gałąź korzenia na ekranie.
     title: "Orbit — inwentarz maszyn i wersji",
     role: "note" as const,
     version: 2,
@@ -175,6 +222,7 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.acceptance,
+    folderId: libraryFolderIds.acceptance,
     title: "Orbit — kryteria odbioru i protokół testów akceptacyjnych",
     role: "deliverable" as const,
     version: 2,
@@ -182,15 +230,130 @@ const documentShapes = [
   },
   {
     id: libraryDocumentIds.rollback,
+    folderId: libraryFolderIds.acceptance,
     title: "Orbit — procedura wycofania wdrożenia",
     role: "note" as const,
     version: 1,
     updatedAt: "2026-07-25T12:00:00.000Z",
   },
-] as const;
+];
 
 export const libraryDocuments = (spaceId: SpaceId) =>
-  documentShapes.map((shape) => ({ ...shape, spaceId }));
+  documentShapes.map((shape) => ({
+    ...shape,
+    ...(shape.folderId === undefined ? {} : { folderId: shape.folderId }),
+    spaceId,
+  }));
+
+/**
+ * DRZEWO FOLDERÓW (#30) — cztery poziomy, notatki na czterech z nich i jedna
+ * poza drzewem.
+ *
+ * Kształt nie jest ozdobą. Właściwość, którą ekran Notatek musi udowodnić, to
+ * `noteCount(p) === ownNoteCount(p) + Σ noteCount(dziecka)`, a drzewo
+ * DWUPOZIOMOWE nie wykonuje ani jednego zwinięcia — prototypowa asercja B35
+ * przechodziła właśnie dlatego, że porównywała rzeczy nieporównywalne na
+ * płaskim kształcie. `Klienci → Orbit → Wdrożenie → Odbiór` zmusza licznik do
+ * przejścia przez trzy poziomy zagnieżdżenia, a `Unfiled` (`folderId` puste)
+ * jest legalnym miejscem notatki, nie brakiem — i korzeniem, na którym ekran
+ * rozgałęzia się osobno.
+ *
+ * OBA LICZNIKI SĄ WYLICZANE Z PRZYPISAŃ NIŻEJ, nigdy wpisane ręcznie. Fikstura,
+ * której `noteCount` kłóci się z jej własną listą dokumentów, czyni liczniki
+ * ekranu niemierzalnymi — a ręcznie wpisana liczba obok listy, z której miała
+ * wynikać, to dokładnie ta klasa wady, którą ta fala spotkała już osiem razy.
+ * Dopisanie dokumentu wyżej przelicza drzewo samo.
+ */
+interface FolderShape {
+  readonly id: FolderId;
+  readonly name: string;
+  readonly parentFolderId?: FolderId;
+  readonly version: number;
+}
+
+const folderShapes: readonly FolderShape[] = [
+  { id: libraryFolderIds.clients, name: "Klienci", version: 3 },
+  {
+    id: libraryFolderIds.orbit,
+    name: "Orbit",
+    parentFolderId: libraryFolderIds.clients,
+    version: 5,
+  },
+  {
+    id: libraryFolderIds.rollout,
+    name: "Wdrożenie",
+    parentFolderId: libraryFolderIds.orbit,
+    version: 2,
+  },
+  {
+    id: libraryFolderIds.acceptance,
+    name: "Odbiór i wycofanie",
+    parentFolderId: libraryFolderIds.rollout,
+    version: 1,
+  },
+  {
+    id: libraryFolderIds.support,
+    name: "Utrzymanie",
+    parentFolderId: libraryFolderIds.orbit,
+    version: 1,
+  },
+  { id: libraryFolderIds.policies, name: "Polityki", version: 2 },
+];
+
+/**
+ * Ten sam przechód, który liczy kernel: własne notatki folderu plus suma
+ * własnych notatek każdego potomka. Wyliczany tutaj, a nie zaimportowany
+ * z `@constellation/domain`, bo renderer NIE ZALEŻY od tamtej paczki i
+ * dokładanie zależności produkcyjnej dla fikstury deweloperskiej wciągnęłoby
+ * kod domeny do bundla, którego budżet ta fala pilnuje co do bajta.
+ */
+const folderNoteCounts = (): ReadonlyMap<
+  FolderId,
+  { readonly ownNoteCount: number; readonly noteCount: number }
+> => {
+  const counts = new Map<FolderId, { ownNoteCount: number; noteCount: number }>(
+    folderShapes.map((folder) => [
+      folder.id,
+      { ownNoteCount: 0, noteCount: 0 },
+    ]),
+  );
+  const parentOf = new Map<FolderId, FolderId | undefined>(
+    folderShapes.map((folder) => [folder.id, folder.parentFolderId]),
+  );
+  for (const document of documentShapes) {
+    if (document.folderId === undefined) continue;
+    const own = counts.get(document.folderId);
+    if (own === undefined) continue;
+    own.ownNoteCount += 1;
+    // W GÓRĘ CAŁEGO ŁAŃCUCHA, nie do rodzica: licznik przy folderze na
+    // dowolnym poziomie ma pokazywać wszystko, co pod nim leży.
+    let ancestor: FolderId | undefined = document.folderId;
+    const seen = new Set<FolderId>();
+    while (ancestor !== undefined && !seen.has(ancestor)) {
+      seen.add(ancestor);
+      const held = counts.get(ancestor);
+      if (held !== undefined) held.noteCount += 1;
+      ancestor = parentOf.get(ancestor);
+    }
+  }
+  return counts;
+};
+
+/** Drzewo, które `knowledge.list` oddaje obok listy dokumentów. */
+export const libraryFolders = () => {
+  const counts = folderNoteCounts();
+  return folderShapes.map((folder) => ({
+    id: folder.id,
+    name: folder.name,
+    ...(folder.parentFolderId === undefined
+      ? {}
+      : { parentFolderId: folder.parentFolderId }),
+    noteCount: counts.get(folder.id)?.noteCount ?? 0,
+    ownNoteCount: counts.get(folder.id)?.ownNoteCount ?? 0,
+    version: folder.version,
+    updatedAt: "2026-07-31T11:05:00.000Z",
+  }));
+};
 
 /**
  * WSZYSTKIE CZTERY rodzaje źródła, bo ekran Źródeł rozgałęzia się na każdym,
@@ -278,6 +441,7 @@ export const librarySummaries = () =>
   documentShapes.map((item, index) => ({
     id: item.id,
     title: item.title,
+    ...(item.folderId === undefined ? {} : { folderId: item.folderId }),
     role: item.role,
     evidenceCount: index % 3,
     namedVersionCount: item.role === "deliverable" ? 2 : 0,

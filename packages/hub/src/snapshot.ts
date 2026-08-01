@@ -90,6 +90,7 @@ export const fromHubSnapshot = (
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
     parsed.projects.some((value) => value.workspaceId !== workspaceId) ||
     parsed.documents.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.folders.some((value) => value.workspaceId !== workspaceId) ||
     parsed.knowledgeSources.some(
       (value) => value.workspaceId !== workspaceId,
     ) ||
@@ -182,6 +183,7 @@ export const scopeHubSnapshot = (
   const captures = state.captures.filter(inScope);
   const projects = state.projects.filter(inScope);
   const documents = (state.documents ?? []).filter(inScope);
+  const folders = (state.folders ?? []).filter(inScope);
   const knowledgeSources = (state.knowledgeSources ?? []).filter(inScope);
   const namedDocumentVersions = (state.namedDocumentVersions ?? []).filter(
     (version) =>
@@ -332,6 +334,7 @@ export const scopeHubSnapshot = (
     ...tasks.map((value) => value.id),
     ...projects.map((value) => value.id),
     ...documents.map((value) => value.id),
+    ...folders.map((value) => value.id),
     ...knowledgeSources.map((value) => value.id),
     ...namedDocumentVersions.map((value) => value.id),
     ...strategicRecords.map((value) => value.id),
@@ -372,6 +375,7 @@ export const scopeHubSnapshot = (
     tasks,
     projects,
     documents,
+    folders,
     knowledgeSources,
     namedDocumentVersions,
     strategicRecords,

@@ -50,6 +50,14 @@ export type ProjectId = z.infer<typeof ProjectIdSchema>;
 export const DocumentIdSchema = opaqueId<"DocumentId">();
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 
+/**
+ * A folder in the note tree. Its own id type rather than a `DocumentId`,
+ * because a folder is not a document: it holds notes, it is never opened, and
+ * nothing may address one where the other is expected (decision #30).
+ */
+export const FolderIdSchema = opaqueId<"FolderId">();
+export type FolderId = z.infer<typeof FolderIdSchema>;
+
 export const DocumentRevisionIdSchema = opaqueId<"DocumentRevisionId">();
 export type DocumentRevisionId = z.infer<typeof DocumentRevisionIdSchema>;
 

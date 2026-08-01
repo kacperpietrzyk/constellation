@@ -53,6 +53,11 @@ export const CapabilitySchema = z.enum([
   "project.replaceContent",
   "document.create",
   "document.remove",
+  "document.setFolder",
+  "folder.create",
+  "folder.rename",
+  "folder.setParent",
+  "folder.remove",
   "document.list",
   "document.linkCandidates",
   "document.backlinks",
@@ -241,6 +246,14 @@ export const CAPABILITY_DELEGATION: Readonly<
   "project.replaceContent": "operate",
   "document.create": "operate",
   "document.remove": "operate",
+  // Filing a note and shaping the tree are ordinary edits of the Space, not a
+  // separate privilege: a principal that may write a note may say where it
+  // lives. No folder command reads or reveals anything a Space read does not.
+  "document.setFolder": "operate",
+  "folder.create": "operate",
+  "folder.rename": "operate",
+  "folder.setParent": "operate",
+  "folder.remove": "operate",
   "document.list": "read",
   "document.linkCandidates": "read",
   "document.backlinks": "read",

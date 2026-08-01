@@ -61,6 +61,7 @@ const versionedCollections = (
     snapshot.tasks,
     snapshot.projects,
     snapshot.documents ?? [],
+    snapshot.folders ?? [],
     snapshot.knowledgeSources ?? [],
     snapshot.namedDocumentVersions ?? [],
     snapshot.strategicRecords ?? [],
@@ -577,6 +578,48 @@ describe("Command revertability", () => {
       { sourceId: removedSourceId },
       versions(removedSourceId),
     );
+
+    // The folder tree. Every one of the five is revertable, and the move is
+    // the reason the question mattered: a note filed into the wrong folder
+    // with no way back is the failure decision #30 names outright.
+    const folderId = uuid();
+    apply("folder.create", {
+      folderId,
+      spaceId: ids.rootSpace,
+      name: "Clients",
+    });
+    apply("folder.rename", { folderId, name: "Klienci" }, versions(folderId));
+    const childFolderId = uuid();
+    apply("folder.create", {
+      folderId: childFolderId,
+      spaceId: ids.rootSpace,
+      name: "Falcon",
+      parentFolderId: folderId,
+    });
+    apply(
+      "folder.setParent",
+      { folderId: childFolderId, parentFolderId: null },
+      versions(childFolderId),
+    );
+    const filedDocumentId = uuid();
+    apply("document.create", {
+      documentId: filedDocumentId,
+      spaceId: ids.rootSpace,
+      title: "Note that moves",
+      folderId,
+    });
+    apply(
+      "document.setFolder",
+      { documentId: filedDocumentId, folderId: childFolderId },
+      versions(filedDocumentId),
+    );
+    // Emptied first, because a folder is removable only as an empty leaf.
+    apply(
+      "document.setFolder",
+      { documentId: filedDocumentId, folderId: null },
+      versions(filedDocumentId),
+    );
+    apply("folder.remove", { folderId }, versions(folderId));
 
     const removedAreaId = uuid();
     apply("area.create", {

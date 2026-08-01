@@ -494,6 +494,11 @@ const isCurrentlyAuthorized = (
     case "project.remove":
     case "document.create":
     case "document.remove":
+    case "document.setFolder":
+    case "folder.create":
+    case "folder.rename":
+    case "folder.setParent":
+    case "folder.remove":
     case "knowledge.sourceCreate":
     case "knowledge.sourceRemove":
     case "knowledge.sourceUpdate":
@@ -998,6 +1003,11 @@ export class ApplicationKernel {
       case "project.remove":
       case "document.create":
       case "document.remove":
+      case "document.setFolder":
+      case "folder.create":
+      case "folder.rename":
+      case "folder.setParent":
+      case "folder.remove":
       case "knowledge.sourceCreate":
       case "knowledge.sourceRemove":
       case "knowledge.sourceUpdate":

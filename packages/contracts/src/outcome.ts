@@ -9,6 +9,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   DocumentIdSchema,
+  FolderIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
   RelationIdSchema,
@@ -73,6 +74,11 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.routed_as_task",
   "project.created",
   "document.created",
+  "document.folder_changed",
+  "folder.created",
+  "folder.renamed",
+  "folder.parent_changed",
+  "folder.removed",
   "knowledge.source_created",
   "knowledge.source_updated",
   "knowledge.evidence_updated",
@@ -158,6 +164,15 @@ export const RecordKindSchema = z.enum([
   "automationRule",
   "project",
   "document",
+  // A Folder is here and NOT in `humanRecordKindRegistry`, and the two are
+  // independent vocabularies rather than one question asked twice. THIS one is
+  // the audit vocabulary: `AffectedRecordSchema` below names every record a
+  // committed command touched, so a folder command that could not spell its
+  // own record kind would report a success naming nothing — an unauditable
+  // mutation, which AGENTS.md forbids outright. The registry is the PRODUCT
+  // vocabulary, and a folder rightly has no entry there: no record screen, no
+  // ⌘K result of its own, no inspector surface (its notes are the results).
+  "folder",
   "knowledgeSource",
   "namedDocumentVersion",
   "strategicRecord",
@@ -657,6 +672,55 @@ export const TaskParentChangedProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+/**
+ * The four folder projections and the move. Removal gets its own projection
+ * rather than joining `record.removed`: that one names which of the three
+ * tables sharing one removal path was hit, and a folder's removal is a
+ * different guard (its subtree's notes and its child folders) reached by a
+ * different command.
+ */
+export const FolderCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("folder.created"),
+    folderId: FolderIdSchema,
+    name: z.string(),
+    parentFolderId: FolderIdSchema.optional(),
+    version: z.int().positive(),
+  })
+  .strict();
+export const FolderRenamedProjectionSchema = z
+  .object({
+    kind: z.literal("folder.renamed"),
+    folderId: FolderIdSchema,
+    name: z.string(),
+    version: z.int().positive(),
+  })
+  .strict();
+export const FolderParentChangedProjectionSchema = z
+  .object({
+    kind: z.literal("folder.parent_changed"),
+    folderId: FolderIdSchema,
+    /** Absent means the folder now stands at the root of the tree. */
+    parentFolderId: FolderIdSchema.optional(),
+    version: z.int().positive(),
+  })
+  .strict();
+export const FolderRemovedProjectionSchema = z
+  .object({
+    kind: z.literal("folder.removed"),
+    folderId: FolderIdSchema,
+    version: z.int().positive(),
+  })
+  .strict();
+export const DocumentFolderChangedProjectionSchema = z
+  .object({
+    kind: z.literal("document.folder_changed"),
+    documentId: DocumentIdSchema,
+    /** Absent means the note is now Unfiled, which is a placement, not a gap. */
+    folderId: FolderIdSchema.optional(),
+    version: z.int().positive(),
+  })
+  .strict();
 export const TaskStatusChangedProjectionSchema = z
   .object({
     kind: z.literal("task.status_changed"),
@@ -880,6 +944,11 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TaskCreatedProjectionSchema,
   TaskDetailsUpdatedProjectionSchema,
   TaskParentChangedProjectionSchema,
+  FolderCreatedProjectionSchema,
+  FolderRenamedProjectionSchema,
+  FolderParentChangedProjectionSchema,
+  FolderRemovedProjectionSchema,
+  DocumentFolderChangedProjectionSchema,
   TaskStatusCreatedProjectionSchema,
   TaskStatusChangedDefinitionProjectionSchema,
   FieldDefCreatedProjectionSchema,
@@ -1224,6 +1293,39 @@ const TaskParentChangedSuccessOutcomeSchema =
     diagnosticCode: z.literal("task.parent_changed"),
     projection: TaskParentChangedProjectionSchema,
   }).strict();
+const FolderCreatedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("folder.created"),
+    projection: FolderCreatedProjectionSchema,
+  },
+).strict();
+const FolderRenamedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("folder.renamed"),
+    projection: FolderRenamedProjectionSchema,
+  },
+).strict();
+const FolderParentChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("folder.parent_changed"),
+    projection: FolderParentChangedProjectionSchema,
+  }).strict();
+const FolderRemovedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("folder.removed"),
+    projection: FolderRemovedProjectionSchema,
+  },
+).strict();
+const DocumentFolderChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("document.folder_changed"),
+    projection: DocumentFolderChangedProjectionSchema,
+  }).strict();
 const TaskStatusChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1396,6 +1498,11 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TaskCreatedSuccessOutcomeSchema,
   TaskDetailsUpdatedSuccessOutcomeSchema,
   TaskParentChangedSuccessOutcomeSchema,
+  FolderCreatedSuccessOutcomeSchema,
+  FolderRenamedSuccessOutcomeSchema,
+  FolderParentChangedSuccessOutcomeSchema,
+  FolderRemovedSuccessOutcomeSchema,
+  DocumentFolderChangedSuccessOutcomeSchema,
   TaskStatusDefinitionCreatedSuccessOutcomeSchema,
   TaskStatusDefinitionChangedSuccessOutcomeSchema,
   FieldDefCreatedSuccessOutcomeSchema,

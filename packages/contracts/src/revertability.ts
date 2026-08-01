@@ -57,6 +57,16 @@ export const COMMAND_REVERTABILITY: Readonly<
   "project.remove": "always",
   "document.create": "always",
   "document.remove": "always",
+  // Every one of these is "always", and `document.setFolder` is the reason the
+  // question was asked at all: moving a note is the single most dangerous
+  // operation decision #30 introduces, and a move nobody can take back is the
+  // failure that decision names ("if you wreck the notes the whole effect
+  // collapses").
+  "document.setFolder": "always",
+  "folder.create": "always",
+  "folder.rename": "always",
+  "folder.setParent": "always",
+  "folder.remove": "always",
   "knowledge.sourceCreate": "always",
   "knowledge.sourceRemove": "always",
   "knowledge.sourceUpdate": "always",

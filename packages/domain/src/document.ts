@@ -1,5 +1,6 @@
 import type {
   DocumentId,
+  FolderId,
   PrincipalId,
   SpaceId,
   WorkspaceId,
@@ -12,6 +13,7 @@ export const createNativeDocument = (input: {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly title: string;
+  readonly folderId?: FolderId;
   readonly role?: "note" | "document" | "deliverable";
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
@@ -20,6 +22,7 @@ export const createNativeDocument = (input: {
   workspaceId: input.workspaceId,
   spaceId: input.spaceId,
   title: input.title,
+  ...(input.folderId === undefined ? {} : { folderId: input.folderId }),
   role: input.role ?? "document",
   evidence: { sourceIds: [], noteDocumentIds: [] },
   createdBy: input.createdBy,

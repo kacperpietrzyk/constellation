@@ -18,6 +18,7 @@ import {
   type AttentionSignalId,
   type DocumentId,
   type DocumentRevisionId,
+  type FolderId,
   type KnowledgeSourceId,
   type NamedDocumentVersionId,
   type WorkspaceId,
@@ -505,6 +506,7 @@ export const createDocument = async (
   snapshot: DesktopSnapshot,
   title: string,
   role: "note" | "document" | "deliverable" = "document",
+  folderId?: FolderId,
 ): Promise<MutationResult<DocumentId>> => {
   const documentId = crypto.randomUUID() as DocumentId;
   try {
@@ -521,6 +523,7 @@ export const createDocument = async (
           documentId,
           spaceId: firstSpace(snapshot),
           title: title.trim(),
+          ...(folderId === undefined ? {} : { folderId }),
           role,
         },
       }),
@@ -539,6 +542,137 @@ export const createDocument = async (
     return { kind: "error", message: "Could not create the document." };
   }
 };
+
+/**
+ * The folder tree's five wrappers.
+ *
+ * THE GATE THESE EXIST TO NOT HAVE. A renderer wrapper that computes "is
+ * anything actually changing" before issuing its command is the second silent
+ * member of the family whose first member is a boundary `refine`: Wave C found
+ * one that refused a write of a NEW field alone as "nothing to change", which
+ * the schema, the kernel and `tsc` were all silent about. None of these
+ * wrappers has such a gate, and none may grow one — every payload below is the
+ * whole instruction, not a diff of it. `setDocumentFolder(null)` in particular
+ * is the value most easily swallowed by a `value ? {...} : {}` written by hand:
+ * `null` is Unfiled, it is a real destination, and it must reach the kernel.
+ */
+export const createFolder = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: { readonly name: string; readonly parentFolderId?: FolderId },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "folder.create",
+      payload: {
+        folderId: crypto.randomUUID(),
+        spaceId: firstSpace(snapshot),
+        name: input.name,
+        ...(input.parentFolderId === undefined
+          ? {}
+          : { parentFolderId: input.parentFolderId }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "folder.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const renameFolder = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  folder: { readonly id: FolderId; readonly version: number },
+  name: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [folder.id]: folder.version,
+      }),
+      commandName: "folder.rename",
+      payload: { folderId: folder.id, name },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "folder.renamed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setFolderParent = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  folder: { readonly id: FolderId; readonly version: number },
+  /** `null` moves the folder to the root of the tree. */
+  parentFolderId: FolderId | null,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [folder.id]: folder.version,
+      }),
+      commandName: "folder.setParent",
+      payload: { folderId: folder.id, parentFolderId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "folder.parent_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const removeFolder = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  folder: { readonly id: FolderId; readonly version: number },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [folder.id]: folder.version,
+      }),
+      commandName: "folder.remove",
+      payload: { folderId: folder.id },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "folder.removed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setDocumentFolder = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  document: { readonly id: DocumentId; readonly version: number },
+  /** `null` is Unfiled — a destination, never an absence. */
+  folderId: FolderId | null,
+) =>
+  execute(
+    client,
+    {
+      // The note's version alone. A folder is not written by this command, so
+      // demanding its version would make two people filing two different notes
+      // into one folder conflict over a record neither of them changed.
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [document.id]: document.version,
+      }),
+      commandName: "document.setFolder",
+      payload: { documentId: document.id, folderId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "document.folder_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
 
 export const createKnowledgeSource = async (
   client: ConstellationRendererClient,
