@@ -5751,6 +5751,54 @@ kbd {
   border-style: dashed;
   cursor: default;
 }
+/* An image and a table in a note.
+
+   Both nodes had no rendering at all before Wave D — the schema had no such
+   kinds, so a note showed them as a named gap. The table is READ-ONLY on
+   purpose (its producers are the import and agents), so it is styled to be
+   read rather than to invite a click, and it scrolls in its own box: three
+   columns of prose in a 50rem canvas is exactly the shape the descendant
+   overflow sweep was built to catch. */
+.document-canvas figure.document-image {
+  margin: var(--space-5) 0;
+}
+.document-canvas figure.document-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.document-canvas figure.document-image figcaption {
+  margin-top: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+.document-canvas table {
+  display: block;
+  width: 100%;
+  margin: var(--space-5) 0;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  overflow-x: auto;
+}
+.document-canvas th,
+.document-canvas td {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  text-align: start;
+  vertical-align: top;
+}
+.document-canvas th {
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  font-weight: 600;
+}
+.document-canvas th > p,
+.document-canvas td > p {
+  margin: 0;
+}
 .document-canvas {
   width: min(100%, 50rem);
   min-height: 100%;

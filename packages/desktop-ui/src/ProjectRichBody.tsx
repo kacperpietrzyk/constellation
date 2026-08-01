@@ -4,7 +4,6 @@ import { HocuspocusProvider } from "@hocuspocus/provider";
 import Collaboration from "@tiptap/extension-collaboration";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import type { ProjectId, SpaceId } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
@@ -13,7 +12,6 @@ import type {
 import {
   MAX_DOCUMENT_TEXT_LENGTH,
   RICH_DOCUMENT_FRAGMENT_ROOT,
-  STRUCTURED_DOCUMENT_HEADING_LEVELS,
   documentEntityReferences,
   documentPlainText,
 } from "@constellation/realtime-documents";
@@ -23,12 +21,12 @@ import { loadDocumentLinkCandidates } from "./client/workflow.js";
 import type { DesktopSnapshot } from "./client/workflow.js";
 import {
   DOCUMENT_ENTITY_ACTIVATE_EVENT,
-  EntityReference,
   documentEntityKindCopy,
   publishDocumentEntityLabels,
   type DocumentEntityCandidate,
   type DocumentEntityTargetKind,
 } from "./document-entity-reference.js";
+import { DOCUMENT_SCHEMA_EXTENSIONS } from "./document-editor-extensions.js";
 import { useInlineSuggestions } from "./components/InlineSuggestions.js";
 
 type EditorStatus =
@@ -111,15 +109,10 @@ export default function ProjectRichBody({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({
-          undoRedo: false,
-          link: { openOnClick: false },
-          // Poziomy nagłówków biorą się z kontraktu treści, nie z domyślnych
-          // ustawień StarterKita: walidator i edytor mają przyjmować ten sam
-          // zbiór, a przepisanie go tutaj z powrotem na literał odtworzyłoby
-          // dokładnie to rozejście, które ta stała zamyka.
-          heading: { levels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS] },
-        }),
+        // The schema comes from ONE array both editors spread. Two copies of
+        // this list is how the editors and the validator drifted on
+        // `heading.levels` in the first place.
+        ...DOCUMENT_SCHEMA_EXTENSIONS,
         suggestions.extension,
         Placeholder.configure({
           placeholder: "Expand the outcome into plan, context and decisions.",
@@ -128,7 +121,6 @@ export default function ProjectRichBody({
           document: yDocument,
           field: RICH_DOCUMENT_FRAGMENT_ROOT,
         }),
-        EntityReference,
       ],
       immediatelyRender: false,
       editable: false,

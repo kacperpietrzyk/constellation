@@ -8,6 +8,8 @@ import {
 import {
   replaceStructuredDocumentInYjs as replaceImportedStructuredDocument,
   structuredDocumentFromYjs as importStructuredDocument,
+  structuredDocumentNodeText,
+  STRUCTURED_DOCUMENT_SCHEMA_VERSION,
   type StructuredDocument,
 } from "./structured-document.js";
 
@@ -126,7 +128,6 @@ const richNodeText = (node: Y.XmlElement | Y.XmlText): string => {
         typeof part.insert === "string" ? part.insert : "",
       )
       .join("");
-  if (node.nodeName === "hardBreak") return "\n";
   const childText = node
     .toArray()
     .filter(
@@ -134,11 +135,14 @@ const richNodeText = (node: Y.XmlElement | Y.XmlText): string => {
         child instanceof Y.XmlElement || child instanceof Y.XmlText,
     )
     .map(richNodeText);
-  if (node.nodeName === "bulletList" || node.nodeName === "orderedList") {
-    return childText.join("\n");
-  }
-  if (node.nodeName === "listItem") return childText.join("\n");
-  return childText.join("");
+  // How a kind reads as plain text is part of the schema, so it is decided by
+  // the schema's own total record rather than by a second list living here.
+  // The list that used to live here is what let a kind added upstream arrive
+  // with no rule and be joined tightly into one unsearchable token.
+  return structuredDocumentNodeText(node.nodeName, childText, (name) => {
+    const value = node.getAttribute(name);
+    return typeof value === "string" ? value : undefined;
+  });
 };
 
 export const documentContentFormat = (document: Y.Doc): DocumentContentFormat =>
@@ -223,7 +227,13 @@ export const migrateDocumentToRich = (
     replaceRichWithPlainText(document, text);
     const metadata = document.getMap<unknown>(DOCUMENT_FORMAT_METADATA_ROOT);
     metadata.set("format", "rich-v1");
-    metadata.set("schemaVersion", 1);
+    // The CONTENT schema constant, not a literal. Nothing reads this value
+    // today — `formatOf` reads only `format` — which is exactly why it was
+    // able to sit at `1` while the schema it names moved: a hand-written
+    // number standing beside a closed vocabulary with nothing forcing the two
+    // to move together, the defect family this wave is closing, in a third
+    // layer. One import removes the whole drift site.
+    metadata.set("schemaVersion", STRUCTURED_DOCUMENT_SCHEMA_VERSION);
     metadata.set("legacyDigest", legacyDigest);
   }, origin);
   return true;
@@ -277,7 +287,10 @@ export const restoreDocumentFromCheckpoint = (
           DOCUMENT_FORMAT_METADATA_ROOT,
         );
         currentMetadata.set("format", "rich-v1");
-        currentMetadata.set("schemaVersion", 1);
+        currentMetadata.set(
+          "schemaVersion",
+          STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+        );
         const digest = restoredMetadata.get("legacyDigest");
         if (typeof digest === "string")
           currentMetadata.set("legacyDigest", digest);

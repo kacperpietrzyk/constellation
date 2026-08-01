@@ -100,6 +100,15 @@ export const LibraryShell = ({
             <button
               aria-selected={reading === id}
               className={styles.switch}
+              // Ten sam znacznik, co przełącznik układów Zadań
+              // (`TasksSurface.tsx`) i Projektów (`ProjectCollection.tsx`), i on
+              // jest tym, po czym bramka układu wylicza obiektywy do zmierzenia.
+              // Bez niego przelot mierzył WYŁĄCZNIE odczyt Notatek, a Źródła
+              // i Historia przechwyceń były raportowane jako „0 wierszy" —
+              // przy pełnych listach po drugiej stronie kliknięcia. Deklaracja
+              // stoi tutaj, a nie w selektorze bramki rozszerzonym o
+              // `[role="tab"]`, bo tamten łapie też pasek zakładek rekordu.
+              data-layout={id}
               key={id}
               onClick={() => setReading(id)}
               role="tab"

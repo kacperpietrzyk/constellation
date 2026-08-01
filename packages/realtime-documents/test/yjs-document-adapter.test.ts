@@ -312,12 +312,16 @@ describe("replaceable Yjs realtime-document adapter", () => {
   });
 
   it("rejects unknown structure, unsafe links, and oversized JSON", () => {
+    // This case used to spell the unknown kind `table`, which Wave D turned
+    // into a real one — so the assertion would have gone on passing while
+    // testing something else entirely. It now names a kind that is outside
+    // the closed vocabulary and cannot quietly join it.
     assert.throws(
       () =>
         parseStructuredDocument({
           schemaVersion: 1,
           type: "doc",
-          content: [{ type: "table" }],
+          content: [{ type: "spreadsheet" }],
         }),
       /DOCUMENT_STRUCTURED_SCHEMA_INVALID/u,
     );

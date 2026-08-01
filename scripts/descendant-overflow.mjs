@@ -1,11 +1,11 @@
 // Czy PRZEPEŁNIENIE POTOMKA jest dozwolone — decyzja wyjęta z przeglądarki.
 //
 // Po co osobny moduł: `verify-renderer-layout.mjs` potrzebuje przeglądarki
-// i serwera dev, więc NIE CHODZI w `npm run check` ani w CI (uzasadnienie w
-// nagłówku tamtego pliku). Sama reguła „wolno czy nie wolno" jest zwykłą
-// funkcją nad liczbami i napisami, więc mieszka tutaj i ma testy, które CI
-// uruchamia — inaczej jedyną rzeczą pilnującą tej reguły byłby przebieg,
-// którego nikt nie odpala.
+// i serwera dev, więc nie chodzi w `npm run check` — ma w CI WŁASNE zadanie
+// `layout`, na jednym systemie (uzasadnienie w nagłówku tamtego pliku). Sama
+// reguła „wolno czy nie wolno" jest zwykłą funkcją nad liczbami i napisami,
+// więc mieszka tutaj i ma testy, które chodzą w `check` na wszystkich trzech
+// systemach — reguła jest przenośna, PIKSELE nie są.
 //
 // DLACZEGO TO W OGÓLE POWSTAŁO. Bramka układu mierzyła PIERWSZE DZIECKO
 // powierzchni (`scrollWidth` kontra `clientWidth`) i nic poniżej. Zmierzone
@@ -152,26 +152,31 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   // Library PUSTĄ — bez wybranego dokumentu zamiast edytora rysuje się panel
   // powitalny, więc PŁASZCZYZNA PISANIA NIE BYŁA MIERZONA ANI RAZU.
   //
-  // Wpis obejmuje OBA pomiary tego samego defektu: korzeń powierzchni
-  // (`div.knowledge-layout`, metryka pierwszego dziecka) i najgłębszego
-  // potomka (`div.document-editor-shell`, przegląd potomków).
-  //
   // WŁAŚCICIEL JEST W TEJ FALI, i brief już go nazwał: ekran Notatek ma
   // dowieźć ZADEKLAROWANĄ KOLEJNOŚĆ ZWIJANIA paneli dla 364 px (300%)
   // i ~540 px (własne minimum okna produktu). Ten pomiar jest dowodem, że
-  // wymaganie dotyczy już DWÓCH torów, nie dopiero trzech. Wpisy znikają,
+  // wymaganie dotyczy już DWÓCH torów, nie dopiero trzech. Wpis znika,
   // kiedy ta kolejność wyląduje — nie wcześniej i nie przez podniesienie
   // sufitu.
-  {
-    surface: "library",
-    signature: "div.knowledge-layout",
-    ceilings: {
-      "text scaled to 200%": 470,
-      "a 320 px window": 262,
-    },
-    thread:
-      "fala D, lot ekranu Notatek — zadeklarowana kolejność zwijania paneli (brief §3e); korzeń powierzchni, metryka pierwszego dziecka",
-  },
+  //
+  // BYŁ TU DRUGI WPIS: `div.knowledge-layout` z sufitami 470 · 262, ten sam
+  // defekt widziany metryką PIERWSZEGO DZIECKA. Został USUNIĘTY, i nie
+  // dlatego, że dług spłacono. Wpis zmierzono na drzewie SPRZED PR #201:
+  // lot S2 odbił się od `main` @3cfc099, a powłoka Biblioteki (#201) weszła
+  // do `main` PRZED nim, więc rejestr wylądował opisując korzeń, którego
+  // już nie było. Od #201 pierwszym dzieckiem powierzchni jest `div._shell`
+  // (`library/LibraryShell.tsx`), a pole odczytu `.reading` ma `overflow:
+  // auto` (`library/library.module.css`) — więc korzeń WCHŁANIA to
+  // przepełnienie i nie da się go tam już zmierzyć. Zmierzone: żaden przelot
+  // nie melduje przepełnienia korzenia na żadnej powierzchni.
+  //
+  // Dług NIE ZNIKNĄŁ i dalej pada z tego samego miejsca: `document-editor-shell`
+  // mierzy się na `main` @1edcf40 dokładnie na swoich sufitach (+494 przy 200%,
+  // +274 przy 320 px). Jeden wpis zamiast dwóch, ten sam pomiar.
+  //
+  // To jest STRAŻNIK REJESTRU, który zadziałał: „ten wpis nie został ani razu
+  // dopasowany" to dokładnie ta wiadomość, którą miał wysłać, kiedy bramka
+  // przestaje widzieć ekran. Nie należy go wyciszać — należy wpis poprawić.
   {
     surface: "library",
     signature: "div.document-editor-shell",

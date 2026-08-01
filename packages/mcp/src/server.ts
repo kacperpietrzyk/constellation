@@ -13,6 +13,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import { READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS } from "@constellation/realtime-documents";
+
 import {
   CheckpointIdSchema,
   CaptureIdSchema,
@@ -44,6 +46,7 @@ import {
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   MCP_CONTRACT_VERSION,
   McpPayloadChunkResultSchema,
+  StructuredDocumentSchemaVersionSchema,
   type McpOperatorInvocation,
   type McpOperatorResponse,
 } from "./protocol.js";
@@ -332,7 +335,10 @@ export const createConstellationMcpServer = (
             run: runInput,
             workspaceId: uuid,
             documentId: uuid,
-            schemaVersion: { type: "integer", const: 1 },
+            schemaVersion: {
+              type: "integer",
+              enum: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+            },
           },
           ["run", "workspaceId", "documentId", "schemaVersion"],
         ),
@@ -348,7 +354,10 @@ export const createConstellationMcpServer = (
             run: runInput,
             workspaceId: uuid,
             documentId: uuid,
-            schemaVersion: { type: "integer", const: 1 },
+            schemaVersion: {
+              type: "integer",
+              enum: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+            },
             expectedStateVectorSha256: {
               type: "string",
               pattern: "^[0-9a-f]{64}$",
@@ -383,7 +392,10 @@ export const createConstellationMcpServer = (
             workspaceId: uuid,
             documentId: uuid,
             revisionId: uuid,
-            schemaVersion: { type: "integer", const: 1 },
+            schemaVersion: {
+              type: "integer",
+              enum: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+            },
             expectedStateVectorSha256: {
               type: "string",
               pattern: "^[0-9a-f]{64}$",
@@ -416,7 +428,10 @@ export const createConstellationMcpServer = (
             run: runInput,
             workspaceId: uuid,
             projectId: uuid,
-            schemaVersion: { type: "integer", const: 1 },
+            schemaVersion: {
+              type: "integer",
+              enum: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+            },
           },
           ["run", "workspaceId", "projectId", "schemaVersion"],
         ),
@@ -432,7 +447,10 @@ export const createConstellationMcpServer = (
             run: runInput,
             workspaceId: uuid,
             projectId: uuid,
-            schemaVersion: { type: "integer", const: 1 },
+            schemaVersion: {
+              type: "integer",
+              enum: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+            },
             expectedStateVectorSha256: {
               type: "string",
               pattern: "^[0-9a-f]{64}$",
@@ -467,7 +485,10 @@ export const createConstellationMcpServer = (
             workspaceId: uuid,
             projectId: uuid,
             revisionId: uuid,
-            schemaVersion: { type: "integer", const: 1 },
+            schemaVersion: {
+              type: "integer",
+              enum: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+            },
             expectedStateVectorSha256: {
               type: "string",
               pattern: "^[0-9a-f]{64}$",
@@ -580,7 +601,9 @@ export const createConstellationMcpServer = (
             run,
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             documentId: DocumentIdSchema.parse(args.documentId),
-            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            schemaVersion: StructuredDocumentSchemaVersionSchema.parse(
+              args.schemaVersion,
+            ),
           }),
         );
       case "constellation.document.structured.write.v1":
@@ -592,7 +615,9 @@ export const createConstellationMcpServer = (
             run,
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             documentId: DocumentIdSchema.parse(args.documentId),
-            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            schemaVersion: StructuredDocumentSchemaVersionSchema.parse(
+              args.schemaVersion,
+            ),
             expectedStateVectorSha256: z
               .string()
               .regex(/^[0-9a-f]{64}$/u)
@@ -616,7 +641,9 @@ export const createConstellationMcpServer = (
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             documentId: DocumentIdSchema.parse(args.documentId),
             revisionId: DocumentRevisionIdSchema.parse(args.revisionId),
-            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            schemaVersion: StructuredDocumentSchemaVersionSchema.parse(
+              args.schemaVersion,
+            ),
             expectedStateVectorSha256: z
               .string()
               .regex(/^[0-9a-f]{64}$/u)
@@ -638,7 +665,9 @@ export const createConstellationMcpServer = (
             run,
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             projectId: ProjectIdSchema.parse(args.projectId),
-            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            schemaVersion: StructuredDocumentSchemaVersionSchema.parse(
+              args.schemaVersion,
+            ),
           }),
         );
       case "constellation.project.structured.write.v1":
@@ -650,7 +679,9 @@ export const createConstellationMcpServer = (
             run,
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             projectId: ProjectIdSchema.parse(args.projectId),
-            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            schemaVersion: StructuredDocumentSchemaVersionSchema.parse(
+              args.schemaVersion,
+            ),
             expectedStateVectorSha256: z
               .string()
               .regex(/^[0-9a-f]{64}$/u)
@@ -674,7 +705,9 @@ export const createConstellationMcpServer = (
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             projectId: ProjectIdSchema.parse(args.projectId),
             revisionId: DocumentRevisionIdSchema.parse(args.revisionId),
-            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            schemaVersion: StructuredDocumentSchemaVersionSchema.parse(
+              args.schemaVersion,
+            ),
             expectedStateVectorSha256: z
               .string()
               .regex(/^[0-9a-f]{64}$/u)

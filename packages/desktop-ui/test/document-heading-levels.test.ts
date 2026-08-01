@@ -115,14 +115,14 @@ describe("the editor and the content validator agree on heading levels", () => {
     // Bez tego oba miejsca mogą wrócić do domyślnych ustawień StarterKita
     // JEDNYM skasowaniem opcji — i wtedy zbiory znowu rozjeżdżają się cicho,
     // bo domyślne poziomy nie są niczym związane z walidatorem.
-    for (const source of [
-      read("src", "library", "KnowledgeEditor.tsx"),
-      read("src", "ProjectRichBody.tsx"),
-    ]) {
-      assert.match(
-        source,
-        /heading:\s*\{\s*levels:\s*\[\.\.\.STRUCTURED_DOCUMENT_HEADING_LEVELS\]\s*\}/,
-      );
-    }
+    // Oba edytory montują teraz JEDNĄ wspólną tablicę rozszerzeń, więc miejsce,
+    // w którym można cicho wrócić do domyślnych poziomów StarterKita, jest
+    // dokładnie jedno — i to ono jest tu sprawdzane. Asercja wskazywała na
+    // dwa pliki edytorów; gdyby została, przeszłaby na zieleń nad plikami,
+    // które przestały ten fragment zawierać.
+    assert.match(
+      read("src", "document-editor-extensions.ts"),
+      /heading:\s*\{\s*levels:\s*\[\.\.\.STRUCTURED_DOCUMENT_HEADING_LEVELS\]\s*\}/,
+    );
   });
 });

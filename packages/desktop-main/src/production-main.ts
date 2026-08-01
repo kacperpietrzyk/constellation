@@ -22,6 +22,7 @@ import type {
   GlobalShortcut,
   IpcMain,
   Notification as NotificationType,
+  Protocol,
   SafeStorage,
   Session,
   Shell,
@@ -31,6 +32,7 @@ import {
   type DesktopBuildInfo,
   type DesktopWorkspaceCockpitEntry,
 } from "@constellation/desktop-preload/client";
+import { ATTACHMENT_PROTOCOL_SCHEME } from "@constellation/contracts";
 import { desktopSurfaceIds } from "@constellation/desktop-preload/surface-registry";
 import {
   canEditSpace,
@@ -66,6 +68,10 @@ import {
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
+import {
+  ATTACHMENT_RESPONSE_HEADERS,
+  readAttachmentImage,
+} from "./attachment-protocol.js";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import { AttentionNotificationCoordinator } from "./attention-notification.js";
@@ -154,6 +160,7 @@ interface ElectronRuntime {
   readonly globalShortcut: GlobalShortcut;
   readonly ipcMain: IpcMain;
   readonly Notification: typeof NotificationType;
+  readonly protocol: Protocol;
   readonly safeStorage: SafeStorage;
   readonly session: { readonly defaultSession: Session };
   readonly shell: Shell;
@@ -177,9 +184,31 @@ const {
   dialog,
   globalShortcut,
   ipcMain,
+  protocol,
   session,
   shell,
 } = electron;
+
+// MUST run before `app.whenReady()`. Electron refuses the registration after
+// the app is ready, and it refuses it SILENTLY — the scheme still exists, but
+// without `standard` a URL's host is not parsed (so every image resolves to
+// nothing) and without `secure` the renderer's own CSP treats it as insecure
+// content. Two calls in two lifecycle phases, and swapping them fails half
+// way, which is why they are commented rather than merely correct.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: ATTACHMENT_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: false,
+      // Nothing on this scheme may be scripted, fetched cross-origin, or
+      // treated as a page. It answers `<img src>` and nothing else.
+      corsEnabled: false,
+      stream: false,
+    },
+  },
+]);
 
 const preloadPath = fileURLToPath(
   new URL("../../../desktop-preload/build/preload.cjs", import.meta.url),
@@ -1212,6 +1241,47 @@ const startProductionDesktop = async (): Promise<void> => {
           recoveredKernel.identity.workspaceId,
           recoveredKernel.store,
         );
+  // The image byte path. Registered here, after the workspace is recovered,
+  // because the resolver answers for exactly ONE workspace — the one this
+  // process opened. A resolver that took the workspace from the URL would let
+  // a document name its own scope, which is the whole boundary.
+  if (recoveredKernel !== undefined && capturePayloadCustody !== undefined) {
+    const kernel = recoveredKernel;
+    const custody = capturePayloadCustody;
+    protocol.handle(ATTACHMENT_PROTOCOL_SCHEME, (request) => {
+      // Reads only. The authorization itself lives in `attachment-protocol`,
+      // where an assertion can reach it — written inline here it would be the
+      // one part of a new security boundary nothing could test.
+      const image = readAttachmentImage(request.url, {
+        workspaceId: kernel.identity.workspaceId,
+        readSource: (sourceId) =>
+          kernel.store.read((view) =>
+            isApplicationWave2ReadView(view)
+              ? view.getKnowledgeSource(sourceId)
+              : undefined,
+          ),
+        readCapture: (captureId) =>
+          kernel.store.read((view) => view.getCapture(captureId)),
+        readBytes: (original) => custody.read(original),
+      });
+      // ONE refusal for every reason there could be. A 404 that varied with
+      // the cause would answer whether a record outside the caller's reach
+      // exists — the property `RejectedOutcomeSchema` stays `.strict()` for.
+      if (image === undefined)
+        return new Response(null, {
+          status: 404,
+          headers: ATTACHMENT_RESPONSE_HEADERS,
+        });
+      return new Response(new Uint8Array(image.bytes), {
+        status: 200,
+        headers: {
+          ...ATTACHMENT_RESPONSE_HEADERS,
+          "Content-Type": image.mediaType,
+        },
+      });
+    });
+  }
+
   const voiceLifecycleService =
     recoveredKernel === undefined
       ? undefined

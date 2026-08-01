@@ -6,6 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { CapabilitySchema } from "@constellation/contracts";
+import { READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS } from "@constellation/realtime-documents";
 
 import {
   CONTRACT_SPLIT_WARNING,
@@ -800,4 +801,139 @@ test("folds a still-referenced blocker into the same conflict as a later change"
     (refusal.result as { diagnosticCode: string }).diagnosticCode,
     MCP_CHECKPOINT_REVERT_DIAGNOSTICS.conflict,
   );
+});
+
+test("accepts both content schema versions a structured request may declare", async () => {
+  // The version was the literal `1` at eighteen sites across three layers —
+  // six request schemas, six advertised JSON Schemas, six runtime parses —
+  // none of them referencing the constant they restate. So bumping the
+  // content schema changed nothing here: an agent sending the NEW version was
+  // refused at the boundary, and an agent sending the old one got new content
+  // back beside a stale number in its own request.
+  //
+  // The tools are enumerated from the published contract rather than listed
+  // by hand: a seventh structured tool added later must not be able to arrive
+  // pinned to one version while these stay green.
+  const invocations: McpOperatorInvocation[] = [];
+  const server = createConstellationMcpServer({
+    invoke: (invocation) => {
+      invocations.push(invocation);
+      return Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        result: { kind: invocation.kind },
+      } satisfies McpOperatorResponse);
+    },
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "schema-version-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  try {
+    const tools = await client.listTools();
+    const structured = tools.tools.filter(
+      (tool) =>
+        (tool.inputSchema.properties as Record<string, unknown> | undefined)?.[
+          "schemaVersion"
+        ] !== undefined,
+    );
+    // An empty measurement is an instrument failure, not a result.
+    assert.equal(
+      structured.length,
+      6,
+      "The structured tools stopped being found — this test measures nothing.",
+    );
+
+    for (const tool of structured) {
+      const published = (
+        tool.inputSchema.properties as Record<string, unknown>
+      )["schemaVersion"] as { readonly enum?: readonly number[] };
+      assert.deepEqual(
+        [...(published.enum ?? [])].sort(),
+        [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS].sort(),
+        `${tool.name} advertises a version set the document package does not read.`,
+      );
+    }
+
+    const structuredArguments = (
+      tool: string,
+      schemaVersion: number,
+    ): Record<string, unknown> => ({
+      run,
+      workspaceId: "50000000-0000-4000-8000-000000000003",
+      ...(tool.includes(".project.")
+        ? { projectId: "50000000-0000-4000-8000-000000000005" }
+        : { documentId: "50000000-0000-4000-8000-000000000005" }),
+      schemaVersion,
+      ...(tool.endsWith(".restore.v1")
+        ? { revisionId: "50000000-0000-4000-8000-000000000006" }
+        : {}),
+      ...(tool.endsWith(".read.v1")
+        ? {}
+        : {
+            expectedStateVectorSha256: "a".repeat(64),
+            idempotencyKey: "key-1",
+          }),
+      ...(tool.endsWith(".write.v1")
+        ? {
+            content: {
+              schemaVersion,
+              type: "doc",
+              content: [{ type: "paragraph" }],
+            },
+          }
+        : {}),
+    });
+
+    for (const version of READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS) {
+      for (const tool of structured) {
+        const seen = invocations.length;
+        const result = await client.callTool({
+          name: tool.name,
+          arguments: structuredArguments(tool.name, version),
+        });
+        assert.notEqual(
+          result.isError,
+          true,
+          `${tool.name} refused schemaVersion ${version}: ${JSON.stringify(result.content)}`,
+        );
+        // The version must reach the operator, not merely pass validation and
+        // be replaced by a constant on the way through.
+        assert.equal(invocations.length, seen + 1, tool.name);
+        assert.equal(
+          (invocations.at(-1) as { readonly schemaVersion?: number })
+            .schemaVersion,
+          version,
+          `${tool.name} did not carry schemaVersion ${version} through to the operator.`,
+        );
+      }
+    }
+
+    // And a version nobody reads is still refused AT THE BOUNDARY — the parse
+    // throws rather than returning a tool error, which is how every other
+    // malformed argument on this server behaves. What matters is that the
+    // operator was never reached.
+    const before = invocations.length;
+    await assert.rejects(() =>
+      client.callTool({
+        name: "constellation.document.structured.read.v1",
+        arguments: structuredArguments(
+          "constellation.document.structured.read.v1",
+          Math.max(...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS) + 1,
+        ),
+      }),
+    );
+    assert.equal(
+      invocations.length,
+      before,
+      "An unreadable version reached the operator.",
+    );
+  } finally {
+    await client.close();
+    await server.close();
+  }
 });
