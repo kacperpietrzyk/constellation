@@ -14,7 +14,29 @@ import {
   RICH_DOCUMENT_FRAGMENT_ROOT,
 } from "./yjs-document-adapter.js";
 
-export const STRUCTURED_DOCUMENT_SCHEMA_VERSION = 1 as const;
+/**
+ * The content schema this build WRITES. Wave D moved it 1 → 2, for `image`
+ * and `table`.
+ */
+export const STRUCTURED_DOCUMENT_SCHEMA_VERSION = 2 as const;
+
+/**
+ * The versions this build READS, oldest first.
+ *
+ * The version was enforced with a hard `!==` against the constant above, in
+ * `parseStructuredDocument` — the function every agent read, every idempotency
+ * digest and every restore comparison goes through. Bumping the constant
+ * without this set would have made every note that exists today unreadable
+ * and unwritable to every agent, the same shape as the h4 defect S1 closed,
+ * except that this one would have hit ALL of them at once.
+ *
+ * Removing a version from here is a real decision about abandoning stored
+ * content, and it should look like one.
+ */
+export const READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS = [1, 2] as const;
+
+export type ReadableStructuredDocumentSchemaVersion =
+  (typeof READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS)[number];
 
 // Poziomy nagłówków, JEDNA lista dla walidatora i dla obu edytorów. Do fali D
 // walidator przyjmował `[1, 2, 3]`, a StarterKit oferował sześć poziomów wraz
@@ -60,7 +82,15 @@ export const STRUCTURED_DOCUMENT_NODE_KINDS = [
   "hardBreak",
   "text",
   "entityReference",
+  "image",
+  "table",
+  "tableRow",
+  "tableCell",
+  "tableHeader",
 ] as const;
+
+/** The longest alternative text an image may carry. */
+export const MAX_IMAGE_ALT_LENGTH = 500;
 
 export type StructuredDocumentNodeKind =
   (typeof STRUCTURED_DOCUMENT_NODE_KINDS)[number];
@@ -105,7 +135,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * kind that is never anybody's child, which is why a nested `doc` is refused
  * everywhere without a rule saying so.
  */
-type NodeGroup = "root" | "block" | "inline" | "listItem";
+type NodeGroup =
+  "root" | "block" | "inline" | "listItem" | "tableRow" | "tableCell";
 
 /**
  * What a kind admits as children. The three shared with `NodeGroup` mean
@@ -119,6 +150,17 @@ interface StructuredDocumentNodeRule {
   readonly spec: NodeSpec;
   readonly group: NodeGroup;
   readonly content: ContentModel;
+  /**
+   * The oldest schema version that may DECLARE this kind. It is what makes
+   * the version number mean something instead of decorate a request: a write
+   * that says `schemaVersion: 1` and carries an image is refused, so an agent
+   * cannot put content into a document that a reader pinned to 1 would have
+   * to invent a rendering for.
+   *
+   * It is not a read gate. A stored document is read at the version this
+   * build writes, because every older node set is a subset of the current one.
+   */
+  readonly introducedIn: ReadableStructuredDocumentSchemaVersion;
   /** May it appear with no `content` key, and with an empty one. */
   readonly childlessAllowed: boolean;
   /** The kind the first child must be, when it has children. */
@@ -211,6 +253,26 @@ const assertCodeBlockAttrs = (attrs: unknown): void => {
     schemaInvalid();
 };
 
+/**
+ * An image stores the IDENTITY of an attachment already in this workspace and
+ * never a URL — the same deliberate design as `entityReference`: store what a
+ * thing is, resolve how it looks at render time. A URL in the node would put
+ * bytes (or an unauthorized reference to them) inside the CRDT, past
+ * `MAX_STRUCTURED_DOCUMENT_BYTES` immediately for the first, and outside the
+ * attachment's own authorization for the second.
+ *
+ * `alt` is required and may be empty. Empty means decorative, which is a
+ * statement; absent would mean nobody was ever asked.
+ */
+const assertImageAttrs = (attrs: unknown): void => {
+  if (!isRecord(attrs)) return schemaInvalid();
+  exactKeys(attrs, ["sourceId", "alt"]);
+  if (typeof attrs.sourceId !== "string" || !uuid.test(attrs.sourceId))
+    schemaInvalid();
+  if (typeof attrs.alt !== "string" || attrs.alt.length > MAX_IMAGE_ALT_LENGTH)
+    schemaInvalid();
+};
+
 const assertEntityReferenceAttrs = (attrs: unknown): void => {
   if (!isRecord(attrs)) throw new Error("DOCUMENT_ENTITY_REFERENCE_INVALID");
   exactKeys(attrs, ["targetKind", "targetId"]);
@@ -237,6 +299,7 @@ const nodeRules: Record<
     spec: { content: "block+" },
     group: "root",
     content: "block",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -246,6 +309,7 @@ const nodeRules: Record<
     spec: { content: "inline*", group: "block" },
     group: "block",
     content: "inline",
+    introducedIn: 1,
     childlessAllowed: true,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -255,6 +319,7 @@ const nodeRules: Record<
     spec: { content: "block+", group: "block" },
     group: "block",
     content: "block",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -264,6 +329,7 @@ const nodeRules: Record<
     spec: { content: "listItem+", group: "block" },
     group: "block",
     content: "listItem",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -277,6 +343,7 @@ const nodeRules: Record<
     },
     group: "block",
     content: "listItem",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: assertOrderedListAttrs,
@@ -286,6 +353,7 @@ const nodeRules: Record<
     spec: { content: "paragraph block*" },
     group: "listItem",
     content: "block",
+    introducedIn: 1,
     childlessAllowed: false,
     firstChild: "paragraph",
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
@@ -303,6 +371,7 @@ const nodeRules: Record<
     },
     group: "block",
     content: "text",
+    introducedIn: 1,
     childlessAllowed: true,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: assertCodeBlockAttrs,
@@ -317,6 +386,7 @@ const nodeRules: Record<
     },
     group: "block",
     content: "inline",
+    introducedIn: 1,
     childlessAllowed: true,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: assertHeadingAttrs,
@@ -326,6 +396,7 @@ const nodeRules: Record<
     spec: { group: "block" },
     group: "block",
     content: "none",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -335,6 +406,7 @@ const nodeRules: Record<
     spec: { inline: true, group: "inline", selectable: false },
     group: "inline",
     content: "none",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -344,6 +416,7 @@ const nodeRules: Record<
     spec: { group: "inline" },
     group: "inline",
     content: "none",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
     assertAttrs: noAttrs,
@@ -361,12 +434,78 @@ const nodeRules: Record<
     },
     group: "inline",
     content: "none",
+    introducedIn: 1,
     childlessAllowed: false,
     invalidError: "DOCUMENT_ENTITY_REFERENCE_INVALID",
     assertAttrs: assertEntityReferenceAttrs,
     // The label is resolved at render time from the target's current name and
     // is deliberately not stored, so there is nothing here to contribute.
     text: empty,
+  },
+  image: {
+    spec: {
+      group: "block",
+      atom: true,
+      selectable: true,
+      draggable: true,
+      attrs: { sourceId: { default: null }, alt: { default: "" } },
+    },
+    group: "block",
+    content: "none",
+    introducedIn: 2,
+    childlessAllowed: false,
+    invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
+    assertAttrs: assertImageAttrs,
+    // The alternative text IS the image's contribution to search. It is the
+    // only thing about the picture that is words, and dropping it is how an
+    // image becomes a hole in the index of the note that holds it.
+    text: (_children, attribute) => attribute("alt") ?? "",
+  },
+  table: {
+    spec: { content: "tableRow+", group: "block", isolating: true },
+    group: "block",
+    content: "tableRow",
+    introducedIn: 2,
+    childlessAllowed: false,
+    invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
+    assertAttrs: noAttrs,
+    text: lines,
+  },
+  tableRow: {
+    spec: { content: "(tableCell | tableHeader)+" },
+    group: "tableRow",
+    content: "tableCell",
+    introducedIn: 2,
+    childlessAllowed: false,
+    invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
+    assertAttrs: noAttrs,
+    // A TAB between cells and a newline between rows. The separator is the
+    // whole point: joined tightly — which is what a kind with no rule used to
+    // get — a row of `Budget`, `Anna`, `Deadline` indexes as
+    // `BudgetAnnaDeadline` and none of the three words is findable again.
+    text: (children) => children.join("\t"),
+  },
+  tableCell: {
+    spec: { content: "paragraph block*", isolating: true },
+    group: "tableCell",
+    content: "block",
+    introducedIn: 2,
+    childlessAllowed: false,
+    firstChild: "paragraph",
+    invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
+    assertAttrs: noAttrs,
+    text: (children) => children.join(" "),
+  },
+  tableHeader: {
+    spec: { content: "paragraph block*", isolating: true },
+    group: "tableCell",
+    content: "block",
+    introducedIn: 2,
+    childlessAllowed: false,
+    firstChild: "paragraph",
+    invalidError: "DOCUMENT_STRUCTURED_SCHEMA_INVALID",
+    assertAttrs: noAttrs,
+    text: (children) => children.join(" "),
   },
 };
 
@@ -495,6 +634,7 @@ const assertMarks = (value: unknown): void => {
 const assertNodes = (
   value: unknown,
   parent: StructuredDocumentNodeKind,
+  declaredVersion: ReadableStructuredDocumentSchemaVersion,
   count: { value: number },
   textLength: { value: number },
 ): void => {
@@ -514,6 +654,8 @@ const assertNodes = (
     if (!isNodeKind(node.type) || !admits(parentContent, node.type))
       throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
     const rule = nodeRules[node.type];
+    if (rule.introducedIn > declaredVersion)
+      throw new Error("DOCUMENT_STRUCTURED_SCHEMA_VERSION_TOO_OLD");
 
     if (node.type === "text") {
       if (
@@ -543,7 +685,7 @@ const assertNodes = (
     }
     if (!Array.isArray(node.content)) throw new Error(rule.invalidError);
     const content = node.content;
-    assertNodes(content, node.type, count, textLength);
+    assertNodes(content, node.type, declaredVersion, count, textLength);
     if (content.length === 0 && !rule.childlessAllowed)
       throw new Error(rule.invalidError);
     if (
@@ -557,17 +699,28 @@ const assertNodes = (
 export const parseStructuredDocument = (value: unknown): StructuredDocument => {
   if (!isRecord(value)) throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
   exactKeys(value, ["schemaVersion", "type", "content"]);
-  if (
-    value.schemaVersion !== STRUCTURED_DOCUMENT_SCHEMA_VERSION ||
-    value.type !== "doc"
-  )
+  // THE enforcement point. The MCP boundary is the visible one, but this is
+  // the one every path goes through — the agent read, the idempotency digest,
+  // the restore comparison and the renderer's own round trip. A version
+  // widened at the boundary and left as a `!==` here refuses the request one
+  // layer deeper, with a generic error naming nothing.
+  const declaredVersion = READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.find(
+    (version) => version === value.schemaVersion,
+  );
+  if (declaredVersion === undefined || value.type !== "doc")
     throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
   const encoded = new TextEncoder().encode(JSON.stringify(value));
   if (encoded.byteLength > MAX_STRUCTURED_DOCUMENT_BYTES)
     throw new Error("DOCUMENT_STRUCTURED_SIZE_INVALID");
   if (!Array.isArray(value.content) || value.content.length < 1)
     throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
-  assertNodes(value.content, "doc", { value: 0 }, { value: 0 });
+  assertNodes(
+    value.content,
+    "doc",
+    declaredVersion,
+    { value: 0 },
+    { value: 0 },
+  );
   const canonical = structuredDocumentSchema
     .nodeFromJSON({ type: "doc", content: value.content })
     .toJSON() as {

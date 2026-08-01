@@ -9,6 +9,7 @@ import {
   replaceStructuredDocumentInYjs as replaceImportedStructuredDocument,
   structuredDocumentFromYjs as importStructuredDocument,
   structuredDocumentNodeText,
+  STRUCTURED_DOCUMENT_SCHEMA_VERSION,
   type StructuredDocument,
 } from "./structured-document.js";
 
@@ -226,7 +227,13 @@ export const migrateDocumentToRich = (
     replaceRichWithPlainText(document, text);
     const metadata = document.getMap<unknown>(DOCUMENT_FORMAT_METADATA_ROOT);
     metadata.set("format", "rich-v1");
-    metadata.set("schemaVersion", 1);
+    // The CONTENT schema constant, not a literal. Nothing reads this value
+    // today — `formatOf` reads only `format` — which is exactly why it was
+    // able to sit at `1` while the schema it names moved: a hand-written
+    // number standing beside a closed vocabulary with nothing forcing the two
+    // to move together, the defect family this wave is closing, in a third
+    // layer. One import removes the whole drift site.
+    metadata.set("schemaVersion", STRUCTURED_DOCUMENT_SCHEMA_VERSION);
     metadata.set("legacyDigest", legacyDigest);
   }, origin);
   return true;
@@ -280,7 +287,10 @@ export const restoreDocumentFromCheckpoint = (
           DOCUMENT_FORMAT_METADATA_ROOT,
         );
         currentMetadata.set("format", "rich-v1");
-        currentMetadata.set("schemaVersion", 1);
+        currentMetadata.set(
+          "schemaVersion",
+          STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+        );
         const digest = restoredMetadata.get("legacyDigest");
         if (typeof digest === "string")
           currentMetadata.set("legacyDigest", digest);

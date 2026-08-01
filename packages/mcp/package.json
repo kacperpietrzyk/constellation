@@ -24,6 +24,7 @@
   "types": "./dist/src/index.d.ts",
   "dependencies": {
     "@constellation/contracts": "0.0.0",
+    "@constellation/realtime-documents": "0.0.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "zod": "4.4.3"
   },

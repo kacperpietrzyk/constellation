@@ -9,7 +9,11 @@ import {
 } from "@constellation/contracts";
 import { isApplicationWave2ReadView } from "@constellation/application";
 import { InMemoryReferenceStore } from "@constellation/testkit";
-import { structuredDocumentEntityReferences } from "@constellation/realtime-documents";
+import {
+  STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+  structuredDocumentEntityReferences,
+  type StructuredDocument,
+} from "@constellation/realtime-documents";
 
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
 import { buildExchangeManifest } from "../src/starter-workspace-export.js";
@@ -621,8 +625,12 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
       sourceProject !== undefined &&
       importedDocument !== undefined,
   );
-  const richContent = {
-    schemaVersion: 1 as const,
+  const richContent: StructuredDocument = {
+    // Derived, never pinned: this fixture asserted `1 as const` and stopped
+    // compiling the moment the content schema moved. An assertion pinned to a
+    // value that advances is a defect with a delay fuse — this wave has now
+    // met three.
+    schemaVersion: STRUCTURED_DOCUMENT_SCHEMA_VERSION,
     type: "doc" as const,
     content: [
       {
@@ -715,6 +723,67 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
   assert.deepEqual(structuredDocumentEntityReferences(importedProjectContent), [
     { targetKind: "task", targetId: targetTask.id },
   ]);
+
+  // An archive EXPORTED BY THE v1 BUILD still imports. The manifest carries
+  // the content schema version the exporting build wrote, and the import
+  // re-validates through `parseStructuredDocument` after remapping the ids —
+  // so before `READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS` existed, moving
+  // the content schema to 2 would have made every archive written by a
+  // shipped build refuse to import, with a generic schema error naming
+  // nothing. This is the second site the readable set saves, and it is not
+  // the one the brief named.
+  const v1Manifest = parseStarterWorkspaceManifest(
+    JSON.parse(
+      JSON.stringify(richExport?.manifest).replaceAll(
+        `"schemaVersion":${STRUCTURED_DOCUMENT_SCHEMA_VERSION}`,
+        '"schemaVersion":1',
+      ),
+    ) as unknown,
+  );
+  assert.ok(v1Manifest !== undefined);
+  const v1Store = new InMemoryReferenceStore();
+  const v1Service = createRuntimeKernelService({ context, store: v1Store });
+  assert.equal(
+    v1Service.execute(bootstrap("v1-archive-target")).kind,
+    "command_outcome",
+  );
+  const v1Statuses = v1Store.read((view) =>
+    view.listTaskStatuses(context.workspaceId),
+  );
+  const v1Workspace = v1Store.read((view) =>
+    view.getWorkspace(context.workspaceId),
+  );
+  let importedV1Content: unknown;
+  assert.doesNotThrow(() =>
+    importStarterWorkspace({
+      service: v1Service,
+      workspaceId: context.workspaceId,
+      spaceId,
+      deviceId: DeviceIdSchema.parse("v1-archive-device"),
+      manifest: v1Manifest,
+      resolveStatusId: (label) =>
+        v1Statuses.find(
+          (status) =>
+            status.label.toLocaleLowerCase("pl-PL") ===
+            label.toLocaleLowerCase("pl-PL"),
+        )?.id,
+      existingStatusLabels: v1Statuses.map((status) => status.label),
+      ...(v1Workspace === undefined
+        ? {}
+        : { defaultTaskStatusId: v1Workspace.defaultTaskStatusId }),
+      writeDocumentContent: ({ content }) => {
+        importedV1Content = content;
+      },
+      writeProjectContent: () => {},
+    }),
+  );
+  // Read back at the version this build writes, with the reference remapped —
+  // proof the archive was understood, not merely tolerated.
+  assert.equal(
+    (importedV1Content as { readonly schemaVersion: number }).schemaVersion,
+    STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+  );
+  assert.equal(structuredDocumentEntityReferences(importedV1Content).length, 1);
 
   // A custom status travels with the tasks that name it: without the v3
   // configuration section this import would fail on an unknown status label,

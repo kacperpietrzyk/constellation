@@ -15,10 +15,36 @@ import {
   WorkspaceIdSchema,
   type QueryResult,
 } from "@constellation/contracts";
-import { MAX_DOCUMENT_TEXT_LENGTH } from "@constellation/realtime-documents";
+import {
+  MAX_DOCUMENT_TEXT_LENGTH,
+  READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS,
+} from "@constellation/realtime-documents";
 
 export const MCP_CONTRACT_VERSION = 1 as const;
 export const MAX_IPC_MESSAGE_BYTES = 1_048_576;
+
+/**
+ * The content schema version a structured request may declare — ONE schema
+ * for all six request kinds, derived from the versions the document package
+ * says it can read.
+ *
+ * It was the literal `1`, restated eighteen times across three layers: six
+ * request schemas here, six advertised JSON Schemas and six runtime parses in
+ * `server.ts`. Bumping the content schema changed none of them, so an agent
+ * sending the new version was refused at the boundary and an agent sending
+ * the old one got new content back beside a stale number in its own request.
+ *
+ * Widening it is backwards compatible in the direction that matters: every
+ * host that sends `1` today keeps working, which is why `MCP_CONTRACT_VERSION`
+ * does not move. What a host may WRITE at version 1 is bounded by the
+ * document validator, not here — the vocabulary belongs to the schema, not to
+ * the transport.
+ */
+export const StructuredDocumentSchemaVersionSchema = z.union(
+  READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.map((version) =>
+    z.literal(version),
+  ) as [z.ZodLiteral<1>, z.ZodLiteral<2>, ...z.ZodLiteral<number>[]],
+);
 export const MAX_MCP_PAYLOAD_CHUNK_BYTES = 512 * 1024;
 export const MAX_MCP_PAYLOAD_BYTES = 25 * 1024 * 1024;
 /**
@@ -393,7 +419,7 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       run: HostRunMetadataSchema,
       workspaceId: WorkspaceIdSchema,
       documentId: DocumentIdSchema,
-      schemaVersion: z.literal(1),
+      schemaVersion: StructuredDocumentSchemaVersionSchema,
     })
     .strict(),
   z
@@ -404,7 +430,7 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       run: HostRunMetadataSchema,
       workspaceId: WorkspaceIdSchema,
       documentId: DocumentIdSchema,
-      schemaVersion: z.literal(1),
+      schemaVersion: StructuredDocumentSchemaVersionSchema,
       expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),
       idempotencyKey: z.string().trim().min(1).max(200),
       content: z.unknown(),
@@ -419,7 +445,7 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       workspaceId: WorkspaceIdSchema,
       documentId: DocumentIdSchema,
       revisionId: DocumentRevisionIdSchema,
-      schemaVersion: z.literal(1),
+      schemaVersion: StructuredDocumentSchemaVersionSchema,
       expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),
       idempotencyKey: z.string().trim().min(1).max(200),
     })
@@ -432,7 +458,7 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       run: HostRunMetadataSchema,
       workspaceId: WorkspaceIdSchema,
       projectId: ProjectIdSchema,
-      schemaVersion: z.literal(1),
+      schemaVersion: StructuredDocumentSchemaVersionSchema,
     })
     .strict(),
   z
@@ -443,7 +469,7 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       run: HostRunMetadataSchema,
       workspaceId: WorkspaceIdSchema,
       projectId: ProjectIdSchema,
-      schemaVersion: z.literal(1),
+      schemaVersion: StructuredDocumentSchemaVersionSchema,
       expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),
       idempotencyKey: z.string().trim().min(1).max(200),
       content: z.unknown(),
@@ -458,7 +484,7 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       workspaceId: WorkspaceIdSchema,
       projectId: ProjectIdSchema,
       revisionId: DocumentRevisionIdSchema,
-      schemaVersion: z.literal(1),
+      schemaVersion: StructuredDocumentSchemaVersionSchema,
       expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),
       idempotencyKey: z.string().trim().min(1).max(200),
     })
