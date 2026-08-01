@@ -51,6 +51,10 @@ import {
   RequestOriginSchema,
 } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
+import {
+  KnowledgeSourceAvailabilitySchema,
+  KnowledgeSourceKindSchema,
+} from "./knowledge-source.js";
 import { ExchangeRateSchema, MoneySchema, OfferPriceSchema } from "./money.js";
 import { NeedsReviewSchema } from "./narrative.js";
 import {
@@ -819,11 +823,27 @@ const ManagedAttachmentProjectionSchema = z
 const KnowledgeSourceProjectionSchema = z
   .object({
     id: KnowledgeSourceIdSchema,
-    sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
+    sourceKind: KnowledgeSourceKindSchema,
     title: z.string(),
     canonicalUrl: z.string().optional(),
-    availability: z.enum(["reference_only", "available", "unavailable"]),
+    availability: KnowledgeSourceAvailabilitySchema,
+    /**
+     * WHEN THE CONTENT WAS SEEN TO SAY WHAT IT SAYS. A domain fact about the
+     * world, supplied by whoever collected the source, and freely older than
+     * the record: an excerpt from a 2019 contract was observed in 2019.
+     */
     observedAt: z.iso.datetime({ offset: true }),
+    /**
+     * WHEN THIS RECORD WAS ADDED HERE. A fact about the graph, not about the
+     * world, and it is projected because the screen shows both and they are
+     * different questions — "is this still current?" is answered by the first,
+     * "how long have we had it?" by the second.
+     *
+     * `updatedAt` is NEITHER of them and was the only date on this shape until
+     * Wave D. A reader that printed it as "added" would move the added date
+     * every time somebody fixed a typo in the title.
+     */
+    createdAt: z.iso.datetime({ offset: true }),
     version: z.int().positive(),
     updatedAt: z.iso.datetime({ offset: true }),
   })

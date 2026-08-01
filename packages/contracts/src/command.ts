@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { WorkingDaySchema } from "./working-day.js";
 import {
+  KnowledgeSourceAvailabilitySchema,
+  KnowledgeSourceKindSchema,
+} from "./knowledge-source.js";
+import {
   MarkupPctSchema,
   PipelineStagesSchema,
   UpliftPctSchema,
@@ -779,11 +783,11 @@ export const KnowledgeSourceCreateCommandSchema = CommandMetadataSchema.extend({
     .object({
       sourceId: KnowledgeSourceIdSchema,
       spaceId: SpaceIdSchema,
-      sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
+      sourceKind: KnowledgeSourceKindSchema,
       title: z.string().trim().min(1).max(500),
       canonicalUrl: z.url().max(4_096).optional(),
       excerpt: z.string().trim().min(1).max(32_768).optional(),
-      availability: z.enum(["reference_only", "available", "unavailable"]),
+      availability: KnowledgeSourceAvailabilitySchema,
       observedAt: z.iso.datetime({ offset: true }),
     })
     .strict(),
@@ -802,7 +806,7 @@ export const KnowledgeSourceUpdateCommandSchema = CommandMetadataSchema.extend({
       title: z.string().trim().min(1).max(500),
       canonicalUrl: z.url().max(4_096).optional(),
       excerpt: z.string().trim().min(1).max(32_768).optional(),
-      availability: z.enum(["reference_only", "available", "unavailable"]),
+      availability: KnowledgeSourceAvailabilitySchema,
       observedAt: z.iso.datetime({ offset: true }),
     })
     .strict(),

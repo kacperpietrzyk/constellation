@@ -393,6 +393,61 @@ test("Meetings carries the attachment topic, and nothing hides in a title", asyn
   }
 });
 
+/* SOURCES joins this file for the same reason Meetings did: one contract, one
+ * place. Two topics hang on this screen — what a source IS, at the list header
+ * where decision #21 cut the lecture that used to say it, and what the three
+ * availability states MEAN, at the badge where that explanation used to live in
+ * a `title=`. The `title=` sweep below is therefore not a formality here: it is
+ * the assertion that the tooltip did not come back.
+ *
+ * Mounted directly rather than navigated to, on the Library harness fixture:
+ * the shell's scenario client answers `knowledge.list` with no sources, and a
+ * screen with no rows has no anchors — so "no title and no stray trigger" would
+ * be true of a blank page.
+ */
+test("Sources carries the two Knowledge topics, and nothing hides in a title", async () => {
+  const { SourcesReading } = await import("../src/library/SourcesReading.js");
+  const { librarySources } = await import("../src/dev/library-fixture.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(SourcesReading, {
+        client: undefined,
+        snapshot: {
+          ...workHarnessSnapshot,
+          knowledge: {
+            kind: "ready",
+            data: {
+              kind: "knowledge.list",
+              spaceId: workHarnessSnapshot.bootstrap.spaces[0]!.id,
+              folders: [],
+              sources: librarySources(),
+              documents: [],
+            },
+          },
+        },
+        onReload: async () => undefined,
+        onFailure: () => undefined,
+      }),
+    );
+  });
+  await waitFor(
+    () => container.querySelector("[data-source-row]") !== null,
+    "Sources drew no row, so the sweep below would have measured an empty screen",
+  );
+  // The availability topic hangs in the READER, so the reader has to be open
+  // before either half of the contract means anything. It opens on the first
+  // row in render order by itself; this asserts that rather than assuming it.
+  assert.ok(
+    container.querySelector("[data-source-reader]"),
+    "no source opened in the reading panel, so its help anchor was never drawn",
+  );
+  assertHelpContract(container, ["sources", "source-availability"]);
+});
+
 test("a topic opens as a named dialog with one paragraph, and Escape hands the focus back", async () => {
   await mountShell();
   await goTo("renewals");

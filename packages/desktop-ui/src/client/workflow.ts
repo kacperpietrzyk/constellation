@@ -725,6 +725,62 @@ export const createKnowledgeSource = async (
   }
 };
 
+/**
+ * MARKING WHAT CAN STILL BE REACHED. Availability is the axis the Sources
+ * screen is built on, and until this wrapper existed it could be READ and never
+ * SET from the interface: `knowledge.sourceCreate` derives it once from what
+ * the capture was, and nothing offered to change it afterwards. A source that
+ * goes dead is precisely the case the three states exist for, so a state
+ * reachable only at creation is a state the product cannot express.
+ *
+ * `knowledge.sourceUpdate` REPLACES the whole record, so every field the caller
+ * is not changing travels with the request. Dropping `observedAt` here would
+ * silently reset the domain fact to whatever the schema defaulted to — which is
+ * why this takes the source and changes one field of it rather than taking a
+ * payload.
+ */
+export const updateKnowledgeSourceAvailability = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  source: KnowledgeSourceRecord,
+  availability: KnowledgeSourceRecord["availability"],
+): Promise<MutationResult<void>> => {
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "knowledge.sourceUpdate",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `knowledge-source-availability:${source.id}:${source.version}`,
+        expectedVersions: { [source.id]: source.version },
+        correlationId: crypto.randomUUID(),
+        payload: {
+          sourceId: source.id,
+          title: source.title,
+          ...(source.canonicalUrl === undefined
+            ? {}
+            : { canonicalUrl: source.canonicalUrl }),
+          availability,
+          observedAt: source.observedAt,
+        },
+      }),
+    );
+    if (response.kind !== "command_outcome")
+      return { kind: "error", message: "The source was not updated." };
+    if (response.outcome.outcome === "conflict")
+      return {
+        kind: "conflict",
+        message: "The source changed in the background. Refresh and try again.",
+      };
+    return response.outcome.outcome === "success"
+      ? { kind: "success", data: undefined }
+      : { kind: "error", message: "The source was not updated." };
+  } catch {
+    return { kind: "error", message: "The source was not updated." };
+  }
+};
+
 export const updateKnowledgeSourceTitle = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
