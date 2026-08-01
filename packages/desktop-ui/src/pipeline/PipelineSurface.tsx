@@ -975,7 +975,10 @@ export const PipelineSurface = ({
           against its own client width, so a board wider than the window has to
           be held by a scroll container that is itself exactly as wide as the
           surface. */}
-      <div className={styles.scroller}>
+      {/* Deklaracja dla przeglądu układu potomków: ten region przewija się
+          w poziomie Z ZAŁOŻENIA. Dopóki go o tym nie powie, „powłoka to
+          wchłonie" jest wymówką, a nie projektem. */}
+      <div className={styles.scroller} data-scrolls-horizontally>
         <div className={styles.board} data-pipeline-board>
           {board.columns.map((column) => (
             <BoardColumn

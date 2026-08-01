@@ -135,8 +135,14 @@ export const TaskTableLayout = ({
     );
   }
 
+  // Deklaracja dla przeglądu układu potomków: ten region przewija się
+
+  // w poziomie Z ZAŁOŻENIA. Dopóki go o tym nie powie, „powłoka to
+
+  // wchłonie" jest wymówką, a nie projektem.
+
   return (
-    <div className={styles.scroller}>
+    <div className={styles.scroller} data-scrolls-horizontally>
       <table className={styles.table} role="grid" aria-label="Tasks">
         <colgroup>
           <col className={styles.colStatus} />

@@ -24,6 +24,14 @@ import type {
 
 import { RealApp } from "../RealApp.js";
 import { createScenarioClient } from "../client/scenario-client.js";
+import {
+  libraryCaptures,
+  libraryDocumentIds,
+  libraryDocuments,
+  libraryNoteState,
+  librarySources,
+  librarySummaries,
+} from "./library-fixture.js";
 
 // Parsed rather than declared as strings, so the branded ids the projections
 // ask for are branded HERE once instead of cast at forty use sites.
@@ -70,6 +78,10 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
   }) as unknown as RendererQueryResponse;
 
 const client = createScenarioClient({
+  documentState: (documentId) =>
+    documentId === libraryDocumentIds.runbook
+      ? libraryNoteState(taskId)
+      : undefined,
   executeCommand: (command): RendererCommandResponse => {
     if (
       command.commandName !== "attention.markRead" &&
@@ -277,7 +289,18 @@ const client = createScenarioClient({
       },
       relatedTasks: [],
       relatedMeetings: [],
-      relatedDocuments: [],
+      // Notatka PRZYPIĘTA DO PROJEKTU, obok luźnych na liście Library. Dziś to
+      // jedyne miejsce, w którym ten fakt w ogóle da się pokazać: żadna
+      // projekcja czytana przez Library nie niesie przypisania do Projektu.
+      relatedDocuments: [
+        {
+          id: libraryDocumentIds.handover,
+          title: "Orbit — dokumentacja powdrożeniowa dla zespołu utrzymania",
+          role: "deliverable" as const,
+          version: 7,
+          updatedAt: "2026-07-31T11:05:00.000Z",
+        },
+      ],
       relatedDecisions: [],
       clientOrganizations: [],
       evidenceSources: [],
@@ -292,10 +315,25 @@ const client = createScenarioClient({
         },
       ],
     }),
+    // Historia przechwyceń oddawała `items: []`, więc Library mierzyła się
+    // pusta. Szczegóły i granica użycia tej fikstury: `library-fixture.ts`.
     "capture.history": result({
       kind: "capture.history",
-      items: [],
+      items: libraryCaptures(spaceId, {
+        taskId,
+        principalId: ownerId,
+      }),
       nextCursor: null,
+    }),
+    "document.list": result({
+      kind: "document.list",
+      items: libraryDocuments(spaceId),
+    }),
+    "knowledge.list": result({
+      kind: "knowledge.list",
+      spaceId,
+      sources: librarySources(),
+      documents: librarySummaries(),
     }),
     "task.assignmentCandidates": result({
       kind: "task.assignmentCandidates",

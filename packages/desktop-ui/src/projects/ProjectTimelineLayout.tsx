@@ -231,7 +231,10 @@ export const ProjectTimelineLayout = ({
       {/* The track scrolls INSIDE this box. The scale grows with the data, so
           a range wider than the window is expected; the surface sliding
           sideways under it is not. */}
-      <div className={styles.scroller}>
+      {/* Deklaracja dla przeglądu układu potomków: ten region przewija się
+          w poziomie Z ZAŁOŻENIA. Dopóki go o tym nie powie, „powłoka to
+          wchłonie" jest wymówką, a nie projektem. */}
+      <div className={styles.scroller} data-scrolls-horizontally>
         <div
           className={styles.grid}
           style={{ "--timeline-month-count": scale.months } as CSSProperties}
