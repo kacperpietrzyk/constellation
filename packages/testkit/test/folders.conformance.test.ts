@@ -903,6 +903,63 @@ it("records document.restore_folder and returns a moved note to where it was", (
 });
 
 /**
+ * A note CAN come back holding a folder that is gone, and the read says so
+ * rather than hiding it.
+ *
+ * The sequence, which nothing forbids and nothing should: a note is removed —
+ * a SOFT delete, so it keeps its `folderId` — its now-empty folder is removed,
+ * and then the note removal is undone. The removal guard reads the ACTIVE note
+ * list, so the folder was genuinely empty when it went.
+ *
+ * Refusing that undo was considered and rejected. It would mean a note cannot
+ * be recovered because a folder is gone, which is a worse failure than the one
+ * it prevents and the opposite of what decision #30 protects. So the state is
+ * reachable BY DESIGN, and the obligation moves to the reader: a `folderId`
+ * matching no entry in `folders` is Unfiled, not a lookup that may throw. The
+ * Notes screen inherits this; it is asserted here so it inherits it as a fact
+ * rather than as an assumption.
+ */
+it("brings a removed note back even when its folder went in the meantime, and says the folder is gone", () => {
+  const harness = bootstrapped();
+  const folderId = createFolder(harness, "Clients");
+  const noteId = createNote(harness, "Falcon kickoff", folderId);
+
+  const removeNote = {
+    ...metadata(`remove-note-${noteId}`, {
+      [noteId]: versionOf(harness, noteId),
+    }),
+    commandName: "document.remove" as const,
+    payload: { documentId: noteId },
+  };
+  succeeds(harness, removeNote);
+  // The guard reads the active list, so the folder is empty as far as anything
+  // a person can see is concerned, and goes.
+  succeeds(harness, {
+    ...metadata(`remove-folder-${folderId}`, {
+      [folderId]: versionOf(harness, folderId),
+    }),
+    commandName: "folder.remove",
+    payload: { folderId },
+  });
+
+  succeeds(harness, {
+    ...metadata(`undo-note-removal-${noteId}`, { [noteId]: 2 }),
+    commandName: "command.undo",
+    payload: { targetCommandId: removeNote.commandId },
+  });
+
+  const list = knowledgeList(harness);
+  const note = list.documents.find((item) => item.id === noteId);
+  assert.notEqual(note, undefined, "the note is recoverable, always");
+  assert.equal(note?.folderId, folderId);
+  assert.equal(
+    list.folders.some((item) => item.id === note?.folderId),
+    false,
+    "and its folder is not in the tree — the reader must treat this as Unfiled",
+  );
+});
+
+/**
  * Taking back the move that FILED a loose note has to leave it loose again.
  * The descriptor records an ABSENT prior folder, and the helper destructures
  * the key away rather than writing `undefined`, so the undo cannot leave the

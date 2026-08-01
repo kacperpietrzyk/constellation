@@ -1373,7 +1373,17 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           .object({
             id: DocumentIdSchema,
             title: z.string(),
-            /** Absent means Unfiled. The Notes screen groups on this. */
+            /**
+             * Absent means Unfiled. The Notes screen groups on this.
+             *
+             * A PRESENT id may match no entry in `folders`, and a reader must
+             * treat that as Unfiled rather than as a lookup that succeeds. It
+             * is reachable by design: a note is soft-removed keeping its
+             * folder, the folder — genuinely empty by then — is removed, and
+             * the note removal is undone. Refusing that undo would mean a note
+             * cannot be recovered because a folder is gone, which is a worse
+             * failure than the one it prevents.
+             */
             folderId: FolderIdSchema.optional(),
             role: z.enum(["note", "document", "deliverable"]),
             evidenceCount: z.int().nonnegative(),
