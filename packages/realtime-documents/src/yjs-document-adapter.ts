@@ -8,6 +8,7 @@ import {
 import {
   replaceStructuredDocumentInYjs as replaceImportedStructuredDocument,
   structuredDocumentFromYjs as importStructuredDocument,
+  structuredDocumentNodeText,
   type StructuredDocument,
 } from "./structured-document.js";
 
@@ -126,7 +127,6 @@ const richNodeText = (node: Y.XmlElement | Y.XmlText): string => {
         typeof part.insert === "string" ? part.insert : "",
       )
       .join("");
-  if (node.nodeName === "hardBreak") return "\n";
   const childText = node
     .toArray()
     .filter(
@@ -134,11 +134,14 @@ const richNodeText = (node: Y.XmlElement | Y.XmlText): string => {
         child instanceof Y.XmlElement || child instanceof Y.XmlText,
     )
     .map(richNodeText);
-  if (node.nodeName === "bulletList" || node.nodeName === "orderedList") {
-    return childText.join("\n");
-  }
-  if (node.nodeName === "listItem") return childText.join("\n");
-  return childText.join("");
+  // How a kind reads as plain text is part of the schema, so it is decided by
+  // the schema's own total record rather than by a second list living here.
+  // The list that used to live here is what let a kind added upstream arrive
+  // with no rule and be joined tightly into one unsearchable token.
+  return structuredDocumentNodeText(node.nodeName, childText, (name) => {
+    const value = node.getAttribute(name);
+    return typeof value === "string" ? value : undefined;
+  });
 };
 
 export const documentContentFormat = (document: Y.Doc): DocumentContentFormat =>
