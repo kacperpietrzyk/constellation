@@ -65,6 +65,7 @@ const notes = {
 } as const;
 
 const spaceId = workHarnessSnapshot.bootstrap.spaces[0]!.id;
+const workspaceId = workHarnessSnapshot.bootstrap.workspace.id;
 
 /**
  * The task and project two notes name. `Wdrożenie` names both, which is the
@@ -652,5 +653,123 @@ test("keeps one tab stop in the tree, including after the focused node is collap
     stops(),
     1,
     "collapsing took the tree's only Tab stop off the screen with it",
+  );
+});
+
+/* EXPANSION IS REMEMBERED, PER WORKSPACE, ON THIS DEVICE (ruling E).
+ *
+ * Three cases, and the third is the one a single "it comes back open" test
+ * would miss: nothing stored and stored-empty are DIFFERENT states. Nothing
+ * stored means never chosen and takes the level-1 default; an empty list means
+ * this reader closed everything, and defaulting over it reopens the tree every
+ * morning for somebody who deliberately shut it.
+ */
+test("remembers which folders are open, per workspace, and honours an empty set", () => {
+  render(snapshotWith(noteShapes));
+  act(() => nodeFor(folders.orbit).click());
+  assert.ok(
+    treeNodes().some((node) => node.dataset.treeKey === folders.rollout),
+    "opening Orbit did not disclose the folder below it",
+  );
+
+  const key = `constellation.note-folders-expanded.${workspaceId}`;
+  assert.ok(
+    globalThis.localStorage?.getItem(key) !== null,
+    "the choice was not written under this workspace's own key",
+  );
+
+  // A fresh mount of the same snapshot: the tree comes back the way it was
+  // left, not the way it defaults.
+  act(() => root.unmount());
+  root = createRoot(container);
+  render(snapshotWith(noteShapes));
+  assert.ok(
+    treeNodes().some((node) => node.dataset.treeKey === folders.rollout),
+    "the disclosure was forgotten between mounts",
+  );
+
+  // Stored EMPTY is honoured: everything below level 1 stays closed, and so do
+  // the level-1 folders the default would have opened.
+  act(() => root.unmount());
+  globalThis.localStorage?.setItem(key, "[]");
+  root = createRoot(container);
+  render(snapshotWith(noteShapes));
+  assert.deepEqual(
+    treeNodes().map((node) => node.dataset.treeKey),
+    ["all-notes", "unfiled", folders.clients, folders.policies],
+    "a reader who closed everything had the tree reopened for them",
+  );
+});
+
+/* A DRAG THAT WAS ABANDONED MOVES NOTHING.
+ *
+ * Drag is the second entry to the one move operation and the only one with no
+ * dialogue to confirm it. The note picked up has to be forgotten when the
+ * gesture ends, or the next drop on any tree node — including one the operating
+ * system delivers for a file dragged in from outside — files a note nobody
+ * touched.
+ */
+test("forgets the dragged note when the gesture ends without a drop", () => {
+  const sent: CommandEnvelope[] = [];
+  render(snapshotWith(noteShapes), recordingClient(sent));
+  const row = rows().find(
+    (candidate) => candidate.dataset.noteId === notes.loose,
+  );
+  assert.ok(row !== undefined);
+
+  const drag = (type: string, target: HTMLElement) =>
+    act(() => {
+      target.dispatchEvent(new Event(type, { bubbles: true }));
+    });
+  drag("dragstart", row);
+  drag("dragend", row);
+  drag("drop", nodeFor(folders.policies));
+  assert.deepEqual([...sent], [], "an abandoned drag still moved a note");
+
+  // And the same gesture completed DOES move it, so the claim above is about
+  // the abandonment and not about drag being wired to nothing.
+  drag("dragstart", row);
+  drag("drop", nodeFor(folders.policies));
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0]?.payload, {
+    documentId: notes.loose,
+    folderId: folders.policies,
+  });
+});
+
+/* THE SCREEN DOES NOT ANSWER A QUESTION IT WAS REFUSED.
+ *
+ * Where a note lives and what it is about both come from `knowledge.list`. When
+ * that read is unavailable the folder list is empty, and an empty folder list
+ * makes a note with no folder and a note whose folder this reader may not see
+ * IDENTICAL — so the screen would put the whole library under `Unfiled` and
+ * print counts for it. The notes themselves come from `document.list` and stay
+ * readable; only the claims about structure are withdrawn.
+ */
+test("withdraws the folder tree rather than filing everything as Unfiled", () => {
+  const refused = {
+    ...snapshotWith(noteShapes),
+    knowledge: { kind: "unavailable", message: "Scenario" },
+  } as unknown as DesktopSnapshot;
+  render(refused);
+
+  assert.equal(
+    container.querySelectorAll('[role="treeitem"]').length,
+    0,
+    "a tree was drawn from a read that was refused",
+  );
+  assert.ok(
+    container.querySelector("[data-structure-unavailable]") !== null,
+    "the refusal is silent",
+  );
+  assert.equal(
+    groupLabels().filter((label) => label === "Unfiled").length,
+    0,
+    "every note was filed as Unfiled from an empty folder list",
+  );
+  // The reading survives: the notes are still listed and still openable.
+  assert.deepEqual(
+    [...distinctListedIds()].sort(),
+    noteShapes.map((shape) => shape.id).sort(),
   );
 });

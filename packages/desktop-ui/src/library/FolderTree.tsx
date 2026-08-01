@@ -171,7 +171,12 @@ export const FolderTree = ({
             return (
               <button
                 aria-expanded={row.hasChildren ? row.expanded : undefined}
-                aria-label={`${row.name}, ${countLabel(row.count, "note")}`}
+                // THE FULL PATH, not the leaf, and NOT in a `title`: the name
+                // truncates in a narrow column, and this project's help rule
+                // says an explanation that lives in a tooltip does not exist
+                // for a keyboard, for touch, or for anybody not hovering. The
+                // accessible name is where the address belongs.
+                aria-label={`${row.path}, ${countLabel(row.count, "note")}`}
                 aria-level={row.level}
                 aria-posinset={index + 1}
                 aria-selected={selected}
@@ -218,7 +223,6 @@ export const FolderTree = ({
                 role="treeitem"
                 style={{ "--tree-depth": row.level - 1 } as React.CSSProperties}
                 tabIndex={row.key === tabStopKey ? 0 : -1}
-                title={row.path}
                 type="button"
               >
                 <span aria-hidden="true" className={styles.treeTwist}>

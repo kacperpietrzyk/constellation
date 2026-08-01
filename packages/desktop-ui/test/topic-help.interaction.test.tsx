@@ -504,3 +504,70 @@ test("a topic opens as a named dialog with one paragraph, and Escape hands the f
     "closing the help panel dropped the focus instead of returning it",
   );
 });
+
+/* THE NOTES READING CARRIES THE ARRANGEMENT TOPIC — decision #30's `?`.
+ *
+ * It mounts the reading directly rather than navigating the shell, for the same
+ * reason Meetings does: the shell's scenario client answers `knowledge.list`
+ * with nothing, the screen then WITHDRAWS its switcher — deliberately, because
+ * two of the three axes come from that read — and "no stray anchor" would be
+ * true of a screen that draws no anchor at all.
+ *
+ * The `title=` half of the contract is the one this screen had to be built
+ * around: a folder name truncates in a narrow column, and the obvious fix is a
+ * tooltip carrying the full path. #35's whole objection is that a tooltip does
+ * not exist for a keyboard, for touch, or for anybody not hovering — so the
+ * path rides the accessible name instead, and this assertion is what keeps it
+ * there.
+ */
+test("the Notes reading carries the arrangement topic, and no path hides in a title", async () => {
+  const { NotesReading } = await import("../src/library/NotesReading.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+  const { libraryFolders, librarySummaries, libraryDocuments } =
+    await import("../src/dev/library-fixture.js");
+  const spaceId = workHarnessSnapshot.bootstrap.spaces[0]!.id;
+  const snapshot = {
+    ...workHarnessSnapshot,
+    documents: {
+      kind: "ready",
+      data: { kind: "document.list", items: libraryDocuments(spaceId) },
+    },
+    knowledge: {
+      kind: "ready",
+      data: {
+        kind: "knowledge.list",
+        spaceId,
+        sources: [],
+        folders: libraryFolders(),
+        documents: librarySummaries({
+          task: { id: "00000000-0000-4000-8000-000000004401", label: "A task" },
+          project: {
+            id: "00000000-0000-4000-8000-000000004402",
+            label: "A project",
+          },
+        }),
+      },
+    },
+  };
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(NotesReading, {
+        client: undefined,
+        snapshot,
+        inspectorHost: null,
+        onInspectorOpen: () => undefined,
+        onEntityActivate: () => undefined,
+        onReload: async () => undefined,
+        onFailure: () => undefined,
+      } as never),
+    );
+  });
+  await waitFor(
+    () => container.querySelector('[role="treeitem"]') !== null,
+    "the Notes reading drew no folder tree, so the sweep would have measured an empty screen",
+  );
+  assertHelpContract(surfaceNode("[data-notes-screen]"), ["note-arrangement"]);
+});

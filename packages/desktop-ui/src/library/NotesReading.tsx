@@ -103,6 +103,20 @@ export const NotesReading = ({
   const folders: readonly FolderSummary[] = knowledge?.folders ?? [];
   const summaries: readonly KnowledgeDocument[] = knowledge?.documents ?? [];
   const workspaceId = snapshot.bootstrap.workspace.id;
+  /**
+   * WHERE EVERY NOTE LIVES AND WHAT IT IS ABOUT COME FROM ONE READ, and when
+   * that read is refused the screen must say so rather than answer anyway.
+   *
+   * Without this branch a denied `knowledge.list` drew a tree of two roots and
+   * put EVERY note under `Unfiled` — because a note with no folder and a note
+   * whose folder this reader may not see are indistinguishable once the folder
+   * list is empty. That is a screen stating something false about the data,
+   * which is worse than a screen that renders nothing: nobody re-checks a
+   * number that looks like an answer. The notes themselves still come from
+   * `document.list` and are still readable, so the reading survives and only
+   * the claims about structure are withdrawn.
+   */
+  const structureReadable = snapshot.knowledge.kind === "ready";
 
   // ONE ROW PER NOTE, built from the two reads the screen already has.
   // `document.list` is the authoritative membership (it is what the editor
@@ -153,8 +167,18 @@ export const NotesReading = ({
     setExpanded(readExpandedFolders(workspaceId, folders));
   }, [folders, workspaceId]);
 
-  const inView = notesInSelection(notes, folders, selection);
-  const groups = arrangeNotes(arrangement, inView, folders, Date.now());
+  const inView = notesInSelection(
+    notes,
+    folders,
+    structureReadable ? selection : ALL_NOTES,
+  );
+  // ONE UNGROUPED SECTION when the structure read is refused, rather than the
+  // `Folder` arrangement over an empty folder list — that arrangement would put
+  // every note under `Unfiled`, which is the false claim this branch exists to
+  // avoid making.
+  const groups = structureReadable
+    ? arrangeNotes(arrangement, inView, folders, Date.now())
+    : [{ key: ALL_NOTES, label: "All notes", items: inView }];
 
   // WHAT IS BEING READ, and why it is not simply `items[0]`. The reader opens on
   // the newest note that is actually in this node, so the pane never shows
@@ -223,48 +247,76 @@ export const NotesReading = ({
 
   return (
     <div className={styles.notes} data-notes-screen="">
-      <FolderTree
-        expanded={expanded}
-        folders={folders}
-        notes={notes}
-        onDropNote={(folderId) => {
-          const noteId = dragged.current;
-          dragged.current = undefined;
-          if (noteId !== undefined) moveNote(noteId, folderId);
-        }}
-        onSelect={setSelection}
-        onToggle={toggleFolder}
-        selection={selection}
-      />
+      {structureReadable ? (
+        <FolderTree
+          expanded={expanded}
+          folders={folders}
+          notes={notes}
+          onDropNote={(folderId) => {
+            const noteId = dragged.current;
+            dragged.current = undefined;
+            if (noteId !== undefined) moveNote(noteId, folderId);
+          }}
+          onSelect={setSelection}
+          onToggle={toggleFolder}
+          selection={selection}
+        />
+      ) : (
+        <div className={styles.treePanel} data-structure-unavailable="">
+          <div className={styles.panelHead}>
+            <h2>Folders</h2>
+          </div>
+          <p className="inline-error">
+            Folders are not available in this scope.
+          </p>
+        </div>
+      )}
 
       <section aria-label="Notes" className={styles.listPanel}>
         <div className={styles.panelHead}>
-          <h2>{selectionLabel}</h2>
+          <h2>{structureReadable ? selectionLabel : "All notes"}</h2>
           {/* The count of THIS list, which is why it agrees with the counter on
               the tree node beside it: both include descendant folders. */}
           <span className="library-count">{inView.length}</span>
         </div>
 
         <div className={styles.listTools}>
-          <div
-            aria-label="Arrange notes by"
-            className={styles.arrangement}
-            role="group"
-          >
-            {noteArrangements.map((mode) => (
-              <button
-                aria-pressed={arrangement === mode}
-                className={styles.arrangementButton}
-                data-arrangement={mode}
-                key={mode}
-                onClick={() => setArrangement(mode)}
-                type="button"
+          {/* The switcher is withdrawn with the read it arranges: two of its
+              three axes are folders and references, and the third would be a
+              lone control where a group of three is the affordance. */}
+          {structureReadable ? (
+            <>
+              <div
+                aria-label="Arrange notes by"
+                className={styles.arrangement}
+                role="group"
               >
-                {noteArrangementLabel[mode]}
-              </button>
-            ))}
-          </div>
-          <TopicHelp topic="note-arrangement" />
+                {noteArrangements.map((mode) => (
+                  <button
+                    aria-pressed={arrangement === mode}
+                    className={styles.arrangementButton}
+                    data-arrangement={mode}
+                    key={mode}
+                    onClick={() => setArrangement(mode)}
+                    type="button"
+                  >
+                    {noteArrangementLabel[mode]}
+                  </button>
+                ))}
+              </div>
+              <TopicHelp topic="note-arrangement" />
+            </>
+          ) : null}
+        </div>
+
+        {/* ITS OWN NAMED REGION, and it keeps the name the shipped screen had.
+            The create path is discoverable by its accessible name rather than
+            by where it happens to sit, which is what makes it findable when
+            the panels collapse and the toolbar wraps. */}
+        <div
+          className="knowledge-create-bar"
+          aria-label="Create in the library"
+        >
           <InlinePopover
             disabled={!client || creating}
             label="New content"
@@ -368,6 +420,15 @@ export const NotesReading = ({
                           onClick={() => {
                             setSelectedId(note.id);
                             onInspectorOpen();
+                          }}
+                          onDragEnd={() => {
+                            // THE GESTURE ENDING IS NOT THE SAME AS A DROP.
+                            // Without this the note stayed armed after an
+                            // abandoned drag, and the next drop on ANY tree
+                            // node — including one the operating system
+                            // delivers for a file dragged in from outside —
+                            // would file a note nobody had picked up.
+                            dragged.current = undefined;
                           }}
                           onDragStart={() => {
                             dragged.current = note.id;

@@ -156,10 +156,12 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   //
   // WPIS ZNIKA, BO ELEMENT PRZESTAŁ SIĘ PRZEPEŁNIAĆ, a nie dlatego, że bramka
   // przestała go widzieć — i to jest rozróżnienie, które ten rejestr już raz
-  // pomylił. Element dalej jest mierzony w każdym przelocie (płaszczyzna
-  // pisania rysuje się na Notatkach zawsze, bo ekran otwiera najnowszą notatkę
-  // węzła), a od tego PR-a Library jest mierzona dodatkowo przy 364 px
-  // (tekst 300%) i przy własnym minimalnym oknie produktu.
+  // pomylił. DOWÓD, nie założenie: strażnik `MINIMUM_ROWS.libraryNoteBody`
+  // wymaga 1 500 znaków w `.document-canvas`, a ten kanwas STOI WEWNĄTRZ
+  // `document-editor-shell` — więc każdy zielony przelot, łącznie z nowymi przy
+  // 364 px i przy minimalnym oknie, jest jednocześnie dowodem, że ta powłoka
+  // dalej się rysuje i dalej jest mierzona. Sama zieleń bramki tego nie mówi:
+  // jest tak samo zgodna z „element zniknął".
 
   // ── ekran rekordu Zadania: przepełnienie przy DOMYŚLNYM rozmiarze ─────────
   // Te trzy NIE SĄ artefaktem skalowania i wpisy mówią to wprost, bo inaczej

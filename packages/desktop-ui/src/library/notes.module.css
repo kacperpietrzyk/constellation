@@ -48,7 +48,7 @@
 .listPanel {
   grid-area: list;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--border-subtle);
@@ -274,9 +274,19 @@
 
 /* ── STEP 2: THE LIST YIELDS ────────────────────────────────────────────────
    One column: tree, list, reading. Both navigation panels are capped so the
-   note being read still gets the rest of the window. This is the state the
-   364 px and ~540 px cases land in, and the reason three fixed tracks were
-   never going to be the answer. */
+   note being read still gets the rest of the window.
+
+   WHICH PASS PROVES WHICH STEP, measured rather than assumed — deleting this
+   block turns `text scaled to 200%`, `a 320 px window` and `Library at 300%
+   text` red and leaves `Library at the minimum window` GREEN. So:
+
+     • STEP 1 alone carries the ~540 px case. The minimum-window pass is
+       evidence for the two-column state, not for this one.
+     • STEP 2 is carried by the 300% pass (and, since it lands in the same
+       state, by the shell's own 200% and 320 px passes).
+
+   Saying only "the gate measures both widths" would be true and would leave
+   this rule reading as guarded by a pass that does not exercise it. */
 @container (max-width: 42rem) {
   .notes {
     grid-template-columns: minmax(0, 1fr);
