@@ -5,7 +5,7 @@ import { HocuspocusProvider } from "@hocuspocus/provider";
 import Collaboration from "@tiptap/extension-collaboration";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { SERVABLE_IMAGE_MEDIA_TYPES } from "@constellation/contracts";
 import type { DocumentId, KnowledgeSourceId } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
@@ -15,8 +15,8 @@ import * as Y from "yjs";
 import {
   LEGACY_DOCUMENT_TEXT_ROOT,
   MAX_DOCUMENT_TEXT_LENGTH,
+  MAX_IMAGE_ALT_LENGTH,
   RICH_DOCUMENT_FRAGMENT_ROOT,
-  STRUCTURED_DOCUMENT_HEADING_LEVELS,
   documentContentFormat,
   documentEntityReferences,
   documentPlainText,
@@ -37,12 +37,13 @@ import {
 import { InlinePopover } from "../components/InlinePopover.js";
 import {
   DOCUMENT_ENTITY_ACTIVATE_EVENT,
-  EntityReference,
   documentEntityKindCopy,
   publishDocumentEntityLabels,
   type DocumentEntityCandidate,
   type DocumentEntityTargetKind,
 } from "../document-entity-reference.js";
+import { DOCUMENT_SCHEMA_EXTENSIONS } from "../document-editor-extensions.js";
+
 import { useInlineSuggestions } from "../components/InlineSuggestions.js";
 import { countLabel, formatDateTime } from "../i18n.js";
 import { roleCopy, type DocumentItem } from "./library-chrome.js";
@@ -390,15 +391,10 @@ export const KnowledgeEditor = ({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({
-          undoRedo: false,
-          link: { openOnClick: false },
-          // Poziomy nagłówków biorą się z kontraktu treści, nie z domyślnych
-          // ustawień StarterKita: walidator i edytor mają przyjmować ten sam
-          // zbiór, a przepisanie go tutaj z powrotem na literał odtworzyłoby
-          // dokładnie to rozejście, które ta stała zamyka.
-          heading: { levels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS] },
-        }),
+        // The schema comes from ONE array both editors spread. Two copies of
+        // this list is how the editors and the validator drifted on
+        // `heading.levels` in the first place.
+        ...DOCUMENT_SCHEMA_EXTENSIONS,
         suggestions.extension,
         Placeholder.configure({
           placeholder: "Start writing. Sources stay separate.",
@@ -407,7 +403,6 @@ export const KnowledgeEditor = ({
           document: yDocument,
           field: RICH_DOCUMENT_FRAGMENT_ROOT,
         }),
-        EntityReference,
       ],
       immediatelyRender: false,
       editable: false,
@@ -1009,6 +1004,7 @@ export const KnowledgeEditor = ({
                 : (() => {
                     const custodyState =
                       attachmentStates[item.recordId] ?? "checking";
+                    const attachmentPayload = item.attachment.original.payload;
                     return [
                       <li key={item.recordId}>
                         <div>
@@ -1031,6 +1027,53 @@ export const KnowledgeEditor = ({
                               ? "Checking storage…"
                               : "File not available on this device"}
                         </span>
+                        {/*
+                          The image node's ONLY human producer. It sits here
+                          rather than behind a picker in the toolbar because
+                          the `sourceId` an image node stores is already in
+                          hand at this row — the attachment is the identity,
+                          so there is nothing to search for. Without it, both
+                          new node kinds would have shipped with no path a
+                          person could walk, which is the state the wave's own
+                          census ruling names: a capability nothing exercises
+                          is indistinguishable from one that was never built.
+                        */}
+                        {SERVABLE_IMAGE_MEDIA_TYPES.has(
+                          attachmentPayload.mediaType,
+                        ) && (
+                          <button
+                            type="button"
+                            className="text-button"
+                            disabled={
+                              attachmentBusy ||
+                              access !== "edit" ||
+                              editor === null ||
+                              custodyState !== "available"
+                            }
+                            onClick={() => {
+                              editor
+                                ?.chain()
+                                .focus()
+                                .insertContent({
+                                  type: "image",
+                                  attrs: {
+                                    sourceId: item.recordId,
+                                    // The file's own name is a real
+                                    // description far more often than an empty
+                                    // string is, and an empty alt means
+                                    // "decorative" — a claim nobody made here.
+                                    alt: attachmentPayload.displayName.slice(
+                                      0,
+                                      MAX_IMAGE_ALT_LENGTH,
+                                    ),
+                                  },
+                                })
+                                .run();
+                            }}
+                          >
+                            Insert into note
+                          </button>
+                        )}
                         {custodyState === "unavailable" && (
                           <button
                             type="button"

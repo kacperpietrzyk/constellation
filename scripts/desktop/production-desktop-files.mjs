@@ -2,6 +2,7 @@
 // packaging. Anything absent here is deleted, which is what keeps the
 // development entry and the in-memory preview out of a shipped build.
 export const PRODUCTION_DESKTOP_FILES = new Set([
+  "attachment-protocol.js",
   "attention-notification.js",
   "calendar-meeting-loop.js",
   "capture-payload-custody.js",
