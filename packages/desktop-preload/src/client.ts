@@ -89,6 +89,7 @@ export const DESKTOP_CHANNELS = {
   getReleaseStatus: "constellation:release:status",
   exportSupportReport: "constellation:support-report:export",
   exportExchangePackage: "constellation:workspace:export-exchange",
+  exportNotesMarkdown: "constellation:notes:export-markdown",
   checkForRelease: "constellation:release:check",
   downloadRelease: "constellation:release:download",
   installRelease: "constellation:release:install",
@@ -319,8 +320,31 @@ export interface DesktopBuildInfo {
     | "workspace_unavailable";
 }
 
+/**
+ * What the bulk markdown export answers with.
+ *
+ * The counts are the honest half: `unreadable` and `missingAttachments` are
+ * what did NOT come out, and the panel shows them rather than reporting a
+ * round number that quietly excludes them. Silent loss is the one failure
+ * mode an export cannot have.
+ */
+export type NotesMarkdownExportResult =
+  | {
+      readonly outcome: "success";
+      readonly directoryLabel: string;
+      readonly counts: {
+        readonly notes: number;
+        readonly attachments: number;
+        readonly unreadable: number;
+        readonly unresolvedReferences: number;
+        readonly missingAttachments: number;
+      };
+    }
+  | { readonly outcome: "cancelled" | "failure" };
+
 export interface ConstellationRendererClient {
   exportSupportReport?(): Promise<SupportReportExportResult>;
+  exportNotesMarkdown?(): Promise<NotesMarkdownExportResult>;
   exportExchangePackage?(): Promise<
     | {
         readonly outcome: "success";
@@ -645,6 +669,10 @@ export const createRendererClient = (
     invoke(
       DESKTOP_CHANNELS.exportSupportReport,
     ) as Promise<SupportReportExportResult>,
+  exportNotesMarkdown: () =>
+    invoke(
+      DESKTOP_CHANNELS.exportNotesMarkdown,
+    ) as Promise<NotesMarkdownExportResult>,
   checkForRelease: () =>
     invoke(DESKTOP_CHANNELS.checkForRelease) as Promise<ReleaseStatus>,
   downloadRelease: () =>

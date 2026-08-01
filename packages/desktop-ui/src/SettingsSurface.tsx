@@ -194,6 +194,7 @@ export const SettingsSurface = ({
   const [busyWorkspace, setBusyWorkspace] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
   const [busySupport, setBusySupport] = useState(false);
+  const [busyNotesExport, setBusyNotesExport] = useState(false);
   const [activeCategory, setActiveCategory] =
     useState<SettingsCategoryId>("workspace");
   const [theme, setTheme] = useState<Theme>(() => {
@@ -209,6 +210,8 @@ export const SettingsSurface = ({
   const [workspaceMessage, setWorkspaceMessage] = useState<SectionMessage>();
   const [importMessage, setImportMessage] = useState<SectionMessage>();
   const [supportMessage, setSupportMessage] = useState<SectionMessage>();
+  const [notesExportMessage, setNotesExportMessage] =
+    useState<SectionMessage>();
   const [conceptHelpTopic, setConceptHelpTopic] =
     useState<ConceptHelpTopicId>();
   const [busyExport, setBusyExport] = useState(false);
@@ -545,6 +548,61 @@ export const SettingsSurface = ({
     });
   };
 
+  const exportNotesMarkdown = async () => {
+    if (!client?.exportNotesMarkdown) return;
+    setBusyNotesExport(true);
+    setNotesExportMessage({
+      tone: "status",
+      text: "Choose where the files should go…",
+    });
+    try {
+      const result = await client.exportNotesMarkdown();
+      if (result.outcome === "cancelled") {
+        setNotesExportMessage({
+          tone: "status",
+          text: "Cancelled. Nothing was written.",
+        });
+        return;
+      }
+      if (result.outcome !== "success") {
+        setNotesExportMessage({
+          tone: "alert",
+          text: "Could not write the files. Your notes are unchanged.",
+        });
+        return;
+      }
+      // WHAT DID NOT COME OUT IS REPORTED IN THE SAME BREATH as what did.
+      // A round number that quietly excluded the notes this build could not
+      // read would look exactly like a complete export, and the person would
+      // find out by missing one.
+      const left = [
+        result.counts.unreadable > 0
+          ? `${result.counts.unreadable} could not be read and were left out`
+          : undefined,
+        result.counts.missingAttachments > 0
+          ? `${result.counts.missingAttachments} pictures are not stored here, so the notes name them instead`
+          : undefined,
+        result.counts.unresolvedReferences > 0
+          ? `${result.counts.unresolvedReferences} links point at records you can no longer see and became plain text`
+          : undefined,
+      ].filter((entry) => entry !== undefined);
+      setNotesExportMessage({
+        tone: left.length > 0 ? "alert" : "status",
+        text:
+          `Wrote ${countLabel(result.counts.notes, "note")} and ` +
+          `${countLabel(result.counts.attachments, "picture")} to ${result.directoryLabel}.` +
+          (left.length > 0 ? ` ${left.join("; ")}.` : ""),
+      });
+    } catch {
+      setNotesExportMessage({
+        tone: "alert",
+        text: "The export is unavailable right now. Your notes are unchanged.",
+      });
+    } finally {
+      setBusyNotesExport(false);
+    }
+  };
+
   const exportSupportReport = async () => {
     if (!client?.exportSupportReport) return;
     setBusySupport(true);
@@ -585,6 +643,11 @@ export const SettingsSurface = ({
       snapshot.dataHome === undefined
         ? "Data Home state unknown"
         : `Data Home: ${availabilityLabels[snapshot.dataHome.availability]}`,
+    // A SETTINGS STATEMENT, NEVER A RECORD COUNT. Every other status here
+    // names what the section does; "Notes 16" would name how many notes exist,
+    // which is a fact about the workspace and not about this section — and it
+    // is the mistake this row has already been written with once.
+    notes: "Export to Markdown",
     appearance: `Theme: ${themeLabel}`,
     access: "Roles, agents, Calendar and Jamie",
     application: `Version ${snapshot.build.version}`,
@@ -1665,6 +1728,96 @@ export const SettingsSurface = ({
                 </p>
                 {supportMessage && (
                   <p role={supportMessage.tone}>{supportMessage.text}</p>
+                )}
+              </div>
+            </section>
+          </div>
+
+          {/* SEKCJA NOTES (OPEN-11).
+              Trzyma DWIE tafle: eksport (ten lot) i import z Obsidiana, który
+              dostawia lot importu — bezpośrednio pod tą tafla, wewnątrz tego
+              samego `div.settings-category`. Nic więcej nie trzeba ruszać:
+              wpis w `settings-categories.ts` i `categoryStatus` już są. */}
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("notes")}
+            data-settings-category="notes"
+          >
+            <section className="notes-export-section">
+              <div className="settings-copy">
+                <h2>Export to Markdown</h2>
+                <p>
+                  The notes are stored in a collaborative format no other
+                  application can open. This writes them back out as ordinary
+                  files, so you can always leave with your own writing.
+                </p>
+                <p>
+                  Every note becomes one <code>.md</code> file, inside the
+                  folder it sits in. A note with no folder goes to{" "}
+                  <code>Unfiled</code>.
+                </p>
+              </div>
+              <div className="settings-control notes-export-control">
+                <div className="notes-export-terms">
+                  <div>
+                    <h3>What travels</h3>
+                    <ul>
+                      <li>Headings, lists, quotes and tables.</li>
+                      <li>
+                        A code block, with the language it was written in.
+                      </li>
+                      <li>
+                        A link to a record: its name today, and an identifier
+                        that survives a rename.
+                      </li>
+                      <li>
+                        Pictures, written into an <code>attachments</code>{" "}
+                        folder that the notes point at.
+                      </li>
+                      <li>
+                        The sources each note cites, by title, kind and
+                        availability.
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h3>What stays here</h3>
+                    <ul>
+                      <li>
+                        Editing history and named versions. A file has one
+                        state; a note has every state it passed through.
+                      </li>
+                      <li>
+                        A link to a record you can no longer see. It becomes
+                        plain text with a marker, never a remembered name — a
+                        name kept from before could be wrong now, or could name
+                        something you were meant to stop seeing.
+                      </li>
+                      <li>
+                        The files behind your sources. Most sources are
+                        references rather than copies, so a title and a link
+                        travel and the file does not.
+                      </li>
+                      <li>
+                        Anything markdown has no form for is written into the
+                        file as a comment, so nothing disappears without saying
+                        so.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-notes-export="true"
+                  disabled={busyNotesExport || !client?.exportNotesMarkdown}
+                  onClick={() => void exportNotesMarkdown()}
+                >
+                  {busyNotesExport ? "Writing files…" : "Export to Markdown…"}
+                </button>
+                {notesExportMessage && (
+                  <p role={notesExportMessage.tone}>
+                    {notesExportMessage.text}
+                  </p>
                 )}
               </div>
             </section>
