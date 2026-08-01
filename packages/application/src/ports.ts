@@ -29,6 +29,7 @@ import type {
   CheckpointId,
   KnowledgeSourceId,
   NamedDocumentVersionId,
+  FolderId,
   StrategicRecordId,
   DiagnosticCode,
 } from "@constellation/contracts";
@@ -62,6 +63,7 @@ import type {
   AgentCheckpoint,
   KnowledgeSource,
   NamedDocumentVersion,
+  Folder,
   StrategicRecord,
 } from "@constellation/domain";
 
@@ -245,6 +247,16 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
   ): readonly NativeDocument[];
+  getFolder(id: FolderId): Folder | undefined;
+  /**
+   * Every ACTIVE folder in the Space, unordered and uncapped, exactly as
+   * `listDocuments` returns documents. Uncapped is the same bet the note list
+   * already makes and the reason B8 needs no SQL: the tree, the rolled-up
+   * counts and the deletion guard are all computed in the kernel over this
+   * list, where Space authorization lives. A `GROUP BY folder_id` in SQL would
+   * compute a number the reader may not be allowed to see.
+   */
+  listFolders(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Folder[];
   listDocumentEntityLinks(
     workspaceId: WorkspaceId,
     targetKind?: DocumentEntityLink["targetKind"],
@@ -397,6 +409,8 @@ export interface ApplicationWave2Transaction
   updateProject(project: Project, expectedVersion: number): boolean;
   insertDocument(document: NativeDocument): void;
   updateDocument(document: NativeDocument, expectedVersion: number): boolean;
+  insertFolder(folder: Folder): void;
+  updateFolder(folder: Folder, expectedVersion: number): boolean;
   insertKnowledgeSource(source: KnowledgeSource): void;
   updateKnowledgeSource(
     source: KnowledgeSource,
@@ -429,6 +443,8 @@ export const isApplicationWave2ReadView = (
   "listProjects" in view &&
   "getDocument" in view &&
   "listDocuments" in view &&
+  "getFolder" in view &&
+  "listFolders" in view &&
   "listDocumentEntityLinks" in view &&
   "searchDocumentBodies" in view &&
   "searchProjectBodies" in view &&
@@ -456,6 +472,8 @@ export const isApplicationWave2Transaction = (
   "updateProject" in transaction &&
   "insertDocument" in transaction &&
   "updateDocument" in transaction &&
+  "insertFolder" in transaction &&
+  "updateFolder" in transaction &&
   "insertKnowledgeSource" in transaction &&
   "updateKnowledgeSource" in transaction &&
   "insertNamedDocumentVersion" in transaction &&
@@ -517,6 +535,7 @@ export interface ReferenceStateSnapshot {
   readonly tasks: readonly Task[];
   readonly projects: readonly Project[];
   readonly documents?: readonly NativeDocument[];
+  readonly folders?: readonly Folder[];
   readonly knowledgeSources?: readonly KnowledgeSource[];
   readonly namedDocumentVersions?: readonly NamedDocumentVersion[];
   readonly strategicRecords?: readonly StrategicRecord[];

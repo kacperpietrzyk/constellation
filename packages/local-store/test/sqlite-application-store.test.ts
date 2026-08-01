@@ -110,6 +110,8 @@ const context = (): ExecutionContext =>
       "audit.receipt",
       "document.create",
       "document.list",
+      "folder.create",
+      "folder.setParent",
       "knowledge.sourceCreate",
       "knowledge.sourceUpdate",
       "knowledge.documentSetEvidence",
@@ -1848,7 +1850,12 @@ describe("SQLite ApplicationStore", () => {
           };
           historical
             .prepare(
-              sourceVersion >= LOCAL_STORE_SCHEMA_VERSION
+              // 24 is the version at which `task_work_relations` REPLACED
+              // `task_project_relations`, and it is a literal on purpose: this
+              // condition once read `>= LOCAL_STORE_SCHEMA_VERSION`, which was
+              // the same number only until the next migration for an unrelated
+              // reason moved it. Pin the fact, not the counter.
+              sourceVersion >= 24
                 ? "INSERT INTO task_work_relations(id, workspace_id, space_id, task_id, project_id, opportunity_id, state, version, payload_json) VALUES (?, ?, ?, ?, ?, NULL, 'active', 1, ?)"
                 : "INSERT INTO task_project_relations(id, workspace_id, space_id, task_id, project_id, state, version, payload_json) VALUES (?, ?, ?, ?, ?, 'active', 1, ?)",
             )
@@ -3602,7 +3609,29 @@ describe("narrative-less records in the durable store", () => {
         firstDatabase.prepare("PRAGMA user_version;").get()?.["user_version"],
         LOCAL_STORE_SCHEMA_VERSION,
       );
-      assert.equal(LOCAL_STORE_SCHEMA_VERSION, 24);
+      // The claim is that no CRM field became a COLUMN, which is what "needed
+      // no migration" actually meant. It used to be written as
+      // `assert.equal(LOCAL_STORE_SCHEMA_VERSION, 24)`, which said the same
+      // thing only for as long as nothing else ever needed a table — B8's
+      // `folders` did, for a reason that has nothing to do with these fields.
+      assert.deepEqual(
+        (
+          firstDatabase
+            .prepare("SELECT name FROM pragma_table_info('strategic_records')")
+            .all() as { name: string }[]
+        )
+          .map((column) => column.name)
+          .sort(),
+        [
+          "id",
+          "kind",
+          "payload_json",
+          "space_id",
+          "updated_at",
+          "version",
+          "workspace_id",
+        ],
+      );
       firstDatabase.close();
 
       const reopenedDatabase = new DatabaseSync(filename);
@@ -3671,7 +3700,7 @@ describe("narrative-less records in the durable store", () => {
   // table and is not a strategic record at all. `workspaces` is a blob on the
   // same terms — `sqlite-application-store.ts`'s `schemaV1` lifts only `id`
   // and `version` into columns — and neither currency setting is ever a SQL
-  // predicate, which is why `LOCAL_STORE_SCHEMA_VERSION` stays 24. Asserted
+  // predicate, which is why neither is a COLUMN on `workspaces`. Asserted
   // across a real restart rather than reasoned about.
   it("round-trips the workspace currency settings across a restart at schema 24", () => {
     withDatabase((filename) => {
@@ -3699,7 +3728,19 @@ describe("narrative-less records in the durable store", () => {
         firstDatabase.prepare("PRAGMA user_version;").get()?.["user_version"],
         LOCAL_STORE_SCHEMA_VERSION,
       );
-      assert.equal(LOCAL_STORE_SCHEMA_VERSION, 24);
+      // Same correction as above: the property is that neither currency
+      // setting is a column on `workspaces`, not that the schema counter
+      // stands at a particular number.
+      assert.deepEqual(
+        (
+          firstDatabase
+            .prepare("SELECT name FROM pragma_table_info('workspaces')")
+            .all() as { name: string }[]
+        )
+          .map((column) => column.name)
+          .sort(),
+        ["id", "payload_json", "version"],
+      );
       firstDatabase.close();
 
       const reopenedDatabase = new DatabaseSync(filename);
@@ -3725,6 +3766,160 @@ describe("narrative-less records in the durable store", () => {
       assert.equal(defaults.homeCurrency, "EUR");
       assert.deepEqual(defaults.currencies, ["EUR", "USD"]);
       reopenedDatabase.close();
+    });
+  });
+
+  /**
+   * B8's storage, end to end through the real store rather than the in-memory
+   * one every conformance test runs against.
+   *
+   * `folders` is a NEW EMPTY TABLE (schemaV25), which is what makes B8 need no
+   * migration in the sense the wave brief forbids: it rewrites zero rows and
+   * backfills nothing. `folderId` on a note is NOT a column — it stays inside
+   * `documents.payload_json`, and this test asserts that too, because the
+   * cheapest way to break the ruling later is to promote it "while we are
+   * here" and never notice that nothing needed it.
+   */
+  it("keeps the folder tree in its own table and the note's folder in the blob", () => {
+    withDatabase((filename) => {
+      const folderId = "00000000-0000-4000-8000-0000000001f0";
+      const childFolderId = "00000000-0000-4000-8000-0000000001f1";
+      const noteId = "00000000-0000-4000-8000-0000000001f2";
+      const database = new DatabaseSync(filename);
+      const { kernel } = createKernel(database);
+      assert.equal(
+        unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const command of [
+        wave2Command(
+          "folder.create",
+          { folderId, spaceId: ids.rootSpace, name: "Clients" },
+          "sqlite-folder-root",
+        ),
+        wave2Command(
+          "folder.create",
+          {
+            folderId: childFolderId,
+            spaceId: ids.rootSpace,
+            name: "Falcon",
+            parentFolderId: folderId,
+          },
+          "sqlite-folder-child",
+        ),
+        wave2Command(
+          "document.create",
+          {
+            documentId: noteId,
+            spaceId: ids.rootSpace,
+            title: "Falcon kickoff",
+            role: "note",
+            folderId: childFolderId,
+          },
+          "sqlite-folder-note",
+        ),
+      ])
+        assert.equal(
+          unwrap(kernel.execute(context(), command)).outcome,
+          "success",
+        );
+
+      assert.equal(
+        (
+          database.prepare("PRAGMA user_version").get() as {
+            user_version: number;
+          }
+        ).user_version,
+        LOCAL_STORE_SCHEMA_VERSION,
+      );
+      // The reference is a real column, because a folder pointing at a folder
+      // that never existed must be unstorable — that is what the column buys,
+      // and it is the only thing it buys.
+      assert.equal(
+        (
+          database
+            .prepare("SELECT parent_folder_id FROM folders WHERE id = ?")
+            .get(childFolderId) as { parent_folder_id: string | null }
+        ).parent_folder_id,
+        folderId,
+      );
+      assert.equal(
+        (
+          database
+            .prepare("SELECT parent_folder_id FROM folders WHERE id = ?")
+            .get(folderId) as { parent_folder_id: string | null }
+        ).parent_folder_id,
+        null,
+      );
+      // And the note's placement is in the blob, filterable exactly the way
+      // `recordState` already is on this table: no column, no index.
+      assert.equal(
+        (
+          database
+            .prepare(
+              "SELECT json_extract(payload_json, '$.folderId') AS folder_id FROM documents WHERE id = ?",
+            )
+            .get(noteId) as { folder_id: string | null }
+        ).folder_id,
+        childFolderId,
+      );
+      assert.equal(
+        (
+          database
+            .prepare(
+              "SELECT count(*) AS count FROM pragma_table_info('documents') WHERE name = 'folder_id'",
+            )
+            .get() as { count: number }
+        ).count,
+        0,
+        "folderId is deliberately not a column on documents",
+      );
+      database.close();
+
+      // Restart: the tree survives, and the column moves with the payload when
+      // a folder is moved — a stale column would make the foreign-key guard
+      // describe a shape the blob no longer has.
+      const reopened = new DatabaseSync(filename);
+      const restarted = createKernel(reopened);
+      assert.equal(
+        unwrap(
+          restarted.kernel.execute(
+            context(),
+            wave2Command(
+              "folder.setParent",
+              { folderId: childFolderId, parentFolderId: null },
+              "sqlite-folder-move",
+              { [childFolderId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        (
+          reopened
+            .prepare("SELECT parent_folder_id FROM folders WHERE id = ?")
+            .get(childFolderId) as { parent_folder_id: string | null }
+        ).parent_folder_id,
+        null,
+      );
+      assert.deepEqual(
+        restarted.store
+          .read((view) =>
+            isApplicationWave2ReadView(view)
+              ? view
+                  .listFolders(
+                    ids.workspace as WorkspaceId,
+                    ids.rootSpace as SpaceId,
+                  )
+                  .map((folder) => folder.name)
+                  .sort()
+              : [],
+          )
+          .sort(),
+        ["Clients", "Falcon"],
+      );
+      reopened.close();
     });
   });
 });

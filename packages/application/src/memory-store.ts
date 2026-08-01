@@ -32,6 +32,7 @@ import type {
   AgentRunId,
   CheckpointId,
   KnowledgeSourceId,
+  FolderId,
   NamedDocumentVersionId,
   StrategicRecordId,
 } from "@constellation/contracts";
@@ -68,6 +69,7 @@ import type {
   AgentHandoff,
   AgentCheckpoint,
   KnowledgeSource,
+  Folder,
   NamedDocumentVersion,
   StrategicRecord,
   DocumentEntityLink,
@@ -96,6 +98,8 @@ export type FailureBoundary =
   | "project-update"
   | "document"
   | "document-update"
+  | "folder"
+  | "folder-update"
   | "knowledge-source"
   | "knowledge-source-update"
   | "named-document-version"
@@ -152,6 +156,7 @@ interface MutableState {
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
   readonly documents: Map<DocumentId, NativeDocument>;
+  readonly folders: Map<FolderId, Folder>;
   readonly documentEntityLinks: Map<string, DocumentEntityLink>;
   readonly knowledgeSources: Map<KnowledgeSourceId, KnowledgeSource>;
   readonly namedDocumentVersions: Map<
@@ -188,6 +193,7 @@ const emptyState = (): MutableState => ({
   tasks: new Map(),
   projects: new Map(),
   documents: new Map(),
+  folders: new Map(),
   documentEntityLinks: new Map(),
   knowledgeSources: new Map(),
   namedDocumentVersions: new Map(),
@@ -221,6 +227,7 @@ const cloneState = (state: MutableState): MutableState => ({
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
   documents: new Map(state.documents),
+  folders: new Map(state.folders),
   documentEntityLinks: new Map(state.documentEntityLinks),
   knowledgeSources: new Map(state.knowledgeSources),
   namedDocumentVersions: new Map(state.namedDocumentVersions),
@@ -585,6 +592,28 @@ class ReadView implements ApplicationReadView {
           document.workspaceId === workspaceId &&
           document.spaceId === spaceId &&
           recordIsActive(document),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  public getFolder(id: FolderId): Folder | undefined {
+    return this.state.folders.get(id);
+  }
+
+  public listFolders(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Folder[] {
+    return [...this.state.folders.values()]
+      .filter(
+        (folder) =>
+          folder.workspaceId === workspaceId &&
+          folder.spaceId === spaceId &&
+          recordIsActive(folder),
       )
       .sort(
         (left, right) =>
@@ -1178,6 +1207,22 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertFolder(folder: Folder): void {
+    if (this.state.folders.has(folder.id)) {
+      throw new Error(`Duplicate folder ID: ${folder.id}`);
+    }
+    this.state.folders.set(folder.id, folder);
+    this.failures.reached("folder");
+  }
+
+  public updateFolder(folder: Folder, expectedVersion: number): boolean {
+    const current = this.state.folders.get(folder.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.folders.set(folder.id, folder);
+    this.failures.reached("folder-update");
+    return true;
+  }
+
   public insertKnowledgeSource(source: KnowledgeSource): void {
     if (this.state.knowledgeSources.has(source.id)) {
       throw new Error(`Duplicate knowledge source ID: ${source.id}`);
@@ -1404,6 +1449,7 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   documents: new Map(
     (snapshot.documents ?? []).map((value) => [value.id, value]),
   ),
+  folders: new Map((snapshot.folders ?? []).map((value) => [value.id, value])),
   documentEntityLinks: new Map(),
   knowledgeSources: new Map(
     (snapshot.knowledgeSources ?? []).map((value) => [value.id, value]),
@@ -1506,6 +1552,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],
       documents: [...this.state.documents.values()],
+      folders: [...this.state.folders.values()],
       knowledgeSources: [...this.state.knowledgeSources.values()],
       namedDocumentVersions: [...this.state.namedDocumentVersions.values()],
       strategicRecords: [...this.state.strategicRecords.values()],

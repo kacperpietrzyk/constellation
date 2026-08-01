@@ -9,6 +9,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   DocumentIdSchema,
+  FolderIdSchema,
   GrantIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
@@ -1341,11 +1342,39 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           referencedByCount: z.int().nonnegative(),
         }).strict(),
       ),
+      /**
+       * The folder tree of this Space, flat, parents named by id. Every folder
+       * is here whatever its depth (#30 nests without a limit), and the reader
+       * builds the tree from `parentFolderId` — an absent one is a root.
+       *
+       * `noteCount` counts the folder's own notes AND every descendant's;
+       * `ownNoteCount` counts only its own. Both are projected on purpose: the
+       * property this wave must prove is
+       * `noteCount(p) === ownNoteCount(p) + Σ noteCount(child)`, and with only
+       * the total here an assertion would have to re-derive the left side from
+       * `documents[].folderId` — testing its own arithmetic instead of the
+       * read the screen renders, which is the defect the prototype's B35 has.
+       */
+      folders: z.array(
+        z
+          .object({
+            id: FolderIdSchema,
+            name: z.string(),
+            parentFolderId: FolderIdSchema.optional(),
+            noteCount: z.int().nonnegative(),
+            ownNoteCount: z.int().nonnegative(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
       documents: z.array(
         z
           .object({
             id: DocumentIdSchema,
             title: z.string(),
+            /** Absent means Unfiled. The Notes screen groups on this. */
+            folderId: FolderIdSchema.optional(),
             role: z.enum(["note", "document", "deliverable"]),
             evidenceCount: z.int().nonnegative(),
             namedVersionCount: z.int().nonnegative(),
@@ -1365,6 +1394,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           id: DocumentIdSchema,
           spaceId: SpaceIdSchema,
           title: z.string(),
+          folderId: FolderIdSchema.optional(),
           role: z.enum(["note", "document", "deliverable"]),
           version: z.int().positive(),
           updatedAt: z.iso.datetime({ offset: true }),
@@ -1577,6 +1607,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: DocumentIdSchema,
             spaceId: SpaceIdSchema,
             title: z.string(),
+            folderId: FolderIdSchema.optional(),
             role: z.enum(["note", "document", "deliverable"]),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
@@ -1615,6 +1646,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             documentId: DocumentIdSchema,
             spaceId: SpaceIdSchema,
             title: z.string(),
+            folderId: FolderIdSchema.optional(),
             role: z.enum(["note", "document", "deliverable"]),
             updatedAt: z.iso.datetime({ offset: true }),
           })

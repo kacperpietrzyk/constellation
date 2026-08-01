@@ -8,6 +8,7 @@ import type {
   DocumentId,
   DocumentRevisionId,
   EventId,
+  FolderId,
   GrantId,
   CredentialId,
   CheckpointId,
@@ -584,6 +585,31 @@ export interface Project {
   readonly updatedAt: string;
 }
 
+/**
+ * A folder in the note tree (decision #30). Nesting is unbounded on purpose —
+ * two hundred Obsidian notes do not fit the two levels `Task.parentTaskId`
+ * caps itself at — which is why `folder.setParent` needs a real ancestor walk
+ * where a subtask needs none.
+ *
+ * A folder is deliberately NOT a `RecordKind`: it has no record screen, no ⌘K
+ * result of its own (its notes are the results) and no inspector surface. It
+ * is addressed only through the four folder commands and the tree read.
+ */
+export interface Folder {
+  readonly id: FolderId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  /** As on a document: absent means active, removal is a soft delete. */
+  readonly recordState?: "active" | "removed";
+  readonly name: string;
+  /** Absent means the folder sits at the root of its Space's tree. */
+  readonly parentFolderId?: FolderId;
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export interface NativeDocument {
   readonly id: DocumentId;
   readonly workspaceId: WorkspaceId;
@@ -595,6 +621,14 @@ export interface NativeDocument {
    */
   readonly recordState?: "active" | "removed";
   readonly title: string;
+  /**
+   * ONE folder, never a set (decision #30, "one folder, just like in
+   * Obsidian"). Absent means Unfiled, which is an ordinary state and not a
+   * defect. A note that is about two clients is expressed with references,
+   * whose number is unbounded; several folders at once would mean that moving
+   * a note never tells you where it disappeared from.
+   */
+  readonly folderId?: FolderId;
   readonly role?: "note" | "document" | "deliverable";
   readonly evidence?: {
     readonly sourceIds: readonly KnowledgeSourceId[];
@@ -1587,6 +1621,68 @@ export type UndoDescriptor =
       readonly consumedByCommandId?: CommandId;
     }
   | {
+      // A Folder does NOT join the two shared arms above. Those name a table
+      // whose removal runs through one shared guard; a folder's removal has
+      // its own (the notes in its whole subtree, plus its child folders), and
+      // OPEN-1 ruled it four compensation kinds of its own. Sharing the arms
+      // would have put a fifth `recordKind` into `record.removed`, which is a
+      // vocabulary about the three tables that share that path.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "folder.undo_create";
+      readonly folderId: FolderId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "folder.restore_details";
+      readonly folderId: FolderId;
+      readonly priorName: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "folder.restore_parent";
+      readonly folderId: FolderId;
+      /** Absent means the folder stood at the root, and undo puts it back there. */
+      readonly priorParentFolderId?: FolderId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "folder.restore_record_state";
+      readonly folderId: FolderId;
+      readonly priorRecordState: "active" | "removed";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      // The fifth, and the one recon's four did not count: `document.setFolder`
+      // moves a NOTE, not a folder. Moving a note is the single most dangerous
+      // operation decision #30 introduces ("if you wreck the notes the whole
+      // effect collapses"), so it is the last command that may be
+      // unrevertible. Absent `priorFolderId` means the note was Unfiled and
+      // undo returns it there.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "document.restore_folder";
+      readonly documentId: DocumentId;
+      readonly priorFolderId?: FolderId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -1898,10 +1994,23 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
-      readonly type: "document.created";
+      readonly type: "document.created" | "document.folder_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: DocumentId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type:
+        | "folder.created"
+        | "folder.renamed"
+        | "folder.parent_changed"
+        | "folder.removed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: FolderId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

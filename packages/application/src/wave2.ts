@@ -13,6 +13,7 @@ import {
   CommandOutcomeSchema,
   DEPENDENT_SAMPLE_LIMIT,
   DocumentIdSchema,
+  FolderIdSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
   ProjectIdSchema,
@@ -75,6 +76,13 @@ import {
   taskFieldsWithComputedValues,
   updateTaskDetails,
   createNativeDocument,
+  createFolder,
+  renameFolder,
+  setFolderParent,
+  setDocumentFolder,
+  folderAncestorIds,
+  folderNoteCounts,
+  documentsInFolderSubtree,
   relateTaskToProject,
   relateTaskToOpportunity,
   removeTaskProjectRelation,
@@ -150,6 +158,7 @@ import {
   type Capture,
   type KnowledgeSource,
   type NativeDocument,
+  type Folder,
   type StrategicRecord,
   type TaskWorkRelation,
   type DocumentEntityTargetKind,
@@ -191,6 +200,11 @@ export type Wave2Command = Extract<
       | "project.remove"
       | "document.create"
       | "document.remove"
+      | "document.setFolder"
+      | "folder.create"
+      | "folder.rename"
+      | "folder.setParent"
+      | "folder.remove"
       | "knowledge.sourceCreate"
       | "knowledge.sourceRemove"
       | "knowledge.sourceUpdate"
@@ -418,7 +432,8 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
-    case "document.create": {
+    case "document.create":
+    case "folder.create": {
       const space = view.getSpace(command.payload.spaceId);
       return authorized(
         dependencies,
@@ -426,6 +441,39 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "document.setFolder": {
+      // The DOCUMENT's Space authorizes the move, not the destination
+      // folder's. Both are checked, but they are checked in different places
+      // and for different reasons: this one decides whether the caller may
+      // write the note at all, and the handler separately refuses a
+      // destination in another Space. Reading authorization off the
+      // destination would let a caller move a note they cannot edit by
+      // naming a folder they can.
+      const document = view.getDocument(command.payload.documentId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        document?.workspaceId === command.workspaceId
+          ? document.spaceId
+          : undefined,
+      );
+    }
+    case "folder.rename":
+    case "folder.setParent":
+    case "folder.remove": {
+      const folder = view.getFolder(command.payload.folderId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        folder?.workspaceId === command.workspaceId
+          ? folder.spaceId
+          : undefined,
       );
     }
     case "knowledge.sourceCreate": {
@@ -1179,6 +1227,7 @@ const appendJournal = (
       | "taskAssignment"
       | "project"
       | "document"
+      | "folder"
       | "knowledgeSource"
       | "namedDocumentVersion"
       | "strategicRecord"
@@ -1832,6 +1881,49 @@ const removeTableRecord = (
 };
 
 /**
+ * What stands in the way of removing a folder, in the vocabulary the refusal
+ * names dependents in.
+ *
+ * TWO kinds, and the second is why `folder` had to enter `RecordKindSchema`
+ * for the audit line anyway:
+ *
+ * - every NOTE anywhere at or below this folder, not merely the ones filed
+ *   directly in it. A folder refused because a grandchild holds notes names
+ *   those notes by id, which is the difference between a refusal a person can
+ *   act on and one that sends them hunting through a tree by hand;
+ * - every direct CHILD FOLDER. Without this a delete would leave the whole
+ *   subtree pointing at a folder that is gone: unreachable from the root and
+ *   still perfectly present in the store, which is the shape of "where did my
+ *   notes go" that decision #30 forbids ("jak skopiesz notatki, to cały efekt
+ *   się zawali"). Deleting a tree is therefore leaf-up, deliberately.
+ *
+ * Cascading was rejected on both shapes recon listed: cascading the delete
+ * destroys notes, and cascading the notes to Unfiled makes the undo descriptor
+ * grow with the folder's contents.
+ */
+const folderDependents = (
+  view: ApplicationWave2ReadView,
+  folder: Folder,
+): readonly BlockingRecord[] => {
+  const folders = view.listFolders(folder.workspaceId, folder.spaceId);
+  const documents = view.listDocuments(folder.workspaceId, folder.spaceId);
+  return [
+    ...documentsInFolderSubtree(folders, documents, folder.id).map(
+      (document) => ({
+        recordId: document.id,
+        recordKind: "document" as const,
+      }),
+    ),
+    ...folders
+      .filter((candidate) => candidate.parentFolderId === folder.id)
+      .map((candidate) => ({
+        recordId: candidate.id,
+        recordKind: "folder" as const,
+      })),
+  ];
+};
+
+/**
  * The explicit removal path, shared by every strategic kind: one guard, one
  * recordState transition, one compensation. Per-kind commands differ only in
  * the capability they carry and the id they name.
@@ -2318,11 +2410,29 @@ export const executeWave2Command = (
       if (transaction.getDocument(command.payload.documentId) !== undefined) {
         return precondition(command, occurredAt);
       }
+      // The destination is checked at creation on exactly the terms
+      // `document.setFolder` checks it, rather than trusting a create: an
+      // importer placing two hundred notes is the caller this key exists for,
+      // and it is also the caller most likely to name a folder from another
+      // Space or one it has just removed.
+      if (command.payload.folderId !== undefined) {
+        const folder = transaction.getFolder(command.payload.folderId);
+        if (
+          folder === undefined ||
+          folder.workspaceId !== command.workspaceId ||
+          folder.spaceId !== command.payload.spaceId ||
+          !recordIsActive(folder)
+        )
+          return precondition(command, occurredAt);
+      }
       const document = createNativeDocument({
         id: DocumentIdSchema.parse(command.payload.documentId),
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         title: command.payload.title,
+        ...(command.payload.folderId === undefined
+          ? {}
+          : { folderId: command.payload.folderId }),
         ...(command.payload.role === undefined
           ? {}
           : { role: command.payload.role }),
@@ -2346,7 +2456,9 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [document.id]: document.version },
-        ["title"],
+        command.payload.folderId === undefined
+          ? ["title"]
+          : ["title", "folderId"],
         {
           diagnosticCode: "document.created",
           projection: {
@@ -2367,6 +2479,340 @@ export const executeWave2Command = (
           resultingVersion: document.version,
         },
         { [document.id]: "document" },
+      );
+    }
+    case "folder.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getFolder(command.payload.folderId) !== undefined)
+        return precondition(command, occurredAt);
+      if (command.payload.parentFolderId !== undefined) {
+        const parent = transaction.getFolder(command.payload.parentFolderId);
+        // No depth check, and its absence is the decision: #30 asks for
+        // nesting without a limit, which is the whole reason `folder.setParent`
+        // needs an ancestor walk where `task.setParent` needs none.
+        if (
+          parent === undefined ||
+          parent.workspaceId !== command.workspaceId ||
+          parent.spaceId !== command.payload.spaceId ||
+          !recordIsActive(parent)
+        )
+          return precondition(command, occurredAt);
+      }
+      const folder = createFolder({
+        id: FolderIdSchema.parse(command.payload.folderId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        name: command.payload.name,
+        ...(command.payload.parentFolderId === undefined
+          ? {}
+          : {
+              parentFolderId: FolderIdSchema.parse(
+                command.payload.parentFolderId,
+              ),
+            }),
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertFolder(folder);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "folder.created",
+          workspaceId: folder.workspaceId,
+          spaceId: folder.spaceId,
+          aggregateId: folder.id,
+          aggregateVersion: folder.version,
+          occurredAt,
+        },
+        { [folder.id]: folder.version },
+        folder.parentFolderId === undefined
+          ? ["name"]
+          : ["name", "parentFolderId"],
+        {
+          diagnosticCode: "folder.created",
+          projection: {
+            kind: "folder.created",
+            folderId: folder.id,
+            name: folder.name,
+            ...(folder.parentFolderId === undefined
+              ? {}
+              : { parentFolderId: folder.parentFolderId }),
+            version: folder.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: folder.workspaceId,
+          spaceId: folder.spaceId,
+          kind: "folder.undo_create",
+          folderId: folder.id,
+          resultingVersion: folder.version,
+        },
+        { [folder.id]: "folder" },
+      );
+    }
+    case "folder.rename": {
+      const folder = transaction.getFolder(command.payload.folderId);
+      if (folder === undefined || !recordIsActive(folder))
+        return precondition(command, occurredAt);
+      const expected = { [folder.id]: folder.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const updated = renameFolder(folder, command.payload.name, occurredAt);
+      if (!transaction.updateFolder(updated, folder.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "folder.renamed",
+          workspaceId: folder.workspaceId,
+          spaceId: folder.spaceId,
+          aggregateId: folder.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["name"],
+        {
+          diagnosticCode: "folder.renamed",
+          projection: {
+            kind: "folder.renamed",
+            folderId: updated.id,
+            name: updated.name,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: folder.workspaceId,
+          spaceId: folder.spaceId,
+          kind: "folder.restore_details",
+          folderId: folder.id,
+          priorName: folder.name,
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "folder" },
+      );
+    }
+    case "folder.setParent": {
+      const folder = transaction.getFolder(command.payload.folderId);
+      if (folder === undefined || !recordIsActive(folder))
+        return precondition(command, occurredAt);
+      const nextParentId =
+        command.payload.parentFolderId === null
+          ? undefined
+          : command.payload.parentFolderId;
+      if (nextParentId !== undefined) {
+        const parent = transaction.getFolder(nextParentId);
+        if (
+          parent === undefined ||
+          parent.id === folder.id ||
+          parent.workspaceId !== folder.workspaceId ||
+          parent.spaceId !== folder.spaceId ||
+          !recordIsActive(parent)
+        )
+          return precondition(command, occurredAt);
+        // THE CHECK `Task.parentTaskId` NEVER NEEDED. Two guards cap a
+        // subtask's depth at two, so a task cycle is structurally unreachable
+        // and the repo holds no ancestor walk at all. #30 removed that cap for
+        // folders, which buys back the problem: without this, moving a folder
+        // under its own descendant detaches the whole subtree from the root
+        // and every note in it stops being reachable from the tree while
+        // still being perfectly present in the store.
+        const ancestors = folderAncestorIds(
+          transaction.listFolders(folder.workspaceId, folder.spaceId),
+          parent.id,
+        );
+        if (parent.id === folder.id || ancestors.includes(folder.id))
+          return precondition(command, occurredAt);
+      }
+      if ((folder.parentFolderId ?? undefined) === nextParentId)
+        return precondition(command, occurredAt);
+      const expected = { [folder.id]: folder.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const updated = setFolderParent(folder, nextParentId, occurredAt);
+      if (!transaction.updateFolder(updated, folder.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "folder.parent_changed",
+          workspaceId: folder.workspaceId,
+          spaceId: folder.spaceId,
+          aggregateId: folder.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["parentFolderId"],
+        {
+          diagnosticCode: "folder.parent_changed",
+          projection: {
+            kind: "folder.parent_changed",
+            folderId: updated.id,
+            ...(updated.parentFolderId === undefined
+              ? {}
+              : { parentFolderId: updated.parentFolderId }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: folder.workspaceId,
+          spaceId: folder.spaceId,
+          kind: "folder.restore_parent",
+          folderId: folder.id,
+          ...(folder.parentFolderId === undefined
+            ? {}
+            : { priorParentFolderId: folder.parentFolderId }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "folder" },
+      );
+    }
+    case "folder.remove": {
+      const folder = transaction.getFolder(command.payload.folderId);
+      if (folder === undefined || !recordIsActive(folder))
+        return precondition(command, occurredAt);
+      const expected = { [folder.id]: folder.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const dependents = folderDependents(transaction, folder);
+      if (dependents.length > 0)
+        return blocked(command, occurredAt, dependents);
+      const priorRecordState = recordIsActive(folder) ? "active" : "removed";
+      const removed: Folder = {
+        ...folder,
+        recordState: "removed",
+        version: folder.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateFolder(removed, folder.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "folder.removed",
+          workspaceId: removed.workspaceId,
+          spaceId: removed.spaceId,
+          aggregateId: removed.id,
+          aggregateVersion: removed.version,
+          occurredAt,
+        },
+        { [removed.id]: removed.version },
+        ["recordState"],
+        {
+          diagnosticCode: "folder.removed",
+          projection: {
+            kind: "folder.removed",
+            folderId: removed.id,
+            version: removed.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: removed.workspaceId,
+          spaceId: removed.spaceId,
+          kind: "folder.restore_record_state",
+          folderId: removed.id,
+          priorRecordState,
+          resultingVersion: removed.version,
+        },
+        { [removed.id]: "folder" },
+      );
+    }
+    case "document.setFolder": {
+      const document = transaction.getDocument(command.payload.documentId);
+      if (document === undefined || !recordIsActive(document))
+        return precondition(command, occurredAt);
+      const nextFolderId =
+        command.payload.folderId === null
+          ? undefined
+          : command.payload.folderId;
+      if (nextFolderId !== undefined) {
+        const folder = transaction.getFolder(nextFolderId);
+        if (
+          folder === undefined ||
+          folder.workspaceId !== document.workspaceId ||
+          folder.spaceId !== document.spaceId ||
+          !recordIsActive(folder)
+        )
+          return precondition(command, occurredAt);
+      }
+      // Only the NOTE's version is expected, never the folders'. A folder is
+      // not written by this command — it holds no list of its notes, which is
+      // what makes one folder per note (#30) cheap — so demanding its version
+      // would make two people filing two different notes into one folder
+      // conflict with each other over a record neither of them changed.
+      const expected = { [document.id]: document.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      if ((document.folderId ?? undefined) === nextFolderId)
+        return precondition(command, occurredAt);
+      const updated = setDocumentFolder(document, nextFolderId, occurredAt);
+      if (!transaction.updateDocument(updated, document.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "document.folder_changed",
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          aggregateId: document.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["folderId"],
+        {
+          diagnosticCode: "document.folder_changed",
+          projection: {
+            kind: "document.folder_changed",
+            documentId: updated.id,
+            ...(updated.folderId === undefined
+              ? {}
+              : { folderId: updated.folderId }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          kind: "document.restore_folder",
+          documentId: document.id,
+          ...(document.folderId === undefined
+            ? {}
+            : { priorFolderId: document.folderId }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "document" },
       );
     }
     case "knowledge.sourceCreate": {
@@ -8840,6 +9286,13 @@ export const descriptorRecordIds = (
       return [descriptor.documentId];
     case "knowledge.void_named_version":
       return [descriptor.namedVersionId];
+    case "folder.undo_create":
+    case "folder.restore_details":
+    case "folder.restore_parent":
+    case "folder.restore_record_state":
+      return [descriptor.folderId];
+    case "document.restore_folder":
+      return [descriptor.documentId];
     case "relationship.restore_person":
       return [descriptor.personId];
     case "relationship.restore_organization":
@@ -9624,6 +10077,118 @@ const descriptorState = (
         versions: { [record.id]: record.version },
       };
     }
+    case "folder.restore_details":
+    case "folder.restore_record_state": {
+      const folder = view.getFolder(descriptor.folderId);
+      return folder?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [folder.id],
+            versions: { [folder.id]: folder.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "folder.restore_parent": {
+      const folder = view.getFolder(descriptor.folderId);
+      if (folder?.version !== descriptor.resultingVersion)
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // The parent this undo would put the folder back under can itself have
+      // been removed since — a folder empties, is deleted, and only then does
+      // somebody reach for the undo of a move OUT of it. `later_change` is the
+      // honest member of a deliberately small vocabulary: a record this
+      // compensation requires moved past the state it requires, by work this
+      // checkpoint does not carry.
+      const priorParent =
+        descriptor.priorParentFolderId === undefined
+          ? undefined
+          : view.getFolder(descriptor.priorParentFolderId);
+      if (
+        descriptor.priorParentFolderId !== undefined &&
+        (priorParent === undefined || !recordIsActive(priorParent))
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      return {
+        available: true,
+        recordIds: [folder.id],
+        versions: { [folder.id]: folder.version },
+      };
+    }
+    case "folder.undo_create": {
+      const folder = view.getFolder(descriptor.folderId);
+      if (folder?.version !== descriptor.resultingVersion)
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // Undoing the create REMOVES the folder, so it has to re-run the guard
+      // the explicit removal runs: notes filed into it in the meantime, and
+      // folders created under it, are exactly the work an undo must not
+      // orphan.
+      const dependents = folderDependents(view, folder).filter(
+        (dependent) => revert?.removed.has(dependent.recordId) !== true,
+      );
+      return dependents.length === 0
+        ? {
+            available: true,
+            recordIds: [folder.id],
+            versions: { [folder.id]: folder.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "still_referenced",
+          };
+    }
+    case "document.restore_folder": {
+      const document = view.getDocument(descriptor.documentId);
+      if (document?.version !== descriptor.resultingVersion)
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // Same shape as `folder.restore_parent`: the folder the note came FROM
+      // can have been removed once the note left it, and putting the note back
+      // into a folder that is gone would hide it from the tree entirely.
+      const priorFolder =
+        descriptor.priorFolderId === undefined
+          ? undefined
+          : view.getFolder(descriptor.priorFolderId);
+      if (
+        descriptor.priorFolderId !== undefined &&
+        (priorFolder === undefined || !recordIsActive(priorFolder))
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      return {
+        available: true,
+        recordIds: [document.id],
+        versions: { [document.id]: document.version },
+      };
+    }
     case "savedView.restore_definition": {
       const record = view.getStrategicRecord(descriptor.savedViewId);
       return record?.kind === "saved_view" &&
@@ -9837,6 +10402,7 @@ type CompensatedRecordKinds = Record<
   | "task"
   | "project"
   | "document"
+  | "folder"
   | "knowledgeSource"
   | "namedDocumentVersion"
   | "relation"
@@ -10751,6 +11317,58 @@ const compensateDescriptor = (
     transaction.updateStrategicRecord(restored, opportunity.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "folder.undo_create") {
+    const folder = transaction.getFolder(descriptor.folderId)!;
+    const removed: Folder = {
+      ...folder,
+      recordState: "removed",
+      version: folder.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateFolder(removed, folder.version);
+    compensatedVersions = { [removed.id]: removed.version };
+    compensatedKinds = { [removed.id]: "folder" };
+  } else if (descriptor.kind === "folder.restore_details") {
+    const folder = transaction.getFolder(descriptor.folderId)!;
+    const restored = renameFolder(folder, descriptor.priorName, occurredAt);
+    transaction.updateFolder(restored, folder.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "folder" };
+  } else if (descriptor.kind === "folder.restore_parent") {
+    const folder = transaction.getFolder(descriptor.folderId)!;
+    const restored = setFolderParent(
+      folder,
+      descriptor.priorParentFolderId,
+      occurredAt,
+    );
+    transaction.updateFolder(restored, folder.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "folder" };
+  } else if (descriptor.kind === "folder.restore_record_state") {
+    const folder = transaction.getFolder(descriptor.folderId)!;
+    const restored: Folder = {
+      ...folder,
+      recordState: descriptor.priorRecordState,
+      version: folder.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateFolder(restored, folder.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "folder" };
+  } else if (descriptor.kind === "document.restore_folder") {
+    const document = transaction.getDocument(descriptor.documentId)!;
+    // `priorFolderId` absent means the note was Unfiled, and the helper
+    // destructures the key away rather than writing `undefined` — so taking
+    // back the move that FILED a loose note leaves it loose again instead of
+    // leaving it where the move put it.
+    const restored = setDocumentFolder(
+      document,
+      descriptor.priorFolderId,
+      occurredAt,
+    );
+    transaction.updateDocument(restored, document.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "document" };
   } else if (descriptor.kind === "knowledge.restore_evidence") {
     const document = transaction.getDocument(descriptor.documentId)!;
     const restored = setDocumentEvidence(document, {
@@ -11789,6 +12407,9 @@ export const executeWave2Query = (
           id: document.id,
           spaceId: document.spaceId,
           title: document.title,
+          ...(document.folderId === undefined
+            ? {}
+            : { folderId: document.folderId }),
           role: document.role ?? "document",
           version: document.version,
           updatedAt: document.updatedAt,
@@ -11858,6 +12479,9 @@ export const executeWave2Query = (
             documentId: source.id,
             spaceId: source.spaceId,
             title: source.title,
+            ...(source.folderId === undefined
+              ? {}
+              : { folderId: source.folderId }),
             role: source.role ?? "document",
             updatedAt: source.updatedAt,
           },
@@ -11889,6 +12513,24 @@ export const executeWave2Query = (
       kind === "source"
         ? view.getKnowledgeSource(recordId as never)?.version
         : view.getDocument(recordId as never)?.version;
+    // The tree and its counters, computed HERE and not in SQL. The note list
+    // is already loaded and already Space-scoped, so a second pass buys
+    // nothing; and the count has to respect Space authorization, which is a
+    // kernel property (`canViewSpace`) rather than a store one — a
+    // `GROUP BY folder_id` would produce a number this reader is not allowed
+    // to see and would then need re-filtering by the same walk. What WOULD
+    // force SQL later, stated so a future lot recognises it: paging the note
+    // list, sorting by folder path in SQL, or any read that must answer
+    // "notes in this folder" without loading the Space.
+    const folders = view.listFolders(
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
+    const documents = view.listDocuments(
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
+    const folderCounts = folderNoteCounts(folders, documents);
     return querySuccess(query, kernelTime, freshness, {
       kind: "knowledge.list",
       spaceId: query.parameters.spaceId,
@@ -11920,32 +12562,47 @@ export const executeWave2Query = (
             updatedAt: source.updatedAt,
           };
         }),
-      documents: view
-        .listDocuments(query.workspaceId, query.parameters.spaceId)
-        .map((document) => {
-          const versions = namedVersions.filter(
-            (version) =>
-              version.documentId === document.id && version.state === "active",
-          );
-          const latest = versions[0];
-          return {
-            id: document.id,
-            title: document.title,
-            role: document.role ?? "document",
-            evidenceCount:
-              (document.evidence?.sourceIds.length ?? 0) +
-              (document.evidence?.noteDocumentIds.length ?? 0),
-            namedVersionCount: versions.length,
-            staleEvidence:
-              latest?.evidence.some(
-                (evidence) =>
-                  currentVersion(evidence.kind, evidence.recordId) !==
-                  evidence.version,
-              ) ?? false,
-            version: document.version,
-            updatedAt: document.updatedAt,
-          };
-        }),
+      folders: folders.map((folder) => {
+        const counts = folderCounts.get(folder.id);
+        return {
+          id: folder.id,
+          name: folder.name,
+          ...(folder.parentFolderId === undefined
+            ? {}
+            : { parentFolderId: folder.parentFolderId }),
+          noteCount: counts?.noteCount ?? 0,
+          ownNoteCount: counts?.ownNoteCount ?? 0,
+          version: folder.version,
+          updatedAt: folder.updatedAt,
+        };
+      }),
+      documents: documents.map((document) => {
+        const versions = namedVersions.filter(
+          (version) =>
+            version.documentId === document.id && version.state === "active",
+        );
+        const latest = versions[0];
+        return {
+          id: document.id,
+          title: document.title,
+          ...(document.folderId === undefined
+            ? {}
+            : { folderId: document.folderId }),
+          role: document.role ?? "document",
+          evidenceCount:
+            (document.evidence?.sourceIds.length ?? 0) +
+            (document.evidence?.noteDocumentIds.length ?? 0),
+          namedVersionCount: versions.length,
+          staleEvidence:
+            latest?.evidence.some(
+              (evidence) =>
+                currentVersion(evidence.kind, evidence.recordId) !==
+                evidence.version,
+            ) ?? false,
+          version: document.version,
+          updatedAt: document.updatedAt,
+        };
+      }),
     });
   }
   if (query.queryName === "knowledge.documentContext") {
@@ -12009,6 +12666,9 @@ export const executeWave2Query = (
         id: document.id,
         spaceId: document.spaceId,
         title: document.title,
+        ...(document.folderId === undefined
+          ? {}
+          : { folderId: document.folderId }),
         role: document.role ?? "document",
         version: document.version,
         updatedAt: document.updatedAt,

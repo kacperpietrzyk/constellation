@@ -47,6 +47,7 @@ import {
   type GrantId,
   type AgentRunId,
   type CheckpointId,
+  type FolderId,
   type KnowledgeSourceId,
   type NamedDocumentVersionId,
   type StrategicRecordId,
@@ -81,6 +82,7 @@ import type {
   AgentRun,
   AgentHandoff,
   AgentCheckpoint,
+  Folder,
   KnowledgeSource,
   NamedDocumentVersion,
   StrategicRecord,
@@ -93,7 +95,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 24;
+export const LOCAL_STORE_SCHEMA_VERSION = 25;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -975,6 +977,44 @@ const schemaV24 = `
     WHERE state = 'active' AND opportunity_id IS NOT NULL;
 `;
 
+/**
+ * The folder tree (decision #30). A NEW EMPTY TABLE, and that distinction is
+ * the whole reason B8 needs no migration in the sense the wave brief forbids:
+ * this rewrites zero rows and backfills nothing, unlike schemaV2 (which
+ * promoted three columns out of `payload_json` and backfilled them through
+ * `json_extract`) and unlike schemaV24 above (which rebuilt a table and copied
+ * it). Every record family in this store keeps its own table; a Folder is a
+ * new family.
+ *
+ * `folderId` on a NativeDocument is NOT here, and that is the ruling: it stays
+ * inside `documents.payload_json`, on no column and no index. The
+ * distinguishing property is whether SQL has to do the filtering, and it does
+ * not — `listDocuments` already filters `recordState` out of the same blob
+ * with `json_extract`, and the tree, its rolled-up counts and the deletion
+ * guard are all computed in the kernel over a Space-scoped list that was
+ * loaded anyway.
+ *
+ * `parent_folder_id` is a real column because it is a REFERENCE, not a filter:
+ * the foreign key is what makes a folder pointing at a folder that never
+ * existed unstorable. Nesting is unbounded, so the depth this column can reach
+ * is not capped anywhere in SQL either.
+ */
+const schemaV25 = `
+  CREATE TABLE folders (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    parent_folder_id TEXT REFERENCES folders(id),
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX folders_page
+    ON folders(workspace_id, space_id, updated_at DESC, id DESC);
+  CREATE INDEX folders_parent
+    ON folders(parent_folder_id, id);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -1000,6 +1040,7 @@ const localStoreMigrations = [
   schemaV22,
   schemaV23,
   schemaV24,
+  schemaV25,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1916,6 +1957,36 @@ class SqliteReadView implements ApplicationWave2ReadView {
       .map((row) => {
         const id = stringValue(row, "id", "document");
         return parsePayload<NativeDocument>(row, "id", id, "document", {
+          workspaceId,
+          spaceId,
+        });
+      });
+  }
+
+  public getFolder(id: FolderId): Folder | undefined {
+    const row = this.database
+      .prepare("SELECT id, payload_json FROM folders WHERE id = ?")
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<Folder>(row, "id", id, "folder");
+  }
+
+  public listFolders(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Folder[] {
+    return this.database
+      .prepare(
+        // Exactly the shape `listDocuments` uses, out of the same kind of
+        // blob: removed folders keep their rows and leave every list at once,
+        // and absent recordState means active, so no row needs migrating.
+        "SELECT id, payload_json FROM folders WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY updated_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "folder");
+        return parsePayload<Folder>(row, "id", id, "folder", {
           workspaceId,
           spaceId,
         });
@@ -3056,6 +3127,50 @@ class SqliteTransaction
         ),
     );
   }
+  public insertFolder(record: Folder): void {
+    this.insert(
+      "folders",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "parent_folder_id",
+        "updated_at",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.parentFolderId ?? null,
+        record.updatedAt,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateFolder(record: Folder, expectedVersion: number): boolean {
+    return changed(
+      this.database
+        .prepare(
+          // `parent_folder_id` moves with the payload. It is the one column
+          // here that a command actually changes, and leaving it stale would
+          // make the foreign key guard a shape the blob no longer has.
+          "UPDATE folders SET parent_folder_id = ?, updated_at = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.parentFolderId ?? null,
+          record.updatedAt,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+
   public insertKnowledgeSource(record: KnowledgeSource): void {
     this.insert(
       "knowledge_sources",
@@ -4435,6 +4550,7 @@ export class SqliteApplicationStore
       tasks: records("tasks", "id", "id", "task"),
       projects: records("projects", "id", "id", "project"),
       documents: records("documents", "id", "id", "document"),
+      folders: records("folders", "id", "id", "folder"),
       knowledgeSources: records(
         "knowledge_sources",
         "id",
@@ -4803,6 +4919,12 @@ export class SqliteApplicationStore
     snapshot.projects.forEach((value) => transaction.insertProject(value));
     (snapshot.documents ?? []).forEach((value) =>
       transaction.insertDocument(value),
+    );
+    // Before the documents that point at them would be the natural order, but
+    // `insertDocument` writes no folder column, so the two are independent in
+    // SQL. Folders still go in ahead of anything that reads them.
+    (snapshot.folders ?? []).forEach((value) =>
+      transaction.insertFolder(value),
     );
     (snapshot.knowledgeSources ?? []).forEach((value) =>
       transaction.insertKnowledgeSource(value),

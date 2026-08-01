@@ -60,6 +60,14 @@ export const CompensationKindSchema = z.enum([
   "relation.restore",
   "capture.undo_route",
   "capture.undo_knowledge_route",
+  "folder.undo_create",
+  "folder.restore_details",
+  "folder.restore_parent",
+  "folder.restore_record_state",
+  // The fifth for B8, and the one an inventory of `folder.*` commands misses:
+  // `document.setFolder` moves a NOTE. It compensates the note's prior folder,
+  // which is why it is named for the document and not for the folder.
+  "document.restore_folder",
   "knowledge.restore_source",
   "knowledge.restore_evidence",
   "knowledge.void_named_version",

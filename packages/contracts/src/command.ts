@@ -17,6 +17,7 @@ import {
   CorrelationIdSchema,
   DeviceIdSchema,
   DocumentIdSchema,
+  FolderIdSchema,
   PrincipalIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
@@ -686,7 +687,83 @@ export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
       documentId: DocumentIdSchema,
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
+      /**
+       * Where the note is filed, at creation. Optional and NOT nullable:
+       * absent already means Unfiled, and a second spelling of the same state
+       * would give an importer two ways to say one thing. It is here so that
+       * placing an imported note costs one command rather than two — a two
+       * hundred note vault would otherwise be four hundred commands, half of
+       * them able to fail on their own and leave the note where nobody put it.
+       */
+      folderId: FolderIdSchema.optional(),
       role: z.enum(["note", "document", "deliverable"]).optional(),
+    })
+    .strict(),
+}).strict();
+
+/**
+ * The four folder commands and the move.
+ *
+ * NONE of them is partial by field, and that is deliberate rather than
+ * incidental: `ProjectUpdateDetailsCommandSchema` below carries a boundary
+ * `refine` that ENUMERATES ITS OWN KEYS, and a field added to such a command
+ * without widening its `refine` is refused at the boundary as "nothing to
+ * change" while the schema, the kernel and `tsc` all stay silent (Wave C paid
+ * for this twice). A rename that takes one field and a move that takes one
+ * field need no such refine, so the family has no member here to drift.
+ */
+export const FolderCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("folder.create"),
+  payload: z
+    .object({
+      folderId: FolderIdSchema,
+      spaceId: SpaceIdSchema,
+      name: z.string().trim().min(1).max(200),
+      /** Absent creates the folder at the root of the Space's tree. */
+      parentFolderId: FolderIdSchema.optional(),
+    })
+    .strict(),
+}).strict();
+
+export const FolderRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("folder.rename"),
+  payload: z
+    .object({
+      folderId: FolderIdSchema,
+      name: z.string().trim().min(1).max(200),
+    })
+    .strict(),
+}).strict();
+
+export const FolderSetParentCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("folder.setParent"),
+  payload: z
+    .object({
+      folderId: FolderIdSchema,
+      /** `null` moves the folder to the root, as `task.setParent` does. */
+      parentFolderId: FolderIdSchema.nullable(),
+    })
+    .strict(),
+}).strict();
+
+export const FolderRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("folder.remove"),
+  payload: z.object({ folderId: FolderIdSchema }).strict(),
+}).strict();
+
+export const DocumentSetFolderCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("document.setFolder"),
+  payload: z
+    .object({
+      documentId: DocumentIdSchema,
+      /**
+       * `null` is Unfiled and is a legal destination, not an error — dragging
+       * a note onto `Unfiled` is how a note leaves a folder without being
+       * filed anywhere else. Nullable rather than optional precisely because
+       * this command's whole payload is the destination: an omitted key would
+       * mean "no move", which is not a thing to ask for.
+       */
+      folderId: FolderIdSchema.nullable(),
     })
     .strict(),
 }).strict();
@@ -2575,6 +2652,11 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,
   DocumentRemoveCommandSchema,
+  DocumentSetFolderCommandSchema,
+  FolderCreateCommandSchema,
+  FolderRenameCommandSchema,
+  FolderSetParentCommandSchema,
+  FolderRemoveCommandSchema,
   KnowledgeSourceCreateCommandSchema,
   KnowledgeSourceRemoveCommandSchema,
   KnowledgeSourceUpdateCommandSchema,

@@ -49,6 +49,11 @@ export const HubWorkspaceSnapshotSchema = z
     tasks: z.array(JsonObjectSchema),
     projects: z.array(JsonObjectSchema),
     documents: z.array(JsonObjectSchema).default([]),
+    // Defaulted like every family added after v1: a snapshot published by a
+    // build that predates folders carries no key, and reading it must not
+    // fault. The Hub mirrors record families, so a family missing here is a
+    // coordinated workspace whose folders simply never leave the device.
+    folders: z.array(JsonObjectSchema).default([]),
     knowledgeSources: z.array(JsonObjectSchema).default([]),
     namedDocumentVersions: z.array(JsonObjectSchema).default([]),
     strategicRecords: z.array(JsonObjectSchema).default([]),
