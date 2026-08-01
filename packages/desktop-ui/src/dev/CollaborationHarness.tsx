@@ -28,6 +28,7 @@ import {
   libraryCaptures,
   libraryDocumentIds,
   libraryDocuments,
+  libraryFolders,
   libraryNoteState,
   librarySources,
   librarySummaries,
@@ -332,6 +333,7 @@ const client = createScenarioClient({
     "knowledge.list": result({
       kind: "knowledge.list",
       spaceId,
+      folders: libraryFolders(),
       sources: librarySources(),
       documents: librarySummaries(),
     }),
