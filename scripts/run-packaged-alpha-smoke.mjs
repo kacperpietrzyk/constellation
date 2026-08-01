@@ -41,6 +41,80 @@ const projectOutcome = "Project inspector preserves the intended outcome";
 // A freshly mounted ad-hoc macOS app can briefly stall CDP while OS services
 // attach. The journey-level waits remain bounded separately.
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
+/**
+ * The preload bridge, as an OUTSIDE observer sees it on the packaged app.
+ *
+ * Written out here rather than imported on purpose: importing the preload's
+ * own channel list would compare the packaged application to itself and stop
+ * catching the thing this exists to catch — a key that shipped without anybody
+ * deciding it should. One line per key rather than one comma-joined string of
+ * sixty, so the diff is readable when a channel is added.
+ */
+const PACKAGED_BRIDGE_KEYS = [
+  "acknowledgeCollaborativeContentUpdates",
+  "acknowledgeDocumentUpdates",
+  "addMeetingWorkItem",
+  "cancelWorkspaceRestore",
+  "checkForRelease",
+  "configureJamie",
+  "confirmCalendarBlocks",
+  "confirmWorkspaceRestore",
+  "copyWorkspaceRecoveryCode",
+  "correctMeetingWorkItemResponsibility",
+  "createCollaborativeContentRevision",
+  "createDocumentRevision",
+  "createRemoteAgentGrant",
+  "createWorkspace",
+  "discardCapturePayload",
+  "disconnectJamie",
+  "downloadRelease",
+  "editMeetingWorkItem",
+  "enrollHub",
+  "executeCommand",
+  "exportExchangePackage",
+  "exportHubAuthorization",
+  "exportNotesMarkdown",
+  "exportSupportReport",
+  "exportWorkspaceBackup",
+  "getBuildInfo",
+  "getCrossWorkspaceCockpit",
+  "getDataHomeStatus",
+  "getJamieStatus",
+  "getMeetingLoop",
+  "getReleaseStatus",
+  "importStarterWorkspace",
+  "inspectManagedPayload",
+  "installRelease",
+  "listCollaborativeContentRevisions",
+  "listDocumentRevisions",
+  "listRemoteAgentGrants",
+  "listWorkspaces",
+  "onAttentionActivated",
+  "onShellCommand",
+  "onWorkspaceChanged",
+  "openCollaborativeContent",
+  "openDetachedSurface",
+  "openDocument",
+  "persistCollaborativeContentUpdate",
+  "persistDocumentUpdate",
+  "prepareAgentCredential",
+  "prepareWorkspaceRestore",
+  "previewCalendarBlocks",
+  "previewStarterWorkspace",
+  "requestCalendarAccess",
+  "restoreCollaborativeContentRevision",
+  "restoreDocumentRevision",
+  "restoreManagedPayload",
+  "revokeRemoteAgentGrant",
+  "rotateRemoteAgentGrant",
+  "runQuery",
+  "selectCapturePayload",
+  "stageCapturePayload",
+  "switchWorkspace",
+  "syncDataHome",
+  "syncJamie",
+];
+
 const PACKAGED_STARTUP_BUDGET_MS = 30_000;
 const PACKAGED_INTERACTION_BUDGET_MS = 10_000;
 const packagedResources =
@@ -543,8 +617,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       boundary.build.workspaceAvailability !==
         (phase === "restore-confirm" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
-      boundary.bridgeKeys.join(",") !==
-        "acknowledgeCollaborativeContentUpdates,acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,copyWorkspaceRecoveryCode,correctMeetingWorkItemResponsibility,createCollaborativeContentRevision,createDocumentRevision,createRemoteAgentGrant,createWorkspace,discardCapturePayload,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportExchangePackage,exportHubAuthorization,exportSupportReport,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,inspectManagedPayload,installRelease,listCollaborativeContentRevisions,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,onShellCommand,onWorkspaceChanged,openCollaborativeContent,openDetachedSurface,openDocument,persistCollaborativeContentUpdate,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreCollaborativeContentRevision,restoreDocumentRevision,restoreManagedPayload,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,selectCapturePayload,stageCapturePayload,switchWorkspace,syncDataHome,syncJamie"
+      boundary.bridgeKeys.join(",") !== PACKAGED_BRIDGE_KEYS.join(",")
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
