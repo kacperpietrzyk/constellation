@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { conceptHelpTopics } from "../src/components/ConceptHelpDialog.js";
-import { crmHelpTopics } from "../src/crm/help-topics.js";
+import { helpTopics } from "../src/help/help-topics.js";
 
 const trimmed = (value: string): string => value.trim();
 
@@ -89,47 +89,50 @@ describe("contextual concept help contract", () => {
  * shipped concept topics measure 117-149 + 98-142, so about 215-280 characters
  * as a reader sees them: the cap was already exceeded by everything that ships.
  *
- * The ruling this lot implements: NEW CRM topics are capped, the six shipped
- * ones are left alone (retrofitting them is real work and is not this wave's),
- * and the assertion says so in its own name. A green run here claims exactly
- * what it measured — the CRM topics — and nothing about the concept dialog.
+ * The ruling PR #198 implemented: the NEW topics are capped, the six shipped
+ * concept ones are left alone (retrofitting them is real work and is not this
+ * wave's), and the assertion says so in its own name. A green run here claims
+ * exactly what it measured — `helpTopics` — and nothing about the concept
+ * dialog. The array was called `crmHelpTopics` until Wave D put a Meetings
+ * topic in it; the name moved with the scope rather than staying behind and
+ * making this assertion's own name a false claim about what it measured.
  *
  * ONE PARAGRAPH is asserted as well as 180 characters. A cap on length alone
  * is a cap two 179-character paragraphs walk straight through, which is the
  * lecture-behind-one-click this number exists to prevent.
  */
-describe("new CRM help topics (#35) — the six shipped concept topics are out of scope", () => {
-  const CRM_HELP_LIMIT = 180;
+describe("the #35 help topics — the six shipped concept topics are out of scope", () => {
+  const HELP_TOPIC_LIMIT = 180;
 
-  it("gives every new CRM topic one paragraph of at most 180 characters", () => {
-    const count = crmHelpTopics.length;
-    assert.ok(count > 0, "no CRM topic was measured — an empty sweep passes");
-    assert.equal(new Set(crmHelpTopics.map((topic) => topic.id)).size, count);
-    assert.equal(new Set(crmHelpTopics.map((topic) => topic.term)).size, count);
+  it("gives every #35 topic one paragraph of at most 180 characters", () => {
+    const count = helpTopics.length;
+    assert.ok(count > 0, "no #35 topic was measured — an empty sweep passes");
+    assert.equal(new Set(helpTopics.map((topic) => topic.id)).size, count);
+    assert.equal(new Set(helpTopics.map((topic) => topic.term)).size, count);
     assert.equal(
-      new Set(crmHelpTopics.map((topic) => trimmed(topic.answer))).size,
+      new Set(helpTopics.map((topic) => trimmed(topic.answer))).size,
       count,
-      "two CRM topics answer with the same paragraph",
+      "two #35 topics answer with the same paragraph",
     );
 
-    for (const topic of crmHelpTopics) {
+    for (const topic of helpTopics) {
       const answer = trimmed(topic.answer);
       assert.match(
         topic.question,
         /\?$/u,
-        `CRM topic ${topic.id} does not label its trigger with a question.`,
+        `Topic ${topic.id} does not label its trigger with a question.`,
       );
       assert.ok(
         answer.length >= 80,
-        `CRM topic ${topic.id} answers in ${answer.length} characters — that is a label, not an answer.`,
+        `Topic ${topic.id} answers in ${answer.length} characters — that is a label, not an answer.`,
       );
       assert.ok(
-        answer.length <= CRM_HELP_LIMIT,
-        `CRM topic ${topic.id} is ${answer.length} characters — a topic over ${CRM_HELP_LIMIT} has become a lecture hidden one click away.`,
+        answer.length <= HELP_TOPIC_LIMIT,
+        `Topic ${topic.id} is ${answer.length} characters — a topic over ${HELP_TOPIC_LIMIT} has become a lecture hidden one click away.`,
       );
       assert.ok(
         !/\n/u.test(topic.answer),
-        `CRM topic ${topic.id} answers in more than one paragraph — the cap is 180 characters in ONE.`,
+        `Topic ${topic.id} answers in more than one paragraph — the cap is 180 characters in ONE.`,
       );
     }
   });

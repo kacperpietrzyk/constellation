@@ -14,7 +14,7 @@ import type {
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
-import { CrmHelp } from "../crm/CrmHelp.js";
+import { TopicHelp } from "../help/TopicHelp.js";
 import {
   fmtApprox,
   fmtMargin,
@@ -835,7 +835,7 @@ export const PipelineSurface = ({
             <span className={styles.warnTag} data-pipeline-stray-count>
               {`${board.strayStageCount} not configured`}
             </span>
-            <CrmHelp topic="unconfigured-stage" />
+            <TopicHelp topic="unconfigured-stage" />
           </>
         )}
         <span
@@ -856,8 +856,8 @@ export const PipelineSurface = ({
             the heads and the sum here are the same `fmtTotals`, and the concept
             is the board's, not one column's. Seven identical triggers would be
             seven identical accessible names for one answer. */}
-        <CrmHelp topic="price-basis" />
-        <CrmHelp topic="stage-sums" />
+        <TopicHelp topic="price-basis" />
+        <TopicHelp topic="stage-sums" />
       </div>
       {selected !== undefined && (
         // OUTSIDE the board. Every control the deal needs, in one place, so the

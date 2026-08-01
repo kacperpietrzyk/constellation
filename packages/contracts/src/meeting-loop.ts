@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  DocumentIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
@@ -341,6 +342,23 @@ export const ImportedMeetingSchema = z
     projectId: ProjectIdSchema.optional(),
     organizationId: StrategicRecordIdSchema.optional(),
     workItems: z.array(MeetingWorkItemSchema),
+    /* DECISION #32 — THE READER'S SUPPRESSION, AND WHY IT LIVES HERE.
+     *
+     * A note reaches a meeting by carrying an entity reference in its body:
+     * that is the AUTHOR's statement about what the note is about. Detaching
+     * is a different fact — the READER's statement about what belongs on this
+     * meeting — so it is stored on the meeting and never by editing somebody
+     * else's note. Two consequences follow and both are the point: the note
+     * keeps its reference and every other reader of it is unaffected, and
+     * detaching needs no edit access to the note (`meeting.detachNote` asks
+     * for the MEETING's Space, exactly as the work-item corrections do).
+     *
+     * WORKSPACE-OWNED, NOT SOURCE-OWNED, and carried across re-import on the
+     * same terms as `participants[].personId` above: Jamie owns the meeting's
+     * content and must never undo a reader's decision by re-delivering it.
+     * Absent means nothing was ever detached, which is the ordinary state.
+     */
+    detachedNoteIds: z.array(DocumentIdSchema).max(500).optional(),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
     triage: z.enum(["ready", "partial", "conflicted", "needs_review"]),
     missingComponents: z.array(z.enum(["action_items"])),

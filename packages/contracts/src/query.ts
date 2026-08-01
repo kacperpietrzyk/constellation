@@ -1695,6 +1695,32 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             folderId: FolderIdSchema.optional(),
             role: z.enum(["note", "document", "deliverable"]),
+            /* WHO WROTE IT, resolved at read time and never stored.
+             *
+             * Decision #32 removed the acceptance gate on an agent's note and
+             * kept ONE thing in its place: visible authorship. A row that says
+             * only "a note points here" gives a reader nothing to judge, and
+             * judging is now the whole of their part.
+             *
+             * Same shape and same visibility rule as `comment.list.author`,
+             * which is the surface that already answers this question:
+             * `principalId` is present only when the author is still a visible
+             * member, `displayName` falls back rather than leaking, and
+             * `authoredByAgent` is read off the workspace's agent grants — the
+             * same set `comment.mentionCandidates` uses to keep agents out of
+             * a mention list. There is NO attach-provenance record anywhere in
+             * the product, so this is authorship of the note, not evidence
+             * about the attachment; the prototype's "names <person>, who was
+             * in the room" was an inference over fixtures and has nothing real
+             * behind it.
+             */
+            author: z
+              .object({
+                principalId: PrincipalIdSchema.optional(),
+                displayName: z.string(),
+                authoredByAgent: z.boolean(),
+              })
+              .strict(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
           .strict(),

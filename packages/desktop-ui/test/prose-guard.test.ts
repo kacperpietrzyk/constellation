@@ -29,7 +29,8 @@ import {
 //
 //     ZAKRES TEGO ZDANIA, dopisany przez lot pomocy, bo do dziś obiecywało
 //     więcej, niż ktokolwiek mierzył. Sufit 180 znaków NA TEMAT obowiązuje
-//     NOWE tematy CRM-u (`src/crm/help-topics.ts`) i jest sprawdzany
+//     NOWE tematy #35 (`src/help/help-topics.ts` — do fali D `src/crm/`,
+//     przemianowane, gdy pierwszy temat spoza CRM-u do niego trafił) i jest sprawdzany
 //     w `concept-help.test.ts`. Sześć tematów okna pojęć powstało wcześniej
 //     i ma inny kształt — `explanation` + `boundary`, każde z podłogą ≥80
 //     znaków i BEZ sufitu, czyli ~215-280 znaków tak, jak je czyta człowiek.
@@ -66,7 +67,7 @@ const SETTINGS_BY_HAND = /(^|\/)([Ss]ettings[A-Za-z-]*)\.tsx?$/;
 /** Pomoc kontekstowa ma własny limit, nie ten — i oba pliki, w których żyje. */
 const HELP_SOURCES = [
   "components/ConceptHelpDialog.tsx",
-  "crm/help-topics.ts",
+  "help/help-topics.ts",
 ] as const;
 
 const isHelpSource = (file: string): boolean =>

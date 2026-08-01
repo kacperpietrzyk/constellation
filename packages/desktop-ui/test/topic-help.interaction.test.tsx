@@ -7,7 +7,7 @@ import { afterEach, beforeEach, test } from "vitest";
 import { StrategicRecordIdSchema } from "@constellation/contracts";
 
 import type { ScenarioFixtures } from "../src/client/scenario-client.js";
-import { crmHelpTopics } from "../src/crm/help-topics.js";
+import { helpTopics } from "../src/help/help-topics.js";
 import { assertNoNode, assertSameNode } from "./dom-assert.js";
 import {
   opportunityRecordId,
@@ -40,7 +40,7 @@ import {
  * route below waits for the thing its help hangs beside before it asserts.
  */
 
-const KNOWN_TOPIC_IDS = new Set<string>(crmHelpTopics.map((topic) => topic.id));
+const KNOWN_TOPIC_IDS = new Set<string>(helpTopics.map((topic) => topic.id));
 
 /* The name a screen reader would give the control.
  *
@@ -326,6 +326,73 @@ test("the deal's own record carries no help, and no tooltip either", async () =>
   assertHelpContract(surfaceNode('[data-record-kind="opportunity"]'), []);
 });
 
+/* MEETINGS joins this file rather than growing its own copy of the contract.
+ *
+ * It is the first NON-CRM route here, and it is the reason the array, the
+ * component and this file lost their `crm` prefix: a second contract helper
+ * beside this one is the restated-shape defect, and a Meetings topic measured
+ * under a name that says CRM is an assertion whose name lies.
+ *
+ * It mounts the surface directly instead of navigating the shell, because the
+ * shell's scenario client answers `getMeetingLoop` with an empty loop — and a
+ * screen with no rows has no anchors, so "no title and no stray trigger" would
+ * be true of a blank page.
+ */
+test("Meetings carries the attachment topic, and nothing hides in a title", async () => {
+  const now = Date.now();
+  const { MeetingsSurface } = await import("../src/MeetingsSurface.js");
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { meetingLoopFixture, backlinksFixture } =
+    await import("./meetings-fixture.js");
+  const base = createScenarioClient({ queries: {} });
+  const inspectorHost = document.createElement("div");
+  inspectorHost.className = "inspector";
+  document.body.append(inspectorHost);
+  try {
+    root = createRoot(container);
+    mounted = true;
+    await act(async () => {
+      root.render(
+        createElement(MeetingsSurface, {
+          client: {
+            ...base,
+            getJamieStatus: async () => ({
+              configured: true,
+              scope: "personal" as const,
+            }),
+            getMeetingLoop: async () => meetingLoopFixture(now),
+            runQuery: async (query) =>
+              query.queryName === "document.backlinks"
+                ? projectionResponse(backlinksFixture(now))
+                : base.runQuery(query),
+          },
+          inspectorHost,
+          onInspectorOpen: () => undefined,
+          onMeetingSelected: () => undefined,
+        }),
+      );
+    });
+    await waitFor(
+      () => container.querySelector(".meeting-result-row") !== null,
+      "Meetings drew no result row, so the sweep would have measured an empty screen",
+    );
+    // The help hangs in the inspector, so the inspector has to be open before
+    // either half of the contract means anything.
+    await act(async () => {
+      container.querySelector<HTMLElement>(".meeting-result-row")!.click();
+    });
+    await waitFor(
+      () => inspectorHost.querySelector(".meeting-result-notes") !== null,
+      "the attached-notes section never opened",
+    );
+    assertHelpContract(container, []);
+    assertHelpContract(inspectorHost, ["attached-notes"]);
+  } finally {
+    inspectorHost.remove();
+  }
+});
+
 test("a topic opens as a named dialog with one paragraph, and Escape hands the focus back", async () => {
   await mountShell();
   await goTo("renewals");
@@ -339,7 +406,7 @@ test("a topic opens as a named dialog with one paragraph, and Escape hands the f
   assert.ok(anchor, "the lead time has no help anchor");
   const trigger = anchor.querySelector<HTMLElement>("button");
   assert.ok(trigger);
-  const topic = crmHelpTopics.find((entry) => entry.id === "lead-time");
+  const topic = helpTopics.find((entry) => entry.id === "lead-time");
   assert.ok(topic);
   assert.equal(
     accessibleName(trigger),

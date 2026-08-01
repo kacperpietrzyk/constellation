@@ -1,10 +1,10 @@
 import { useState } from "react";
 
 import { InlinePopover } from "../components/InlinePopover.js";
-import styles from "./crm-help.module.css";
-import { crmHelpTopic, type CrmHelpTopicId } from "./help-topics.js";
+import styles from "./topic-help.module.css";
+import { helpTopic, type HelpTopicId } from "./help-topics.js";
 
-/* THE `?` AT THE THING (#35).
+/* THE `?` AT THE THING (#35), FOR EVERY SCREEN.
  *
  * Built on the shell's own `InlinePopover`, which already is the contract this
  * lot has to meet: a real `<button type="button" aria-haspopup="dialog">`, a
@@ -18,9 +18,9 @@ import { crmHelpTopic, type CrmHelpTopicId } from "./help-topics.js";
  * counts: the set of topics anchored on a screen, compared BOTH ways against
  * what that screen is supposed to carry.
  */
-export const CrmHelp = ({ topic: id }: { readonly topic: CrmHelpTopicId }) => {
+export const TopicHelp = ({ topic: id }: { readonly topic: HelpTopicId }) => {
   const [open, setOpen] = useState(false);
-  const topic = crmHelpTopic(id);
+  const topic = helpTopic(id);
   // Unreachable through the type, and still not a crash if it ever is: the
   // route assertion fails on the missing anchor instead of the screen going.
   if (topic === undefined) return null;
