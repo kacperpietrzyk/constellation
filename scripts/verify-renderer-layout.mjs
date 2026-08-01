@@ -7,14 +7,26 @@
 // (612 px treści w pudełku 584 px), które inaczej wyszłoby dopiero z paczkowanego
 // smoke'a: dwadzieścia minut i trzy systemy naraz.
 //
-// Dlaczego NIE w `npm run check`: potrzebuje przeglądarki i serwera dev.
-// Runner CI nie ma ani jednego, a bramka, która po cichu się pomija, jest
-// gorsza niż jej brak — udaje pomiar. Uruchamiaj przed wypchnięciem ekranu:
+// GDZIE TO CHODZI — poprawione, bo poprzednia wersja tego nagłówka była
+// nieprawdziwa i to ją kosztowało: „runner CI nie ma ani przeglądarki, ani
+// serwera dev" opisywało domyślny obraz runnera, a nie ograniczenie. Skutek
+// był dokładnie taki, jak zapowiada zdanie niżej — bramka nie chodziła nigdzie
+// poza czyimś laptopem, jej własna sprzeczna księgowość nie zaalarmowała
+// nikogo przez cały pierwszy rundę fali D i wyszła dopiero dlatego, że dwa
+// loty odpaliły ją z ręki.
 //
-//     npm run test:renderer-layout
+//   * lokalnie, przed wypchnięciem ekranu:  npm run test:renderer-layout
+//   * w CI: własne zadanie `layout` w `.github/workflows/ci.yml`, na JEDNYM
+//     systemie — sufity w `descendant-overflow.mjs` są w PIKSELACH, a piksele
+//     zależą od renderowania czcionek, więc rejestr zmierzony na trzech
+//     systemach to trzy różne prawdy o jednej regule.
 //
-// Paczkowany smoke sprawdza to samo NA WYDANEJ APLIKACJI i chodzi w CI; ten
-// skrypt jest szybką wersją tej samej gwarancji, żeby nie płacić cyklu CI za
+// Nadal NIE w `npm run check`: `check` musi chodzić z czystego klona bez
+// przeglądarki, a Playwright celowo nie jest zależnością tego repo (patrz
+// niżej). Zadanie CI dokłada go jawnym krokiem.
+//
+// Paczkowany smoke sprawdza to samo NA WYDANEJ APLIKACJI; ten skrypt jest
+// szybką wersją tej samej gwarancji, żeby nie płacić cyklu paczkowania za
 // literówkę w CSS.
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -36,8 +48,11 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 // w przeglądarce montuje ją harness deweloperski ze zaślepionym klientem.
 const HARNESS = `${ORIGIN}/?surface=collaboration`;
 
-// Playwright nie jest zależnością tego repo i nie ma nią być: chodzi lokalnie,
-// w CI tę samą gwarancję niesie paczkowany smoke. Bierzemy go z cache'u npx.
+// Playwright nie jest zależnością tego repo i nie ma nią być — `npm run check`
+// ma się dać odtworzyć z czystego klona, a `npm ci --ignore-scripts` i tak
+// pominąłby jego postinstall, więc wpis w `devDependencies` nie pobrałby
+// przeglądarki, tylko złamał tamten warunek. Bierzemy go z cache'u npx; zadanie
+// CI `layout` napełnia ten cache jawnym, PRZYPIĘTYM krokiem instalacji.
 const playwrightCandidates = () => {
   const cache = path.join(os.homedir(), ".npm", "_npx");
   if (!existsSync(cache)) return [];
@@ -132,9 +147,26 @@ const MINIMUM_ROWS = {
   libraryNoteBody: 1_500,
 };
 
-// Tryb raportu: wypisz KAŻDE przepełnienie potomka z werdyktem i nie przerywaj.
-// Tak powstał rejestr długu niżej i tak się go odświeża — wpis wpisany z ręki,
-// bez przebiegu, jest zgadywaniem.
+// Tryb raportu: wypisz KAŻDE przepełnienie z werdyktem i nie przerywaj. Tak
+// powstał rejestr długu niżej i tak się go odświeża — wpis wpisany z ręki, bez
+// przebiegu, jest zgadywaniem.
+//
+// TRYB RAPORTU WYCISZA WYŁĄCZNIE WERDYKTY UKŁADU, a nie strażników samego
+// przyrządu, i ten podział jest wynikiem defektu zmierzonego na `main`
+// @1edcf40. Wcześniej `REPORT_ONLY` przeskakiwał całą pętlę klasyfikacji —
+// razem z KSIĘGOWANIEM dopasowań rejestru — a kontrola „wpis nigdy nie
+// dopasowany" na końcu nie była nim objęta wcale. Efekt: jeden przebieg
+// wypisywał `library div.document-editor-shell +494px … known` i w tej samej
+// konsoli twierdził, że ten wpis „was never met in any pass", po czym RZUCAŁ
+// wyjątkiem linijkę po tym, jak sam napisał „no descendant verdict was
+// enforced". Dwa loty przeczytały te dwa zdania i zgłosiły sprzeczne rzeczy.
+// Przyrząd, który opowiada dwie różne historie zależnie od zmiennej
+// środowiskowej, jest gorszy niż jego brak.
+//
+// Dlatego: dopasowania rejestru księgują się ZAWSZE, strażnicy pustego pomiaru
+// (zero powierzchni, zero obiektywów, zero wierszy fikstury) padają ZAWSZE —
+// bo raport zrobiony nad pustym ekranem to nie pomiar, tylko cisza z liczbami —
+// a tryb raportu zdejmuje tylko to jedno: czy przepełnienie robi się błędem.
 const REPORT_ONLY = process.env.LAYOUT_DESCENDANT_REPORT === "1";
 
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
@@ -142,7 +174,13 @@ const REPORT_ONLY = process.env.LAYOUT_DESCENDANT_REPORT === "1";
 // pierwsze — inaczej naprawa jednego ekranu ukrywa drugi.
 const sweep = async (browser, { width, fontSize, label }) => {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
+  // DWIE listy, bo to dwa różne rodzaje złej wiadomości. `failures` to awarie
+  // PRZYRZĄDU — nic się nie narysowało, lista jest pusta, strona rzuciła —
+  // i pada w każdym trybie, bo raport nad niczym nie jest raportem.
+  // `layoutProblems` to WERDYKTY o układzie, czyli to, co tryb raportu
+  // wypisuje zamiast egzekwować.
   const failures = [];
+  const layoutProblems = [];
   page.on("pageerror", (error) =>
     failures.push({ surface: "-", reason: `page error: ${String(error)}` }),
   );
@@ -500,18 +538,37 @@ const sweep = async (browser, { width, fontSize, label }) => {
   // mierzy się PUSTA i cała bramka przechodzi nad geometrią, której nie ma.
   // To jest ta sama dziura co „zmierzono trzynaście powierzchni, patrząc na
   // jedną", tylko o poziom niżej, więc jest liczbą, a nie założeniem.
-  for (const [what, minimum] of REPORT_ONLY
-    ? []
-    : Object.entries(MINIMUM_ROWS)) {
+  //
+  // Strażnik chodzi RÓWNIEŻ w trybie raportu. Raport jest przyrządem pomiarowym
+  // — z niego przepisuje się sufity do rejestru — więc raport zrobiony nad pustą
+  // Biblioteką dałby sufity zmierzone na niczym.
+  for (const [what, minimum] of Object.entries(MINIMUM_ROWS)) {
     const drew = measured.rowCounts[what];
     if (drew < minimum) {
       failures.push({
         surface: what,
-        reason: `only ${drew} drew, fewer than ${minimum} — this is empty, so every measurement of the screen carrying it is a pass over geometry nobody looked at`,
+        // KOMUNIKAT NAZYWA OBIE PRZYCZYNY, i to jest poprawka, nie kosmetyka.
+        // Poprzednia wersja mówiła wyłącznie „this is empty" — czyli twierdziła,
+        // że EKRAN jest pusty. Na `main` @1edcf40 ekran był pełny (6 źródeł,
+        // 7 wierszy historii, sprawdzone przez kliknięcie przełącznika), a pusty
+        // był POMIAR: przelot nigdy nie otworzył tego odczytu. Dwa loty poszły
+        // szukać defektu ekranu, którego nie było, bo bramka nazwała im złą
+        // przyczynę.
+        reason:
+          `only ${drew} drew, fewer than ${minimum}. Either the screen carrying it renders nothing, ` +
+          `or THIS PASS NEVER OPENED IT — a reading reached by a switcher is only swept if that ` +
+          `switcher is marked [data-layout]. Check which before hunting a screen defect; either way ` +
+          `every measurement of that screen is a pass over geometry nobody looked at`,
       });
     }
   }
   const matchedRegistryEntries = new Set();
+  // Wpis rejestru jest DOPASOWANY, kiedy klasyfikacja go użyła — i to jest fakt
+  // o przebiegu, nie o trybie. Księgowanie schowane pod `if (!REPORT_ONLY)` było
+  // źródłem sprzeczności opisanej przy `REPORT_ONLY`.
+  const noteRegistryMatch = (surface, signature) => {
+    matchedRegistryEntries.add(`${surface.split(":")[0]}|${signature}`);
+  };
   for (const descendant of measured.descendants) {
     const decision = classifyDescendantOverflow({
       ...descendant,
@@ -521,27 +578,19 @@ const sweep = async (browser, { width, fontSize, label }) => {
       console.log(
         `${label}\t${descendant.surface}\t${descendant.signature}\t+${descendant.overflowPx}px\toverflow-x:${descendant.overflowX}\t${decision.verdict}`,
       );
-      continue;
     }
-    if (decision.verdict === "known" || decision.verdict === "contained") {
-      if (decision.verdict === "contained") continue;
-      matchedRegistryEntries.add(
-        `${descendant.surface.split(":")[0]}|${descendant.signature}`,
-      );
-      continue;
+    if (decision.verdict === "known" || decision.regressedFrom !== undefined) {
+      noteRegistryMatch(descendant.surface, descendant.signature);
     }
     if (decision.verdict !== "violation") continue;
     if (decision.regressedFrom !== undefined) {
-      matchedRegistryEntries.add(
-        `${descendant.surface.split(":")[0]}|${descendant.signature}`,
-      );
-      failures.push({
+      layoutProblems.push({
         surface: descendant.surface,
         reason: `${descendant.signature} overflows by ${descendant.overflowPx} px, worse than the ${decision.regressedFrom} px recorded for it (owner: ${decision.thread})`,
       });
       continue;
     }
-    failures.push({
+    layoutProblems.push({
       surface: descendant.surface,
       // DWA lekarstwa, nie jedno, i to rozróżnienie jest tu z powodu: skrót
       // `overflow: auto` ustawia RÓWNIEŻ `overflow-x`, więc panel, który chce
@@ -571,17 +620,25 @@ const sweep = async (browser, { width, fontSize, label }) => {
         declaresHorizontalScroll: false,
         pass: label,
       });
-      if (decision.verdict === "known") {
+      if (REPORT_ONLY) {
+        // Korzeń powierzchni idzie do raportu TAK SAMO jak potomek. Bez tego
+        // raport — z którego przepisuje się sufity — nie pokazywał metryki
+        // pierwszego dziecka wcale, więc wpis rejestru dla korzenia można było
+        // odświeżyć wyłącznie z czerwonego przebiegu.
+        console.log(
+          `${label}\t${entry.surface}\t${entry.signature}\t+${overflowPx}px\tsurface-root\t${decision.verdict}`,
+        );
+      }
+      if (
+        decision.verdict === "known" ||
+        decision.regressedFrom !== undefined
+      ) {
         matchedRegistryEntries.add(
           `${entry.surface.split(":")[0]}|${entry.signature}`,
         );
-      } else {
-        if (decision.regressedFrom !== undefined) {
-          matchedRegistryEntries.add(
-            `${entry.surface.split(":")[0]}|${entry.signature}`,
-          );
-        }
-        failures.push({
+      }
+      if (decision.verdict !== "known") {
+        layoutProblems.push({
           surface: entry.surface,
           reason:
             `content ${entry.surfaceWidth} px wide in a ${entry.surfaceClientWidth} px box` +
@@ -592,14 +649,14 @@ const sweep = async (browser, { width, fontSize, label }) => {
       }
     }
     if (entry.documentWidth > entry.viewportWidth) {
-      failures.push({
+      layoutProblems.push({
         surface: entry.surface,
         reason: `document ${entry.documentWidth} px wide in a ${entry.viewportWidth} px window`,
       });
     }
   }
   await page.close();
-  return { failures, matchedRegistryEntries };
+  return { failures, layoutProblems, matchedRegistryEntries };
 };
 
 const browser = await openBrowser();
@@ -613,13 +670,26 @@ const problems = [];
 const matchedRegistry = new Set();
 try {
   for (const pass of passes) {
-    const { failures, matchedRegistryEntries } = await sweep(browser, pass);
+    const { failures, layoutProblems, matchedRegistryEntries } = await sweep(
+      browser,
+      pass,
+    );
     for (const entry of matchedRegistryEntries) matchedRegistry.add(entry);
     for (const failure of failures) {
       problems.push(`${pass.label} — ${failure.surface}: ${failure.reason}`);
     }
+    // Werdykty układu egzekwuje tylko tryb normalny; awarie przyrządu wyżej
+    // padają zawsze. Podsumowanie liczy JEDNE I DRUGIE, bo poprzednia wersja
+    // pisała w trybie raportu „no overflow" nad przebiegiem, który właśnie
+    // wypisał kilkanaście przepełnień — trzeci wariant tego samego kłamstwa.
+    if (!REPORT_ONLY) {
+      for (const problem of layoutProblems) {
+        problems.push(`${pass.label} — ${problem.surface}: ${problem.reason}`);
+      }
+    }
+    const counted = failures.length + layoutProblems.length;
     console.log(
-      `${pass.label}: ${failures.length === 0 ? "no overflow" : `${failures.length} problem(s)`}`,
+      `${pass.label}: ${counted === 0 ? "no overflow" : `${counted} problem(s)`}`,
     );
   }
   // Wpis, którego nie dopasował ŻADEN przelot, opisuje element, którego nie ma
@@ -627,10 +697,15 @@ try {
   // widzieć. Oba przypadki znaczą, że zieleń wyżej nie mówi tego, co wygląda,
   // że mówi, więc rejestr pilnuje sam siebie.
   for (const entry of unusedRegistryEntries(matchedRegistry)) {
-    problems.push(
+    const line =
       `the known-overflow registry — ${entry.surface}: ${entry.signature} was never met in any pass. ` +
-        `Either it is fixed and the entry goes, or this gate stopped seeing that screen.`,
-    );
+      `Either it is fixed and the entry goes, or this gate stopped seeing that screen.`;
+    // Dopasowania są teraz księgowane w obu trybach, więc ta lista mówi
+    // w trybie raportu to samo, co w normalnym — ale w raporcie jest INFORMACJĄ,
+    // nie błędem. Wcześniej była błędem rzucanym w trybie, który sam o sobie
+    // pisał, że niczego nie egzekwuje.
+    if (REPORT_ONLY) console.log(`report: ${line}`);
+    else problems.push(line);
   }
 } finally {
   await browser.close();

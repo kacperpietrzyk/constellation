@@ -54,6 +54,70 @@ jobs:
         continue-on-error: true
         run: npm run audit:dependencies:report
 
+  # Bramka układu renderera. Osobne zadanie, a NIE krok w `npm run check`,
+  # i to jest decyzja, nie wygoda:
+  #
+  #   * `check` chodzi na trzech systemach, a ten pomiar jest pomiarem
+  #     PIKSELI — te same reguły CSS dają inne liczby przy innym renderowaniu
+  #     czcionek, więc rejestr długu może być zmierzony na JEDNYM systemie.
+  #     Trzy systemy to trzy różne prawdy o tej samej regule.
+  #   * `npm run check` musi chodzić z czystego klona bez przeglądarki.
+  #     Playwright celowo NIE JEST zależnością tego repo (nagłówek
+  #     `scripts/verify-renderer-layout.mjs`), a `npm ci --ignore-scripts`
+  #     i tak pominąłby jego postinstall — więc dopisanie go do zależności
+  #     nic by nie kupiło, a złamałoby „setup odtwarzalny z czystego klona".
+  #   * `check` ma `timeout-minutes: 15` na clean + build + cztery zestawy
+  #     testów. Doklejenie serwera dev i przeglądarki mieści się tam ledwo.
+  #
+  # Wersja Playwrighta jest PRZYPIĘTA, bo to ona wybiera build Chromium,
+  # a build Chromium wybiera liczby w rejestrze długu. Ruchoma wersja robi
+  # z tej bramki test kalendarza wydań Google.
+  layout:
+    name: Renderer layout (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    env:
+      # Ta sama przeglądarka, na której zmierzono sufity w
+      # `scripts/descendant-overflow.mjs`: Playwright 1.58.2 → Chromium
+      # 145.0.7632.6.
+      PLAYWRIGHT_VERSION: 1.58.2
+      # Pomiar, nie egzekucja — pierwszy przebieg ma POWIEDZIEĆ, ile te same
+      # przepełnienia mają pikseli na runnerze, zanim ktokolwiek przypnie do
+      # tych liczb sufit. Wpis rejestru napisany bez przebiegu jest zgadywaniem
+      # i ten plik nie będzie pierwszym miejscem, gdzie się to robi.
+      LAYOUT_DESCENDANT_REPORT: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install Chromium for the layout sweep
+        run: npx --yes playwright@"$PLAYWRIGHT_VERSION" install chromium
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build the renderer
+        run: npm run build
+
+      - name: Sweep every destination for layout overflow
+        run: npm run test:renderer-layout
+
   hub:
     name: Self-hosted Hub and PostgreSQL
     runs-on: ubuntu-24.04
