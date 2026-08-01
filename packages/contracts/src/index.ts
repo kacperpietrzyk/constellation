@@ -1,3 +1,4 @@
+export * from "./attachment-protocol.js";
 export * from "./command.js";
 export * from "./commercial-defaults.js";
 export * from "./content-owner.js";
