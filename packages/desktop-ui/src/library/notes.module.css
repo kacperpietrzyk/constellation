@@ -256,6 +256,19 @@
   background: var(--surface-hover);
 }
 
+/* The row and its move control on ONE line. The list keeps the global
+   `.knowledge-document-list` class because the layout gate counts exactly that
+   selector to prove it measured a Library with rows in it, so the two-column
+   row is declared here — scoped to this reading — rather than by renaming the
+   class out from under the instrument. */
+.listScroll :global(.knowledge-document-list) > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+
 /* ── STEP 1: THE TREE YIELDS ────────────────────────────────────────────────
    Two columns. Navigation stacks; reading keeps its own and does not narrow. */
 @container (max-width: 64rem) {
