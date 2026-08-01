@@ -51,6 +51,8 @@ import {
 } from "../src/index.js";
 import { initializeLocalStoreSchemaForVersion } from "../src/sqlite-application-store.js";
 
+const TASK_WORK_RELATIONS_SCHEMA_VERSION = 24;
+
 const ids = {
   workspace: "00000000-0000-4000-8000-000000000001",
   rootSpace: "00000000-0000-4000-8000-000000000002",
@@ -1850,12 +1852,12 @@ describe("SQLite ApplicationStore", () => {
           };
           historical
             .prepare(
-              // 24 is the version at which `task_work_relations` REPLACED
-              // `task_project_relations`, and it is a literal on purpose: this
-              // condition once read `>= LOCAL_STORE_SCHEMA_VERSION`, which was
-              // the same number only until the next migration for an unrelated
-              // reason moved it. Pin the fact, not the counter.
-              sourceVersion >= 24
+              // The version that RENAMED the table, not the current one.
+              // Written as `>= LOCAL_STORE_SCHEMA_VERSION`, this was correct
+              // for exactly as long as the current version stayed 24; the next
+              // migration made source 24 take the pre-24 branch and the whole
+              // historical sweep failed on a table that no longer exists.
+              sourceVersion >= TASK_WORK_RELATIONS_SCHEMA_VERSION
                 ? "INSERT INTO task_work_relations(id, workspace_id, space_id, task_id, project_id, opportunity_id, state, version, payload_json) VALUES (?, ?, ?, ?, ?, NULL, 'active', 1, ?)"
                 : "INSERT INTO task_project_relations(id, workspace_id, space_id, task_id, project_id, state, version, payload_json) VALUES (?, ?, ?, ?, ?, 'active', 1, ?)",
             )
