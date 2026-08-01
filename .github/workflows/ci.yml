@@ -54,6 +54,102 @@ jobs:
         continue-on-error: true
         run: npm run audit:dependencies:report
 
+  # Bramka układu renderera. Osobne zadanie, a NIE krok w `npm run check`,
+  # i to jest decyzja, nie wygoda:
+  #
+  #   * `check` chodzi na trzech systemach, a ten pomiar jest pomiarem
+  #     PIKSELI — te same reguły CSS dają inne liczby przy innym renderowaniu
+  #     czcionek, więc rejestr długu może być zmierzony na JEDNYM systemie.
+  #     Trzy systemy to trzy różne prawdy o tej samej regule.
+  #   * `npm run check` musi chodzić z czystego klona bez przeglądarki.
+  #     Playwright celowo NIE JEST zależnością tego repo (nagłówek
+  #     `scripts/verify-renderer-layout.mjs`), a `npm ci --ignore-scripts`
+  #     i tak pominąłby jego postinstall — więc dopisanie go do zależności
+  #     nic by nie kupiło, a złamałoby „setup odtwarzalny z czystego klona".
+  #   * `check` ma `timeout-minutes: 15` na clean + build + cztery zestawy
+  #     testów. Doklejenie serwera dev i przeglądarki mieści się tam ledwo.
+  #
+  #
+  # DLACZEGO `macos-latest`, A NIE `ubuntu-latest` — ZMIERZONE, nie wybrane
+  # z wygody. Pierwsza iteracja tego zadania pojechała na OBU systemach
+  # w trybie raportu, żeby porównać liczby zamiast je zgadywać
+  # (run 30702713081, PR #204):
+  #
+  #   element                              macOS   Linux
+  #   settings  form.status-create @200%    +117    +141   ← fałszywa regresja
+  #   activity  h3                 @200%     +53     +65   ← fałszywa regresja
+  #   activity  p                  @200%     +33     +44   ← fałszywa regresja
+  #   tasks     article._entry     @1440     +89     +79
+  #   tasks     p._unavailable     @1440     +44     +42
+  #   tasks     span._chipDashed   @1440     +32     +28
+  #   library   document-editor-shell @200% +494    +483
+  #
+  # Na `macos-latest` WSZYSTKIE 29 pomiarów `known` zgadzają się CO DO PIKSELA
+  # z rejestrem zmierzonym lokalnie — zero rozbieżności, zero naruszeń.
+  # Na `ubuntu-latest` trzy wpisy przekraczają swój sufit z powodu samego
+  # renderowania czcionek, a trzy liczby fali E — te, które brief i stan
+  # koordynacji cytują jako defekty przy DOMYŚLNYM rozmiarze okna — zmieniają
+  # wartość. Przeniesienie rejestru na Linuksa nie byłoby przeliczeniem,
+  # tylko podmianą tego, o czym mówią dwa dokumenty poza tym repo.
+  #
+  # Windows jest pierwszoklasowym celem produktu i tu NIE JEST mierzony:
+  # własny zestaw sufitów dla trzeciego renderowania czcionek to inny rejestr,
+  # nie inna wartość. Tę stronę niesie paczkowany smoke, który chodzi na
+  # Windowsie na wydanej aplikacji. Zapisane jako świadoma luka, nie przeoczenie.
+  #
+  # OBRAZ RUNNERA JEST PRZYPIĘTY Z NAZWY, a nie wzięty jako `macos-latest`,
+  # i to z dokładnie tego samego powodu, dla którego przypięta jest wersja
+  # Playwrighta. `macos-latest` to ETYKIETA, którą GitHub PRZESTAWIA na nowy
+  # obraz (macos-14 → macos-15 → macos-26 → …). Przestawienie zmienia stos
+  # czcionek systemu, a tabela wyżej mierzy, co robi inny stos czcionek: do
+  # 24 px różnicy, trzy fałszywe naruszenia i inne liczby fali E. Skutek
+  # byłby taki sam jak dwóch asercji, które ta fala już złapała — `main`
+  # czerwony z rana, bez ani jednej zmiany w kodzie, a pierwsza diagnoza
+  # brzmi „ktoś zepsuł układ". Przy WYMAGANYM checku zamraża to każdy PR.
+  #
+  # Zmierzone na przebiegu 30703971698: `Image: macos-26-arm64`.
+  #
+  # KIEDY GITHUB WYCOFA TEN OBRAZ, rejestr trzeba ZMIERZYĆ OD NOWA — nie
+  # przestawić etykiety, żeby się zbudowało. Przestawienie po cichu przepisuje
+  # jedenaście sufitów i trzy liczby, które cytują dokumenty poza tym repo.
+  # Procedura jest ta sama, którą ten PR wykonał: `LAYOUT_DESCENDANT_REPORT=1`
+  # najpierw, dopiero potem sufity.
+  layout:
+    name: Renderer layout
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    env:
+      # Ta sama przeglądarka, na której zmierzono sufity w
+      # `scripts/descendant-overflow.mjs`: Playwright 1.58.2 → Chromium
+      # 145.0.7632.6. Ruchoma wersja robi z tej bramki test kalendarza wydań
+      # Chromium.
+      PLAYWRIGHT_VERSION: 1.58.2
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install Chromium for the layout sweep
+        run: npx --yes playwright@"$PLAYWRIGHT_VERSION" install chromium
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build the renderer
+        run: npm run build
+
+      - name: Sweep every destination for layout overflow
+        run: npm run test:renderer-layout
+
   hub:
     name: Self-hosted Hub and PostgreSQL
     runs-on: ubuntu-24.04
