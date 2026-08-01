@@ -150,7 +150,7 @@ test("pressing the export calls the export and reports where the files went", as
   );
   assert.ok(message, "the export said nothing about what it did");
   assert.match(message.textContent ?? "", /Vault/u);
-  assert.match(message.textContent ?? "", /3 notes/u);
+  assert.match(message.textContent ?? "", /3 files/u);
 });
 
 test("what did NOT come out is reported in the same breath as what did", async () => {
@@ -215,7 +215,7 @@ test("an export that stopped part-way says what is already on disk", async () =>
     '[data-settings-category="notes"] [role="alert"]',
   );
   assert.ok(alert, "a half-finished export reported nothing");
-  assert.match(alert.textContent ?? "", /Stopped after 12 notes/u);
+  assert.match(alert.textContent ?? "", /Stopped after 12 files/u);
   assert.match(alert.textContent ?? "", /on disk/u);
 });
 

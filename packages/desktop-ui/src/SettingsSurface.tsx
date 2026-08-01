@@ -577,7 +577,7 @@ export const SettingsSurface = ({
         setNotesExportMessage({
           tone: "alert",
           text:
-            `Stopped after ${countLabel(result.written.notes, "note")} and ` +
+            `Stopped after ${countLabel(result.written.notes, "file")} and ` +
             `${countLabel(result.written.attachments, "picture")} in ${result.directoryLabel}. ` +
             `Those files are on disk; your notes are unchanged.`,
         });
@@ -608,7 +608,7 @@ export const SettingsSurface = ({
       setNotesExportMessage({
         tone: left.length > 0 ? "alert" : "status",
         text:
-          `Wrote ${countLabel(result.counts.notes, "note")} and ` +
+          `Wrote ${countLabel(result.counts.notes, "file")} and ` +
           `${countLabel(result.counts.attachments, "picture")} to ${result.directoryLabel}.` +
           (left.length > 0 ? ` ${left.join("; ")}.` : ""),
       });
@@ -1771,9 +1771,9 @@ export const SettingsSurface = ({
                   files, so you can always leave with your own writing.
                 </p>
                 <p>
-                  Every note becomes one <code>.md</code> file, inside the
-                  folder it sits in. A note with no folder goes to{" "}
-                  <code>Unfiled</code>.
+                  Every note, document and deliverable becomes one{" "}
+                  <code>.md</code> file, inside the folder it sits in. One with
+                  no folder goes to <code>Unfiled</code>.
                 </p>
               </div>
               <div className="settings-control notes-export-control">
