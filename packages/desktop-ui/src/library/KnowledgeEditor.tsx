@@ -16,6 +16,7 @@ import {
   LEGACY_DOCUMENT_TEXT_ROOT,
   MAX_DOCUMENT_TEXT_LENGTH,
   RICH_DOCUMENT_FRAGMENT_ROOT,
+  STRUCTURED_DOCUMENT_HEADING_LEVELS,
   documentContentFormat,
   documentEntityReferences,
   documentPlainText,
@@ -23,46 +24,26 @@ import {
 } from "@constellation/realtime-documents";
 
 import {
-  createDocument,
-  createKnowledgeSource,
   createNamedKnowledgeVersion,
   attachManagedFileToDocument,
   loadKnowledgeDocumentContext,
   loadDocumentLinkCandidates,
   setKnowledgeEvidence,
-  updateKnowledgeSourceTitle,
   type DesktopSnapshot,
   type KnowledgeDocumentContextProjection,
-  type KnowledgeSourceRecord,
   type MutationFailure,
   type DocumentLinkCandidatesProjection,
-} from "./client/workflow.js";
-import { InlinePopover } from "./components/InlinePopover.js";
+} from "../client/workflow.js";
+import { InlinePopover } from "../components/InlinePopover.js";
 import {
   DOCUMENT_ENTITY_ACTIVATE_EVENT,
   EntityReference,
   publishDocumentEntityLabels,
   type DocumentEntityCandidate,
   type DocumentEntityTargetKind,
-} from "./document-entity-reference.js";
-import { countLabel, formatDateTime } from "./i18n.js";
-
-type DocumentItem = Extract<
-  DesktopSnapshot["documents"],
-  { kind: "ready" }
->["data"]["items"][number];
-
-const roleCopy = {
-  note: "Note",
-  document: "Document",
-  deliverable: "Deliverable",
-} as const;
-
-const roleAccusativeCopy = {
-  note: "note",
-  document: "document",
-  deliverable: "deliverable",
-} as const;
+} from "../document-entity-reference.js";
+import { countLabel, formatDateTime } from "../i18n.js";
+import { roleCopy, type DocumentItem } from "./library-chrome.js";
 
 const entityKindCopy: Record<DocumentEntityTargetKind, string> = {
   task: "Task",
@@ -78,33 +59,6 @@ const milestoneCopy = {
   approved: "Approved",
   published: "Published",
 } as const;
-
-const sourceKindCopy = {
-  url: "Link",
-  file: "File",
-  screenshot: "Screenshot",
-  excerpt: "Excerpt",
-} as const;
-
-const availabilityCopy = {
-  reference_only: "Reference only",
-  available: "Available",
-  unavailable: "Unavailable",
-} as const;
-
-const EvidenceMotif = () => (
-  <svg
-    className="knowledge-motif"
-    viewBox="0 0 240 92"
-    role="img"
-    aria-label="A source leads to a note and a frozen version"
-  >
-    <path d="M44 46h48M148 46h48" />
-    <circle cx="28" cy="46" r="14" />
-    <rect x="94" y="30" width="52" height="32" rx="8" />
-    <path d="M196 30h24v32h-24zM204 38h8M204 46h8M204 54h8" />
-  </svg>
-);
 
 const sha256Hex = async (text: string): Promise<string> => {
   const digest = await crypto.subtle.digest(
@@ -353,109 +307,7 @@ const DocumentToolbar = ({
   );
 };
 
-const SourceDetail = ({
-  client,
-  snapshot,
-  source,
-  onReload,
-  onFailure,
-}: {
-  readonly client: ConstellationRendererClient | undefined;
-  readonly snapshot: DesktopSnapshot;
-  readonly source: KnowledgeSourceRecord;
-  readonly onReload: () => Promise<void>;
-  readonly onFailure: (failure: MutationFailure) => void;
-}) => {
-  const renameId = useId();
-  const [title, setTitle] = useState(source.title);
-  const [busy, setBusy] = useState(false);
-  const nextTitle = title.trim();
-
-  return (
-    <article
-      className="document-inspector-detail"
-      id="document-inspector-detail"
-      aria-labelledby={`${renameId}-title`}
-    >
-      <header className="document-inspector-header">
-        <p className="eyebrow">Source</p>
-        <h3 id={`${renameId}-title`}>{source.title}</h3>
-      </header>
-      <section className="inspector-section">
-        <p className="section-label">Metadata</p>
-        <dl className="record-fields">
-          <div>
-            <dt>Kind</dt>
-            <dd>{sourceKindCopy[source.sourceKind]}</dd>
-          </div>
-          <div>
-            <dt>Availability</dt>
-            <dd>{availabilityCopy[source.availability]}</dd>
-          </div>
-          <div>
-            <dt>Version</dt>
-            <dd className="mono">v{source.version}</dd>
-          </div>
-          <div>
-            <dt>Observed</dt>
-            <dd>{formatDateTime(source.observedAt)}</dd>
-          </div>
-        </dl>
-      </section>
-      {source.canonicalUrl !== undefined && (
-        <section className="inspector-section">
-          <p className="section-label">Source URL</p>
-          <a
-            className="source-canonical-link"
-            href={source.canonicalUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {source.canonicalUrl}
-          </a>
-        </section>
-      )}
-      <form
-        className="source-rename-form inspector-section"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!client || busy || nextTitle === "" || nextTitle === source.title)
-            return;
-          setBusy(true);
-          void updateKnowledgeSourceTitle(
-            client,
-            snapshot,
-            source,
-            nextTitle,
-          ).then(async (result) => {
-            setBusy(false);
-            if (result.kind !== "success") return onFailure(result);
-            await onReload();
-          });
-        }}
-      >
-        <label htmlFor={`${renameId}-input`}>Change title</label>
-        <input
-          id={`${renameId}-input`}
-          name="sourceTitle"
-          value={title}
-          maxLength={500}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <button
-          className="secondary-button"
-          disabled={
-            !client || busy || nextTitle === "" || nextTitle === source.title
-          }
-        >
-          {busy ? "Saving…" : "Save title"}
-        </button>
-      </form>
-    </article>
-  );
-};
-
-const KnowledgeEditor = ({
+export const KnowledgeEditor = ({
   client,
   document,
   snapshot,
@@ -540,6 +392,11 @@ const KnowledgeEditor = ({
         StarterKit.configure({
           undoRedo: false,
           link: { openOnClick: false },
+          // Poziomy nagłówków biorą się z kontraktu treści, nie z domyślnych
+          // ustawień StarterKita: walidator i edytor mają przyjmować ten sam
+          // zbiór, a przepisanie go tutaj z powrotem na literał odtworzyłoby
+          // dokładnie to rozejście, które ta stała zamyka.
+          heading: { levels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS] },
         }),
         Placeholder.configure({
           placeholder: "Start writing. Sources stay separate.",
@@ -1444,334 +1301,5 @@ const KnowledgeEditor = ({
 
       {inspectorHost && createPortal(documentContextDetail, inspectorHost)}
     </section>
-  );
-};
-
-export const DocumentsSurface = ({
-  client,
-  snapshot,
-  activeDocumentId,
-  inspectorHost,
-  onInspectorOpen,
-  onEntityActivate,
-  onReload,
-  onFailure,
-}: {
-  readonly client: ConstellationRendererClient | undefined;
-  readonly snapshot: DesktopSnapshot;
-  readonly activeDocumentId?: DocumentId | undefined;
-  readonly inspectorHost: HTMLElement | null;
-  readonly onInspectorOpen: (kind: "document" | "source") => void;
-  readonly onEntityActivate: (target: {
-    readonly targetKind: DocumentEntityTargetKind;
-    readonly targetId: string;
-  }) => void;
-  readonly onReload: () => Promise<void>;
-  readonly onFailure: (failure: MutationFailure) => void;
-}) => {
-  const items =
-    snapshot.documents.kind === "ready" ? snapshot.documents.data.items : [];
-  const knowledge =
-    snapshot.knowledge.kind === "ready" ? snapshot.knowledge.data : undefined;
-  const [selectedId, setSelectedId] = useState<DocumentId | undefined>(
-    items[0]?.id,
-  );
-  const [selectedSourceId, setSelectedSourceId] = useState<KnowledgeSourceId>();
-  const [newTitle, setNewTitle] = useState("");
-  const [newRole, setNewRole] = useState<"note" | "document" | "deliverable">(
-    "note",
-  );
-  const [sourceTitle, setSourceTitle] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [openCreate, setOpenCreate] = useState<"source" | "content">();
-  const selected = items.find((item) => item.id === selectedId) ?? items[0];
-  const selectedSource = knowledge?.sources.find(
-    (source) => source.id === selectedSourceId,
-  );
-  useEffect(() => {
-    if (
-      activeDocumentId !== undefined &&
-      items.some((item) => item.id === activeDocumentId)
-    ) {
-      setSelectedId(activeDocumentId);
-      setSelectedSourceId(undefined);
-    }
-  }, [activeDocumentId, items]);
-  const inspectorControls = inspectorHost
-    ? { "aria-controls": "document-inspector-detail" }
-    : {};
-
-  return (
-    <div className="knowledge-layout">
-      <aside className="knowledge-library" aria-label="Knowledge library">
-        <header>
-          <div>
-            <p className="eyebrow">Sources and deliverables</p>
-            <h1 id="surface-title" tabIndex={-1}>
-              Library
-            </h1>
-          </div>
-          <span className="library-count">
-            {(knowledge?.sources.length ?? 0) + items.length}
-          </span>
-        </header>
-
-        <div
-          className="knowledge-create-bar"
-          aria-label="Create in the library"
-        >
-          <InlinePopover
-            label="Add source"
-            panelLabel="Add a source to the library"
-            open={openCreate === "source"}
-            onOpenChange={(open) => setOpenCreate(open ? "source" : undefined)}
-            disabled={!client || creating}
-          >
-            <form
-              className="quick-source-form knowledge-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!client || !sourceTitle.trim() || creating) return;
-                setCreating(true);
-                void createKnowledgeSource(client, snapshot, {
-                  title: sourceTitle,
-                  ...(sourceUrl.trim() === ""
-                    ? {}
-                    : { canonicalUrl: sourceUrl }),
-                }).then(async (result) => {
-                  setCreating(false);
-                  if (result.kind !== "success") return onFailure(result);
-                  setSourceTitle("");
-                  setSourceUrl("");
-                  setOpenCreate(undefined);
-                  await onReload();
-                });
-              }}
-            >
-              <label htmlFor="knowledge-source-title">Save a source</label>
-              <input
-                id="knowledge-source-title"
-                name="sourceTitle"
-                required
-                value={sourceTitle}
-                onChange={(event) => setSourceTitle(event.target.value)}
-                placeholder="What is worth keeping?"
-                maxLength={500}
-              />
-              <input
-                name="sourceUrl"
-                type="url"
-                aria-label="Source URL"
-                value={sourceUrl}
-                onChange={(event) => setSourceUrl(event.target.value)}
-                placeholder="https://… (optional)"
-              />
-              <button className="primary-button" disabled={creating}>
-                Save source
-              </button>
-            </form>
-          </InlinePopover>
-          <InlinePopover
-            label="New content"
-            panelLabel="Create content in the library"
-            open={openCreate === "content"}
-            onOpenChange={(open) => setOpenCreate(open ? "content" : undefined)}
-            disabled={!client || creating}
-          >
-            <form
-              className="new-knowledge-form knowledge-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!client || !newTitle.trim() || creating) return;
-                setCreating(true);
-                void createDocument(client, snapshot, newTitle, newRole).then(
-                  async (result) => {
-                    setCreating(false);
-                    if (result.kind !== "success") return onFailure(result);
-                    setSelectedId(result.data);
-                    setSelectedSourceId(undefined);
-                    setNewTitle("");
-                    setOpenCreate(undefined);
-                    await onReload();
-                  },
-                );
-              }}
-            >
-              <label htmlFor="knowledge-title">New content</label>
-              <input
-                id="knowledge-title"
-                name="knowledgeTitle"
-                required
-                value={newTitle}
-                onChange={(event) => setNewTitle(event.target.value)}
-                placeholder="Note or deliverable title"
-                maxLength={500}
-              />
-              <div
-                className="role-options"
-                role="group"
-                aria-label="Content kind"
-              >
-                {(Object.keys(roleCopy) as (keyof typeof roleCopy)[]).map(
-                  (role) => (
-                    <button
-                      key={role}
-                      type="button"
-                      aria-pressed={newRole === role}
-                      onClick={() => setNewRole(role)}
-                    >
-                      {roleCopy[role]}
-                    </button>
-                  ),
-                )}
-              </div>
-              <button className="primary-button" disabled={creating}>
-                Create {roleAccusativeCopy[newRole]}
-              </button>
-            </form>
-          </InlinePopover>
-        </div>
-
-        <section className="library-section" aria-labelledby="sources-title">
-          <div className="library-section-heading">
-            <h2 id="sources-title">Sources</h2>
-            <span>{knowledge?.sources.length ?? 0}</span>
-          </div>
-          {snapshot.knowledge.kind === "unavailable" ? (
-            <div className="inline-error" role="status">
-              Source metadata is unavailable right now.
-            </div>
-          ) : knowledge?.sources.length ? (
-            <ul className="source-list">
-              {knowledge.sources.map((source) => (
-                <li key={source.id}>
-                  <button
-                    type="button"
-                    className={
-                      selectedSourceId === source.id ? "active" : undefined
-                    }
-                    aria-pressed={selectedSourceId === source.id}
-                    {...inspectorControls}
-                    onClick={() => {
-                      setSelectedSourceId(source.id);
-                      onInspectorOpen("source");
-                    }}
-                  >
-                    <span
-                      className={`source-kind ${source.availability}`}
-                      aria-hidden="true"
-                    />
-                    <span>
-                      <strong>{source.title}</strong>
-                      <small>
-                        {sourceKindCopy[source.sourceKind]} · v{source.version}
-                      </small>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="library-empty">
-              <EvidenceMotif />
-              <p>A source stays separate, even when it later feeds a note.</p>
-            </div>
-          )}
-        </section>
-
-        <section className="library-section" aria-labelledby="documents-title">
-          <div className="library-section-heading">
-            <h2 id="documents-title">Content</h2>
-            <span>{items.length}</span>
-          </div>
-          {snapshot.documents.kind === "unavailable" ? (
-            <p className="inline-error">
-              Content is not available in this scope.
-            </p>
-          ) : items.length === 0 ? (
-            <div className="library-empty">
-              <p>A note can evolve. A deliverable keeps named versions.</p>
-            </div>
-          ) : (
-            <ul className="knowledge-document-list">
-              {items.map((item) => {
-                const summary = knowledge?.documents.find(
-                  (candidate) => candidate.id === item.id,
-                );
-                const active =
-                  selected?.id === item.id && selectedSource === undefined;
-                return (
-                  <li key={item.id}>
-                    <button
-                      className={active ? "active" : ""}
-                      aria-current={active ? "page" : undefined}
-                      {...inspectorControls}
-                      onClick={() => {
-                        setSelectedId(item.id);
-                        setSelectedSourceId(undefined);
-                        onInspectorOpen("document");
-                      }}
-                    >
-                      <span>
-                        <strong>{item.title}</strong>
-                        <small>
-                          {roleCopy[item.role]} ·{" "}
-                          {countLabel(
-                            summary?.evidenceCount ?? 0,
-                            "evidence item",
-                          )}
-                        </small>
-                      </span>
-                      {summary?.staleEvidence && (
-                        <em title="Evidence changed since the last version">
-                          !
-                        </em>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      </aside>
-
-      {client && selected ? (
-        <KnowledgeEditor
-          key={selected.id}
-          client={client}
-          document={selected}
-          snapshot={snapshot}
-          inspectorHost={selectedSource ? null : inspectorHost}
-          onEntityActivate={onEntityActivate}
-          onReload={onReload}
-          onFailure={onFailure}
-        />
-      ) : (
-        <section className="knowledge-welcome">
-          <EvidenceMotif />
-          <h2>From source to version, without losing provenance</h2>
-          <p>
-            Save a source, expand it in a note, and freeze a deliverable when it
-            matters.
-          </p>
-        </section>
-      )}
-
-      {selectedSource &&
-        inspectorHost &&
-        createPortal(
-          <SourceDetail
-            key={`${selectedSource.id}:${selectedSource.version}`}
-            client={client}
-            snapshot={snapshot}
-            source={selectedSource}
-            onReload={onReload}
-            onFailure={onFailure}
-          />,
-          inspectorHost,
-        )}
-    </div>
   );
 };

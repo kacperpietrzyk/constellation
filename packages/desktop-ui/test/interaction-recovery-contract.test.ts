@@ -37,8 +37,24 @@ const activityStyles = readFileSync(
   path.join(root, "src", "activity-surface.css"),
   "utf8",
 );
-const documentsSurface = readFileSync(
-  path.join(root, "src", "DocumentsSurface.tsx"),
+// Jeden ekran dokumentów rozpadł się w fali Knowledge na powłokę Biblioteki
+// i trzy odczyty, więc kontrakty czytają teraz plik odczytu, a nie plik
+// ekranu. Same asercje zostają — scalenie treści nie jest powodem, żeby
+// stracić pokrycie akurat na tym, co się przenosi.
+const knowledgeEditor = readFileSync(
+  path.join(root, "src", "library", "KnowledgeEditor.tsx"),
+  "utf8",
+);
+const notesReading = readFileSync(
+  path.join(root, "src", "library", "NotesReading.tsx"),
+  "utf8",
+);
+const sourcesReading = readFileSync(
+  path.join(root, "src", "library", "SourcesReading.tsx"),
+  "utf8",
+);
+const captureHistoryReading = readFileSync(
+  path.join(root, "src", "library", "CaptureHistoryReading.tsx"),
   "utf8",
 );
 const projectRichBody = readFileSync(
@@ -224,22 +240,22 @@ describe("interaction recovery contracts", () => {
   // a nie kształtem tekstu w pliku.
 
   it("keeps Capture History as a compact ledger until deliberate activation", () => {
-    assert.match(surfaces, /className="history-ledger"/);
-    assert.match(surfaces, /className=\{`history-row/);
+    assert.match(captureHistoryReading, /className="history-ledger"/);
+    assert.match(captureHistoryReading, /className=\{`history-row/);
     assert.match(
-      surfaces,
+      captureHistoryReading,
       /aria-pressed=\{selectedCaptureId === capture\.id\}/,
     );
-    assert.match(surfaces, /\.\.\.captureNav\(index\)/);
+    assert.match(captureHistoryReading, /\.\.\.captureNav\(index\)/);
     assert.match(
-      surfaces,
-      /onClick=\{\(\) => onSelectCapture\(capture\.id\)\}/,
+      captureHistoryReading,
+      /onClick=\{\(\) => select\(capture\.id\)\}/,
     );
-    assert.match(surfaces, /export const CaptureHistoryDetail/);
-    assert.doesNotMatch(surfaces, /className="history-card"/);
+    assert.match(captureHistoryReading, /export const CaptureHistoryDetail/);
+    assert.doesNotMatch(captureHistoryReading, /className="history-card"/);
     assert.match(realApp, /const \[selectedCaptureId, setSelectedCaptureId\]/);
-    assert.match(realApp, /selectedCapture \|\|/);
-    assert.match(realApp, /<CaptureHistoryDetail/);
+    assert.match(realApp, /<LibraryShell/);
+    assert.match(captureHistoryReading, /<CaptureHistoryDetail/);
     assert.match(
       styles,
       /\.history-ledger\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
@@ -763,18 +779,18 @@ describe("interaction recovery contracts", () => {
   });
 
   it("keeps Document creation progressive and the editor on a distinct reading plane", () => {
-    assert.match(
-      documentsSurface,
-      /className="knowledge-create-bar"\s+aria-label="Create in the library"/,
-    );
+    for (const reading of [notesReading, sourcesReading]) {
+      assert.match(
+        reading,
+        /className="knowledge-create-bar"\s+aria-label="Create in the library"/,
+      );
+    }
     // The two create paths are separately discoverable by name; the accessible
-    // name is what makes each one findable, so it is asserted as one.
-    assert.match(documentsSurface, /label="Add source"/);
-    assert.match(documentsSurface, /label="New content"/);
-    assert.match(
-      documentsSurface,
-      /open=\{openCreate === "source"\}[\s\S]*open=\{openCreate === "content"\}/,
-    );
+    // name is what makes each one findable, so it is asserted as one. They now
+    // live on their own reading — one target, three readings — so each is
+    // asserted where it stands.
+    assert.match(sourcesReading, /label="Add source"/);
+    assert.match(notesReading, /label="New content"/);
     assert.match(
       styles,
       /\.knowledge-library\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
@@ -791,20 +807,20 @@ describe("interaction recovery contracts", () => {
 
   it("makes managed document attachments explicit, recoverable, and responsive", () => {
     assert.match(
-      documentsSurface,
+      knowledgeEditor,
       /className="document-attachment-list" aria-label="Attachments"/,
     );
-    assert.match(documentsSurface, /inspectManagedPayload/);
+    assert.match(knowledgeEditor, /inspectManagedPayload/);
     // "Recoverable": a payload the device no longer holds — and only then —
     // offers a control that re-fetches it into custody.
     assert.match(
-      documentsSurface,
+      knowledgeEditor,
       /custodyState === "unavailable" && \(\s*<button[\s\S]{0,400}?restoreManagedPayload\?\.\(/,
     );
     // "Explicit": detaching removes exactly this source from the evidence set
     // rather than deleting anything.
     assert.match(
-      documentsSurface,
+      knowledgeEditor,
       /selectedSources\.filter\(\s*\(id\) => id !== item\.recordId,?\s*\)/,
     );
     assert.match(

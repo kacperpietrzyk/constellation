@@ -10,7 +10,7 @@ import {
   type CaptureId,
 } from "@constellation/contracts";
 
-import { CaptureHistoryDetail, HistorySurface } from "../Wave2Surfaces.js";
+import { CaptureHistoryReading } from "../library/CaptureHistoryReading.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
 import { workHarnessSnapshot } from "./harness-snapshot.js";
@@ -149,6 +149,7 @@ const snapshot: DesktopSnapshot = {
 
 export const VoiceHistoryHarness = () => {
   const [selectedCaptureId, setSelectedCaptureId] = useState<CaptureId>();
+  const [detailHost, setDetailHost] = useState<HTMLElement | null>(null);
   const selectedCapture = snapshot.captures.find(
     (capture) => capture.id === selectedCaptureId,
   );
@@ -158,10 +159,20 @@ export const VoiceHistoryHarness = () => {
       data-testid="voice-history-harness"
     >
       <main className="app-shell">
-        <HistorySurface
+        {/* Odczyt Historii wrzutek, ten sam co w Bibliotece: ta przystawka
+            istnieje po to, żeby obejrzeć granicę retencji nagrania, więc musi
+            renderować to, co naprawdę wysyłamy, a nie własną kopię. */}
+        <CaptureHistoryReading
           snapshot={snapshot}
-          selectedCaptureId={selectedCaptureId}
-          onSelectCapture={setSelectedCaptureId}
+          inspectorHost={detailHost}
+          onInspectorOpen={() => undefined}
+          wiring={{
+            selectedCaptureId,
+            busy: false,
+            onSelectCapture: setSelectedCaptureId,
+            onUndo: () => undefined,
+            onDeleteVoiceAudio: () => undefined,
+          }}
         />
       </main>
       {selectedCapture && (
@@ -180,13 +191,7 @@ export const VoiceHistoryHarness = () => {
               <Icon name="close" />
             </button>
           </header>
-          <CaptureHistoryDetail
-            capture={selectedCapture}
-            timezone={snapshot.bootstrap.workspace.timezone}
-            busy={false}
-            onUndo={() => undefined}
-            onDeleteVoiceAudio={() => undefined}
-          />
+          <div className="surface-inspector-host" ref={setDetailHost} />
         </aside>
       )}
     </div>

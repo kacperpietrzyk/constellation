@@ -5,7 +5,6 @@
 export type IconName =
   | "capture"
   | "tasks"
-  | "history"
   | "search"
   | "close"
   | "project"
@@ -25,7 +24,6 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
     capture: <path d="M12 5v14M5 12h14" />,
     tasks: <path d="m5 7 2 2 4-4M12 7h7M5 15l2 2 4-4M12 15h7" />,
-    history: <path d="M4 6h16v12H4zM4 14h4l2 2h4l2-2h4" />,
     search: (
       <path d="m20 20-4.3-4.3M10.8 17a6.2 6.2 0 1 1 0-12.4 6.2 6.2 0 0 1 0 12.4Z" />
     ),

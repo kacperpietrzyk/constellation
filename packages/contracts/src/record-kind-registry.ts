@@ -5,10 +5,30 @@ import { z } from "zod";
 // musi z nimi zostać zgodna, ale świadomie jej NIE importujemy z paczki
 // desktopowej: kontrakty nie mają zależeć od powłoki, a agent czyta ten katalog
 // bez uruchomionej aplikacji.
+//
+// TA UNIA JEST RĘCZNĄ LISTĄ OBOK ZAMKNIĘTEGO SŁOWNIKA, ale nie jest bez
+// pilnowania — i to jest sprostowanie do rekonesansu fali D, zmierzone przez
+// zepsucie, nie wywnioskowane. Rekonesans zapowiadał, że wycofanie celu
+// zostawiające tu martwą wartość „kompiluje się czysto i zabija wyszukiwanie
+// dopiero w runtime". NIE KOMPILUJE SIĘ: `SearchOverlay.choose`
+// (`Wave2Surfaces.tsx:1065`) podaje `inspectorSurface` do `onNavigate`, którego
+// parametr ma typ `SurfaceId`, czyli dokładnie `DesktopSurface`. Odtworzony
+// stan sprzed naprawy (`capture` → `"history"` przy wycofanym celu) daje twardy
+// błąd `tsc`. Dla rodzajów WYSZUKIWALNYCH kompilator zatem pomaga.
+//
+// Czego kompilator NIE widzi i po co jest asercja
+// `packages/desktop-ui/test/record-kind-registry-contract.test.ts`
+// („każdy `inspectorSurface` jest członkiem `desktopSurfaceIds`"): rodzaje
+// NIEWYSZUKIWALNE — `fact`, `initiative`, `work_link`, `commitment` — nigdy nie
+// docierają do tamtego wywołania, więc ich cel może wskazywać w nicość
+// bezkarnie, aż do dnia, w którym któryś stanie się wyszukiwalny i defekt
+// wybuchnie w runtime jako rzecz zupełnie z innej zmiany. Asercja mieszka po
+// stronie powłoki, bo to ona wolno importować kontrakty, a nie odwrotnie, i
+// łapie rozejście także od drugiej strony: po skasowaniu celu z rejestru
+// nawigacji.
 export type HumanRecordInspectorSurface =
   | "tasks"
   | "projects"
-  | "history"
   | "library"
   | "meetings"
   | "organizations"
@@ -65,7 +85,12 @@ export const humanRecordKindRegistry = [
     label: "Capture",
     searchable: true,
     searchSource: "capture",
-    inspectorSurface: "history",
+    // Wrzutka otwiera się w Bibliotece, na odczycie Historii wrzutek — cel
+    // `history` przestał istnieć, a jego treść przeniosła się w całości.
+    // Samo przepięcie tej linii nie wystarcza: gałąź routingu wyszukiwania
+    // w `RealApp.tsx` musi wysłać żądany odczyt razem z celem, inaczej
+    // wrzutka ląduje na Notatkach.
+    inspectorSurface: "library",
   },
   {
     id: "source",

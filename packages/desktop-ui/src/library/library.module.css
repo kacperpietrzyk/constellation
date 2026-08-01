@@ -1,0 +1,76 @@
+/* Powłoka Biblioteki: nagłówek celu, segmentowany przełącznik odczytów i pole
+   odczytu. Tylko chrome — same odczyty stoją dalej na globalnych regułach
+   `.knowledge-*` i `.history-*`, których to scalenie nie przepisuje.
+
+   Arkusz jest CSS Modułem, czyli jedzie na leniwym chunku Biblioteki, a nie
+   w arkuszu ścieżki gorącej: to konwencja z fali C i jedyny sposób, żeby
+   chrome nowego ekranu nie obciążało pierwszego wyświetlenia okna. */
+
+.shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 100%;
+  background: var(--surface-window);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-3);
+}
+
+.header h1 {
+  text-wrap: balance;
+}
+
+.count {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.switcher {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* Wybrany odczyt niesie WYPEŁNIENIE i mocniejszą ramkę, nie tylko cieplejszy
+   kolor tekstu: który odczyt jest włączony, musi przeżyć ekran bez koloru. */
+.switch {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0.125rem 0.625rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+}
+
+.switch[aria-selected="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+/* Pole odczytu jest własnym kontenerem przewijania. Bez `min-height: 0`
+   trzykolumnowy odczyt rozpycha całą powłokę zamiast przewijać się w środku. */
+.reading {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}

@@ -16,6 +16,7 @@ import {
   destinationShortcutIndex,
   destinationContext,
   documentContext,
+  libraryReadingContext,
   moveShellHistory,
   navigateShellContext,
   openShellContext,
@@ -280,6 +281,15 @@ describe("shell navigation across a version upgrade", () => {
             label: "Zapisane widoki",
             surface: "work",
           },
+          // `history` STAŁ W WYDANYM 0.1.9 pod tą samą nazwą, więc zapis
+          // z tamtej wersji niesie go dosłownie tak. Historia wrzutek jest od
+          // fali Knowledge odczytem Biblioteki — treść się przeniosła, cel
+          // zniknął.
+          {
+            key: "destination:history",
+            label: "Capture history",
+            surface: "history",
+          },
         ],
         activeKey: "destination:attention",
         history: [
@@ -294,7 +304,7 @@ describe("shell navigation across a version upgrade", () => {
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.surface),
-      ["today", "inbox", "library", "organizations", "tasks"],
+      ["today", "inbox", "library", "organizations", "tasks", "library"],
     );
     // Etykieta i klucz idą razem z celem. Zapis niesie WŁASNĄ kopię napisu,
     // więc bez tego pierwsze uruchomienie po przebudowie pokazuje angielską
@@ -303,7 +313,7 @@ describe("shell navigation across a version upgrade", () => {
     // raz.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.label),
-      ["Today", "Inbox", "Library", "Organizations", "Tasks"],
+      ["Today", "Inbox", "Library", "Organizations", "Tasks", "Library"],
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.key),
@@ -313,6 +323,7 @@ describe("shell navigation across a version upgrade", () => {
         "destination:library",
         "destination:organizations",
         "destination:tasks",
+        "destination:library",
       ],
     );
     // Zapisany `activeKey` wskazywał starą nazwę; gdyby nie przeszedł tej samej
@@ -322,6 +333,110 @@ describe("shell navigation across a version upgrade", () => {
     assert.deepEqual(
       restored.history.map((entry) => entry.label),
       ["Today"],
+    );
+  });
+
+  // Ten sam test na wersji, którą zapisuje KAŻDY dzisiejszy build 0.2.0.
+  // Wersja 3 nie jest podbijana przy wycofaniu celu i to jest decyzja:
+  // `restoreShellNavigation` przepuszcza `2` i `3`, a mapa wycofanych celów
+  // jest konsultowana niezależnie od wersji. Podbicie do `4` odrzuciłoby każdą
+  // sesję zapisaną przez dev-build 0.2.0 — bez awarii, więc bez śladu.
+  //
+  // Test MUSI wychodzić od stanu zapisanego przez POPRZEDNI kształt. Świeży
+  // test napisany od dzisiejszego kształtu przechodzi bez mapy wycofań i nie
+  // mierzy niczego.
+  it("carries a `history` tab saved by a 0.2.0 dev build over as well", () => {
+    const saved = JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          { key: "destination:today", label: "Today", surface: "today" },
+          {
+            key: "destination:history",
+            label: "Capture history",
+            surface: "history",
+          },
+        ],
+        activeKey: "destination:history",
+        history: [
+          {
+            key: "destination:history",
+            label: "Capture history",
+            surface: "history",
+          },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      saved,
+      destinationContext("today", "Today"),
+    );
+    // Dwie zakładki, nie jedna: brak mapy odrzuca CAŁĄ sesję zbiorowo
+    // (`tabs.length !== state.tabs.length`) i powłoka startuje od zera.
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today", "library"],
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.key),
+      ["destination:today", "destination:library"],
+    );
+    assert.equal(restored.activeKey, "destination:library");
+    assert.deepEqual(
+      restored.history.map((entry) => entry.surface),
+      ["library"],
+    );
+  });
+
+  // Odczyt jest częścią kontekstu, więc przeżywa zapis: wrzutka głosowa
+  // otwiera Bibliotekę NA Historii wrzutek, a zakładka ma się odtworzyć jako
+  // to, czym była, nie jako Notatki.
+  it("reopens a Library tab on the reading it was opened at", () => {
+    const fallback = destinationContext("today", "Today");
+    let state = createShellNavigation(fallback);
+    state = openShellContext(
+      state,
+      libraryReadingContext("captures", "Capture history"),
+    );
+    const restored = restoreShellNavigation(
+      serializeShellNavigation(state),
+      fallback,
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.libraryReading),
+      [undefined, "captures"],
+    );
+  });
+
+  it("refuses a saved reading that is not one of the three", () => {
+    // Napis spoza słownika odrzuca CAŁY zapis, tak samo jak nieznany cel:
+    // przełącznik nie wyrenderowałby wtedy żadnego z trzech odczytów.
+    const saved = JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          {
+            key: "destination:library",
+            label: "Library",
+            surface: "library",
+            libraryReading: "atlantis",
+          },
+        ],
+        activeKey: "destination:library",
+        history: [
+          { key: "destination:today", label: "Today", surface: "today" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      saved,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today"],
     );
   });
 

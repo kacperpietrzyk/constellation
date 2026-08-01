@@ -21,11 +21,12 @@
 // skrótów pod ręką — cyfra raz zapamiętana zostaje przy swoim celu. Cele bez
 // cyfry (Library, Renewals i to, co jeszcze nie wsiąkło) osiąga się paletą.
 //
-// `history` też jeszcze stoi osobno, choć docelowo wsiąka w `library`: to jest
-// SCALENIE TREŚCI (dokumenty + źródła + historia wrzutek), a nie przemianowanie,
-// więc należy do fali Knowledge. Ta zmiana ma być czysto strukturalna
-// i językowa — mieszanie w nią jednego prawdziwego scalenia zrobiłoby z niej
-// zmianę, której nie da się przejrzeć.
+// `history` WSIĄKŁ w `library` w fali Knowledge i to było SCALENIE TREŚCI,
+// a nie przemianowanie: rejestr wrzutek przyjechał w całości jako trzeci
+// odczyt Biblioteki (Notatki │ Źródła │ Historia wrzutek). Grupa Knowledge ma
+// od tej pory dwa nawigowalne wpisy zamiast trzech, a `history` stoi niżej
+// w `retiredDesktopSurfaces`, bo niesie go KAŻDY zapisany stan powłoki
+// z 0.1.9 i z każdego builda 0.2.0.
 //
 // `settings` i `access` zostają powierzchniami (routing, preload i menu natywne
 // ich potrzebują), ale bez grupy i bez skrótu numerycznego: w Ustawienia wchodzi
@@ -132,14 +133,6 @@ export const desktopSurfaceRegistry = [
     loading: "lazy",
   },
   {
-    id: "history",
-    label: "Capture history",
-    icon: "history",
-    group: "Knowledge",
-    shortcut: null,
-    loading: "eager",
-  },
-  {
     id: "activity",
     label: "Activity",
     icon: "activity",
@@ -200,6 +193,12 @@ export const retiredDesktopSurfaces: Readonly<Record<string, DesktopSurface>> =
     cockpit: "today",
     attention: "inbox",
     documents: "library",
+    // Historia wrzutek jest teraz odczytem Biblioteki. Wpis jest tu, bo
+    // `history` STAŁ W WYDANYM 0.1.9: niesie go zapisana sesja, ulubiona
+    // pozycja i `?destination=` odczepionego okna. Bez niego pierwsza zakładka
+    // z tym identyfikatorem odrzuca CAŁĄ zapisaną sesję — bez awarii, więc bez
+    // śladu.
+    history: "library",
     // „Relacje" były jedną zakładką na cztery różne pytania; ekran klienta jest
     // z nich najbliższy temu, po co ludzie tam wchodzili.
     relationships: "organizations",

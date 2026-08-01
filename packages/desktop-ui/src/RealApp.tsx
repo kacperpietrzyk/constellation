@@ -38,7 +38,7 @@ import {
   AccessSurface,
   CalendarSurface,
   ActivitySurface,
-  DocumentsSurface,
+  LibraryShell,
   MeetingsSurface,
   OnboardingFlow,
   OrganizationContextLoader,
@@ -86,13 +86,7 @@ import {
 import { TodaySurface } from "./TodaySurface.js";
 import { InboxSurface } from "./InboxSurface.js";
 import { inboxWaitingCount } from "./inbox-triage.js";
-import {
-  CaptureHistoryDetail,
-  HistorySurface,
-  ProjectsSurface,
-  SearchOverlay,
-  UndoDialog,
-} from "./Wave2Surfaces.js";
+import { ProjectsSurface, SearchOverlay, UndoDialog } from "./Wave2Surfaces.js";
 import { TasksSurface } from "./tasks/TasksSurface.js";
 import {
   buildActorResolver,
@@ -195,6 +189,8 @@ import {
   destinationShortcutIndex,
   destinationContext,
   documentContext,
+  libraryReadingContext,
+  type LibraryReading,
   moveShellHistory,
   navigateShellContext,
   openShellContextReportingEviction,
@@ -237,6 +233,16 @@ const NO_COMMENT_TARGET: DataSlice<CommentListProjection> = {
 const COMMENTS_PENDING: DataSlice<CommentListProjection> = {
   kind: "unavailable",
   message: "Loading comments…",
+};
+
+// Nazwa rodzaju rekordu w nagłówku inspektora Biblioteki. Rekord jest TOTALNY
+// nad słownikiem odczytów, więc czwarty odczyt bez czwartego napisu nie
+// skompiluje się — inaczej byłaby to kolejna ręczna lista obok zamkniętego
+// słownika, a takie rozejście już raz pokazało wrzutkę pod cudzym napisem.
+const libraryInspectorLabel: Readonly<Record<LibraryReading, string>> = {
+  notes: "Document",
+  sources: "Source",
+  captures: "Capture",
 };
 
 export const RealApp = ({
@@ -340,9 +346,12 @@ export const RealApp = ({
   const [documentInspectorHost, setDocumentInspectorHost] =
     useState<HTMLElement | null>(null);
   const [documentInspectorOpen, setDocumentInspectorOpen] = useState(false);
-  const [documentInspectorKind, setDocumentInspectorKind] = useState<
-    "document" | "source"
-  >("document");
+  // Rodzaj karty w inspektorze Biblioteki JEST słownikiem odczytów, a nie
+  // drugą, ręcznie przepisaną listą obok niego: trzeci odczyt bez trzeciego
+  // ramienia tutaj kompilowałby się i pokazywał wrzutkę pod napisem
+  // „Document".
+  const [documentInspectorKind, setDocumentInspectorKind] =
+    useState<LibraryReading>("notes");
   const [projectOverview, setProjectOverview] =
     useState<ProjectOverviewProjection>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
@@ -771,7 +780,7 @@ export const RealApp = ({
     if (surface !== "meetings") setMeetingInspectorOpen(false);
     if (surface !== "library") {
       setDocumentInspectorOpen(false);
-      setDocumentInspectorKind("document");
+      setDocumentInspectorKind("notes");
     }
     // FOUR destinations draw strategic records now, so leaving one for another
     // must not drop the selection. Without each of them here, the search
@@ -786,7 +795,9 @@ export const RealApp = ({
       surface !== "renewals"
     )
       setSelectedStrategicId(undefined);
-    if (surface !== "history") setSelectedCaptureId(undefined);
+    // Wrzutka jest zaznaczana na odczycie Historii wrzutek, czyli wewnątrz
+    // Biblioteki — cel `history` nie istnieje od fali Knowledge.
+    if (surface !== "library") setSelectedCaptureId(undefined);
     if (surface !== "inbox") setSelectedAttentionId(undefined);
   }, [surface]);
 
@@ -1351,7 +1362,6 @@ export const RealApp = ({
     (selectedProject && !projectFullView) ||
     selectedWorkContextRecord ||
     selectedStrategicRecord ||
-    selectedCapture ||
     selectedAttention ||
     (surface === "meetings" && meetingInspectorOpen) ||
     (surface === "library" && documentInspectorOpen),
@@ -1363,6 +1373,9 @@ export const RealApp = ({
     }
     if (surface === "library") {
       setDocumentInspectorOpen(false);
+      // Bez tego wrzutka zostaje zaznaczona po Escape i wraca sama przy
+      // następnym otwarciu szuflady, choć człowiek ją właśnie zamknął.
+      setSelectedCaptureId(undefined);
       return;
     }
     setSelectedTaskId(undefined);
@@ -1558,7 +1571,7 @@ export const RealApp = ({
     } else if (destination.kind === "document") {
       openContext(destinationContext("library", "Library"));
     } else {
-      openContext(destinationContext("history", "Capture history"));
+      openContext(libraryReadingContext("captures", "Capture history"));
     }
     if (client && snapshot && item.state === "unread") {
       setAttentionBusy(true);
@@ -2596,14 +2609,43 @@ export const RealApp = ({
     library: () => (
       <LazySurfaceBoundary label="Library">
         <Suspense fallback={<SurfaceLoadingState label="Library" />}>
-          <DocumentsSurface
+          <LibraryShell
             client={client}
             snapshot={state.snapshot}
             activeDocumentId={activeContext.documentId}
+            activeReading={activeContext.libraryReading}
             inspectorHost={documentInspectorHost}
             onInspectorOpen={(kind) => {
               setDocumentInspectorKind(kind);
               setDocumentInspectorOpen(true);
+            }}
+            captureHistory={{
+              selectedCaptureId,
+              ...(selectedCaptureRouteActivity?.targetCommandId === undefined
+                ? {}
+                : {
+                    undoCommandId: selectedCaptureRouteActivity.targetCommandId,
+                  }),
+              busy:
+                selectedCapture !== undefined &&
+                historyBusyCaptureId === selectedCapture.id,
+              onSelectCapture: selectCaptureInInspector,
+              onUndo: (id) => void openUndo(id),
+              onDeleteVoiceAudio: (captureId, version) => {
+                if (!client) return;
+                setHistoryBusyCaptureId(captureId);
+                void requestVoiceAudioDeletion(
+                  client,
+                  state.snapshot,
+                  captureId,
+                  version,
+                ).then(async (result) => {
+                  setHistoryBusyCaptureId(undefined);
+                  if (result.kind === "success")
+                    await refreshAfter("The kept audio was deleted.");
+                  else showFailure(result);
+                });
+              },
             }}
             onEntityActivate={(target) => {
               if (target.targetKind === "task") {
@@ -2977,13 +3019,6 @@ export const RealApp = ({
         onSelectContext={selectWorkContextInInspector}
         onReload={reload}
         onFailure={showFailure}
-      />
-    ),
-    history: () => (
-      <HistorySurface
-        snapshot={state.snapshot}
-        selectedCaptureId={selectedCaptureId}
-        onSelectCapture={selectCaptureInInspector}
       />
     ),
     activity: () => (
@@ -3735,17 +3770,13 @@ export const RealApp = ({
                     : selectedStrategicRecord
                       ? (recordKindLabels[selectedStrategicRecord.kind] ??
                         "Strategic record")
-                      : selectedCapture
-                        ? "Capture"
-                        : selectedAttention
-                          ? "Signal"
-                          : surface === "meetings"
-                            ? "Jamie result"
-                            : surface === "library"
-                              ? documentInspectorKind === "source"
-                                ? "Source"
-                                : "Document"
-                              : "Workspace"}
+                      : selectedAttention
+                        ? "Signal"
+                        : surface === "meetings"
+                          ? "Jamie result"
+                          : surface === "library"
+                            ? libraryInspectorLabel[documentInspectorKind]
+                            : "Workspace"}
             </small>
           </div>
           <button
@@ -3777,33 +3808,6 @@ export const RealApp = ({
             onRetryCapture={retryAttentionCapture}
             onKeepCapture={keepAttentionCapture}
             onReplaceCapturePayload={replaceAttentionPayload}
-          />
-        ) : selectedCapture ? (
-          <CaptureHistoryDetail
-            capture={selectedCapture}
-            timezone={state.snapshot.bootstrap.workspace.timezone}
-            {...(selectedCaptureRouteActivity?.targetCommandId
-              ? {
-                  undoCommandId: selectedCaptureRouteActivity.targetCommandId,
-                }
-              : {})}
-            busy={historyBusyCaptureId === selectedCapture.id}
-            onUndo={(id) => void openUndo(id)}
-            onDeleteVoiceAudio={(captureId, version) => {
-              if (!client) return;
-              setHistoryBusyCaptureId(captureId);
-              void requestVoiceAudioDeletion(
-                client,
-                state.snapshot,
-                captureId,
-                version,
-              ).then(async (result) => {
-                setHistoryBusyCaptureId(undefined);
-                if (result.kind === "success")
-                  await refreshAfter("The kept audio was deleted.");
-                else showFailure(result);
-              });
-            }}
           />
         ) : selectedTask ? (
           <div className="inspector-body">
@@ -4950,7 +4954,7 @@ export const RealApp = ({
             } else if (captureResult.kind === "review") {
               openContext(destinationContext("inbox", "Inbox"));
             } else if (captureResult.kind === "voice_note") {
-              openContext(destinationContext("history", "Capture history"));
+              openContext(libraryReadingContext("captures", "Capture history"));
             } else {
               openContext(destinationContext("library", "Library"));
             }
@@ -5000,6 +5004,23 @@ export const RealApp = ({
                   : undefined;
               openContext(projectContext(id, project?.title ?? "Project"));
             } else if (nextSurface === "library") {
+              // Trzy rodzaje rekordów otwierają się dziś w Bibliotece i tylko
+              // jeden z nich jest dokumentem. Wrzutka ma trafić na SWÓJ odczyt
+              // — bez tej gałęzi przepięcie `capture` z wycofanego `history`
+              // na `library` kompiluje się, przechodzi testy i wysyła człowieka
+              // na Notatki, czyli dokładnie tam, gdzie nie ma tego, co znalazł.
+              const capture = state.snapshot.captures.find(
+                (item) => item.id === recordId,
+              );
+              if (capture !== undefined) {
+                selectCaptureInInspector(capture.id);
+                setDocumentInspectorKind("captures");
+                setDocumentInspectorOpen(true);
+                openContext(
+                  libraryReadingContext("captures", "Capture history"),
+                );
+                return;
+              }
               const id = recordId as DocumentId;
               const document =
                 state.snapshot.knowledge.kind === "ready"
