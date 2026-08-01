@@ -69,30 +69,44 @@ jobs:
   #   * `check` ma `timeout-minutes: 15` na clean + build + cztery zestawy
   #     testów. Doklejenie serwera dev i przeglądarki mieści się tam ledwo.
   #
-  # Wersja Playwrighta jest PRZYPIĘTA, bo to ona wybiera build Chromium,
-  # a build Chromium wybiera liczby w rejestrze długu. Ruchoma wersja robi
-  # z tej bramki test kalendarza wydań Google.
+  #
+  # DLACZEGO `macos-latest`, A NIE `ubuntu-latest` — ZMIERZONE, nie wybrane
+  # z wygody. Pierwsza iteracja tego zadania pojechała na OBU systemach
+  # w trybie raportu, żeby porównać liczby zamiast je zgadywać
+  # (run 30702713081, PR #204):
+  #
+  #   element                              macOS   Linux
+  #   settings  form.status-create @200%    +117    +141   ← fałszywa regresja
+  #   activity  h3                 @200%     +53     +65   ← fałszywa regresja
+  #   activity  p                  @200%     +33     +44   ← fałszywa regresja
+  #   tasks     article._entry     @1440     +89     +79
+  #   tasks     p._unavailable     @1440     +44     +42
+  #   tasks     span._chipDashed   @1440     +32     +28
+  #   library   document-editor-shell @200% +494    +483
+  #
+  # Na `macos-latest` WSZYSTKIE 29 pomiarów `known` zgadzają się CO DO PIKSELA
+  # z rejestrem zmierzonym lokalnie — zero rozbieżności, zero naruszeń.
+  # Na `ubuntu-latest` trzy wpisy przekraczają swój sufit z powodu samego
+  # renderowania czcionek, a trzy liczby fali E — te, które brief i stan
+  # koordynacji cytują jako defekty przy DOMYŚLNYM rozmiarze okna — zmieniają
+  # wartość. Przeniesienie rejestru na Linuksa nie byłoby przeliczeniem,
+  # tylko podmianą tego, o czym mówią dwa dokumenty poza tym repo.
+  #
+  # Windows jest pierwszoklasowym celem produktu i tu NIE JEST mierzony:
+  # własny zestaw sufitów dla trzeciego renderowania czcionek to inny rejestr,
+  # nie inna wartość. Tę stronę niesie paczkowany smoke, który chodzi na
+  # Windowsie na wydanej aplikacji. Zapisane jako świadoma luka, nie przeoczenie.
   layout:
-    name: Renderer layout (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Renderer layout
+    runs-on: macos-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
 
     env:
       # Ta sama przeglądarka, na której zmierzono sufity w
       # `scripts/descendant-overflow.mjs`: Playwright 1.58.2 → Chromium
-      # 145.0.7632.6.
+      # 145.0.7632.6. Ruchoma wersja robi z tej bramki test kalendarza wydań
+      # Chromium.
       PLAYWRIGHT_VERSION: 1.58.2
-      # Pomiar, nie egzekucja — pierwszy przebieg ma POWIEDZIEĆ, ile te same
-      # przepełnienia mają pikseli na runnerze, zanim ktokolwiek przypnie do
-      # tych liczb sufit. Wpis rejestru napisany bez przebiegu jest zgadywaniem
-      # i ten plik nie będzie pierwszym miejscem, gdzie się to robi.
-      LAYOUT_DESCENDANT_REPORT: "1"
 
     steps:
       - name: Check out repository
