@@ -1,3 +1,4 @@
+export * from "./entity-vocabulary.js";
 export * from "./yjs-document-adapter.js";
 export * from "./structured-document.js";
 // Deliberately not re-exported here. agent-content is host-side: it hashes with

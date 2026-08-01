@@ -38,6 +38,7 @@ import {
   type OfferPrice,
   type Currency,
   type PipelineStage,
+  type DocumentEntityTargetKind,
 } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
@@ -905,24 +906,41 @@ export const loadKnowledgeDocumentContext = async (
     "knowledge.documentContext",
   );
 
+/**
+ * Options rather than positional arguments. The query grew a kind filter and a
+ * self-exclusion in Wave D, and a wrapper that spells its own parameter list
+ * positionally is how a caller ends up silently sending four of the five things
+ * the kernel expects.
+ */
 export const loadDocumentLinkCandidates = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   spaceId: SpaceId,
-  text = "",
-  targets?: readonly {
-    readonly targetKind:
-      "task" | "project" | "person" | "organization" | "meeting";
-    readonly targetId: string;
-  }[],
+  options: {
+    readonly text?: string;
+    readonly targets?: readonly {
+      readonly targetKind: DocumentEntityTargetKind;
+      readonly targetId: string;
+    }[];
+    readonly targetKinds?: readonly DocumentEntityTargetKind[];
+    readonly excludeDocumentId?: DocumentId;
+  } = {},
 ): Promise<DocumentLinkCandidatesProjection> =>
   queryProjection(
     client,
     queryEnvelope("document.linkCandidates", snapshot.bootstrap.workspace.id, {
       spaceId,
-      text,
-      ...(targets === undefined ? {} : { targets }),
-      limit: targets === undefined ? 20 : 100,
+      text: options.text ?? "",
+      ...(options.targets === undefined ? {} : { targets: options.targets }),
+      ...(options.targetKinds === undefined
+        ? {}
+        : { targetKinds: options.targetKinds }),
+      ...(options.excludeDocumentId === undefined
+        ? {}
+        : { excludeDocumentId: options.excludeDocumentId }),
+      // Resolving a known set is not a picker: every target the caller named
+      // has to come back, not the first twenty of them.
+      limit: options.targets === undefined ? 20 : 100,
     }),
     "document.linkCandidates",
   );
@@ -931,8 +949,7 @@ export const loadDocumentBacklinks = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   target: {
-    readonly targetKind:
-      "task" | "project" | "person" | "organization" | "meeting";
+    readonly targetKind: DocumentEntityTargetKind;
     readonly targetId: string;
   },
 ): Promise<DocumentBacklinksProjection> =>

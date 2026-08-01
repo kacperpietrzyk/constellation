@@ -38,20 +38,14 @@ import { InlinePopover } from "../components/InlinePopover.js";
 import {
   DOCUMENT_ENTITY_ACTIVATE_EVENT,
   EntityReference,
+  documentEntityKindCopy,
   publishDocumentEntityLabels,
   type DocumentEntityCandidate,
   type DocumentEntityTargetKind,
 } from "../document-entity-reference.js";
+import { useInlineSuggestions } from "../components/InlineSuggestions.js";
 import { countLabel, formatDateTime } from "../i18n.js";
 import { roleCopy, type DocumentItem } from "./library-chrome.js";
-
-const entityKindCopy: Record<DocumentEntityTargetKind, string> = {
-  task: "Task",
-  project: "Project",
-  person: "Person",
-  organization: "Organization",
-  meeting: "Meeting",
-};
 
 const milestoneCopy = {
   finalized: "Finalized",
@@ -296,7 +290,7 @@ const DocumentToolbar = ({
                   onClick={() => onEntitySelect(candidate)}
                 >
                   <span>{candidate.label}</span>
-                  <small>{entityKindCopy[candidate.targetKind]}</small>
+                  <small>{documentEntityKindCopy[candidate.targetKind]}</small>
                 </div>
               ))
             )}
@@ -386,6 +380,13 @@ export const KnowledgeEditor = ({
     setLimitReached(true);
     window.setTimeout(() => setLimitReached(false), 2_500);
   };
+  const suggestions = useInlineSuggestions({
+    client,
+    snapshot,
+    spaceId: document.spaceId,
+    excludeDocumentId: document.id,
+    disabled: access !== "edit" || status === "migration_failed",
+  });
   const editor = useEditor(
     {
       extensions: [
@@ -398,6 +399,7 @@ export const KnowledgeEditor = ({
           // dokładnie to rozejście, które ta stała zamyka.
           heading: { levels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS] },
         }),
+        suggestions.extension,
         Placeholder.configure({
           placeholder: "Start writing. Sources stay separate.",
         }),
@@ -429,17 +431,6 @@ export const KnowledgeEditor = ({
           return true;
         },
         handleTextInput: (view, from, to, insertedText) => {
-          if (
-            insertedText === "[" &&
-            from === to &&
-            from > 0 &&
-            view.state.doc.textBetween(from - 1, from, "\n") === "["
-          ) {
-            view.dispatch(view.state.tr.delete(from - 1, from));
-            setEntityQuery("");
-            setEntityOpen(true);
-            return true;
-          }
           const currentLength = view.state.doc.textBetween(
             0,
             view.state.doc.content.size,
@@ -488,6 +479,11 @@ export const KnowledgeEditor = ({
     editor?.setEditable(access === "edit" && status !== "migration_failed");
   }, [access, editor, status]);
 
+  useEffect(
+    () => suggestions.setEditor(editor),
+    [editor, suggestions.setEditor],
+  );
+
   useEffect(() => {
     const onActivate = (event: Event) => {
       const detail = (event as CustomEvent).detail as
@@ -496,7 +492,7 @@ export const KnowledgeEditor = ({
         detail &&
         typeof detail.targetId === "string" &&
         typeof detail.targetKind === "string" &&
-        detail.targetKind in entityKindCopy
+        detail.targetKind in documentEntityKindCopy
       )
         onEntityActivate({
           targetKind: detail.targetKind as DocumentEntityTargetKind,
@@ -511,12 +507,10 @@ export const KnowledgeEditor = ({
   useEffect(() => {
     if (!entityOpen) return;
     const timer = window.setTimeout(() => {
-      void loadDocumentLinkCandidates(
-        client,
-        snapshot,
-        document.spaceId,
-        entityQuery,
-      )
+      void loadDocumentLinkCandidates(client, snapshot, document.spaceId, {
+        text: entityQuery,
+        excludeDocumentId: document.id,
+      })
         .then((projection) => setEntityCandidates(projection.items))
         .catch(() => setEntityCandidates([]));
     }, 120);
@@ -528,13 +522,9 @@ export const KnowledgeEditor = ({
       setResolvedLinkedTargets([]);
       return;
     }
-    void loadDocumentLinkCandidates(
-      client,
-      snapshot,
-      document.spaceId,
-      "",
-      linkedTargets,
-    )
+    void loadDocumentLinkCandidates(client, snapshot, document.spaceId, {
+      targets: linkedTargets,
+    })
       .then((projection) => setResolvedLinkedTargets(projection.items))
       .catch(() => setResolvedLinkedTargets([]));
   }, [client, document.spaceId, linkedTargets, snapshot]);
@@ -1295,7 +1285,10 @@ export const KnowledgeEditor = ({
             </button>
           </div>
         ) : (
-          <EditorContent editor={editor} className="document-editor-shell" />
+          <div className="document-editor-frame" ref={suggestions.containerRef}>
+            <EditorContent editor={editor} className="document-editor-shell" />
+            {suggestions.panel}
+          </div>
         )}
       </div>
 

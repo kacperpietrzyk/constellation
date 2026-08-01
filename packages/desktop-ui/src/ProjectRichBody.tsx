@@ -24,18 +24,12 @@ import type { DesktopSnapshot } from "./client/workflow.js";
 import {
   DOCUMENT_ENTITY_ACTIVATE_EVENT,
   EntityReference,
+  documentEntityKindCopy,
   publishDocumentEntityLabels,
   type DocumentEntityCandidate,
   type DocumentEntityTargetKind,
 } from "./document-entity-reference.js";
-
-const kindLabel: Record<DocumentEntityTargetKind, string> = {
-  task: "Task",
-  project: "Project",
-  person: "Person",
-  organization: "Organization",
-  meeting: "Meeting",
-};
+import { useInlineSuggestions } from "./components/InlineSuggestions.js";
 
 type EditorStatus =
   | "opening"
@@ -96,6 +90,9 @@ export default function ProjectRichBody({
   const [resolvedEntityCandidates, setResolvedEntityCandidates] = useState<
     readonly DocumentEntityCandidate[]
   >([]);
+  const [linkedTargets, setLinkedTargets] = useState<
+    readonly { targetKind: DocumentEntityTargetKind; targetId: string }[]
+  >([]);
   const [activeEntityIndex, setActiveEntityIndex] = useState(0);
   const [revisions, setRevisions] = useState<
     readonly RendererDocumentRevision[]
@@ -105,6 +102,12 @@ export default function ProjectRichBody({
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [limitReached, setLimitReached] = useState(false);
 
+  const suggestions = useInlineSuggestions({
+    client,
+    snapshot,
+    spaceId: project.spaceId,
+    disabled: access !== "edit" || status === "upgrade_required",
+  });
   const editor = useEditor(
     {
       extensions: [
@@ -117,6 +120,7 @@ export default function ProjectRichBody({
           // dokładnie to rozejście, które ta stała zamyka.
           heading: { levels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS] },
         }),
+        suggestions.extension,
         Placeholder.configure({
           placeholder: "Expand the outcome into plan, context and decisions.",
         }),
@@ -137,17 +141,6 @@ export default function ProjectRichBody({
           spellcheck: "true",
         },
         handleTextInput: (view, from, to, insertedText) => {
-          if (
-            insertedText === "[" &&
-            from === to &&
-            from > 0 &&
-            view.state.doc.textBetween(from - 1, from, "\n") === "["
-          ) {
-            view.dispatch(view.state.tr.delete(from - 1, from));
-            setEntityQuery("");
-            setEntityOpen(true);
-            return true;
-          }
           const length = view.state.doc.textBetween(
             0,
             view.state.doc.content.size,
@@ -194,15 +187,17 @@ export default function ProjectRichBody({
     editor?.setEditable(access === "edit" && status !== "upgrade_required");
   }, [access, editor, status]);
 
+  useEffect(
+    () => suggestions.setEditor(editor),
+    [editor, suggestions.setEditor],
+  );
+
   useEffect(() => {
     if (!entityOpen) return;
     const timer = window.setTimeout(() => {
-      void loadDocumentLinkCandidates(
-        client,
-        snapshot,
-        project.spaceId,
-        entityQuery,
-      )
+      void loadDocumentLinkCandidates(client, snapshot, project.spaceId, {
+        text: entityQuery,
+      })
         .then((projection) => {
           setEntityCandidates(projection.items);
         })
@@ -212,6 +207,18 @@ export default function ProjectRichBody({
   }, [client, entityOpen, entityQuery, project.spaceId, snapshot]);
 
   useEffect(() => setActiveEntityIndex(0), [entityCandidates, entityQuery]);
+
+  useEffect(() => {
+    if (linkedTargets.length === 0) {
+      setResolvedEntityCandidates([]);
+      return;
+    }
+    void loadDocumentLinkCandidates(client, snapshot, project.spaceId, {
+      targets: linkedTargets,
+    })
+      .then((projection) => setResolvedEntityCandidates(projection.items))
+      .catch(() => setResolvedEntityCandidates([]));
+  }, [client, linkedTargets, project.spaceId, snapshot]);
 
   useEffect(
     () =>
@@ -238,7 +245,7 @@ export default function ProjectRichBody({
         detail !== undefined &&
         typeof detail.targetId === "string" &&
         typeof detail.targetKind === "string" &&
-        detail.targetKind in kindLabel
+        detail.targetKind in documentEntityKindCopy
       ) {
         onEntityActivate({
           targetKind: detail.targetKind as DocumentEntityTargetKind,
@@ -280,6 +287,23 @@ export default function ProjectRichBody({
     const onUpdate = (update: Uint8Array, origin: unknown) => {
       try {
         documentPlainText(yDocument);
+        // Re-read on every change, not only when the body opens. A reference
+        // inserted at the caret is a change to this document like any other,
+        // and without this the resolve below never learns about it — the node
+        // renders "Record unavailable" the moment anything else republishes
+        // labels. `DocumentsSurface` already does this; a feature reaching one
+        // editor and not the other is the shape recon warned about.
+        const nextLinks = documentEntityReferences(yDocument);
+        setLinkedTargets((current) =>
+          current.length === nextLinks.length &&
+          current.every(
+            (item, index) =>
+              item.targetKind === nextLinks[index]?.targetKind &&
+              item.targetId === nextLinks[index]?.targetId,
+          )
+            ? current
+            : nextLinks,
+        );
       } catch {
         setStatus("upgrade_required");
       }
@@ -300,18 +324,7 @@ export default function ProjectRichBody({
         if (disposed) return;
         if (opened.state !== undefined)
           Y.applyUpdate(yDocument, opened.state, "constellation.bootstrap");
-        const linkedTargets = documentEntityReferences(yDocument);
-        if (linkedTargets.length > 0)
-          void loadDocumentLinkCandidates(
-            client,
-            snapshot,
-            project.spaceId,
-            "",
-            linkedTargets,
-          )
-            .then((projection) => setResolvedEntityCandidates(projection.items))
-            .catch(() => setResolvedEntityCandidates([]));
-        else setResolvedEntityCandidates([]);
+        setLinkedTargets(documentEntityReferences(yDocument));
         setPending(opened.pendingUpdateCount);
         if (opened.mode === "local") {
           localAuthoritative = true;
@@ -516,7 +529,7 @@ export default function ProjectRichBody({
                   onClick={() => insertEntity(candidate)}
                 >
                   <span>{candidate.label}</span>
-                  <small>{kindLabel[candidate.targetKind]}</small>
+                  <small>{documentEntityKindCopy[candidate.targetKind]}</small>
                 </button>
               ))
             )}
@@ -528,10 +541,13 @@ export default function ProjectRichBody({
           Content reached the safe length limit.
         </p>
       )}
-      <EditorContent
-        editor={editor}
-        className="document-editor-shell project-editor-shell"
-      />
+      <div className="document-editor-frame" ref={suggestions.containerRef}>
+        <EditorContent
+          editor={editor}
+          className="document-editor-shell project-editor-shell"
+        />
+        {suggestions.panel}
+      </div>
       <div className="project-revision-row">
         <label htmlFor={revisionNameId}>Recovery point</label>
         <input

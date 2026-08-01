@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-import type { DocumentId } from "@constellation/contracts";
+import type {
+  DocumentEntityTargetKind,
+  DocumentId,
+} from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
@@ -10,8 +13,7 @@ import {
 } from "../client/workflow.js";
 
 export type DocumentBacklinkTarget = {
-  readonly targetKind:
-    "task" | "project" | "person" | "organization" | "meeting";
+  readonly targetKind: DocumentEntityTargetKind;
   readonly targetId: string;
 };
 

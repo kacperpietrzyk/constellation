@@ -6,9 +6,12 @@ import { Schema, type MarkSpec, type NodeSpec } from "prosemirror-model";
 import type * as Y from "yjs";
 
 import {
+  DOCUMENT_ENTITY_REFERENCE_KINDS,
+  type DocumentEntityReferenceKind,
+} from "./entity-vocabulary.js";
+import {
   MAX_DOCUMENT_TEXT_LENGTH,
   RICH_DOCUMENT_FRAGMENT_ROOT,
-  type DocumentEntityReferenceKind,
 } from "./yjs-document-adapter.js";
 
 export const STRUCTURED_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -118,13 +121,9 @@ const exactKeys = (
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const entityKinds = new Set<DocumentEntityReferenceKind>([
-  "task",
-  "project",
-  "person",
-  "organization",
-  "meeting",
-]);
+const entityKinds = new Set<DocumentEntityReferenceKind>(
+  DOCUMENT_ENTITY_REFERENCE_KINDS,
+);
 
 const assertLink = (attrs: unknown): void => {
   if (!isRecord(attrs)) throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");

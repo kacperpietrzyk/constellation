@@ -7,11 +7,15 @@ import {
 } from "./collaboration-policy.js";
 import type { z } from "zod";
 
-import type { StrategicRecordProjectionSchema } from "@constellation/contracts";
+import type {
+  DocumentId,
+  StrategicRecordProjectionSchema,
+} from "@constellation/contracts";
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
   DEPENDENT_SAMPLE_LIMIT,
+  DOCUMENT_ENTITY_TARGET_KINDS,
   DocumentIdSchema,
   FolderIdSchema,
   EventIdSchema,
@@ -2204,85 +2208,210 @@ export const resolveDocumentEntityTarget = (
   targetKind: DocumentEntityTargetKind,
   targetId: string,
 ): ResolvedDocumentEntityTarget | undefined => {
-  if (targetKind === "task") {
-    const task = view.getTask(TaskIdSchema.parse(targetId));
-    return task?.workspaceId === workspaceId && task.recordState === "active"
-      ? { targetKind, targetId, label: task.title, spaceId: task.spaceId }
-      : undefined;
+  // A switch over the whole union rather than two ifs and a catch-all: the
+  // catch-all used to parse every unrecognised kind as a StrategicRecordId,
+  // so `document` would have thrown on a DocumentId instead of resolving.
+  // `unreachable: never` is what makes a seventh arm a compile error here.
+  switch (targetKind) {
+    case "task": {
+      const task = view.getTask(TaskIdSchema.parse(targetId));
+      return task?.workspaceId === workspaceId && task.recordState === "active"
+        ? { targetKind, targetId, label: task.title, spaceId: task.spaceId }
+        : undefined;
+    }
+    case "project": {
+      const project = view.getProject(ProjectIdSchema.parse(targetId));
+      return project?.workspaceId === workspaceId && recordIsActive(project)
+        ? {
+            targetKind,
+            targetId,
+            label: project.title,
+            spaceId: project.spaceId,
+          }
+        : undefined;
+    }
+    case "document": {
+      const document = view.getDocument(DocumentIdSchema.parse(targetId));
+      // `recordIsActive`, not `recordState === "active"`: on a NativeDocument
+      // the field is optional and absent means active. Testing for the literal
+      // would resolve every note written before removal existed to nothing,
+      // and every note→note link would render "Record unavailable" with no
+      // test failing anywhere.
+      return document?.workspaceId === workspaceId && recordIsActive(document)
+        ? {
+            targetKind,
+            targetId,
+            label: document.title,
+            spaceId: document.spaceId,
+          }
+        : undefined;
+    }
+    case "person":
+    case "organization":
+    case "meeting": {
+      const record = view.getStrategicRecord(
+        StrategicRecordIdSchema.parse(targetId),
+      );
+      // A removed record resolves to nothing, exactly as a removed Task does: a
+      // link into it must not keep rendering its title after it left the graph.
+      if (
+        record?.workspaceId !== workspaceId ||
+        record.kind !== targetKind ||
+        strategicRecordState(record) !== "active"
+      )
+        return undefined;
+      const label =
+        record.kind === "meeting"
+          ? (record.meeting.title ?? "Untitled meeting")
+          : record.name;
+      return { targetKind, targetId, label, spaceId: record.spaceId };
+    }
+    default: {
+      const unreachable: never = targetKind;
+      throw new Error(
+        `Unhandled document entity target kind: ${String(unreachable)}`,
+      );
+    }
   }
-  if (targetKind === "project") {
-    const project = view.getProject(ProjectIdSchema.parse(targetId));
-    return project?.workspaceId === workspaceId && recordIsActive(project)
-      ? { targetKind, targetId, label: project.title, spaceId: project.spaceId }
-      : undefined;
-  }
-  const record = view.getStrategicRecord(
-    StrategicRecordIdSchema.parse(targetId),
-  );
-  // A removed record resolves to nothing, exactly as a removed Task does: a
-  // link into it must not keep rendering its title after it left the graph.
-  if (
-    record?.workspaceId !== workspaceId ||
-    record.kind !== targetKind ||
-    strategicRecordState(record) !== "active" ||
-    !["person", "organization", "meeting"].includes(record.kind)
-  )
-    return undefined;
-  const label =
-    record.kind === "meeting"
-      ? (record.meeting.title ?? "Untitled meeting")
-      : record.name;
-  return { targetKind, targetId, label, spaceId: record.spaceId };
 };
 
+// One collator for the process. `localeCompare(other, "pl", {…})` builds a
+// fresh Intl.Collator per comparison, so the old sort constructed O(N log N)
+// of them over the whole Space before a single candidate was thrown away.
+const documentCandidateCollator = new Intl.Collator("pl", {
+  sensitivity: "base",
+});
+
+/**
+ * Case- and diacritic-insensitive form used for matching only, never for
+ * display. NFD plus combining-mark removal handles ą ę ó ś ź ż ć ń; it does
+ * NOT handle ł, which is a single code point with no decomposition, so it is
+ * mapped by hand. That one letter is the whole of the defect the MCP catalogue
+ * records for `search.global`: `Zaklady` finding nothing while `Zakłady` sits
+ * in the list.
+ *
+ * `toLowerCase`, not `toLocaleLowerCase`: the kernel runs wherever the host
+ * happens to be configured, and a Turkish default locale would fold `I` to a
+ * dotless `ı` and stop matching Polish and English titles alike.
+ */
+const foldForCandidateSearch = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/ł/gu, "l")
+    .replace(/Ł/gu, "L")
+    .toLowerCase();
+
+// Lower is better. A prefix of the whole label beats a prefix of a later word,
+// which beats a match in the middle of one. Obsidian ranks the same way and it
+// is the difference between typing `nor` and getting Northstar first or
+// getting Anna Nordheim first because A sorts before N.
+const candidateMatchRank = (
+  foldedLabel: string,
+  foldedQuery: string,
+): number => {
+  if (foldedQuery === "" || foldedLabel.startsWith(foldedQuery)) return 0;
+  const at = foldedLabel.indexOf(foldedQuery);
+  if (at < 0) return -1;
+  return /[\s\p{P}]/u.test(foldedLabel[at - 1] ?? "") ? 1 : 2;
+};
+
+/**
+ * Documents ahead of records at an equal match rank. `[[` is the superset
+ * trigger, and in an imported vault the majority of what `[[` means is another
+ * note; a record that scores better still wins, because a worse match ranked
+ * first is how a link ends up pointing at the wrong Northstar.
+ *
+ * A declared order rather than `targetKind.localeCompare`, and this is not
+ * style. `document` happens to sort before all five record kinds
+ * alphabetically, so a tiebreak that fell through to the alphabet produced the
+ * intended order BY ACCIDENT — deleting the rule changed nothing and the test
+ * that was supposed to protect it came back green. An order nobody can
+ * distinguish from an accident is not a decision anyone can keep.
+ */
+const documentCandidateKindRank: Record<DocumentEntityTargetKind, number> = {
+  document: 0,
+  task: 1,
+  project: 2,
+  person: 3,
+  organization: 4,
+  meeting: 5,
+};
+
+interface RankedDocumentEntityCandidate {
+  readonly candidate: ResolvedDocumentEntityTarget;
+  readonly rank: number;
+}
+
+/**
+ * Filter first, then sort. The old order sorted every Task, Project, Person,
+ * Organization and Meeting in the Space and only then dropped everything that
+ * did not match, so the most expensive step ran over candidates nobody would
+ * ever see.
+ */
 const documentEntityCandidates = (
   view: ApplicationWave2ReadView,
   workspaceId: WorkspaceId,
   spaceId: SpaceId,
+  options: {
+    readonly kinds: ReadonlySet<DocumentEntityTargetKind>;
+    readonly text: string;
+    readonly excludeDocumentId?: DocumentId;
+  },
 ): readonly ResolvedDocumentEntityTarget[] => {
-  const work = [
-    ...view.listTasksInSpace(workspaceId, spaceId).map((task) => ({
-      targetKind: "task" as const,
-      targetId: task.id,
-      label: task.title,
-      spaceId,
-    })),
-    ...view.listProjects(workspaceId, spaceId).map((project) => ({
-      targetKind: "project" as const,
-      targetId: project.id,
-      label: project.title,
-      spaceId,
-    })),
-    ...view
-      .listStrategicRecords(workspaceId, spaceId)
-      .flatMap((record): readonly ResolvedDocumentEntityTarget[] => {
-        if (record.kind === "person" || record.kind === "organization")
-          return [
-            {
-              targetKind: record.kind,
-              targetId: record.id,
-              label: record.name,
-              spaceId,
-            },
-          ];
-        if (record.kind === "meeting")
-          return [
-            {
-              targetKind: "meeting",
-              targetId: record.id,
-              label: record.meeting.title ?? "Untitled meeting",
-              spaceId,
-            },
-          ];
-        return [];
-      }),
-  ];
-  return work.sort(
-    (left, right) =>
-      left.label.localeCompare(right.label, "pl", { sensitivity: "base" }) ||
-      left.targetKind.localeCompare(right.targetKind) ||
-      left.targetId.localeCompare(right.targetId),
-  );
+  const foldedQuery = foldForCandidateSearch(options.text);
+  const matches: RankedDocumentEntityCandidate[] = [];
+  const consider = (
+    targetKind: DocumentEntityTargetKind,
+    targetId: string,
+    label: string,
+  ): void => {
+    const rank = candidateMatchRank(foldForCandidateSearch(label), foldedQuery);
+    if (rank < 0) return;
+    matches.push({ candidate: { targetKind, targetId, label, spaceId }, rank });
+  };
+  if (options.kinds.has("task"))
+    for (const task of view.listTasksInSpace(workspaceId, spaceId))
+      consider("task", task.id, task.title);
+  if (options.kinds.has("project"))
+    for (const project of view.listProjects(workspaceId, spaceId))
+      consider("project", project.id, project.title);
+  if (options.kinds.has("document"))
+    for (const document of view.listDocuments(workspaceId, spaceId)) {
+      if (document.id === options.excludeDocumentId) continue;
+      consider("document", document.id, document.title);
+    }
+  if (
+    options.kinds.has("person") ||
+    options.kinds.has("organization") ||
+    options.kinds.has("meeting")
+  )
+    for (const record of view.listStrategicRecords(workspaceId, spaceId)) {
+      if (record.kind === "person" || record.kind === "organization") {
+        if (options.kinds.has(record.kind))
+          consider(record.kind, record.id, record.name);
+        continue;
+      }
+      if (record.kind === "meeting" && options.kinds.has("meeting"))
+        consider(
+          "meeting",
+          record.id,
+          record.meeting.title ?? "Untitled meeting",
+        );
+    }
+  return matches
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        documentCandidateKindRank[left.candidate.targetKind] -
+          documentCandidateKindRank[right.candidate.targetKind] ||
+        documentCandidateCollator.compare(
+          left.candidate.label,
+          right.candidate.label,
+        ) ||
+        left.candidate.targetId.localeCompare(right.candidate.targetId),
+    )
+    .map((entry) => entry.candidate);
 };
 
 const attentionDetail = (reason: AttentionSignal["reason"]): string => {
@@ -12417,35 +12546,52 @@ export const executeWave2Query = (
     });
   }
   if (query.queryName === "document.linkCandidates") {
-    const normalized = query.parameters.text.toLocaleLowerCase();
-    const exactTargets =
+    // Two callers with two shapes. `targets` is a document that just opened
+    // asking for the labels of the references it already holds — it knows
+    // exactly what it wants, so each one resolves directly instead of building
+    // and then filtering every candidate in the Space.
+    const items =
       query.parameters.targets === undefined
-        ? undefined
-        : new Set(
-            query.parameters.targets.map(
-              (target) => `${target.targetKind}:${target.targetId}`,
-            ),
-          );
-    const items = documentEntityCandidates(
-      view,
-      query.workspaceId,
-      query.parameters.spaceId,
-    )
-      .filter(
-        (candidate) =>
-          (exactTargets === undefined ||
-            exactTargets.has(
-              `${candidate.targetKind}:${candidate.targetId}`,
-            )) &&
-          (normalized === "" ||
-            candidate.label.toLocaleLowerCase().includes(normalized)),
-      )
-      .slice(0, query.parameters.limit)
-      .map(({ targetKind, targetId, label }) => ({
-        targetKind,
-        targetId,
-        label,
-      }));
+        ? documentEntityCandidates(
+            view,
+            query.workspaceId,
+            query.parameters.spaceId,
+            {
+              kinds: new Set(
+                query.parameters.targetKinds ?? DOCUMENT_ENTITY_TARGET_KINDS,
+              ),
+              text: query.parameters.text,
+              ...(query.parameters.excludeDocumentId === undefined
+                ? {}
+                : { excludeDocumentId: query.parameters.excludeDocumentId }),
+            },
+          )
+            .slice(0, query.parameters.limit)
+            .map(({ targetKind, targetId, label }) => ({
+              targetKind,
+              targetId,
+              label,
+            }))
+        : query.parameters.targets
+            .flatMap((target) => {
+              const resolved = resolveDocumentEntityTarget(
+                view,
+                query.workspaceId,
+                target.targetKind,
+                target.targetId,
+              );
+              return resolved === undefined ||
+                resolved.spaceId !== query.parameters.spaceId
+                ? []
+                : [
+                    {
+                      targetKind: resolved.targetKind,
+                      targetId: resolved.targetId,
+                      label: resolved.label,
+                    },
+                  ];
+            })
+            .slice(0, query.parameters.limit);
     return querySuccess(query, kernelTime, freshness, {
       kind: "document.linkCandidates",
       items,

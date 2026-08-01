@@ -240,13 +240,37 @@ export const DocumentListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
-export const DocumentEntityTargetKindSchema = z.enum([
+/**
+ * The closed vocabulary of things a rich document can link to inline. It is a
+ * named constant rather than a bare `z.enum` because the same five arms used to
+ * be spelled out by hand in seven places — the domain type, this schema, two
+ * lists in `realtime-documents`, a SQL `CHECK`, two wrapper signatures in the
+ * renderer and the renderer's own copy of the union — and none of them imported
+ * from any other. Adding `document` in Wave D meant editing all of them, and
+ * `tsc` was happy with every one left behind.
+ *
+ * Everything that can reach `@constellation/contracts` now imports this, so an
+ * eighth arm breaks the build at every `Record<DocumentEntityTargetKind, …>`
+ * and at the exhaustive switch in `resolveDocumentEntityTarget`. The two places
+ * that cannot import it — `realtime-documents`, which deliberately depends on
+ * nothing of ours, and the SQL `CHECK` inside a frozen migration — are held by
+ * assertions that compare their vocabulary to this array.
+ */
+export const DOCUMENT_ENTITY_TARGET_KINDS = [
   "task",
   "project",
   "person",
   "organization",
   "meeting",
-]);
+  "document",
+] as const;
+
+export type DocumentEntityTargetKind =
+  (typeof DOCUMENT_ENTITY_TARGET_KINDS)[number];
+
+export const DocumentEntityTargetKindSchema = z.enum(
+  DOCUMENT_ENTITY_TARGET_KINDS,
+);
 
 export const DocumentLinkCandidatesQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("document.linkCandidates"),
@@ -265,6 +289,19 @@ export const DocumentLinkCandidatesQuerySchema = QueryMetadataSchema.extend({
         )
         .max(100)
         .optional(),
+      // Which arms the caller wants back. Absent means all of them, so every
+      // existing caller keeps its behaviour. Two inline triggers can want
+      // different vocabularies out of the same query, and the MCP catalogue
+      // recorded "cannot be narrowed to a kind" as a limitation of this
+      // picker; this is that narrowing.
+      targetKinds: z
+        .array(DocumentEntityTargetKindSchema)
+        .min(1)
+        .max(DOCUMENT_ENTITY_TARGET_KINDS.length)
+        .optional(),
+      // A note offering itself as a link target is noise, and the caller is
+      // the only one that knows which note is open.
+      excludeDocumentId: DocumentIdSchema.optional(),
       limit: z.int().min(1).max(100).default(20),
     })
     .strict(),
