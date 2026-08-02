@@ -1,0 +1,363 @@
+// Break-testy z DOWODEM, że przebudowa naprawdę się odbyła.
+//
+// PO CO TO ISTNIEJE. Trzy fale tego repozytorium opierają się na jednej
+// pisanej regule: „break-test potrzebuje `tsc -b` WEWNĄTRZ pętli, bo
+// `@constellation/contracts` rozwiązuje się do `dist/`". Reguła jest
+// KONIECZNA, ale NIEWYSTARCZAJĄCA — i to nie jest teoria, tylko zmierzony
+// tryb awarii z lotu Import fali D (PR #210):
+//
+//   cp plik plik.bak → zepsuj → tsc -b → uruchom test → mv plik.bak plik → tsc -b
+//
+// `mv` zachowuje mtime KOPII, który jest starszy niż `.tsbuildinfo` zapisany
+// przy budowie zepsutej wersji. `tsc -b` uznaje projekt za aktualny i NIC NIE
+// ROBI. Od tej chwili `dist/` niesie kod ZEPSUTY przez poprzedni break-test,
+// a każdy następny test chodzi na nim. W fali D zaraziło to trzy kolejne
+// break-testy i zostało wykryte przypadkiem.
+//
+// To jest „zielono na skasowanym kodzie" OD DRUGIEJ STRONY: reguła ostrzega
+// przed ZŁAMANIEM, które się nie kompiluje, a tutaj nie kompiluje się
+// PRZYWRÓCENIE. Objaw jest gorszy — nie fałszywa zieleń jednego testu, tylko
+// zatruty stan dla wszystkiego, co uruchomisz potem.
+//
+// ZMIERZONE ZACHOWANIE `tsc -b`, na którym stoi cały ten moduł (sonda
+// odtworzona ręcznie 2026-08-02, TypeScript z tego repozytorium):
+//
+//   1. Przebudowa będąca NO-OPEM **nie przepisuje** `.tsbuildinfo`.
+//   2. Przebudowa, która PADA na błędzie typów, `.tsbuildinfo` **przepisuje**
+//      (i emituje zepsuty JS — `noEmitOnError` jest domyślnie wyłączone).
+//   3. Zatrucie bije WYŁĄCZNIE wtedy, gdy złamanie SIĘ KOMPILOWAŁO. Po
+//      złamaniu, które się nie kompiluje, `tsc -b` przebudowuje mimo starszego
+//      mtime, bo projekt jest zapisany jako niosący błędy.
+//
+// Z (1) i (2) wynika dowód, którego ten moduł używa: **`.tsbuildinfo`, który
+// nie przesunął się po fazie zapisującej źródło, znaczy „kompilator nie zrobił
+// nic"**. Przesuwa się po sukcesie I po porażce; stoi tylko na no-opie.
+//
+// DWIE POŁOWY, obie potrzebne:
+//
+//   ŚCIEŻKA PRZYWRÓCENIA, KTÓRA NIE UMIE WYPRODUKOWAĆ TEGO STANU — oryginalny
+//   tekst trzymany w PAMIĘCI (nie jako `.bak` obok źródła, gdzie widzi go
+//   prettier, eslint i sam `tsc`), przywracany ZAPISEM, z asercją, że tekst
+//   wraca bajt w bajt, i z wymuszeniem mtime ściśle nowszego niż każdy stempel
+//   budowy. Po takim przywróceniu no-op jest niemożliwy, nie nieprawdopodobny.
+//
+//   HARNESS, KTÓRY PADA GŁOŚNO ZAMIAST IŚĆ DALEJ — jeżeli po fazie zapisującej
+//   źródło żaden stempel budowy się nie przesunął, przebudowa się NIE ODBYŁA
+//   i harness przerywa cały przebieg. Przebudowa będąca no-opem jest
+//   nieodróżnialna od udanej po samym kodzie wyjścia; jest odróżnialna po
+//   stemplu.
+//
+// TRZY LICZBY NA KAŻDE ZŁAMANIE, nie dwie: baza ZIELONA → złamanie CZERWONE →
+// przywrócenie ZIELONE. Sama para „baza/złamanie" nie widzi zatrucia, bo
+// zatrucie zaczyna się dopiero przy przywróceniu.
+
+import { spawnSync } from "node:child_process";
+import {
+  readFileSync,
+  readdirSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import path from "node:path";
+
+/**
+ * Ile sekund ponad najnowszy stempel budowy dostaje przywrócony plik.
+ *
+ * Nie jest to „zapas na wszelki wypadek", tylko domknięcie dokładnie tej
+ * nierówności, z której bierze się defekt: `tsc -b` porównuje mtime źródła ze
+ * stemplem projektu. Sekunda wystarcza każdemu systemowi plików, na którym to
+ * repozytorium się buduje, a wyprzedzenie zegara o sekundę nie ma żadnego
+ * innego czytelnika.
+ */
+const REBUILD_CLOCK_MARGIN_SECONDS = 1;
+
+/**
+ * Gdzie każdy pakiet trzyma swój stempel budowy — WYPROWADZONE z `tsconfig`,
+ * nigdy nie wypisane listą.
+ *
+ * Lista pakietów wpisana tutaj byłaby dwunastym miejscem rodziny „ręczna lista
+ * obok zamkniętego słownika", którą to repozytorium płaci od czterech fal:
+ * nowy pakiet nie trafiłby na listę, jego stempel nie byłby obserwowany,
+ * a dowód przebudowy po cichu przestałby obejmować jego kod. `tsconfig.json`
+ * pakietu JEST rejestrem, bo bez wpisu `tsBuildInfoFile` nic się nie zbuduje.
+ */
+export const buildStampFiles = (root) => {
+  const packagesRoot = path.join(root, "packages");
+  const stamps = [];
+  for (const entry of readdirSync(packagesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const config = path.join(packagesRoot, entry.name, "tsconfig.json");
+    let text;
+    try {
+      text = readFileSync(config, "utf8");
+    } catch {
+      continue;
+    }
+    // `tsconfig.json` niesie komentarze, więc nie jest JSON-em. Szukany wpis
+    // jest jednoznaczny, a błędne dopasowanie objawia się natychmiast: dowód
+    // przebudowy przestaje istnieć i harness pada.
+    const found = /"tsBuildInfoFile"\s*:\s*"([^"]+)"/u.exec(text);
+    if (found === null) continue;
+    stamps.push(path.join(packagesRoot, entry.name, found[1]));
+  }
+  return stamps.sort();
+};
+
+/** Stan stempli budowy w jednej chwili. Brakujący plik ma stan `null`. */
+export const readBuildStamps = (files) => {
+  const stamps = new Map();
+  for (const file of files) {
+    try {
+      const info = statSync(file);
+      stamps.set(file, { mtimeMs: info.mtimeMs, size: info.size });
+    } catch {
+      stamps.set(file, null);
+    }
+  }
+  return stamps;
+};
+
+/**
+ * Czy kompilator w ogóle coś zrobił.
+ *
+ * Czysta funkcja nad dwoma stanami stempli, żeby ten dowód dało się złamać
+ * testem, który niczego nie buduje. Zmieniony ROZMIAR liczy się tak samo jak
+ * przesunięty mtime: przebudowa na systemie plików o grubszym zegarze może
+ * trafić w tę samą sekundę, a treść stempla i tak się różni.
+ */
+export const rebuildHappened = (before, after) => {
+  const advanced = [];
+  for (const [file, next] of after) {
+    const previous = before.get(file);
+    if (next === null) continue;
+    if (
+      previous === undefined ||
+      previous === null ||
+      next.mtimeMs > previous.mtimeMs ||
+      next.size !== previous.size
+    )
+      advanced.push(file);
+  }
+  return { proven: advanced.length > 0, advanced };
+};
+
+/**
+ * Werdykt jednej fazy złamania — czysty, bo to jest ta część, którą najłatwiej
+ * napisać źle i najtrudniej zauważyć.
+ *
+ * `expect` ma DWA legalne kształty i to rozróżnienie jest treścią, nie
+ * formalnością:
+ *
+ *   "assertion-fails" — złamanie MA SIĘ SKOMPILOWAĆ i ma zapalić asercję.
+ *                       Kompilator, który je odrzuca, daje czerwień z INNEGO
+ *                       powodu niż badany, więc taki przebieg jest przerwany,
+ *                       a nie zaliczony. Break-test czerwony nie z tego powodu
+ *                       co trzeba nie dowodzi niczego o asercji.
+ *   "build-refuses"   — dowodem JEST odmowa kompilatora (np. totalny `Record`
+ *                       bez ramienia, TS2741). Wtedy udana budowa to porażka:
+ *                       typ przepuścił to, co miał odrzucić.
+ */
+export const classifyBreakOutcome = ({ expect, buildOk, verifyOk }) => {
+  if (expect === "build-refuses")
+    return buildOk
+      ? {
+          verdict: "failed",
+          reason: "the compiler accepted a break it was supposed to refuse",
+        }
+      : { verdict: "passed", reason: "the compiler refused the break" };
+  if (!buildOk)
+    return {
+      verdict: "aborted",
+      reason:
+        "the break did not compile, so any red comes from the compiler and " +
+        'not from the assertion under test; declare `expect: "build-refuses"` ' +
+        "if that is the proof you meant",
+    };
+  return verifyOk
+    ? { verdict: "failed", reason: "the assertion stayed green on broken code" }
+    : { verdict: "passed", reason: "the assertion went red on broken code" };
+};
+
+const run = ({ command, args, cwd, env }) => {
+  const result = spawnSync(command, args, {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error !== undefined) throw result.error;
+  return {
+    ok: result.status === 0,
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+};
+
+/**
+ * Zapisz tekst i UPEWNIJ SIĘ, że plik jest młodszy niż każdy stempel budowy.
+ *
+ * To jest ta połowa, przez którą zatruty stan przestaje być osiągalny.
+ * Zapisanie treści nadaje świeży mtime w normalnym przypadku, ale „normalny
+ * przypadek" jest dokładnie tym, na czym harness fali D się przejechał — więc
+ * nierówność jest tu SPRAWDZANA, a nie zakładana, i wymuszana, kiedy nie
+ * zachodzi.
+ */
+const writeSourceNewerThanStamps = (file, text, stampFiles) => {
+  writeFileSync(file, text);
+  const newestStamp = [...readBuildStamps(stampFiles).values()].reduce(
+    (newest, stamp) =>
+      stamp === null ? newest : Math.max(newest, stamp.mtimeMs),
+    0,
+  );
+  if (statSync(file).mtimeMs > newestStamp) return;
+  const when = newestStamp / 1000 + REBUILD_CLOCK_MARGIN_SECONDS;
+  utimesSync(file, when, when);
+  if (statSync(file).mtimeMs <= newestStamp)
+    throw new Error(
+      `cannot make ${file} newer than the newest build stamp; a rebuild ` +
+        "would no-op and every later test would run against poisoned dist",
+    );
+};
+
+const readBack = (file) => readFileSync(file, "utf8");
+
+/**
+ * Pętla break-testów.
+ *
+ * `breaks` to lista `{ name, file, edit, expect }`, gdzie `edit` dostaje
+ * oryginalny tekst i zwraca zepsuty. Tekst identyczny z oryginałem jest
+ * PRZERWANIEM, nie przejściem: regexp, który nie trafił, to najczęstszy powód,
+ * dla którego break-test wraca zielony, a lot fali D miał trzy takie naraz.
+ */
+export const runBreakTests = ({
+  root,
+  build,
+  verify,
+  breaks,
+  stampFiles = buildStampFiles(root),
+  log = console.log,
+}) => {
+  if (stampFiles.length === 0)
+    throw new Error(
+      `no tsBuildInfoFile found under ${path.join(root, "packages")}; the ` +
+        "rebuild proof would be vacuous",
+    );
+
+  const rebuild = (phase, proofRequired) => {
+    const before = readBuildStamps(stampFiles);
+    const result = run({ ...build, cwd: root });
+    const proof = rebuildHappened(before, readBuildStamps(stampFiles));
+    if (proofRequired && !proof.proven)
+      throw new Error(
+        `${phase}: the build changed no build stamp, so the compiler did ` +
+          "nothing and dist still holds the previous source. This is the " +
+          "no-op rebuild that makes a break-test report green on deleted code.",
+      );
+    return result;
+  };
+
+  const originals = new Map();
+  const restoreEverything = () => {
+    let restored = false;
+    for (const [file, text] of originals)
+      if (readBack(file) !== text) {
+        writeSourceNewerThanStamps(file, text, stampFiles);
+        restored = true;
+      }
+    // Przebieg, który padł w środku, zostawiłby `dist/` zbudowany ze złamania.
+    // Źródło jest już młodsze od każdego stempla, więc ta przebudowa NIE MOŻE
+    // być no-opem — i dokładnie dlatego wolno ją tu zrobić bez dowodu.
+    if (restored) run({ ...build, cwd: root });
+  };
+
+  const results = [];
+  try {
+    log("baseline: building and running the assertions before any break");
+    run({ ...build, cwd: root });
+    const baseline = run({ ...verify, cwd: root });
+    if (!baseline.ok)
+      throw new Error(
+        "baseline is not green before the first break; a break-test loop " +
+          "starting from red proves nothing about any break in it",
+      );
+    log("baseline GREEN");
+
+    for (const entry of breaks) {
+      const file = path.resolve(root, entry.file);
+      const original = originals.get(file) ?? readBack(file);
+      originals.set(file, original);
+      const broken = entry.edit(original);
+      if (broken === original)
+        throw new Error(
+          `${entry.name}: the edit produced text identical to the original, ` +
+            "so nothing was broken and a green run means nothing",
+        );
+
+      // DOWÓD PRZEBUDOWY DOTYCZY PLIKÓW, KTÓRE SIĘ KOMPILUJĄ. Skrypt `.mjs`
+      // nie ma `dist/`, więc nie ma czego zatruć — i żądanie stempla zrobiłoby
+      // z harnessu narzędzie, którym nie da się przetestować własnego
+      // oprzyrządowania. Żeby to nie stało się furtką z powrotem do defektu,
+      // rozstrzyga ROZSZERZENIE PLIKU, a nie deklaracja wołającego.
+      const compiled = /\.(?:ts|tsx|mts|cts)$/u.test(file);
+      writeSourceNewerThanStamps(file, broken, stampFiles);
+      const brokenBuild = rebuild(`${entry.name} (break)`, compiled);
+      const expect = entry.expect ?? "assertion-fails";
+      const verifyResult = brokenBuild.ok
+        ? run({ ...(entry.verify ?? verify), cwd: root })
+        : { ok: false, status: null, stdout: "", stderr: "" };
+      const outcome = classifyBreakOutcome({
+        expect,
+        buildOk: brokenBuild.ok,
+        verifyOk: verifyResult.ok,
+      });
+
+      // PRZYWRÓCENIE JEST BEZWARUNKOWE i dzieje się przed oceną werdyktu:
+      // przebieg, który pada w środku, nie ma prawa zostawić repozytorium
+      // z zepsutym źródłem ani z zatrutym `dist`.
+      writeSourceNewerThanStamps(file, original, stampFiles);
+      rebuild(`${entry.name} (restore)`, compiled);
+      const restored = run({ ...(entry.verify ?? verify), cwd: root });
+      if (!restored.ok)
+        throw new Error(
+          `${entry.name}: the assertions are RED after the restore. Either ` +
+            "the restore did not reach dist, or an earlier break left it " +
+            "poisoned. Nothing after this point would mean anything.",
+        );
+      // TEKST WRACA BAJT W BAJT — sprawdzane NA KOŃCU obiegu, nie zaraz po
+      // zapisie. Zaraz po zapisie ta asercja nie umie paść na żadnym systemie
+      // plików, na którym to repozytorium chodzi, czyli byłaby ozdobą. Na
+      // końcu łapie realną rzecz: budowę albo weryfikację, która sama pisze po
+      // źródle (formater, generator), przez co następne złamanie startowałoby
+      // z innego tekstu, niż myśli, że startuje.
+      if (readBack(file) !== original)
+        throw new Error(
+          `${entry.name}: ${file} does not match the text it started with. ` +
+            "Something in this break's own loop wrote to it, so the next " +
+            "break would start from a different file than it believes.",
+        );
+
+      // TRZY LICZBY, każda z tego, co naprawdę zaobserwowano — nie z werdyktu.
+      // Para „baza/złamanie" nie widzi zatrucia, bo zatrucie zaczyna się przy
+      // przywróceniu, więc trzecia liczba jest tą, dla której to się drukuje.
+      const brokenPhase = !brokenBuild.ok
+        ? "BUILD REFUSED"
+        : verifyResult.ok
+          ? "GREEN"
+          : "RED";
+      log(
+        `${entry.name}: baseline GREEN → break ${brokenPhase} → restore GREEN` +
+          ` — ${outcome.verdict.toUpperCase()} (${outcome.reason})`,
+      );
+      if (outcome.verdict === "aborted")
+        throw new Error(`${entry.name}: ${outcome.reason}`);
+      results.push({ name: entry.name, ...outcome });
+    }
+  } finally {
+    restoreEverything();
+  }
+
+  const failed = results.filter((result) => result.verdict !== "passed");
+  return { results, failed, ok: failed.length === 0 };
+};

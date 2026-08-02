@@ -173,6 +173,71 @@ test("a table round-trips, including a cell holding a pipe and a line break", ()
   );
 });
 
+/**
+ * WHY THIS IS NOT COVERED BY THE TABLE ROUND TRIP ABOVE.
+ *
+ * The serialiser wrote a hard break in a cell as `\<br>` — `\` + newline from
+ * `hardBreak`, and the cell then replaced the newline. `\<` is a CommonMark
+ * ESCAPE, so a reader sees the four literal characters `<br>` and the line
+ * break is gone. The round trip did not see it, because this parser reads the
+ * escaped spelling too (`\\?<br…`), so the wrong markdown came back as the
+ * right tree — stable and WRONG on the way out, which is the failure mode a
+ * fixed-point property cannot have an opinion about.
+ *
+ * The assertion is therefore the markdown BETWEEN the two parses, compared as
+ * a whole string. "It contains `<br>`" is true of `\<br>` as well.
+ */
+test("a hard break in a table cell leaves as a tag, not as an escaped one", () => {
+  const cellWithBreak = structured([
+    {
+      type: "table",
+      content: [
+        // A REAL HEADER ROW, because a table whose first row is data is not a
+        // fixed point of this pair by design — the serialiser writes an empty
+        // header rather than promoting the data, so the tree gains a row. That
+        // is #208's decision and has nothing to do with the break under test;
+        // a header here keeps this assertion about the break.
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableHeader",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "Kto" }] },
+              ],
+            },
+          ],
+        },
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "Anna" },
+                    { type: "hardBreak" },
+                    { type: "text", text: "Piotr" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  const markdown = serialised(cellWithBreak);
+  assert.equal(markdown, "| Kto |\n| --- |\n| Anna<br>Piotr |");
+  assert.deepEqual(
+    parsed(markdown).content,
+    cellWithBreak.content,
+    "the hard break did not survive the door out and back in",
+  );
+});
+
 test("three dashes under a paragraph stay a heading, and three stars stay a rule", () => {
   // The serialiser writes `***` for a horizontal rule precisely because `---`
   // directly under a line is a setext heading. A parser that disagreed would

@@ -283,6 +283,42 @@ const cases: readonly {
     expected: "| Temat | Kto |\n| --- | --- |\n| Budżet \\| koszty | Anna |",
   },
   {
+    name: "A HARD BREAK IN A CELL IS THE TAG, NOT AN ESCAPED ONE",
+    kinds: ["hardBreak", "tableCell"],
+    // The defect this closes: `hardBreak` rendered `\` + newline everywhere,
+    // and the cell then replaced the newline — producing `\<br>`, in which
+    // `\<` is a CommonMark ESCAPE. Every exported table lost its line breaks
+    // and gained four literal characters instead. The assertion is the OUTPUT
+    // STRING, because "a `<br>` appears somewhere in it" is true of the broken
+    // spelling too.
+    content: [
+      {
+        type: "table",
+        content: [
+          {
+            type: "tableRow",
+            content: [
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [
+                      { type: "text", text: "Anna" },
+                      { type: "hardBreak" },
+                      { type: "text", text: "Piotr" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    expected: "|  |\n| --- |\n| Anna<br>Piotr |",
+  },
+  {
     name: "a table whose first row is data keeps an empty header rather than promoting it",
     kinds: ["table"],
     content: [

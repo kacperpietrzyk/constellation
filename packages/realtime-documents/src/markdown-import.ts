@@ -687,13 +687,19 @@ const tableCell = (
   // `<br>` is the only line break a GFM cell has, and the serialiser writes
   // exactly that; reading it back as a hard break closes the round trip.
   //
-  // The optional backslash is NOT decoration. `structuredDocumentToMarkdown`
-  // renders a `hardBreak` as `\` + newline and only then replaces newlines
-  // inside a cell, so a hard break in a table cell comes out as `\<br>` — in
-  // which `\<` is a CommonMark escape, and the tag renders as the literal
-  // characters `<br>`. That is a defect in the EXPORT direction, reported
-  // rather than fixed here; this side reads both spellings so a round trip
-  // through the current build loses nothing while it stands.
+  // The optional backslash is BACKWARD COMPATIBILITY, and no longer a
+  // workaround. `structuredDocumentToMarkdown` used to render a `hardBreak` as
+  // `\` + newline and only then replace newlines inside a cell, so a hard break
+  // in a table cell came out as `\<br>` — in which `\<` is a CommonMark escape,
+  // and the tag rendered as the literal characters `<br>`. That defect is now
+  // fixed at the source (`markdown.ts`, `hardBreak` renders `<br>` directly
+  // when `inTableCell`), and reading the old spelling stays only so a file an
+  // unreleased build already wrote still comes back whole.
+  //
+  // IT HAS A COST, AND THE COST IS NAMED RATHER THAN HIDDEN: a person who
+  // deliberately escaped `<br>` in an incoming vault means the literal
+  // characters, and this reads it as a line break. Narrowing it is a decision
+  // about how long files written during this wave keep working.
   content: [
     {
       type: "paragraph",
