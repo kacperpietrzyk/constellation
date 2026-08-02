@@ -2852,9 +2852,7 @@ const startProductionDesktop = async (): Promise<void> => {
    * learns a filesystem path, because a path it could send back is a path it
    * could change, and the second handler writes records.
    */
-  let obsidianScan:
-    | { readonly id: string; readonly root: string }
-    | undefined;
+  let obsidianScan: { readonly id: string; readonly root: string } | undefined;
   const obsidianPorts = (
     kernel: DurableKernelService,
   ): ObsidianImportPorts | undefined => {

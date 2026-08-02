@@ -146,7 +146,10 @@ const withMark = (
       : node,
   );
 
-const text = (value: string): MarkdownImportNode => ({ type: "text", text: value });
+const text = (value: string): MarkdownImportNode => ({
+  type: "text",
+  text: value,
+});
 
 /** `code` excludes every other mark in the schema, so it never nests. */
 const codeSpan = (value: string): MarkdownImportNode => ({
@@ -449,9 +452,12 @@ const parseInline = (
       const closing = findClosing(source, cursor.index + 2, "~", 2);
       if (closing !== -1) {
         push(
-          withMark(parseInline(source.slice(cursor.index + 2, closing), state), {
-            type: "strike",
-          }),
+          withMark(
+            parseInline(source.slice(cursor.index + 2, closing), state),
+            {
+              type: "strike",
+            },
+          ),
         );
         cursor.index = closing + 2;
         continue;
@@ -509,7 +515,9 @@ const parseInline = (
     cursor.index += 1;
   }
   flush();
-  return nodes.filter((node) => node.type !== "text" || (node.text ?? "").length > 0);
+  return nodes.filter(
+    (node) => node.type !== "text" || (node.text ?? "").length > 0,
+  );
 };
 
 const isTagStart = (source: string, index: number): boolean => {
@@ -586,7 +594,8 @@ const THEMATIC = /^([*_])(?:[ \t]*\1){2,}[ \t]*$/u;
 const BULLET = /^([-*+])[ \t]+(.*)$/u;
 const ORDERED = /^(\d{1,9})([.)])[ \t]+(.*)$/u;
 const QUOTE = /^>[ \t]?(.*)$/u;
-const TABLE_DELIMITER = /^\|?[ \t]*:?-{1,}:?[ \t]*(\|[ \t]*:?-{1,}:?[ \t]*)*\|?$/u;
+const TABLE_DELIMITER =
+  /^\|?[ \t]*:?-{1,}:?[ \t]*(\|[ \t]*:?-{1,}:?[ \t]*)*\|?$/u;
 const CALLOUT = /^\[![^\]]*\]/u;
 const SETEXT = /^(=+|-{2,})[ \t]*$/u;
 const TASK_BOX = /^\[[ xX]\][ \t]+/u;
@@ -693,7 +702,10 @@ const tableCell = (
         .flatMap((part, index) =>
           index === 0
             ? parseInline(part, state)
-            : [{ type: "hardBreak" } as MarkdownImportNode, ...parseInline(part, state)],
+            : [
+                { type: "hardBreak" } as MarkdownImportNode,
+                ...parseInline(part, state),
+              ],
         ),
     },
   ],
@@ -740,8 +752,10 @@ const parseBlocks = (
         if (
           closing.startsWith(marker[0]!) &&
           closing.replace(/[^`~]/gu, "").length >= marker.length &&
-          closing.replace(new RegExp(`[^${marker[0] === "`" ? "`" : "~"}]`, "gu"), "")
-            .length === closing.length
+          closing.replace(
+            new RegExp(`[^${marker[0] === "`" ? "`" : "~"}]`, "gu"),
+            "",
+          ).length === closing.length
         ) {
           index += 1;
           break;
@@ -768,7 +782,10 @@ const parseBlocks = (
       blocks.push({
         type: "heading",
         attrs: { level: heading[1]!.length },
-        content: parseInline((heading[2] ?? "").replace(/[ \t]+#+[ \t]*$/u, ""), state),
+        content: parseInline(
+          (heading[2] ?? "").replace(/[ \t]+#+[ \t]*$/u, ""),
+          state,
+        ),
       });
       index += 1;
       continue;
@@ -839,10 +856,12 @@ const parseBlocks = (
     const ordered = ORDERED.exec(body);
     if ((bullet !== null || ordered !== null) && indent < 4) {
       flushParagraph();
-      blocks.push(...[readList(lines, index, state)].flatMap((result) => {
-        index = result.next;
-        return [result.node];
-      }));
+      blocks.push(
+        ...[readList(lines, index, state)].flatMap((result) => {
+          index = result.next;
+          return [result.node];
+        }),
+      );
       continue;
     }
 

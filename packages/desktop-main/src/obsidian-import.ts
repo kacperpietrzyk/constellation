@@ -105,7 +105,9 @@ export const obsidianExternalId = (path: string): string => {
   // A path longer than the field is rare and must still be STABLE across runs,
   // because the whole point of the key is that a second run recognises it. The
   // tail is what differs between deep siblings, so the head is what gives way.
-  const tail = path.slice(-(MAX_EXTERNAL_ID_LENGTH - OBSIDIAN_EXTERNAL_ID_PREFIX.length - 1));
+  const tail = path.slice(
+    -(MAX_EXTERNAL_ID_LENGTH - OBSIDIAN_EXTERNAL_ID_PREFIX.length - 1),
+  );
   return `${OBSIDIAN_EXTERNAL_ID_PREFIX}…${tail}`;
 };
 
@@ -187,23 +189,33 @@ const titleOf = (path: string): string => {
 };
 
 /**
- * A lookup that answers exactly once or not at all.
+ * A lookup with THREE answers, not two: this one, several, or none.
  *
- * A key two files claim is deleted rather than kept, because a link naming it
- * is genuinely ambiguous and the vault requirement includes duplicate titles in
- * different folders. Silence is the honest answer; the alternative resolves
- * half of somebody's links to the wrong note.
+ * A key two files claim resolves to `ambiguous` rather than to the first
+ * claimant — the vault requirement includes duplicate titles in different
+ * folders, and picking one would point half of somebody's links at the wrong
+ * note with nothing saying it happened.
+ *
+ * `ambiguous` and `undefined` are kept APART on purpose, and that distinction
+ * is load-bearing rather than tidy: collapsed into one `undefined`, a vault
+ * holding two files called `Kickoff` and a workspace holding a Project called
+ * `Kickoff` resolved `[[Kickoff]]` to the PROJECT — the ambiguity fell through
+ * into the record search, and the rule that a note in the vault wins over a
+ * record of the same name inverted in exactly the case it exists for.
  */
+type VaultLookup =
+  | { readonly kind: "one"; readonly path: string }
+  | { readonly kind: "ambiguous" }
+  | undefined;
+
 const uniqueIndex = <Value>(
   entries: readonly (readonly [string, Value])[],
-): Map<string, Value> => {
-  const found = new Map<string, Value>();
-  const ambiguous = new Set<string>();
+): Map<string, Value | "ambiguous"> => {
+  const found = new Map<string, Value | "ambiguous">();
   for (const [key, value] of entries) {
-    if (found.has(key)) ambiguous.add(key);
+    if (found.has(key)) found.set(key, "ambiguous");
     else found.set(key, value);
   }
-  for (const key of ambiguous) found.delete(key);
   return found;
 };
 
@@ -222,7 +234,7 @@ const uniqueIndex = <Value>(
  */
 const vaultIndex = (
   paths: readonly string[],
-): ((target: string) => string | undefined) => {
+): ((target: string) => VaultLookup) => {
   const withoutExtension = (path: string): string =>
     path.replace(/\.md$/iu, "");
   const byPath = uniqueIndex(
@@ -232,21 +244,22 @@ const vaultIndex = (
     paths.map((path) => [baseNameOf(path), path] as const),
   );
   const byPathLower = uniqueIndex(
-    paths.map(
-      (path) => [withoutExtension(path).toLowerCase(), path] as const,
-    ),
+    paths.map((path) => [withoutExtension(path).toLowerCase(), path] as const),
   );
   const byBaseLower = uniqueIndex(
     paths.map((path) => [baseNameOf(path).toLowerCase(), path] as const),
   );
-  return (target: string) => {
+  return (target: string): VaultLookup => {
     const normalised = target.replace(/^\.?\//u, "").replace(/\.md$/iu, "");
-    return (
+    const found =
       byPath.get(normalised) ??
       byBase.get(normalised) ??
       byPathLower.get(normalised.toLowerCase()) ??
-      byBaseLower.get(normalised.toLowerCase())
-    );
+      byBaseLower.get(normalised.toLowerCase());
+    if (found === undefined) return undefined;
+    return found === "ambiguous"
+      ? { kind: "ambiguous" }
+      : { kind: "one", path: found };
   };
 };
 
@@ -272,7 +285,10 @@ export const planObsidianImport = (
   // -- parse every file once ------------------------------------------------
   const parsedFiles = new Map<
     string,
-    { readonly content: readonly MarkdownImportNode[]; readonly links: readonly MarkdownImportWikilink[] }
+    {
+      readonly content: readonly MarkdownImportNode[];
+      readonly links: readonly MarkdownImportWikilink[];
+    }
   >();
   for (const file of [...files].sort((left, right) =>
     left.path.localeCompare(right.path),
@@ -318,11 +334,16 @@ export const planObsidianImport = (
   const answerFor = (target: string): LinkAnswer => {
     const known = answers.get(target);
     if (known !== undefined) return known;
-    const path = inVault(target);
+    const found = inVault(target);
+    // AMBIGUOUS STOPS HERE. Falling through to the record search would let a
+    // Project called `Kickoff` answer for a link that names two files called
+    // `Kickoff`, which is worse than not resolving it: it is confidently wrong.
     const answer: LinkAnswer =
-      path !== undefined
-        ? { kind: "note", path }
-        : (() => {
+      found?.kind === "ambiguous"
+        ? { kind: "unresolved" }
+        : found !== undefined
+          ? { kind: "note", path: found.path }
+          : (() => {
             // Only then a RECORD: a link naming a project, a person or a note
             // that is already here rather than in the vault. Exact name, or
             // nothing — see `resolveRecord`.
@@ -382,10 +403,9 @@ export const planObsidianImport = (
       left.localeCompare(right),
   )) {
     const parentKey = directoryOf(key);
-    const name = key.slice(parentKey === "" ? 0 : parentKey.length + 1).slice(
-      0,
-      MAX_FOLDER_NAME_LENGTH,
-    );
+    const name = key
+      .slice(parentKey === "" ? 0 : parentKey.length + 1)
+      .slice(0, MAX_FOLDER_NAME_LENGTH);
     const parentId =
       parentKey === "" ? undefined : folderIdByKey.get(parentKey);
     // A folder whose parent is itself new cannot match anything, and asking
@@ -502,18 +522,23 @@ const resolutionFor = (
   return (link: MarkdownImportWikilink): MarkdownImportResolution => {
     const known = cache.get(link.target);
     if (known !== undefined) return known;
-    const path = inVault(link.target);
+    const found = inVault(link.target);
     const record =
-      path === undefined
+      found === undefined
         ? ports.resolveRecord(link.target)
-        : (() => {
-            const id = documentIdByPath.get(path);
-            // A note whose creation was refused resolves to NOTHING rather
-            // than to whatever a record search would find under its name.
-            return id === undefined
-              ? undefined
-              : { targetKind: "document", targetId: id };
-          })();
+        : found.kind === "ambiguous"
+          ? // Same rule as the plan's, and it MUST be the same rule: a preview
+            // that counted an ambiguous link as unresolved while the run
+            // resolved it to a record would be two answers for one link.
+            undefined
+          : (() => {
+              const id = documentIdByPath.get(found.path);
+              // A note whose creation was refused resolves to NOTHING rather
+              // than to whatever a record search would find under its name.
+              return id === undefined
+                ? undefined
+                : { targetKind: "document", targetId: id };
+            })();
     const answer: MarkdownImportResolution =
       record === undefined
         ? { kind: "unresolved" }
@@ -622,7 +647,8 @@ export const applyObsidianImport = (
     // A child whose parent was refused is not created at the ROOT instead:
     // that would scatter a subtree across the top of somebody's Library with
     // nothing saying why.
-    if (folder.parentKey !== undefined && parentFolderId === undefined) continue;
+    if (folder.parentKey !== undefined && parentFolderId === undefined)
+      continue;
     const folderId = newId();
     const outcome = send(
       "folder.create",

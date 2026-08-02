@@ -216,9 +216,10 @@ export const SettingsSurface = ({
     useState<SectionMessage>();
   const [busyVaultScan, setBusyVaultScan] = useState(false);
   const [busyVaultImport, setBusyVaultImport] = useState(false);
-  const [vaultScan, setVaultScan] = useState<
-    Extract<ObsidianVaultScanResult, { readonly outcome: "success" }>
-  >();
+  const [vaultScan, setVaultScan] =
+    useState<
+      Extract<ObsidianVaultScanResult, { readonly outcome: "success" }>
+    >();
   const [vaultMessage, setVaultMessage] = useState<SectionMessage>();
   const [conceptHelpTopic, setConceptHelpTopic] =
     useState<ConceptHelpTopicId>();
@@ -646,7 +647,10 @@ export const SettingsSurface = ({
     try {
       const result = await client.scanObsidianVault();
       if (result.outcome === "cancelled") {
-        setVaultMessage({ tone: "status", text: "Cancelled. Nothing was read." });
+        setVaultMessage({
+          tone: "status",
+          text: "Cancelled. Nothing was read.",
+        });
         return;
       }
       if (result.outcome === "empty") {
@@ -720,7 +724,7 @@ export const SettingsSurface = ({
           `Brought in ${countLabel(result.counts.notesCreated, "note")} and ` +
           `${countLabel(result.counts.foldersCreated, "folder")} from ${result.directoryLabel}.` +
           (result.counts.notesMatched > 0
-            ? ` ${countLabel(result.counts.notesMatched, "note")} was already here and was rewritten in place.`
+            ? ` ${countLabel(result.counts.notesMatched, "note")} came from a file already brought in, and had its text replaced with the file's.`
             : "") +
           (left.length > 0 ? ` ${left.join("; ")}.` : ""),
       });
@@ -1964,15 +1968,19 @@ export const SettingsSurface = ({
                 <h2>Import from Obsidian</h2>
                 <p>
                   Choose a vault folder. It is read where it stands: nothing in
-                  it is moved, renamed or deleted, and the scan writes nothing
-                  — you see what would happen before it does.
+                  it is moved, renamed or deleted, and the scan writes nothing —
+                  you see what would happen before it does.
                 </p>
                 <p>
                   Every folder becomes a folder and every <code>.md</code> file
                   becomes a note. A <code>[[link]]</code> to another note
                   becomes a real link between them; one that names nothing here
                   stays as the text you wrote, never a name that could go stale.
-                  Running it twice brings nothing in twice.
+                  Running it twice brings nothing in twice — but a note that
+                  came from a file before has its text REPLACED with what the
+                  file says now, so anything you wrote here since is
+                  overwritten. Only the text: the note keeps its place, its
+                  links to it, and every version it has passed through.
                 </p>
               </div>
               <div className="settings-control notes-import-control">
@@ -2010,7 +2018,9 @@ export const SettingsSurface = ({
                   disabled={busyVaultScan || !client?.scanObsidianVault}
                   onClick={() => void scanObsidianVault()}
                 >
-                  {busyVaultScan ? "Reading the vault…" : "Choose a vault folder…"}
+                  {busyVaultScan
+                    ? "Reading the vault…"
+                    : "Choose a vault folder…"}
                 </button>
                 {vaultScan && (
                   <div className="notes-import-preview" data-vault-scan="true">
@@ -2020,7 +2030,7 @@ export const SettingsSurface = ({
                         {countLabel(vaultScan.counts.notesCreated, "note")} to
                         bring in
                         {vaultScan.counts.notesMatched > 0 &&
-                          `, ${countLabel(vaultScan.counts.notesMatched, "note")} already here and rewritten in place`}
+                          `, ${countLabel(vaultScan.counts.notesMatched, "note")} already brought in before, whose text will be REPLACED with the file's`}
                         .
                       </li>
                       {/* MATCHED AND CREATED ARE SEPARATE NUMBERS ON PURPOSE.
@@ -2037,8 +2047,7 @@ export const SettingsSurface = ({
                       </li>
                       <li>
                         {countLabel(vaultScan.counts.links, "link")} between
-                        notes:{" "}
-                        {vaultScan.counts.linksToNotes} to a note,{" "}
+                        notes: {vaultScan.counts.linksToNotes} to a note,{" "}
                         {vaultScan.counts.linksToRecords} to a record,{" "}
                         {vaultScan.counts.linksUnresolved} pointing at nothing
                         here.
@@ -2086,9 +2095,7 @@ export const SettingsSurface = ({
                     <button
                       type="button"
                       data-notes-import-run="true"
-                      disabled={
-                        busyVaultImport || !client?.importObsidianVault
-                      }
+                      disabled={busyVaultImport || !client?.importObsidianVault}
                       onClick={() => void importObsidianVault()}
                     >
                       {busyVaultImport

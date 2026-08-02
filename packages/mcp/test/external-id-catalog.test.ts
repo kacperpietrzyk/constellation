@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 
-import { buildOperationCatalog, completeOperationScope } from "../src/catalog.js";
+import {
+  buildOperationCatalog,
+  completeOperationScope,
+} from "../src/catalog.js";
 
 /**
  * THE CATALOGUE'S OWN LIST OF WHICH COMMANDS CLAIM A SOURCE KEY, held against
@@ -38,9 +41,7 @@ it("names every command that claims a source key, and no other", () => {
           };
         };
       };
-      return (
-        envelope.properties?.payload?.properties?.externalId !== undefined
-      );
+      return envelope.properties?.payload?.properties?.externalId !== undefined;
     })
     .map((operation) => operation.name)
     .sort();
@@ -52,10 +53,9 @@ it("names every command that claims a source key, and no other", () => {
   // The ENUMERATION ITSELF, read out of the sentence rather than searched for
   // inside it. "Does the paragraph mention this name" is the check that came
   // back green on a deleted list.
-  const enumerated =
-    /an optional field on (.*?): put the identity/u.exec(
-      catalog.guidance.command ?? "",
-    )?.[1];
+  const enumerated = /an optional field on (.*?): put the identity/u.exec(
+    catalog.guidance.command ?? "",
+  )?.[1];
   assert.ok(enumerated, "the guidance no longer enumerates the field at all");
   assert.deepEqual(
     enumerated.split(", ").sort(),

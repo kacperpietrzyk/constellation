@@ -105,14 +105,7 @@ test("a code fence keeps its language and its own backticks", () => {
 
 test("lists nest, and an item that opens with a list still parses", () => {
   const document = roundTrips(
-    [
-      "- one",
-      "  - deeper",
-      "- two",
-      "",
-      "3. third",
-      "4. fourth",
-    ].join("\n"),
+    ["- one", "  - deeper", "- two", "", "3. third", "4. fourth"].join("\n"),
     "the lists did not survive a round trip",
   );
   const bullet = document.content[0];
@@ -330,7 +323,10 @@ test("Polish titles match exactly, because ł has no decomposition to fold", () 
   // reason. The link and the file name are compared as written.
   const result = parseMarkdownImport("Zobacz [[Wdrożenie w Łodzi]].");
   assert.equal(result.wikilinks[0]?.target, "Wdrożenie w Łodzi");
-  assert.equal(result.wikilinks[0]?.target.normalize("NFD"), "Wdrożenie w Łodzi".normalize("NFD"));
+  assert.equal(
+    result.wikilinks[0]?.target.normalize("NFD"),
+    "Wdrożenie w Łodzi".normalize("NFD"),
+  );
   const document = roundTrips(
     "Zażółć gęślą jaźń — **łódź** w Łodzi.",
     "Polish text did not survive a round trip",

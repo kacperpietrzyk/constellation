@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -23,7 +29,10 @@ const vault = (
     mkdirSync(path.dirname(absolute), { recursive: true });
     writeFileSync(absolute, text);
   }
-  return { root, dispose: () => rmSync(root, { recursive: true, force: true }) };
+  return {
+    root,
+    dispose: () => rmSync(root, { recursive: true, force: true }),
+  };
 };
 
 test("markdown is read with its vault-relative path, and other files are not", () => {
@@ -72,7 +81,10 @@ test("a symlink is not followed, so a scan cannot leave the chosen folder", () =
   const { root, dispose } = vault({ "Real.md": "real" });
   try {
     symlinkSync(outside.root, path.join(root, "escape"));
-    symlinkSync(path.join(outside.root, "Secret.md"), path.join(root, "Link.md"));
+    symlinkSync(
+      path.join(outside.root, "Secret.md"),
+      path.join(root, "Link.md"),
+    );
     assert.deepEqual(
       readObsidianVault(root).files.map((file) => file.path),
       ["Real.md"],
@@ -96,7 +108,9 @@ test("a file that is not UTF-8 is refused by name rather than imported as mojiba
       result.files.map((file) => file.path),
       ["Fine.md"],
     );
-    assert.deepEqual(result.refused, [{ path: "Latin.md", reason: "not_utf8" }]);
+    assert.deepEqual(result.refused, [
+      { path: "Latin.md", reason: "not_utf8" },
+    ]);
   } finally {
     dispose();
   }

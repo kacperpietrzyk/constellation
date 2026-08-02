@@ -196,7 +196,8 @@ test("the preview names the files it cannot store and the links that answer to n
     /Latin\.md/u,
   );
   const unresolved =
-    container.querySelector('[data-vault-unresolved="true"]')?.textContent ?? "";
+    container.querySelector('[data-vault-unresolved="true"]')?.textContent ??
+    "";
   assert.match(unresolved, /\[\[Wdrożenie w Łodzi\]\]/u);
   assert.match(unresolved, /stay as the text you wrote/u);
 });

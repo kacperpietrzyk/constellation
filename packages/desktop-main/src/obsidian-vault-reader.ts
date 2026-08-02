@@ -29,11 +29,7 @@ export const MAX_VAULT_FILE_BYTES = 8 * 1024 * 1024;
 export const MAX_VAULT_DEPTH = 32;
 
 export type ObsidianVaultRefusal =
-  | "file_too_large"
-  | "not_utf8"
-  | "unreadable"
-  | "too_deep"
-  | "vault_too_large";
+  "file_too_large" | "not_utf8" | "unreadable" | "too_deep" | "vault_too_large";
 
 export interface ObsidianVaultReadResult {
   readonly files: readonly ObsidianVaultFile[];

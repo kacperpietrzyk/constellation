@@ -337,11 +337,13 @@ test("a link to a note becomes a document reference and a broken one stays text"
 
   const list = knowledgeList(service);
   const kickoff = list.documents.find(
-    (document) => document.externalId === obsidianExternalId("Klienci/Falcon/Kickoff.md"),
+    (document) =>
+      document.externalId === obsidianExternalId("Klienci/Falcon/Kickoff.md"),
   )!;
   const rollout = list.documents.find(
     (document) =>
-      document.externalId === obsidianExternalId("Klienci/Wdrożenie w Łodzi.md"),
+      document.externalId ===
+      obsidianExternalId("Klienci/Wdrożenie w Łodzi.md"),
   )!;
   const body = written.get(kickoff.id)!;
   const inline = body.content[0]?.content ?? [];
@@ -377,13 +379,54 @@ test("a name two files share resolves to neither, rather than to whichever came 
   );
   // A PATH is not ambiguous, so the same vault resolves the explicit form.
   const explicit = planObsidianImport(
-    [
-      ...vault,
-      { path: "Explicit.md", text: "[[Klienci/Orbit/Kickoff]]" },
-    ],
-    { readExisting: () => ({ folders: [], documents: [] }), resolveRecord: () => undefined },
+    [...vault, { path: "Explicit.md", text: "[[Klienci/Orbit/Kickoff]]" }],
+    {
+      readExisting: () => ({ folders: [], documents: [] }),
+      resolveRecord: () => undefined,
+    },
   );
   assert.equal(explicit.counts.linksToNotes, 2);
+});
+
+/**
+ * AN AMBIGUOUS VAULT NAME IS UNRESOLVABLE, and it does NOT fall through to a
+ * record search.
+ *
+ * The discriminating case, and the one the first version of the ambiguity test
+ * could not see because it answered `undefined` to every record: two files
+ * called `Kickoff` PLUS a Project called `Kickoff`. Collapsing "several files
+ * claim this" into "no file claims this" sent the link to the Project — which
+ * is confidently wrong, and inverts the rule that a note in the vault wins over
+ * a record of the same name in exactly the case that rule exists for.
+ *
+ * BROKEN BY: removing the `ambiguous` arm from `answerFor` or from
+ * `resolutionFor` — they must stay one rule.
+ */
+test("an ambiguous name is not handed to the record search instead", () => {
+  const service = bootstrapped();
+  const written = new Map<string, StructuredDocument>();
+  const { plan, result } = applied(service, vault, written, {
+    Kickoff: {
+      targetKind: "project",
+      targetId: "3d000000-0000-4000-8000-0000000000a3",
+    },
+  });
+  assert.equal(plan.counts.linksToRecords, 0, "an ambiguous link found a record");
+  assert.ok(plan.unresolvedTargets.includes("Kickoff"));
+  assert.equal(result.linksUnresolved, 4);
+  const rollout = [...written.values()].find((document) =>
+    (document.content[0]?.content ?? []).some((node) =>
+      (node.text ?? "").includes("[[Kickoff]]"),
+    ),
+  );
+  assert.ok(rollout, "the ambiguous link did not stay as the text that was written");
+  assert.equal(
+    (rollout.content[0]?.content ?? []).some(
+      (node) => node.type === "entityReference",
+    ),
+    false,
+    "an ambiguous link became a reference to something",
+  );
 });
 
 test("a link naming a record becomes that record's reference", () => {
@@ -470,7 +513,10 @@ test("the plan counts what the vault holds that this model cannot express", () =
         ].join("\n"),
       },
     ],
-    { readExisting: () => ({ folders: [], documents: [] }), resolveRecord: () => undefined },
+    {
+      readExisting: () => ({ folders: [], documents: [] }),
+      resolveRecord: () => undefined,
+    },
   );
   assert.deepEqual(plan.constructs, {
     frontmatter: 1,
@@ -498,7 +544,11 @@ test("a file renamed in the vault arrives as a new note, and a renamed note is r
     readExisting: () => ({
       folders: [],
       documents: [
-        { id: stored.id, title: "Renamed by hand", externalId: stored.externalId },
+        {
+          id: stored.id,
+          title: "Renamed by hand",
+          externalId: stored.externalId,
+        },
       ],
     }),
     resolveRecord: () => undefined,

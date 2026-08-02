@@ -151,7 +151,11 @@ const projection = <Kind extends string>(
 /** PROJECTION HOME 1 of 4 — the read the desktop import enumerates. */
 it("projects externalId into knowledge.list.documents", () => {
   const harness = bootstrapped();
-  const imported = createNote(harness, "Kickoff", "obsidian:Klienci/Kickoff.md");
+  const imported = createNote(
+    harness,
+    "Kickoff",
+    "obsidian:Klienci/Kickoff.md",
+  );
   const typed = createNote(harness, "Written here");
 
   const documents = projection(harness, "knowledge.list", {
