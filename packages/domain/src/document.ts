@@ -32,3 +32,27 @@ export const createNativeDocument = (input: {
   createdAt: input.occurredAt,
   updatedAt: input.occurredAt,
 });
+
+/**
+ * The note's title, replaced.
+ *
+ * It lives here rather than beside `setDocumentFolder` in `folder.ts` for the
+ * reason that file gives for holding a document helper at all: the move is
+ * part of the FOLDER tree and reads as one. A rename is not — it touches
+ * nothing outside the note, which is why it is the second function in this
+ * file rather than the third in that one.
+ *
+ * `title` is required on the record, so this replaces a value and never
+ * introduces or removes a key; there is no absent state to spell and no
+ * destructuring to do.
+ */
+export const renameNativeDocument = (
+  document: NativeDocument,
+  title: string,
+  occurredAt: string,
+): NativeDocument => ({
+  ...document,
+  title,
+  version: document.version + 1,
+  updatedAt: occurredAt,
+});

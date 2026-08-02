@@ -218,13 +218,18 @@ describe("document entity link vocabulary", () => {
         checkedKinds(tableSql(migrated, LIVE_LINK_TABLE)),
         [...DOCUMENT_ENTITY_TARGET_KINDS].sort(),
       );
+      // Derived, never pinned. Written as a literal `26` this went red the
+      // moment the next lot added a migration — an assertion about somebody
+      // else's version number standing still, reported as this lot's
+      // regression. The claim is "the sweep finished", and the sweep finishes
+      // at whatever the current version is.
       assert.equal(
         (
           migrated.prepare("PRAGMA user_version").get() as {
             readonly user_version: number;
           }
         ).user_version,
-        26,
+        LOCAL_STORE_SCHEMA_VERSION,
       );
       migrated.close();
     });

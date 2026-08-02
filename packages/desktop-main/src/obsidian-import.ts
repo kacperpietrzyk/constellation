@@ -452,10 +452,14 @@ export const planObsidianImport = (
     const folderKey = directoryOf(path);
     if (known !== undefined) {
       notesMatched += 1;
-      // THERE IS NO `document.rename`. A note whose file was renamed in the
-      // vault keeps the title Constellation already holds; only its body is
-      // rewritten. Reported rather than papered over — inventing a command in
-      // an import lot is how a domain change arrives without a decision.
+      // `document.rename` NOW EXISTS, and this import still does not send it.
+      // A note whose file was renamed in the vault keeps the title
+      // Constellation already holds; only its body is rewritten. What was
+      // missing when #210 wrote this counter was the command; what is missing
+      // now is a DECISION — whether a re-import may overwrite a title somebody
+      // edited here, and in which direction the vault wins. The counter and
+      // `storedTitle` below carry both titles to whoever takes it; taking it
+      // inside an import lot is how a product change arrives without one.
       if (known.title !== title) titlesDiverged += 1;
     }
     for (const link of parsedFile.links) {

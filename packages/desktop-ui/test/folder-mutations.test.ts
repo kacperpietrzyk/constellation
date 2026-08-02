@@ -15,6 +15,7 @@ import {
   createDocument,
   createFolder,
   removeFolder,
+  renameDocument,
   renameFolder,
   setDocumentFolder,
   setFolderParent,
@@ -124,6 +125,13 @@ const projectionFor = (command: CommandEnvelope) => {
         documentId: payload["documentId"],
         version: 2,
       };
+    case "document.rename":
+      return {
+        kind: "document.renamed",
+        documentId: payload["documentId"],
+        title: payload["title"],
+        version: 2,
+      };
     default:
       return {
         kind: "document.created",
@@ -191,6 +199,26 @@ test("filing a note into a folder sends the destination and only the note's vers
   assert.deepEqual(payloadKeys(envelope), ["documentId", "folderId"]);
   // The exact key set, not "the note is in there": `exactExpected` treats one
   // id too many as a conflict, and the folder is NOT written by this command.
+  assert.deepEqual(versionKeys(envelope), [documentId]);
+  assert.deepEqual(envelope.expectedVersions, { [documentId]: 3 });
+});
+
+test("renaming a note sends the title and only the note's version", async () => {
+  const sent: CommandEnvelope[] = [];
+  const result = await renameDocument(
+    recordingClient(sent),
+    snapshot(),
+    { id: documentId, version: 3 },
+    "Falcon — podsumowanie",
+  );
+  assert.equal(result.kind, "success");
+  const envelope = onlyEnvelope(sent);
+  assert.equal(envelope.commandName, "document.rename");
+  assert.deepEqual(payloadKeys(envelope), ["documentId", "title"]);
+  // The EXACT key set, for the reason the comment above gives and for the one
+  // `resolveRenewal` paid for in Wave C: a wrapper that sends one version
+  // where the kernel demands another is refused as a conflict the caller
+  // cannot act on, and "the note's key is present" would not have caught it.
   assert.deepEqual(versionKeys(envelope), [documentId]);
   assert.deepEqual(envelope.expectedVersions, { [documentId]: 3 });
 });

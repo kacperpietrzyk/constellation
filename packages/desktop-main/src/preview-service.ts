@@ -32,6 +32,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "project.create",
   "project.remove",
   "document.create",
+  "document.rename",
   "document.remove",
   "document.setFolder",
   "folder.create",
