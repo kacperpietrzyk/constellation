@@ -92,6 +92,29 @@ test("headings, paragraphs and emphasis round-trip through the serialiser", () =
   assert.deepEqual(marks, ["bold", "italic", "strike", "underline"]);
 });
 
+/**
+ * THE ROUND TRIP IS A FIXED-POINT PROPERTY AND CANNOT SEE THIS.
+ *
+ * Dropping the `code` mark makes `` `x` `` parse as the plain text `x`, which
+ * serialises to `x` and parses back to `x` — stable, and lossy on the FIRST
+ * pass, where the round trip has nothing to compare against. Caught by breaking
+ * the mark and watching seventeen tests stay green. Each construct therefore
+ * carries its own assertion beside the property.
+ */
+test("a code span keeps the mark that makes it code", () => {
+  const document = parsed("Run `npm run check` now.");
+  const span = (document.content[0]?.content ?? []).find((node) =>
+    (node.marks ?? []).some((mark) => mark.type === "code"),
+  );
+  assert.equal(span?.text, "npm run check");
+  // `code` excludes every other mark in the schema, so nothing else may ride
+  // along — a second mark here is refused by `assertMarks`, losing the note.
+  assert.deepEqual(
+    span?.marks?.map((mark) => mark.type),
+    ["code"],
+  );
+});
+
 test("a code fence keeps its language and its own backticks", () => {
   const document = roundTrips(
     ["````ts", "const fence = `` ` ``;", "````"].join("\n"),
@@ -357,6 +380,37 @@ test("escapes come back as themselves rather than accreting backslashes", () => 
 test("an empty file becomes an empty note rather than a failure", () => {
   const document = parsed("");
   assert.deepEqual(document.content, [{ type: "paragraph" }]);
+});
+
+/**
+ * THE ROUND TRIP AS A CORPUS, not as one example.
+ *
+ * Each case above proves one construct; this proves that the property holds
+ * across the ordinary shapes a vault is actually made of, including the ones
+ * nothing else here exercises — a nested quote, an intraword underscore, a bare
+ * URL, an ordered item with a continuation line, an empty table cell.
+ *
+ * It is a LOOP over data rather than nine more tests because what is asserted
+ * is one property; a failure names the case, which is the only thing nine tests
+ * would have added.
+ */
+test("the round trip holds across the shapes a vault is made of", () => {
+  for (const source of [
+    "10. first\n    continued here\n11. second",
+    "- item\n\n  second paragraph of the item\n\n- next",
+    "Text with a URL https://example.com bare.",
+    "## Heading with `code` and **bold**",
+    "> quote\n> > nested quote",
+    "| a |\n| --- |\n| |",
+    "Line one\nLine two in the same paragraph.",
+    "***bold and italic***",
+    "a_b_c snake_case_name stays",
+    "# Cel\n\nZażółć **gęślą** jaźń — [[Wdrożenie w Łodzi]] i #tag.",
+  ])
+    roundTrips(
+      source,
+      `did not survive a round trip: ${JSON.stringify(source)}`,
+    );
 });
 
 test("a blockquote holding a list and a paragraph keeps both", () => {
