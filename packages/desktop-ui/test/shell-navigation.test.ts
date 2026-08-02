@@ -27,6 +27,7 @@ import {
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
   serializeShellNavigation,
+  settingsCategoryContext,
   taskContext,
 } from "../src/client/shell-navigation.js";
 
@@ -302,9 +303,19 @@ describe("shell navigation across a version upgrade", () => {
       legacy,
       destinationContext("today", "Today"),
     );
+    // PIĘĆ ZAKŁADEK Z SZEŚCIU ZAPISANYCH, i ta jedna różnica jest defektem
+    // naprawionym w fali E, a nie regresją tego testu. `documents` i `history`
+    // schodzą się OBA na `library`, więc ten zapis odtwarzał DWIE zakładki
+    // o identycznym kluczu `destination:library` — dwa identyczne `key` Reacta
+    // w pasku, `activeKey` pasujący do obu i zamykanie, które nie umie ich
+    // rozróżnić. Ten test asertował ten dubel jako zachowanie.
+    //
+    // ZNALEZIONE PRZY LOCIE `activity`, ALE STARSZE OD NIEGO: dubel jest żywy
+    // od wycofania `history` w fali Knowledge, czyli od 0.2.0 — a nie, jak
+    // zakładał rekonesans, dopiero od drugiego celu schodzącego na `settings`.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.surface),
-      ["today", "inbox", "library", "organizations", "tasks", "library"],
+      ["today", "inbox", "library", "organizations", "tasks"],
     );
     // Etykieta i klucz idą razem z celem. Zapis niesie WŁASNĄ kopię napisu,
     // więc bez tego pierwsze uruchomienie po przebudowie pokazuje angielską
@@ -313,7 +324,7 @@ describe("shell navigation across a version upgrade", () => {
     // raz.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.label),
-      ["Today", "Inbox", "Library", "Organizations", "Tasks", "Library"],
+      ["Today", "Inbox", "Library", "Organizations", "Tasks"],
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.key),
@@ -323,8 +334,11 @@ describe("shell navigation across a version upgrade", () => {
         "destination:library",
         "destination:organizations",
         "destination:tasks",
-        "destination:library",
       ],
+    );
+    assert.equal(
+      new Set(restored.tabs.map((tab) => tab.key)).size,
+      restored.tabs.length,
     );
     // Zapisany `activeKey` wskazywał starą nazwę; gdyby nie przeszedł tej samej
     // migracji, nie trafiałby w żadną odtworzoną zakładkę i CAŁA sesja
@@ -440,6 +454,111 @@ describe("shell navigation across a version upgrade", () => {
       restored.history.map((entry) => entry.surface),
       ["settings"],
     );
+  });
+
+  // OBA WYCOFANE CELE W JEDNEJ SESJI — i to jest przypadek, który staje się
+  // osiągalny dopiero teraz, kiedy DRUGI identyfikator schodzi na `settings`.
+  //
+  // Bez scalania kluczy ten zapis odtwarza DWIE zakładki niosące identyczny
+  // `destination:settings`: dwa identyczne `key` Reacta w pasku, `activeKey`
+  // pasujący do obu i zamknięcie, które nie umie ich rozróżnić. Nic nie rzuca.
+  //
+  // TRZECIA ZAKŁADKA JEST NOŚNA. Bez `tasks` obie awarie wyglądają tak samo:
+  // „została jedna zakładka" można dostać i scaleniem, i odrzuceniem CAŁEJ
+  // sesji do fallbacku `today`. Z trzema zakładkami odrzucenie daje jedną
+  // zakładkę, a scalenie trzy — i te dwa wyniki już się różnią.
+  it("merges two retired tabs that resolve onto the same successor", () => {
+    const saved = JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          { key: "destination:today", label: "Today", surface: "today" },
+          {
+            key: "destination:activity",
+            label: "Activity",
+            surface: "activity",
+          },
+          { key: "destination:tasks", label: "Tasks", surface: "tasks" },
+          { key: "destination:access", label: "Access", surface: "access" },
+        ],
+        activeKey: "destination:access",
+        history: [
+          { key: "destination:today", label: "Today", surface: "today" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      saved,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today", "settings", "tasks"],
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.key),
+      ["destination:today", "destination:settings", "destination:tasks"],
+    );
+    assert.equal(
+      new Set(restored.tabs.map((tab) => tab.key)).size,
+      restored.tabs.length,
+      "dwie zakładki o tym samym kluczu to jedna pozycja, która czasem znika",
+    );
+    // ZOSTAJE PIERWSZA, i po scaleniu obie są nierozróżnialne: etykieta
+    // zakładki-celu czyta się z rejestru, więc obie mówią „Settings" i żadna
+    // nie niesie kategorii. Gdyby migracja przypisywała im RÓŻNE kategorie,
+    // „pierwsza" przestałaby być wyborem bez treści.
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.label),
+      ["Today", "Settings", "Tasks"],
+    );
+    assert.equal(
+      restored.tabs.every((tab) => tab.settingsCategory === undefined),
+      true,
+    );
+    // `activeKey` zapisany na drugim z dubli trafia w scaloną zakładkę.
+    assert.equal(restored.activeKey, "destination:settings");
+  });
+
+  // Głęboki link przeżywa zapis, tak samo jak odczyt Biblioteki niżej: paleta
+  // otwiera taflę „Activity" jako Ustawienia NA kategorii `data`, a zakładka ma
+  // się odtworzyć jako to, czym była.
+  it("keeps a settings category on a saved tab, and refuses one outside the vocabulary", () => {
+    const deep = settingsCategoryContext("data");
+    assert.equal(deep.key, "destination:settings");
+    const restored = restoreShellNavigation(
+      serializeShellNavigation(createShellNavigation(deep)),
+      destinationContext("today", "Today"),
+    );
+    assert.equal(activeShellContext(restored).settingsCategory, "data");
+
+    const stranger = restoreShellNavigation(
+      JSON.stringify({
+        version: 3,
+        state: {
+          tabs: [
+            {
+              key: "destination:settings",
+              label: "Settings",
+              surface: "settings",
+              settingsCategory: "billing",
+            },
+          ],
+          activeKey: "destination:settings",
+          history: [
+            { key: "destination:today", label: "Today", surface: "today" },
+          ],
+          historyIndex: 0,
+        },
+      }),
+      destinationContext("today", "Today"),
+    );
+    // Kategoria spoza słownika odrzuca CAŁY zapis — ekran przewijałby do
+    // identyfikatora, którego nie ma, i otwierał się na kategorii wybranej po
+    // cichu przez własny stan.
+    assert.equal(activeShellContext(stranger).surface, "today");
+    assert.equal(stranger.tabs.length, 1);
   });
 
   // Odczyt jest częścią kontekstu, więc przeżywa zapis: wrzutka głosowa

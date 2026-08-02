@@ -30,6 +30,7 @@ import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
 import type { WorkContextKind } from "./record-narrative.js";
+import type { SettingsCategoryId } from "./settings-categories.js";
 import { LazySurfaceBoundary } from "./SurfaceLifecycleStates.js";
 import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
@@ -936,9 +937,18 @@ export const SearchOverlay = ({
     readonly id: SurfaceId;
     readonly label: string;
     readonly shortcut?: string;
+    /** Ustawiane, gdy cel otwiera TAFLĘ w kategorii Ustawień, a nie sam ekran.
+     *  Paleta bierze cele z rejestru powierzchni, więc wycofanie celu zabiera
+     *  mu wpis — a zakopanie dziennika nie ma prawa zmniejszyć jego
+     *  osiągalności do „zapamiętaj, w której kategorii on leży". */
+    readonly settingsCategory?: SettingsCategoryId;
   }[];
   readonly onClose: () => void;
-  readonly onOpenDestination: (surface: SurfaceId, label: string) => void;
+  readonly onOpenDestination: (
+    surface: SurfaceId,
+    label: string,
+    settingsCategory?: SettingsCategoryId,
+  ) => void;
   readonly onNavigate: (surface: SurfaceId, recordId: string) => void;
 }) => {
   const [query, setQuery] = useState("");
@@ -1020,7 +1030,7 @@ export const SearchOverlay = ({
   const chooseIndex = (index: number) => {
     const command = commandResults[index];
     if (command !== undefined) {
-      onOpenDestination(command.id, command.label);
+      onOpenDestination(command.id, command.label, command.settingsCategory);
       onClose();
       return;
     }
@@ -1106,7 +1116,11 @@ export const SearchOverlay = ({
             {state.kind === "idle" && <p role="presentation">Open a view</p>}
             {commandResults.map((item, index) => (
               <button
-                key={`command:${item.id}`}
+                /* Klucz niesie TAKŻE kategorię: dwa cele mogą mieć ten sam
+                   identyfikator powierzchni („Settings" i tafla „Activity"
+                   w niej), a dwa identyczne klucze Reacta w liście to jedna
+                   pozycja, która czasem znika. */
+                key={`command:${item.id}:${item.settingsCategory ?? ""}`}
                 id={`search-option-${index}`}
                 type="button"
                 tabIndex={-1}

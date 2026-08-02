@@ -153,7 +153,7 @@ loops.push({
           edit: (text) =>
             replaceOnce(
               text,
-              "export const MINIMUM_READING_HEIGHT_FRACTION = 0.5;",
+              "export const MINIMUM_READING_HEIGHT_FRACTION = 0.35;",
               "export const MINIMUM_READING_HEIGHT_FRACTION = 0;",
               "the floor",
             ),
@@ -168,7 +168,7 @@ loops.push({
           edit: (text) =>
             replaceOnce(
               text,
-              "export const MINIMUM_READING_HEIGHT_FRACTION = 0.5;",
+              "export const MINIMUM_READING_HEIGHT_FRACTION = 0.35;",
               "export const MINIMUM_READING_HEIGHT_FRACTION = 0.9;",
               "the floor, tightened",
             ),

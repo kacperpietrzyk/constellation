@@ -1,0 +1,359 @@
+/* The Activity pane of the Data and privacy category. It used to be a
+   destination with its own stylesheet (`activity-surface.css`, a global sheet
+   of 27 `.activity-*` classes) and is now a pane inside Settings.
+
+   A CSS MODULE, not `styles.css`, and the reason is the same one that decided
+   `access-section.module.css` in #215: the budget that binds a merge into
+   Settings is `hotPathStylesheetBytes`, and `styles.css` is linked from
+   `index.html`. A module travels inside the lazy Settings chunk and costs the
+   hot path nothing.
+
+   THE CLASSES ARE ALSO WHAT MAKES THE LAYOUT GATE STILL ABLE TO SEE THIS PANE,
+   and that is not a side effect. The debt registry matched this content as
+   `activity / h3` and `activity / p` — BARE TAG signatures, which were
+   unambiguous only while `activity` was a screen of its own. Inside Settings
+   every one of six categories draws `<p>` in `.settings-copy`, and the gate
+   keeps the WIDEST descendant per signature per surface, so `settings / p`
+   would have quietly policed the whole Settings page instead of this pane. The
+   moved entries were re-keyed to `h3._stateTitle` and `p._stateDetail`, which
+   name one element each. The narrowing is deliberate — and it is what let the
+   overflow be measured at its new address instead of policing the whole page;
+   see the container query at the bottom for what the measurement then found.
+
+   No `container-type` here: `.settings-sections` (`styles.css`) is already an
+   inline-size container, so the query below resolves against the column this
+   pane is drawn in. */
+
+.root {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border-top: 1px solid var(--border-default);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.head > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.resultCount {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(11rem, 1fr) auto auto;
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 3%, transparent);
+}
+
+.search {
+  min-width: 0;
+  min-height: 2.5rem;
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--text-quaternary);
+}
+
+.search:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--focus-ring) 24%, transparent);
+}
+
+.search input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--input-text);
+}
+
+.search input::placeholder {
+  color: var(--input-placeholder);
+}
+
+.categoryControl {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+
+.categoryControl select {
+  min-width: 9rem;
+  min-height: 2.5rem;
+}
+
+.clearFilters {
+  min-height: 2.5rem;
+}
+
+.groups {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.group {
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-rest);
+}
+
+.group > header {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+}
+
+.groupTitle,
+.group > header span {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 620;
+}
+
+.groupTitle {
+  min-width: 0;
+  color: var(--text-secondary);
+  letter-spacing: -0.01em;
+}
+
+.group > header span,
+.rowCopy code {
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  min-height: 5rem;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.kindMark {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+/* One class per activity category. The keys are the category ids, because the
+   component indexes this sheet by the id it already computed — a second
+   spelling of the same vocabulary is how the row mark and the row copy drift
+   apart. */
+.capture {
+  border-style: dashed;
+}
+
+.collaboration {
+  border-radius: var(--radius-full);
+}
+
+.knowledge {
+  box-shadow: inset 0 -2px 0 var(--border-strong);
+}
+
+.recovery {
+  font-size: var(--text-sm);
+}
+
+.rowCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.rowCopy strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 580;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowCopy small {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 620;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.rowCopy code {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+@container (max-width: 38.75rem) {
+  /* FULL BLEED, and the number is the one `access-section.module.css` measured
+     first: the Settings surface already pays the surface padding, so a second
+     inset spends 34 px of a 224 px column twice. The groups are panels with
+     their own border, so letting them reach the category edge costs nothing. */
+  .root {
+    padding-inline: 0;
+  }
+
+  .head {
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-inline: var(--space-4);
+  }
+
+  .controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-inline: var(--space-4);
+  }
+
+  .group {
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  .search {
+    min-height: 2.75rem;
+    grid-column: 1 / -1;
+  }
+
+  .categoryControl {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .categoryControl select {
+    min-width: 0;
+    min-height: 2.75rem;
+  }
+
+  .clearFilters {
+    min-height: 2.75rem;
+    align-self: end;
+  }
+
+  .row {
+    grid-template-columns: 2rem minmax(0, 1fr);
+  }
+
+  .row button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  /* STAN PUSTY UKŁADA SIĘ W DWIE KOLUMNY, i to jest POPRAWKA DEFEKTU, a nie
+     dostrojenie. `.empty-state` (`styles.css`) jest siatką 2.25rem / 1fr /
+     auto, a jej reguła składania stoi pod `@media (max-width: 50rem)` — czyli
+     pod SZEROKOŚCIĄ OKNA. Rzecz, która ten układ rozwala, to SKALA TEKSTU:
+     w `@media` jednostka `rem` liczy się od POCZĄTKOWEGO rozmiaru czcionki
+     (16 px), więc przy tekście 200% w oknie 1024 px zapytanie nie odpala,
+     a przycisk „Try again" — który skaluje się z tekstem — zabiera trzecią
+     kolumnę prawie w całości.
+     ZMIERZONE PRZED POPRAWKĄ, w tym pudełku: kolumna tekstu miała
+     13 px szerokości treści przy 146 px potrzebnych. To jest ZEROWA SZEROKOŚĆ
+     TREŚCI ekranu rekordu w miniaturze — ta sama klasa co nagłówek tej fali —
+     i rejestr długu bramki niósł ją jako `activity h3 +53` / `p +33`, czyli
+     jako objaw.
+     TU JEST TO ZAPYTANIE KONTENEROWE, a nie okna, i dlatego działa: mierzy
+     kolumnę, w której ta tafla naprawdę stoi, a `rem` w `@container` liczy się
+     od BIEŻĄCEGO rozmiaru czcionki korzenia. Reguła siedzi w module tej tafli,
+     więc nie rusza stanu pustego żadnego innego ekranu — globalna
+     `.empty-state` należy do wątku skalowania interfejsu, który koordynator
+     odłożył ZA falę E (R3-5). */
+  .root :global(.empty-state) {
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+  }
+
+  .root :global(.empty-state) :global(.secondary-button) {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* Nazwy dla rejestru długu bramki układu, i nic poza nimi — zero deklaracji,
+   bo tu nie ma czego stylować. Gołe `h3` i `p` w stanie pustym były
+   jednoznaczną sygnaturą tylko dopóki `activity` było własnym ekranem;
+   wewnątrz Ustawień `settings / p` pilnowałoby najszerszego `p` z całej
+   sześciokategoriowej strony. Klasa CSS Modułu jest tu identyfikatorem, nie
+   stylem — i dlatego ma pusty blok zamiast nieistniejącej reguły. */
+.stateCopy {
+  min-width: 0;
+}
+
+.stateTitle,
+.stateDetail {
+  min-width: 0;
+}

@@ -9,7 +9,6 @@ export type IconName =
   | "close"
   | "project"
   | "cockpit"
-  | "activity"
   | "attention"
   | "access"
   | "documents"
@@ -30,7 +29,6 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     close: <path d="m6 6 12 12M18 6 6 18" />,
     project: <path d="M4 5h6l2 2h8v12H4z" />,
     cockpit: <path d="M4 5h7v6H4zM13 5h7v10h-7zM4 13h7v6H4zM13 17h7v2h-7z" />,
-    activity: <path d="M5 6h14M5 12h14M5 18h9M3 6h.01M3 12h.01M3 18h.01" />,
     attention: (
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5" />
     ),

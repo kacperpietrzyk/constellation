@@ -73,6 +73,13 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 // Powłoka NIE WSTAJE pod gołym adresem — renderer wymaga mostka preload, więc
 // w przeglądarce montuje ją harness deweloperski ze zaślepionym klientem.
 const HARNESS = `${ORIGIN}/?surface=collaboration`;
+// Identyfikator TRYBU Ustawień — jedyny cel, do którego nie wchodzi się
+// pozycją `.nav-item[data-surface]`. Stoi tu z ręki, bo ten skrypt nie
+// importuje rejestru TypeScriptowego, i to jest bezpieczne w JEDYNYM kierunku,
+// który ma znaczenie: gdyby ten identyfikator kiedyś się zmienił, wpisy
+// `surface: "settings"` w `descendant-overflow.mjs` przestałyby się dopasowywać
+// i `unusedRegistryEntries` rzuciłby, zamiast przemilczeć.
+const SETTINGS_SURFACE = "settings";
 
 // Playwright nie jest zależnością tego repo i nie ma nią być — `npm run check`
 // ma się dać odtworzyć z czystego klona, a `npm ci --ignore-scripts` i tak
@@ -328,8 +335,27 @@ const MINIMUM_ROWS = {
   // dokument bez stempla formatu czytał się jako `plain-v1`, edytor odpalał
   // migrację, migracja podmieniała treść na pusty tekst starego korzenia,
   // a trzy strażniki liczby wierszy dalej świeciły na zielono. Próg jest pod
-  // dolną granicą zmierzonego zbioru (1 771 znaków), bo pilnuje „pusto",
-  // a nie długości.
+  // dolną granicą zmierzonego zbioru, bo pilnuje „pusto", a nie długości.
+  //
+  // CZEGO TEN PRÓG NIE ZŁAPIE, powiedziane wprost, bo strażnik z niewypowiedzianą
+  // granicą czyta się jak strażnik bez granicy. Wszystkie cztery liczniki są
+  // MAKSIMAMI po przelocie (`Math.max` niżej), więc łapią „WSZYSTKO zniknęło",
+  // a nie „ZNIKNĘŁO COŚ". Przy notatce jest to dotkliwsze niż przy listach,
+  // bo mierzona jest JEDNA otwarta notatka w każdym przelocie: 3 711 znaków
+  // z przelotu pełnowymiarowego przykryje zero z przelotu 200%.
+  //
+  // ZŁAPAŁABY TO ASERCJA NA PRZELOT, nie na przebieg — próg sprawdzany osobno
+  // w każdym z pięciu przelotów. NIE JEST TO ZBUDOWANE ŚWIADOMIE i powód jest
+  // mierzalny: Biblioteka ma ZADEKLAROWANĄ KOLEJNOŚĆ USTĘPOWANIA PANELI
+  // (`notes.module.css`, kroki 1 i 2), więc przy 300% tekstu i przy minimalnym
+  // oknie panel czytania stoi w jednej kolumnie pod dwoma innymi i jego
+  // obecność w kadrze jest funkcją przewinięcia, a nie poprawności. Próg na
+  // przelot czerwieniłby się tam PRAWIDŁOWEGO ekranu — czyli kupowałby jedną
+  // klasę fałszywej ciszy za jedną klasę fałszywej czerwieni, a ta druga jest
+  // gorsza: asercja, która czerwieni się na zdrowym drzewie, zostaje skasowana
+  // przy pierwszym przebiegu. Tryb raportu wypisuje surową liczbę przy KAŻDYM
+  // przelocie, więc różnica między przelotami jest dziś widoczna gołym okiem;
+  // to jest świadomie mniej niż asercja i dlatego stoi tu napisane.
   libraryNoteBody: 1_500,
 };
 
@@ -389,7 +415,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   await page.goto(HARNESS, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
   const measured = await page.evaluate(
-    async ({ fontSize, scrollAttribute, surfaces }) => {
+    async ({ fontSize, scrollAttribute, surfaces, SETTINGS_SURFACE }) => {
       const frame = () =>
         new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve)),
@@ -404,9 +430,36 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       // `ceilings` are keyed by PASS LABEL and a missing ceiling is a
       // violation, so an unscoped new pass would turn every debt entry in the
       // registry red at once and the only cheap fix would be raising them.
+      // DWIE AFORDANCJE, JEDNA LISTA — i to jest poprawka, bez której ta bramka
+      // przestałaby widzieć Ustawienia w tej samej chwili, w której przestały
+      // być pozycją nawigacji.
+      //
+      // Do fali E `settings` trafiały tu WYŁĄCZNIE dlatego, że filtr lewej
+      // kolumny (`shortcut !== null`) niczego nie odsiewał i rysował je jako
+      // `.nav-item[data-surface]` wbrew dwóm komentarzom mówiącym, że tak nie
+      // jest. Lot ACT robi te komentarze prawdziwymi — a to znaczy, że bramka,
+      // która zna tylko jedną afordancję, przestaje mierzyć CAŁY ekran
+      // Ustawień: dwa wpisy rejestru (`form.status-create` w OBU przelotach
+      // i `div._memberList` przy 320 px) poszłyby jako niedopasowane
+      // i `unusedRegistryEntries` rzuciłby `RENDERER_LAYOUT_INVALID`.
+      //
+      // NAZWANE WPROST, BO JEST WARTE WIĘCEJ NIŻ POPRAWKA: POKRYCIE TEJ BRAMKI
+      // JEST FUNKCJĄ KSZTAŁTU NAWIGACJI. Powierzchnia, która przestaje być
+      // pozycją nawigacji, przestaje być mierzona — a jedyne, co dzieli tę
+      // ciszę od fałszywego spokoju, to rejestr, który zamienia ją w GŁOŚNĄ
+      // porażkę. Odwrotnie niż każdy inny defekt przyrządu tej fali.
+      //
+      // Lista dalej pochodzi Z ŻYWEGO DOM-u, a nie z wypisanej listy celów —
+      // zmienia się tylko to, że afordancji jest dwie. Tryb Ustawień ma własną,
+      // stabilną: `[data-settings-entry]` (koło zębate przy tożsamości).
       const all = [...document.querySelectorAll(".nav-item[data-surface]")].map(
         (item) => item.dataset.surface,
       );
+      if (
+        document.querySelector("[data-settings-entry]") !== null &&
+        !all.includes(SETTINGS_SURFACE)
+      )
+        all.push(SETTINGS_SURFACE);
       const ids =
         surfaces === undefined
           ? all
@@ -621,9 +674,19 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           await frame();
           await new Promise((resolve) => setTimeout(resolve, 400));
         }
-        const target = document.querySelector(
-          `.nav-item[data-surface="${id}"]`,
-        );
+        // Ustawienia wchodzi się KOŁEM ZĘBATYM, nie pozycją nawigacji — patrz
+        // akapit przy budowaniu `all`. Pętla jest jedna, bo wszystko po
+        // kliknięciu (pomiar, soczewki, rekordy, wysokość) jest identyczne;
+        // różni się WYŁĄCZNIE afordancja, którą się otwiera cel.
+        // Koło zębate jest PIERWSZE, a nie zapasowe: to jest drzwi, którymi
+        // wchodzi człowiek, więc to je ma otwierać bramka. Pozycja nawigacji
+        // zostaje jako druga wyłącznie po to, żeby ten skrypt nie zależał od
+        // kolejności lądowania z poprawką lewej kolumny.
+        const target =
+          id === SETTINGS_SURFACE
+            ? (document.querySelector("[data-settings-entry]") ??
+              document.querySelector(`.nav-item[data-surface="${id}"]`))
+            : document.querySelector(`.nav-item[data-surface="${id}"]`);
         if (!(target instanceof HTMLElement)) {
           results.push({
             surface: id,
@@ -831,7 +894,12 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         lensesDeclared,
       };
     },
-    { fontSize, scrollAttribute: HORIZONTAL_SCROLL_ATTRIBUTE, surfaces },
+    {
+      fontSize,
+      scrollAttribute: HORIZONTAL_SCROLL_ATTRIBUTE,
+      surfaces,
+      SETTINGS_SURFACE,
+    },
   );
 
   if (measured.missing.length > 0) {

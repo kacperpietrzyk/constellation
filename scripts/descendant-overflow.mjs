@@ -147,22 +147,41 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     thread:
       "skalowanie interfejsu — wiersz członka nie mieści się w kolumnie 224 px",
   },
-  {
-    surface: "activity",
-    signature: "h3",
-    ceilings: {
-      "text scaled to 200%": 53,
-    },
-    thread: "fala E — powierzchnia `activity`, poza zakresem fali D",
-  },
-  {
-    surface: "activity",
-    signature: "p",
-    ceilings: {
-      "text scaled to 200%": 33,
-    },
-    thread: "fala E — powierzchnia `activity`, poza zakresem fali D",
-  },
+  // ── Activity: DŁUG SPŁACONY, i dlatego nie ma tu wpisów ──────────────────
+  // Stały tu DWA wpisy — `activity / h3` (53 przy 200%) i `activity / p`
+  // (33 przy 200%) — opisane jako „powierzchnia `activity`, poza zakresem
+  // fali D". Dziennik zmian wsiąkł w fali E w kategorię „Data and privacy"
+  // Ustawień, więc oba MUSIAŁY zostać rozstrzygnięte: `unusedRegistryEntries`
+  // czyni z wpisu, którego nic nie dopasowało, PORAŻKĘ.
+  //
+  // NAJPIERW ZMIERZONE PO PRZEPROWADZCE, nie przepisane. Pod nowym adresem
+  // oba przepełnienia PRZEŻYŁY i były GORSZE: 133 px i 113 px przy 200%
+  // tekstu. Sygnatury trzeba było przy tym ZAWĘZIĆ, bo gołe `h3` i `p` były
+  // jednoznaczne wyłącznie dopóki `activity` było własnym ekranem — wewnątrz
+  // Ustawień bramka trzyma NAJSZERSZEGO potomka o danej sygnaturze na danym
+  // ekranie, więc `settings / p` zacząłby po cichu pilnować całej
+  // sześciokategoriowej strony. Po zawężeniu (`h3._stateTitle`,
+  // `p._stateDetail`) pomiar wskazał JEDEN element i pokazał przyczynę.
+  //
+  // PRZYCZYNA, ZMIERZONA A NIE ZGADNIĘTA: kolumna tekstu w stanie pustym miała
+  // 13 px szerokości treści przy 146 px potrzebnych. `.empty-state`
+  // (`styles.css`) jest siatką `2.25rem / 1fr / auto`, a jej reguła składania
+  // stoi pod `@media (max-width: 50rem)` — pod SZEROKOŚCIĄ OKNA. Rozwala ten
+  // układ SKALA TEKSTU: w `@media` `rem` liczy się od POCZĄTKOWEGO rozmiaru
+  // czcionki, więc przy tekście 200% w oknie 1024 px zapytanie nie odpala,
+  // a przycisk skalujący się z tekstem zabiera trzecią kolumnę. To jest zerowa
+  // szerokość treści ekranu rekordu obrócona o dziewięćdziesiąt stopni — ta
+  // sama klasa co nagłówek tej fali — a rejestr niósł ją jako dwa objawy.
+  //
+  // WPISY ZNIKAJĄ, BO ELEMENTY PRZESTAŁY SIĘ PRZEPEŁNIAĆ, a nie dlatego, że
+  // bramka przestała je widzieć — to rozróżnienie, o którym mówią akapity
+  // Biblioteki i ekranu rekordu niżej. DOWÓD, nie założenie: łamanie
+  // `scripts/break-activity-retirement.mjs` przywraca globalny układ stanu
+  // pustego w tej tafli i bramka wraca CZERWONA na obu tych sygnaturach; na
+  // przywróconym drzewie jest zielona. Lekarstwem jest zapytanie KONTENEROWE
+  // w module tej tafli (`activity-section.module.css`), więc stan pusty
+  // żadnego innego ekranu się nie ruszył — globalna `.empty-state` należy do
+  // wątku skalowania interfejsu, odłożonego ZA falę E (R3-5).
   {
     surface: "settings",
     signature: "form.status-create",

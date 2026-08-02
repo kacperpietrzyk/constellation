@@ -32,11 +32,10 @@ import {
 } from "./SurfaceLifecycleStates.js";
 import type { LoadState } from "./shell/load-state.js";
 import { resolveDesktopSurface } from "@constellation/desktop-preload/surface-registry";
-import { navItems } from "./shell/nav-items.js";
+import { navItems, sidebarNavItems } from "./shell/nav-items.js";
 import { taskPriorityLabels } from "./task-priority-labels.js";
 import {
   CalendarSurface,
-  ActivitySurface,
   LibraryShell,
   MeetingsSurface,
   OnboardingFlow,
@@ -184,6 +183,7 @@ import {
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
   serializeShellNavigation,
+  settingsCategoryContext,
   opportunityContext,
   taskContext,
   type ShellContext,
@@ -192,6 +192,8 @@ import { subscribeToAgentWrites } from "./client/agent-write-reload.js";
 import {
   settingsCategories,
   settingsCategoryElementId,
+  settingsPanes,
+  type SettingsCategoryId,
 } from "./settings-categories.js";
 import {
   conditionCopy,
@@ -560,6 +562,20 @@ export const RealApp = ({
         current,
         destinationContext("settings", "Settings"),
       );
+    });
+  }, []);
+  // Ustawienia otwarte NA KONKRETNEJ KATEGORII. Idzie przez tę samą ścieżkę co
+  // koło zębate — łącznie z zapamiętaniem kontekstu powrotu — i to jest jedyny
+  // powód, dla którego to jest osobna funkcja, a nie `openContext` z gotowym
+  // kontekstem: `settingsReturn` zapisuje się przy WEJŚCIU, więc głęboki link
+  // omijający tę funkcję wypuszczałby człowieka z Ustawień na Today zamiast
+  // tam, gdzie był.
+  const openSettingsCategory = useCallback((category: SettingsCategoryId) => {
+    surfaceFocusPendingRef.current = true;
+    setNavigation((current) => {
+      const active = activeShellContext(current);
+      if (active.surface !== "settings") setSettingsReturn(active);
+      return navigateShellContext(current, settingsCategoryContext(category));
     });
   }, []);
   const leaveSettings = useCallback(() => {
@@ -2344,6 +2360,14 @@ export const RealApp = ({
             onNavigate={(next, label) =>
               openContext(destinationContext(next, label))
             }
+            // Kategoria ŻĄDANA przez kontekst zakładki — głęboki link. Podana
+            // tylko wtedy, gdy naprawdę o nią proszono: bez tego pola ekran
+            // wybiera kategorię własnym stanem, i to jest zachowanie, które
+            // ma zostać zachowaniem domyślnym.
+            {...(activeContext.settingsCategory === undefined
+              ? {}
+              : { requestedCategory: activeContext.settingsCategory })}
+            onUndo={(id) => void openUndo(id)}
           />
         </Suspense>
       </LazySurfaceBoundary>
@@ -3007,18 +3031,6 @@ export const RealApp = ({
         onFailure={showFailure}
       />
     ),
-    activity: () => (
-      <LazySurfaceBoundary label="Activity">
-        <Suspense fallback={<SurfaceLoadingState label="Activity" />}>
-          <ActivitySurface
-            activity={state.snapshot.activity}
-            timezone={state.snapshot.bootstrap.workspace.timezone}
-            onUndo={(id) => void openUndo(id)}
-            onRetry={() => void reload()}
-          />
-        </Suspense>
-      </LazySurfaceBoundary>
-    ),
     inbox: () => (
       <InboxSurface
         attention={state.snapshot.attention}
@@ -3195,9 +3207,16 @@ export const RealApp = ({
             <>
               {/* Cele bez modułu (Today, Inbox) stoją NAD modułami i bez nagłówka
               grupy: to nie są filtry, tylko tryby pracy. Renderują się tą samą
-              funkcją co pozycje w modułach, więc nie mogą się od nich rozjechać. */}
-              {navItems
-                .filter((item) => item.group === null && item.shortcut !== null)
+              funkcją co pozycje w modułach, więc nie mogą się od nich rozjechać.
+
+              LISTA JEST `sidebarNavItems`, i to jest poprawka defektu, a nie
+              kosmetyka. Stał tu warunek `item.shortcut !== null`, który miał
+              odsiać Ustawienia i NIE ODSIEWAŁ NICZEGO — `nav-items.ts` opuszcza
+              klucz, więc `undefined !== null` jest prawdą i Ustawienia rysowały
+              się w lewej kolumnie wbrew dwóm komentarzom w drzewie mówiącym, że
+              tak nie jest. Wejściem jest koło zębate przy tożsamości i `⌘,`. */}
+              {sidebarNavItems
+                .filter((item) => item.group === null)
                 .map((item) => navEntry(item))}
               {navigationGroups.map((group) => {
                 const groupItems = navItems.filter(
@@ -4782,11 +4801,32 @@ export const RealApp = ({
                 (item): item is (typeof navItems)[number] => item !== undefined,
               ),
             ...navItems.filter((item) => !favorites.includes(item.id)),
+            // TAFLE USTAWIEŃ, WYPROWADZONE ZE SŁOWNIKA KATEGORII, nie wypisane
+            // tutaj z ręki. `activity` przestał być celem nawigacji w tej fali
+            // i bez tej linii przestałby też istnieć w palecie — a dziennik
+            // zmian z cofaniem, którego nie da się znaleźć po nazwie, jest
+            // zakopany, a nie przeniesiony. Ręczna lista celów palety obok
+            // zamkniętego słownika byłaby dwudziestym piątym żywym miejscem
+            // rodziny, którą to repo przegrywa od trzech fal; tutaj deklaracja
+            // stoi RAZ, przy kategorii, w `settings-categories.ts`.
+            ...settingsPanes.map((pane) => ({
+              id: "settings" as const,
+              label: pane.label,
+              settingsCategory: pane.category,
+            })),
           ]}
           onClose={() => setSearchOpen(false)}
-          onOpenDestination={(nextSurface, label) =>
-            openContext(destinationContext(nextSurface, label))
-          }
+          onOpenDestination={(nextSurface, label, settingsCategory) => {
+            // Ustawienia zawsze przez `openSettings*`, nigdy przez goły
+            // `openContext`: to one zapamiętują kontekst powrotu, więc wyjście
+            // kołem zębatym wraca tam, gdzie człowiek był, a nie na Today.
+            if (nextSurface === "settings") {
+              if (settingsCategory === undefined) openSettings();
+              else openSettingsCategory(settingsCategory);
+              return;
+            }
+            openContext(destinationContext(nextSurface, label));
+          }}
           onNavigate={(nextSurface, recordId) => {
             if (nextSurface === "tasks") {
               const id = recordId as TaskId;
@@ -4922,7 +4962,13 @@ export const RealApp = ({
                   await refreshAfter(
                     "Change undone and recorded in the audit.",
                   );
-                  openContext(destinationContext("activity", "Activity"));
+                  // TEN SAM DZIENNIK POD NOWYM ADRESEM. Do fali E ta linia
+                  // wysyłała na `destination:activity`; wycofanie jest
+                  // SCALENIEM TREŚCI, więc zachowanie zostaje takie samo,
+                  // tylko cel jest głębokim linkiem w kategorię, która teraz
+                  // trzyma tę taflę. Bez głębokiego linku człowiek lądowałby
+                  // na górze Ustawień i szukał, co się właśnie stało.
+                  openSettingsCategory("data");
                 } else showFailure(result);
               },
             );
