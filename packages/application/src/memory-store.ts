@@ -582,6 +582,24 @@ class ReadView implements ApplicationReadView {
     return this.state.documents.get(id);
   }
 
+  public findDocumentByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): NativeDocument | undefined {
+    // Through the same `recordIsActive` choke point `listDocuments` uses, as
+    // on Projects: a removed note does not keep its source key reserved, so
+    // re-importing the file a deleted note came from has to work. `getDocument`
+    // stays unfiltered; undo has to find what it is putting back.
+    return [...this.state.documents.values()].find(
+      (document) =>
+        document.workspaceId === workspaceId &&
+        document.spaceId === spaceId &&
+        recordIsActive(document) &&
+        document.externalId === externalId,
+    );
+  }
+
   public listDocuments(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

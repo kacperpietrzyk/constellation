@@ -632,6 +632,19 @@ export interface NativeDocument {
    * a note never tells you where it disappeared from.
    */
   readonly folderId?: FolderId;
+  /**
+   * The file this note was imported from, on the same terms a Project, a
+   * Person, an Organization and an Opportunity already carry theirs: absent
+   * means it was never imported, and it is unique per Space while present.
+   *
+   * It exists because AGENTS.md binds every import to be safely retryable, and
+   * a note is the one kind an import could not recognise again — names are not
+   * unique, folders move, and a second run against the same vault would have
+   * written two hundred duplicates with nothing objecting. Scoped to notes
+   * alone rather than shared with the strategic kinds: a note and a Person
+   * holding one string is two rows from two places, not a collision.
+   */
+  readonly externalId?: string;
   readonly role?: "note" | "document" | "deliverable";
   readonly evidence?: {
     readonly sourceIds: readonly KnowledgeSourceId[];

@@ -109,19 +109,32 @@ const notesStatus = (): string => {
   return entry.querySelector("small")?.textContent?.trim() ?? "";
 };
 
-test("the Notes section arrives with the export it is about", async () => {
-  await mountSettings();
-  assert.ok(
-    container.querySelector('[data-settings-category="notes"]'),
-    "no Notes section is anchored on the page",
-  );
-  // The seam the Obsidian import plugs into: its panel becomes a second
-  // `<section>` inside this same category, and nothing else has to move.
-  assert.equal(
-    container.querySelectorAll('[data-settings-category="notes"] > section')
-      .length,
-    1,
-  );
+test("the Notes section holds the two panels this wave shipped, and no third", () => {
+  // The count is NAMED rather than bare: two, because both directions of the
+  // door are here — the markdown export and the Obsidian import — and each is
+  // identified by its own attribute. A bare integer would tell the next lot
+  // that something is wrong and nothing about what.
+  //
+  // BROKEN BY: adding a third `<section>` to this category, which is exactly
+  // how a panel arrives without anybody deciding it should.
+  return mountSettings().then(() => {
+    assert.ok(
+      container.querySelector('[data-settings-category="notes"]'),
+      "no Notes section is anchored on the page",
+    );
+    const sections = container.querySelectorAll(
+      '[data-settings-category="notes"] > section',
+    );
+    assert.equal(sections.length, 2);
+    assert.ok(
+      container.querySelector('[data-notes-export="true"]'),
+      "the export panel is gone",
+    );
+    assert.ok(
+      container.querySelector('[data-notes-import="true"]'),
+      "the import panel is gone",
+    );
+  });
 });
 
 test("the section's status names what the section does, not how many records exist", async () => {

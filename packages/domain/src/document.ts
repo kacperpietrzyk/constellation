@@ -14,6 +14,7 @@ export const createNativeDocument = (input: {
   readonly spaceId: SpaceId;
   readonly title: string;
   readonly folderId?: FolderId;
+  readonly externalId?: string;
   readonly role?: "note" | "document" | "deliverable";
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
@@ -23,6 +24,7 @@ export const createNativeDocument = (input: {
   spaceId: input.spaceId,
   title: input.title,
   ...(input.folderId === undefined ? {} : { folderId: input.folderId }),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
   role: input.role ?? "document",
   evidence: { sourceIds: [], noteDocumentIds: [] },
   createdBy: input.createdBy,

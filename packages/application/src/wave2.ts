@@ -2564,6 +2564,32 @@ export const executeWave2Command = (
         )
           return precondition(command, occurredAt);
       }
+      // A source key is claimed once per Space, on exactly the terms
+      // `project.create` claims one. Names are not unique, so this is the only
+      // thing that can tell a re-import of the same file apart from a genuinely
+      // new note — and it is what makes a two-hundred-note import safely
+      // retryable rather than doubling. Checked against the transaction rather
+      // than a snapshot, so two creates inside one batch collide with each
+      // other too.
+      //
+      // The refusal carries the colliding note's id and version because there
+      // is nothing else the caller can do with it: there is no
+      // `document.update`, so unlike a Person it cannot pivot to correcting
+      // the record. What it CAN do is stop minting a second id and write the
+      // body into the note that already exists, which is what the import does.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findDocumentByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const document = createNativeDocument({
         id: DocumentIdSchema.parse(command.payload.documentId),
         workspaceId: command.workspaceId,
@@ -2572,6 +2598,9 @@ export const executeWave2Command = (
         ...(command.payload.folderId === undefined
           ? {}
           : { folderId: command.payload.folderId }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         ...(command.payload.role === undefined
           ? {}
           : { role: command.payload.role }),
@@ -2595,9 +2624,15 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [document.id]: document.version },
-        command.payload.folderId === undefined
-          ? ["title"]
-          : ["title", "folderId"],
+        // DERIVED from the payload, not restated. It was a hand-written list
+        // of one or two names, and adding a third field would have left it
+        // saying `["title", "folderId"]` while a source key it never mentions
+        // reached the record — an audit receipt that omits what was written,
+        // with nothing failing anywhere. `relationship.personUpdate` and its
+        // four siblings already derive theirs the same way.
+        Object.keys(command.payload).filter(
+          (field) => field !== "documentId" && field !== "spaceId",
+        ),
         {
           diagnosticCode: "document.created",
           projection: {
@@ -12648,6 +12683,9 @@ export const executeWave2Query = (
           ...(document.folderId === undefined
             ? {}
             : { folderId: document.folderId }),
+          ...(document.externalId === undefined
+            ? {}
+            : { externalId: document.externalId }),
           role: document.role ?? "document",
           version: document.version,
           updatedAt: document.updatedAt,
@@ -12753,6 +12791,9 @@ export const executeWave2Query = (
             ...(source.folderId === undefined
               ? {}
               : { folderId: source.folderId }),
+            ...(source.externalId === undefined
+              ? {}
+              : { externalId: source.externalId }),
             role: source.role ?? "document",
             author: {
               ...(visibleAuthor ? { principalId: source.createdBy } : {}),
@@ -12920,6 +12961,9 @@ export const executeWave2Query = (
           ...(document.folderId === undefined
             ? {}
             : { folderId: document.folderId }),
+          ...(document.externalId === undefined
+            ? {}
+            : { externalId: document.externalId }),
           role: document.role ?? "document",
           references: documentReferences.get(document.id) ?? [],
           evidenceCount:
@@ -13002,6 +13046,9 @@ export const executeWave2Query = (
         ...(document.folderId === undefined
           ? {}
           : { folderId: document.folderId }),
+        ...(document.externalId === undefined
+          ? {}
+          : { externalId: document.externalId }),
         role: document.role ?? "document",
         version: document.version,
         updatedAt: document.updatedAt,

@@ -243,6 +243,18 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
   getProject(id: ProjectId): Project | undefined;
   listProjects(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Project[];
   getDocument(id: DocumentId): NativeDocument | undefined;
+  /**
+   * The note claiming a source key in this Space, if one does.
+   *
+   * The same claim `findProjectByExternalId` answers, on a kind that is not a
+   * strategic record either, so there is no `kind` to scope by and none is
+   * wanted: a note and a Person may hold one string without colliding.
+   */
+  findDocumentByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): NativeDocument | undefined;
   listDocuments(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
@@ -456,6 +468,7 @@ export const isApplicationWave2ReadView = (
   "listStrategicRecords" in view &&
   "findStrategicRecordByExternalId" in view &&
   "findProjectByExternalId" in view &&
+  "findDocumentByExternalId" in view &&
   "getRelation" in view &&
   "findTaskProjectRelation" in view &&
   "listRelations" in view &&

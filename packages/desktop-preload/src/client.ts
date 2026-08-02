@@ -90,6 +90,8 @@ export const DESKTOP_CHANNELS = {
   exportSupportReport: "constellation:support-report:export",
   exportExchangePackage: "constellation:workspace:export-exchange",
   exportNotesMarkdown: "constellation:notes:export-markdown",
+  scanObsidianVault: "constellation:notes:scan-obsidian-vault",
+  importObsidianVault: "constellation:notes:import-obsidian-vault",
   checkForRelease: "constellation:release:check",
   downloadRelease: "constellation:release:download",
   installRelease: "constellation:release:install",
@@ -370,9 +372,94 @@ export type NotesMarkdownExportResult =
     }
   | { readonly outcome: "cancelled" | "failure" };
 
+/**
+ * What a scan of an Obsidian vault found. NOTHING HAS BEEN WRITTEN when this
+ * comes back — the scan opens files and never creates a record — which is what
+ * makes it a preview of the import rather than a report of one.
+ */
+export type ObsidianVaultScanResult =
+  | {
+      readonly outcome: "success";
+      readonly directoryLabel: string;
+      /**
+       * The main process's handle on the folder that was scanned. The renderer
+       * never learns or names a filesystem path: a path it could send back is
+       * a path it could change, and this handler writes records.
+       */
+      readonly scanId: string;
+      readonly counts: {
+        readonly files: number;
+        readonly notesCreated: number;
+        readonly notesMatched: number;
+        /**
+         * SEPARATE FROM `foldersMatched` ON PURPOSE, and it is the mitigation
+         * for folders carrying no source key: a folder renamed inside
+         * Constellation is no longer findable by its vault path, so a re-run
+         * makes a second tree. Somebody expecting "31 matched" who reads "31
+         * will be created" stops before that happens.
+         */
+        readonly foldersCreated: number;
+        readonly foldersMatched: number;
+        readonly links: number;
+        readonly linksToNotes: number;
+        readonly linksToRecords: number;
+        readonly linksUnresolved: number;
+        readonly titlesDiverged: number;
+        readonly skipped: number;
+      };
+      /** How many of each construct with no home the vault actually holds. */
+      readonly constructs: Readonly<Record<string, number>>;
+      /** Link targets nothing resolves to, named so they can be looked up. */
+      readonly unresolvedTargets: readonly string[];
+      readonly skipped: readonly {
+        readonly path: string;
+        readonly reason: string;
+      }[];
+      /** Files the walk would not read at all, and why. */
+      readonly refused: readonly {
+        readonly path: string;
+        readonly reason: string;
+      }[];
+    }
+  | {
+      /** A folder holding no markdown at all — a mistaken choice, not a fault. */
+      readonly outcome: "empty";
+      readonly directoryLabel: string;
+    }
+  | { readonly outcome: "cancelled" | "failure" };
+
+export type ObsidianVaultImportResult =
+  | {
+      readonly outcome: "success";
+      readonly directoryLabel: string;
+      readonly counts: {
+        readonly foldersCreated: number;
+        readonly foldersMatched: number;
+        readonly notesCreated: number;
+        readonly notesMatched: number;
+        readonly bodiesWritten: number;
+        readonly bodiesFailed: number;
+        readonly linksResolved: number;
+        readonly linksUnresolved: number;
+        readonly titlesDiverged: number;
+        readonly skipped: number;
+      };
+    }
+  | {
+      /**
+       * The scan this run was approved against is gone — a different folder was
+       * scanned since, or the app restarted. Running the last plan anyway would
+       * write a vault nobody looked at.
+       */
+      readonly outcome: "expired";
+    }
+  | { readonly outcome: "failure" };
+
 export interface ConstellationRendererClient {
   exportSupportReport?(): Promise<SupportReportExportResult>;
   exportNotesMarkdown?(): Promise<NotesMarkdownExportResult>;
+  scanObsidianVault?(): Promise<ObsidianVaultScanResult>;
+  importObsidianVault?(scanId: string): Promise<ObsidianVaultImportResult>;
   exportExchangePackage?(): Promise<
     | {
         readonly outcome: "success";
@@ -701,6 +788,15 @@ export const createRendererClient = (
     invoke(
       DESKTOP_CHANNELS.exportNotesMarkdown,
     ) as Promise<NotesMarkdownExportResult>,
+  scanObsidianVault: () =>
+    invoke(
+      DESKTOP_CHANNELS.scanObsidianVault,
+    ) as Promise<ObsidianVaultScanResult>,
+  importObsidianVault: (scanId) =>
+    invoke(
+      DESKTOP_CHANNELS.importObsidianVault,
+      scanId,
+    ) as Promise<ObsidianVaultImportResult>,
   checkForRelease: () =>
     invoke(DESKTOP_CHANNELS.checkForRelease) as Promise<ReleaseStatus>,
   downloadRelease: () =>
