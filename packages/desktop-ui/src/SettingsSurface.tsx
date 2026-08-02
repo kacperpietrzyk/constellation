@@ -2176,7 +2176,13 @@ export const SettingsSurface = ({
                     >
                       {busyVaultImport
                         ? "Bringing the notes in…"
-                        : `Import ${countLabel(vaultScan.counts.notesCreated, "note")}`}
+                        : vaultScan.counts.notesCreated === 0
+                          ? // NOT "Import 0 notes". A vault whose files are all
+                            // here already still has something to do — every
+                            // body is rewritten from the file — and a button
+                            // reading zero would say it does nothing.
+                            `Bring ${countLabel(vaultScan.counts.notesMatched, "note")} up to date`
+                          : `Import ${countLabel(vaultScan.counts.notesCreated, "note")}`}
                     </button>
                   </div>
                 )}

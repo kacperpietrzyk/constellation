@@ -247,6 +247,26 @@ test("a scan the main process no longer holds refuses rather than writing a vaul
   );
 });
 
+test("a re-run with nothing new to bring in does not offer to import zero notes", async () => {
+  // Every file is already here, and the run STILL does something: each body is
+  // rewritten from the file. A button reading "Import 0 notes" would say it
+  // does nothing, next to a line saying fourteen notes will be replaced.
+  await mountSettings({
+    ...scanned,
+    counts: {
+      ...scanned.counts,
+      notesCreated: 0,
+      foldersCreated: 0,
+      foldersMatched: 31,
+    },
+  });
+  await press("data-notes-import-scan");
+  assert.match(
+    button("data-notes-import-run").textContent ?? "",
+    /Bring 14 notes up to date/u,
+  );
+});
+
 test("a folder holding no markdown says so instead of reporting an empty import", async () => {
   await mountSettings({ outcome: "empty", directoryLabel: "Documents" });
   await press("data-notes-import-scan");
