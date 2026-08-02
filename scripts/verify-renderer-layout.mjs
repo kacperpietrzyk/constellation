@@ -279,6 +279,40 @@ if (!(await reachable())) {
   throw new Error(`LAYOUT_CHECK_SERVER_NOT_REACHABLE: ${ORIGIN}`);
 }
 
+// ── CZYJĄ APLIKACJĘ WŁAŚCIWIE ZŁAPALIŚMY ─────────────────────────────────────
+// Próba wiązania portu wyżej dowodzi własności PRZEZ WYKLUCZENIE: port był
+// wolny, więc serwer, który go zajął, jest mój. To rozumowanie jest poprawne
+// i CAŁKOWICIE POŚREDNIE — nie pyta serwera o nic. Tu jest dowód WPROST, i jest
+// tani, bo vite sam go daje.
+//
+// Serwer deweloperski trzyma listę katalogów, z których wolno mu czytać, i jest
+// ona zakorzeniona w JEGO drzewie. Prośba o plik spod MOJEGO korzenia jest więc
+// pytaniem, na które sąsiad odpowiedzieć NIE MOŻE. Zmierzone na dwóch żywych
+// serwerach naraz: własny oddaje `200`, serwer drugiego worktree oddaje
+// `403 Restricted … outside of Vite serving allow list`.
+//
+// GRANICA TEGO DOWODU, powiedziana wprost: rozróżnia DRZEWA, nie STANY drzewa.
+// Serwer zostawiony pod tą samą ścieżką z wcześniejszego stanu przeszedłby tę
+// kontrolę — i właśnie taki serwer stał za pierwotną awarią. Zamyka go dopiero
+// próba wiązania portu, która odmawia startu przy JAKIMKOLWIEK zastanym
+// serwerze. Dopiero obie razem odpowiadają na całe pytanie: jedna mówi, że nikt
+// tu nie stał, druga — że ten, kto stoi, czyta z tego drzewa.
+const identityProbe = await fetch(`${ORIGIN}/@fs${root}/package.json`).catch(
+  (error) => ({ ok: false, status: `unreachable (${error.message})` }),
+);
+if (!identityProbe.ok) {
+  await stop().catch(() => {});
+  throw new Error(
+    `LAYOUT_CHECK_WRONG_APPLICATION: the server answering ${ORIGIN} refused a file from ` +
+      `THIS worktree's root (${identityProbe.status}), so it is serving a DIFFERENT tree. ` +
+      "Everything this gate would measure against it — every ceiling, every floor, every " +
+      "registry entry — would be a number about somebody else's application reported as " +
+      "this one's. A green run here would be the worst kind of green.\n" +
+      `Root this check expects to be served: ${root}\n` +
+      `Find who actually holds the port with:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`,
+  );
+}
+
 // Ile wierszy musi się narysować, żeby pomiar cokolwiek znaczył. Fikstura
 // niesie ich więcej; progi są niskie celowo, bo mają łapać „lista jest pusta",
 // a nie pilnować dokładnej zawartości fikstury — to drugie robiłoby z bramki
