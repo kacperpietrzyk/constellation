@@ -12,6 +12,8 @@ import { assertNoNode, assertSameNode } from "./dom-assert.js";
 import {
   opportunityRecordId,
   populatedRelationshipWorkspace,
+  populatedBootstrap,
+  populatedProjectList,
   populatedShellQueries,
   principalId,
   projectionResponse,
@@ -570,4 +572,146 @@ test("the Notes reading carries the arrangement topic, and no path hides in a ti
     "the Notes reading drew no folder tree, so the sweep would have measured an empty screen",
   );
   assertHelpContract(surfaceNode("[data-notes-screen]"), ["note-arrangement"]);
+});
+
+/* THE PROJECTS "BY CLIENT" LENS — the deadline DATE, in the row's name.
+ *
+ * Route added in Wave E, and the `title=` half of the contract is the whole
+ * reason it is here: this lens drew "6 days left" and carried the date it
+ * falls on in a `title`. The row is a `role="option"` with an `aria-label`, so
+ * an option's label replaces everything inside it and no hidden span could
+ * have carried the date either — a keyboard, touch and a screen reader simply
+ * did not have it.
+ *
+ * IT IS NOT A `?` TOPIC AND THAT IS THE RULING, not an omission: #35's control
+ * answers a CONCEPT, one string for every row. A deadline is this row's own
+ * DATA, and a shared topic is the one place per-row data must never go.
+ *
+ * The fixture carries a project with a deadline because the shared one does
+ * NOT — every project in `populatedProjectList` is undated, so `deadlineDate`
+ * answers `undefined` and this whole assertion would have measured a lane that
+ * draws nothing. Dated far out on purpose: a date near today turns this file
+ * red on a day nobody chose.
+ */
+const datedProjectQueries: ScenarioFixtures["queries"] = {
+  ...populatedShellQueries,
+  "project.list": projectionResponse({
+    ...populatedProjectList,
+    items: populatedProjectList.items.map((item, index) =>
+      index === 0 ? { ...item, dueAt: "2099-03-14T12:00:00.000Z" } : item,
+    ),
+  }),
+};
+
+test("the projects by-client lens puts the deadline date in the row, not in a tooltip", async () => {
+  await mountShell(datedProjectQueries);
+  await goTo("projects");
+  await waitFor(
+    () => container.querySelector("[data-project-row]") !== null,
+    "Projects drew no row, so the sweep below would have measured an empty screen",
+  );
+  const lens = container.querySelector<HTMLElement>('[data-layout="client"]');
+  assert.ok(lens, "the by-client lens has no way in");
+  await act(async () => {
+    lens.click();
+  });
+  await waitFor(
+    () => container.querySelector('[aria-label="Projects by client"]') !== null,
+    "the by-client lens never drew",
+  );
+
+  // The zone comes from the WORKSPACE, not from this machine
+  // (`ProjectCollection.tsx:52`). Reading it off the fixture rather than off
+  // `Intl.DateTimeFormat()` is what keeps this green on a runner in another
+  // timezone — the two agree on my laptop and would not have agreed in CI.
+  const { formatDate } = await import("../src/i18n.js");
+  const expected = formatDate(
+    "2099-03-14T12:00:00.000Z",
+    populatedBootstrap.workspace.timezone,
+  );
+  const named = [
+    ...container.querySelectorAll<HTMLElement>("[data-project-row]"),
+  ].map((row) => row.getAttribute("aria-label") ?? "");
+  assert.equal(
+    named.filter((name) => name.includes(expected)).length,
+    1,
+    `the dated project's row does not say ${expected} anywhere a screen reader would hear it:\n${named.join("\n")}`,
+  );
+
+  assertHelpContract(surfaceNode(".project-surface"), []);
+});
+
+/* THE CAPTURE HISTORY READING — why a dead control is dead, in words.
+ *
+ * `Preview undo` is disabled when nothing about the capture can be taken back,
+ * and the reason used to be a `title` ON THE DISABLED BUTTON — unreachable
+ * twice: a tooltip needs a hover, and a disabled button takes no focus at all.
+ * Wave D fixed the identical shape in #206 and this copies it.
+ *
+ * The sweep alone would pass if the attribute had simply been deleted, so the
+ * replacement is asserted BY ITS WORDS before the sweep runs.
+ *
+ * Mounted directly, on the harness snapshot: the shell's scenario client
+ * answers with no captures at all, and a reading with no rows has no button.
+ */
+test("the capture history says why undo is unavailable, and says it on the screen", async () => {
+  const { CaptureHistoryReading } =
+    await import("../src/library/CaptureHistoryReading.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+  const { CaptureIdSchema } = await import("@constellation/contracts");
+  const capture = {
+    id: CaptureIdSchema.parse("00000000-0000-4000-8000-0000000009c1"),
+    spaceId: workHarnessSnapshot.bootstrap.spaces[0]!.id,
+    originalText: "Zadzwonić do Northstar w sprawie aneksu",
+    original: { kind: "text" as const, text: "Zadzwonić do Northstar" },
+    source: "global_quick_capture" as const,
+    capturedAt: "2026-07-16T09:18:02.000+02:00",
+    processingState: "unclassified" as const,
+    version: 1,
+  };
+  const inspectorHost = document.createElement("div");
+  document.body.append(inspectorHost);
+  try {
+    root = createRoot(container);
+    mounted = true;
+    await act(async () => {
+      root.render(
+        createElement(CaptureHistoryReading, {
+          snapshot: { ...workHarnessSnapshot, captures: [capture] },
+          inspectorHost,
+          onInspectorOpen: () => undefined,
+          wiring: {
+            selectedCaptureId: capture.id,
+            busy: false,
+            onSelectCapture: () => undefined,
+            onUndo: () => undefined,
+            onDeleteVoiceAudio: () => undefined,
+          },
+        } as never),
+      );
+    });
+    const undo = [...inspectorHost.querySelectorAll("button")].find(
+      (button) => (button.textContent ?? "").trim() === "Preview undo",
+    );
+    assert.ok(
+      undo,
+      "the reading drew no undo control, so nothing was measured",
+    );
+    assert.equal(
+      undo.disabled,
+      true,
+      "this fixture was built with no reversible command — a control that is enabled means the fixture stopped exercising the case",
+    );
+    assert.ok(
+      (inspectorHost.textContent ?? "").includes(
+        "No reversible command was recorded for this Capture.",
+      ),
+      "the reason the control is dead is not on the screen — deleting the tooltip without replacing it is not the fix",
+    );
+    assertHelpContract(inspectorHost, []);
+    assertHelpContract(container, []);
+  } finally {
+    inspectorHost.remove();
+  }
 });

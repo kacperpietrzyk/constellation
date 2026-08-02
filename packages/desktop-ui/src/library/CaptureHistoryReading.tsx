@@ -124,15 +124,24 @@ export const CaptureHistoryDetail = ({
       <button
         className="secondary-button"
         disabled={undoCommandId === undefined}
-        title={
-          undoCommandId === undefined
-            ? "No reversible command for this Capture"
-            : undefined
-        }
         onClick={() => undoCommandId && onUndo(undoCommandId)}
       >
         Preview undo
       </button>
+      {/* WHY THE CONTROL IS DEAD, IN WORDS ON THE SCREEN. This sentence used to
+          be a `title` on the button itself, which is the worst place for it
+          twice over: #35 forbids a tooltip as the only carrier of an
+          explanation, and a DISABLED button takes no focus at all — so a
+          keyboard could not even reach the element the tooltip hung on. Wave D
+          fixed the identical shape in #206 (`MeetingsSurface`) by making the
+          sentence visible, and following the repo past itself beats inventing a
+          second answer. It is deliberately NOT a `?` topic: #35's control is for
+          CONCEPTS, and this is the state of one button right now. */}
+      {undoCommandId === undefined && (
+        <small className="capture-undo-unavailable">
+          No reversible command was recorded for this Capture.
+        </small>
+      )}
       {capture.processingState === "transcript_ready" &&
         capture.audioState === "retained" && (
           <button

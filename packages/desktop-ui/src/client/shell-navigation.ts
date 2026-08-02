@@ -6,6 +6,7 @@ import type {
 } from "@constellation/contracts";
 
 import {
+  desktopNavigationSurfaceIds,
   desktopSurfaceIds,
   desktopSurfaceLabel,
   resolveDesktopSurface,
@@ -318,6 +319,60 @@ export const restoreShellNavigation = (
     };
   } catch {
     return createShellNavigation(fallback);
+  }
+};
+
+// Przypięcia, gdy zapis pochodzi sprzed przebudowy. Stan URZĄDZENIA, nie stan
+// grafu — leży w `localStorage`, nie w danych — więc naprawa należy TUTAJ,
+// tam gdzie się go odtwarza, a nie w domenie i nie przy rysowaniu szyny.
+//
+// TRZY REGUŁY, W TEJ KOLEJNOŚCI, I KOLEJNOŚĆ JEST CAŁĄ POPRAWKĄ.
+//
+// 1. Najpierw WYCOFANE IDENTYFIKATORY. Przypięcie do `history` ma przejść na
+//    `library`, tak samo jak zakładka — inaczej pierwsze uruchomienie po
+//    aktualizacji ma o jedną pinezkę mniej niż wczoraj, bez błędu i bez śladu.
+// 2. Potem CHROME. Przypiąć da się tylko cel, który RYSUJE SIĘ W LEWEJ
+//    KOLUMNIE, bo gwiazdka odpinająca stoi przy pozycji nawigacji i nigdzie
+//    indziej. Ustawienia przestały być pozycją nawigacji w tej fali, więc
+//    przypięcie zapisane wcześniej zostawało w szynie NA ZAWSZE: rysowało się,
+//    a odpiąć go nie było czym. Ta sama rodzina co `retiredDesktopSurfaces` —
+//    ZAPISANY STAN URZĄDZENIA WSKAZUJĄCY NA COŚ, CO PRZESTAŁO BYĆ CELEM.
+//    Reguła jest WYPROWADZONA z pola `chrome` przez `desktopNavigationSurfaceIds`
+//    — to ta sama jedna nazwa, po której iteruje powłoka, test renderu powłoki
+//    i smoke spakowanej apki. Lista „czego nie wolno przypiąć" byłaby
+//    dwudziestym piątym miejscem ręcznie przepisanego zbioru obok zamkniętego
+//    słownika i rozjechałaby się przy pierwszym następnym wycofaniu.
+// 3. Na końcu DUBLE, bo dwa wycofane identyfikatory mogą wskazywać jeden cel.
+//
+// Odwrotna kolejność 1↔2 też przechodzi test z Ustawieniami — i jest błędna:
+// odsiewa `access` dlatego, że nie ma go w rejestrze, a nie dlatego, że jego
+// następca jest trybem. Dowodzi tego przypięcie do `history`, które PRZEŻYWA.
+//
+// Naprawa jest TRWAŁA, a nie kosmetyczna: `RealApp` zapisuje ten wynik z
+// powrotem do `localStorage` przy pierwszym renderze, więc zablokowana pinezka
+// znika z dysku, zamiast być co uruchomienie chowana przed rysowaniem.
+const DEFAULT_FAVORITE_SURFACES: readonly SurfaceId[] = ["today", "tasks"];
+
+const FAVORITABLE_SURFACES = new Set<SurfaceId>(desktopNavigationSurfaceIds);
+
+export const restoreFavoriteSurfaces = (
+  value: string | null,
+): readonly SurfaceId[] => {
+  try {
+    const parsed = JSON.parse(value ?? "[]") as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_FAVORITE_SURFACES;
+    return [
+      ...new Set(
+        parsed.flatMap((item) => {
+          const resolved = resolveDesktopSurface(item);
+          return resolved !== undefined && FAVORITABLE_SURFACES.has(resolved)
+            ? [resolved]
+            : [];
+        }),
+      ),
+    ];
+  } catch {
+    return DEFAULT_FAVORITE_SURFACES;
   }
 };
 

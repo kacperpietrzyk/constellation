@@ -4,6 +4,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test } from "vitest";
 
+import type { DesktopSnapshot } from "../src/client/workflow.js";
+
 import { shellQueries } from "./shell-fixture.js";
 
 // PR 5 zamienia Ustawienia w TRYB: wejście podmienia całą lewą kolumnę na spis
@@ -35,7 +37,10 @@ afterEach(() => {
   container.remove();
 });
 
-const mountSettings = async (): Promise<void> => {
+// Zwraca snapshot, na którym ekran się narysował, bo część asercji niżej pyta
+// nie „czy coś się narysowało", tylko „czy narysowało się TO, co niesie
+// projekcja". Wypisana lista etapów lejka mierzyłaby fikstury, nie ekran.
+const mountSettings = async (): Promise<DesktopSnapshot> => {
   const { SettingsSurface } = await import("../src/SettingsSurface.js");
   const { createScenarioClient } =
     await import("../src/client/scenario-client.js");
@@ -58,6 +63,7 @@ const mountSettings = async (): Promise<void> => {
       }),
     );
   });
+  return snapshot;
 };
 
 const categoryPicker = (): HTMLSelectElement | null =>
@@ -299,5 +305,137 @@ test("a requested category is the one the screen opens on", async () => {
     currentCategory(),
     "Data and privacy",
     "a deep link into a category must open on it, not on the screen's own default",
+  );
+});
+
+test("every category badge states a setting and never counts records", async () => {
+  // §7 OF THE DEBT CENSUS, TURNED FROM A COMMENT INTO AN ASSERTION.
+  //
+  // The guarantee was already true and it was carried by prose:
+  // `categoryStatus` is a TOTAL `Record<SettingsCategoryId, string>` — the id
+  // union is derived from the category array, so a seventh category will not
+  // compile without a statement — and a comment beside it says what the
+  // statement may not be: "A SETTINGS STATEMENT, NEVER A RECORD COUNT. …
+  // 'Notes 16' would name how many notes exist, which is a fact about the
+  // workspace and not about this section — and it is the mistake this row has
+  // already been written with once."
+  //
+  // A comment does not fail. This does, and it walks the SAME vocabulary the
+  // screen walks, so a section added later is held to the rule without anybody
+  // remembering to come back here.
+  //
+  // WHY THE PATTERN HAS THREE ARMS AND NOT R3's ONE. The spec said "does not
+  // match /^\d+$|^\d+\s/" — a bare count and a leading count. The mistake the
+  // comment actually names is `Notes 16`, which is a TRAILING count and passes
+  // both. The third arm catches it. What must NOT be caught is a number that
+  // is part of a statement: `Version 0.1.9` is a settings statement whose
+  // value happens to be numeric, and it stays green here — that is the other
+  // direction of this assertion and it is measured on every run, because the
+  // shipped `application` badge is exactly that shape.
+  const { settingsCategories, settingsCategoryElementId } =
+    await import("../src/settings-categories.js");
+  await mountSettings();
+
+  const looksLikeACount = /^\d+$|^\d+\s|\s\d+$/u;
+  assert.ok(
+    settingsCategories.length > 0,
+    "an empty vocabulary would satisfy this loop while measuring nothing",
+  );
+  let measured = 0;
+  for (const category of settingsCategories) {
+    const button = navigatorButtons().find(
+      (candidate) =>
+        candidate.getAttribute("aria-controls") ===
+        settingsCategoryElementId(category.id),
+    );
+    assert.ok(button, `the navigator does not list „${category.id}"`);
+    const badge = button.querySelector("small")?.textContent?.trim() ?? "";
+    assert.ok(
+      badge.length > 0,
+      `„${category.id}" carries no status statement beside its label`,
+    );
+    assert.ok(
+      /[A-Za-z]/u.test(badge),
+      `„${category.id}" states „${badge}", which says nothing a person reads`,
+    );
+    assert.ok(
+      !looksLikeACount.test(badge),
+      `„${category.id}" states „${badge}" — that is a record count, and a badge says what the section DOES`,
+    );
+    measured += 1;
+  }
+  assert.equal(
+    measured,
+    settingsCategories.length,
+    "every declared category must have been measured, not most of them",
+  );
+});
+
+test("the workspace category holds the funnel and the working day", async () => {
+  // A CAPABILITY NOTHING MOUNTS IS INDISTINGUISHABLE FROM ONE THAT WAS NEVER
+  // BUILT — lot ACC measured that nothing in `npm run check` went red if
+  // `<AccessSection />` were deleted from this very screen. Both controls this
+  // lot adds are components in files of their own, so they can vanish the same
+  // way; `scripts/break-workspace-settings.mjs` deletes each one to prove this
+  // test sees it.
+  //
+  // THE ANCHOR IS DATA-INDEPENDENT ON PURPOSE. `[data-commercial-defaults]` is
+  // on the control's root and is drawn whatever the projection says, so a red
+  // here means "not mounted" and never "the fixture had no stages". What the
+  // rows are made of is a separate assertion, below.
+  const snapshot = await mountSettings();
+  const workspace = container.querySelector<HTMLElement>(
+    '[data-settings-category="workspace"]',
+  );
+  assert.ok(workspace, "the Workspace category did not render");
+
+  const commercial = workspace.querySelector<HTMLElement>(
+    "[data-commercial-defaults]",
+  );
+  assert.ok(
+    commercial,
+    "the pipeline and money control is not mounted — the wrapper it calls had zero callers before this lot, and this is how it goes back to having none",
+  );
+  const workingDay = workspace.querySelector<HTMLElement>("[data-working-day]");
+  assert.ok(
+    workingDay,
+    "the working-day control is not mounted — the day would be readable on three screens and settable on none again",
+  );
+
+  // DERIVED FROM THE PROJECTION, never from a list written here: the funnel is
+  // whatever this workspace configured, and a screen that drew the DEFAULT one
+  // while the workspace held another would pass a hardcoded expectation.
+  const stages = snapshot.bootstrap.workspace.commercialDefaults.stages;
+  assert.ok(stages.length > 0, "the fixture carries no funnel to draw");
+  for (const stage of stages) {
+    const row = commercial.querySelector<HTMLElement>(
+      `[data-stage="${stage.id}"]`,
+    );
+    assert.ok(row, `stage „${stage.label}" is configured and not drawn`);
+    assert.ok(
+      (row.textContent ?? "").includes(stage.label),
+      `stage „${stage.id}" is drawn without the label it carries`,
+    );
+  }
+  assert.equal(
+    commercial.querySelectorAll("[data-stage]").length,
+    stages.length,
+    "the funnel drawn must be the funnel configured, entry for entry",
+  );
+
+  // The working day is drawn from the projection too — the same rule, one
+  // field further: `09:00` here is `startMinute: 540` there.
+  const day = snapshot.bootstrap.workspace.workingDay;
+  const hours = [
+    ...workingDay.querySelectorAll<HTMLInputElement>('input[type="time"]'),
+  ].map((input) => input.value);
+  const clock = (minutes: number): string =>
+    `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
+      minutes % 60,
+    ).padStart(2, "0")}`;
+  assert.deepEqual(
+    hours,
+    [clock(day.startMinute), clock(day.endMinute)],
+    "the hours shown must be the hours the workspace works",
   );
 });
