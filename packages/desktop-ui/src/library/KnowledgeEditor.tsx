@@ -38,7 +38,10 @@ import {
   type MutationFailure,
   type DocumentLinkCandidatesProjection,
 } from "../client/workflow.js";
-import { InlinePopover } from "../components/InlinePopover.js";
+import {
+  InlinePopover,
+  reportFirstEmptyRequiredField,
+} from "../components/InlinePopover.js";
 import {
   DOCUMENT_ENTITY_ACTIVATE_EVENT,
   documentEntityKindCopy,
@@ -306,6 +309,85 @@ const DocumentToolbar = ({
   );
 };
 
+/**
+ * CHANGING THE NAME OF THE NOTE YOU ARE READING.
+ *
+ * `document.rename` shipped in #212 and until this control existed a note's
+ * title could be changed by an agent through MCP and by nobody else — the gap
+ * Wave D named was half-closed, and the wave's own sentence, *every screen
+ * shows the title and none offers to change it*, was still true of the
+ * interface. It sits in the reading pane's header because that is the band
+ * that already carries the name (`h2#document-title` names the whole pane),
+ * beside the other whole-note action there. The list row was the alternative
+ * and was rejected: a row's controls are about WHERE a note is filed, and
+ * renaming from a row renames a note the reader is not reading.
+ *
+ * WHAT THE COMMAND REFUSES, SAID HERE RATHER THAN DISCOVERED IN A TOAST. The
+ * boundary trims and then demands one character (`command.ts`), so a title of
+ * pure whitespace is refused — the browser's own `required` catches an empty
+ * field and `reportFirstEmptyRequiredField` names the whitespace case, which
+ * passes native validation and would otherwise fail silently a process away.
+ * The two rules the command does NOT make are not invented here either: a
+ * title another note already carries is accepted, because nothing in this
+ * domain makes a note's name unique, and the name the note already has is
+ * accepted, for the reason the handler writes down.
+ */
+const DocumentRenameControl = ({
+  title,
+  onRename,
+}: {
+  readonly title: string;
+  readonly onRename: (title: string) => Promise<boolean>;
+}) => {
+  const fieldId = useId();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [busy, setBusy] = useState(false);
+  return (
+    <InlinePopover
+      label="Rename"
+      onOpenChange={(opening) => {
+        // Opening starts from the name the note carries NOW, not from whatever
+        // was abandoned in the field last time: a draft kept across a close
+        // would offer to overwrite a title somebody else had since changed.
+        if (opening) setDraft(title);
+        setOpen(opening);
+      }}
+      open={open}
+      panelLabel={`Rename ${title}`}
+      triggerClassName="secondary-button document-rename-trigger"
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (busy) return;
+          if (draft.trim() === "") {
+            reportFirstEmptyRequiredField(event.currentTarget);
+            return;
+          }
+          setBusy(true);
+          void onRename(draft).then((renamed) => {
+            setBusy(false);
+            if (renamed) setOpen(false);
+          });
+        }}
+      >
+        <label htmlFor={`${fieldId}-rename`}>Change title</label>
+        <input
+          data-document-rename-input="true"
+          id={`${fieldId}-rename`}
+          maxLength={500}
+          name="documentTitle"
+          onChange={(event) => setDraft(event.target.value)}
+          required
+          value={draft}
+        />
+        <button disabled={busy}>{busy ? "Saving…" : "Save title"}</button>
+      </form>
+    </InlinePopover>
+  );
+};
+
 export const KnowledgeEditor = ({
   client,
   document,
@@ -314,6 +396,7 @@ export const KnowledgeEditor = ({
   onEntityActivate,
   onReload,
   onFailure,
+  onRename,
 }: {
   readonly client: ConstellationRendererClient;
   readonly document: DocumentItem;
@@ -325,6 +408,12 @@ export const KnowledgeEditor = ({
   }) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
+  /**
+   * Writes the note's new name and answers whether it landed. The command and
+   * the version it needs belong to the screen that holds both reads of this
+   * note; what belongs here is the one place a reader sees the name.
+   */
+  readonly onRename: (title: string) => Promise<boolean>;
 }) => {
   const yDocument = useMemo(() => new Y.Doc({ gc: true }), [document.id]);
   const revisionNameId = useId();
@@ -1344,6 +1433,7 @@ export const KnowledgeEditor = ({
                 ? "Changes save automatically"
                 : statusCopy}
           </div>
+          <DocumentRenameControl onRename={onRename} title={document.title} />
           <button
             type="button"
             className="secondary-button document-markdown-toggle"

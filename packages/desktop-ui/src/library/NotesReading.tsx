@@ -5,6 +5,7 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 
 import {
   createDocument,
+  renameDocument,
   setDocumentFolder,
   type DesktopSnapshot,
   type MutationFailure,
@@ -236,6 +237,41 @@ export const NotesReading = ({
       if (result.kind !== "success") return onFailure(result);
       await onReload();
     });
+  };
+
+  // THE OTHER THING THAT CAN BE DONE TO A NOTE FROM THIS SCREEN, and it lives
+  // here rather than in the pane that draws the control for one reason: the
+  // note's version. `moveNote` above resolves it as `knowledge.list` first and
+  // `document.list` second, and the pane holds only the second of those two
+  // reads — a rename resolving the version differently from a move would send
+  // a stale number and come back as a conflict over a record nobody else
+  // touched. One resolution, used by both writes.
+  //
+  // A title the note already carries is SENT, not swallowed. The kernel
+  // accepts it on purpose (`wave2.ts`, `document.rename`) so that a retried
+  // write does not fail on a workspace that already applied it, and an
+  // interface that refused it here would be restating a rule the domain
+  // deliberately declined to make.
+  const renameNote = async (
+    noteId: DocumentId,
+    title: string,
+  ): Promise<boolean> => {
+    const summary = summaries.find((candidate) => candidate.id === noteId);
+    const item = items.find((candidate) => candidate.id === noteId);
+    const version = summary?.version ?? item?.version;
+    if (!client || version === undefined) return false;
+    const result = await renameDocument(
+      client,
+      snapshot,
+      { id: noteId, version },
+      title,
+    );
+    if (result.kind !== "success") {
+      onFailure(result);
+      return false;
+    }
+    await onReload();
+    return true;
   };
 
   const selectionLabel =
@@ -528,6 +564,7 @@ export const NotesReading = ({
             onEntityActivate={onEntityActivate}
             onFailure={onFailure}
             onReload={onReload}
+            onRename={(title) => renameNote(open.id, title)}
             snapshot={snapshot}
           />
         ) : (
