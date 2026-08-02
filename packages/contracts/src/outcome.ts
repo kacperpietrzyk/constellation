@@ -74,6 +74,7 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.routed_as_task",
   "project.created",
   "document.created",
+  "document.renamed",
   "document.folder_changed",
   "folder.created",
   "folder.renamed",
@@ -373,6 +374,20 @@ export const DocumentCreatedProjectionSchema = z
     documentId: DocumentIdSchema,
     title: z.string(),
     role: z.enum(["note", "document", "deliverable"]),
+    version: z.int().positive(),
+  })
+  .strict();
+
+/**
+ * What a rename answers with. It carries the title it wrote, not the title it
+ * replaced: a caller that wants the old one has the record it read before
+ * sending, and a projection is what the workspace now holds.
+ */
+export const DocumentRenamedProjectionSchema = z
+  .object({
+    kind: z.literal("document.renamed"),
+    documentId: DocumentIdSchema,
+    title: z.string(),
     version: z.int().positive(),
   })
   .strict();
@@ -935,6 +950,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureExceptionResolvedProjectionSchema,
   ProjectCreatedProjectionSchema,
   DocumentCreatedProjectionSchema,
+  DocumentRenamedProjectionSchema,
   KnowledgeSourceMutationProjectionSchema,
   KnowledgeEvidenceUpdatedProjectionSchema,
   KnowledgeNamedVersionMutationProjectionSchema,
@@ -1124,6 +1140,12 @@ const DocumentCreatedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("document.created"),
     projection: DocumentCreatedProjectionSchema,
+  }).strict();
+const DocumentRenamedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("document.renamed"),
+    projection: DocumentRenamedProjectionSchema,
   }).strict();
 const KnowledgeSourceCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -1484,6 +1506,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
+  DocumentRenamedSuccessOutcomeSchema,
   KnowledgeSourceCreatedSuccessOutcomeSchema,
   KnowledgeSourceUpdatedSuccessOutcomeSchema,
   KnowledgeEvidenceUpdatedSuccessOutcomeSchema,

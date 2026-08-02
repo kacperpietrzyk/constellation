@@ -42,7 +42,7 @@
 
 import type { RelationshipWorkspaceProjection } from "../client/workflow.js";
 
-import { formatDate } from "../i18n.js";
+import { countLabel, formatDate } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
 import {
   fmtMoney,
@@ -130,12 +130,12 @@ export const renewalPhrase = (
 ): { readonly text: string; readonly tone: RenewalTone } => {
   if (lead.startAction > 0)
     return {
-      text: `start in ${lead.startAction} days`,
+      text: `start in ${countLabel(lead.startAction, "day")}`,
       tone: lead.startAction <= CRM_LEAD_SOON ? "soon" : "calm",
     };
   if (lead.startAction === 0) return { text: "start today", tone: "late" };
   return {
-    text: `${-lead.startAction} days into the window`,
+    text: `${countLabel(-lead.startAction, "day")} into the window`,
     tone: "late",
   };
 };
@@ -394,8 +394,8 @@ export const readOrganization = (
     if (!decisionMakerKnown) {
       const when =
         lead.startAction > 0
-          ? `renewal talks start in ${lead.startAction} days`
-          : `renewal talks are ${-lead.startAction} days late to start`;
+          ? `renewal talks start in ${countLabel(lead.startAction, "day")}`
+          : `renewal talks are ${countLabel(-lead.startAction, "day")} late to start`;
       const who =
         decisionMaker === undefined ? "never recorded" : decisionMaker.state;
       risks.push(`${when} · decision-maker ${who}`);
@@ -413,7 +413,9 @@ export const readOrganization = (
     )
     .sort((left, right) => right.days - left.days)[0];
   if (stalest !== undefined && stalest.days > CRM_DEAL_STALE) {
-    risks.push(`a deal has stood in one stage for ${stalest.days} days`);
+    risks.push(
+      `a deal has stood in one stage for ${countLabel(stalest.days, "day")}`,
+    );
   }
   if (
     organization.relationshipState === "inactive" &&
@@ -440,7 +442,7 @@ export const readOrganization = (
   }
   if (idleDays === undefined) watch.push("nothing recorded as contact");
   else if (idleDays > CRM_QUIET_DAYS)
-    watch.push(`no contact in ${idleDays} days`);
+    watch.push(`no contact in ${countLabel(idleDays, "day")}`);
   // A decision-maker already named beside the renewal does not come back a
   // second time; a repeated reason reads as two problems.
   const named =
@@ -461,7 +463,7 @@ export const readOrganization = (
       ? "no contact ever recorded"
       : idleDays === 0
         ? "contact today"
-        : `last contact ${idleDays} days ago`;
+        : `last contact ${countLabel(idleDays, "day")} ago`;
 
   let signal: RelationshipSignal;
   if (organization.relationshipState === "inactive") {

@@ -49,7 +49,7 @@ import {
   type RenewalRecord,
 } from "../crm/organization-reading.js";
 import { renewalOutlook, type RenewalOutlookReading } from "../crm/money.js";
-import { formatDate } from "../i18n.js";
+import { dayDistance, formatDate } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
 
 type StrategicRecord = RelationshipWorkspaceProjection["records"][number];
@@ -370,7 +370,7 @@ const accessibleNameFor = (
     organization?.name ?? "Unknown client",
     renewal.title,
     renewal.scope,
-    `${clock.closed ? "ended" : "ends"} ${formatDate(renewal.expiresAt, prose.timeZone)}, ${relativeDays(clock.daysLeft)}`,
+    `${clock.closed ? "ended" : "ends"} ${formatDate(renewal.expiresAt, prose.timeZone)}, ${dayDistance(clock.daysLeft, "elapsed")}`,
   ];
   const lead = leadPhrase(renewal, clock);
   if (lead !== undefined) parts.push(lead.text);
@@ -388,9 +388,10 @@ const accessibleNameFor = (
   return parts.join(", ");
 };
 
-/** "in 65 days" / "today" / "31 days ago". */
-export const relativeDays = (days: number): string =>
-  days < 0 ? `${-days} days ago` : days === 0 ? "today" : `in ${days} days`;
+/* `relativeDays` used to live here and said "1 days" in two of its three arms.
+ * It is gone rather than fixed: a local function that spells a day count out is
+ * the thing that came back five times, so the callers now reach the shell's one
+ * `dayDistance` directly and there is no local name left to drift. */
 
 export interface LeadPhrase {
   readonly text: string;
@@ -405,15 +406,17 @@ export const leadPhrase = (
 ): LeadPhrase | undefined => {
   if (clock.closed) return undefined;
   const days = renewal.leadTimeDays;
-  if (clock.startAction > 0)
+  // The window's own length stays a compound adjective — "a 1-day lead" is
+  // correct English and takes no plural. Only the DISTANCE is a day count, and
+  // it goes through the one function; the verb is this caller's, which is what
+  // the `elapsed` voice exists for.
+  if (clock.startAction >= 0)
     return {
-      text: `${days}-day lead opens in ${clock.startAction} days`,
-      open: false,
+      text: `${days}-day lead opens ${dayDistance(clock.startAction, "elapsed")}`,
+      open: clock.startAction === 0,
     };
-  if (clock.startAction === 0)
-    return { text: `${days}-day lead opens today`, open: true };
   return {
-    text: `${days}-day lead began ${-clock.startAction} days ago`,
+    text: `${days}-day lead began ${dayDistance(clock.startAction, "elapsed")}`,
     open: true,
   };
 };

@@ -28,9 +28,23 @@
 // w `retiredDesktopSurfaces`, bo niesie go KAŻDY zapisany stan powłoki
 // z 0.1.9 i z każdego builda 0.2.0.
 //
-// `settings` i `access` zostają powierzchniami (routing, preload i menu natywne
-// ich potrzebują), ale bez grupy i bez skrótu numerycznego: w Ustawienia wchodzi
+// `access` WSIĄKŁ w `settings` w fali Wycofań i to było — tak samo jak przy
+// `history` — SCALENIE TREŚCI, nie przemianowanie: kategoria „Access and
+// connections" trzymała swój identyfikator od dnia, w którym Ustawienia
+// wsiadły, a jedyną kontrolką w niej był przycisk nawigujący na tę
+// powierzchnię. Przycisk znikł, treść stoi za nim, a `access` stoi niżej
+// w `retiredDesktopSurfaces`, bo niesie go KAŻDY zapisany stan powłoki
+// z builda 0.2.0.
+//
+// `settings` zostaje powierzchnią (routing, preload i menu natywne jej
+// potrzebują), ale bez grupy i bez skrótu numerycznego: w Ustawienia wchodzi
 // się kołem zębatym przy nazwisku albo `⌘,`, a wejście podmienia lewą kolumnę.
+// UWAGA, TO ZDANIE JEST DZIŚ NIEPEŁNE i to jest znane: `RealApp.tsx` filtruje
+// pozycje lewej kolumny warunkiem `shortcut !== null`, który NICZEGO NIE
+// ODSIEWA (`nav-items.ts` opuszcza klucz zamiast ustawiać `null`), więc
+// Ustawienia rysują się także w nawigacji. Poprawka należy do lotu, który
+// wycofuje `activity` — razem z nauczeniem bramki układu wchodzenia w tryb
+// kołem zębatym, bo dziś zamiatanie zna tylko `.nav-item[data-surface]`.
 export const desktopSurfaceRegistry = [
   {
     id: "today",
@@ -141,14 +155,6 @@ export const desktopSurfaceRegistry = [
     loading: "lazy",
   },
   {
-    id: "access",
-    label: "Access",
-    icon: "access",
-    group: null,
-    shortcut: null,
-    loading: "lazy",
-  },
-  {
     id: "settings",
     label: "Settings",
     icon: "settings",
@@ -202,6 +208,13 @@ export const retiredDesktopSurfaces: Readonly<Record<string, DesktopSurface>> =
     // „Relacje" były jedną zakładką na cztery różne pytania; ekran klienta jest
     // z nich najbliższy temu, po co ludzie tam wchodzili.
     relationships: "organizations",
+    // Zarządzanie dostępem jest dziś sekcją Ustawień. Wpis jest OBOWIĄZKOWY,
+    // a nie kosmetyczny: `retiredDesktopSurfaces` jest kluczowana `string`iem,
+    // więc jego brak przechodzi `tsc` bez słowa, a przy pierwszym starcie po
+    // aktualizacji pierwsza zakładka `access` odrzuca CAŁĄ zapisaną sesję —
+    // każdą zakładkę, ulubioną pozycję i całą historię — bez awarii, więc bez
+    // śladu.
+    access: "settings",
     // „Zapisane widoki" były osobnym ekranem nad tą samą kolekcją co Zadania.
     // Zapisany widok otwiera się dziś NA Zadaniach — to ta sama praca, oglądana
     // przez soczewkę — więc zakładka wskazująca tam ma dokąd trafić.

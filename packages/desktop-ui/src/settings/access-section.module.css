@@ -1,34 +1,33 @@
-/* R4 access management instantiates Atlas contract PAT-21 plus accepted
-   OBJ-11, OVR-12 and STA-18 inside the real shell. */
-.access-surface {
+/* The Access and connections section of Settings. R4 access management
+   instantiates Atlas contract PAT-21 plus accepted OBJ-11, OVR-12 and STA-18;
+   it used to instantiate them inside a destination of its own and now does it
+   inside the Settings category that always held its id.
+
+   A CSS MODULE, not `styles.css`: the sheet that binds this merge is
+   `hotPathStylesheetBytes` (200 000 B, ~20 kB of slack), and `styles.css` is
+   linked from `index.html`, so folding ~12.6 kB of it into the global sheet
+   would have spent a third of the wave's hot-path CSS on one move. A module
+   travels inside the lazy Settings chunk instead and costs the hot path
+   nothing.
+
+   NO `container-type` HERE, and that is deliberate. `.settings-sections`
+   (`styles.css`) is already an inline-size container, so the two width rules
+   below resolve against the column this section is drawn in. Declaring a
+   second container on a child would repeat the class of defect this wave's
+   headline is about — an inline-size container whose own width is not
+   definite resolves to `fit-content`, and `fit-content` under a centred
+   parent resolves to nothing at all. */
+
+.root {
   display: grid;
   align-content: start;
   gap: var(--space-6);
-  width: 100%;
-  max-width: 58rem;
   min-width: 0;
-  margin: 0 auto;
-  padding: var(--space-6) var(--space-6) var(--space-10);
-  container-type: inline-size;
+  padding: var(--space-5);
+  border-top: 1px solid var(--border-default);
 }
 
-.access-heading {
-  /* .access-surface already spaces sections with its grid gap; the shared
-     .surface-header bottom margin would double that rhythm. */
-  margin: 0;
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-6);
-}
-
-.access-heading > div {
-  display: grid;
-  gap: var(--space-2);
-  max-width: 42rem;
-}
-
-.policy-version {
+.policyVersion {
   flex: none;
   padding: 0.35rem 0.55rem;
   border: 1px solid var(--border-default);
@@ -39,7 +38,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.access-ledger {
+.ledger {
   display: grid;
   min-width: 0;
   overflow: hidden;
@@ -49,8 +48,8 @@
   box-shadow: var(--elevation-raised);
 }
 
-.access-ledger-heading,
-.agent-access-heading {
+.ledgerHeading,
+.agentHeading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -61,32 +60,32 @@
   background: var(--surface-sunken);
 }
 
-.access-ledger-heading > div:first-child,
-.agent-access-heading > div:first-child {
+.ledgerHeading > div:first-child,
+.agentHeading > div:first-child {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
 }
 
-.access-ledger-heading h2,
-.access-ledger-heading p {
+.ledgerHeading h2,
+.ledgerHeading p {
   margin: 0;
 }
 
-.access-ledger-heading h2 {
+.ledgerHeading h2 {
   font-size: var(--text-md);
   font-weight: 620;
   letter-spacing: var(--tracking-tight);
 }
 
-.access-ledger-heading p {
+.ledgerHeading p {
   max-width: 36rem;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
 }
 
-.access-ledger-actions {
+.ledgerActions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -94,49 +93,49 @@
   flex: none;
 }
 
-.access-ledger-count {
+.ledgerCount {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.access-create-trigger {
+.createTrigger {
   gap: var(--space-2);
   min-height: 2.25rem;
   white-space: nowrap;
 }
 
-.access-create-trigger > svg,
-.access-create-trigger > .agent-orbit-mark {
+.createTrigger > svg,
+.createTrigger > .orbitMark {
   width: 1rem;
   height: 1rem;
 }
 
-.access-create-trigger > .agent-orbit-mark::before {
+.createTrigger > .orbitMark::before {
   inset: 0.25rem -0.12rem;
 }
 
-.access-create-trigger > .agent-orbit-mark::after {
+.createTrigger > .orbitMark::after {
   width: 0.22rem;
   height: 0.22rem;
 }
 
-.concept-help-dialog.access-dialog {
+:global(.concept-help-dialog).dialog {
   display: grid;
   width: min(52rem, calc(100vw - 2rem));
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
-.access-dialog-content {
+.dialogContent {
   min-width: 0;
   overflow: auto;
   padding: var(--space-5);
   overscroll-behavior: contain;
 }
 
-.access-dialog-actions {
+.dialogActions {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
@@ -146,7 +145,7 @@
   border-top: 1px solid var(--border-subtle);
 }
 
-.access-composer {
+.composer {
   display: grid;
   grid-template-columns:
     minmax(10rem, 1.4fr) minmax(8rem, 0.8fr) minmax(11rem, 1fr)
@@ -160,7 +159,7 @@
   box-shadow: var(--elevation-raised);
 }
 
-.access-dialog .access-composer {
+.dialog .composer {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
   padding: 0;
@@ -170,28 +169,28 @@
   box-shadow: none;
 }
 
-.access-dialog .access-composer fieldset,
-.access-dialog .access-boundary-note {
+.dialog .composer fieldset,
+.dialog .boundaryNote {
   grid-column: 1 / -1;
 }
 
-.access-dialog .access-composer fieldset {
+.dialog .composer fieldset {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.member-identity {
+.memberIdentity {
   display: grid;
   gap: 0.15rem;
   min-width: 0;
 }
 
-.member-identity span,
-.access-unavailable span {
+.memberIdentity span,
+.unavailable span {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
 
-.access-avatar {
+.avatar {
   display: grid;
   place-items: center;
   width: 2.25rem;
@@ -206,8 +205,8 @@
   letter-spacing: 0.02em;
 }
 
-.access-composer > label,
-.access-composer fieldset {
+.composer > label,
+.composer fieldset {
   display: grid;
   gap: var(--space-2);
   min-width: 0;
@@ -216,17 +215,17 @@
   border: 0;
 }
 
-.access-composer label > span,
-.access-composer legend {
+.composer label > span,
+.composer legend {
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
   font-weight: 550;
 }
 
-.access-composer input[type="text"],
-.access-composer input:not([type]),
-.access-composer select,
-.member-actions select {
+.composer input[type="text"],
+.composer input:not([type]),
+.composer select,
+.memberActions select {
   min-height: 2.5rem;
   border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
@@ -234,27 +233,27 @@
   background: var(--input-bg);
 }
 
-.access-composer input:not([type]),
-.access-composer input[type="text"] {
+.composer input:not([type]),
+.composer input[type="text"] {
   padding: 0 var(--space-3);
 }
 
-.access-composer select,
-.member-actions select {
+.composer select,
+.memberActions select {
   padding: 0 var(--space-8) 0 var(--space-3);
 }
 
-.access-composer fieldset {
+.composer fieldset {
   grid-template-columns: 1fr 1fr;
   padding-bottom: 0.15rem;
 }
 
-.access-composer fieldset legend {
+.composer fieldset legend {
   grid-column: 1 / -1;
   margin-bottom: var(--space-2);
 }
 
-.access-composer fieldset label {
+.composer fieldset label {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -263,13 +262,13 @@
   font-size: var(--text-xs);
 }
 
-.access-composer input[type="radio"] {
+.composer input[type="radio"] {
   width: 1rem;
   height: 1rem;
   accent-color: var(--text-primary);
 }
 
-.access-boundary-note {
+.boundaryNote {
   grid-column: 1 / -1;
   margin: 0;
   padding-top: var(--space-3);
@@ -280,19 +279,19 @@
 
 /* Spans both composer columns: these notes qualify the whole decision, not
    the fieldset they happen to follow. */
-.access-dialog-note {
+.dialogNote {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
 
-.member-list {
+.memberList {
   display: grid;
   min-width: 0;
 }
 
-.member-row {
+.memberRow {
   display: grid;
   grid-template-columns: auto minmax(10rem, 1fr) auto auto;
   align-items: center;
@@ -302,23 +301,23 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.member-row:last-child,
-.agent-grant-row:last-child {
+.memberRow:last-child,
+.grantRow:last-child {
   border-bottom: 0;
 }
 
-.member-row.revoked {
+.rowRevoked {
   opacity: 0.62;
 }
 
-.member-identity strong {
+.memberIdentity strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-sm);
 }
 
-.access-state {
+.state {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -326,7 +325,7 @@
   font-size: var(--text-2xs);
 }
 
-.access-state::before {
+.state::before {
   width: 0.4rem;
   height: 0.4rem;
   border-radius: 50%;
@@ -334,32 +333,18 @@
   content: "";
 }
 
-.access-state.revoked::before {
+.stateClosed::before {
   background: var(--text-quaternary);
 }
 
-.member-actions {
+.memberActions {
   display: flex;
   align-items: center;
   justify-content: end;
   gap: var(--space-2);
 }
 
-.quiet-danger-button {
-  min-height: 2.5rem;
-  padding: 0 var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--status-error);
-  background: transparent;
-}
-
-.quiet-danger-button:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--status-error) 28%, transparent);
-  background: color-mix(in oklch, var(--status-error) 9%, transparent);
-}
-
-.access-unavailable {
+.unavailable {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-5);
@@ -368,46 +353,46 @@
   background: var(--surface-sunken);
 }
 
-.access-ledger > .access-unavailable,
-.access-ledger .agent-empty-state {
+.ledger > .unavailable,
+.ledger .emptyState {
   margin: var(--space-4);
 }
 
 /* PAT-24 keeps capability and data scope visually separate while presenting
    one deliberate local-agent grant flow. */
-.agent-access-section {
+.agentSection {
   gap: 0;
 }
 
-.agent-access-heading {
+.agentHeading {
   align-items: flex-start;
 }
 
-.agent-access-heading > div {
+.agentHeading > div {
   display: grid;
   gap: var(--space-2);
   max-width: 42rem;
 }
 
-.agent-access-heading h2,
-.agent-access-heading p,
-.agent-empty-state p {
+.agentHeading h2,
+.agentHeading p,
+.emptyState p {
   margin: 0;
 }
 
-.agent-access-heading h2 {
+.agentHeading h2 {
   font-size: var(--text-md);
   font-weight: 620;
 }
 
-.agent-access-heading > div > p:last-child,
-.agent-empty-state p {
+.agentHeading > div > p:last-child,
+.emptyState p {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
   line-height: 1.5;
 }
 
-.agent-access-composer {
+.agentComposer {
   position: relative;
   display: grid;
   grid-template-columns: minmax(13rem, 1fr) minmax(13rem, 1fr);
@@ -420,7 +405,7 @@
   box-shadow: var(--elevation-raised);
 }
 
-.access-dialog .agent-access-composer {
+.dialog .agentComposer {
   padding: 0;
   overflow: visible;
   border: 0;
@@ -429,7 +414,7 @@
   box-shadow: none;
 }
 
-.agent-trust-boundary {
+.trustBoundary {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -441,11 +426,11 @@
   text-transform: uppercase;
 }
 
-.agent-trust-boundary span:last-child {
+.trustBoundary span:last-child {
   text-align: right;
 }
 
-.agent-trust-boundary i {
+.trustBoundary i {
   width: 2.75rem;
   height: 1px;
   background: linear-gradient(
@@ -456,8 +441,8 @@
   );
 }
 
-.agent-name-field,
-.agent-access-composer fieldset {
+.nameField,
+.agentComposer fieldset {
   display: grid;
   align-content: start;
   gap: var(--space-2);
@@ -467,19 +452,19 @@
   border: 0;
 }
 
-.agent-name-field {
+.nameField {
   grid-column: 1 / -1;
 }
 
-.agent-name-field > span,
-.agent-access-composer legend {
+.nameField > span,
+.agentComposer legend {
   margin-bottom: var(--space-1);
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
   font-weight: 550;
 }
 
-.agent-name-field input {
+.nameField input {
   min-height: 2.5rem;
   padding: 0 var(--space-3);
   border: 1px solid var(--input-border);
@@ -488,7 +473,7 @@
   background: var(--input-bg);
 }
 
-.agent-option {
+.option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
@@ -500,45 +485,45 @@
   background: var(--surface-sunken);
 }
 
-.agent-option:hover {
+.option:hover {
   background: var(--surface-hover);
 }
 
-.agent-option:has(input:checked) {
+.option:has(input:checked) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
 
-.agent-option:has(input:focus-visible) {
+.option:has(input:focus-visible) {
   box-shadow: var(--focus-ring);
 }
 
-.agent-option input:focus-visible {
+.option input:focus-visible {
   box-shadow: none;
 }
 
-.agent-option input {
+.option input {
   margin-top: 0.2rem;
   accent-color: var(--text-primary);
 }
 
-.agent-option span,
-.agent-grant-identity {
+.option span,
+.grantIdentity {
   display: grid;
   gap: 0.15rem;
   min-width: 0;
 }
 
-.agent-option strong,
-.agent-grant-identity strong,
-.agent-empty-state strong {
+.option strong,
+.grantIdentity strong,
+.emptyState strong {
   font-size: var(--text-xs);
   font-weight: 600;
 }
 
-.agent-option small,
-.agent-grant-identity span,
-.agent-grant-identity small {
+.option small,
+.grantIdentity span,
+.grantIdentity small {
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
@@ -546,26 +531,26 @@
   text-overflow: ellipsis;
 }
 
-.agent-expiry {
+.expiry {
   grid-column: 1 / -1;
   grid-template-columns: auto auto 1fr;
   align-items: center;
 }
 
-.agent-federation-scope {
+.federationScope {
   grid-column: 1 / -1;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.agent-federation-scope legend {
+.federationScope legend {
   grid-column: 1 / -1;
 }
 
-.agent-expiry legend {
+.expiry legend {
   grid-column: 1 / -1;
 }
 
-.agent-expiry label {
+.expiry label {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -573,24 +558,24 @@
   font-size: var(--text-xs);
 }
 
-.agent-access-composer > .primary-button {
+.agentComposer > :global(.primary-button) {
   justify-self: start;
 }
 
-.agent-access-composer .field-error {
+.agentComposer :global(.field-error) {
   align-self: center;
   margin: 0;
   color: var(--status-error);
   font-size: var(--text-2xs);
 }
 
-.agent-grant-list {
+.grantList {
   display: grid;
   min-width: 0;
 }
 
-.agent-grant-row,
-.agent-empty-state {
+.grantRow,
+.emptyState {
   display: grid;
   grid-template-columns: auto minmax(12rem, 1fr) auto auto;
   align-items: center;
@@ -600,18 +585,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.agent-grant-row.revoked,
-.agent-grant-row.expired {
-  opacity: 0.62;
-}
-
-.agent-empty-state {
+.emptyState {
   grid-template-columns: auto minmax(0, 1fr);
   border: 1px dashed var(--border-default);
   border-radius: var(--radius-md);
 }
 
-.agent-orbit-mark {
+.orbitMark {
   position: relative;
   width: 2.25rem;
   height: 2.25rem;
@@ -620,20 +600,20 @@
   border-radius: 50%;
 }
 
-.agent-orbit-mark::before,
-.agent-orbit-mark::after {
+.orbitMark::before,
+.orbitMark::after {
   position: absolute;
   content: "";
 }
 
-.agent-orbit-mark::before {
+.orbitMark::before {
   inset: 0.42rem -0.18rem;
   border: 1px solid var(--text-quaternary);
   border-radius: 50%;
   transform: rotate(-28deg);
 }
 
-.agent-orbit-mark::after {
+.orbitMark::after {
   top: 50%;
   left: 50%;
   width: 0.35rem;
@@ -644,49 +624,59 @@
 }
 
 @container (max-width: 56.25rem) {
-  .access-composer {
+  .composer {
     grid-template-columns: 1fr 1fr;
   }
 
-  .access-composer .primary-button {
+  .composer :global(.primary-button) {
     justify-self: start;
   }
 
-  .member-row {
+  .memberRow {
     grid-template-columns: auto 1fr auto;
   }
 
-  .member-actions {
+  .memberActions {
     grid-column: 2 / -1;
     justify-content: start;
   }
 
-  .agent-grant-row {
+  .grantRow {
     grid-template-columns: auto 1fr auto;
   }
 
-  .agent-grant-row .member-actions {
+  .grantRow .memberActions {
     grid-column: 2 / -1;
   }
 }
 
 @container (max-width: 38.75rem) {
-  .access-surface {
-    padding-inline: var(--space-4);
+  /* FULL BLEED, and the number is measured. The surface this content came from
+     put its own padding INSIDE the scroll area and was 256 px wide at a 320 px
+     window; here the Settings surface already pays that padding, so a second
+     inset made the ledger's box 188 px instead of 222 — 34 px of a 224 px
+     column spent twice. The ledger is a panel with its own border, so letting
+     it reach the category edge costs nothing and is what the rows needed. */
+  .root {
+    padding-inline: 0;
   }
 
-  .access-heading,
-  .access-ledger-heading {
+  .ledger {
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  .ledgerHeading {
     display: grid;
   }
 
-  .access-ledger-heading,
-  .agent-access-heading {
+  .ledgerHeading,
+  .agentHeading {
     gap: var(--space-3);
     padding: var(--space-4);
   }
 
-  .access-ledger-actions {
+  .ledgerActions {
     width: 100%;
     align-items: stretch;
     flex-direction: column;
@@ -694,98 +684,98 @@
     gap: var(--space-2);
   }
 
-  .access-ledger-count {
+  .ledgerCount {
     align-self: flex-start;
   }
 
-  .access-create-trigger {
+  .createTrigger {
     width: 100%;
     min-height: 2.75rem;
     justify-content: center;
   }
 
-  .policy-version {
+  .policyVersion {
     justify-self: start;
   }
 
-  .access-composer {
+  .composer {
     grid-template-columns: 1fr;
   }
 
-  .access-dialog .access-composer fieldset {
+  .dialog .composer fieldset {
     grid-template-columns: 1fr;
   }
 
-  .access-boundary-note {
+  .boundaryNote {
     grid-column: 1;
   }
 
-  .member-row {
+  .memberRow {
     grid-template-columns: auto 1fr;
   }
 
-  .access-state,
-  .member-actions {
+  .state,
+  .memberActions {
     grid-column: 2;
   }
 
-  .member-actions {
+  .memberActions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .agent-access-heading,
-  .agent-access-composer {
+  .agentHeading,
+  .agentComposer {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .agent-access-heading .policy-version,
-  .agent-name-field,
-  .agent-trust-boundary,
-  .agent-expiry {
+  .agentHeading .policyVersion,
+  .nameField,
+  .trustBoundary,
+  .expiry {
     grid-column: 1;
   }
 
-  .agent-federation-scope {
+  .federationScope {
     grid-column: 1;
     grid-template-columns: 1fr;
   }
 
-  .agent-grant-row {
+  .grantRow {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .agent-grant-row .access-state,
-  .agent-grant-row .member-actions {
+  .grantRow .state,
+  .grantRow .memberActions {
     grid-column: 2;
   }
 
-  .access-dialog-backdrop {
+  .dialogBackdrop {
     padding: var(--space-3);
   }
 
-  .access-dialog {
+  .dialog {
     width: calc(100vw - 1.5rem);
     max-height: calc(100dvh - 1.5rem);
   }
 
-  .access-dialog > header,
-  .access-dialog-content {
+  .dialog > header,
+  .dialogContent {
     padding: var(--space-4);
   }
 
-  .access-dialog-actions {
+  .dialogActions {
     align-items: stretch;
     flex-direction: column-reverse;
   }
 
-  .access-dialog-actions button {
+  .dialogActions button {
     width: 100%;
     min-height: 2.75rem;
   }
 
-  .access-dialog > header .icon-button {
+  .dialog > header :global(.icon-button) {
     width: 2.75rem;
     min-width: 2.75rem;
     height: 2.75rem;
@@ -793,10 +783,10 @@
 }
 
 @media (forced-colors: active) {
-  .access-ledger,
-  .access-dialog,
-  .access-unavailable,
-  .agent-empty-state {
+  .ledger,
+  .dialog,
+  .unavailable,
+  .emptyState {
     border: 1px solid CanvasText;
   }
 }

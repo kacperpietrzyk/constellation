@@ -389,6 +389,59 @@ describe("shell navigation across a version upgrade", () => {
     );
   });
 
+  // TA SAMA GWARANCJA DLA `access`, i to nie jest kopia dla symetrii. Mapa
+  // `retiredDesktopSurfaces` jest kluczowana zwykłym `string`iem, więc brak
+  // wpisu przechodzi `tsc` BEZ SŁOWA — a przy odtwarzaniu ginie nie jedna
+  // zakładka, tylko CAŁA zapisana sesja: `isRestorableShellContext` odrzuca
+  // nieznaną powierzchnię, `tabs.length !== state.tabs.length` i powłoka
+  // startuje od zera. Bez awarii, więc bez śladu, przy pierwszym uruchomieniu
+  // po aktualizacji.
+  //
+  // DWIE zakładki, nie jedna, i `today` PIERWSZA: gdyby test niósł samą
+  // zakładkę `access`, odrzucenie sesji też skończyłoby się na `today`
+  // i asercja przeszłaby na fallbacku, nie na migracji.
+  it("carries an `access` tab saved by a 0.2.0 dev build over into Settings", () => {
+    const saved = JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          { key: "destination:today", label: "Today", surface: "today" },
+          { key: "destination:access", label: "Access", surface: "access" },
+        ],
+        activeKey: "destination:access",
+        history: [
+          { key: "destination:access", label: "Access", surface: "access" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      saved,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today", "settings"],
+    );
+    // Klucz idzie razem z celem, inaczej zapisany `activeKey` nie trafia
+    // w żadną odtworzoną zakładkę i sesja pada mimo poprawnej mapy.
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.key),
+      ["destination:today", "destination:settings"],
+    );
+    // Etykieta pochodzi z rejestru, nie z zapisu: zakładka nazwana „Access"
+    // otwierałaby Ustawienia pod cudzą nazwą.
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.label),
+      ["Today", "Settings"],
+    );
+    assert.equal(restored.activeKey, "destination:settings");
+    assert.deepEqual(
+      restored.history.map((entry) => entry.surface),
+      ["settings"],
+    );
+  });
+
   // Odczyt jest częścią kontekstu, więc przeżywa zapis: wrzutka głosowa
   // otwiera Bibliotekę NA Historii wrzutek, a zakładka ma się odtworzyć jako
   // to, czym była, nie jako Notatki.

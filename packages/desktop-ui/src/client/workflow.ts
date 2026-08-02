@@ -675,6 +675,33 @@ export const setDocumentFolder = (
         : undefined,
   );
 
+export const renameDocument = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  document: { readonly id: DocumentId; readonly version: number },
+  title: string,
+) =>
+  execute(
+    client,
+    {
+      // The note's own version and nothing else — the whole key set, not just
+      // "the note's key is in there". A wrapper that sends one version where
+      // the kernel demands two, or two where it demands one, is refused as a
+      // conflict the caller cannot act on, and the test that catches it has to
+      // assert the SET.
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [document.id]: document.version,
+      }),
+      commandName: "document.rename",
+      payload: { documentId: document.id, title },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "document.renamed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const createKnowledgeSource = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

@@ -609,6 +609,11 @@ describe("Command revertability", () => {
       folderId,
     });
     apply(
+      "document.rename",
+      { documentId: filedDocumentId, title: "Note that was retitled" },
+      versions(filedDocumentId),
+    );
+    apply(
       "document.setFolder",
       { documentId: filedDocumentId, folderId: childFolderId },
       versions(filedDocumentId),

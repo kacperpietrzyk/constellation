@@ -52,6 +52,7 @@ export const CapabilitySchema = z.enum([
   "project.readContent",
   "project.replaceContent",
   "document.create",
+  "document.rename",
   "document.remove",
   "document.setFolder",
   "folder.create",
@@ -246,6 +247,10 @@ export const CAPABILITY_DELEGATION: Readonly<
   "project.readContent": "read",
   "project.replaceContent": "operate",
   "document.create": "operate",
+  // Renaming a note is the same privilege as filing it: a principal that may
+  // write a note may say what it is called. It reveals nothing a Space read
+  // does not — the title is on every row of the list already.
+  "document.rename": "operate",
   "document.remove": "operate",
   // Filing a note and shaping the tree are ordinary edits of the Space, not a
   // separate privilege: a principal that may write a note may say where it

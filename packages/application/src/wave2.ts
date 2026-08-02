@@ -83,6 +83,7 @@ import {
   createFolder,
   renameFolder,
   setFolderParent,
+  renameNativeDocument,
   setDocumentFolder,
   folderAncestorIds,
   folderNoteCounts,
@@ -203,6 +204,7 @@ export type Wave2Command = Extract<
       | "project.create"
       | "project.remove"
       | "document.create"
+      | "document.rename"
       | "document.remove"
       | "document.setFolder"
       | "folder.create"
@@ -413,6 +415,7 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
+    case "document.rename":
     case "document.remove": {
       const document = view.getDocument(command.payload.documentId);
       return authorized(
@@ -2914,6 +2917,66 @@ export const executeWave2Command = (
           resultingVersion: removed.version,
         },
         { [removed.id]: "folder" },
+      );
+    }
+    case "document.rename": {
+      const document = transaction.getDocument(command.payload.documentId);
+      if (document === undefined || !recordIsActive(document))
+        return precondition(command, occurredAt);
+      const expected = { [document.id]: document.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      // A rename to the title the note already carries is ACCEPTED, the way
+      // `folder.rename` accepts one, and unlike `document.setFolder` directly
+      // below, which refuses a move to the folder a note is already in. The
+      // difference is not an inconsistency: a destination is a place and
+      // asking for the one you occupy asks for nothing, while a title is a
+      // value the caller supplies, and refusing "the same string" would make a
+      // retried write fail on a workspace that had already applied it. The
+      // payload arrives trimmed, so trailing whitespace is not a second title.
+      const updated = renameNativeDocument(
+        document,
+        command.payload.title,
+        occurredAt,
+      );
+      if (!transaction.updateDocument(updated, document.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "document.renamed",
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          aggregateId: document.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["title"],
+        {
+          diagnosticCode: "document.renamed",
+          projection: {
+            kind: "document.renamed",
+            documentId: updated.id,
+            title: updated.title,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          kind: "document.restore_title",
+          documentId: document.id,
+          priorTitle: document.title,
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "document" },
       );
     }
     case "document.setFolder": {
@@ -9542,6 +9605,7 @@ export const descriptorRecordIds = (
     case "folder.restore_record_state":
       return [descriptor.folderId];
     case "document.restore_folder":
+    case "document.restore_title":
       return [descriptor.documentId];
     case "relationship.restore_person":
       return [descriptor.personId];
@@ -10439,6 +10503,27 @@ const descriptorState = (
         recordIds: [document.id],
         versions: { [document.id]: document.version },
       };
+    }
+    case "document.restore_title": {
+      // Simpler than `document.restore_folder` above, and the difference is
+      // the whole reason they are two arms: a folder can be removed after the
+      // note left it, so putting the note back needs the destination checked.
+      // A title has no destination — the string travels on the descriptor —
+      // so the only thing that can stand in the way is a later change to the
+      // note itself.
+      const document = view.getDocument(descriptor.documentId);
+      return document?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [document.id],
+            versions: { [document.id]: document.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
     }
     case "savedView.restore_definition": {
       const record = view.getStrategicRecord(descriptor.savedViewId);
@@ -11637,6 +11722,16 @@ const compensateDescriptor = (
     const restored = setDocumentFolder(
       document,
       descriptor.priorFolderId,
+      occurredAt,
+    );
+    transaction.updateDocument(restored, document.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "document" };
+  } else if (descriptor.kind === "document.restore_title") {
+    const document = transaction.getDocument(descriptor.documentId)!;
+    const restored = renameNativeDocument(
+      document,
+      descriptor.priorTitle,
       occurredAt,
     );
     transaction.updateDocument(restored, document.version);

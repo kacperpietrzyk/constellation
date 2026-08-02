@@ -56,6 +56,12 @@ export const COMMAND_REVERTABILITY: Readonly<
   "project.create": "always",
   "project.remove": "always",
   "document.create": "always",
+  // A rename is the other way a note gets lost. Nothing in the app searches by
+  // a title that no longer exists, so a title replaced by mistake — by a
+  // person, or by an import run against the wrong vault — takes the note out
+  // of reach of everyone who knew it by name. The old title is kept on the
+  // compensation, exactly as `folder.restore_details` keeps a folder's.
+  "document.rename": "always",
   "document.remove": "always",
   // Every one of these is "always", and `document.setFolder` is the reason the
   // question was asked at all: moving a note is the single most dangerous

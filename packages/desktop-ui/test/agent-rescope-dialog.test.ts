@@ -9,7 +9,7 @@ import {
   rescopeBlockedReason,
   rescopeTarget,
   summariseRescope,
-} from "../src/AccessSurface.js";
+} from "../src/settings/AccessSection.js";
 
 const praca = SpaceIdSchema.parse("70000000-0000-4000-8000-000000000001");
 const dom = SpaceIdSchema.parse("70000000-0000-4000-8000-000000000002");

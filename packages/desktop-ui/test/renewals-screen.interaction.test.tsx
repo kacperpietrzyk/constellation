@@ -251,15 +251,23 @@ test('C22 — "Time to start" holds exactly the contracts whose lead window has 
   // accepted on the third pass: the section and the lead chip carry "time to
   // start", the row carries the date. A reader who cannot see the layout gets
   // the same order, which is what this asserts.
+  //
+  // THE `?` IN `days?` IS LOAD-BEARING — DO NOT DELETE IT. This fixture pins an
+  // expiry (2026-09-30) while "today" comes from the clock, so the count walks
+  // toward the row every day. Until the date lot these phrases said "1 days"
+  // and `\d+ days` matched at every count; now the singular is spelled
+  // correctly, and without the `?` this assertion goes RED on 2026-09-29 and
+  // again on 2026-10-01, on nobody's branch. That is the delay fuse that has
+  // already reddened `main` twice in this programme.
   const name = rowsIn("due")[0]?.getAttribute("aria-label") ?? "";
   assert.match(
     name,
-    /ends Sep 30, 2026, \d+ days ago|ends Sep 30, 2026, (today|in \d+ days)/u,
+    /ends Sep 30, 2026, \d+ days? ago|ends Sep 30, 2026, (today|in \d+ days?)/u,
     `the row's accessible name does not lead with the expiry date: ${name}`,
   );
   assert.match(
     name,
-    /90-day lead began \d+ days ago/u,
+    /90-day lead began \d+ days? ago/u,
     `the row's accessible name never says the lead window opened: ${name}`,
   );
 });
@@ -321,7 +329,7 @@ test("C22 — an empty Time to start is a computed answer, and irrelevant is clo
   );
   assert.match(
     empty.textContent ?? "",
-    /2 contracts under watch — the nearest lead opens in \d+ days, on \w+ \d+, 20\d\d\./u,
+    /2 contracts under watch — the nearest lead opens in \d+ days?, on \w+ \d+, 20\d\d\./u,
     `the empty section does not carry the computed count and date: ${empty.textContent ?? ""}`,
   );
 

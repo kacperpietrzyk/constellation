@@ -12,13 +12,26 @@ import {
   type AccessProjection,
   type AgentAccessProjection,
   type DataSlice,
-} from "./client/workflow.js";
+} from "../client/workflow.js";
 import type { SpaceId } from "@constellation/contracts";
 
-import { Icon } from "./components/Icon.js";
-import { reportFirstEmptyRequiredField } from "./components/InlinePopover.js";
-import { countLabel, formatDate, plural } from "./i18n.js";
+import { Icon } from "../components/Icon.js";
+import { reportFirstEmptyRequiredField } from "../components/InlinePopover.js";
+import { countLabel, formatDate, plural } from "../i18n.js";
 
+import styles from "./access-section.module.css";
+
+/**
+ * WHO CAN WORK HERE, INSIDE SETTINGS. This was a destination of its own until
+ * Wave E; the `access` Settings category had always declared its id and held a
+ * button that navigated away to it. The button is gone and the content is
+ * behind it — a content merge, the same shape `history` took into Library.
+ *
+ * The section is a SECTION, not a surface: it renders no `h1`, claims no
+ * `#surface-title` and never returns a whole-screen state. `Settings` owns the
+ * screen's name, and a second element carrying that id would take the main
+ * landmark's `aria-labelledby` with it.
+ */
 type Member = AccessProjection["members"][number];
 type AgentGrant = AgentAccessProjection["grants"][number];
 /** Every level a person can choose; `custom` is only ever a grant's past. */
@@ -138,7 +151,7 @@ const SpaceScopeOption = ({
   readonly describedBy?: string | undefined;
   readonly onToggle: () => void;
 }) => (
-  <label className="agent-option">
+  <label className={styles.option}>
     <input
       type="checkbox"
       checked={checked}
@@ -240,7 +253,7 @@ const AccessDialog = ({
   return (
     <dialog
       ref={dialogRef}
-      className="concept-help-backdrop access-dialog-backdrop"
+      className={`concept-help-backdrop ${styles.dialogBackdrop}`}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       onClose={onClose}
@@ -250,7 +263,7 @@ const AccessDialog = ({
       }}
       onMouseDown={(event) => event.target === event.currentTarget && close()}
     >
-      <section className="concept-help-dialog access-dialog">
+      <section className={`concept-help-dialog ${styles.dialog}`}>
         <header>
           <div>
             <p className="eyebrow">{eyebrow}</p>
@@ -266,13 +279,13 @@ const AccessDialog = ({
             <Icon name="close" />
           </button>
         </header>
-        <div className="access-dialog-content">{children}</div>
+        <div className={styles.dialogContent}>{children}</div>
       </section>
     </dialog>
   );
 };
 
-export const AccessSurface = ({
+export const AccessSection = ({
   access,
   agentAccess,
   spaces,
@@ -363,7 +376,7 @@ export const AccessSurface = ({
   const [rescopeFailure, setRescopeFailure] = useState<string | undefined>(
     undefined,
   );
-  // The surface clears its own busy flag before it reloads the projection, so
+  // The section clears its own busy flag before it reloads the projection, so
   // between a successful save and the dialog closing on it the button would be
   // live again — over a grant whose versions that save has already bumped.
   const [rescopeSaving, setRescopeSaving] = useState(false);
@@ -476,8 +489,11 @@ export const AccessSurface = ({
       return;
     }
     if (agentSpaces.length === 0) {
+      // A DATA ATTRIBUTE, NOT A CLASS NAME. The scope fieldset needs no styles
+      // of its own, and a CSS Module has nothing to export for a class nobody
+      // declares — so the hook that has to survive is written as what it is.
       const firstSpace = event.currentTarget.querySelector<HTMLInputElement>(
-        ".agent-space-scope input",
+        "[data-space-scope] input",
       );
       requestAnimationFrame(() => firstSpace?.focus());
       return;
@@ -498,268 +514,263 @@ export const AccessSurface = ({
     closeCreation();
   };
 
-  if (access.kind === "unavailable") {
-    return (
-      <section className="access-surface" aria-labelledby="surface-title">
-        <header className="surface-header access-heading">
-          <div>
-            <p className="eyebrow">Workspace</p>
-            <h1 id="surface-title" tabIndex={-1}>
-              Access
-            </h1>
-            <p>The current access policy could not be read.</p>
-          </div>
-        </header>
-        <div className="access-unavailable" role="alert">
+  return (
+    <div className={styles.root}>
+      {access.kind === "unavailable" ? (
+        // A SECTION-LEVEL STATE. The surface this content came from returned a
+        // whole screen here; returning one now would blank the other five
+        // Settings categories because one projection could not be read.
+        <div className={styles.unavailable} role="alert">
           <strong>Access is unavailable</strong>
           <span>{access.message}</span>
         </div>
-      </section>
-    );
-  }
-
-  const current = access.data;
-  return (
-    <section className="access-surface" aria-labelledby="surface-title">
-      <header className="surface-header access-heading">
-        <div>
-          <p className="eyebrow">Workspace</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Access
-          </h1>
-          <p>Who can work in this workspace, and how far that reaches.</p>
-        </div>
-        <span className="policy-version">Policy v{current.policyVersion}</span>
-      </header>
-
-      <section className="access-ledger" aria-labelledby="member-list-title">
-        <header className="access-ledger-heading">
-          <div>
-            <h2 id="member-list-title">People</h2>
-            <p>Workspace role and Space access stay independent.</p>
-          </div>
-          <div className="access-ledger-actions">
-            <span className="access-ledger-count">
-              {
-                current.members.filter((member) => member.status === "active")
-                  .length
-              }{" "}
-              active
-            </span>
-            {current.canManage && (
-              <button
-                ref={personTriggerRef}
-                type="button"
-                className="secondary-button access-create-trigger"
-                aria-haspopup="dialog"
-                onClick={() => setOpenCreation("person")}
-              >
-                <Icon name="access" />
-                Add person
-              </button>
-            )}
-          </div>
-        </header>
-        <div className="member-list" aria-live="polite">
-          {current.members.map((member) => {
-            const grant = member.spaces[0];
-            const self = member.principalId === current.currentPrincipalId;
-            return (
-              <article
-                className={`member-row ${member.status === "revoked" ? "revoked" : ""}`}
-                key={member.membershipId}
-              >
-                <span className="access-avatar" aria-hidden="true">
-                  {member.displayName
-                    .split(/\s+/u)
-                    .slice(0, 2)
-                    .map((part) => part[0])
-                    .join("")
-                    .toLocaleUpperCase()}
-                </span>
-                <div className="member-identity">
-                  <strong>
-                    {member.displayName}
-                    {self ? " · You" : ""}
-                  </strong>
-                  <span>
-                    {member.role === "owner"
-                      ? "Owner"
-                      : member.role === "admin"
-                        ? "Admin"
-                        : member.role === "guest"
-                          ? "Guest"
-                          : "Member"}
-                    {grant
-                      ? ` · ${grant.spaceName}`
-                      : member.role === "owner"
-                        ? " · primary Space"
-                        : " · no active Space"}
-                  </span>
-                </div>
-                <span className={`access-state ${member.status}`}>
-                  {member.status === "active" ? "Active" : "Revoked"}
-                </span>
-                {current.canManage && !self && member.status === "active" && (
-                  <div className="member-actions">
-                    {grant && (
-                      <label>
-                        <span className="sr-only">
-                          Access for {member.displayName}
-                        </span>
-                        <select
-                          value={grant.access}
-                          onChange={(event) =>
-                            onSetAccess(
-                              member,
-                              event.target.value as "view" | "comment" | "edit",
-                            )
-                          }
-                          disabled={busy}
-                        >
-                          <option value="view">View only</option>
-                          <option value="comment">Can comment</option>
-                          <option value="edit">Can edit</option>
-                        </select>
-                      </label>
-                    )}
-                    {confirmAction === `member-${member.membershipId}` ? (
-                      <>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => setConfirmAction(undefined)}
-                          disabled={busy}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="quiet-danger-button"
-                          type="button"
-                          onClick={() => {
-                            setConfirmAction(undefined);
-                            onRevoke(member);
-                          }}
-                          disabled={busy}
-                        >
-                          Confirm revoke
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="quiet-danger-button"
-                        type="button"
-                        onClick={() =>
-                          setConfirmAction(`member-${member.membershipId}`)
-                        }
-                        disabled={busy}
-                      >
-                        Revoke access
-                      </button>
-                    )}
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      {current.canManage && openCreation === "person" && (
-        <AccessDialog
-          eyebrow="New access"
-          title="Add person"
-          description="Create a lasting identity; grant the workspace role and Space access separately."
-          open
-          onClose={closeCreation}
-        >
-          <form className="access-composer" onSubmit={submit}>
-            <label>
-              <span>Person name</span>
-              <input
-                name="display-name"
-                autoComplete="name"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="e.g. Ada Nowak"
-                maxLength={120}
-                disabled={busy}
-                required
-              />
-            </label>
-            <label>
-              <span>Workspace role</span>
-              <select
-                value={role}
-                onChange={(event) =>
-                  setRole(event.target.value as "admin" | "member" | "guest")
-                }
-                disabled={busy}
-              >
-                <option value="member">Member</option>
-                <option value="guest">Guest</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
-            <fieldset>
-              <legend>Access in the current Space</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="space-access"
-                  checked={spaceAccess === "comment"}
-                  onChange={() => setSpaceAccess("comment")}
-                  disabled={busy}
-                />
-                Can comment
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="space-access"
-                  checked={spaceAccess === "view"}
-                  onChange={() => setSpaceAccess("view")}
-                  disabled={busy}
-                />
-                View only
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="space-access"
-                  checked={spaceAccess === "edit"}
-                  onChange={() => setSpaceAccess("edit")}
-                  disabled={busy}
-                />
-                Can edit
-              </label>
-            </fieldset>
-            <p className="access-boundary-note">
-              Access never includes hidden Spaces. Full capabilities never widen
-              the data scope.
-            </p>
-            <div className="access-dialog-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={closeCreation}
-                disabled={busy}
-              >
-                Cancel
-              </button>
-              <button className="primary-button" type="submit" disabled={busy}>
-                {busy ? "Saving…" : "Create access"}
-              </button>
+      ) : (
+        <section className={styles.ledger} aria-labelledby="member-list-title">
+          <header className={styles.ledgerHeading}>
+            <div>
+              <h2 id="member-list-title">People</h2>
+              <p>Workspace role and Space access stay independent.</p>
             </div>
-          </form>
-        </AccessDialog>
+            <div className={styles.ledgerActions}>
+              <span className={styles.ledgerCount}>
+                {
+                  access.data.members.filter(
+                    (member) => member.status === "active",
+                  ).length
+                }{" "}
+                active
+              </span>
+              <span className={styles.policyVersion}>
+                Policy v{access.data.policyVersion}
+              </span>
+              {access.data.canManage && (
+                <button
+                  ref={personTriggerRef}
+                  type="button"
+                  className={`secondary-button ${styles.createTrigger}`}
+                  aria-haspopup="dialog"
+                  onClick={() => setOpenCreation("person")}
+                >
+                  <Icon name="access" />
+                  Add person
+                </button>
+              )}
+            </div>
+          </header>
+          <div className={styles.memberList} aria-live="polite">
+            {access.data.members.map((member) => {
+              const grant = member.spaces[0];
+              const self =
+                member.principalId === access.data.currentPrincipalId;
+              return (
+                <article
+                  className={`${styles.memberRow} ${member.status === "revoked" ? styles.rowRevoked : ""}`}
+                  data-member-status={member.status}
+                  key={member.membershipId}
+                >
+                  <span className={styles.avatar} aria-hidden="true">
+                    {member.displayName
+                      .split(/\s+/u)
+                      .slice(0, 2)
+                      .map((part) => part[0])
+                      .join("")
+                      .toLocaleUpperCase()}
+                  </span>
+                  <div className={styles.memberIdentity}>
+                    <strong>
+                      {member.displayName}
+                      {self ? " · You" : ""}
+                    </strong>
+                    <span>
+                      {member.role === "owner"
+                        ? "Owner"
+                        : member.role === "admin"
+                          ? "Admin"
+                          : member.role === "guest"
+                            ? "Guest"
+                            : "Member"}
+                      {grant
+                        ? ` · ${grant.spaceName}`
+                        : member.role === "owner"
+                          ? " · primary Space"
+                          : " · no active Space"}
+                    </span>
+                  </div>
+                  <span
+                    className={`${styles.state} ${member.status === "revoked" ? styles.stateClosed : ""}`}
+                  >
+                    {member.status === "active" ? "Active" : "Revoked"}
+                  </span>
+                  {access.data.canManage &&
+                    !self &&
+                    member.status === "active" && (
+                      <div className={styles.memberActions}>
+                        {grant && (
+                          <label>
+                            <span className="sr-only">
+                              Access for {member.displayName}
+                            </span>
+                            <select
+                              value={grant.access}
+                              onChange={(event) =>
+                                onSetAccess(
+                                  member,
+                                  event.target.value as
+                                    "view" | "comment" | "edit",
+                                )
+                              }
+                              disabled={busy}
+                            >
+                              <option value="view">View only</option>
+                              <option value="comment">Can comment</option>
+                              <option value="edit">Can edit</option>
+                            </select>
+                          </label>
+                        )}
+                        {confirmAction === `member-${member.membershipId}` ? (
+                          <>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => setConfirmAction(undefined)}
+                              disabled={busy}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="quiet-danger-button"
+                              type="button"
+                              onClick={() => {
+                                setConfirmAction(undefined);
+                                onRevoke(member);
+                              }}
+                              disabled={busy}
+                            >
+                              Confirm revoke
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="quiet-danger-button"
+                            type="button"
+                            onClick={() =>
+                              setConfirmAction(`member-${member.membershipId}`)
+                            }
+                            disabled={busy}
+                          >
+                            Revoke access
+                          </button>
+                        )}
+                      </div>
+                    )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
       )}
 
+      {access.kind === "ready" &&
+        access.data.canManage &&
+        openCreation === "person" && (
+          <AccessDialog
+            eyebrow="New access"
+            title="Add person"
+            description="Create a lasting identity; grant the workspace role and Space access separately."
+            open
+            onClose={closeCreation}
+          >
+            <form className={styles.composer} onSubmit={submit}>
+              <label>
+                <span>Person name</span>
+                <input
+                  name="display-name"
+                  autoComplete="name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="e.g. Ada Nowak"
+                  maxLength={120}
+                  disabled={busy}
+                  required
+                />
+              </label>
+              <label>
+                <span>Workspace role</span>
+                <select
+                  value={role}
+                  onChange={(event) =>
+                    setRole(event.target.value as "admin" | "member" | "guest")
+                  }
+                  disabled={busy}
+                >
+                  <option value="member">Member</option>
+                  <option value="guest">Guest</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <fieldset>
+                <legend>Access in the current Space</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="space-access"
+                    checked={spaceAccess === "comment"}
+                    onChange={() => setSpaceAccess("comment")}
+                    disabled={busy}
+                  />
+                  Can comment
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="space-access"
+                    checked={spaceAccess === "view"}
+                    onChange={() => setSpaceAccess("view")}
+                    disabled={busy}
+                  />
+                  View only
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="space-access"
+                    checked={spaceAccess === "edit"}
+                    onChange={() => setSpaceAccess("edit")}
+                    disabled={busy}
+                  />
+                  Can edit
+                </label>
+              </fieldset>
+              <p className={styles.boundaryNote}>
+                Access never includes hidden Spaces. Full capabilities never
+                widen the data scope.
+              </p>
+              <div className={styles.dialogActions}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={closeCreation}
+                  disabled={busy}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={busy}
+                >
+                  {busy ? "Saving…" : "Create access"}
+                </button>
+              </div>
+            </form>
+          </AccessDialog>
+        )}
+
       <section
-        className="access-ledger agent-access-section"
+        className={`${styles.ledger} ${styles.agentSection}`}
         aria-labelledby="agent-access-title"
       >
-        <header className="agent-access-heading">
+        <header className={styles.agentHeading}>
           <div>
             <p className="eyebrow">
               MCP ·{" "}
@@ -772,8 +783,8 @@ export const AccessSurface = ({
             </p>
           </div>
           {agentAccess.kind === "ready" && (
-            <div className="access-ledger-actions">
-              <span className="access-ledger-count">
+            <div className={styles.ledgerActions}>
+              <span className={styles.ledgerCount}>
                 {
                   agentAccess.data.grants.filter(
                     (grant) => grant.status === "active",
@@ -785,11 +796,11 @@ export const AccessSurface = ({
                 <button
                   ref={agentTriggerRef}
                   type="button"
-                  className="secondary-button access-create-trigger"
+                  className={`secondary-button ${styles.createTrigger}`}
                   aria-haspopup="dialog"
                   onClick={() => setOpenCreation("agent")}
                 >
-                  <span className="agent-orbit-mark" aria-hidden="true" />
+                  <span className={styles.orbitMark} aria-hidden="true" />
                   Add agent
                 </button>
               )}
@@ -798,7 +809,7 @@ export const AccessSurface = ({
         </header>
 
         {agentAccess.kind === "unavailable" ? (
-          <div className="access-unavailable" role="alert">
+          <div className={styles.unavailable} role="alert">
             <strong>
               {agentTransport === "remote_hub"
                 ? "Remote MCP is unavailable"
@@ -820,13 +831,13 @@ export const AccessSurface = ({
                 open
                 onClose={closeCreation}
               >
-                <form className="agent-access-composer" onSubmit={submitAgent}>
-                  <div className="agent-trust-boundary" aria-hidden="true">
+                <form className={styles.agentComposer} onSubmit={submitAgent}>
+                  <div className={styles.trustBoundary} aria-hidden="true">
                     <span>What it can do</span>
                     <i />
                     <span>What it can see</span>
                   </div>
-                  <label className="agent-name-field">
+                  <label className={styles.nameField}>
                     <span>Agent or host name</span>
                     <input
                       name="agent-name"
@@ -842,7 +853,7 @@ export const AccessSurface = ({
                   <fieldset>
                     <legend>Capability level</legend>
                     {GRANT_PRESETS.map(([value, label, description]) => (
-                      <label key={value} className="agent-option">
+                      <label key={value} className={styles.option}>
                         <input
                           type="radio"
                           name="agent-preset"
@@ -858,14 +869,14 @@ export const AccessSurface = ({
                     ))}
                   </fieldset>
                   <fieldset
-                    className="agent-space-scope"
+                    data-space-scope="true"
                     aria-describedby={
                       showSpacesError ? "agent-spaces-error" : undefined
                     }
                   >
                     <legend>Data scope</legend>
                     {spaces.length === 0 ? (
-                      <p className="access-boundary-note">
+                      <p className={styles.boundaryNote}>
                         This workspace has no Space yet, so there is no data
                         scope to grant. Add the first Space, then create the
                         grant.
@@ -894,7 +905,7 @@ export const AccessSurface = ({
                       ))
                     )}
                   </fieldset>
-                  <fieldset className="agent-expiry">
+                  <fieldset className={styles.expiry}>
                     <legend>Expiry</legend>
                     <label>
                       <input
@@ -918,7 +929,7 @@ export const AccessSurface = ({
                     </label>
                   </fieldset>
                   {agentTransport === "remote_hub" && (
-                    <fieldset className="agent-federation-scope">
+                    <fieldset className={styles.federationScope}>
                       <legend>Cross-workspace boundaries</legend>
                       {(
                         [
@@ -936,7 +947,7 @@ export const AccessSurface = ({
                           ],
                         ] as const
                       ).map(([key, label]) => (
-                        <label key={key} className="agent-option">
+                        <label key={key} className={styles.option}>
                           <input
                             type="checkbox"
                             checked={federationScope[key]}
@@ -956,7 +967,7 @@ export const AccessSurface = ({
                       ))}
                     </fieldset>
                   )}
-                  <div className="access-dialog-actions">
+                  <div className={styles.dialogActions}>
                     <button
                       className="secondary-button"
                       type="button"
@@ -998,11 +1009,8 @@ export const AccessSurface = ({
                 open
                 onClose={closeRescope}
               >
-                <form
-                  className="agent-access-composer"
-                  onSubmit={submitRescope}
-                >
-                  <div className="agent-trust-boundary" aria-hidden="true">
+                <form className={styles.agentComposer} onSubmit={submitRescope}>
+                  <div className={styles.trustBoundary} aria-hidden="true">
                     <span>What it can do</span>
                     <i />
                     <span>What it can see</span>
@@ -1010,7 +1018,7 @@ export const AccessSurface = ({
                   <fieldset>
                     <legend>Capability level</legend>
                     {GRANT_PRESETS.map(([value, label, description]) => (
-                      <label key={value} className="agent-option">
+                      <label key={value} className={styles.option}>
                         <input
                           type="radio"
                           name="rescope-preset"
@@ -1025,10 +1033,10 @@ export const AccessSurface = ({
                       </label>
                     ))}
                   </fieldset>
-                  <fieldset className="agent-space-scope">
+                  <fieldset data-space-scope="true">
                     <legend>Data scope</legend>
                     {rescopeSpaceOptions.length === 0 ? (
-                      <p className="access-boundary-note">
+                      <p className={styles.boundaryNote}>
                         This workspace has no Space yet, so there is no data
                         scope to change.
                       </p>
@@ -1052,13 +1060,13 @@ export const AccessSurface = ({
                     )}
                   </fieldset>
                   {rescoping.preset === "custom" && (
-                    <p className="access-dialog-note">
+                    <p className={styles.dialogNote}>
                       This grant has a hand-picked set of permissions. Choosing
                       a level replaces all of it.
                     </p>
                   )}
                   {rescopeClosesDrift && (
-                    <p className="access-dialog-note">
+                    <p className={styles.dialogNote}>
                       {missingCapabilitiesNote(
                         rescoping.missingFromPreset.length,
                       )}
@@ -1067,11 +1075,11 @@ export const AccessSurface = ({
                   {/* The difference is the decision, and it changes with every
                       box ticked — a person who cannot see the dialog has to
                       hear it, including the reason saving is unavailable. */}
-                  <p className="access-dialog-note" aria-live="polite">
+                  <p className={styles.dialogNote} aria-live="polite">
                     {rescopeBlocked ??
                       `${summariseRescope(rescoping, rescopePreset, rescopeSpaceIds, spaces)} Takes effect on the agent's next call — no reconnect.`.trim()}
                   </p>
-                  <div className="access-dialog-actions">
+                  <div className={styles.dialogActions}>
                     <button
                       className="secondary-button"
                       type="button"
@@ -1102,10 +1110,10 @@ export const AccessSurface = ({
               </AccessDialog>
             )}
 
-            <div className="agent-grant-list" aria-live="polite">
+            <div className={styles.grantList} aria-live="polite">
               {agentAccess.data.grants.length === 0 ? (
-                <div className="agent-empty-state">
-                  <span className="agent-orbit-mark" aria-hidden="true" />
+                <div className={styles.emptyState}>
+                  <span className={styles.orbitMark} aria-hidden="true" />
                   <div>
                     <strong>No host has access</strong>
                     <p>
@@ -1120,12 +1128,19 @@ export const AccessSurface = ({
                 </div>
               ) : (
                 agentAccess.data.grants.map((grant) => (
+                  // A STATUS IS DATA, NOT A CLASS NAME. It used to be both,
+                  // and the two disagreed: the row dimmed for `expired` and
+                  // `revoked` alike while the state dot had a rule for
+                  // `revoked` only, so an EXPIRED grant showed the green
+                  // success dot. A CSS Module has no name to give a status it
+                  // does not style, which is what surfaced it.
                   <article
-                    className={`agent-grant-row ${grant.status}`}
+                    className={`${styles.grantRow} ${grant.status === "active" ? "" : styles.rowRevoked}`}
+                    data-grant-status={grant.status}
                     key={grant.grantId}
                   >
-                    <span className="agent-orbit-mark" aria-hidden="true" />
-                    <div className="agent-grant-identity">
+                    <span className={styles.orbitMark} aria-hidden="true" />
+                    <div className={styles.grantIdentity}>
                       <strong>{grant.displayName}</strong>
                       <span>
                         {presetLabel(grant.preset)}
@@ -1145,7 +1160,9 @@ export const AccessSurface = ({
                           ` · scope from before an update: ${missingCapabilitiesClause(grant.missingFromPreset.length)} from this level`}
                       </small>
                     </div>
-                    <span className={`access-state ${grant.status}`}>
+                    <span
+                      className={`${styles.state} ${grant.status === "active" ? "" : styles.stateClosed}`}
+                    >
                       {grant.status === "active"
                         ? "Active"
                         : grant.status === "expired"
@@ -1154,7 +1171,7 @@ export const AccessSurface = ({
                     </span>
                     {agentAccess.data.canManage &&
                       grant.status === "active" && (
-                        <div className="member-actions">
+                        <div className={styles.memberActions}>
                           {confirmAction === `agent-rotate-${grant.grantId}` ? (
                             <>
                               <button
@@ -1256,6 +1273,6 @@ export const AccessSurface = ({
           </>
         )}
       </section>
-    </section>
+    </div>
   );
 };
