@@ -26,20 +26,24 @@
  * an accessible name and the name always matches the panel it opens.
  */
 
-export type HelpTopicId =
-  | "price-basis"
-  | "stage-sums"
-  | "unconfigured-stage"
-  | "relationship-reading"
-  | "lead-time"
-  | "amendment"
-  | "attached-notes"
-  | "sources"
-  | "source-availability"
-  | "note-arrangement";
-
-export type HelpTopic = {
-  readonly id: HelpTopicId;
+/* THE SHAPE OF AN ENTRY. It does NOT name the ids: the ids are the array, and
+ * the union below is read off it.
+ *
+ * WHAT THIS REPLACED, and why it was a defect rather than a style: `HelpTopicId`
+ * was a hand-written union of ten strings STANDING BESIDE this array. An id
+ * added to the union alone compiled, `TopicHelp` returned `null` for it — the
+ * `?` simply did not draw — and the cap assertion stayed green, because it
+ * iterates the ARRAY. Two of this repository's named defect families in one
+ * declaration: a hand-written list beside a closed vocabulary, and a capability
+ * nothing mounts. Derived the way `settings-categories.ts` derives
+ * `SettingsCategoryId`, an eleventh topic cannot be referred to before it
+ * exists, and an eleventh entry needs no second edit.
+ *
+ * THE ARRAY IS THE AUTHORITY, checked rather than assumed: nothing computes
+ * `helpTopics` from anywhere else, so this is a guard over the source and not
+ * over a restatement of it. */
+type HelpTopicShape = {
+  readonly id: string;
   /** What the topic is called, above the answer. */
   readonly term: string;
   /** The trigger's label. A question, because that is what a reader has. */
@@ -48,7 +52,7 @@ export type HelpTopic = {
   readonly answer: string;
 };
 
-export const helpTopics: readonly HelpTopic[] = [
+export const helpTopics = [
   {
     id: "price-basis",
     term: "Derived and confirmed prices",
@@ -134,7 +138,11 @@ export const helpTopics: readonly HelpTopic[] = [
     answer:
       "Available means a copy is kept here. Reference only means the address is held, not the content. Unavailable means the address no longer answers.",
   },
-];
+] as const satisfies readonly HelpTopicShape[];
+
+export type HelpTopic = (typeof helpTopics)[number];
+
+export type HelpTopicId = HelpTopic["id"];
 
 export const helpTopic = (id: HelpTopicId): HelpTopic | undefined =>
   helpTopics.find((topic) => topic.id === id);

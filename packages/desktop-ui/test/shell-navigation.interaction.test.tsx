@@ -354,3 +354,132 @@ test("przypięcie do wycofanego celu przechodzi na następcę, zamiast zniknąć
     "work i tasks rozwiązały się na ten sam cel, a szyna pokazała go dwa razy",
   );
 });
+
+test("przypięte Ustawienia znikają z szyny, bo nie ma czym ich odpiąć", async () => {
+  // GWIAZDKA ODPINAJĄCA STOI PRZY POZYCJI NAWIGACJI I NIGDZIE INDZIEJ, a
+  // Ustawienia przestały być pozycją nawigacji. Przypięcie zapisane wcześniej
+  // rysowało się więc w szynie NA ZAWSZE: widoczne, klikalne, nieodpinalne.
+  //
+  // Ten test patrzy na to od strony ekranu, a nie funkcji: sprawdza, że po
+  // odtworzeniu NIE MA pinezki Ustawień — i osobno, że nie ma jej dlatego, że
+  // nie istnieje kontrolka, która mogłaby ją zdjąć. Sam brak pinezki
+  // przeszedłby też przy naprawie schowanej w rysowaniu, która zostawia zapis
+  // na dysku nietknięty.
+  localStorage.setItem(
+    "constellation.favorites",
+    JSON.stringify(["settings", "tasks"]),
+  );
+  await mountShell();
+
+  const pinned = [
+    ...container.querySelectorAll<HTMLElement>(".nav-item.nav-favorite"),
+  ].map((item) => (item.textContent ?? "").replace("★", "").trim());
+  assert.deepEqual(
+    pinned,
+    ["Tasks"],
+    "a Settings favourite saved before this wave came back to the rail",
+  );
+
+  // I to jest powód, dla którego pierwsza asercja nie wystarcza: gdyby
+  // Ustawienia dało się odpiąć, zablokowana pinezka byłaby niedogodnością,
+  // a nie defektem.
+  // NAJPIERW: CZY W OGÓLE JEST CO PRZESZUKIWAĆ. Odsiew po nazwie na zbiorze,
+  // który się nie narysował, wraca pusty i wygląda jak dowód — to jest ta sama
+  // pusta fikstura, którą ta fala łapała już cztery razy, tylko o piętro niżej.
+  // Populacja jest porównywana z lewą kolumną, a nie z liczbą.
+  const toggles = [
+    ...container.querySelectorAll<HTMLElement>(".nav-favorite-toggle"),
+  ];
+  assert.equal(
+    toggles.length,
+    navItems().length,
+    "no favourite toggles drew at all, so the absence below would be about the fixture and not about Settings",
+  );
+  const unstar = toggles.filter((button) =>
+    (button.getAttribute("aria-label") ?? "").includes("Settings"),
+  );
+  assert.deepEqual(
+    unstar.map((button) => button.getAttribute("aria-label")),
+    [],
+    "the shell offers a way to star Settings, so the stuck pin can be recreated",
+  );
+
+  // Naprawa jest TRWAŁA: powłoka zapisuje odsianą listę z powrotem, więc
+  // zablokowana pinezka znika z dysku, a nie tylko z ekranu.
+  assert.equal(
+    localStorage.getItem("constellation.favorites"),
+    JSON.stringify(["tasks"]),
+    "the stuck favourite is still on disk and comes back on the next launch",
+  );
+});
+
+/* DECYZJA #35 W POWŁOCE: KLAWISZ NIE ISTNIEJE WYŁĄCZNIE W DYMKU.
+ *
+ * Pozycje nawigacji sprawdzane są REGUŁĄ WYPROWADZONĄ Z REJESTRU, a nie listą
+ * pisaną ręcznie — i asercja mówi, KTÓRE cele zmierzyła, nie tylko ile ich
+ * było. Sam próg liczności przechodzi na złym zbiorze podmiotów, co ta fala
+ * zmierzyła już dwa razy.
+ *
+ * Dwa pojedyncze przypadki niżej to te, w których `title` był JEDYNYM nośnikiem
+ * i został skasowany: przełącznik przestrzeni (dodatkowo `disabled`
+ * w podglądzie, a wyłączony przycisk nie przyjmuje fokusu) i separator
+ * inspektora (`tabIndex={0}` z obsługą strzałek, więc człowiek z klawiaturą go
+ * dosięga i o geście podwójnego kliknięcia nie dowiadywał się skądkolwiek).
+ * Pozostałe trzy kontrolki chromu ZACHOWAŁY tooltip, więc dopisanie klawisza do
+ * nazwy jest tam wzmocnieniem, a nie jedynym nośnikiem — i nie udaje tu
+ * asercji o czymś, co i tak stoi na ekranie.
+ */
+test("każdy cel w lewej kolumnie niesie swój skrót w nazwie, nie tylko w dymku", async () => {
+  const { surfaceShortcutHint } =
+    await import("../src/components/ShortcutsOverlay.js");
+  const { navItems: allNavItems, sidebarNavItems } =
+    await import("../src/shell/nav-items.js");
+  await mountShell();
+
+  const drawn = navItems();
+  assert.deepEqual(
+    drawn.map((item) => item.dataset.surface).sort(),
+    sidebarNavItems.map((item) => item.id).sort(),
+    "the sidebar drew a different set of targets than the registry says it should — the measurement is of the wrong subjects, whatever its size",
+  );
+
+  for (const node of drawn) {
+    const item = allNavItems.find((entry) => entry.id === node.dataset.surface);
+    assert.ok(item, `no registry entry for ${node.dataset.surface}`);
+    const name = node.getAttribute("aria-label") ?? "";
+    assert.ok(
+      name.includes(surfaceShortcutHint(item).keys),
+      `${item.id} announces itself as "${name}", which does not say how to reach it from the keyboard`,
+    );
+  }
+});
+
+test("dwa wyjaśnienia, które stały TYLKO w dymku, stoją teraz w nazwie kontrolki", async () => {
+  await mountShell();
+
+  const switcher = container.querySelector<HTMLElement>(".workspace-switcher");
+  assert.ok(switcher, "the workspace switcher is not on screen");
+  assert.equal(
+    switcher.hasAttribute("title"),
+    false,
+    "the switcher explains itself in a tooltip again",
+  );
+  assert.match(
+    switcher.getAttribute("aria-label") ?? "",
+    /opens .*workspace settings/u,
+    "the switcher's name says whose workspace it is and not what pressing it does",
+  );
+
+  const separator = container.querySelector<HTMLElement>(".inspector-resize");
+  assert.ok(separator, "the inspector separator is not on screen");
+  assert.equal(
+    separator.hasAttribute("title"),
+    false,
+    "the double-click gesture went back into a tooltip",
+  );
+  assert.match(
+    separator.getAttribute("aria-label") ?? "",
+    /double-click/u,
+    "the only place the double-click gesture was stated is gone",
+  );
+});

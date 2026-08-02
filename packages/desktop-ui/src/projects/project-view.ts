@@ -387,6 +387,20 @@ export const deadlineDate = (
 export const rowAccessibleName = (
   reading: Omit<ProjectReading, "accessibleName">,
   clientName?: string | undefined,
+  /** The deadline as a DATE, for a layout that draws only the distance.
+   *
+   *  The "By client" lens said "6 days left" on screen and carried the date it
+   *  falls on in a `title` — a tooltip does not exist for a keyboard, for
+   *  touch, or for anybody not hovering, so for those readers the date was not
+   *  merely hard to find, it was absent. It cannot ride a visually-hidden span
+   *  inside the row either: the row is a `role="option"` with an `aria-label`,
+   *  and an option's label replaces everything inside it — which is why this
+   *  string exists at all.
+   *
+   *  Optional, and passed only by the layout that had the tooltip: the other
+   *  two lenses either draw the date already or never claimed to carry it, and
+   *  a name that grows on a screen showing less would be a different defect. */
+  deadlineDate?: string | undefined,
 ): string =>
   [
     reading.project.title,
@@ -395,6 +409,7 @@ export const rowAccessibleName = (
     `${countLabel(reading.open.length, "task")} open of ${reading.buckets.total}`,
     compositionSentence(reading.buckets),
     deadlineSentence(reading),
+    ...(deadlineDate === undefined ? [] : [deadlineDate]),
     clientName ?? "no client linked",
   ].join(", ");
 

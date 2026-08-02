@@ -181,6 +181,7 @@ import {
   organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
+  restoreFavoriteSurfaces,
   restoreShellNavigation,
   serializeShellNavigation,
   settingsCategoryContext,
@@ -272,33 +273,16 @@ export const RealApp = ({
         );
   });
   const navigationRef = useRef(navigation);
-  const [favorites, setFavorites] = useState<readonly SurfaceId[]>(() => {
-    try {
-      const parsed = JSON.parse(
-        localStorage.getItem("constellation.favorites") ?? "[]",
-      ) as unknown;
-      // Same map, same reason, and this one is the quieter loss: a favourite
-      // pinned to a surface that has since been renamed was DROPPED from the
-      // rail on first launch after the upgrade — no error, nothing to notice,
-      // just one fewer pin than yesterday. Deduplicated because two retired ids
-      // can resolve onto one successor.
-      return Array.isArray(parsed)
-        ? [
-            ...new Set(
-              parsed.flatMap((item) => {
-                const resolved = resolveDesktopSurface(item);
-                return resolved !== undefined &&
-                  navItems.some((entry) => entry.id === resolved)
-                  ? [resolved as SurfaceId]
-                  : [];
-              }),
-            ),
-          ]
-        : (["today", "tasks"] satisfies readonly SurfaceId[]);
-    } catch {
-      return ["today", "tasks"] satisfies readonly SurfaceId[];
-    }
-  });
+  // Ta sama mapa wycofanych celów co przy zakładkach, plus reguła, że przypiąć
+  // da się tylko cel z lewej kolumny. Obie mieszkają w `shell-navigation.ts`,
+  // przy odtwarzaniu sesji, bo to jest jedno miejsce: STAN URZĄDZENIA CZYTANY
+  // ZE ZAPISU SPRZED PRZEBUDOWY. Wcześniej ta odsiewka stała tutaj i pytała
+  // rejestr o samo ISTNIENIE celu, więc przypięte Ustawienia przeżywały
+  // aktualizację, w której przestały być pozycją nawigacji — a odpiąć je było
+  // można tylko gwiazdką przy pozycji nawigacji, której już nie ma.
+  const [favorites, setFavorites] = useState<readonly SurfaceId[]>(() =>
+    restoreFavoriteSurfaces(localStorage.getItem("constellation.favorites")),
+  );
   const [collapsedNavigationGroups, toggleNavigationGroup] =
     useCollapsedNavigationGroups();
   const [inspectorWidth, setInspectorWidth] = useState<number>(() => {
@@ -1851,19 +1835,29 @@ export const RealApp = ({
   // w ogóle: był w rejestrze, miał skrót i trasę, a w sidebarze go nie było.
   const navEntry = (item: (typeof navItems)[number]) => {
     const shortcutHint = surfaceShortcutHint(item);
+    // DECYZJA #35, W JEDNEJ LINII: skrót przestaje istnieć WYŁĄCZNIE w tooltipie.
+    // Klawisz stoi dziś w trzech miejscach i żadne z nich nie dociera do
+    // czytnika ekranu — `title` wymaga najechania, `<kbd>` obok jest
+    // `aria-hidden`, a dymek trybu rail rysuje się tylko przy zwiniętej
+    // kolumnie. Tooltip ZOSTAJE, bo dla myszy jest właściwą afordancją; to
+    // fakt, a nie tooltip, ma być osiągalny drugą drogą.
+    const shortcutName =
+      shortcutHint.kind === "direct"
+        ? shortcutHint.keys
+        : `through the palette, ${shortcutHint.keys}`;
+    const itemName =
+      item.id === "tasks"
+        ? `${item.label} · ${taskCount}`
+        : item.id === "inbox" && inboxWaiting > 0
+          ? `${item.label} · ${inboxWaiting} waiting`
+          : item.label;
     return (
       <div className="nav-entry" key={item.id}>
         <button
           data-surface={item.id}
           className={`nav-item ${surface === item.id ? "active" : ""}`}
           tabIndex={surface === item.id ? 0 : -1}
-          aria-label={
-            item.id === "tasks"
-              ? `${item.label} · ${taskCount}`
-              : item.id === "inbox" && inboxWaiting > 0
-                ? `${item.label} · ${inboxWaiting} waiting`
-                : item.label
-          }
+          aria-label={`${itemName}, ${shortcutName}`}
           aria-current={surface === item.id ? "page" : undefined}
           title={
             railMode
@@ -3074,15 +3068,20 @@ export const RealApp = ({
         <button
           type="button"
           className="workspace-switcher"
-          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}`}
-          disabled={isPreview}
-          title={
+          // CO TEN PRZYCISK ROBI, W JEGO NAZWIE — a nie w dymku obok niej.
+          // Widoczna treść to nazwa przestrzeni, więc czynność („otwiera
+          // ustawienia") nie stała nigdzie poza `title`. W trybie podglądu
+          // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
+          // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
+          // najeżdżającą myszą.
+          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
             isPreview
-              ? "Open workspace settings"
+              ? "opens workspace settings"
               : coordinatedDataHome
-                ? "Open coordinated workspace settings"
-                : "Open workspace settings and switching"
-          }
+                ? "opens coordinated workspace settings"
+                : "opens workspace settings and switching"
+          }`}
+          disabled={isPreview}
           onClick={() =>
             openContext(destinationContext("settings", "Settings"))
           }
@@ -3219,7 +3218,14 @@ export const RealApp = ({
                 .filter((item) => item.group === null)
                 .map((item) => navEntry(item))}
               {navigationGroups.map((group) => {
-                const groupItems = navItems.filter(
+                // Też `sidebarNavItems`, a nie `navItems`: obie gałęzie lewej
+                // kolumny — cele bez modułu wyżej i cele w modułach tutaj —
+                // czytają JEDNĄ regułę o tym, co się w niej rysuje. Dziś
+                // wychodzi na to samo, bo tryb Ustawień nie ma modułu; wpis
+                // rejestru z modułem i `chrome: "mode"` rysowałby się mimo
+                // wszystko, a to jest dokładnie ten kształt, który przez dwie
+                // fale odsiewał nic.
+                const groupItems = sidebarNavItems.filter(
                   (item) => item.group === group,
                 );
                 const activeGroupItem = groupItems.find(
@@ -3328,8 +3334,11 @@ export const RealApp = ({
             type="button"
             className="settings-entry"
             data-settings-entry="true"
-            aria-label="Open settings"
-            title="Settings (⌘,)"
+            aria-label={`Open settings, ${modifierLabel},`}
+            // Napis w dymku niósł `⌘` na sztywno, a skrót działa też pod
+            // `ctrl` — na Windowsie tooltip obiecywał klawisz, którego tam
+            // nie ma. Jedno źródło, `modifierLabel`, w obu.
+            title={`Settings (${modifierLabel},)`}
             onClick={openSettings}
           >
             <Icon name="settings" />
@@ -3352,7 +3361,7 @@ export const RealApp = ({
             <button
               className="icon-button"
               data-shell-history="back"
-              aria-label="Back"
+              aria-label="Back, Alt+Left"
               title="Back · Alt+←"
               disabled={!canMoveShellHistory(navigation, -1)}
               onClick={() =>
@@ -3364,7 +3373,7 @@ export const RealApp = ({
             <button
               className="icon-button"
               data-shell-history="forward"
-              aria-label="Forward"
+              aria-label="Forward, Alt+Right"
               title="Forward · Alt+→"
               disabled={!canMoveShellHistory(navigation, 1)}
               onClick={() =>
@@ -3410,7 +3419,7 @@ export const RealApp = ({
                     <button
                       type="button"
                       className="shell-tab-close"
-                      aria-label={`Close context ${tab.label}`}
+                      aria-label={`Close context ${tab.label}, ${modifierLabel}W`}
                       title={`Close · ${modifierLabel}W`}
                       onClick={() =>
                         setNavigation((current) =>
@@ -3547,11 +3556,15 @@ export const RealApp = ({
           className="inspector-resize"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize the preview panel"
+          // Separator jest `tabIndex={0}` i ma obsługę strzałek, więc człowiek
+          // z klawiaturą go DOSIĘGA — i nie dowiadywał się o podwójnym
+          // kliknięciu niczego, bo gest stał wyłącznie w dymku, którego nie
+          // widzi nikt niehoverujący. Zdanie wraca do nazwy, która i tak tu
+          // była.
+          aria-label="Resize the preview panel; double-click restores the default width"
           aria-valuemin={280}
           aria-valuemax={640}
           aria-valuenow={inspectorWidth}
-          title="Double-click restores the default width"
           tabIndex={0}
           onPointerDown={beginInspectorResize}
           onPointerMove={moveInspectorResize}
