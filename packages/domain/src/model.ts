@@ -1718,6 +1718,21 @@ export type UndoDescriptor =
       readonly consumedByCommandId?: CommandId;
     }
   | {
+      // The sixth. `document.rename` is the other way a note gets lost — a
+      // title nobody can find is a note nobody can find — so it keeps the
+      // title it replaced, the way `folder.restore_details` keeps a name. The
+      // prior title is always present: `title` is not optional on the record,
+      // so there is no "it had none" state to spell.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "document.restore_title";
+      readonly documentId: DocumentId;
+      readonly priorTitle: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -2028,7 +2043,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
-      readonly type: "document.created" | "document.folder_changed";
+      readonly type:
+        "document.created" | "document.renamed" | "document.folder_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: DocumentId;

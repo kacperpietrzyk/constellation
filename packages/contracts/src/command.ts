@@ -706,11 +706,11 @@ export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
        * already holds is refused as `record.already_exists` carrying that
        * note's id and version, so a re-run corrects rather than duplicates.
        *
-       * There is NO `document.update`, so — unlike a Person or an
-       * Organization — a note that predates the field can never be stamped
-       * afterwards, and a note whose title changed in the source cannot be
-       * renamed to match. Both are stated where the import reports its
-       * counts rather than papered over with a command invented here.
+       * There is still no `document.update`, and a note that predates this
+       * field can never be stamped afterwards. The OTHER half of what this
+       * comment used to say — that a note whose title changed in the source
+       * cannot be renamed to match — stopped being true with
+       * `document.rename` below; the key itself is still write-once.
        */
       externalId: ExternalIdSchema.optional(),
       role: z.enum(["note", "document", "deliverable"]).optional(),
@@ -781,6 +781,37 @@ export const DocumentSetFolderCommandSchema = CommandMetadataSchema.extend({
        * mean "no move", which is not a thing to ask for.
        */
       folderId: FolderIdSchema.nullable(),
+    })
+    .strict(),
+}).strict();
+
+/**
+ * A note's title, which until this command could not be changed BY ANY MEANS.
+ *
+ * `title` has always been a field on the record and was written exactly once,
+ * at creation. Nothing else could touch it — not the Obsidian import, which
+ * counts the notes whose title moved in the vault and could do nothing about
+ * it, not the Notes screen, which shows the title on every row, not an agent
+ * through MCP. In a tool meant to hold somebody's writing that is a gap in the
+ * domain rather than a missing affordance.
+ *
+ * ONE FIELD, and deliberately not a partial-by-field `document.update`. The
+ * comment above the folder commands says why in general; the particular reason
+ * here is that a `refine` enumerating its own keys has cost this repository
+ * twice, and a command that takes one field has no such member to drift.
+ * `externalId` is NOT on it: stamping a note's source key afterwards is a
+ * different capability with no named need, and it would be its own command
+ * rather than a second field on this one.
+ *
+ * The bound is the one `document.create` already applies, so a title this
+ * command refuses is a title that could never have been created either.
+ */
+export const DocumentRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("document.rename"),
+  payload: z
+    .object({
+      documentId: DocumentIdSchema,
+      title: z.string().trim().min(1).max(500),
     })
     .strict(),
 }).strict();
@@ -2701,6 +2732,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   ProjectUpdateDetailsCommandSchema,
   ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,
+  DocumentRenameCommandSchema,
   DocumentRemoveCommandSchema,
   DocumentSetFolderCommandSchema,
   FolderCreateCommandSchema,

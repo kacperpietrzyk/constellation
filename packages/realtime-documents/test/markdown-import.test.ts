@@ -179,10 +179,11 @@ test("a table round-trips, including a cell holding a pipe and a line break", ()
  * The serialiser wrote a hard break in a cell as `\<br>` — `\` + newline from
  * `hardBreak`, and the cell then replaced the newline. `\<` is a CommonMark
  * ESCAPE, so a reader sees the four literal characters `<br>` and the line
- * break is gone. The round trip did not see it, because this parser reads the
- * escaped spelling too (`\\?<br…`), so the wrong markdown came back as the
+ * break is gone. The round trip did not see it, because this parser then read
+ * the escaped spelling too (`\\?<br…`), so the wrong markdown came back as the
  * right tree — stable and WRONG on the way out, which is the failure mode a
- * fixed-point property cannot have an opinion about.
+ * fixed-point property cannot have an opinion about. That tolerance is gone
+ * now, and the test below this one is what took its place.
  *
  * The assertion is therefore the markdown BETWEEN the two parses, compared as
  * a whole string. "It contains `<br>`" is true of `\<br>` as well.
@@ -236,6 +237,33 @@ test("a hard break in a table cell leaves as a tag, not as an escaped one", () =
     cellWithBreak.content,
     "the hard break did not survive the door out and back in",
   );
+});
+
+/**
+ * THE OTHER HALF OF THE SAME CELL, and the one the round trip cannot see.
+ *
+ * The test above proves our own hard break leaves as `<br>`. This one proves
+ * we no longer read somebody ELSE's `\<br>` as one. In CommonMark `\<` is an
+ * escape, so a person who wrote `\<br>` in a foreign vault meant the four
+ * literal characters; the importer's optional backslash swallowed the escape
+ * and handed them a line break instead, and the escape was gone for good the
+ * next time the note was exported.
+ *
+ * `wave-d-harness-close-report.md:118-124` records why the fixed-point
+ * property is blind to this: the tolerance made the WRONG markdown come back
+ * as the RIGHT tree, so parse → serialise → parse was stable while the text
+ * was lost. The assertion therefore names the NODE KIND rather than comparing
+ * trees — there must be no `hardBreak` in that cell at all.
+ */
+test("an escaped tag in a foreign vault's cell stays text, not a hard break", () => {
+  const cell = parsed(["| Kto |", "| --- |", "| Anna\\<br>Piotr |"].join("\n"))
+    .content[0]?.content?.[1]?.content?.[0]?.content?.[0]?.content;
+  assert.deepEqual(
+    cell?.map((node) => node.type),
+    ["text"],
+    "a deliberately escaped tag was read as a line break",
+  );
+  assert.equal(cell?.[0]?.text, "Anna<br>Piotr");
 });
 
 test("three dashes under a paragraph stay a heading, and three stars stay a rule", () => {

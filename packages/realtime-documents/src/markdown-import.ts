@@ -687,24 +687,41 @@ const tableCell = (
   // `<br>` is the only line break a GFM cell has, and the serialiser writes
   // exactly that; reading it back as a hard break closes the round trip.
   //
-  // The optional backslash is BACKWARD COMPATIBILITY, and no longer a
-  // workaround. `structuredDocumentToMarkdown` used to render a `hardBreak` as
-  // `\` + newline and only then replace newlines inside a cell, so a hard break
-  // in a table cell came out as `\<br>` — in which `\<` is a CommonMark escape,
-  // and the tag rendered as the literal characters `<br>`. That defect is now
-  // fixed at the source (`markdown.ts`, `hardBreak` renders `<br>` directly
-  // when `inTableCell`), and reading the old spelling stays only so a file an
-  // unreleased build already wrote still comes back whole.
+  // THE ESCAPED SPELLING `\<br>` IS DELIBERATELY NOT READ AS A BREAK, and the
+  // tolerance that used to read it is gone. `structuredDocumentToMarkdown`
+  // once rendered a `hardBreak` as `\` + newline and only then replaced
+  // newlines inside a cell, so a hard break came out as `\<br>` — in which
+  // `\<` is a CommonMark escape, and the tag rendered as the literal
+  // characters. That defect was fixed at the source in #208 (`markdown.ts`,
+  // `hardBreak` renders `<br>` directly when `inTableCell`), and an optional
+  // backslash was kept here so a file written by an unreleased build still
+  // came back whole.
   //
-  // IT HAS A COST, AND THE COST IS NAMED RATHER THAN HIDDEN: a person who
-  // deliberately escaped `<br>` in an incoming vault means the literal
-  // characters, and this reads it as a line break. Narrowing it is a decision
-  // about how long files written during this wave keep working.
+  // It protected nothing. `packages/realtime-documents/src/markdown.ts` was
+  // created in #208 and appears in NO release tag — `git cat-file -e <tag>:…`
+  // finds it in none of v0.1.0 through v0.1.9, and nothing since 0.1.9 has
+  // shipped — so the only markdown ever written with the old spelling sits on
+  // a developer machine. What the tolerance DID cost was real and belonged to
+  // somebody else: a person who deliberately escaped `<br>` in their own prose
+  // means the literal characters, CommonMark agrees with them, and a foreign
+  // vault imported here turned their text into a line break they cannot get
+  // back — the escape is gone for good on the next export.
+  //
+  // THE FIX IS A LOOKBEHIND, NOT A DELETION, and that distinction was measured
+  // rather than reasoned: dropping the optional backslash from `\\?<br…` does
+  // NOT stop `\<br>` being read as a break, because `<br>` still matches
+  // inside it — it only leaves the orphaned backslash behind in the text. The
+  // escape has to be recognised to be respected.
+  //
+  // A doubled `\\<br>` — an escaped backslash followed by a real tag — is read
+  // as literal text here too. Telling those apart needs the escape state of
+  // the whole cell rather than one lookbehind, and no vault has ever been seen
+  // to write it; the limit is named rather than silently approximated.
   content: [
     {
       type: "paragraph",
       content: value
-        .split(/\\?<br\s*\/?>/iu)
+        .split(/(?<!\\)<br\s*\/?>/iu)
         .flatMap((part, index) =>
           index === 0
             ? parseInline(part, state)

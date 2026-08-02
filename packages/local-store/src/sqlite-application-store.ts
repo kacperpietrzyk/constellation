@@ -95,7 +95,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 26;
+export const LOCAL_STORE_SCHEMA_VERSION = 27;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -1057,6 +1057,48 @@ const schemaV26 = `
     ON content_entity_links(workspace_id, target_kind, target_id, owner_kind, owner_id);
 `;
 
+/**
+ * A note's title can now be changed, so the search index has to hear about it.
+ *
+ * `captures`, `tasks` and `projects` have each carried an
+ * `AFTER UPDATE OF payload_json` trigger since the index existed; `documents`
+ * never had one, because until this wave nothing could change a note's record
+ * after it was written. A note reached `work_search` only through
+ * `content_search_projection_insert` / `_update`, which fire when its BODY is
+ * re-indexed — so a `document.rename` writing only the record row would leave
+ * the index answering under the OLD title, silently, with every test green.
+ *
+ * DDL only. It rewrites no row and backfills nothing: the title in the index
+ * is not wrong yet anywhere, because nothing has ever changed one.
+ *
+ * IT REFRESHES A ROW, IT NEVER CREATES ONE — and that is the difference from
+ * the `projects` trigger it is otherwise modelled on. A Project always has an
+ * index row (`work_search_project_insert` writes one at creation); a note has
+ * one only once its body has been indexed. Selecting the body FROM
+ * `content_search_projections` makes that fall out of the SQL: no projection
+ * row, no rows inserted, and a note nobody has opened stays as findable — or
+ * as unfindable — as it was before it was renamed. Making unindexed notes
+ * newly findable would be a capability nobody asked for, decided in a trigger.
+ *
+ * It is deliberately not narrowed to a title change. Every other write to a
+ * note's payload — a move, a removal — re-reads the same two sources and puts
+ * back the same row, so the trigger is idempotent rather than conditional, and
+ * there is no second spelling of "which fields matter" to drift from the
+ * record.
+ */
+const schemaV27 = `
+  CREATE TRIGGER work_search_document_update AFTER UPDATE OF payload_json ON documents BEGIN
+    DELETE FROM work_search
+      WHERE record_id = old.id AND record_kind IN ('note', 'document', 'deliverable');
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.id, new.workspace_id, new.space_id,
+      COALESCE(json_extract(new.payload_json, '$.role'), 'document'),
+      json_extract(new.payload_json, '$.title'), body
+    FROM content_search_projections
+    WHERE owner_kind = 'document' AND owner_id = new.id;
+  END;
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -1084,6 +1126,7 @@ const localStoreMigrations = [
   schemaV24,
   schemaV25,
   schemaV26,
+  schemaV27,
 ] as const;
 
 export interface LocalCoordinationState {
