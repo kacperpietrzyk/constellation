@@ -694,7 +694,10 @@ test("the capture history says why undo is unavailable, and says it on the scree
     const undo = [...inspectorHost.querySelectorAll("button")].find(
       (button) => (button.textContent ?? "").trim() === "Preview undo",
     );
-    assert.ok(undo, "the reading drew no undo control, so nothing was measured");
+    assert.ok(
+      undo,
+      "the reading drew no undo control, so nothing was measured",
+    );
     assert.equal(
       undo.disabled,
       true,

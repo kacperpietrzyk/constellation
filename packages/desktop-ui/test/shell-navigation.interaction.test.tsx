@@ -402,3 +402,74 @@ test("przypięte Ustawienia znikają z szyny, bo nie ma czym ich odpiąć", asyn
     "the stuck favourite is still on disk and comes back on the next launch",
   );
 });
+
+/* DECYZJA #35 W POWŁOCE: KLAWISZ NIE ISTNIEJE WYŁĄCZNIE W DYMKU.
+ *
+ * Pozycje nawigacji sprawdzane są REGUŁĄ WYPROWADZONĄ Z REJESTRU, a nie listą
+ * pisaną ręcznie — i asercja mówi, KTÓRE cele zmierzyła, nie tylko ile ich
+ * było. Sam próg liczności przechodzi na złym zbiorze podmiotów, co ta fala
+ * zmierzyła już dwa razy.
+ *
+ * Dwa pojedyncze przypadki niżej to te, w których `title` był JEDYNYM nośnikiem
+ * i został skasowany: przełącznik przestrzeni (dodatkowo `disabled`
+ * w podglądzie, a wyłączony przycisk nie przyjmuje fokusu) i separator
+ * inspektora (`tabIndex={0}` z obsługą strzałek, więc człowiek z klawiaturą go
+ * dosięga i o geście podwójnego kliknięcia nie dowiadywał się skądkolwiek).
+ * Pozostałe trzy kontrolki chromu ZACHOWAŁY tooltip, więc dopisanie klawisza do
+ * nazwy jest tam wzmocnieniem, a nie jedynym nośnikiem — i nie udaje tu
+ * asercji o czymś, co i tak stoi na ekranie.
+ */
+test("każdy cel w lewej kolumnie niesie swój skrót w nazwie, nie tylko w dymku", async () => {
+  const { surfaceShortcutHint } =
+    await import("../src/components/ShortcutsOverlay.js");
+  const { navItems: allNavItems, sidebarNavItems } =
+    await import("../src/shell/nav-items.js");
+  await mountShell();
+
+  const drawn = navItems();
+  assert.deepEqual(
+    drawn.map((item) => item.dataset.surface).sort(),
+    sidebarNavItems.map((item) => item.id).sort(),
+    "the sidebar drew a different set of targets than the registry says it should — the measurement is of the wrong subjects, whatever its size",
+  );
+
+  for (const node of drawn) {
+    const item = allNavItems.find((entry) => entry.id === node.dataset.surface);
+    assert.ok(item, `no registry entry for ${node.dataset.surface}`);
+    const name = node.getAttribute("aria-label") ?? "";
+    assert.ok(
+      name.includes(surfaceShortcutHint(item).keys),
+      `${item.id} announces itself as "${name}", which does not say how to reach it from the keyboard`,
+    );
+  }
+});
+
+test("dwa wyjaśnienia, które stały TYLKO w dymku, stoją teraz w nazwie kontrolki", async () => {
+  await mountShell();
+
+  const switcher = container.querySelector<HTMLElement>(".workspace-switcher");
+  assert.ok(switcher, "the workspace switcher is not on screen");
+  assert.equal(
+    switcher.hasAttribute("title"),
+    false,
+    "the switcher explains itself in a tooltip again",
+  );
+  assert.match(
+    switcher.getAttribute("aria-label") ?? "",
+    /opens .*workspace settings/u,
+    "the switcher's name says whose workspace it is and not what pressing it does",
+  );
+
+  const separator = container.querySelector<HTMLElement>(".inspector-resize");
+  assert.ok(separator, "the inspector separator is not on screen");
+  assert.equal(
+    separator.hasAttribute("title"),
+    false,
+    "the double-click gesture went back into a tooltip",
+  );
+  assert.match(
+    separator.getAttribute("aria-label") ?? "",
+    /double-click/u,
+    "the only place the double-click gesture was stated is gone",
+  );
+});

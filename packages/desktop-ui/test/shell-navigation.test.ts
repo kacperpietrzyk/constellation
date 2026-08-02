@@ -722,9 +722,7 @@ describe("favourites restored from a device that saved them earlier", () => {
     // jego chrome to tryb; `history` PRZEŻYWA jako `library`, bo wycofanie
     // rozwiązuje się przed regułą chrome; `tasks` przechodzi nietknięte.
     assert.deepEqual(
-      restoreFavoriteSurfaces(
-        JSON.stringify(["settings", "history", "tasks"]),
-      ),
+      restoreFavoriteSurfaces(JSON.stringify(["settings", "history", "tasks"])),
       ["library", "tasks"],
       "a favourite pinned to a surface that is no longer a navigation target survived the restore, and nothing on screen can un-star it",
     );
@@ -735,9 +733,7 @@ describe("favourites restored from a device that saved them earlier", () => {
     // każdego z nich rozwiązuje się na cel, którego przypiąć się nie da —
     // więc znika, a nie zostaje jako druga i trzecia zablokowana pinezka.
     assert.deepEqual(
-      restoreFavoriteSurfaces(
-        JSON.stringify(["access", "activity", "today"]),
-      ),
+      restoreFavoriteSurfaces(JSON.stringify(["access", "activity", "today"])),
       ["today"],
       "a retired id resolving onto the Settings mode came back as a favourite",
     );
@@ -747,9 +743,7 @@ describe("favourites restored from a device that saved them earlier", () => {
     // `documents` i `history` schodzą się na `library`. Szyna z tą samą
     // pozycją dwa razy to nie jest to, co ktoś przypiął.
     assert.deepEqual(
-      restoreFavoriteSurfaces(
-        JSON.stringify(["documents", "history", "work"]),
-      ),
+      restoreFavoriteSurfaces(JSON.stringify(["documents", "history", "work"])),
       ["library", "tasks"],
       "two retired ids resolving onto one target were pinned twice",
     );
