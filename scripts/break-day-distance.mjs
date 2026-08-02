@@ -30,11 +30,11 @@
 //
 // BUDOWĄ JEST `npm run typecheck`, nie `npm run build`. To jedyna faza, która
 // tę asercję w ogóle karmi (testy chodzą z `build/ts`), a pełna budowa
-// dokłada bundle Vite i Electrona do każdego z ośmiu obiegów, czyli ~24
+// dokłada bundle Vite i Electrona do każdego z dziewięciu obiegów, czyli ~27
 // przebiegi pakowania po nic. `tsc -b` przesuwa `.tsbuildinfo`, więc dowód
 // przebudowy zostaje nienaruszony.
 //
-// CHODZI RĘCZNIE, nie w `npm run check`: osiem obiegów × trzy budowy to kilka
+// CHODZI RĘCZNIE, nie w `npm run check`: dziewięć obiegów × trzy budowy to kilka
 // minut, a bramka ma być szybka.
 //
 //   node scripts/break-day-distance.mjs
@@ -150,8 +150,8 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
-          "const BARE_DAY_COUNT = /\\$\\{[^}]*\\}\\s+days?\\b/gu;",
-          "const BARE_DAY_COUNT = /\\$\\{[^}]*\\}\\s+xdays?\\b/gu;",
+          "const BARE_DAY_COUNT = /\\}\\s+days?\\b/gu;",
+          "const BARE_DAY_COUNT = /\\}\\s+xdays?\\b/gu;",
           "the matcher",
         ),
     },
@@ -166,8 +166,8 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
-          "const BARE_DAY_COUNT = /\\$\\{[^}]*\\}\\s+days?\\b/gu;",
-          "const BARE_DAY_COUNT = /\\$\\{[^}]*\\}[\\s-]+days?\\b/gu;",
+          "const BARE_DAY_COUNT = /\\}\\s+days?\\b/gu;",
+          "const BARE_DAY_COUNT = /\\}[\\s-]+days?\\b/gu;",
           "the matcher",
         ),
     },
@@ -217,6 +217,26 @@ const outcome = runBreakTests({
           "  const target = Date.parse(`${dateKeyInZone(value, timeZone)}T00:00:00.000Z`);",
           "  const target = Date.parse(`${dateKeyInZone(value)}T00:00:00.000Z`);",
           "the zoned day key",
+        ),
+    },
+    {
+      // DZIEWIĄTE ZŁAMANIE, DOPISANE PO TYM, JAK ÓSEMKA PRZEPUŚCIŁA CAŁĄ KLASĘ.
+      // Pierwsza wersja matchera wymagała `${`, czyli widziała szablon i BYŁA
+      // ŚLEPA NA JSX — a `.tsx` to pliki, w których mieszka większość treści
+      // ekranu. Wąska wersja przeszła obok żywego czternastego ramienia
+      // (`{followUp.lateDays} days late`). To złamanie wkłada TĘ SAMĄ postać
+      // z powrotem do prawdziwego pliku `.tsx`; bez niego szerokość matchera
+      // jest deklaracją, nie pomiarem. Rodzeństwo złamania „wpięcie" wyżej —
+      // i tamto właśnie w ten sposób złapało defekt w `build/ts/src`.
+      name: "the JSX shape: a screen writes a day count into an expression container",
+      file: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx",
+      verify: only("by hand"),
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '{dayDistance(-followUp.lateDays, "lead")}',
+          "{followUp.lateDays} days late",
+          "the follow-up late tag",
         ),
     },
   ],

@@ -335,7 +335,9 @@ const RenewalRow = ({
                 <span className={styles.tag}>{followUp.task.status.label}</span>
                 {followUp.lateDays !== undefined && (
                   <span className={`${styles.tag} ${styles.tagLate}`}>
-                    {followUp.lateDays} days late
+                    {/* `lateDays` counts days ALREADY late, so it is positive;
+                        the lead voice reads a deadline signed the other way. */}
+                    {dayDistance(-followUp.lateDays, "lead")}
                   </span>
                 )}
               </button>

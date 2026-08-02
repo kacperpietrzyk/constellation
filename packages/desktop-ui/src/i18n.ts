@@ -34,10 +34,10 @@ export const countLabel = (count: number, one: string, many?: string): string =>
 
 // HOW FAR A DAY IS FROM THE DAY THE SCREEN IS SHOWING, IN THIS PRODUCT'S WORDS.
 //
-// Six surfaces used to spell this out locally and no two of them agreed. Today
-// and Calendar carried the same six lines byte for byte; Renewals wrote its own
-// three times and said "1 days" in every one of them, in a codebase that has
-// carried `countLabel` since Wave 2 for exactly that.
+// Sixteen places used to spell this out locally and no two of them agreed.
+// Today and Calendar carried the same six lines byte for byte; Renewals wrote
+// its own FOUR times and said "1 days" in every one of them, in a codebase that
+// has carried `countLabel` since Wave 2 for exactly that.
 //
 // THE CLOCK IS NOT IN HERE, AND THAT IS THE POINT. The integer comes from
 // `daysUntil`, which counts CALENDAR days in the workspace timezone — so

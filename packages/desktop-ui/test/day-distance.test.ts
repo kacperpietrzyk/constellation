@@ -18,8 +18,10 @@ import { collectSourceFiles } from "./copy-scan.js";
 /* RELATIVE-DAY PHRASING — THE WORDS, AND THE SHAPE THAT KEEPS THEM ALONE.
  *
  * The debt this covers was five local restatements of "how far away is this
- * day", by the recon's count, and FIFTEEN by measurement. Eleven of them wrote
- * a day count into a sentence by hand and THIRTEEN arms said "1 days".
+ * day", by the recon's count, and SIXTEEN by measurement. Twelve of them wrote
+ * a day count into a sentence by hand and FOURTEEN arms said "1 days" — the
+ * last of which was found not by reading but by widening this file's own
+ * matcher, which is the note further down.
  *
  * NOTHING HERE READS A CLOCK, and that is the whole design. `dayDistance` takes
  * the INTEGER, never a date, so a year boundary, a month boundary, a DST
@@ -114,8 +116,8 @@ test("the two directions are told apart, in every voice", () => {
  * below while being exactly the restatement this work collapsed. What the guard
  * does close is the GRAMMAR half, totally and with no exemption list — a raw
  * count interpolated straight in front of the bare word "day" is the shape that
- * produced all thirteen "1 days" arms, and after this change the renderer has
- * none of them.
+ * produced all FOURTEEN "1 days" arms, in template literals and in JSX alike,
+ * and after this change the renderer has none of them.
  *
  * NO ALLOWLIST, DELIBERATELY. A guard whose totality is bought with a list of
  * exempt files IS the hand-written-list defect family, so `i18n.ts` is not
@@ -127,10 +129,20 @@ test("the two directions are told apart, in every voice", () => {
  * biases an instrument toward calm, which is how the last eight lied.
  */
 
-// A count interpolated straight in front of the bare word "day"/"days". The
-// whitespace is load-bearing: `${days}-day lead` is a compound adjective, is
-// correctly invariant in English, and must NOT be flagged.
-const BARE_DAY_COUNT = /\$\{[^}]*\}\s+days?\b/gu;
+// A count interpolated straight in front of the bare word "day"/"days".
+//
+// THE MATCH IS ON THE CLOSING BRACE, NOT ON `${`, AND THAT IS THE SECOND THING
+// THIS FILE LEARNED THE HARD WAY. An earlier version required `${`, which sees
+// a template literal and is BLIND TO JSX — and `.tsx` is where most of the copy
+// on a screen actually lives. Widening it turned up a live fourteenth arm the
+// narrow form had walked straight past: `{followUp.lateDays} days late`, in a
+// JSX expression container, saying "1 days late" for a follow-up one day
+// overdue. A guard that cannot see the shape in the files the copy lives in is
+// not a guard, it is a statement about template literals.
+//
+// The whitespace is load-bearing: `${days}-day lead` is a compound adjective,
+// is correctly invariant in English, and must NOT be flagged.
+const BARE_DAY_COUNT = /\}\s+days?\b/gu;
 
 const matchesIn = (source: string): string[] =>
   [...source.matchAll(BARE_DAY_COUNT)].map((match) => match[0]);
@@ -141,11 +153,11 @@ const matchesIn = (source: string): string[] =>
 // its arm measured nothing — so the matcher is fed the defect it exists to
 // catch, in this same file, before the sweep is believed.
 test("the matcher catches the defect it was written for", () => {
-  assert.deepEqual(matchesIn("`in ${days} days`"), ["${days} days"]);
-  assert.deepEqual(matchesIn("`${-clock.startAction} days ago`"), [
-    "${-clock.startAction} days",
-  ]);
-  assert.deepEqual(matchesIn("`stood for ${n} day`"), ["${n} day"]);
+  assert.deepEqual(matchesIn("`in ${days} days`"), ["} days"]);
+  assert.deepEqual(matchesIn("`${-clock.startAction} days ago`"), ["} days"]);
+  assert.deepEqual(matchesIn("`stood for ${n} day`"), ["} day"]);
+  // The JSX shape, which the narrow form could not see at all.
+  assert.deepEqual(matchesIn("<span>{clock.daysLeft} days</span>"), ["} days"]);
 });
 
 // NEGATIVE CONTROL. A matcher that flags everything is as useless as one that
