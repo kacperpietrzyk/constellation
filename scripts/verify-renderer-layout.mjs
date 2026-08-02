@@ -40,6 +40,10 @@ import {
   classifyDescendantOverflow,
   unusedRegistryEntries,
 } from "./descendant-overflow.mjs";
+import {
+  classifyRecordScreenGeometry,
+  classifyRecordScreenSweep,
+} from "./record-screen-geometry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 5178;
@@ -215,6 +219,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           : surfaces.filter((id) => !all.includes(id));
       const results = [];
       const descendants = [];
+      const recordScreens = [];
       const rowCounts = {
         libraryDocuments: 0,
         librarySources: 0,
@@ -245,6 +250,43 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       // WSZYSTKO poniżej narysowanej powierzchni, nie samo pierwsze dziecko.
       // Element schowany za deklaracją `[data-scrolls-horizontally]` — sam albo
       // przez przodka — jest wolno szeroki: region POWIEDZIAŁ, że się przewija.
+      // SZEROKOŚĆ TREŚCI, nie `clientWidth`, i cała ta funkcja jest o tej
+      // różnicy. Zapadnięty ekran rekordu miał `clientWidth` równy 48 —
+      // dokładnie tyle, ile ma własnego paddingu — i szerokość treści równą
+      // ZERO. Kontrola nad samym `clientWidth` zobaczyłaby czterdzieści osiem
+      // pikseli i uznała, że coś tam jest.
+      const contentBox = (element) => {
+        const style = window.getComputedStyle(element);
+        const pad =
+          (Number.parseFloat(style.paddingLeft) || 0) +
+          (Number.parseFloat(style.paddingRight) || 0);
+        const max = Number.parseFloat(style.maxWidth);
+        return {
+          content: element.clientWidth - pad,
+          maxWidth: Number.isFinite(max) ? max : null,
+        };
+      };
+      // Podmioty biorą się z DOM-u po `[data-record-kind]` — czyli z rejestru
+      // rodzajów rekordu, bo to on decyduje, co się rysuje — a NIE z listy
+      // nazw ekranów wypisanej tutaj. Czwarty rodzaj rekordu jest objęty w dniu,
+      // w którym powstaje.
+      const sweepRecordScreens = (drawn, label) => {
+        if (drawn === undefined) return;
+        for (const screen of drawn.querySelectorAll("[data-record-kind]")) {
+          if (screen.getClientRects().length === 0) continue;
+          const pane = screen.parentElement;
+          if (pane === null) continue;
+          const own = contentBox(screen);
+          recordScreens.push({
+            surface: label,
+            kind: screen.getAttribute("data-record-kind") ?? "record",
+            signature: signature(screen),
+            contentPx: own.content,
+            maxWidthPx: own.maxWidth,
+            paneContentPx: contentBox(pane).content,
+          });
+        }
+      };
       const sweepDescendants = (drawn, label) => {
         if (drawn === undefined) return;
         const overflowing = [];
@@ -369,6 +411,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             viewportWidth: window.innerWidth,
           });
           sweepDescendants(drawn, label);
+          sweepRecordScreens(drawn, label);
           // Ile wierszy NAPRAWDĘ się narysowało. Bez tego fikstura może się
           // opróżnić, a bramka dalej melduje „brak przepełnienia" — nad
           // geometrią, której nie ma.
@@ -506,6 +549,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         missing,
         results,
         descendants,
+        recordScreens,
         rowCounts,
         recordPanels,
         recordKinds,
@@ -581,6 +625,52 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       });
     }
   }
+  // ── CZY EKRAN REKORDU MA JESZCZE SZEROKOŚĆ TREŚCI ─────────────────────────
+  // Ta kontrola mierzy w DRUGĄ STRONĘ niż cały pomiar wyżej i po to powstała.
+  // Sweep potomków pyta, czy treść WYCHODZI ze swojego pudełka. Ekran rekordu
+  // Zadania miał od #178 zerową szerokość treści — 48 px, czyli własny padding
+  // — i przez cztery fale zgłaszał stąd trzy przepełnienia potomków (+32, +44,
+  // +89), z których KAŻDA LICZBA BYŁA PRAWDZIWA. Ani jedna nie mówiła, że
+  // rodzic tych trzech elementów nie ma szerokości. Przyrząd ścisły co do
+  // niewłaściwej rzeczy jest gorszy niż przyrząd nieścisły, bo brzmi jak dowód.
+  //
+  // Reguła siedzi w `record-screen-geometry.mjs` i ma tam testy chodzące
+  // w `npm run check` na trzech systemach; tutaj jest tylko pomiar.
+  for (const screen of measured.recordScreens) {
+    const decision = classifyRecordScreenGeometry(screen);
+    if (REPORT_ONLY) {
+      console.log(
+        `${label}\t${screen.surface}\t${screen.signature}\t${Math.round(screen.contentPx)}px content\t` +
+          `record-screen\t${decision.verdict}` +
+          (decision.fraction === undefined
+            ? ""
+            : `\t${(decision.fraction * 100).toFixed(1)}%`),
+      );
+    }
+    // „Nie da się zmierzyć" to awaria PRZYRZĄDU, nie werdykt o układzie, więc
+    // pada również w trybie raportu — raport zrobiony nad panelem bez
+    // szerokości dałby ułamki policzone nad niczym.
+    if (decision.verdict === "unmeasurable")
+      failures.push({ surface: screen.surface, reason: decision.reason });
+    else if (decision.verdict === "collapsed")
+      layoutProblems.push({ surface: screen.surface, reason: decision.reason });
+  }
+  // I LICZBA ZMIERZONYCH KORZENI JEST CZĘŚCIĄ ASERCJI, nie ozdobą raportu.
+  // Kontrola, która może przejść, nie mierząc niczego, byłaby dziewiątym
+  // przyrządem kłamiącym w stronę fałszywego spokoju — a ten lot istnieje
+  // z powodu ósmego. Ta bramka przeszła już raz nad zerową liczbą rekordów,
+  // a rekonesans, który znalazł ten defekt, dwa razy zmierzył pustkę, zanim
+  // zmierzył ekran.
+  const sweepVerdict = classifyRecordScreenSweep({
+    measured: measured.recordScreens.length,
+    expected: recordsExpected,
+  });
+  if (sweepVerdict.verdict === "measured-nothing")
+    failures.push({ surface: "-", reason: sweepVerdict.reason });
+  if (REPORT_ONLY && recordsExpected)
+    console.log(
+      `${label}\t-\trecord screens measured for content width: ${sweepVerdict.measured}`,
+    );
   // Fikstura harnessu może się opróżnić bez jednego czerwonego testu — nic
   // w niej nie jest typowane przez ekran, który ją rysuje. Wtedy Library
   // mierzy się PUSTA i cała bramka przechodzi nad geometrią, której nie ma.

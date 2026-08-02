@@ -4273,7 +4273,49 @@ kbd {
   padding: var(--space-6) clamp(var(--space-5), 4vw, var(--space-10))
     var(--space-10);
 }
+/* A READING COLUMN OF AT MOST `--surface-measure`, CENTRED. That is what these
+   three declarations say together, and `inline-size: 100%` is the one that makes
+   them say it under BOTH kinds of parent.
+
+   Without it the rule means two different things depending on the carrier.
+   Under a block parent a child is already `width: auto`, so it fills the pane,
+   `max-width` clamps it and the auto margins centre what is left — the intent.
+   Under a COLUMN FLEX parent the inline axis is the cross axis, an auto
+   cross-axis margin SUPPRESSES stretch, and the same two declarations silently
+   become "shrink-wrapped, then centred". Eight of this shell's thirteen
+   `.surface-scroll` carriers are column flex containers, and fifteen of the
+   twenty-one children under them were drawn narrower than the column they were
+   given: seven surface headers between 76 and 302 px in a 1140 px pane, the
+   Tasks board at 242, its timeline at 481, its list at 947.
+
+   `.surface-header` is the proof this was a defect rather than a decision. It
+   declares `justify-content: space-between` (below, ~line 1275) — a rule that
+   distributes FREE SPACE, of which a shrink-wrapped box has none. The
+   declaration is inert on all seven narrow headers and works correctly on
+   `projects` and `activity`, which are the block carriers. Somebody wrote that
+   header meaning it to span its column; for seven surfaces it never did.
+
+   And one child did not merely shrink. The record screen adds
+   `container-type: inline-size` (`record/record-screen.module.css`), which sizes
+   an element AS IF IT HAD NO CONTENTS — so its fit-content inline size resolved
+   to ZERO and the box measured its own 48 px of padding, rendering the task
+   title one character per line from the day it shipped in #178.
+   `inline-size: 100%` is definite, so containment has a number to work from.
+
+   THE FIX IS HERE AND NOT ON THAT SCREEN, and that is the whole point. This
+   repository met this exact mechanism three times — `.strategic-layout` above,
+   `organizations.module.css` and `people.module.css`, each of which wrote the
+   remedy into its own file with a comment explaining it — and never once swept
+   for a fourth site. A fifth local copy of the same knowledge would have bought
+   a fifth site that never moves with it.
+
+   `align-self: stretch` is the fix a reasonable person tries first and it does
+   NOTHING: auto margins in the cross axis beat `align-self`. Measured, not
+   reasoned. `margin-inline: 0` also produces the right width, by switching off
+   the centring these surfaces were designed around — which is why the definite
+   size is the remedy and not the removal. */
 .surface-scroll > * {
+  inline-size: 100%;
   max-width: var(--surface-measure, 58rem);
   margin-inline: auto;
 }
