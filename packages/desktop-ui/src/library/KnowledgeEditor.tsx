@@ -20,7 +20,11 @@ import {
   documentContentFormat,
   documentEntityReferences,
   documentPlainText,
+  markdownRecordUri,
   migrateDocumentToRich,
+  noteMarkdownFile,
+  structuredDocumentFromYjs,
+  structuredDocumentToMarkdown,
 } from "@constellation/realtime-documents";
 
 import {
@@ -361,6 +365,7 @@ export const KnowledgeEditor = ({
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [markdownOpen, setMarkdownOpen] = useState(false);
   const [entityOpen, setEntityOpen] = useState(false);
   const [entityQuery, setEntityQuery] = useState("");
   const [entityCandidates, setEntityCandidates] = useState<
@@ -808,6 +813,85 @@ export const KnowledgeEditor = ({
           (item) => item.role === "note" && item.id !== document.id,
         )
       : [];
+
+  // The per-note markdown PREVIEW (decision #17).
+  //
+  // It is a preview and not a download on purpose: the storage format is a
+  // ProseMirror document inside a Yjs CRDT — not a file anybody can open with
+  // anything else — so the export has to be a real transformation whose output
+  // you can SEE before you trust two hundred notes to it.
+  //
+  // It reads through `structuredDocumentFromYjs`, the same parse every agent
+  // read and every idempotency digest goes through, rather than off the
+  // editor's own JSON. A preview taken from the editor would show markdown for
+  // content the product would refuse to store.
+  const markdownPreview = useMemo(() => {
+    if (!markdownOpen) return undefined;
+    // `text` is not read here; it is in the dependency list because it changes
+    // on every document update, which is what keeps an open preview current
+    // while somebody types.
+    void text;
+    try {
+      const structured = structuredDocumentFromYjs(yDocument);
+      const labels = new Map(
+        resolvedLinkedTargets.map((item) => [
+          `${item.targetKind}:${item.targetId}`,
+          item.label,
+        ]),
+      );
+      const body = structuredDocumentToMarkdown(structured, {
+        // The SAME read the bulk export resolves through
+        // (`document.linkCandidates` with `targets`), so a reference that
+        // resolves in one surface resolves in the other. Resolving from the
+        // shared render-label map instead would have made the preview print
+        // the privacy marker for references that resolve perfectly well —
+        // that map is cleared on every publish and holds whatever the
+        // surrounding screen last loaded.
+        resolveReference: ({ targetKind, targetId }) =>
+          labels.get(`${targetKind}:${targetId}`),
+        imageLink: (sourceId) => markdownRecordUri("source", sourceId),
+      });
+      return {
+        kind: "ready" as const,
+        file: noteMarkdownFile({
+          id: document.id,
+          title: document.title,
+          updatedAt: document.updatedAt,
+          body,
+          sources: (context?.evidence ?? []).flatMap((item) => {
+            if (item.kind !== "source") return [];
+            const source = allSources.find(
+              (candidate) => candidate.id === item.recordId,
+            );
+            return source === undefined
+              ? []
+              : [
+                  {
+                    title: source.title,
+                    sourceKind: source.sourceKind,
+                    availability: source.availability,
+                    canonicalUrl: source.canonicalUrl,
+                  },
+                ];
+          }),
+        }),
+      };
+    } catch {
+      // The parse refuses for the same reasons the editor already reports —
+      // content this build cannot read. Saying so beats an empty box.
+      return { kind: "unreadable" as const };
+    }
+  }, [
+    allSources,
+    context,
+    document.id,
+    document.title,
+    document.updatedAt,
+    markdownOpen,
+    resolvedLinkedTargets,
+    text,
+    yDocument,
+  ]);
 
   const documentContextDetail = (
     <article
@@ -1260,6 +1344,16 @@ export const KnowledgeEditor = ({
                 ? "Changes save automatically"
                 : statusCopy}
           </div>
+          <button
+            type="button"
+            className="secondary-button document-markdown-toggle"
+            data-document-markdown-toggle="true"
+            aria-expanded={markdownOpen}
+            aria-controls="document-markdown-preview"
+            onClick={() => setMarkdownOpen((open) => !open)}
+          >
+            {markdownOpen ? "Hide the markdown" : "Export to Markdown"}
+          </button>
           <DocumentToolbar
             editor={editor}
             disabled={
@@ -1332,6 +1426,42 @@ export const KnowledgeEditor = ({
             <EditorContent editor={editor} className="document-editor-shell" />
             {suggestions.panel}
           </div>
+        )}
+
+        {markdownOpen && (
+          <section
+            className="document-markdown-preview"
+            id="document-markdown-preview"
+            aria-label="Markdown export of this note"
+          >
+            {/* THE DIFFERENCE IS STATED, NOT HIDDEN (OPEN-8c). This surface and
+                the full export in Settings produce different markdown for an
+                image — here the picture is named by its source, there the bytes
+                are written out beside the note. A preview that lied by omission
+                would be worse than one that admits a limit, so the sentence is
+                rendered whenever the preview is, not only when the note happens
+                to hold a picture. */}
+            <p data-markdown-preview-statement="true">
+              A picture is named here. The full export in Settings writes the
+              attachment out.
+            </p>
+            {markdownPreview?.kind === "ready" ? (
+              <pre tabIndex={0}>
+                <code>{markdownPreview.file}</code>
+              </pre>
+            ) : (
+              <p role="status">
+                This note uses a format this version cannot read. Nothing is
+                shown, and nothing changed.
+              </p>
+            )}
+            {contextError && (
+              <p role="status">
+                The note&rsquo;s sources could not be read. They are missing
+                here.
+              </p>
+            )}
+          </section>
         )}
       </div>
 

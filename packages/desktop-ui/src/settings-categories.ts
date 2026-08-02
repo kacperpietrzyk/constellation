@@ -8,6 +8,12 @@
 export const settingsCategories = [
   { id: "workspace", label: "Workspace" },
   { id: "data", label: "Data and privacy" },
+  // Po `data`, i osobno od niej: obie tafle tej sekcji dotyczą PRZENOSZENIA
+  // czyjegoś pisania do środka i na zewnątrz, a to inne pytanie niż rezydencja
+  // danych i prywatność. Eksport markdownu jest warunkiem (decyzja 17), nie
+  // dodatkiem — format składowania to dokument ProseMirror w CRDT Yjs, więc
+  // bez tej sekcji nie ma drzwi na zewnątrz.
+  { id: "notes", label: "Notes" },
   { id: "appearance", label: "Appearance" },
   { id: "access", label: "Access and connections" },
   { id: "application", label: "Setup and app" },

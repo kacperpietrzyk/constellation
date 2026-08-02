@@ -29,9 +29,16 @@ const countOccurrences = (haystack: string, needle: RegExp): number =>
 
 import { settingsCategories } from "../src/settings-categories.js";
 
+// The ids, in the order the navigator walks them. This list IS the contract —
+// it is what the scroll anchors, the status record and the shell's left column
+// all key on — so it stays spelled out. What does NOT stay spelled out is how
+// many of them there are: the counts below are derived from this list, because
+// a hardcoded `5` beside a growing registry is an assertion that goes red for
+// the wrong reason and gets edited rather than read.
 const settingsCategoryIds = [
   "workspace",
   "data",
+  "notes",
   "appearance",
   "access",
   "application",
@@ -71,11 +78,18 @@ describe("enterprise settings navigation contract", () => {
         category.label.trim().length > 0,
         `category ${category.id} carries no label`,
       );
-    assert.equal(new Set(declared.map((category) => category.label)).size, 5);
-    // Exactly five: an extra entry, or a section anchored outside the list,
-    // would break the navigator/status/scroll-spy correspondence.
-    assert.equal(declared.length, 5);
-    assert.equal(countOccurrences(settings, /data-settings-category="/g), 5);
+    assert.equal(
+      new Set(declared.map((category) => category.label)).size,
+      settingsCategoryIds.length,
+    );
+    // One section per id and no more: an extra entry, or a section anchored
+    // outside the list, would break the navigator/status/scroll-spy
+    // correspondence.
+    assert.equal(declared.length, settingsCategoryIds.length);
+    assert.equal(
+      countOccurrences(settings, /data-settings-category="/g),
+      settingsCategoryIds.length,
+    );
 
     // Status-bearing: every category id maps to a status string, and the
     // navigator actually renders that string beside the category.

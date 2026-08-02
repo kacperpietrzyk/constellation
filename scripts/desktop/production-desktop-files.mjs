@@ -19,6 +19,7 @@ export const PRODUCTION_DESKTOP_FILES = new Set([
   "local-data-home-provider.js",
   "local-mcp-credential-custody.js",
   "local-mcp-runtime.js",
+  "markdown-export.js",
   "media-permission.js",
   "production-main.js",
   "release-service.js",

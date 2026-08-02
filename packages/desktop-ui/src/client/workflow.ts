@@ -968,6 +968,16 @@ export const loadKnowledgeDocumentContext = async (
  * positionally is how a caller ends up silently sending four of the five things
  * the kernel expects.
  */
+/**
+ * The query caps `targets` at 100 and `limit` at 100. Asking for 101 at once
+ * does not truncate — the envelope FAILS TO PARSE and the whole answer is
+ * lost, so every reference in the note reads as unresolvable. On the screen
+ * that is "Record unavailable" on all of them; in the markdown export it is
+ * the privacy marker on all of them. Batching is what makes "every target the
+ * caller named comes back" true above a hundred rather than only up to one.
+ */
+const LINK_CANDIDATE_BATCH = 100;
+
 export const loadDocumentLinkCandidates = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -981,25 +991,49 @@ export const loadDocumentLinkCandidates = async (
     readonly targetKinds?: readonly DocumentEntityTargetKind[];
     readonly excludeDocumentId?: DocumentId;
   } = {},
-): Promise<DocumentLinkCandidatesProjection> =>
-  queryProjection(
-    client,
-    queryEnvelope("document.linkCandidates", snapshot.bootstrap.workspace.id, {
-      spaceId,
-      text: options.text ?? "",
-      ...(options.targets === undefined ? {} : { targets: options.targets }),
-      ...(options.targetKinds === undefined
-        ? {}
-        : { targetKinds: options.targetKinds }),
-      ...(options.excludeDocumentId === undefined
-        ? {}
-        : { excludeDocumentId: options.excludeDocumentId }),
-      // Resolving a known set is not a picker: every target the caller named
-      // has to come back, not the first twenty of them.
-      limit: options.targets === undefined ? 20 : 100,
-    }),
-    "document.linkCandidates",
-  );
+): Promise<DocumentLinkCandidatesProjection> => {
+  const ask = (
+    targets:
+      | readonly {
+          readonly targetKind: DocumentEntityTargetKind;
+          readonly targetId: string;
+        }[]
+      | undefined,
+  ): Promise<DocumentLinkCandidatesProjection> =>
+    queryProjection(
+      client,
+      queryEnvelope(
+        "document.linkCandidates",
+        snapshot.bootstrap.workspace.id,
+        {
+          spaceId,
+          text: options.text ?? "",
+          ...(targets === undefined ? {} : { targets }),
+          ...(options.targetKinds === undefined
+            ? {}
+            : { targetKinds: options.targetKinds }),
+          ...(options.excludeDocumentId === undefined
+            ? {}
+            : { excludeDocumentId: options.excludeDocumentId }),
+          // Resolving a known set is not a picker: every target the caller
+          // named has to come back, not the first twenty of them.
+          limit: targets === undefined ? 20 : LINK_CANDIDATE_BATCH,
+        },
+      ),
+      "document.linkCandidates",
+    );
+  const targets = options.targets;
+  if (targets === undefined || targets.length <= LINK_CANDIDATE_BATCH)
+    return ask(targets);
+  const batches: (typeof targets)[] = [];
+  for (let start = 0; start < targets.length; start += LINK_CANDIDATE_BATCH)
+    batches.push(targets.slice(start, start + LINK_CANDIDATE_BATCH));
+  const answers = await Promise.all(batches.map((batch) => ask(batch)));
+  return {
+    kind: "document.linkCandidates",
+    items: answers.flatMap((answer) => answer.items),
+  };
+};
 
 export const loadDocumentBacklinks = async (
   client: ConstellationRendererClient,

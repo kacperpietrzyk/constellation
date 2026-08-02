@@ -80,6 +80,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "executeCommand",
     "exportExchangePackage",
     "exportHubAuthorization",
+    "exportNotesMarkdown",
     "exportSupportReport",
     "exportWorkspaceBackup",
     "getBuildInfo",

@@ -32,7 +32,10 @@ import {
   type DesktopBuildInfo,
   type DesktopWorkspaceCockpitEntry,
 } from "@constellation/desktop-preload/client";
-import { ATTACHMENT_PROTOCOL_SCHEME } from "@constellation/contracts";
+import {
+  ATTACHMENT_PROTOCOL_SCHEME,
+  attachmentUrl,
+} from "@constellation/contracts";
 import { desktopSurfaceIds } from "@constellation/desktop-preload/surface-registry";
 import {
   canEditSpace,
@@ -64,7 +67,10 @@ import {
   isCustodiedCaptureOriginal,
   MeetingWorkItemResponsibilityOverrideSchema,
   MeetingWorkItemSchema,
+  type DocumentId,
   type ImportedMeeting,
+  type QueryProjection,
+  type SpaceId,
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
@@ -83,6 +89,11 @@ import { createDesktopMeetingLoopRuntime } from "./calendar-meeting-loop.js";
 import { JamieApiClient, JamieConnectionCustody } from "./jamie-integration.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
 import { buildExchangeManifest } from "./starter-workspace-export.js";
+import {
+  buildMarkdownExport,
+  type MarkdownExportPorts,
+  type MarkdownExportSpace,
+} from "./markdown-export.js";
 import {
   DocumentCollaborationBridge,
   createAgentDocumentTextPort,
@@ -2591,6 +2602,222 @@ const startProductionDesktop = async (): Promise<void> => {
     } catch {
       return { outcome: "failure" } as const;
     }
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.exportNotesMarkdown, async (event) => {
+    assertTrustedSender(event);
+    const kernel = workspaceRecovery?.kernel;
+    const custody = capturePayloadCustody;
+    if (kernel === undefined || custody === undefined)
+      return { outcome: "failure" } as const;
+    const workspaceId = kernel.identity.workspaceId;
+    // Every read goes through the QUERY layer rather than the store, so the
+    // export is scoped by the same authorization the screens are. Reading the
+    // store directly would have been shorter and would have made "every note"
+    // mean "every note in the database".
+    const projection = <Kind extends QueryProjection["kind"]>(
+      queryName: Kind,
+      parameters: Readonly<Record<string, unknown>>,
+    ): Extract<QueryProjection, { readonly kind: Kind }> | undefined => {
+      const response = kernel.service.query({
+        contractVersion: 1,
+        queryName,
+        queryId: randomUUID(),
+        workspaceId,
+        consistency: "local_projection",
+        parameters,
+      });
+      if (
+        response.kind !== "query_result" ||
+        response.result.outcome !== "success" ||
+        response.result.projection.kind !== queryName
+      )
+        return undefined;
+      return response.result.projection as Extract<
+        QueryProjection,
+        { readonly kind: Kind }
+      >;
+    };
+
+    // `workspace.exportScoped` already answers "the Spaces you may export":
+    // it filters `listSpaces` by `canViewSpace` AND by the capability check.
+    // Reusing it means this export cannot see a Space the shipped scoped
+    // export cannot, and nobody had to write a second scoping rule.
+    const scoped = projection("workspace.exportScoped", {});
+    if (scoped === undefined) return { outcome: "failure" } as const;
+
+    const documentTextPort = createAgentDocumentTextPort({
+      workspaceId,
+      store: kernel.store,
+      connection: () => activeHubConnection,
+    });
+
+    const spaces: MarkdownExportSpace[] = [];
+    for (const space of scoped.spaces) {
+      const knowledge = projection("knowledge.list", { spaceId: space.id });
+      if (knowledge === undefined) continue;
+      spaces.push({
+        spaceId: space.id,
+        name: space.name,
+        folders: knowledge.folders.map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          parentFolderId: folder.parentFolderId,
+        })),
+        documents: knowledge.documents.map((item) => ({
+          id: item.id,
+          title: item.title,
+          updatedAt: item.updatedAt,
+          folderId: item.folderId,
+        })),
+        sources: knowledge.sources.map((source) => ({
+          id: source.id,
+          title: source.title,
+          sourceKind: source.sourceKind,
+          availability: source.availability,
+          canonicalUrl: source.canonicalUrl,
+        })),
+      });
+    }
+
+    const ports: MarkdownExportPorts = {
+      readSpaces: () => spaces,
+      readStructured: ({ documentId, spaceId }) => {
+        try {
+          return documentTextPort.readStructured({
+            documentId: documentId as DocumentId,
+            spaceId: spaceId as SpaceId,
+          })?.content;
+        } catch {
+          // A note this build cannot read is COUNTED, not written empty.
+          return undefined;
+        }
+      },
+      readEvidenceSourceIds: ({ documentId }) =>
+        projection("knowledge.documentContext", {
+          documentId,
+        })?.evidence.flatMap((item) =>
+          item.kind === "source" ? [item.recordId] : [],
+        ) ?? [],
+      // The query caps `targets` AND `limit` at 100. Asking for 101 at once
+      // does not truncate — the envelope fails to parse and the whole answer
+      // is lost, which would put the privacy marker on every reference in the
+      // note. Batching is what makes the marker mean "this one did not
+      // resolve" instead of "we asked badly".
+      resolveReferences: ({ spaceId, targets }) => {
+        const resolved: {
+          readonly targetKind: string;
+          readonly targetId: string;
+          readonly label: string;
+        }[] = [];
+        for (let start = 0; start < targets.length; start += 100) {
+          const batch = targets.slice(start, start + 100);
+          resolved.push(
+            ...(projection("document.linkCandidates", {
+              spaceId,
+              targets: batch,
+              limit: batch.length,
+            })?.items ?? []),
+          );
+        }
+        return resolved;
+      },
+      // The SAME resolver `<img src>` goes through, reached through the same
+      // URL: an export that read bytes by a second path would be a second
+      // authorization, and the two would eventually disagree.
+      readAttachment: (sourceId) =>
+        readAttachmentImage(attachmentUrl(sourceId), {
+          workspaceId,
+          readSource: (id) =>
+            kernel.store.read((view) =>
+              isApplicationWave2ReadView(view)
+                ? view.getKnowledgeSource(id)
+                : undefined,
+            ),
+          readCapture: (captureId) =>
+            kernel.store.read((view) => view.getCapture(captureId)),
+          readBytes: (original) => custody.read(original),
+        }),
+    };
+
+    const built = buildMarkdownExport(ports);
+    const chosen = await dialog.showOpenDialog({
+      title: "Choose a folder for the exported notes",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    const root = chosen.filePaths[0];
+    if (chosen.canceled || root === undefined)
+      return { outcome: "cancelled" } as const;
+    const resolvedRoot = path.resolve(root);
+    const directoryLabel = path.basename(resolvedRoot);
+    const target = (relative: string): string => {
+      const absolute = path.resolve(resolvedRoot, ...relative.split("/"));
+      // Defence in depth. Every name is sanitised where it is built, and this
+      // refuses to write outside the chosen folder anyway — a title is the one
+      // part of a path a person controls with no rules at all.
+      if (
+        absolute !== resolvedRoot &&
+        !absolute.startsWith(resolvedRoot + path.sep)
+      )
+        throw new Error("MARKDOWN_EXPORT_PATH_ESCAPED");
+      return absolute;
+    };
+
+    // LOOK BEFORE WRITING. `showOpenDialog` has no overwrite confirmation and
+    // `writeFileSync` truncates, and the gesture this export invites is
+    // "point it at my Obsidian vault" — so an unchecked run replaces somebody
+    // else's files with no warning, no count and no undo. Silent loss is the
+    // one failure mode this feature cannot have, and that has to hold for the
+    // files it finds as well as the ones it writes.
+    let collisions = 0;
+    try {
+      for (const file of [...built.notes, ...built.attachments])
+        if (existsSync(target(file.path))) collisions += 1;
+    } catch {
+      return { outcome: "failure" } as const;
+    }
+    if (collisions > 0)
+      return {
+        outcome: "would_overwrite",
+        directoryLabel,
+        count: collisions,
+      } as const;
+
+    let notesWritten = 0;
+    let attachmentsWritten = 0;
+    try {
+      for (const note of built.notes) {
+        const absolute = target(note.path);
+        mkdirSync(path.dirname(absolute), { recursive: true });
+        writeFileSync(absolute, note.contents, {
+          encoding: "utf8",
+          mode: 0o600,
+        });
+        notesWritten += 1;
+      }
+      for (const attachment of built.attachments) {
+        const absolute = target(attachment.path);
+        mkdirSync(path.dirname(absolute), { recursive: true });
+        writeFileSync(absolute, attachment.bytes, { mode: 0o600 });
+        attachmentsWritten += 1;
+      }
+    } catch {
+      // Files are already on disk. "Nothing was written" would be true of the
+      // notes and false of the folder, and the person would find out by
+      // opening it. An unbounded folder tree (#30) times an 80-character
+      // segment crosses Windows's path limit and lands here.
+      return notesWritten + attachmentsWritten === 0
+        ? ({ outcome: "failure" } as const)
+        : ({
+            outcome: "partial",
+            directoryLabel,
+            written: { notes: notesWritten, attachments: attachmentsWritten },
+          } as const);
+    }
+    return {
+      outcome: "success",
+      directoryLabel,
+      counts: built.counts,
+    } as const;
   });
   ipcMain.handle(DESKTOP_CHANNELS.checkForRelease, (event) => {
     assertTrustedSender(event);
