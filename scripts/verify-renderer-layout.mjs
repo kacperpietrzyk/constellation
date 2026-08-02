@@ -30,6 +30,7 @@
 // literówkę w CSS.
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -44,9 +45,30 @@ import {
   classifyRecordScreenGeometry,
   classifyRecordScreenSweep,
 } from "./record-screen-geometry.mjs";
+import {
+  classifyDeclarationCoverage,
+  classifyDeclarationSet,
+  declaredAttributeValues,
+} from "./renderer-declarations.mjs";
+import {
+  classifyHeightBoundEvidence,
+  classifyHeightBoundScreen,
+  classifyHeightBoundSweep,
+} from "./surface-height-bound.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = 5178;
+// PORT JEST PARAMETREM, BO INACZEJ PRZYRZĄD NIE UMIE POWIEDZIEĆ, CZYJĄ
+// APLIKACJĘ ZMIERZYŁ. `--strictPort` niżej znaczy, że port ma JEDNEGO
+// właściciela: kto zwiąże go pierwszy, ten go ma. Przy dwóch drzewach roboczych
+// na jednej maszynie drugi serwer dev NIE WSTAJE, a `reachable()` i tak dostaje
+// 200 — od serwera SĄSIADA. Przebieg kończył się wtedy zerem, pięcioma
+// przejściami i ciszą rejestru, mierząc CUDZY PROGRAM. To najgorszy dostępny
+// tryb awarii: bramka całkowicie zielona nad drzewem, którego nie widziała.
+//
+// CI TEGO NIE ZŁAPIE — STRUKTURALNIE, nie przez przeoczenie: na runnerze stoi
+// jedna aplikacja, więc kolizja nie ma jak zajść, a sufit albo próg zmierzony
+// na cudzym drzewie przechodzi tam na zielono NA ZAWSZE.
+const PORT = Number(process.env.LAYOUT_PORT ?? 5178);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 // Powłoka NIE WSTAJE pod gołym adresem — renderer wymaga mostka preload, więc
 // w przeglądarce montuje ją harness deweloperski ze zaślepionym klientem.
@@ -92,6 +114,37 @@ const openBrowser = async () => {
   );
 };
 
+// ── CZY TEN PORT JEST WOLNY, ZANIM O COKOLWIEK ZAPYTAM ───────────────────────
+// To jest kontrola, która NAPRAWDĘ zamyka dziurę „czyją aplikację zmierzyłem",
+// i stoi PRZED uruchomieniem serwera, bo po nim jest już za późno. Zmierzone:
+// przy zajętym porcie własne `npm run dev` kończy się kodem 1 po 225 ms, a cudzy
+// serwer, KTÓRY JUŻ STOI, odpowiada w pojedynczych milisekundach. Pytanie „czy
+// moje dziecko żyje" zadane po pierwszym udanym `fetch` przegrywa więc ten wyścig
+// ZAWSZE — sprawdzone, bramka przeszła na zielono nad podstawionym serwerem.
+//
+// Kolejność odwrócona rozstrzyga: port dowiedziony jako wolny → `--strictPort`
+// wiąże go MOJEMU dziecku → cokolwiek odpowiada pod `ORIGIN`, jest moje. Dowód
+// przez wykluczenie, nie przez tożsamość, i ta różnica jest nazwana niżej.
+//
+// Wiązane jest jawnie `127.0.0.1`, nie wildcard, bo pod tym adresem stawia się
+// vite — próba na `0.0.0.0` odpowiadałaby na inne pytanie niż zadane.
+await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.once("error", (error) =>
+    reject(
+      new Error(
+        `LAYOUT_CHECK_PORT_TAKEN: port ${PORT} is already listening (${error.code}), so this ` +
+          `check cannot know whose application it would be measuring. With --strictPort this ` +
+          `tree's dev server would fail to bind and the pass would silently drive SOMEBODY ` +
+          `ELSE'S program — a second worktree, or a server leaked by an earlier run.\n` +
+          `Re-run on a port nothing else holds:  LAYOUT_PORT=<free port> ...\n` +
+          `Find the current owner with:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`,
+      ),
+    ),
+  );
+  probe.listen(PORT, "127.0.0.1", () => probe.close(resolve));
+});
+
 const server = spawn(
   "npm",
   [
@@ -104,17 +157,112 @@ const server = spawn(
     String(PORT),
     "--strictPort",
   ],
-  { cwd: root, stdio: "ignore" },
+  // WŁASNA GRUPA PROCESÓW, żeby dało się ubić CAŁE drzewo, a nie samą owijkę.
+  // `npm` jest tu pośrednikiem: sygnał wysłany JEMU musi jeszcze zostać
+  // przekazany do vite, a na ścieżce błędu nie zdąża.
+  { cwd: root, stdio: "ignore", detached: true },
 );
 
-const stop = () => {
-  server.kill("SIGTERM");
-};
-process.once("SIGINT", stop);
-process.once("SIGTERM", stop);
+// WYJŚCIE Z TEJ BRAMKI MA ZOSTAWIAĆ PORT WOLNY, i to jest asercja o przyrządzie,
+// nie sprzątanie dla porządku. Następny przebieg zaczyna od próby wiązania tego
+// samego portu, więc serwer, który przeżył poprzedni, ZATRZYMUJE kolejny —
+// a break-test odpala tę bramkę trzy razy na każde złamanie, jedno po drugim.
+//
+// Dokładnie to zaszło przy pierwszym przebiegu break-testów tego lotu: trzecie
+// złamanie zaraportowało „czerwone PO PRZYWRÓCENIU", co czyta się jak niedoszłe
+// przywrócenie kodu, a było zajętym portem po serwerze z poprzedniego złamania.
+// Źródło było przywrócone poprawnie — sprawdzone `git status`.
+//
+// Mechanizm NIE JEST tym, który zgadłem dwa razy. Nie cieknie ani ścieżka
+// czerwona sama z siebie (sprawdzone osobnym harnessem: symulowany rzut po
+// `stop()` zwalnia port), ani przebieg zielony (sprawdzone: port wolny po
+// czystym przejściu). Cieknie przebieg Z PODŁĄCZONĄ PRZEGLĄDARKĄ: vite zamyka
+// się łagodnie i czeka na zamknięcie połączeń, a Playwright trzyma gniazda HMR.
+// SIGTERM zostaje przyjęty i NIC SIĘ NIE DZIEJE.
+//
+// Dlatego zatrzymanie jest CZEKAJĄCE i eskalujące, a nie „wyślij i wyjdź":
+// sygnał idzie do CAŁEJ GRUPY (żeby dosięgnąć vite bez pośrednictwa `npm`,
+// które przy osieroceniu niczego nie przekazuje), a potem pytamy PORTU, czy
+// naprawdę jest wolny — bo tylko to jest warunkiem, na którym zależy następnemu
+// przebiegowi. Po czasie łaski przychodzi SIGKILL, którego łagodne zamykanie
+// zignorować nie może.
+const portFree = async () =>
+  new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once("error", () => resolve(false));
+    probe.listen(PORT, "127.0.0.1", () => probe.close(() => resolve(true)));
+  });
 
+const signalGroup = (signal) => {
+  try {
+    process.kill(-server.pid, signal);
+  } catch {
+    // Grupy już nie ma — czyli dokładnie to, o co chodziło.
+  }
+};
+
+const stop = async () => {
+  signalGroup("SIGTERM");
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (server.exitCode !== null && (await portFree())) return;
+    // Łagodne zamknięcie dostaje sekundę; potem przestajemy prosić.
+    if (attempt === 4) signalGroup("SIGKILL");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `LAYOUT_CHECK_PORT_NOT_RELEASED: port ${PORT} is still held after this run was ` +
+      "told to stop, so the NEXT run would refuse to start or, without the pre-flight " +
+      "probe, would measure this leftover server instead of its own.",
+  );
+};
+const stopQuietly = () => {
+  void stop().catch(() => {});
+};
+process.once("SIGINT", stopQuietly);
+process.once("SIGTERM", stopQuietly);
+
+// SIATKA BEZPIECZEŃSTWA NA KAŻDE WYJŚCIE, i jest tu z powodu ZMIERZONEJ awarii,
+// nie z ostrożności. Serwer wstaje w tym pliku ponad tysiąc linii przed `try`,
+// które go zatrzymuje, a w tym oknie stoją instrukcje, które RZUCAJĄ — przede
+// wszystkim wyprowadzenie podmiotów z deklaracji w źródłach (`derive`) i
+// uruchomienie przeglądarki. Rzut stamtąd omijał zatrzymanie w całości.
+//
+// Tak wyglądała ta awaria z zewnątrz: break-test kasujący deklarację
+// `data-height-bound` szedł na czerwono POPRAWNIE, ale zostawiał serwer, więc
+// przebieg PO PRZYWRÓCENIU dostawał zajęty port i meldował „czerwone po
+// przywróceniu". Czyta się to jak niedoszłe przywrócenie kodu albo zatrute
+// `dist` — czyli jak defekt w drzewie — a było wyłącznie wyciekiem przyrządu.
+// Dwa kolejne przebiegi całej serii utknęły na tym samym trzecim złamaniu.
+//
+// `exit` nie przyjmuje pracy asynchronicznej, więc idzie tu SIGKILL na grupę:
+// to pojedyncze wywołanie systemowe, a na tej ścieżce nie ma już czego zamykać
+// łagodnie. Przy zwykłym wyjściu grupa jest martwa od `stop()` i ESRCH jest
+// wyciszony.
+process.once("exit", () => signalGroup("SIGKILL"));
+
+// „Coś odpowiada pod tym adresem" NIE ZNACZY „mój serwer odpowiada pod tym
+// adresem", a różnicy między tymi zdaniami ten przyrząd nie umiał wypowiedzieć.
+//
+// TA KONTROLA JEST ZABEZPIECZENIEM, NIE MECHANIZMEM — i jest tak nazwana, bo
+// napisana najpierw JAKO mechanizm okazała się nie do wywołania. Sama nie łapie
+// niczego: kiedy cudzy serwer już stoi, pierwszy `fetch` wraca wcześniej, niż
+// własne dziecko zdąży paść (zmierzone: 225 ms do wyjścia, milisekundy do
+// odpowiedzi), więc pętla kończy się sukcesem na pierwszym obiegu i o śmierci
+// dziecka nikt już nie pyta. Dziurę zamyka próba wiązania PRZED uruchomieniem;
+// to zostaje na okno między jej zamknięciem a wiązaniem vite — jedyny przypadek,
+// w którym port był wolny, a mimo to przegraliśmy go komuś innemu.
 const reachable = async () => {
   for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (server.exitCode !== null)
+      throw new Error(
+        `LAYOUT_CHECK_SERVER_DIED: the dev server for this worktree exited with ` +
+          `${server.exitCode} instead of binding ${ORIGIN}. With --strictPort that means ` +
+          `SOMEBODY ELSE HOLDS PORT ${PORT} — most likely a second worktree, or a leaked ` +
+          `server from an earlier run. Whatever answers on that port is NOT this tree, and ` +
+          `measuring it would report somebody else's application as this one's.\n` +
+          `Run this check on a port nothing else holds:  LAYOUT_PORT=<free port> ...\n` +
+          `Find the current owner with:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`,
+      );
     try {
       const response = await fetch(ORIGIN);
       if (response.ok) return true;
@@ -127,8 +275,42 @@ const reachable = async () => {
 };
 
 if (!(await reachable())) {
-  stop();
+  await stop();
   throw new Error(`LAYOUT_CHECK_SERVER_NOT_REACHABLE: ${ORIGIN}`);
+}
+
+// ── CZYJĄ APLIKACJĘ WŁAŚCIWIE ZŁAPALIŚMY ─────────────────────────────────────
+// Próba wiązania portu wyżej dowodzi własności PRZEZ WYKLUCZENIE: port był
+// wolny, więc serwer, który go zajął, jest mój. To rozumowanie jest poprawne
+// i CAŁKOWICIE POŚREDNIE — nie pyta serwera o nic. Tu jest dowód WPROST, i jest
+// tani, bo vite sam go daje.
+//
+// Serwer deweloperski trzyma listę katalogów, z których wolno mu czytać, i jest
+// ona zakorzeniona w JEGO drzewie. Prośba o plik spod MOJEGO korzenia jest więc
+// pytaniem, na które sąsiad odpowiedzieć NIE MOŻE. Zmierzone na dwóch żywych
+// serwerach naraz: własny oddaje `200`, serwer drugiego worktree oddaje
+// `403 Restricted … outside of Vite serving allow list`.
+//
+// GRANICA TEGO DOWODU, powiedziana wprost: rozróżnia DRZEWA, nie STANY drzewa.
+// Serwer zostawiony pod tą samą ścieżką z wcześniejszego stanu przeszedłby tę
+// kontrolę — i właśnie taki serwer stał za pierwotną awarią. Zamyka go dopiero
+// próba wiązania portu, która odmawia startu przy JAKIMKOLWIEK zastanym
+// serwerze. Dopiero obie razem odpowiadają na całe pytanie: jedna mówi, że nikt
+// tu nie stał, druga — że ten, kto stoi, czyta z tego drzewa.
+const identityProbe = await fetch(`${ORIGIN}/@fs${root}/package.json`).catch(
+  (error) => ({ ok: false, status: `unreachable (${error.message})` }),
+);
+if (!identityProbe.ok) {
+  await stop().catch(() => {});
+  throw new Error(
+    `LAYOUT_CHECK_WRONG_APPLICATION: the server answering ${ORIGIN} refused a file from ` +
+      `THIS worktree's root (${identityProbe.status}), so it is serving a DIFFERENT tree. ` +
+      "Everything this gate would measure against it — every ceiling, every floor, every " +
+      "registry entry — would be a number about somebody else's application reported as " +
+      "this one's. A green run here would be the worst kind of green.\n" +
+      `Root this check expects to be served: ${root}\n` +
+      `Find who actually holds the port with:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`,
+  );
 }
 
 // Ile wierszy musi się narysować, żeby pomiar cokolwiek znaczył. Fikstura
@@ -172,6 +354,22 @@ const MINIMUM_ROWS = {
 // bo raport zrobiony nad pustym ekranem to nie pomiar, tylko cisza z liczbami —
 // a tryb raportu zdejmuje tylko to jedno: czy przepełnienie robi się błędem.
 const REPORT_ONLY = process.env.LAYOUT_DESCENDANT_REPORT === "1";
+
+// ── PODMIOTY WYPROWADZONE ZE ŹRÓDEŁ, NIE WYPISANE OBOK NICH ──────────────────
+// Do #213 włącznie ten plik niósł `for (const kind of ["project", "task"])` —
+// dwuelementową listę ekranów rekordu stojącą obok kodu, który decyduje, ile
+// ich jest. Ekranów jest TRZY. Ta sama funkcja czyta drugą deklarację, po której
+// bierze podmioty pierwszy pionowy przelot tej bramki.
+const RENDERER_SOURCE = path.join(root, "packages", "desktop-ui", "src");
+const derive = (attribute) => {
+  const found = declaredAttributeValues({ root: RENDERER_SOURCE, attribute });
+  const decision = classifyDeclarationSet({ attribute, ...found });
+  if (decision.verdict !== "derived")
+    throw new Error(`RENDERER_LAYOUT_INVALID:\n${decision.reason}`);
+  return decision.values;
+};
+const DECLARED_RECORD_KINDS = derive("data-record-kind");
+const DECLARED_HEIGHT_BOUND = derive("data-height-bound");
 
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
 // się w swoim pudełku, a dokument w oknie. Zwracamy WSZYSTKIE przewinienia, nie
@@ -220,6 +418,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       const results = [];
       const descendants = [];
       const recordScreens = [];
+      const heightBound = [];
+      // Ile wierszy i kart NADAJĄCYCH SIĘ DO OTWARCIA narysował każdy cel.
+      // Liczone po KSZTAŁCIE atrybutu (`…Row`, `…Card`), nie po wypisanej
+      // liście selektorów, bo lista byłaby dwudziestym drugim miejscem tej samej
+      // rodziny. Służy jednemu zdaniu w raporcie: który cel nie miał czego
+      // otworzyć — czyli o którym ten przebieg nie mówi nic.
+      const openableRows = {};
+      const openAttempts = [];
       const rowCounts = {
         libraryDocuments: 0,
         librarySources: 0,
@@ -284,6 +490,56 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             contentPx: own.content,
             maxWidthPx: own.maxWidth,
             paneContentPx: contentBox(pane).content,
+          });
+        }
+      };
+      // ── PIERWSZY PIONOWY POMIAR TEJ BRAMKI ────────────────────────────────
+      // Wszystko powyżej pyta o `scrollWidth - clientWidth`. Ta funkcja pyta
+      // o wysokość, i to w dwie strony naraz: czy ekran MIEŚCI SIĘ w panelu
+      // (sufit) i czy została mu jeszcze czytelnia (podłoga). Podmioty biorą się
+      // z deklaracji `data-height-bound`, korzeń i panel — strukturalnie, jako
+      // rodzic i dziadek pudełka czytelni.
+      const sweepHeightBound = (drawn, label) => {
+        if (drawn === undefined) return;
+        for (const reading of drawn.querySelectorAll("[data-height-bound]")) {
+          if (reading.getClientRects().length === 0) continue;
+          const screenRoot = reading.parentElement;
+          const pane = screenRoot?.parentElement;
+          if (screenRoot === null || pane === null || pane === undefined)
+            continue;
+          const inner = reading.firstElementChild;
+          // PANELE LICZĄ SIĘ TYLKO TAM, GDZIE STOJĄ OBOK SIEBIE, i to jest
+          // reguła nad KSZTAŁTEM, nie lista odczytów. Odczyt ułożony w jedną
+          // kolumnę — historia wrzutek zawsze, notatki i źródła po zwinięciu —
+          // JEST kolumną do przewinięcia, więc „każdy panel przewija się
+          // u siebie" nie ma tam czego znaczyć. Dwa tory w gridzie albo więcej
+          // znaczą, że drzewo stoi obok notatki, a wtedy przewinięcie notatki
+          // nie ma prawa zabrać drzewa.
+          const tracks =
+            inner === null
+              ? []
+              : window
+                  .getComputedStyle(inner)
+                  .gridTemplateColumns.split(" ")
+                  .filter((track) => track !== "" && track !== "none");
+          const panelsSideBySide = tracks.length >= 2;
+          const panels = inner === null ? [] : [...inner.children];
+          heightBound.push({
+            name: reading.getAttribute("data-height-bound") ?? "-",
+            surface: label,
+            paneClientPx: pane.clientHeight,
+            rootHeightPx: screenRoot.offsetHeight,
+            rootClientPx: screenRoot.clientHeight,
+            rootScrollPx: screenRoot.scrollHeight,
+            readingClientPx: reading.clientHeight,
+            readingScrollPx: reading.scrollHeight,
+            panelsSideBySide,
+            panelCount: panels.length,
+            somethingScrolls:
+              reading.scrollHeight > reading.clientHeight + 1 ||
+              panels.some(
+                (panel) => panel.scrollHeight > panel.clientHeight + 1,
+              ),
           });
         }
       };
@@ -412,6 +668,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           });
           sweepDescendants(drawn, label);
           sweepRecordScreens(drawn, label);
+          sweepHeightBound(drawn, label);
           // Ile wierszy NAPRAWDĘ się narysowało. Bez tego fikstura może się
           // opróżnić, a bramka dalej melduje „brak przepełnienia" — nad
           // geometrią, której nie ma.
@@ -453,6 +710,12 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           );
         };
         measure(id);
+        openableRows[id] = [...(work?.querySelectorAll("*") ?? [])].filter(
+          (element) =>
+            Object.keys(element.dataset).some((key) =>
+              /(?:Row|Card)$/u.test(key),
+            ),
+        ).length;
         // A destination can carry several LENSES over the same records, and the
         // widest of them — a board of columns, a table of eight — is exactly
         // where a narrow window or scaled text overflows. Sweeping only the
@@ -510,19 +773,28 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // record drawn into that is not a layout defect to fix but a window the
         // OS refuses to make. The 200%-text pass is the real narrow-pane case and
         // it DOES open records.
+        // AND THE THIRD KIND IS REACHED FROM HERE TOO, so the derived set is
+        // not derived against a door only two of its members have. A pipeline
+        // card and a renewal row both open the opportunity record; neither is
+        // drawn by today's harness fixture, so adding them changes nothing
+        // measured today and covers the screen on the day the fixture does.
         const row =
           window.innerWidth >= 760
-            ? work?.querySelector("[data-project-row], [data-task-row]")
+            ? work?.querySelector(
+                "[data-project-row], [data-task-row], [data-pipeline-card], [data-renewal-row]",
+              )
             : null;
         if (row instanceof HTMLElement) {
           row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
           await frame();
           await new Promise((resolve) => setTimeout(resolve, 900));
           await frame();
-          const kind =
-            document
-              .querySelector("[data-record-kind]")
-              ?.getAttribute("data-record-kind") ?? "record";
+          const opened = document.querySelector("[data-record-kind]");
+          openAttempts.push({
+            surface: id,
+            kind: opened?.getAttribute("data-record-kind") ?? null,
+          });
+          const kind = opened?.getAttribute("data-record-kind") ?? "record";
           measure(`${id}:${kind}`);
           // Every tab, because the panels differ in kind: a reading column, a
           // list of rows, a stream. The widest of them is where a narrow window
@@ -550,6 +822,9 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         results,
         descendants,
         recordScreens,
+        heightBound,
+        openableRows,
+        openAttempts,
         rowCounts,
         recordPanels,
         recordKinds,
@@ -617,13 +892,48 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // of them has five sections against the other's three: eight panels and five
   // panels both clear the number above while the task record goes unseen. The
   // kinds are named instead, so a screen that stops opening fails by name.
-  for (const kind of recordsExpected ? ["project", "task"] : []) {
-    if (!measured.recordKinds.includes(kind)) {
+  // DERIVED FROM THE SOURCE, not from a pair written beside it. The old
+  // `["project", "task"]` could not name a third screen, and there is one:
+  // `OpportunityRecordScreen.tsx` has carried `data-record-kind="opportunity"`
+  // since Wave C and no pass has ever opened it.
+  //
+  // AND THE DERIVED SET DOES NOT ALL OPEN, WHICH IS THE POINT OF SAYING IT OUT
+  // LOUD. Measured today: the harness fixture holds no opportunities and no
+  // renewals, so `pipeline` and `renewals` draw ZERO rows and there is nothing
+  // to double-click. Failing on that would ship a red gate for a fixture gap
+  // that is owned elsewhere; being silent about it would let a green run read
+  // as coverage. So the unreachable members are NAMED on every run, including
+  // a perfect one — "never opened" and "fine" are different sentences and this
+  // gate says the second one only when it measured it.
+  const kindCoverage = classifyDeclarationCoverage({
+    declared: recordsExpected ? DECLARED_RECORD_KINDS : [],
+    measured: measured.recordKinds,
+  });
+  if (recordsExpected && kindCoverage.verdict === "measured-nothing") {
+    failures.push({ surface: "-", reason: kindCoverage.reason });
+  }
+  if (recordsExpected) {
+    const blind = Object.entries(measured.openableRows)
+      .filter(([, count]) => count === 0)
+      .map(([id]) => id);
+    console.log(
+      `${label}\trecord kinds declared in the renderer: ${DECLARED_RECORD_KINDS.join(", ")}` +
+        ` | opened here: ${measured.recordKinds.join(", ") || "none"}` +
+        ` | NEVER OPENED — not looked at, NOT proven fine: ${kindCoverage.unreachable.join(", ") || "none"}` +
+        ` | destinations that drew no row or card to open: ${blind.join(", ") || "none"}`,
+    );
+  }
+  // A destination that HAD a row to open and opened nothing is a different
+  // thing entirely, and that one is a failure: the rows were there, the
+  // double-click did nothing, so a screen stopped opening. This is what the
+  // hand-written pair was really guarding, and it now guards it by observation
+  // rather than by naming two kinds it happened to know about.
+  for (const attempt of recordsExpected ? measured.openAttempts : []) {
+    if (attempt.kind === null)
       failures.push({
-        surface: "-",
-        reason: `no ${kind} record opened, so that screen's geometry is untested and this pass says nothing about it`,
+        surface: attempt.surface,
+        reason: `${attempt.surface} offered a row to open and double-clicking it opened no record screen, so that screen's geometry is untested`,
       });
-    }
   }
   // ── CZY EKRAN REKORDU MA JESZCZE SZEROKOŚĆ TREŚCI ─────────────────────────
   // Ta kontrola mierzy w DRUGĄ STRONĘ niż cały pomiar wyżej i po to powstała.
@@ -671,6 +981,75 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
     console.log(
       `${label}\t-\trecord screens measured for content width: ${sweepVerdict.measured}`,
     );
+  // ── CZY EKRAN ZWIĄZANY WYSOKOŚCIĄ NAPRAWDĘ JEST ZWIĄZANY ──────────────────
+  // PIERWSZY PIONOWY PRZELOT TEJ BRAMKI. Każda liczba brana wyżej to
+  // `scrollWidth - clientWidth`; ta bramka nigdy nie spojrzała w dół i dlatego
+  // pięć zielonych przelotów mówiło „no overflow" nad czytelnią mającą 4140 px
+  // w oknie 735 px. Reguła siedzi w `surface-height-bound.mjs` i ma tam testy
+  // chodzące w `npm run check` na trzech systemach; tutaj jest tylko pomiar.
+  for (const screen of measured.heightBound) {
+    const decision = classifyHeightBoundScreen(screen);
+    if (REPORT_ONLY) {
+      console.log(
+        `${label}\t${screen.surface}\t${screen.name}\theight-bound\t` +
+          `pane ${screen.paneClientPx}\t` +
+          `screen ${screen.rootHeightPx} (${screen.rootClientPx}/${screen.rootScrollPx})\t` +
+          `reading ${screen.readingClientPx}/${screen.readingScrollPx}\t` +
+          `panels ${screen.panelCount} ${screen.panelsSideBySide ? "side by side" : "in one column"}\t` +
+          `${decision.verdict}` +
+          (decision.fraction === undefined
+            ? ""
+            : `\t${(decision.fraction * 100).toFixed(1)}%`),
+      );
+    }
+    if (decision.verdict === "unmeasurable")
+      failures.push({ surface: screen.surface, reason: decision.reason });
+    else if (
+      decision.verdict === "collapsed" ||
+      decision.verdict === "unbounded" ||
+      decision.verdict === "panels-scroll-together"
+    )
+      layoutProblems.push({ surface: screen.surface, reason: decision.reason });
+  }
+  // I LICZBA ZMIERZONYCH PODMIOTÓW JEST CZĘŚCIĄ ASERCJI, wyprowadzoną
+  // z deklaracji w źródłach — czyli z miary, której mierzony nie ustawia sobie
+  // sam. Kontrola, która może przejść, nie mierząc niczego, byłaby dziewiątym
+  // przyrządem kłamiącym w stronę fałszywego spokoju, a ten lot istnieje
+  // z powodu ósmego.
+  //
+  // A SCOPED PASS never visits the destinations it does not name, so demanding
+  // a screen there would turn a stated exclusion into a failure that has
+  // nothing to do with the heights being measured — the same reasoning the
+  // record guard above already carries. The declaration's VALUE is the
+  // destination id precisely so this filter is possible without a second list.
+  const heightBoundExpected =
+    surfaces === undefined
+      ? DECLARED_HEIGHT_BOUND
+      : DECLARED_HEIGHT_BOUND.filter((name) => surfaces.includes(name));
+  const heightSweep = classifyHeightBoundSweep({
+    declared: heightBoundExpected,
+    measured: measured.heightBound.map((screen) => screen.name),
+    // An unscoped pass is always expected to meet the whole registry, so an
+    // EMPTY registry stays a failure there rather than a quiet skip.
+    expected: surfaces === undefined || heightBoundExpected.length > 0,
+  });
+  if (
+    heightSweep.verdict !== "measured" &&
+    heightSweep.verdict !== "not-expected"
+  )
+    failures.push({ surface: "-", reason: heightSweep.reason });
+  // I DRUGA POŁOWA TEGO SAMEGO STRAŻNIKA: sufit sam przechodzi nad PUSTĄ
+  // fiksturą, bo ekran bez treści nigdy nie przewija strony. Dowodem, że pomiar
+  // zastał prawdziwe przepełnienie, jest to, że gdzieś coś naprawdę się
+  // przewija.
+  const heightEvidence = classifyHeightBoundEvidence({
+    scrollingSubjects: measured.heightBound.filter(
+      (screen) => screen.somethingScrolls,
+    ).length,
+    expected: measured.heightBound.length > 0,
+  });
+  if (heightEvidence.verdict === "nothing-overflowed")
+    failures.push({ surface: "-", reason: heightEvidence.reason });
   // Fikstura harnessu może się opróżnić bez jednego czerwonego testu — nic
   // w niej nie jest typowane przez ekran, który ją rysuje. Wtedy Library
   // mierzy się PUSTA i cała bramka przechodzi nad geometrią, której nie ma.
@@ -680,6 +1059,27 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // Strażnik chodzi RÓWNIEŻ w trybie raportu. Raport jest przyrządem pomiarowym
   // — z niego przepisuje się sufity do rejestru — więc raport zrobiony nad pustą
   // Biblioteką dałby sufity zmierzone na niczym.
+  // A W TRYBIE RAPORTU STRAŻNIK MÓWI TEŻ, ILE NAPRAWDĘ NALICZYŁ. Progi niżej
+  // wyprowadzono z liczb zmierzonych na fikstrze, ale sam przyrząd tych liczb
+  // NIE POKAZYWAŁ — dało się przeczytać wyłącznie „przeszło" albo „za mało".
+  // Próg uzasadniony pomiarem, którego nie da się powtórzyć, jest progiem
+  // wpisanym z ręki jedno odświeżenie fikstury później.
+  //
+  // ITERUJEMY PO `MINIMUM_ROWS`, czyli po tym samym źródle, po którym idzie
+  // asercja niżej — NIE po `rowCounts`. Te dwa kształty są deklarowane osobno
+  // i to jest ta sama klasa driftu, co przepisany kształt w dwóch schematach:
+  // licznik dodany bez progu wypisałby tu `floor undefined`, a pętla asercji,
+  // idąca w drugą stronę, milczałaby o tym samym rozjeździe. W trybie raportu
+  // nikt by tego nie zauważył, bo raport niczego nie czerwieni.
+  if (REPORT_ONLY)
+    console.log(
+      `report: fixture counts — ${Object.entries(MINIMUM_ROWS)
+        .map(
+          ([what, floor]) =>
+            `${what} ${measured.rowCounts[what]} (floor ${floor})`,
+        )
+        .join(", ")}`,
+    );
   for (const [what, minimum] of Object.entries(MINIMUM_ROWS)) {
     const drew = measured.rowCounts[what];
     if (drew < minimum) {
@@ -872,7 +1272,11 @@ try {
   }
 } finally {
   await browser.close();
-  stop();
+  // Nieudane zatrzymanie jest RAPORTOWANE, nie RZUCANE: `finally`, które rzuca,
+  // podmienia prawdziwy werdykt bramki na własną awarię — a to jest dokładnie ta
+  // klasa kłamstwa, przed którą stoi ten plik. Zablokowany port i tak zatrzyma
+  // NASTĘPNY przebieg, na próbie wiązania, z nazwanym powodem.
+  await stop().catch((error) => console.error(error.message));
 }
 
 if (REPORT_ONLY) {

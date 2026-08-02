@@ -120,7 +120,16 @@ export const LibraryShell = ({
         </div>
       </div>
 
-      <div className={styles.reading}>
+      {/* `data-height-bound` JEST DEKLARACJĄ, nie hakiem testowym, i mówi
+          dokładnie jedno: ten ekran obiecuje zmieścić się w panelu, a
+          przewijanie ma się dziać W ŚRODKU. Do dziś nie mieścił się — czytelnia
+          miała 4140 px w oknie 735 px i cały trzypanelowy odczyt przewijał się
+          jako strona. Atrybut siedzi na PUDEŁKU CZYTELNI, bo to jego wysokość
+          jest tu obietnicą; korzeń ekranu i panel bramka bierze strukturalnie,
+          jako rodzica i dziadka. Bramka układu wylicza z niego swoje podmioty
+          (`scripts/renderer-declarations.mjs`), więc drugi ekran związany
+          wysokością jest objęty w dniu, w którym się deklaruje. */}
+      <div className={styles.reading} data-height-bound="library">
         {reading === "notes" ? (
           <NotesReading
             client={client}

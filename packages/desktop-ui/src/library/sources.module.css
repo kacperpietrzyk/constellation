@@ -18,7 +18,8 @@
 .layout {
   display: grid;
   grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
-  min-height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  block-size: 100%;
   background: var(--surface-window);
 }
 
@@ -400,8 +401,15 @@
 }
 
 @container (max-width: 40rem) {
+  /* Stacked, the height bound yields too — the same step `notes.module.css`
+     takes and for the same measured reason: one column of two panels IS a
+     column to scroll, and holding the bound at 300% text left the list panel
+     0 px tall inside a 202 px box. */
   .layout {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    block-size: auto;
+    min-block-size: 100%;
   }
 
   .listPanel {

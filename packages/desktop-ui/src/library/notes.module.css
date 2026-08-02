@@ -30,8 +30,9 @@
      this screen inherited — 17 rem demanded inside a 256 px box. */
   grid-template-columns: minmax(0, 13rem) minmax(0, 19rem) minmax(0, 1fr);
   grid-template-areas: "tree list read";
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
-  min-height: 100%;
+  block-size: 100%;
   background: var(--surface-window);
 }
 
@@ -59,6 +60,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .panelHead {
@@ -301,6 +303,14 @@
    Saying only "the gate measures both widths" would be true and would leave
    this rule reading as guarded by a pass that does not exercise it. */
 @container (max-width: 42rem) {
+  /* AND THE HEIGHT BOUND YIELDS WITH THEM, which is the third step of the same
+     order rather than an exception to it. Stacked, the three panels ARE one
+     column, so "each panel scrolls in its own box" has nothing left to mean —
+     and holding the bound here is actively worse: measured at 1092 px with text
+     at 300%, the two navigation rows want 3rem + 4rem = 336 px of a 202 px box
+     and the reading row resolves to ZERO. The note body would be present,
+     scrollable and 0 px tall. That is the record screen's zero content width
+     turned on its side, produced by the fix for the defect above it. */
   .notes {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -308,6 +318,8 @@
       "list"
       "read";
     grid-template-rows: minmax(3rem, 9rem) minmax(4rem, 14rem) minmax(0, 1fr);
+    block-size: auto;
+    min-block-size: 100%;
   }
 
   .treePanel,
