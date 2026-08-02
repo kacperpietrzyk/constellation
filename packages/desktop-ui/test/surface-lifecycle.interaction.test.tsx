@@ -57,7 +57,6 @@ vi.mock("../src/CalendarSurface.js", () => lazyImports.hold("calendar"));
 vi.mock("../src/WorkSurface.js", () => lazyImports.hold("work"));
 vi.mock("../src/library/LibraryShell.js", () => lazyImports.hold("library"));
 vi.mock("../src/MeetingsSurface.js", () => lazyImports.hold("meetings"));
-vi.mock("../src/ActivitySurface.js", () => lazyImports.hold("activity"));
 vi.mock("../src/SettingsSurface.js", () => lazyImports.hold("settings"));
 vi.mock("../src/StrategicDepthSurface.js", () =>
   lazyImports.hold("organizations"),
@@ -159,9 +158,18 @@ const settleUntil = async (
  * uruchamia `preloadSurface` — leniwy import startuje dopiero z renderu.
  */
 const openDestination = (destination: string): void => {
-  const item = [
-    ...container.querySelectorAll<HTMLElement>(".nav-item[data-surface]"),
-  ].find((node) => node.dataset.surface === destination);
+  // DWIE AFORDANCJE, JEDNA PĘTLA. Od fali E Ustawienia są TRYBEM naprawdę,
+  // a nie tylko w komentarzu: nie rysują pozycji w lewej kolumnie, wchodzi się
+  // w nie kołem zębatym przy tożsamości. Pętla niżej idzie po CAŁYM rejestrze
+  // celów leniwych, więc bez tej gałęzi straciłaby jeden podmiot — a strażnik,
+  // który przestaje widzieć ekran, jest gorszy niż jego brak. Ta sama
+  // poprawka, z tego samego powodu, weszła w `verify-renderer-layout.mjs`.
+  const item =
+    destination === "settings"
+      ? container.querySelector<HTMLElement>("[data-settings-entry]")
+      : [
+          ...container.querySelectorAll<HTMLElement>(".nav-item[data-surface]"),
+        ].find((node) => node.dataset.surface === destination);
   assert.ok(
     item,
     `no navigation target rendered for ${destination}, so its lifecycle was never measured`,

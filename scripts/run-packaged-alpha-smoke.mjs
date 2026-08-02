@@ -7,7 +7,7 @@ import { assertPackagedCredentialStoreTestAllowed } from "./desktop/packaged-cre
 // Zbiór celów bierzemy z rejestru, nie z liczby wpisanej w asercję. Poprzednia
 // wersja sprawdzała `length === 12`, a nowa nawigacja też ma dwanaście pozycji —
 // czyli ta asercja przeszłaby przez CAŁKOWITĄ wymianę zbioru celów.
-import { desktopSurfaceIds } from "../packages/desktop-preload/dist/src/surface-registry.js";
+import { desktopNavigationSurfaceIds } from "../packages/desktop-preload/dist/src/surface-registry.js";
 // Etykieta rodzaju też idzie z rejestru, nie z napisu wpisanego tutaj. Poprzednia
 // wersja porównywała z „Projekt" i przeżyła flip na angielski jako czerwień na
 // trzech systemach — a jest to dokładnie ten sam niezmiennik co wyżej: kontrakt
@@ -665,9 +665,16 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     }
 
     if (phase !== "restore-confirm") {
+      // RÓWNOŚĆ ZBIORU, WYPROWADZONA — nie przypięta liczba. Od fali E lista
+      // pochodzi z `desktopNavigationSurfaceIds`, a nie z całego rejestru:
+      // Ustawienia są TRYBEM i wchodzi się w nie kołem zębatym, więc
+      // porównanie z całym rejestrem czekałoby tu na pozycję, której powłoka
+      // celowo nie rysuje. Do fali E przechodziło TYLKO dlatego, że filtr
+      // lewej kolumny nie odsiewał niczego — czyli ta asercja przez dwie fale
+      // potwierdzała defekt.
       await waitFor(
         client,
-        `document.querySelector(".capture-dock") !== null && JSON.stringify([...document.querySelectorAll(".nav-item[data-surface]")].map((item) => item.dataset.surface).sort()) === ${JSON.stringify(JSON.stringify([...desktopSurfaceIds].sort()))}`,
+        `document.querySelector(".capture-dock") !== null && document.querySelector("[data-settings-entry]") !== null && JSON.stringify([...document.querySelectorAll(".nav-item[data-surface]")].map((item) => item.dataset.surface).sort()) === ${JSON.stringify(JSON.stringify([...desktopNavigationSurfaceIds].sort()))}`,
         "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
       );
       const shellAccessibility = await client.evaluate(`(() => {
@@ -1106,6 +1113,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
         // Ustawienia są TRYBEM (#31), więc nie ma ich w zamiataniu wyżej —
         // wchodzi się do nich kołem zębatym, nie pozycją `data-surface`.
+        // TO ZDANIE JEST PRAWDZIWE OD FALI E, i do niej nie było: powłoka
+        // rysowała pozycję `data-surface="settings"` mimo filtra, który miał ją
+        // odsiać. Nośnikiem jest dziś pole `chrome` w rejestrze, a zamiatanie
+        // wyżej porównuje się z `desktopNavigationSurfaceIds`.
         // Gwarancja jest jedna i przeżywa każdą zmianę układu: ŻADNA KATEGORIA
         // NIE STAJE SIĘ NIEOSIĄGALNA. Poniżej 58rem sticky nawigator się zwija,
         // a rolę przejmuje kontrolka natywna — to jest dokładnie ten przypadek,

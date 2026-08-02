@@ -7,18 +7,20 @@ import {
   isWorkspaceChangedEvent,
 } from "../src/client.js";
 import {
+  desktopNavigationSurfaceIds,
   desktopSurfaceIds,
   desktopSurfaceRegistry,
   isDesktopSurface,
 } from "../src/surface-registry.js";
 
 test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
-  // Trzynaście: `history` wsiąkł w `library` w fali Knowledge, a `access`
-  // w `settings` w fali Wycofań — oba razy SCALENIE TREŚCI, a nie skasowanie
-  // ekranu. Liczba jest tu wpisana ręcznie i to jest jej sens: cel nie może
-  // wyjść z rejestru ani do niego wejść po cichu, bo każde takie przejście
-  // wymaga wpisu w `retiredDesktopSurfaces` albo osieroca zapisane sesje.
-  assert.equal(desktopSurfaceRegistry.length, 13);
+  // Dwanaście: `history` wsiąkł w `library` w fali Knowledge, a `access`
+  // i `activity` w `settings` w fali Wycofań — za każdym razem SCALENIE
+  // TREŚCI, a nie skasowanie ekranu. Liczba jest tu wpisana ręcznie i to jest
+  // jej sens: cel nie może wyjść z rejestru ani do niego wejść po cichu, bo
+  // każde takie przejście wymaga wpisu w `retiredDesktopSurfaces` albo osieroca
+  // zapisane sesje.
+  assert.equal(desktopSurfaceRegistry.length, 12);
   assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
   assert.equal(
     new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,
@@ -51,6 +53,26 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
   );
   assert.equal(isDesktopSurface("library"), true);
   assert.equal(isDesktopSurface("chat"), false);
+  // KAŻDY wpis mówi, którymi drzwiami się w niego wchodzi, i dokładnie JEDEN
+  // mówi „trybem". To pole zastąpiło filtr `shortcut !== null`, który stał
+  // w powłoce przez dwie fale i NIE ODSIEWAŁ NICZEGO, więc Ustawienia rysowały
+  // się w lewej kolumnie wbrew dwóm komentarzom mówiącym, że tak nie jest.
+  assert.equal(
+    desktopSurfaceRegistry.filter((surface) => surface.chrome === "mode")
+      .length,
+    1,
+  );
+  assert.deepEqual(
+    desktopSurfaceRegistry
+      .filter((surface) => surface.chrome === "mode")
+      .map((surface) => surface.id),
+    ["settings"],
+  );
+  assert.equal(
+    desktopNavigationSurfaceIds.length,
+    desktopSurfaceRegistry.length - 1,
+  );
+  assert.equal(desktopNavigationSurfaceIds.includes("settings"), false);
 });
 
 test("renderer client exposes only semantic application and recovery routes", () => {

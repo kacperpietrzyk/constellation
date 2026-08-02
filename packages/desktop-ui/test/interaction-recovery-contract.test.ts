@@ -29,12 +29,19 @@ const organizationStyles = readFileSync(
   "utf8",
 );
 const tokens = readFileSync(path.join(root, "src", "tokens.css"), "utf8");
-const activitySurface = readFileSync(
-  path.join(root, "src", "ActivitySurface.tsx"),
+// PRZEPIĘTE, NIE SKASOWANE. Dziennik zmian wsiąkł w fali E do kategorii
+// „Data and privacy" Ustawień — to jest SCALENIE TREŚCI, więc obowiązuje ten
+// sam precedens co przy Bibliotece niżej i przy `access` w #215: scalenie nie
+// jest powodem, żeby stracić pokrycie akurat na tym, co się przenosi.
+// `readFileSync` po nieistniejącej ścieżce rzuca przy ładowaniu MODUŁU
+// i zabiera ze sobą CAŁY ten plik, więc przepięcie jest też jedynym wyjściem,
+// które nie kasuje pozostałych kontraktów po cichu.
+const activitySection = readFileSync(
+  path.join(root, "src", "settings", "ActivitySection.tsx"),
   "utf8",
 );
 const activityStyles = readFileSync(
-  path.join(root, "src", "activity-surface.css"),
+  path.join(root, "src", "settings", "activity-section.module.css"),
   "utf8",
 );
 // Jeden ekran dokumentów rozpadł się w fali Knowledge na powłokę Biblioteki
@@ -625,34 +632,38 @@ describe("interaction recovery contracts", () => {
   });
 
   it("keeps dense Activity controllable and semantically grouped", () => {
-    assert.match(activitySurface, /id="activity-search"/);
-    assert.match(activitySurface, /id="activity-category"/);
+    assert.match(activitySection, /id="activity-search"/);
+    assert.match(activitySection, /id="activity-category"/);
     assert.match(
-      activitySurface,
+      activitySection,
       /filterActivityItems\(items, category, query\)/,
     );
     assert.match(
-      activitySurface,
+      activitySection,
       /groupActivityItems\(filteredItems, timezone\)/,
     );
-    assert.match(activitySurface, /<ol className="activity-list">/);
+    assert.match(activitySection, /<ol className=\{styles\.list\}>/);
     // Groups are labelled regions, so a dense list stays navigable.
     assert.match(
-      activitySurface,
-      /className="activity-group"[\s\S]{0,200}?aria-labelledby=\{`activity-group-\$\{group\.key\}`\}[\s\S]{0,200}?<h3 id=\{`activity-group-\$\{group\.key\}`\}>/,
+      activitySection,
+      /className=\{styles\.group\}[\s\S]{0,200}?aria-labelledby=\{`activity-group-\$\{group\.key\}`\}[\s\S]{0,300}?id=\{`activity-group-\$\{group\.key\}`\}/,
     );
     // Filtering to nothing is a state with a way out of it.
     assert.match(
-      activitySurface,
+      activitySection,
       /filteredItems\.length === 0 \? \(\s*<ActivityInlineState[\s\S]{0,400}?onClick=\{resetFilters\}/,
     );
+    // Nazwy klas są od fali E MODUŁOWE, i to nie jest kosmetyka: rejestr długu
+    // bramki układu dopasowywał tę treść po GOŁYCH znacznikach (`h3`, `p`),
+    // które były jednoznaczne tylko dopóki `activity` było własnym ekranem.
+    // Wewnątrz Ustawień `p` rysuje każda z sześciu kategorii.
     assert.match(
       activityStyles,
-      /\.activity-group\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--surface-raised\)/s,
+      /\.group\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--surface-raised\)/s,
     );
     assert.match(
       activityStyles,
-      /\.activity-controls\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+      /\.controls\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
   });
 
@@ -678,13 +689,10 @@ describe("interaction recovery contracts", () => {
       styles,
       /\.task-search-control input\s*\{[^}]*outline:\s*(?:0|none)/s,
     );
-    assert.match(
-      activityStyles,
-      /\.activity-search input\s*\{[^}]*box-shadow:\s*none/s,
-    );
+    assert.match(activityStyles, /\.search input\s*\{[^}]*box-shadow:\s*none/s);
     assert.doesNotMatch(
       activityStyles,
-      /\.activity-search input\s*\{[^}]*outline:\s*(?:0|none)/s,
+      /\.search input\s*\{[^}]*outline:\s*(?:0|none)/s,
     );
   });
 

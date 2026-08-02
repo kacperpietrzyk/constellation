@@ -6,6 +6,8 @@ import {
   type FormEvent,
 } from "react";
 
+import type { CommandId } from "@constellation/contracts";
+
 import type {
   ConstellationRendererClient,
   ObsidianVaultScanResult,
@@ -46,6 +48,7 @@ import {
 } from "./components/AgentGrantDetailsDialog.js";
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
 import { AccessSection } from "./settings/AccessSection.js";
+import { ActivitySection } from "./settings/ActivitySection.js";
 import {
   ConceptHelpDialog,
   type ConceptHelpTopicId,
@@ -175,6 +178,8 @@ export const SettingsSurface = ({
   onFailure,
   onOpenRecovery,
   onNavigate,
+  requestedCategory,
+  onUndo,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -190,6 +195,20 @@ export const SettingsSurface = ({
   readonly onFailure: (failure: MutationFailure) => void;
   readonly onOpenRecovery: () => void;
   readonly onNavigate: (surface: SurfaceId, label: string) => void;
+  /**
+   * Category the CONTEXT asked for — the per-category deep link. Undefined
+   * whenever nobody asked, which is the ordinary case: the screen then picks
+   * its own category exactly as it did before this prop existed.
+   */
+  readonly requestedCategory?: SettingsCategoryId;
+  /**
+   * Preview undoing one confirmed change. Reached from the Activity pane,
+   * which used to be a destination of its own and asked the shell for this
+   * through the same callback. The dialog, the confirmation and where a
+   * confirmed undo lands are all the SHELL's — reproducing any of that here
+   * would be a second copy of a decision it already owns.
+   */
+  readonly onUndo: (targetCommandId: CommandId) => void;
 }) => {
   const [name, setName] = useState(snapshot.bootstrap.workspace.name);
   const [busyName, setBusyName] = useState(false);
@@ -901,6 +920,23 @@ export const SettingsSurface = ({
       .getElementById(settingsCategoryElementId(category))
       ?.scrollIntoView({ block: "start", behavior: "auto" });
   };
+
+  // GŁĘBOKI LINK. Kategoria zażądana przez kontekst zakładki wygrywa nad
+  // wyborem własnym ekranu. Efekt zależy WYŁĄCZNIE od `requestedCategory`,
+  // żeby przewijanie nie ściągało człowieka z powrotem przy każdym renderze,
+  // kiedy już sobie odjechał w dół.
+  //
+  // GRANICA, POWIEDZIANA WPROST: dwa żądania TEJ SAMEJ kategorii pod rząd, bez
+  // wyjścia z Ustawień pomiędzy nimi, przewiną tylko za pierwszym razem —
+  // wartość się nie zmienia, więc efekt nie wraca. Ekran odmontowuje się przy
+  // wyjściu z trybu, więc każde wejście z zewnątrz przewija. Zamknięcie i tej
+  // szczeliny wymagałoby licznika żądań przekazywanego z powłoki, czyli
+  // drugiego propa na przypadek, w którym człowiek i tak patrzy na nawigator
+  // kategorii i dojeżdża jednym kliknięciem.
+  useEffect(() => {
+    if (requestedCategory === undefined) return;
+    navigateToCategory(requestedCategory);
+  }, [requestedCategory]);
 
   return (
     <div className="surface-scroll settings-surface">
@@ -1974,6 +2010,29 @@ export const SettingsSurface = ({
                 )}
               </div>
             </section>
+
+            {/* THE WORKSPACE AUDIT LOG, WITH ITS UNDO PATH INTACT. `activity`
+                was a destination of its own until Wave E. It is not a Library
+                reading — Library means the reading material, and this is the
+                record of what the system did to your data — and it is not a
+                seventh category, because it adds no SETTING and so cannot move
+                this category's badge. A reverse-chronological list of what
+                changed WITH UNDO answers "what happened to my data and how do
+                I take it back", which is the question this category is for.
+
+                The undo path is unchanged: the pane asks the shell to preview,
+                and the shell owns the dialog, the confirmation and where a
+                confirmed undo lands. A retirement is a content merge, and
+                content that stops working during one is the failure this whole
+                shape is watched for. */}
+            <ActivitySection
+              activity={snapshot.activity}
+              {...(snapshot.bootstrap.workspace.timezone === undefined
+                ? {}
+                : { timezone: snapshot.bootstrap.workspace.timezone })}
+              onUndo={onUndo}
+              onRetry={() => void onReload()}
+            />
           </div>
 
           {/* SEKCJA NOTES (OPEN-11).

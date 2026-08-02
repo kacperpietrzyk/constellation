@@ -54,6 +54,7 @@ const mountSettings = async (): Promise<void> => {
         onFailure: () => undefined,
         onOpenRecovery: () => undefined,
         onNavigate: () => undefined,
+        onUndo: () => undefined,
       }),
     );
   });
@@ -230,5 +231,73 @@ test("the Access category holds the access content, not a way out of Settings", 
   assert.ok(
     category.querySelector("h2#agent-access-title"),
     "the Access category renders no access content — the section that used to be a destination is not mounted inside it",
+  );
+});
+
+test("every declared Settings pane is mounted inside the category that declares it", async () => {
+  // DERYWOWANE Z TEGO SAMEGO SŁOWNIKA, Z KTÓREGO PALETA BIERZE CEL. Tafla
+  // zadeklarowana w `settings-categories.ts` i niezamontowana daje cel palety
+  // prowadzący donikąd — a to jest dokładnie kształt „zdolność, której nic nie
+  // montuje": komponent istnieje, nikt go nie importuje, bramka zielona.
+  //
+  // Pętla idzie po deklaracji, nie po wypisanej liście tafli, więc druga tafla
+  // dostaje tę asercję bez dopisywania czegokolwiek tutaj.
+  const { settingsPanes, settingsPaneElementId } =
+    await import("../src/settings-categories.js");
+  await mountSettings();
+
+  assert.ok(
+    settingsPanes.length > 0,
+    "pusty słownik tafli spełniłby tę pętlę nie mierząc niczego",
+  );
+  for (const pane of settingsPanes) {
+    const category = container.querySelector<HTMLElement>(
+      `[data-settings-category="${pane.category}"]`,
+    );
+    assert.ok(category, `kategoria „${pane.category}" się nie narysowała`);
+    const mounted = category.querySelector<HTMLElement>(
+      `#${settingsPaneElementId(pane.id)}`,
+    );
+    assert.ok(
+      mounted,
+      `tafla „${pane.label}" jest zadeklarowana, a nie zamontowana w kategorii „${pane.category}" — paleta prowadzi donikąd`,
+    );
+    assert.equal(mounted.dataset.settingsPane, pane.id);
+  }
+});
+
+test("a requested category is the one the screen opens on", async () => {
+  // GŁĘBOKI LINK, ZMIERZONY PO ZACHOWANIU. `scrollIntoView` nie istnieje
+  // w happy-dom, więc dowodem nie jest przewinięcie, tylko to, że ekran
+  // OZNACZA żądaną kategorię jako bieżącą — czyli ta sama gwarancja, której
+  // pilnuje reszta tego pliku, tylko od strony powłoki.
+  const { SettingsSurface } = await import("../src/SettingsSurface.js");
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+  const client = createScenarioClient({ queries: shellQueries });
+  const snapshot = await loadDesktopSnapshot(client);
+
+  root = createRoot(container);
+  await act(async () => {
+    root.render(
+      createElement(SettingsSurface, {
+        client,
+        snapshot,
+        onReload: async () => undefined,
+        onWrote: async () => undefined,
+        onFailure: () => undefined,
+        onOpenRecovery: () => undefined,
+        onNavigate: () => undefined,
+        onUndo: () => undefined,
+        requestedCategory: "data",
+      }),
+    );
+  });
+
+  assert.equal(
+    currentCategory(),
+    "Data and privacy",
+    "a deep link into a category must open on it, not on the screen's own default",
   );
 });

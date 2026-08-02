@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  desktopNavigationSurfaceIds,
   desktopSurfaceIds,
   desktopSurfaceRegistry,
   type DesktopSurface,
@@ -209,14 +210,14 @@ test("every destination in the registry renders a surface in the shell work plan
   // ktoś przestawił wszystko na „eager", powyższa pętla dalej byłaby zgodna sama
   // ze sobą, a bramka rozmiaru renderera dostałaby całą aplikację na ścieżkę
   // gorącą. Liczba jest tu po to, żeby taka zmiana była widoczna.
-  // DZIEWIĘĆ, POTWIERDZONE ŚWIADOMIE: `access` wsiąkł w Ustawienia w fali
-  // Wycofań i przestał być celem, więc leniwych celów jest o jeden mniej.
-  // Ścieżka gorąca na tym ZYSKUJE, nie traci — treść lądowała już w leniwym
-  // chunku, a z wejściowego wychodzi jej okablowanie w powłoce; zmierzona para
-  // gzip przed/po stoi w opisie PR-a.
+  // OSIEM, POTWIERDZONE ŚWIADOMIE: `access` i `activity` wsiąkły w Ustawienia
+  // w fali Wycofań i przestały być celami, więc leniwych celów jest o dwa mniej
+  // niż przed nią. Ścieżka gorąca na tym ZYSKUJE, nie traci — treść lądowała
+  // już w leniwym chunku, a z wejściowego wychodzi jej okablowanie w powłoce;
+  // zmierzona para gzip przed/po stoi w opisie PR-a.
   assert.equal(
     lazyDestinations.size,
-    9,
+    8,
     "Zmienił się podział na powierzchnie leniwe i ładowane od razu — potwierdź to świadomie i zaktualizuj też budżet ścieżki gorącej.",
   );
 });
@@ -238,10 +239,12 @@ test("every lazy destination has a loader, and the ones that can be resolved her
   // modułu wygląda dokładnie jak poprawnie ładująca się. Rozwiązujemy loader
   // ręcznie.
   //
-  // ZASIĘG POWIEDZIANY WPROST: trzy moduły (`activity`, `access`,
-  // `relationships`) importują CSS na najwyższym poziomie, czego `node --test`
-  // nie rozwiąże — nie ma w tym repo haka ładującego arkusze. Dla nich zostaje
-  // sama kompletność klucza. „Zielone" nie ma znaczyć więcej, niż zmierzono.
+  // ZASIĘG POWIEDZIANY WPROST: `relationships` importuje CSS na najwyższym
+  // poziomie, czego `node --test` nie rozwiąże — nie ma w tym repo haka
+  // ładującego arkusze. Dla niego zostaje sama kompletność klucza. „Zielone"
+  // nie ma znaczyć więcej, niż zmierzono. Dwa pozostałe wyjątki (`activity`,
+  // `access`) zniknęły razem ze swoimi celami — obie treści są dziś sekcjami
+  // leniwych Ustawień i jadą tym samym loaderem co one.
   const resolvableHere = ["library", "meetings", "settings"] as const;
   for (const id of resolvableHere) {
     assert.ok(
@@ -259,7 +262,7 @@ test("every lazy destination has a loader, and the ones that can be resolved her
   }
 });
 
-test("the shell navigation offers every destination in the registry", async () => {
+test("the shell navigation offers every navigable destination, and the settings MODE only through the gear", async () => {
   const { render } = await shell();
   const markup = render("today");
   // Plan roboczy aktywnej destynacji też niesie `data-surface`, więc zanim
@@ -267,13 +270,33 @@ test("the shell navigation offers every destination in the registry", async () =
   // planie zaliczałaby się sama, nawet gdyby zniknęła z listy celów.
   const plane = workPlaneFor(markup, "today");
   const chrome = plane === undefined ? markup : markup.replace(plane.outer, "");
-  for (const id of desktopSurfaceIds) {
+  // ITERUJEMY PO `desktopNavigationSurfaceIds`, czyli po tej samej nazwie, po
+  // której idzie powłoka i smoke spakowanej apki. Wypisanie tu warunku jeszcze
+  // raz („bez grupy i bez cyfry") byłoby trzecią kopią reguły lewej kolumny,
+  // a przepisany kształt w kilku miejscach jest w tym repo nazwaną klasą
+  // defektu.
+  for (const id of desktopNavigationSurfaceIds) {
     assert.match(
       chrome,
       new RegExp(`data-surface="${id}"`),
       `Nawigacja powłoki nie oferuje destynacji „${id}".`,
     );
   }
+  assert.ok(
+    desktopNavigationSurfaceIds.length > 0,
+    "pusta lista celów spełniłaby pętlę wyżej nie mierząc niczego",
+  );
+  // DRUGA POŁOWA, i to jest ta, dla której ten test zmienił nazwę. Ustawienia
+  // są TRYBEM: wchodzi się w nie kołem zębatym albo `⌘,`, a nie pozycją
+  // w rzędzie celów pracy. Dwa komentarze w drzewie mówiły to od dwóch fal,
+  // a powłoka rysowała pozycję mimo to, bo filtr `shortcut !== null` niczego
+  // nie odsiewał. Bez tej asercji poprawka odwraca się bez śladu.
+  assert.doesNotMatch(
+    chrome,
+    /data-surface="settings"/,
+    "Ustawienia to tryb, nie cel w lewej kolumnie — wejściem jest koło zębate.",
+  );
+  assert.match(chrome, /data-settings-entry="true"/);
 });
 
 test("every destination survives a shell navigation round trip, and an unknown one does not", () => {

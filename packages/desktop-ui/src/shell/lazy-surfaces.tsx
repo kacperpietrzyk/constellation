@@ -21,10 +21,6 @@ const loadMeetingsSurface = () => import("../MeetingsSurface.js");
 export const MeetingsSurface = lazy(() =>
   loadMeetingsSurface().then((module) => ({ default: module.MeetingsSurface })),
 );
-const loadActivitySurface = () => import("../ActivitySurface.js");
-export const ActivitySurface = lazy(() =>
-  loadActivitySurface().then((module) => ({ default: module.ActivitySurface })),
-);
 const loadSettingsSurface = () => import("../SettingsSurface.js");
 export const SettingsSurface = lazy(() =>
   loadSettingsSurface().then((module) => ({ default: module.SettingsSurface })),
@@ -92,7 +88,6 @@ export const lazySurfaceLoaders = {
   calendar: loadCalendarSurface,
   library: loadLibraryShell,
   meetings: loadMeetingsSurface,
-  activity: loadActivitySurface,
   settings: loadSettingsSurface,
   organizations: loadStrategicDepthSurface,
   people: loadPeopleSurface,

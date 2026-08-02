@@ -40,19 +40,40 @@
 /**
  * Ile najmniej z wysokości ekranu musi zostać samej czytelni.
  *
- * ZMIERZONE, NIE WYBRANE. Trzy punkty z sondy na tej powłoce, 1440×900 i
- * 1092×900 przy 300% tekstu:
+ * ZMIERZONE, NIE WYBRANE. Cztery punkty z przelotów tej bramki:
  *
  *   • zapaść wiersza czytelni (sama poprawka rekonesansu, 300%) — **0.000**
+ *   • stan USTĘPUJĄCY, tekst 200% — **0.500** (285 px z 570 px)
+ *   • stan USTĘPUJĄCY, tekst 300% — **0.500** (202 px z 404 px)
  *   • zdrowy ekran, 1440 i 760 px — **0.785** (577 px z 735 px)
  *
- * Połowa leży pośrodku zmierzonego rozstępu i ma zapas w OBIE strony: nie da
- * się jej spełnić zapaścią i nie da się jej złamać drobnym przyrostem chrome'u.
- * Próg bliższy zdrowej wartości (0.75) czerwieniłby się od jednego wiersza
- * więcej w nagłówku, czyli zostałby skasowany przy pierwszym przebiegu —
- * a asercja skasowana pod presją nie pilnuje niczego.
+ * PRÓG BYŁ 0.5 I TO BYŁ BEZPIECZNIK Z OPÓŹNIONYM ZAPŁONEM. Porównanie niżej
+ * jest ostre (`fraction < minimumFraction`), więc 0.500000 przechodziło —
+ * ale przechodziło DOKŁADNIE NA KRAWĘDZI, z zapasem szerokości jednego piksela
+ * zaokrąglenia, a docblock w tym miejscu twierdził, że próg „ma zapas w OBIE
+ * strony". To zdanie było prawdziwe wyłącznie w stanach ZWIĄZANYCH.
+ *
+ * Lot LIBP zmierzył tę zerową rezerwę i uznał ją za nieszkodliwą, bo
+ * „`minmax(50%, 1fr)` przypina wiersz do progu". TAKIEJ REGUŁY NIE MA:
+ * `notes.module.css` nie zawiera ani jednego `50%`, a stan ustępujący jest
+ * układany przez `grid-template-rows: minmax(3rem, 9rem) minmax(4rem, 14rem)
+ * minmax(0, 1fr)`. Ta sama bramka mierzy zresztą TRZECI stan jednokolumnowy
+ * przy oknie 320 px i dostaje tam **0.694**, a nie połowę — czyli równa połowa
+ * nie jest własnością stanu, tylko wynikiem DWÓCH pomiarów. Próg postawiony na
+ * mierzonej wartości bez rezerwy czerwieni się od różnicy metryk czcionek
+ * między tą maszyną a runnerem CI, na niczyjej gałęzi — a bramka pionowa jest
+ * na czcionki wrażliwsza od poziomej, co ten plik mówi w nagłówku.
+ *
+ * WYBRANO WIĘC ZAPAS, KTÓRY DOKUMENTACJA I TAK OBIECYWAŁA, a nie przepisanie
+ * obietnicy na „stoi na krawędzi i tak ma być". 0.35 leży między zapaścią
+ * (0.000) a najniższym zmierzonym stanem ustępującym (0.500): 0.35 rezerwy nad
+ * zapaścią i 0.15 pod stanem ustępującym, czyli około 85 px przy panelu 570 px.
+ * Zapaść, dla której ten próg powstał, dalej nie ma jak go spełnić. Próg
+ * bliższy zdrowej wartości (0.75) czerwieniłby się od jednego wiersza więcej
+ * w nagłówku, czyli zostałby skasowany przy pierwszym przebiegu — a asercja
+ * skasowana pod presją nie pilnuje niczego.
  */
-export const MINIMUM_READING_HEIGHT_FRACTION = 0.5;
+export const MINIMUM_READING_HEIGHT_FRACTION = 0.35;
 
 /**
  * Ile pikseli różnicy jest ARYTMETYKĄ, a nie układem.

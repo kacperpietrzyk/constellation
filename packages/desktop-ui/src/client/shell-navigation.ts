@@ -12,7 +12,19 @@ import {
   type DesktopSurface as SurfaceId,
 } from "@constellation/desktop-preload/surface-registry";
 
+import {
+  settingsCategories,
+  type SettingsCategoryId,
+} from "../settings-categories.js";
+
 const MAX_TABS = 7;
+
+const settingsCategoryIds: readonly string[] = settingsCategories.map(
+  ({ id }) => id,
+);
+
+const isSettingsCategory = (value: unknown): value is SettingsCategoryId =>
+  typeof value === "string" && settingsCategoryIds.includes(value);
 
 // Trzy odczyty jednego celu nawigacji. Biblioteka jest JEDNYM celem — decyzja
 // D-1 fali Knowledge — a Notatki, Źródła i Historia wrzutek są sposobami jej
@@ -69,6 +81,23 @@ export interface ShellContext {
    *  z nim czyta starsza wersja, bo walidacja nie odrzuca nadmiarowych
    *  kluczy. */
   readonly libraryReading?: LibraryReading;
+  /** Która KATEGORIA Ustawień ma być na wierzchu po otwarciu.
+   *
+   *  Ustawienia są jednym celem o sześciu kategoriach — dokładnie ta sama
+   *  relacja co Biblioteka i jej trzy odczyty, więc pole siedzi tu, a nie
+   *  w stanie powłoki, i z tego samego powodu: zakładka ma się otworzyć jako
+   *  to, czym była.
+   *
+   *  Bez tego pola głębokiego linku po prostu NIE MA: `openSettings` buduje
+   *  goły `destinationContext("settings", …)`, a kategorię wybiera wewnętrzny
+   *  stan ekranu. Cofnięcie potwierdzone w oknie dialogowym i cel palety
+   *  „Activity" potrzebują obie tej samej rzeczy, więc jest to jeden mechanizm
+   *  na dwie potrzeby, a nie nowa powierzchnia.
+   *
+   *  Nie wymaga podbicia `NAVIGATION_STATE_VERSION` z tego samego powodu co
+   *  `libraryReading`: zapis bez tego pola czyta się dalej, a ten z nim czyta
+   *  starsza wersja, bo walidacja nie odrzuca nadmiarowych kluczy. */
+  readonly settingsCategory?: SettingsCategoryId;
 }
 
 // Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
@@ -127,6 +156,14 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (
     context.libraryReading !== undefined &&
     !isLibraryReading(context.libraryReading)
+  )
+    return false;
+  // Kategoria spoza słownika odrzuca CAŁY zapis, tak samo jak odczyt
+  // Biblioteki: ekran Ustawień przewijałby do identyfikatora, którego nie ma,
+  // i otwierał się na kategorii wybranej po cichu przez własny stan.
+  if (
+    context.settingsCategory !== undefined &&
+    !isSettingsCategory(context.settingsCategory)
   )
     return false;
   // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
@@ -226,11 +263,38 @@ export const restoreShellNavigation = (
       typeof state.historyIndex !== "number"
     )
       return createShellNavigation(fallback);
-    const tabs = state.tabs
+    const migrated = state.tabs
       .map(migrateRestoredContext)
       .filter(isRestorableShellContext);
-    if (tabs.length !== state.tabs.length)
+    if (migrated.length !== state.tabs.length)
       return createShellNavigation(fallback);
+    // SCALENIE DUBLI, I KOLEJNOŚĆ TYCH DWÓCH LINII JEST CAŁĄ POPRAWKĄ.
+    //
+    // `access` i `activity` są PIERWSZYM przypadkiem w historii tego repo,
+    // w którym DWA wycofane identyfikatory schodzą się na JEDEN cel. Sesja
+    // z obiema zakładkami otwartymi odtwarzała dwie zakładki o identycznym
+    // kluczu `destination:settings`: dwa identyczne `key` Reacta w pasku,
+    // `activeKey` pasujący do obu i zamykanie, które nie umie ich rozróżnić.
+    // Nic nie rzucało. Wcześniejsze wycofania (`cockpit`, `attention`,
+    // `documents`, `history`, `relationships`, `work`) trafiały każde
+    // w INNY cel, więc przypadek nigdy nie był ćwiczony.
+    //
+    // Scalenie MUSI stać PO bramce długości wyżej, nie przed nią — bramka
+    // czyta „mniej zakładek niż w zapisie" jako „zapisu nie rozumiem"
+    // i odrzuca CAŁĄ sesję. Dedup wpięty tam, gdzie czyta się najnaturalniej,
+    // wywołałby dokładnie tę awarię, przed którą ten lot broni.
+    //
+    // ZOSTAJE PIERWSZA. Zakładki-cele nie niosą stanu poza etykietą, którą
+    // `migrateRestoredContext` i tak czyta z rejestru, więc „pierwsza" znaczy
+    // „ta, którą człowiek otworzył wcześniej" i nic się nie gubi.
+    // HISTORIA NIE JEST SCALANA, świadomie: powtórzony klucz jest tam
+    // NORMALNY — `appendHistory` skleja tylko sąsiadujące wpisy, więc dwa
+    // odwiedzenia tego samego celu z czymś pomiędzy to prawidłowy łańcuch,
+    // a nie dubel.
+    const tabs = migrated.filter(
+      (tab, index) =>
+        migrated.findIndex((other) => other.key === tab.key) === index,
+    );
     const activeKey = migrateContextKey(state.activeKey);
     if (!tabs.some((tab) => tab.key === activeKey))
       return createShellNavigation(fallback);
@@ -322,6 +386,28 @@ export const destinationContext = (
  * nowym kontekstem, więc żądany odczyt dojeżdża także wtedy, gdy Biblioteka
  * jest już otwarta.
  */
+/**
+ * Ustawienia otwarte NA KONKRETNEJ KATEGORII.
+ *
+ * Klucz jest ten sam co u zwykłego celu (`destination:settings`), i to jest
+ * zamierzone — dokładnie jak przy {@link libraryReadingContext}: Ustawienia to
+ * jeden cel, więc otwarcie ich na innej kategorii podmienia tę samą zakładkę,
+ * zamiast robić drugą pod tym samym ekranem.
+ *
+ * ETYKIETA ZOSTAJE „Settings", a nie nazwa kategorii, i to jest decyzja:
+ * `migrateRestoredContext` czyta etykietę zakładki-celu Z REJESTRU, więc
+ * kategoria w napisie i tak nie przeżyłaby zapisania sesji — a zakładka, która
+ * po restarcie zmienia nazwę, wygląda jak utrata miejsca, w którym się było.
+ */
+export const settingsCategoryContext = (
+  category: SettingsCategoryId,
+): ShellContext => ({
+  key: "destination:settings",
+  label: desktopSurfaceLabel("settings"),
+  surface: "settings",
+  settingsCategory: category,
+});
+
 export const libraryReadingContext = (
   reading: LibraryReading,
   label: string,

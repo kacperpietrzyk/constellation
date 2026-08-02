@@ -36,15 +36,20 @@
 // w `retiredDesktopSurfaces`, bo niesie go KAŻDY zapisany stan powłoki
 // z builda 0.2.0.
 //
+// `activity` WSIĄKŁ w `settings` w tej samej fali i z tego samego powodu co
+// `access`: rejestr wrzutek systemu nie jest lekturą i nie jest modułem pracy,
+// tylko odpowiedzią na pytanie „co się stało z moimi danymi i jak to cofnąć" —
+// a to jest pytanie kategorii „Data and privacy". Biblioteka znaczy MATERIAŁ
+// DO CZYTANIA, i wstawienie tam dziennika audytu przedefiniowałoby ją na
+// „listy rzeczy". Tafla NIE DODAJE ŻADNEGO USTAWIENIA, więc odznaka kategorii
+// się nie rusza — i to jest test na to, czy coś należy DO kategorii, czy ma
+// nią BYĆ.
+//
 // `settings` zostaje powierzchnią (routing, preload i menu natywne jej
 // potrzebują), ale bez grupy i bez skrótu numerycznego: w Ustawienia wchodzi
 // się kołem zębatym przy nazwisku albo `⌘,`, a wejście podmienia lewą kolumnę.
-// UWAGA, TO ZDANIE JEST DZIŚ NIEPEŁNE i to jest znane: `RealApp.tsx` filtruje
-// pozycje lewej kolumny warunkiem `shortcut !== null`, który NICZEGO NIE
-// ODSIEWA (`nav-items.ts` opuszcza klucz zamiast ustawiać `null`), więc
-// Ustawienia rysują się także w nawigacji. Poprawka należy do lotu, który
-// wycofuje `activity` — razem z nauczeniem bramki układu wchodzenia w tryb
-// kołem zębatym, bo dziś zamiatanie zna tylko `.nav-item[data-surface]`.
+// TO ZDANIE JEST OD TEJ FALI PRAWDZIWE — nośnikiem jest pole `chrome` przy
+// wpisie niżej, a nie warunek u czytającego rejestr.
 export const desktopSurfaceRegistry = [
   {
     id: "today",
@@ -52,6 +57,7 @@ export const desktopSurfaceRegistry = [
     icon: "cockpit",
     group: null,
     shortcut: 1,
+    chrome: "navigation",
     loading: "eager",
   },
   {
@@ -63,6 +69,7 @@ export const desktopSurfaceRegistry = [
     icon: "cockpit",
     group: null,
     shortcut: 2,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -71,6 +78,7 @@ export const desktopSurfaceRegistry = [
     icon: "attention",
     group: null,
     shortcut: 3,
+    chrome: "navigation",
     loading: "eager",
   },
   {
@@ -79,6 +87,7 @@ export const desktopSurfaceRegistry = [
     icon: "tasks",
     group: "Work Management",
     shortcut: 4,
+    chrome: "navigation",
     loading: "eager",
   },
   {
@@ -87,6 +96,7 @@ export const desktopSurfaceRegistry = [
     icon: "project",
     group: "Work Management",
     shortcut: 5,
+    chrome: "navigation",
     loading: "eager",
   },
   {
@@ -98,6 +108,7 @@ export const desktopSurfaceRegistry = [
     icon: "pipeline",
     group: "CRM",
     shortcut: 6,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -106,6 +117,7 @@ export const desktopSurfaceRegistry = [
     icon: "relationships",
     group: "CRM",
     shortcut: 7,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -116,6 +128,7 @@ export const desktopSurfaceRegistry = [
     icon: "people",
     group: "CRM",
     shortcut: 8,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -128,6 +141,7 @@ export const desktopSurfaceRegistry = [
     icon: "renewals",
     group: "CRM",
     shortcut: null,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -136,6 +150,7 @@ export const desktopSurfaceRegistry = [
     icon: "meetings",
     group: "Knowledge",
     shortcut: 9,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -144,14 +159,7 @@ export const desktopSurfaceRegistry = [
     icon: "documents",
     group: "Knowledge",
     shortcut: null,
-    loading: "lazy",
-  },
-  {
-    id: "activity",
-    label: "Activity",
-    icon: "activity",
-    group: "Knowledge",
-    shortcut: null,
+    chrome: "navigation",
     loading: "lazy",
   },
   {
@@ -160,6 +168,16 @@ export const desktopSurfaceRegistry = [
     icon: "settings",
     group: null,
     shortcut: null,
+    // JEDYNY wpis, który NIE rysuje się w lewej kolumnie. Powód, dla którego
+    // to jest POLE, a nie warunek u czytającego: przez dwie fale stał
+    // w `RealApp.tsx` filtr `shortcut !== null`, który miał tu odsiać
+    // Ustawienia i NIE ODSIEWAŁ NICZEGO — `nav-items.ts` opuszcza klucz
+    // zamiast ustawiać `null`, więc `undefined !== null` jest prawdą.
+    // Filtr oparty na zbieżności („bez grupy I bez cyfry") powtórzyłby ten
+    // sam błąd w nowym przebraniu. Z polem czternasty wpis rejestru NIE MA
+    // JAK się skompilować, dopóki ktoś nie powie, którymi drzwiami się w niego
+    // wchodzi.
+    chrome: "mode",
     loading: "lazy",
   },
 ] as const;
@@ -181,6 +199,16 @@ export const desktopSurfaceIds: readonly DesktopSurface[] =
 export const isDesktopSurface = (value: unknown): value is DesktopSurface =>
   typeof value === "string" &&
   desktopSurfaceIds.includes(value as DesktopSurface);
+
+// Cele, które RYSUJĄ SIĘ W LEWEJ KOLUMNIE. Wyprowadzone z pola `chrome`, żeby
+// reguła stała w JEDNYM miejscu: powłoka, test renderu powłoki i smoke
+// spakowanej apki iterują po tej nazwie, a nie po trzech kopiach tego samego
+// warunku. Przepisany kształt w dwóch miejscach jest w tym repo nazwaną klasą
+// defektu i ta lista już raz do niej należała.
+export const desktopNavigationSurfaceIds: readonly DesktopSurface[] =
+  desktopSurfaceRegistry
+    .filter((surface) => surface.chrome === "navigation")
+    .map((surface) => surface.id);
 
 // Kolejność modułów jest decyzją projektową, nie kolejnością wystąpień w tablicy.
 export const desktopNavigationModules: readonly DesktopNavigationGroup[] = [
@@ -215,6 +243,13 @@ export const retiredDesktopSurfaces: Readonly<Record<string, DesktopSurface>> =
     // każdą zakładkę, ulubioną pozycję i całą historię — bez awarii, więc bez
     // śladu.
     access: "settings",
+    // Rejestr wrzutek systemu — co się zmieniło i jak to cofnąć — jest dziś
+    // taflą w kategorii „Data and privacy". Wpis jest OBOWIĄZKOWY z dokładnie
+    // tego samego powodu co `access` wyżej, i jest DRUGIM, który wskazuje na
+    // `settings`: pierwszy raz w tym repo dwa wycofane identyfikatory schodzą
+    // się na JEDEN cel, więc odtwarzanie zakładek musi je scalić, a nie
+    // odtworzyć dwie zakładki o tym samym kluczu.
+    activity: "settings",
     // „Zapisane widoki" były osobnym ekranem nad tą samą kolekcją co Zadania.
     // Zapisany widok otwiera się dziś NA Zadaniach — to ta sama praca, oglądana
     // przez soczewkę — więc zakładka wskazująca tam ma dokąd trafić.

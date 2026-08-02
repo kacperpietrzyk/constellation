@@ -114,6 +114,7 @@ const mountSettings = async (
         onFailure: () => undefined,
         onOpenRecovery: () => undefined,
         onNavigate: () => undefined,
+        onUndo: () => undefined,
       }),
     );
   });
