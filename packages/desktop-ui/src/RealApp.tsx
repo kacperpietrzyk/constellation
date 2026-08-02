@@ -1835,19 +1835,29 @@ export const RealApp = ({
   // w ogóle: był w rejestrze, miał skrót i trasę, a w sidebarze go nie było.
   const navEntry = (item: (typeof navItems)[number]) => {
     const shortcutHint = surfaceShortcutHint(item);
+    // DECYZJA #35, W JEDNEJ LINII: skrót przestaje istnieć WYŁĄCZNIE w tooltipie.
+    // Klawisz stoi dziś w trzech miejscach i żadne z nich nie dociera do
+    // czytnika ekranu — `title` wymaga najechania, `<kbd>` obok jest
+    // `aria-hidden`, a dymek trybu rail rysuje się tylko przy zwiniętej
+    // kolumnie. Tooltip ZOSTAJE, bo dla myszy jest właściwą afordancją; to
+    // fakt, a nie tooltip, ma być osiągalny drugą drogą.
+    const shortcutName =
+      shortcutHint.kind === "direct"
+        ? shortcutHint.keys
+        : `through the palette, ${shortcutHint.keys}`;
+    const itemName =
+      item.id === "tasks"
+        ? `${item.label} · ${taskCount}`
+        : item.id === "inbox" && inboxWaiting > 0
+          ? `${item.label} · ${inboxWaiting} waiting`
+          : item.label;
     return (
       <div className="nav-entry" key={item.id}>
         <button
           data-surface={item.id}
           className={`nav-item ${surface === item.id ? "active" : ""}`}
           tabIndex={surface === item.id ? 0 : -1}
-          aria-label={
-            item.id === "tasks"
-              ? `${item.label} · ${taskCount}`
-              : item.id === "inbox" && inboxWaiting > 0
-                ? `${item.label} · ${inboxWaiting} waiting`
-                : item.label
-          }
+          aria-label={`${itemName}, ${shortcutName}`}
           aria-current={surface === item.id ? "page" : undefined}
           title={
             railMode
@@ -3058,15 +3068,20 @@ export const RealApp = ({
         <button
           type="button"
           className="workspace-switcher"
-          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}`}
-          disabled={isPreview}
-          title={
+          // CO TEN PRZYCISK ROBI, W JEGO NAZWIE — a nie w dymku obok niej.
+          // Widoczna treść to nazwa przestrzeni, więc czynność („otwiera
+          // ustawienia") nie stała nigdzie poza `title`. W trybie podglądu
+          // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
+          // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
+          // najeżdżającą myszą.
+          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
             isPreview
-              ? "Open workspace settings"
+              ? "opens workspace settings"
               : coordinatedDataHome
-                ? "Open coordinated workspace settings"
-                : "Open workspace settings and switching"
-          }
+                ? "opens coordinated workspace settings"
+                : "opens workspace settings and switching"
+          }`}
+          disabled={isPreview}
           onClick={() =>
             openContext(destinationContext("settings", "Settings"))
           }
@@ -3319,8 +3334,11 @@ export const RealApp = ({
             type="button"
             className="settings-entry"
             data-settings-entry="true"
-            aria-label="Open settings"
-            title="Settings (⌘,)"
+            aria-label={`Open settings, ${modifierLabel},`}
+            // Napis w dymku niósł `⌘` na sztywno, a skrót działa też pod
+            // `ctrl` — na Windowsie tooltip obiecywał klawisz, którego tam
+            // nie ma. Jedno źródło, `modifierLabel`, w obu.
+            title={`Settings (${modifierLabel},)`}
             onClick={openSettings}
           >
             <Icon name="settings" />
@@ -3343,7 +3361,7 @@ export const RealApp = ({
             <button
               className="icon-button"
               data-shell-history="back"
-              aria-label="Back"
+              aria-label="Back, Alt+Left"
               title="Back · Alt+←"
               disabled={!canMoveShellHistory(navigation, -1)}
               onClick={() =>
@@ -3355,7 +3373,7 @@ export const RealApp = ({
             <button
               className="icon-button"
               data-shell-history="forward"
-              aria-label="Forward"
+              aria-label="Forward, Alt+Right"
               title="Forward · Alt+→"
               disabled={!canMoveShellHistory(navigation, 1)}
               onClick={() =>
@@ -3401,7 +3419,7 @@ export const RealApp = ({
                     <button
                       type="button"
                       className="shell-tab-close"
-                      aria-label={`Close context ${tab.label}`}
+                      aria-label={`Close context ${tab.label}, ${modifierLabel}W`}
                       title={`Close · ${modifierLabel}W`}
                       onClick={() =>
                         setNavigation((current) =>
@@ -3538,11 +3556,15 @@ export const RealApp = ({
           className="inspector-resize"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize the preview panel"
+          // Separator jest `tabIndex={0}` i ma obsługę strzałek, więc człowiek
+          // z klawiaturą go DOSIĘGA — i nie dowiadywał się o podwójnym
+          // kliknięciu niczego, bo gest stał wyłącznie w dymku, którego nie
+          // widzi nikt niehoverujący. Zdanie wraca do nazwy, która i tak tu
+          // była.
+          aria-label="Resize the preview panel; double-click restores the default width"
           aria-valuemin={280}
           aria-valuemax={640}
           aria-valuenow={inspectorWidth}
-          title="Double-click restores the default width"
           tabIndex={0}
           onPointerDown={beginInspectorResize}
           onPointerMove={moveInspectorResize}

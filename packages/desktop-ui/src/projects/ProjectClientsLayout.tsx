@@ -89,6 +89,7 @@ export const ProjectClientsLayout = ({
                 aria-label={rowAccessibleName(
                   reading,
                   clientOf(reading.project.id),
+                  deadlineDate(reading, prose),
                 )}
                 aria-selected={selected}
                 className={`${styles.row} ${selected ? styles.rowSelected : ""}`}
@@ -128,14 +129,15 @@ export const ProjectClientsLayout = ({
                 </span>
                 <span className={styles.tail}>
                   {/* A deadline is a promise, the work under it is the plan.
-                      How long is left is a sentence; the date it falls on is
-                      the tooltip beside it. */}
+                      How long is left is the sentence this cell has room for;
+                      the date it falls on rides the ROW'S accessible name.
+                      It was a `title` here, which for a keyboard, for touch and
+                      for a screen reader is the same as not being anywhere. */}
                   <b className={styles.open}>{`${reading.open.length} open`}</b>
                   <span
                     className={`${styles.left} ${
                       styles[`left_${deadlineTone(reading)}`]
                     }`}
-                    title={deadlineDate(reading, prose)}
                   >
                     {deadlineSentence(reading)}
                   </span>
