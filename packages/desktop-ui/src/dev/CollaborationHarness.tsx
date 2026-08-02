@@ -48,6 +48,14 @@ const memberId = PrincipalIdSchema.parse(
   "00000000-0000-4000-8000-000000000005",
 );
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000006");
+// Jedno źródło tytułu zadania i identyfikatora projektu, bo od tego PR-a
+// fikstura Library niesie ODWOŁANIA do obu i musi nazywać je tak samo, jak
+// nazywają się w swoich własnych projekcjach — grupa `Record` z tytułem, który
+// rozjechał się z rekordem, wygląda na przetestowaną i mierzy dwie różne rzeczy.
+const taskTitle = "Potwierdź wariant recovery";
+const libraryProjectId = ProjectIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000d1",
+);
 const rootCommentId = CommentIdSchema.parse(
   "00000000-0000-4000-8000-000000000007",
 );
@@ -173,7 +181,7 @@ const client = createScenarioClient({
         {
           id: taskId,
           spaceId,
-          title: "Potwierdź wariant recovery",
+          title: taskTitle,
           status: {
             id: statusId,
             label: "W toku",
@@ -209,7 +217,7 @@ const client = createScenarioClient({
       tasks: [
         {
           id: taskId,
-          title: "Potwierdź wariant recovery",
+          title: taskTitle,
           statusId,
           operationalState: "actionable",
           completionState: "open",
@@ -264,7 +272,7 @@ const client = createScenarioClient({
       kind: "project.list",
       items: [
         {
-          id: ProjectIdSchema.parse("00000000-0000-4000-8000-0000000000d1"),
+          id: libraryProjectId,
           spaceId,
           title: "Orbit onboarding",
           intendedOutcome: "Klient pracuje samodzielnie w Constellation",
@@ -279,7 +287,7 @@ const client = createScenarioClient({
     "project.operationalOverview": result({
       kind: "project.operationalOverview",
       project: {
-        id: ProjectIdSchema.parse("00000000-0000-4000-8000-0000000000d1"),
+        id: libraryProjectId,
         spaceId,
         title: "Orbit onboarding",
         intendedOutcome: "Klient pracuje samodzielnie w Constellation",
@@ -312,7 +320,7 @@ const client = createScenarioClient({
         {
           targetKind: "task",
           targetId: taskId,
-          label: "Potwierdź wariant recovery",
+          label: taskTitle,
         },
       ],
     }),
@@ -335,7 +343,10 @@ const client = createScenarioClient({
       spaceId,
       folders: libraryFolders(),
       sources: librarySources(),
-      documents: librarySummaries(),
+      documents: librarySummaries({
+        task: { id: taskId, label: taskTitle },
+        project: { id: libraryProjectId, label: "Orbit onboarding" },
+      }),
     }),
     "task.assignmentCandidates": result({
       kind: "task.assignmentCandidates",
@@ -442,7 +453,7 @@ const client = createScenarioClient({
           ),
           reason: "comment_mention",
           destination: { kind: "task", taskId },
-          title: "Potwierdź wariant recovery",
+          title: taskTitle,
           detail: "You were mentioned in a comment.",
           urgency: "in_app",
           state: "unread",

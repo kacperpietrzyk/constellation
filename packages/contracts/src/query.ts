@@ -1443,6 +1443,36 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
              */
             folderId: FolderIdSchema.optional(),
             role: z.enum(["note", "document", "deliverable"]),
+            /**
+             * The records this note names in its own body — the axis the
+             * Notes screen rotates onto in `Record` mode, where a note with N
+             * references is read under N headings and one with none is read
+             * under its own.
+             *
+             * THE LABEL IS RESOLVED HERE AND NEVER STORED, and that is a
+             * boundary rather than an implementation detail. `DocumentEntityLink`
+             * (`domain/src/model.ts`) deliberately carries no label: every read
+             * resolves the CURRENT target through the caller's own
+             * authorization, so renaming a record renames it everywhere at
+             * once and a record that left the caller's reach stops being
+             * nameable. Caching the label onto the link would look like a
+             * performance win and would reintroduce exactly the stale title —
+             * and the post-revocation leak — the model refuses.
+             *
+             * A link the caller may not resolve is ABSENT, not blank and not
+             * counted: an empty-labelled row, or a total larger than the rows
+             * beside it, would answer whether a record outside the caller's
+             * Space exists.
+             */
+            references: z.array(
+              z
+                .object({
+                  targetKind: DocumentEntityTargetKindSchema,
+                  targetId: z.uuid(),
+                  label: z.string(),
+                })
+                .strict(),
+            ),
             evidenceCount: z.int().nonnegative(),
             namedVersionCount: z.int().nonnegative(),
             staleEvidence: z.boolean(),

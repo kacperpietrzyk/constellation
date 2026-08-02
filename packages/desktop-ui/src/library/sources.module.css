@@ -270,11 +270,29 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* `grid-template-columns: minmax(0, 1fr)` — the fifth site of one family in
+   this wave, and `min-width: 0` alone does not close it: with no column
+   declared the implicit track is `auto`, sized by the content's MAX-CONTENT
+   width, and `justify-items: start` keeps items from stretching so nothing
+   pulls the track back down. Measured at +93 px at 300% text. Declaring the
+   track changes no alignment — items still sit at the start. */
 .section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: var(--space-2);
   justify-items: start;
+}
+
+/* A text field carries an intrinsic preferred width (about twenty characters),
+   and a grid item's automatic minimum is that width — so at 300% text the
+   rename field asked 93 px more than its own section had, even with the track
+   declared above. `max-width` rather than `width: 100%`: the field keeps its
+   natural size while there is room and gives it up when there is not, instead
+   of stretching across a full-width reading pane at every size. */
+.section input {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .sectionLabel {

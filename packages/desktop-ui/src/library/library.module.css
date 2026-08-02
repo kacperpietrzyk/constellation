@@ -6,19 +6,51 @@
    w arkuszu ścieżki gorącej: to konwencja z fali C i jedyny sposób, żeby
    chrome nowego ekranu nie obciążało pierwszego wyświetlenia okna. */
 
+/* `grid-template-columns: minmax(0, 1fr)` — the same one-line defect the
+   writing plane had, one level up and invisible until this screen was measured
+   at 300% text: with no column declared the implicit track is `auto`, sized by
+   the MAX-CONTENT of the widest reading, so the shell asked for 561 px inside a
+   432 px box and every one of its three rows inherited that width. The
+   descendant sweep could not see it — each row fitted its own (overwide) box —
+   which is exactly the blind spot `verify-renderer-layout.mjs` states it has. */
 .shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
   min-height: 100%;
   background: var(--surface-window);
 }
 
+/* `flex-wrap` and not just a zero minimum: with the count pinned beside it the
+   title block was squeezed to about 90 px at 300% text and its own words then
+   overflowed. Letting the count drop to the next line is the right trade — it
+   is a number nobody reads first, and the alternative is a heading that does
+   not fit its own box. */
 .header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-6) var(--space-3);
+}
+
+/* `min-width: 0`, and it is the whole reason this rule exists: a flex item
+   defaults to `min-width: auto`, so the title block asked for its eyebrow on
+   ONE line — 561 px of it inside a 432 px box once text is scaled to 300%,
+   measured on the Library harness. With a zero minimum the sentence wraps and
+   the header stops setting the surface's width. */
+.header > div {
+  min-width: 0;
+}
+
+/* A single scaled word is wider than a narrow panel, and there is no space in
+   it to break at. `anywhere` is the only value that takes it out of the box's
+   min-content width; the alternative is a title that leaves the surface. */
+.header h1,
+.header .eyebrow {
+  overflow-wrap: anywhere;
 }
 
 .header h1 {

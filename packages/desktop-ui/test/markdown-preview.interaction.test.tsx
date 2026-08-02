@@ -29,10 +29,20 @@ const spaceId = workHarnessSnapshot.bootstrap.spaces[0]!.id;
 const taskId = "00000000-0000-4000-8000-0000000000c1";
 const TASK_LABEL = "Potwierdź wariant recovery";
 
+// `librarySummaries` takes the records its notes NAME, and it is required
+// rather than defaulted: a fixture that can quietly carry no references is
+// indistinguishable from one whose reference axis was never built. This test
+// does not read `references`, but the task it passes is the same one the
+// runbook's BODY names below — so the row and the text agree about one note
+// instead of describing two.
+const PROJECT_ID = "00000000-0000-4000-8000-0000000000d1";
+const PROJECT_LABEL = "Orbit onboarding";
+
 const documentItem = () => {
-  const summary = librarySummaries().find(
-    (item) => item.id === libraryDocumentIds.runbook,
-  )!;
+  const summary = librarySummaries({
+    task: { id: taskId, label: TASK_LABEL },
+    project: { id: PROJECT_ID, label: PROJECT_LABEL },
+  }).find((item) => item.id === libraryDocumentIds.runbook)!;
   return {
     id: summary.id,
     spaceId,

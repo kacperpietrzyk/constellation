@@ -172,7 +172,7 @@ const REPORT_ONLY = process.env.LAYOUT_DESCENDANT_REPORT === "1";
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
 // się w swoim pudełku, a dokument w oknie. Zwracamy WSZYSTKIE przewinienia, nie
 // pierwsze — inaczej naprawa jednego ekranu ukrywa drugi.
-const sweep = async (browser, { width, fontSize, label }) => {
+const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   // DWIE listy, bo to dwa różne rodzaje złej wiadomości. `failures` to awarie
   // PRZYRZĄDU — nic się nie narysowało, lista jest pusta, strona rzuciła —
@@ -187,16 +187,32 @@ const sweep = async (browser, { width, fontSize, label }) => {
   await page.goto(HARNESS, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
   const measured = await page.evaluate(
-    async ({ fontSize, scrollAttribute }) => {
+    async ({ fontSize, scrollAttribute, surfaces }) => {
       const frame = () =>
         new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve)),
         );
       if (fontSize) document.documentElement.style.fontSize = fontSize;
       await frame();
-      const ids = [...document.querySelectorAll(".nav-item[data-surface]")].map(
+      // A SCOPED PASS visits only the destinations it names. It exists so a
+      // screen can be held to a width the rest of the shell is not yet held to
+      // — Wave D's Notes ships a declared collapse order for 364 px and ~540 px
+      // while nine other destinations still fail a 300% pass, and that is the
+      // interface-scaling thread, not this one. Scoping it is not a weakening:
+      // `ceilings` are keyed by PASS LABEL and a missing ceiling is a
+      // violation, so an unscoped new pass would turn every debt entry in the
+      // registry red at once and the only cheap fix would be raising them.
+      const all = [...document.querySelectorAll(".nav-item[data-surface]")].map(
         (item) => item.dataset.surface,
       );
+      const ids =
+        surfaces === undefined
+          ? all
+          : all.filter((id) => surfaces.includes(id));
+      const missing =
+        surfaces === undefined
+          ? []
+          : surfaces.filter((id) => !all.includes(id));
       const results = [];
       const descendants = [];
       const rowCounts = {
@@ -206,6 +222,7 @@ const sweep = async (browser, { width, fontSize, label }) => {
         libraryNoteBody: 0,
       };
       let recordPanels = 0;
+      let lensesDeclared = 0;
       const recordKinds = [];
       // Nazwa elementu, po której da się go rozpoznać w rejestrze długu i w
       // raporcie. Sam znacznik nie wystarcza (`div` jest wszędzie), a pełna
@@ -398,6 +415,7 @@ const sweep = async (browser, { width, fontSize, label }) => {
         // where a narrow window or scaled text overflows. Sweeping only the
         // default lens would report a pass for geometry nobody measured.
         const lenses = [...(work?.querySelectorAll("[data-layout]") ?? [])];
+        lensesDeclared += lenses.length;
         for (const lens of lenses) {
           const label = lens.getAttribute("data-layout");
           if (label === null) continue;
@@ -485,17 +503,25 @@ const sweep = async (browser, { width, fontSize, label }) => {
       }
       return {
         ids,
+        missing,
         results,
         descendants,
         rowCounts,
         recordPanels,
         recordKinds,
+        lensesDeclared,
       };
     },
-    { fontSize, scrollAttribute: HORIZONTAL_SCROLL_ATTRIBUTE },
+    { fontSize, scrollAttribute: HORIZONTAL_SCROLL_ATTRIBUTE, surfaces },
   );
 
-  if (measured.ids.length < 5) {
+  if (measured.missing.length > 0) {
+    failures.push({
+      surface: "-",
+      reason: `this pass names ${measured.missing.join(", ")} and the shell drew no such destination — a scope that matches nothing measures nothing`,
+    });
+  }
+  if (surfaces === undefined && measured.ids.length < 5) {
     failures.push({
       surface: "-",
       reason: `only ${measured.ids.length} destinations rendered — an empty sweep is a broken measurement, not a pass`,
@@ -504,13 +530,24 @@ const sweep = async (browser, { width, fontSize, label }) => {
   // The lens sweep is the part most likely to measure nothing while looking
   // green: a destination whose data slice is unavailable renders a refusal with
   // no layout buttons at all, so the loop finds none and the pass is vacuous.
+  // DERIVED, not a pinned four: the sweep now counts how many `[data-layout]`
+  // lenses each destination DECLARED and requires that every one was measured.
+  // The old constant said nothing about a scoped pass and would have had to be
+  // guessed for each new one — a number a registry can answer is exactly the
+  // kind of assertion this wave keeps finding rotten.
   const lensesMeasured = measured.results.filter((entry) =>
     entry.surface.includes(":"),
   ).length;
-  if (lensesMeasured < 4) {
+  if (measured.lensesDeclared === 0) {
     failures.push({
       surface: "-",
-      reason: `only ${lensesMeasured} lenses were measured — a destination with several layouts drew none of them, so this pass covers geometry nobody looked at`,
+      reason:
+        "no destination declared a [data-layout] lens — either the shell stopped marking its switchers or this pass opened nothing",
+    });
+  } else if (lensesMeasured < measured.lensesDeclared) {
+    failures.push({
+      surface: "-",
+      reason: `${lensesMeasured} of ${measured.lensesDeclared} declared lenses were measured — a destination with several layouts drew none of them, so this pass covers geometry nobody looked at`,
     });
   }
   // The same trap one level down, and it is the one that bit: an opened record
@@ -522,7 +559,10 @@ const sweep = async (browser, { width, fontSize, label }) => {
   // Below the product's own minimum window width the sweep deliberately does
   // not, and demanding a record there would turn a stated exclusion into a
   // failure that never had anything to do with the layout.
-  const recordsExpected = width >= 760;
+  // A SCOPED pass never visits the destinations a record opens from, so
+  // demanding one there would turn a stated exclusion into a failure that has
+  // nothing to do with the widths being measured.
+  const recordsExpected = width >= 760 && surfaces === undefined;
   if (recordsExpected && measured.recordPanels < 5) {
     failures.push({
       surface: "-",
@@ -672,6 +712,31 @@ const passes = [
   { width: 1024, fontSize: "200%", label: "text scaled to 200%" },
   { width: 320, fontSize: undefined, label: "a 320 px window" },
   { width: 1440, fontSize: undefined, label: "a full-size window" },
+  // ── WAVE D, NOTES: THE TWO WIDTHS THAT SCREEN DECLARES A COLLAPSE ORDER FOR
+  // 1092 px at 300% text leaves the work column about 364 px wide in the units
+  // a `rem`-based layout is written in; 760 px is the product's own minimum
+  // window (`BrowserWindow minWidth`, desktop-main/src/main.ts) and leaves it
+  // about 540 px beside the sidebar. Three fixed tracks fit neither, which is
+  // why the collapse order exists and why it is measured here rather than
+  // asserted in prose.
+  //
+  // SCOPED TO `library` ON PURPOSE. The brief's ruling is explicit: no 300%
+  // pass for the shell, because nine of fifteen destinations fail one today and
+  // that is the interface-scaling thread. A lot that widened this to every
+  // surface would be handing that thread's work to itself and would light up
+  // every Wave E debt entry, none of which has a ceiling for these labels.
+  {
+    width: 1092,
+    fontSize: "300%",
+    label: "Library at 300% text",
+    surfaces: ["library"],
+  },
+  {
+    width: 760,
+    fontSize: undefined,
+    label: "Library at the minimum window",
+    surfaces: ["library"],
+  },
 ];
 
 const problems = [];

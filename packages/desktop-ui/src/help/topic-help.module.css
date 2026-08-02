@@ -9,7 +9,17 @@
   align-items: center;
 }
 
+/* A #35 TRIGGER IS A QUESTION, AND A QUESTION IS A SENTENCE.
+   `.inline-popover-trigger` says `white-space: nowrap`, which is right for the
+   one-to-three-word triggers everywhere else ("Move", "New content") and wrong
+   here: "What do these three states mean?" on one unbreakable line asked 181 px
+   more than the Sources reading had at 300% text. Measured, not guessed — by
+   the Library-scoped 364 px pass this wave's Notes lot added, which is the
+   first thing ever to look at that width. Overridden HERE rather than on the
+   shared rule, so the short triggers keep the treatment they want. */
 .trigger.trigger {
+  white-space: normal;
+  text-align: left;
   border-color: transparent;
   color: var(--text-tertiary);
   padding: 0.2rem 0.35rem;
