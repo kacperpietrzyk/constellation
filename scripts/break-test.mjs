@@ -122,24 +122,30 @@ export const readBuildStamps = (files) => {
  * Czy kompilator w ogóle coś zrobił.
  *
  * Czysta funkcja nad dwoma stanami stempli, żeby ten dowód dało się złamać
- * testem, który niczego nie buduje. Zmieniony ROZMIAR liczy się tak samo jak
- * przesunięty mtime: przebudowa na systemie plików o grubszym zegarze może
- * trafić w tę samą sekundę, a treść stempla i tak się różni.
+ * testem, który niczego nie buduje.
+ *
+ * PRZEPISANY, NIE „PÓŹNIEJSZY", i ta różnica została znaleziona przez test:
+ * stempel z przyszłości (przestawiony zegar, plik z archiwum) po prawdziwej
+ * przebudowie dostaje mtime WCZEŚNIEJSZY niż miał. Warunek `>` uznawał to za
+ * brak przebudowy i harness przerywał poprawny przebieg — czyli przyrząd mylił
+ * się w stronę fałszywego alarmu, ale mylił się. Liczy się KAŻDA zmiana.
+ * Rozmiar sprawdzany osobno, bo system plików o grubszym zegarze potrafi
+ * zapisać stempel w tej samej chwili, w której go czytaliśmy.
  */
 export const rebuildHappened = (before, after) => {
-  const advanced = [];
+  const rewritten = [];
   for (const [file, next] of after) {
     const previous = before.get(file);
     if (next === null) continue;
     if (
       previous === undefined ||
       previous === null ||
-      next.mtimeMs > previous.mtimeMs ||
+      next.mtimeMs !== previous.mtimeMs ||
       next.size !== previous.size
     )
-      advanced.push(file);
+      rewritten.push(file);
   }
-  return { proven: advanced.length > 0, advanced };
+  return { proven: rewritten.length > 0, rewritten };
 };
 
 /**

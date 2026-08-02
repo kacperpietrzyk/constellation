@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   mkdirSync,
+  readdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
@@ -123,27 +124,31 @@ const scaffold = () => {
 const runIn = (root, { command, args }) =>
   spawnSync(command, args, { cwd: root, encoding: "utf8" });
 
-test("the build stamps are derived from the packages' own tsconfig, not listed", () => {
-  const stamps = buildStampFiles(repoRoot);
-  // Bez pinowania liczby: rejestrem jest zbiór `tsconfig.json` niosących
-  // `tsBuildInfoFile`, i asercja pyta dokładnie o tę zgodność. Liczba wpisana
-  // tutaj gniłaby przy pierwszym nowym pakiecie.
-  const declaring = spawnSync(
-    process.execPath,
-    [
-      "-e",
-      'const {readdirSync,readFileSync}=require("node:fs");const p=require("node:path");' +
-        'const root=p.join(process.argv[1],"packages");' +
-        "let n=0;for(const e of readdirSync(root,{withFileTypes:true})){if(!e.isDirectory())continue;" +
-        'try{if(/"tsBuildInfoFile"/.test(readFileSync(p.join(root,e.name,"tsconfig.json"),"utf8")))n++;}catch{}}' +
-        "console.log(n);",
-      repoRoot,
-    ],
-    { encoding: "utf8" },
-  );
-  assert.equal(stamps.length, Number(declaring.stdout.trim()));
-  assert.ok(stamps.length > 0);
-  for (const stamp of stamps) assert.ok(stamp.endsWith(".tsbuildinfo"));
+test("every stamp path is the one its own tsconfig declares, read a second way", () => {
+  // NIE TĄ SAMĄ METODĄ. `buildStampFiles` czyta regexpem, bo `tsconfig.json`
+  // wolno nieść komentarze; tutaj to samo jest czytane `JSON.parse`. Test
+  // powtarzający implementację pomyliłby się dokładnie tam, gdzie ona —
+  // w szczególności zahardkodowane `dist/.tsbuildinfo` przeszłoby przez
+  // porównanie liczb, a `desktop-ui` trzyma stempel w `build/ts/`.
+  const packagesRoot = path.join(repoRoot, "packages");
+  const declared = readdirSync(packagesRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => {
+      const config = path.join(packagesRoot, entry.name, "tsconfig.json");
+      let parsed;
+      try {
+        parsed = JSON.parse(readFileSync(config, "utf8"));
+      } catch {
+        return [];
+      }
+      const value = parsed.compilerOptions?.tsBuildInfoFile;
+      return typeof value === "string"
+        ? [path.join(packagesRoot, entry.name, value)]
+        : [];
+    })
+    .sort();
+  assert.deepEqual(buildStampFiles(repoRoot), declared);
+  assert.ok(declared.length > 0);
 });
 
 test("a build that changes no stamp is not a rebuild", () => {
@@ -157,6 +162,12 @@ test("a build that changes no stamp is not a rebuild", () => {
   // o grubszym zegarze potrafi trafić w tę samą chwilę.
   assert.equal(
     rebuildHappened(before, new Map([["a", { mtimeMs: 10, size: 6 }]])).proven,
+    true,
+  );
+  // I mtime WCZEŚNIEJSZY też. Stempel z przyszłości po przebudowie cofa się do
+  // zegara maszyny; warunek „nowszy" czytał to jako brak przebudowy.
+  assert.equal(
+    rebuildHappened(before, new Map([["a", { mtimeMs: 9, size: 5 }]])).proven,
     true,
   );
 });
@@ -295,6 +306,44 @@ test("the harness restores by rewriting, so the poisoned state is unreachable", 
       ),
       /ORIGINAL/u,
     );
+    assert.equal(runIn(probe.root, probe.verify).status, 0);
+  } finally {
+    probe.dispose();
+  }
+});
+
+test("a build stamp dated ahead of the clock does not make a fresh write stale", () => {
+  const probe = scaffold();
+  try {
+    assert.equal(runIn(probe.root, probe.build).status, 0);
+    // Zwykły zapis nadaje mtime „teraz", a to WYSTARCZA tylko dopóki stempel
+    // jest z przeszłości. Stempel z przyszłości — zegar maszyny przestawiony,
+    // plik z archiwum, system plików o innym źródle czasu — sprawia, że świeży
+    // zapis jest STARSZY niż on, czyli dokładnie ten sam warunek co przy
+    // przywróceniu z `mv`. Harness podbija mtime ponad stempel, więc tutaj
+    // przechodzi; bez podbicia przebudowa byłaby no-opem i harness by padł.
+    const ahead = Date.now() / 1000 + 3_600;
+    for (const name of ["index.js", "index.d.ts", ".tsbuildinfo"])
+      utimesSync(
+        path.join(probe.root, "packages", "probe", "dist", name),
+        ahead,
+        ahead,
+      );
+    const outcome = runBreakTests({
+      root: probe.root,
+      build: probe.build,
+      verify: probe.verify,
+      stampFiles: [probe.stamp],
+      log: () => {},
+      breaks: [
+        {
+          name: "a break written against a stamp from the future",
+          file: probe.source,
+          edit: () => SOURCE_BROKEN,
+        },
+      ],
+    });
+    assert.equal(outcome.ok, true);
     assert.equal(runIn(probe.root, probe.verify).status, 0);
   } finally {
     probe.dispose();
