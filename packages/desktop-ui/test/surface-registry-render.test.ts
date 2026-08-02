@@ -209,9 +209,14 @@ test("every destination in the registry renders a surface in the shell work plan
   // ktoś przestawił wszystko na „eager", powyższa pętla dalej byłaby zgodna sama
   // ze sobą, a bramka rozmiaru renderera dostałaby całą aplikację na ścieżkę
   // gorącą. Liczba jest tu po to, żeby taka zmiana była widoczna.
+  // DZIEWIĘĆ, POTWIERDZONE ŚWIADOMIE: `access` wsiąkł w Ustawienia w fali
+  // Wycofań i przestał być celem, więc leniwych celów jest o jeden mniej.
+  // Ścieżka gorąca na tym ZYSKUJE, nie traci — treść lądowała już w leniwym
+  // chunku, a z wejściowego wychodzi jej okablowanie w powłoce; zmierzona para
+  // gzip przed/po stoi w opisie PR-a.
   assert.equal(
     lazyDestinations.size,
-    10,
+    9,
     "Zmienił się podział na powierzchnie leniwe i ładowane od razu — potwierdź to świadomie i zaktualizuj też budżet ścieżki gorącej.",
   );
 });

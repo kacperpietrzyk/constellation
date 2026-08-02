@@ -670,6 +670,26 @@ kbd {
 .ghost-button:not(:disabled):active {
   background: var(--surface-pressed);
 }
+/* A SHARED BUTTON MATERIAL THAT USED TO LIVE IN A LAZY SURFACE SHEET. These
+   two rules stood in `access-surface.css`, which only ever loaded when the
+   retired `access` destination was opened — while `CaptureDialog.tsx` used the
+   same class with no way of pulling that sheet. The disabled rule below was
+   already global, so the class read as styled everywhere and was in fact bare
+   red text on the one screen that did not bring the sheet with it. Retiring
+   the surface forced the question; the answer is that a button shared by two
+   screens belongs to neither of them. */
+.quiet-danger-button {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--status-error);
+  background: transparent;
+}
+.quiet-danger-button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--status-error) 28%, transparent);
+  background: color-mix(in oklch, var(--status-error) 9%, transparent);
+}
 .primary-button:disabled,
 .secondary-button:disabled,
 .quiet-button:disabled,

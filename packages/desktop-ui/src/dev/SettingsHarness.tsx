@@ -24,6 +24,7 @@ export const SettingsHarness = () => (
       client={client}
       snapshot={workHarnessSnapshot}
       onReload={async () => undefined}
+      onWrote={async () => undefined}
       onFailure={() => undefined}
       onOpenRecovery={() => undefined}
       onNavigate={() => undefined}

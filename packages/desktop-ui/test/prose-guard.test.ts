@@ -84,16 +84,23 @@ const inScope = (file: string): boolean =>
  * nie ma tu wpisu i pada, a wpis, który przestał pasować, też pada, żeby
  * skasowany dług nie udawał, że dalej istnieje.
  *
- * Wszystkie trzynaście to okna dialogowe zgody, odzyskiwania i skutków
+ * Wszystkie DWANAŚCIE to okna dialogowe zgody, odzyskiwania i skutków
  * nieodwracalnych — czyli miejsca, gdzie zdanie tłumaczy KONSEKWENCJĘ, a nie
  * obsługę. Wchodzą do przeglądu razem z falą, która dotyka danego przepływu.
+ *
+ * Trzynasty wpis ZNIKNĄŁ i to jest jedyny sposób, w jaki ta lista maleje inaczej
+ * niż przez skrócenie zdania — patrz komentarz przy `RealApp.tsx` niżej.
  */
 const KNOWN_LECTURES: readonly {
   readonly file: string;
   readonly starts: string;
 }[] = [
   {
-    file: "AccessSurface.tsx",
+    // Re-keyed, not re-worded: the sentence is byte-identical and only its
+    // file moved. `SETTINGS_BY_HAND` exempts a FILE named `Settings*.tsx`, not
+    // a directory, so the merged content stays under this guard exactly as it
+    // was — moving into `settings/` does not buy an exemption.
+    file: "settings/AccessSection.tsx",
     starts: "This workspace has no Space yet, so there is no data scope",
   },
   {
@@ -112,10 +119,18 @@ const KNOWN_LECTURES: readonly {
     file: "RealApp.tsx",
     starts: "The system keychain is unavailable. Unlock the system",
   },
-  {
-    file: "RealApp.tsx",
-    starts: "This access changed meanwhile, so the write did not go through",
-  },
+  // TU STAŁ WPIS `RealApp.tsx` / „This access changed meanwhile, so the write
+  // did not go through". Zdanie nie zostało skrócone ani skasowane — PRZENIOSŁO
+  // SIĘ razem z obsługą re-scope'u agenta do `SettingsSurface.tsx`, kiedy
+  // `access` wsiąkł w Ustawienia. A `SETTINGS_BY_HAND` wyjmuje pliki
+  // `Settings*.tsx` spod tego strażnika, bo długie zdanie obok kontrolki
+  // w Ustawieniach opisuje KONSEKWENCJĘ i jest czytane ręcznie.
+  //
+  // Wpis musiał zniknąć, bo waiver, który nic nie dopasowuje, sam jest błędem
+  // (niżej: „These waivers no longer match anything"). Zapisane jest to tutaj,
+  // żeby nie czytało się jako spłata długu: zdanie dalej istnieje, dalej jest
+  // długie i dalej brzmi tak samo — zmienił się plik, który je niesie, a razem
+  // z nim reżim przeglądu.
   {
     file: "WorkspaceRecovery.tsx",
     starts: "The Hub accepted the device but did not store the credential",

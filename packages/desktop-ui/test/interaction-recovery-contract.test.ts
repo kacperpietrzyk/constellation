@@ -61,12 +61,16 @@ const projectRichBody = readFileSync(
   path.join(root, "src", "ProjectRichBody.tsx"),
   "utf8",
 );
-const accessSurface = readFileSync(
-  path.join(root, "src", "AccessSurface.tsx"),
+// `access` retired into the Settings category that always held its id, so the
+// contract reads the SECTION file and its CSS Module — the same treatment the
+// Knowledge wave gave the documents screen above. Re-pointed, not deleted: a
+// content merge is not a reason to lose coverage on exactly what moved.
+const accessSection = readFileSync(
+  path.join(root, "src", "settings", "AccessSection.tsx"),
   "utf8",
 );
 const accessStyles = readFileSync(
-  path.join(root, "src", "access-surface.css"),
+  path.join(root, "src", "settings", "access-section.module.css"),
   "utf8",
 );
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
@@ -877,42 +881,58 @@ describe("interaction recovery contracts", () => {
     // One shell for both deliberate acts: issuing a grant and changing one.
     // "One shell" is enforced by there being exactly one modal opener in the
     // file — a second surface growing its own dialog would break this.
-    assert.match(accessSurface, /const AccessDialog =/);
+    assert.match(accessSection, /const AccessDialog =/);
     assert.equal(
-      (accessSurface.match(/\.showModal\(\)/g) ?? []).length,
+      (accessSection.match(/\.showModal\(\)/g) ?? []).length,
       1,
       "Every Access dialog must go through the one AccessDialog shell.",
     );
     // Three deliberate entries into that shell, each gated on its own state.
     assert.match(
-      accessSurface,
+      accessSection,
       /openCreation === "person" && \(\s*<AccessDialog/,
     );
     assert.match(
-      accessSurface,
+      accessSection,
       /openCreation === "agent" && \(\s*<AccessDialog/,
     );
     assert.match(
-      accessSurface,
+      accessSection,
       /rescoping !== undefined && \(\s*<AccessDialog/,
     );
-    assert.match(accessSurface, /aria-haspopup="dialog"/);
+    assert.match(accessSection, /aria-haspopup="dialog"/);
     // The dimensions of a grant are named groups, not loose inputs. A legend is
     // the group's accessible name, so the text is the anchor here.
-    assert.match(accessSurface, /<legend>Capability level<\/legend>/);
-    assert.match(
-      accessSurface,
-      /className="agent-space-scope"[\s\S]{0,300}?<legend>Data scope<\/legend>/,
+    assert.match(accessSection, /<legend>Capability level<\/legend>/);
+    // A DATA ATTRIBUTE, not a class name. The fieldset carries no styles of
+    // its own, and a CSS Module exports nothing for a class nobody declares,
+    // so the hook the code and this contract share is written as data.
+    //
+    // BOTH OF THEM, COUNTED. There are two dialogs that name a data scope —
+    // issuing a grant and re-scoping one — and a single `assert.match` is
+    // satisfied by either, so taking the hook off ONE of them left this
+    // contract green. Found by breaking it; the count is the fix.
+    assert.equal(
+      (
+        accessSection.match(
+          /data-space-scope="true"[\s\S]{0,300}?<legend>Data scope<\/legend>/g,
+        ) ?? []
+      ).length,
+      2,
+      "Both the issuing and the re-scoping dialog name their data scope, and both are found by that hook.",
     );
     assert.match(
-      accessSurface,
-      /agentTransport === "remote_hub" && \(\s*<fieldset className="agent-federation-scope">\s*<legend>Cross-workspace boundaries<\/legend>/,
+      accessSection,
+      /agentTransport === "remote_hub" && \(\s*<fieldset className=\{styles\.federationScope\}>\s*<legend>Cross-workspace boundaries<\/legend>/,
     );
-    assert.match(accessSurface, /concept-help-backdrop access-dialog-backdrop/);
-    assert.match(accessSurface, /concept-help-dialog access-dialog/);
+    assert.match(
+      accessSection,
+      /concept-help-backdrop \$\{styles\.dialogBackdrop\}/,
+    );
+    assert.match(accessSection, /concept-help-dialog \$\{styles\.dialog\}/);
     assert.match(
       accessStyles,
-      /\.access-ledger\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+      /\.ledger\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
     );
     assert.match(
       styles,
@@ -920,7 +940,7 @@ describe("interaction recovery contracts", () => {
     );
     assert.match(
       accessStyles,
-      /\.concept-help-dialog\.access-dialog\s*\{[^}]*display:\s*grid;[^}]*width:[^;]+;[^}]*grid-template-rows:[^;]+;[^}]*overflow:\s*hidden/s,
+      /:global\(\.concept-help-dialog\)\.dialog\s*\{[^}]*display:\s*grid;[^}]*width:[^;]+;[^}]*grid-template-rows:[^;]+;[^}]*overflow:\s*hidden/s,
     );
   });
 });

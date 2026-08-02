@@ -35,7 +35,6 @@ import { resolveDesktopSurface } from "@constellation/desktop-preload/surface-re
 import { navItems } from "./shell/nav-items.js";
 import { taskPriorityLabels } from "./task-priority-labels.js";
 import {
-  AccessSurface,
   CalendarSurface,
   ActivitySurface,
   LibraryShell,
@@ -51,10 +50,6 @@ import {
   TaskAttachmentsSection,
   WorkspaceRecovery,
 } from "./shell/lazy-surfaces.js";
-import {
-  AgentGrantDetailsDialog,
-  type AgentGrantDetails,
-} from "./components/AgentGrantDetailsDialog.js";
 import { BrandMark } from "./components/BrandMark.js";
 import { DocumentBacklinks } from "./components/DocumentBacklinks.js";
 import { Icon } from "./components/Icon.js";
@@ -124,7 +119,6 @@ const RecordCommentsPanel = lazy(() =>
   })),
 );
 import {
-  addWorkspaceMember,
   addComment,
   editComment,
   applyTemplateToProject,
@@ -143,11 +137,9 @@ import {
   loadProjectOverview,
   loadComments,
   previewUndo,
-  revokeWorkspaceMember,
   relateTask,
   setTaskCompletion,
   setTaskStatus,
-  setWorkspaceMemberAccess,
   setCommentResolved,
   setProjectLifecycle,
   stageManagedAttachment,
@@ -159,13 +151,6 @@ import {
   updateSavedWorkView,
   updateProjectOutcome,
   updateAttention,
-  createAgentGrant,
-  rotateAgentCredential,
-  updateAgentGrantScope,
-  revokeAgentGrant,
-  createRemoteAgentGrant,
-  rotateRemoteAgentCredential,
-  revokeRemoteAgentGrant,
   routeCaptureException,
   requestVoiceAudioDeletion,
   resolveCaptureException,
@@ -378,7 +363,6 @@ export const RealApp = ({
     }
   }, [taskEditOpen]);
   const [projectBusy, setProjectBusy] = useState(false);
-  const [accessBusy, setAccessBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
@@ -432,8 +416,6 @@ export const RealApp = ({
   // fokusa klawiatury; timer rusza od nowa po opuszczeniu toastu.
   const [toastPaused, setToastPaused] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [agentGrantDetails, setAgentGrantDetails] =
-    useState<AgentGrantDetails>();
   const [previewCondition, setPreviewCondition] =
     useState<PreviewCondition>("ready");
   const [narrowShell, setNarrowShell] = useState(
@@ -2353,6 +2335,10 @@ export const RealApp = ({
             client={client}
             snapshot={state.snapshot}
             onReload={reload}
+            // The access writes moved into Settings with their content, and
+            // they end where they always ended: in this shell's toast, with
+            // the undo affordance this function reads off the activity head.
+            onWrote={refreshAfter}
             onFailure={showFailure}
             onOpenRecovery={() => setRecoveryOpen(true)}
             onNavigate={(next, label) =>
@@ -3049,194 +3035,6 @@ export const RealApp = ({
         onReplaceCapturePayload={replaceAttentionPayload}
         onRetryLoad={() => void reload()}
       />
-    ),
-    access: () => (
-      <LazySurfaceBoundary label="Access">
-        <Suspense fallback={<SurfaceLoadingState label="Access" />}>
-          <AccessSurface
-            access={state.snapshot.access}
-            agentAccess={state.snapshot.agentAccess}
-            agentTransport={
-              state.snapshot.dataHome?.descriptor.providerKind === "coordinated"
-                ? "remote_hub"
-                : "local"
-            }
-            spaces={state.snapshot.bootstrap.spaces}
-            busy={accessBusy}
-            onAdd={(input) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              void addWorkspaceMember(client, state.snapshot, input).then(
-                async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Access created.");
-                  else showFailure(result);
-                },
-              );
-            }}
-            onSetAccess={(member, access) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              void setWorkspaceMemberAccess(
-                client,
-                state.snapshot,
-                member,
-                access,
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter("Access scope updated.");
-                else showFailure(result);
-              });
-            }}
-            onRevoke={(member) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              void revokeWorkspaceMember(client, state.snapshot, member).then(
-                async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      "Access revoked. Devices drop the projection at the next sync.",
-                    );
-                  else showFailure(result);
-                },
-              );
-            }}
-            onAgentAdd={(input) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              const remote =
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated";
-              void (
-                remote
-                  ? createRemoteAgentGrant(client, input)
-                  : createAgentGrant(client, state.snapshot, input)
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success") {
-                  await reload();
-                  setAgentGrantDetails(
-                    "endpoint" in result.data
-                      ? {
-                          title: "Remote MCP access created",
-                          descriptorLabel: "Protected configuration file",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Endpoint",
-                          connectionValue: result.data.endpoint,
-                        }
-                      : {
-                          title: "MCP access created",
-                          descriptorLabel: "Access file",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Host adapter",
-                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                        },
-                  );
-                } else showFailure(result);
-              });
-            }}
-            onAgentRotate={(grant) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              const remote =
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated";
-              void (
-                remote
-                  ? rotateRemoteAgentCredential(client, grant)
-                  : rotateAgentCredential(client, state.snapshot, grant)
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success") {
-                  await reload();
-                  setAgentGrantDetails(
-                    "endpoint" in result.data
-                      ? {
-                          title: "Remote credential rotated",
-                          descriptorLabel: "Protected configuration file",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Endpoint",
-                          connectionValue: result.data.endpoint,
-                        }
-                      : {
-                          title: "Credential rotated",
-                          descriptorLabel: "Access file",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Host adapter",
-                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                        },
-                  );
-                } else showFailure(result);
-              });
-            }}
-            onAgentRescope={async (grant, target) => {
-              if (!client) return "No connection to the kernel. Try again.";
-              setAccessBusy(true);
-              setNotice(undefined);
-              const result = await updateAgentGrantScope(
-                client,
-                state.snapshot,
-                grant,
-                target,
-              );
-              setAccessBusy(false);
-              if (result.kind === "conflict") {
-                // The versions the dialog read are the ones that just
-                // lost the race, so every retry from it would re-send
-                // them. Reload instead, and say that plainly — the
-                // workflow's own "refresh and try again" would be asking
-                // for something this line has already done.
-                setNotice({
-                  kind: "conflict",
-                  message:
-                    "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
-                });
-                await reloadSnapshot();
-                return undefined;
-              }
-              if (result.kind !== "success") {
-                showFailure(result);
-                // Returned as well as noticed: the notice sits on a
-                // surface the open dialog covers, and the person who has
-                // to act on the refusal is inside the dialog.
-                return result.message;
-              }
-              await refreshAfter("Agent permissions updated.");
-              return undefined;
-            }}
-            onAgentRevoke={(grant) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              const remote =
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated";
-              void (
-                remote
-                  ? revokeRemoteAgentGrant(client, grant)
-                  : revokeAgentGrant(client, state.snapshot, grant)
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    remote
-                      ? "Remote agent access revoked and its configuration file deleted."
-                      : "Agent access revoked and the local credential deleted.",
-                  );
-                else showFailure(result);
-              });
-            }}
-          />
-        </Suspense>
-      </LazySurfaceBoundary>
     ),
   };
 
@@ -5165,12 +4963,6 @@ export const RealApp = ({
             }}
           />
         </Suspense>
-      )}
-      {agentGrantDetails && (
-        <AgentGrantDetailsDialog
-          details={agentGrantDetails}
-          onClose={() => setAgentGrantDetails(undefined)}
-        />
       )}
       {navMenu && (
         <div
