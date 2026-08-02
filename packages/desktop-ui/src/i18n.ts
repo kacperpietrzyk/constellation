@@ -32,6 +32,67 @@ export const plural = (count: number, one: string, many?: string): string =>
 export const countLabel = (count: number, one: string, many?: string): string =>
   `${count} ${plural(count, one, many)}`;
 
+// HOW FAR A DAY IS FROM THE DAY THE SCREEN IS SHOWING, IN THIS PRODUCT'S WORDS.
+//
+// Six surfaces used to spell this out locally and no two of them agreed. Today
+// and Calendar carried the same six lines byte for byte; Renewals wrote its own
+// three times and said "1 days" in every one of them, in a codebase that has
+// carried `countLabel` since Wave 2 for exactly that.
+//
+// THE CLOCK IS NOT IN HERE, AND THAT IS THE POINT. The integer comes from
+// `daysUntil`, which counts CALENDAR days in the workspace timezone — so
+// "yesterday" is the reader's yesterday and not the machine's, and a deadline
+// two hours away is "due today" rather than "in 0 days". This function only
+// turns that integer into English. Splitting the two means the words can be
+// asserted with no clock at all, so no assertion over them can rot on a year,
+// month, DST or leap-day boundary the way a hard-coded date already reddened
+// `main` overnight once this month.
+//
+// A VOICE IS A READING, NOT A SCREEN. Three of them, because there are three
+// real things a day count can mean here — a deadline you are answerable for, a
+// countdown to a moment, and a bare distance for callers that bring their own
+// verb. Written as a total `Record` so a fourth reading cannot be added by
+// writing a fourth sentence somewhere else: it has to be added here, and every
+// existing voice keeps compiling only because every arm is present.
+export type DayDistanceVoice = "deadline" | "lead" | "elapsed";
+
+const dayDistanceVoices: Readonly<
+  Record<DayDistanceVoice, (days: number) => string>
+> = {
+  // A deadline you are answerable for. "overdue by 6 days" is what a reader
+  // acts on; the date is what they would otherwise have to work out.
+  deadline: (days) =>
+    days < 0
+      ? `overdue by ${countLabel(-days, "day")}`
+      : days === 0
+        ? "due today"
+        : `due in ${countLabel(days, "day")}`,
+  // A countdown to a moment that is somebody's responsibility — the same fact
+  // as `deadline`, said shorter, for a chip standing beside a row.
+  lead: (days) =>
+    days < 0
+      ? `${countLabel(-days, "day")} late`
+      : days === 0
+        ? "due today"
+        : `in ${countLabel(days, "day")}`,
+  // A bare distance in either direction, carrying no verb of its own, for
+  // callers that supply one ("the lead opens …", "ends …, 12 days ago").
+  elapsed: (days) =>
+    days < 0
+      ? `${countLabel(-days, "day")} ago`
+      : days === 0
+        ? "today"
+        : `in ${countLabel(days, "day")}`,
+};
+
+export const dayDistance = (days: number, voice: DayDistanceVoice): string =>
+  dayDistanceVoices[voice](days);
+
+/** The voices, for a test that wants to walk all of them without naming any. */
+export const dayDistanceVoiceNames = Object.keys(
+  dayDistanceVoices,
+) as readonly DayDistanceVoice[];
+
 // Display labels for every record kind the product can surface (⌘K results,
 // strategic ledger, impact reviews). Raw contract identifiers must not reach
 // the UI.

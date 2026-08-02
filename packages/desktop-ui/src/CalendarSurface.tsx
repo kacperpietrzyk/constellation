@@ -19,6 +19,7 @@ import {
 import {
   countLabel,
   dateKeyInZone,
+  dayDistance,
   formatDate,
   formatTime,
   instantForZonedDate,
@@ -632,13 +633,6 @@ export const CalendarSurface = ({
     startInstant === undefined ? startKey : formatDate(startInstant, timezone)
   } – ${endInstant === undefined ? endKey : formatDate(endInstant, timezone)}`;
 
-  const leadLabel = (dueAt: string): string => {
-    const days = daysUntil(dueAt, todayKey, timezone);
-    if (days < 0) return `${countLabel(-days, "day")} late`;
-    if (days === 0) return "due today";
-    return `in ${countLabel(days, "day")}`;
-  };
-
   const totals = week.totals;
 
   return (
@@ -818,7 +812,10 @@ export const CalendarSurface = ({
                     }`}
                     data-lead
                   >
-                    {leadLabel(task.dueAt ?? "")}
+                    {dayDistance(
+                      daysUntil(task.dueAt ?? "", todayKey, timezone),
+                      "lead",
+                    )}
                   </span>
                 }
                 meta={

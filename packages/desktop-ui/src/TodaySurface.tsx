@@ -9,7 +9,13 @@ import {
 } from "./components/ConceptHelpDialog.js";
 import { calendarReadRefusal } from "./client/calendar-reservation.js";
 import type { DesktopSnapshot } from "./client/workflow.js";
-import { countLabel, dateKeyInZone, formatDate, formatTime } from "./i18n.js";
+import {
+  countLabel,
+  dateKeyInZone,
+  dayDistance,
+  formatDate,
+  formatTime,
+} from "./i18n.js";
 import {
   approachingUnplanned,
   dayCapacity,
@@ -198,13 +204,6 @@ export const TodaySurface = ({
     },
   });
 
-  const leadLabel = (dueAt: string): string => {
-    const days = daysUntil(dueAt, dayKey, timezone);
-    if (days < 0) return `${countLabel(-days, "day")} late`;
-    if (days === 0) return "due today";
-    return `in ${countLabel(days, "day")}`;
-  };
-
   return (
     <div className={`surface-scroll ${styles.today}`}>
       <header className="surface-header">
@@ -389,7 +388,10 @@ export const TodaySurface = ({
                   {...approachingNav(index)}
                 >
                   <span className={styles.when} data-lead>
-                    {leadLabel(task.dueAt ?? "")}
+                    {dayDistance(
+                      daysUntil(task.dueAt ?? "", dayKey, timezone),
+                      "lead",
+                    )}
                   </span>
                   <span className={styles.main}>
                     <span data-row-title>{task.title}</span>

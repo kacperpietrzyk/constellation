@@ -42,7 +42,7 @@ import {
   useListNavigation,
   type ListNavigationItemProps,
 } from "../hooks/useListNavigation.js";
-import { countLabel, formatDate } from "../i18n.js";
+import { countLabel, dateKeyInZone, formatDate } from "../i18n.js";
 import {
   boardCards,
   conversionNote,
@@ -524,6 +524,10 @@ export const PipelineSurface = ({
   const moveRef = useRef<HTMLButtonElement | null>(null);
 
   const timeZone = snapshot.bootstrap.workspace.timezone;
+  // The board's day counts are WORKSPACE calendar days, like every other
+  // surface's — so the prose carries the zone and the day the reader is
+  // standing on, rather than the board flooring a raw millisecond difference.
+  const prose = { timeZone, todayKey: dateKeyInZone(new Date(), timeZone) };
   const settings = readMoneySettings(snapshot);
   const stages: readonly PipelineStage[] =
     snapshot.bootstrap.workspace.commercialDefaults.stages;
@@ -549,8 +553,15 @@ export const PipelineSurface = ({
   );
 
   const board = useMemo(
-    () => readBoard(index, stages, settings, Date.now()),
-    [index, stages, settings.homeCurrency, settings.markupPct],
+    () => readBoard(index, stages, settings, prose),
+    [
+      index,
+      stages,
+      settings.homeCurrency,
+      settings.markupPct,
+      prose.timeZone,
+      prose.todayKey,
+    ],
   );
   const cards = useMemo(() => boardCards(board), [board]);
   const order = useMemo(() => {

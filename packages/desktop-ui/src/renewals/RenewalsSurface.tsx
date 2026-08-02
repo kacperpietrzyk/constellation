@@ -28,6 +28,7 @@ import {
 import {
   countLabel,
   dateKeyInZone,
+  dayDistance,
   formatDate,
   instantForZonedDate,
 } from "../i18n.js";
@@ -36,7 +37,6 @@ import {
   formatDayKey,
   leadPhrase,
   readRenewals,
-  relativeDays,
   type RenewalReading,
 } from "./renewals-view.js";
 import styles from "./renewals.module.css";
@@ -273,7 +273,7 @@ const RenewalRow = ({
             ·
           </span>
           <span className={styles.relative}>
-            {relativeDays(clock.daysLeft)}
+            {dayDistance(clock.daysLeft, "elapsed")}
           </span>
           {lead !== undefined && (
             <span
@@ -1021,7 +1021,7 @@ export const RenewalsSurface = ({
             <p className={styles.sub}>
               {sections.nextLead === undefined
                 ? "Nothing is being watched."
-                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens in ${sections.nextLead.days} days, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
+                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens ${dayDistance(sections.nextLead.days, "elapsed")}, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
             </p>
           </div>
         ) : (
