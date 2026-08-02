@@ -44,6 +44,16 @@ import {
   classifyRecordScreenGeometry,
   classifyRecordScreenSweep,
 } from "./record-screen-geometry.mjs";
+import {
+  classifyDeclarationCoverage,
+  classifyDeclarationSet,
+  declaredAttributeValues,
+} from "./renderer-declarations.mjs";
+import {
+  classifyHeightBoundEvidence,
+  classifyHeightBoundScreen,
+  classifyHeightBoundSweep,
+} from "./surface-height-bound.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 5178;
@@ -173,6 +183,22 @@ const MINIMUM_ROWS = {
 // a tryb raportu zdejmuje tylko to jedno: czy przepełnienie robi się błędem.
 const REPORT_ONLY = process.env.LAYOUT_DESCENDANT_REPORT === "1";
 
+// ── PODMIOTY WYPROWADZONE ZE ŹRÓDEŁ, NIE WYPISANE OBOK NICH ──────────────────
+// Do #213 włącznie ten plik niósł `for (const kind of ["project", "task"])` —
+// dwuelementową listę ekranów rekordu stojącą obok kodu, który decyduje, ile
+// ich jest. Ekranów jest TRZY. Ta sama funkcja czyta drugą deklarację, po której
+// bierze podmioty pierwszy pionowy przelot tej bramki.
+const RENDERER_SOURCE = path.join(root, "packages", "desktop-ui", "src");
+const derive = (attribute) => {
+  const found = declaredAttributeValues({ root: RENDERER_SOURCE, attribute });
+  const decision = classifyDeclarationSet({ attribute, ...found });
+  if (decision.verdict !== "derived")
+    throw new Error(`RENDERER_LAYOUT_INVALID:\n${decision.reason}`);
+  return decision.values;
+};
+const DECLARED_RECORD_KINDS = derive("data-record-kind");
+const DECLARED_HEIGHT_BOUND = derive("data-height-bound");
+
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
 // się w swoim pudełku, a dokument w oknie. Zwracamy WSZYSTKIE przewinienia, nie
 // pierwsze — inaczej naprawa jednego ekranu ukrywa drugi.
@@ -220,6 +246,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       const results = [];
       const descendants = [];
       const recordScreens = [];
+      const heightBound = [];
+      // Ile wierszy i kart NADAJĄCYCH SIĘ DO OTWARCIA narysował każdy cel.
+      // Liczone po KSZTAŁCIE atrybutu (`…Row`, `…Card`), nie po wypisanej
+      // liście selektorów, bo lista byłaby dwudziestym drugim miejscem tej samej
+      // rodziny. Służy jednemu zdaniu w raporcie: który cel nie miał czego
+      // otworzyć — czyli o którym ten przebieg nie mówi nic.
+      const openableRows = {};
+      const openAttempts = [];
       const rowCounts = {
         libraryDocuments: 0,
         librarySources: 0,
@@ -284,6 +318,57 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             contentPx: own.content,
             maxWidthPx: own.maxWidth,
             paneContentPx: contentBox(pane).content,
+          });
+        }
+      };
+      // ── PIERWSZY PIONOWY POMIAR TEJ BRAMKI ────────────────────────────────
+      // Wszystko powyżej pyta o `scrollWidth - clientWidth`. Ta funkcja pyta
+      // o wysokość, i to w dwie strony naraz: czy ekran MIEŚCI SIĘ w panelu
+      // (sufit) i czy została mu jeszcze czytelnia (podłoga). Podmioty biorą się
+      // z deklaracji `data-height-bound`, korzeń i panel — strukturalnie, jako
+      // rodzic i dziadek pudełka czytelni.
+      const sweepHeightBound = (drawn, label) => {
+        if (drawn === undefined) return;
+        for (const reading of drawn.querySelectorAll("[data-height-bound]")) {
+          if (reading.getClientRects().length === 0) continue;
+          const screenRoot = reading.parentElement;
+          const pane = screenRoot?.parentElement;
+          if (screenRoot === null || pane === null || pane === undefined)
+            continue;
+          const inner = reading.firstElementChild;
+          // PANELE LICZĄ SIĘ TYLKO TAM, GDZIE STOJĄ OBOK SIEBIE, i to jest
+          // reguła nad KSZTAŁTEM, nie lista odczytów. Odczyt ułożony w jedną
+          // kolumnę — historia wrzutek zawsze, notatki i źródła po zwinięciu —
+          // JEST kolumną do przewinięcia, więc „każdy panel przewija się
+          // u siebie" nie ma tam czego znaczyć. Dwa tory w gridzie albo więcej
+          // znaczą, że drzewo stoi obok notatki, a wtedy przewinięcie notatki
+          // nie ma prawa zabrać drzewa.
+          const tracks =
+            inner === null
+              ? []
+              : window
+                  .getComputedStyle(inner)
+                  .gridTemplateColumns.split(" ")
+                  .filter((track) => track !== "" && track !== "none");
+          const panels =
+            inner === null || tracks.length < 2 ? [] : [...inner.children];
+          heightBound.push({
+            name: reading.getAttribute("data-height-bound") ?? "-",
+            surface: label,
+            paneClientPx: pane.clientHeight,
+            rootHeightPx: screenRoot.offsetHeight,
+            rootClientPx: screenRoot.clientHeight,
+            rootScrollPx: screenRoot.scrollHeight,
+            readingClientPx: reading.clientHeight,
+            readingScrollPx: reading.scrollHeight,
+            panelsTallerThanReading: panels.filter(
+              (panel) => panel.clientHeight > reading.clientHeight + 1,
+            ).length,
+            somethingScrolls:
+              reading.scrollHeight > reading.clientHeight + 1 ||
+              panels.some(
+                (panel) => panel.scrollHeight > panel.clientHeight + 1,
+              ),
           });
         }
       };
@@ -412,6 +497,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           });
           sweepDescendants(drawn, label);
           sweepRecordScreens(drawn, label);
+          sweepHeightBound(drawn, label);
           // Ile wierszy NAPRAWDĘ się narysowało. Bez tego fikstura może się
           // opróżnić, a bramka dalej melduje „brak przepełnienia" — nad
           // geometrią, której nie ma.
@@ -453,6 +539,12 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           );
         };
         measure(id);
+        openableRows[id] = [...(work?.querySelectorAll("*") ?? [])].filter(
+          (element) =>
+            Object.keys(element.dataset).some((key) =>
+              /(?:Row|Card)$/u.test(key),
+            ),
+        ).length;
         // A destination can carry several LENSES over the same records, and the
         // widest of them — a board of columns, a table of eight — is exactly
         // where a narrow window or scaled text overflows. Sweeping only the
@@ -510,19 +602,28 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // record drawn into that is not a layout defect to fix but a window the
         // OS refuses to make. The 200%-text pass is the real narrow-pane case and
         // it DOES open records.
+        // AND THE THIRD KIND IS REACHED FROM HERE TOO, so the derived set is
+        // not derived against a door only two of its members have. A pipeline
+        // card and a renewal row both open the opportunity record; neither is
+        // drawn by today's harness fixture, so adding them changes nothing
+        // measured today and covers the screen on the day the fixture does.
         const row =
           window.innerWidth >= 760
-            ? work?.querySelector("[data-project-row], [data-task-row]")
+            ? work?.querySelector(
+                "[data-project-row], [data-task-row], [data-pipeline-card], [data-renewal-row]",
+              )
             : null;
         if (row instanceof HTMLElement) {
           row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
           await frame();
           await new Promise((resolve) => setTimeout(resolve, 900));
           await frame();
-          const kind =
-            document
-              .querySelector("[data-record-kind]")
-              ?.getAttribute("data-record-kind") ?? "record";
+          const opened = document.querySelector("[data-record-kind]");
+          openAttempts.push({
+            surface: id,
+            kind: opened?.getAttribute("data-record-kind") ?? null,
+          });
+          const kind = opened?.getAttribute("data-record-kind") ?? "record";
           measure(`${id}:${kind}`);
           // Every tab, because the panels differ in kind: a reading column, a
           // list of rows, a stream. The widest of them is where a narrow window
@@ -550,6 +651,9 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         results,
         descendants,
         recordScreens,
+        heightBound,
+        openableRows,
+        openAttempts,
         rowCounts,
         recordPanels,
         recordKinds,
@@ -617,13 +721,48 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // of them has five sections against the other's three: eight panels and five
   // panels both clear the number above while the task record goes unseen. The
   // kinds are named instead, so a screen that stops opening fails by name.
-  for (const kind of recordsExpected ? ["project", "task"] : []) {
-    if (!measured.recordKinds.includes(kind)) {
+  // DERIVED FROM THE SOURCE, not from a pair written beside it. The old
+  // `["project", "task"]` could not name a third screen, and there is one:
+  // `OpportunityRecordScreen.tsx` has carried `data-record-kind="opportunity"`
+  // since Wave C and no pass has ever opened it.
+  //
+  // AND THE DERIVED SET DOES NOT ALL OPEN, WHICH IS THE POINT OF SAYING IT OUT
+  // LOUD. Measured today: the harness fixture holds no opportunities and no
+  // renewals, so `pipeline` and `renewals` draw ZERO rows and there is nothing
+  // to double-click. Failing on that would ship a red gate for a fixture gap
+  // that is owned elsewhere; being silent about it would let a green run read
+  // as coverage. So the unreachable members are NAMED on every run, including
+  // a perfect one — "never opened" and "fine" are different sentences and this
+  // gate says the second one only when it measured it.
+  const kindCoverage = classifyDeclarationCoverage({
+    declared: recordsExpected ? DECLARED_RECORD_KINDS : [],
+    measured: measured.recordKinds,
+  });
+  if (recordsExpected && kindCoverage.verdict === "measured-nothing") {
+    failures.push({ surface: "-", reason: kindCoverage.reason });
+  }
+  if (recordsExpected) {
+    const blind = Object.entries(measured.openableRows)
+      .filter(([, count]) => count === 0)
+      .map(([id]) => id);
+    console.log(
+      `${label}\trecord kinds declared in the renderer: ${DECLARED_RECORD_KINDS.join(", ")}` +
+        ` | opened here: ${measured.recordKinds.join(", ") || "none"}` +
+        ` | NEVER OPENED — not looked at, NOT proven fine: ${kindCoverage.unreachable.join(", ") || "none"}` +
+        ` | destinations that drew no row or card to open: ${blind.join(", ") || "none"}`,
+    );
+  }
+  // A destination that HAD a row to open and opened nothing is a different
+  // thing entirely, and that one is a failure: the rows were there, the
+  // double-click did nothing, so a screen stopped opening. This is what the
+  // hand-written pair was really guarding, and it now guards it by observation
+  // rather than by naming two kinds it happened to know about.
+  for (const attempt of recordsExpected ? measured.openAttempts : []) {
+    if (attempt.kind === null)
       failures.push({
-        surface: "-",
-        reason: `no ${kind} record opened, so that screen's geometry is untested and this pass says nothing about it`,
+        surface: attempt.surface,
+        reason: `${attempt.surface} offered a row to open and double-clicking it opened no record screen, so that screen's geometry is untested`,
       });
-    }
   }
   // ── CZY EKRAN REKORDU MA JESZCZE SZEROKOŚĆ TREŚCI ─────────────────────────
   // Ta kontrola mierzy w DRUGĄ STRONĘ niż cały pomiar wyżej i po to powstała.
@@ -671,6 +810,73 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
     console.log(
       `${label}\t-\trecord screens measured for content width: ${sweepVerdict.measured}`,
     );
+  // ── CZY EKRAN ZWIĄZANY WYSOKOŚCIĄ NAPRAWDĘ JEST ZWIĄZANY ──────────────────
+  // PIERWSZY PIONOWY PRZELOT TEJ BRAMKI. Każda liczba brana wyżej to
+  // `scrollWidth - clientWidth`; ta bramka nigdy nie spojrzała w dół i dlatego
+  // pięć zielonych przelotów mówiło „no overflow" nad czytelnią mającą 4140 px
+  // w oknie 735 px. Reguła siedzi w `surface-height-bound.mjs` i ma tam testy
+  // chodzące w `npm run check` na trzech systemach; tutaj jest tylko pomiar.
+  for (const screen of measured.heightBound) {
+    const decision = classifyHeightBoundScreen(screen);
+    if (REPORT_ONLY) {
+      console.log(
+        `${label}\t${screen.surface}\t${screen.name}\theight-bound\t` +
+          `pane ${screen.paneClientPx}\t` +
+          `screen ${screen.rootHeightPx} (${screen.rootClientPx}/${screen.rootScrollPx})\t` +
+          `reading ${screen.readingClientPx}\t${decision.verdict}` +
+          (decision.fraction === undefined
+            ? ""
+            : `\t${(decision.fraction * 100).toFixed(1)}%`),
+      );
+    }
+    if (decision.verdict === "unmeasurable")
+      failures.push({ surface: screen.surface, reason: decision.reason });
+    else if (
+      decision.verdict === "collapsed" ||
+      decision.verdict === "unbounded" ||
+      decision.verdict === "panels-scroll-together"
+    )
+      layoutProblems.push({ surface: screen.surface, reason: decision.reason });
+  }
+  // I LICZBA ZMIERZONYCH PODMIOTÓW JEST CZĘŚCIĄ ASERCJI, wyprowadzoną
+  // z deklaracji w źródłach — czyli z miary, której mierzony nie ustawia sobie
+  // sam. Kontrola, która może przejść, nie mierząc niczego, byłaby dziewiątym
+  // przyrządem kłamiącym w stronę fałszywego spokoju, a ten lot istnieje
+  // z powodu ósmego.
+  //
+  // A SCOPED PASS never visits the destinations it does not name, so demanding
+  // a screen there would turn a stated exclusion into a failure that has
+  // nothing to do with the heights being measured — the same reasoning the
+  // record guard above already carries. The declaration's VALUE is the
+  // destination id precisely so this filter is possible without a second list.
+  const heightBoundExpected =
+    surfaces === undefined
+      ? DECLARED_HEIGHT_BOUND
+      : DECLARED_HEIGHT_BOUND.filter((name) => surfaces.includes(name));
+  const heightSweep = classifyHeightBoundSweep({
+    declared: heightBoundExpected,
+    measured: measured.heightBound.map((screen) => screen.name),
+    // An unscoped pass is always expected to meet the whole registry, so an
+    // EMPTY registry stays a failure there rather than a quiet skip.
+    expected: surfaces === undefined || heightBoundExpected.length > 0,
+  });
+  if (
+    heightSweep.verdict !== "measured" &&
+    heightSweep.verdict !== "not-expected"
+  )
+    failures.push({ surface: "-", reason: heightSweep.reason });
+  // I DRUGA POŁOWA TEGO SAMEGO STRAŻNIKA: sufit sam przechodzi nad PUSTĄ
+  // fiksturą, bo ekran bez treści nigdy nie przewija strony. Dowodem, że pomiar
+  // zastał prawdziwe przepełnienie, jest to, że gdzieś coś naprawdę się
+  // przewija.
+  const heightEvidence = classifyHeightBoundEvidence({
+    scrollingSubjects: measured.heightBound.filter(
+      (screen) => screen.somethingScrolls,
+    ).length,
+    expected: measured.heightBound.length > 0,
+  });
+  if (heightEvidence.verdict === "nothing-overflowed")
+    failures.push({ surface: "-", reason: heightEvidence.reason });
   // Fikstura harnessu może się opróżnić bez jednego czerwonego testu — nic
   // w niej nie jest typowane przez ekran, który ją rysuje. Wtedy Library
   // mierzy się PUSTA i cała bramka przechodzi nad geometrią, której nie ma.
