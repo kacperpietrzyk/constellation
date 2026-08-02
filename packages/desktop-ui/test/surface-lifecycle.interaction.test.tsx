@@ -59,7 +59,6 @@ vi.mock("../src/library/LibraryShell.js", () => lazyImports.hold("library"));
 vi.mock("../src/MeetingsSurface.js", () => lazyImports.hold("meetings"));
 vi.mock("../src/ActivitySurface.js", () => lazyImports.hold("activity"));
 vi.mock("../src/SettingsSurface.js", () => lazyImports.hold("settings"));
-vi.mock("../src/AccessSurface.js", () => lazyImports.hold("access"));
 vi.mock("../src/StrategicDepthSurface.js", () =>
   lazyImports.hold("organizations"),
 );
@@ -129,10 +128,20 @@ const settle = async (): Promise<void> => {
 /**
  * Czeka na WARUNEK, nie na czas. Stała pauza mierzyła tu czas trwania zamiast
  * zdarzenia i przy większym zestawie testów zaczęła kłamać raz na trzy przebiegi
- * — zawsze na `access`, jedynym celu, którego loader robi DWA importy po kolei
- * (`await import("../access-surface.css")`, dopiero potem moduł powierzchni,
- * `shell/lazy-surfaces.tsx:41-44`). Pod obciążeniem drugi z nich nie mieścił się
- * w oknie, więc pomiar meldował cel jako ładowany zachłannie.
+ * — zawsze na celu, którego loader robi DWA importy PO KOLEI. Pod obciążeniem
+ * drugi z nich nie mieścił się w oknie, więc pomiar meldował cel jako ładowany
+ * zachłannie.
+ *
+ * PODMIOT TEGO POMIARU ZMIENIŁ SIĘ i to jest zapisane, a nie przemilczane:
+ * był nim `access`, którego loader dociągał globalny arkusz przed modułem.
+ * `access` wsiąkł w Ustawienia w fali Wycofań, więc dwukrokowy loader ma dziś
+ * DOKŁADNIE JEDNEGO przedstawiciela — `organizations`
+ * (`await import("../organization-context.css")`, dopiero potem moduł;
+ * `shell/lazy-surfaces.tsx`). Pętla niżej idzie po CAŁYM rejestrze, więc
+ * `organizations` jest w niej z automatu i pokrycie nie zniknęło razem
+ * z podmiotem. Gdyby i ten arkusz kiedyś stał się CSS Modułem, dwukrokowego
+ * loadera nie miałby już nikt — i wtedy ten warunek trzeba usunąć świadomie,
+ * a nie zostawić jako ozdobę.
  */
 const settleUntil = async (
   ready: () => boolean,

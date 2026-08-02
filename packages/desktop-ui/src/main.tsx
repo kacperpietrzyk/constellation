@@ -18,8 +18,12 @@ const render = async (): Promise<void> => {
   let content: ReactNode = <App client={window.constellation} />;
   // Harnessy `?surface=` są DEV-only (kompilują się poza paczkę) i ŚWIADOMIE
   // zostają po polsku przy przejściu interfejsu na angielski. Ich nazwy nie są
-  // już nazwami celów nawigacji — jest ich trzynaście, pokrywają się z rejestrem
-  // tylko w kilku miejscach, a kilka powierzchni produkcyjnych nie ma żadnego.
+  // już nazwami celów nawigacji — jest ich DWANAŚCIE (nie trzynaście: ta liczba
+  // stała tu błędnie i została powtórzona dalej dwa razy; trzynasty plik to
+  // fikstura `harness-snapshot.ts`), pokrywają się z rejestrem tylko w kilku
+  // miejscach, a kilka powierzchni produkcyjnych nie ma żadnego. `?surface=access`
+  // przeżył wycofanie celu `access`, bo od zawsze montował całą powłokę na
+  // kliencie odpowiadającym na zapytania dostępu, a nie sam ekran.
   // Przetłumaczenie ich teraz utrwaliłoby martwy zestaw nazw obok prawdziwej
   // nawigacji; dostają nowy kształt albo znikają razem z falami ekranowymi,
   // gdzie widać, który z nich naprawdę zastępuje który ekran. `english-copy`

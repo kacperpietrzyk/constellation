@@ -363,6 +363,13 @@ const remoteClient: ConstellationRendererClient = {
   }),
 };
 
+/**
+ * `?surface=access` — a SCENARIO, not a destination. The `access` destination
+ * retired into Settings in Wave E; this harness never mounted the surface, it
+ * mounts the whole shell against a client that answers the access queries, so
+ * it survives the retirement unchanged. The content is now behind the gear,
+ * in "Access and connections". `?transport=remote` swaps the Hub client in.
+ */
 export const AccessHarness = () => (
   <RealApp
     client={

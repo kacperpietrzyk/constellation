@@ -6,9 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { SpaceIdSchema } from "@constellation/contracts";
 
 import {
-  AccessSurface,
+  AccessSection,
   missingCapabilitiesClause,
-} from "../src/AccessSurface.js";
+} from "../src/settings/AccessSection.js";
 import type { AgentAccessProjection } from "../src/client/workflow.js";
 
 /**
@@ -37,9 +37,12 @@ type AgentGrant = AgentAccessProjection["grants"][number];
  * present before anything is read out of it.
  */
 const agentSection = (markup: string): string => {
-  const start = markup.indexOf(
-    '<section class="access-ledger agent-access-section"',
-  );
+  // CSS MODULE NAMES, and they are readable here on purpose: under
+  // `node --test` `scripts/css-module-hook.mjs` maps a module class to its own
+  // key, so the rendered markup carries `ledger agentSection` rather than the
+  // hashed browser name. Slicing by class therefore still works, and a typo in
+  // `styles.x` shows up as `undefined` rather than passing.
+  const start = markup.indexOf('<section class="ledger agentSection"');
   assert.notEqual(
     start,
     -1,
@@ -51,7 +54,7 @@ const agentSection = (markup: string): string => {
 /** The single grant row, likewise proven present before it is asserted on. */
 const grantRow = (markup: string): string => {
   const found =
-    /<article[^>]*class="agent-grant-row[^"]*"[^>]*>[\s\S]*?<\/article>/u.exec(
+    /<article[^>]*class="grantRow[^"]*"[^>]*>[\s\S]*?<\/article>/u.exec(
       agentSection(markup),
     );
   assert.ok(found, "the grant row is missing — nothing below would be tested");
@@ -71,7 +74,7 @@ const transportEyebrow = (markup: string): string => {
 /** The capability level as the row prints it, without pinning any one label. */
 const presetLabelOf = (markup: string): string => {
   const found =
-    /<div class="agent-grant-identity"[^>]*><strong[^>]*>[^<]*<\/strong><span[^>]*>([^<]*)<\/span>/u.exec(
+    /<div class="grantIdentity"[^>]*><strong[^>]*>[^<]*<\/strong><span[^>]*>([^<]*)<\/span>/u.exec(
       grantRow(markup),
     );
   const label = found?.[1];
@@ -87,7 +90,7 @@ const presetLabelOf = (markup: string): string => {
  */
 const createTrigger = (markup: string): string => {
   const found =
-    /<button[^>]*class="[^"]*access-create-trigger[^"]*"[^>]*aria-haspopup="dialog"[^>]*>([\s\S]*?)<\/button>/u.exec(
+    /<button[^>]*class="[^"]*createTrigger[^"]*"[^>]*aria-haspopup="dialog"[^>]*>([\s\S]*?)<\/button>/u.exec(
       agentSection(markup),
     );
   const content = found?.[1];
@@ -123,7 +126,7 @@ const spaceId = SpaceIdSchema.parse("80000000-0000-4000-8000-000000000001");
 test("remote agent access leads with the ledger and reveals grant creation deliberately", () => {
   const render = (agentTransport: "local" | "remote_hub"): string =>
     renderToStaticMarkup(
-      createElement(AccessSurface, {
+      createElement(AccessSection, {
         access: {
           kind: "ready",
           data: {
@@ -168,13 +171,10 @@ test("remote agent access leads with the ledger and reveals grant creation delib
 
   // The ledger leads: the list of grants is what the section renders, as a
   // live region so a grant appearing or being revoked is announced.
-  assert.match(
-    section,
-    /<div class="agent-grant-list"[^>]*aria-live="polite"/u,
-  );
+  assert.match(section, /<div class="grantList"[^>]*aria-live="polite"/u);
   // With no grants the list still says something rather than rendering blank.
-  assert.match(section, /class="[^"]*agent-empty-state/u);
-  assert.doesNotMatch(section, /<article[^>]*class="agent-grant-row/u);
+  assert.match(section, /class="[^"]*emptyState/u);
+  assert.doesNotMatch(section, /<article[^>]*class="grantRow/u);
 
   // Creation is REVEALED, not resident: an explicit trigger that announces it
   // opens a dialog, and that says what it is — the copy assertion this
@@ -190,7 +190,7 @@ test("remote agent access leads with the ledger and reveals grant creation delib
   // rendered at all. (Positive counterpart above: the trigger proves the
   // affordance exists, so these negatives cannot be vacuously true.)
   assert.doesNotMatch(remote, /<dialog/u);
-  assert.doesNotMatch(remote, /class="[^"]*agent-access-composer/u);
+  assert.doesNotMatch(remote, /class="[^"]*agentComposer/u);
 
   // Legitimately a claim about words: whether an agent reaches this workspace
   // over the network or only from this machine is a fact the person granting
@@ -240,7 +240,7 @@ test("every local grant can be re-scoped, and a Hub grant still cannot", () => {
     agentTransport: "local" | "remote_hub" = "local",
   ): string =>
     renderToStaticMarkup(
-      createElement(AccessSurface, {
+      createElement(AccessSection, {
         access: {
           kind: "ready",
           data: {
@@ -352,7 +352,7 @@ test("every local grant can be re-scoped, and a Hub grant still cannot", () => {
   );
   // Withheld, not absent: the grant is still administrable, so the other
   // actions have to survive the withdrawal of this one.
-  assert.match(grantRow(hub), /class="[^"]*member-actions/u);
+  assert.match(grantRow(hub), /class="[^"]*memberActions/u);
   // Legitimately a claim about words: a count and the noun it governs have to
   // agree. (The Polish genitive rule this replaced — "1 uprawnienia", not the
   // nominative "1 uprawnienie" — is gone; English needs only that one missing
@@ -377,12 +377,13 @@ test("every local grant can be re-scoped, and a Hub grant still cannot", () => {
     }),
   );
   assert.doesNotMatch(grantRow(revoked), DRIFT_CLAUSE);
-  assert.doesNotMatch(grantRow(revoked), /class="[^"]*member-actions/u);
-  // The state itself is carried by the row and its badge, which is what the
-  // stylesheet and the guard both key on.
-  assert.match(
-    grantRow(revoked),
-    /<article[^>]*class="agent-grant-row[^"]*revoked"/u,
-  );
-  assert.match(grantRow(revoked), /<span class="access-state revoked"[^>]*>/u);
+  assert.doesNotMatch(grantRow(revoked), /class="[^"]*memberActions/u);
+  // The state is carried by the row's DATA and by its badge. The status used
+  // to be a class name too, and the two disagreed — the row dimmed for
+  // `expired` and `revoked` alike while the dot had a rule for `revoked`
+  // only, so an expired grant wore the green success dot. `data-grant-status`
+  // names the status; the class only says the row is closed.
+  assert.match(grantRow(revoked), /<article[^>]*data-grant-status="revoked"/u);
+  assert.match(grantRow(revoked), /<article[^>]*class="grantRow rowRevoked"/u);
+  assert.match(grantRow(revoked), /<span class="state stateClosed"[^>]*>/u);
 });

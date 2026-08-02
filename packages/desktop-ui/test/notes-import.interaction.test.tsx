@@ -110,6 +110,7 @@ const mountSettings = async (
         client,
         snapshot,
         onReload: async () => undefined,
+        onWrote: async () => undefined,
         onFailure: () => undefined,
         onOpenRecovery: () => undefined,
         onNavigate: () => undefined,

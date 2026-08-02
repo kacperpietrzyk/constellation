@@ -14,23 +14,38 @@ import type {
 } from "@constellation/desktop-preload/client";
 
 import {
+  addWorkspaceMember,
   changeFieldDefinition,
   changeTaskStatusDefinition,
   changeAutomationRuleDefinition,
   changeProjectTemplateDefinition,
+  createAgentGrant,
   createAutomationRuleDefinition,
   createFieldDefinition,
   createProjectTemplateDefinition,
+  createRemoteAgentGrant,
   createTaskStatusDefinition,
   renameWorkspace,
+  revokeAgentGrant,
+  revokeRemoteAgentGrant,
+  revokeWorkspaceMember,
+  rotateAgentCredential,
+  rotateRemoteAgentCredential,
   setDefaultTaskStatus,
+  setWorkspaceMemberAccess,
   setWorkspaceVoiceAudioRetention,
+  updateAgentGrantScope,
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
 
 import { countLabel } from "./i18n.js";
+import {
+  AgentGrantDetailsDialog,
+  type AgentGrantDetails,
+} from "./components/AgentGrantDetailsDialog.js";
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
+import { AccessSection } from "./settings/AccessSection.js";
 import {
   ConceptHelpDialog,
   type ConceptHelpTopicId,
@@ -156,6 +171,7 @@ export const SettingsSurface = ({
   client,
   snapshot,
   onReload,
+  onWrote,
   onFailure,
   onOpenRecovery,
   onNavigate,
@@ -163,6 +179,14 @@ export const SettingsSurface = ({
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly onReload: () => Promise<void>;
+  /**
+   * Re-read AND say what happened. The access writes that moved in here from
+   * the retired surface each ended in the shell's toast, and the revoke ones
+   * end in the shell's UNDO affordance — which is read off the activity head
+   * the reload returns. Reproducing that here would have been a second copy of
+   * a decision the shell already owns, so the shell keeps it and lends it.
+   */
+  readonly onWrote: (message: string) => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
   readonly onOpenRecovery: () => void;
   readonly onNavigate: (surface: SurfaceId, label: string) => void;
@@ -268,6 +292,13 @@ export const SettingsSurface = ({
       setStatusBusyId(undefined);
     }
   };
+  // One busy flag for every write in the Access section, exactly as the
+  // retired surface had it: these writes are administrative and mutually
+  // exclusive in practice, and a per-row flag would let two revokes race over
+  // the same policy version.
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [agentGrantDetails, setAgentGrantDetails] =
+    useState<AgentGrantDetails>();
   const [busyRetention, setBusyRetention] = useState(false);
   const [busyWorkspace, setBusyWorkspace] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
@@ -2250,15 +2281,185 @@ export const SettingsSurface = ({
                   Explain agent access
                 </button>
               </div>
-              <div className="settings-control settings-actions">
-                <button
-                  type="button"
-                  onClick={() => onNavigate("access", "Access")}
-                >
-                  Manage access
-                </button>
-              </div>
             </section>
+
+            {/* THE CONTENT THAT BUTTON USED TO NAVIGATE TO. `access` was a
+                destination whose only door out of Settings was one button in
+                this category — a category that had declared its id since the
+                day Settings shipped. Wave E deletes the button and fills the
+                shell behind it. */}
+            <AccessSection
+              access={snapshot.access}
+              agentAccess={snapshot.agentAccess}
+              agentTransport={
+                snapshot.dataHome?.descriptor.providerKind === "coordinated"
+                  ? "remote_hub"
+                  : "local"
+              }
+              spaces={snapshot.bootstrap.spaces}
+              busy={accessBusy}
+              onAdd={(input) => {
+                if (!client) return;
+                setAccessBusy(true);
+                void addWorkspaceMember(client, snapshot, input).then(
+                  async (result) => {
+                    setAccessBusy(false);
+                    if (result.kind === "success")
+                      await onWrote("Access created.");
+                    else onFailure(result);
+                  },
+                );
+              }}
+              onSetAccess={(member, access) => {
+                if (!client) return;
+                setAccessBusy(true);
+                void setWorkspaceMemberAccess(
+                  client,
+                  snapshot,
+                  member,
+                  access,
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await onWrote("Access scope updated.");
+                  else onFailure(result);
+                });
+              }}
+              onRevoke={(member) => {
+                if (!client) return;
+                setAccessBusy(true);
+                void revokeWorkspaceMember(client, snapshot, member).then(
+                  async (result) => {
+                    setAccessBusy(false);
+                    if (result.kind === "success")
+                      await onWrote(
+                        "Access revoked. Devices drop the projection at the next sync.",
+                      );
+                    else onFailure(result);
+                  },
+                );
+              }}
+              onAgentAdd={(input) => {
+                if (!client) return;
+                setAccessBusy(true);
+                const remote =
+                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
+                void (
+                  remote
+                    ? createRemoteAgentGrant(client, input)
+                    : createAgentGrant(client, snapshot, input)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success") {
+                    await onReload();
+                    setAgentGrantDetails(
+                      "endpoint" in result.data
+                        ? {
+                            title: "Remote MCP access created",
+                            descriptorLabel: "Protected configuration file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Endpoint",
+                            connectionValue: result.data.endpoint,
+                          }
+                        : {
+                            title: "MCP access created",
+                            descriptorLabel: "Access file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Host adapter",
+                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                          },
+                    );
+                  } else onFailure(result);
+                });
+              }}
+              onAgentRotate={(grant) => {
+                if (!client) return;
+                setAccessBusy(true);
+                const remote =
+                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
+                void (
+                  remote
+                    ? rotateRemoteAgentCredential(client, grant)
+                    : rotateAgentCredential(client, snapshot, grant)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success") {
+                    await onReload();
+                    setAgentGrantDetails(
+                      "endpoint" in result.data
+                        ? {
+                            title: "Remote credential rotated",
+                            descriptorLabel: "Protected configuration file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Endpoint",
+                            connectionValue: result.data.endpoint,
+                          }
+                        : {
+                            title: "Credential rotated",
+                            descriptorLabel: "Access file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Host adapter",
+                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                          },
+                    );
+                  } else onFailure(result);
+                });
+              }}
+              onAgentRescope={async (grant, target) => {
+                if (!client) return "No connection to the kernel. Try again.";
+                setAccessBusy(true);
+                const result = await updateAgentGrantScope(
+                  client,
+                  snapshot,
+                  grant,
+                  target,
+                );
+                setAccessBusy(false);
+                if (result.kind === "conflict") {
+                  // The versions the dialog read are the ones that just lost
+                  // the race, so every retry from it would re-send them.
+                  // Reload instead, and say that plainly — the workflow's own
+                  // "refresh and try again" would be asking for something this
+                  // line has already done.
+                  onFailure({
+                    kind: "conflict",
+                    message:
+                      "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
+                  });
+                  await onReload();
+                  return undefined;
+                }
+                if (result.kind !== "success") {
+                  onFailure(result);
+                  // Returned as well as noticed: the notice sits on a surface
+                  // the open dialog covers, and the person who has to act on
+                  // the refusal is inside the dialog.
+                  return result.message;
+                }
+                await onWrote("Agent permissions updated.");
+                return undefined;
+              }}
+              onAgentRevoke={(grant) => {
+                if (!client) return;
+                setAccessBusy(true);
+                const remote =
+                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
+                void (
+                  remote
+                    ? revokeRemoteAgentGrant(client, grant)
+                    : revokeAgentGrant(client, snapshot, grant)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await onWrote(
+                      remote
+                        ? "Remote agent access revoked and its configuration file deleted."
+                        : "Agent access revoked and the local credential deleted.",
+                    );
+                  else onFailure(result);
+                });
+              }}
+            />
 
             <section>
               <div className="settings-copy">
@@ -2431,6 +2632,16 @@ export const SettingsSurface = ({
         <ConceptHelpDialog
           initialTopic={conceptHelpTopic}
           onClose={() => setConceptHelpTopic(undefined)}
+        />
+      )}
+      {/* What a new grant is worth is the credential and where it was written,
+          and it is shown ONCE. It stood in the shell while the writes did;
+          they are here now, so it is here too — and that is ~1 kB of dialog
+          leaving the entry chunk with them. */}
+      {agentGrantDetails && (
+        <AgentGrantDetailsDialog
+          details={agentGrantDetails}
+          onClose={() => setAgentGrantDetails(undefined)}
         />
       )}
     </div>

@@ -13,9 +13,12 @@ import {
 } from "../src/surface-registry.js";
 
 test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
-  // Czternaście, nie piętnaście: `history` wsiąkł w `library` w fali
-  // Knowledge — scalenie treści, a nie skasowanie ekranu.
-  assert.equal(desktopSurfaceRegistry.length, 14);
+  // Trzynaście: `history` wsiąkł w `library` w fali Knowledge, a `access`
+  // w `settings` w fali Wycofań — oba razy SCALENIE TREŚCI, a nie skasowanie
+  // ekranu. Liczba jest tu wpisana ręcznie i to jest jej sens: cel nie może
+  // wyjść z rejestru ani do niego wejść po cichu, bo każde takie przejście
+  // wymaga wpisu w `retiredDesktopSurfaces` albo osieroca zapisane sesje.
+  assert.equal(desktopSurfaceRegistry.length, 13);
   assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
   assert.equal(
     new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,
