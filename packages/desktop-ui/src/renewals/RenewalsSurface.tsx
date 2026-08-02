@@ -28,6 +28,7 @@ import {
 import {
   countLabel,
   dateKeyInZone,
+  dayDistance,
   formatDate,
   instantForZonedDate,
 } from "../i18n.js";
@@ -36,7 +37,6 @@ import {
   formatDayKey,
   leadPhrase,
   readRenewals,
-  relativeDays,
   type RenewalReading,
 } from "./renewals-view.js";
 import styles from "./renewals.module.css";
@@ -273,7 +273,7 @@ const RenewalRow = ({
             ·
           </span>
           <span className={styles.relative}>
-            {relativeDays(clock.daysLeft)}
+            {dayDistance(clock.daysLeft, "elapsed")}
           </span>
           {lead !== undefined && (
             <span
@@ -335,7 +335,9 @@ const RenewalRow = ({
                 <span className={styles.tag}>{followUp.task.status.label}</span>
                 {followUp.lateDays !== undefined && (
                   <span className={`${styles.tag} ${styles.tagLate}`}>
-                    {followUp.lateDays} days late
+                    {/* `lateDays` counts days ALREADY late, so it is positive;
+                        the lead voice reads a deadline signed the other way. */}
+                    {dayDistance(-followUp.lateDays, "lead")}
                   </span>
                 )}
               </button>
@@ -1021,7 +1023,7 @@ export const RenewalsSurface = ({
             <p className={styles.sub}>
               {sections.nextLead === undefined
                 ? "Nothing is being watched."
-                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens in ${sections.nextLead.days} days, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
+                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens ${dayDistance(sections.nextLead.days, "elapsed")}, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
             </p>
           </div>
         ) : (

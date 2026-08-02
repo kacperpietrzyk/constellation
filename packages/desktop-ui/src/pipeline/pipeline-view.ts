@@ -44,13 +44,15 @@ import {
   type OfferPriceReading,
 } from "../crm/money.js";
 import type {
+  CrmProse,
   OfferRecord,
   OpportunityRecord,
   OrganizationRecord,
   PersonRecord,
   RelationshipIndex,
 } from "../crm/organization-reading.js";
-import { formatDate } from "../i18n.js";
+import { countLabel, formatDate } from "../i18n.js";
+import { daysUntil } from "../today-plan.js";
 
 /**
  * The columns that stand on the board without being part of the funnel. They
@@ -153,10 +155,20 @@ export interface PipelineBoard {
   readonly meterMax: number;
 }
 
-const dayMs = 24 * 60 * 60 * 1000;
-
-const daysSince = (instant: string, now: number): number =>
-  Math.max(0, Math.floor((now - Date.parse(instant)) / dayMs));
+/**
+ * How many days a deal has been on the board, counted the way EVERY OTHER
+ * SURFACE counts days: whole calendar days in the workspace timezone.
+ *
+ * This used to floor elapsed milliseconds against the machine clock, and it was
+ * the only day count in the renderer that did. A deal created at 23:00 local
+ * read "0 days in pipeline" at 10:00 the next morning, while the very next
+ * number on a related screen — "N days in this stage", which goes through
+ * `daysUntil` — already called that same gap one day. Two adjacent CRM numbers,
+ * two different definitions of a day, and they part company further the moment
+ * the workspace timezone is not the machine's.
+ */
+const daysSince = (instant: string, prose: CrmProse): number =>
+  Math.max(0, -daysUntil(instant, prose.todayKey, prose.timeZone));
 
 const leadOffer = (offers: readonly OfferRecord[]): OfferRecord | undefined =>
   [...offers].sort(
@@ -294,7 +306,7 @@ export const composeCardName = (
         );
     }
   }
-  parts.push(`${card.ageDays} days in pipeline`);
+  parts.push(`${countLabel(card.ageDays, "day")} in pipeline`);
   return parts.join(", ");
 };
 
@@ -303,7 +315,7 @@ const readCard = (
   index: RelationshipIndex,
   settings: CrmMoneySettings,
   stageLabel: string,
-  now: number,
+  prose: CrmProse,
 ): PipelineCard => {
   const offers = index.offersByOpportunity.get(opportunity.id) ?? [];
   const lead = leadOffer(offers);
@@ -316,7 +328,7 @@ const readCard = (
       ...(offer.price === undefined ? {} : { price: offer.price }),
     })),
   });
-  const ageDays = daysSince(opportunity.createdAt, now);
+  const ageDays = daysSince(opportunity.createdAt, prose);
   const owner =
     opportunity.ownerPersonId === undefined
       ? undefined
@@ -357,7 +369,7 @@ export const readBoard = (
   index: RelationshipIndex,
   stages: readonly PipelineStage[],
   settings: CrmMoneySettings,
-  now: number,
+  prose: CrmProse,
 ): PipelineBoard => {
   const deals: OpportunityRecord[] = [];
   for (const bucket of index.opportunitiesByOrganization.values())
@@ -389,7 +401,7 @@ export const readBoard = (
     // invent the moment two currencies are on the board.
     const cards = deals
       .filter((deal) => deal.stage === definition.id)
-      .map((deal) => readCard(deal, index, settings, definition.label, now))
+      .map((deal) => readCard(deal, index, settings, definition.label, prose))
       .sort((left, right) => right.ageDays - left.ageDays);
     const amounts = cards.map((card) => card.value);
     return {

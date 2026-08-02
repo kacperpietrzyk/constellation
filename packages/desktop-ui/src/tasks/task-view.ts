@@ -9,7 +9,7 @@ import type {
   SavedWorkView,
   WorkOverviewProjection,
 } from "../client/workflow.js";
-import { countLabel, formatDate, formatTime } from "../i18n.js";
+import { dayDistance, formatDate, formatTime } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
 
 // The one reading of a task that every Tasks layout draws from. Five layouts
@@ -490,8 +490,12 @@ export const dueSentence = (task: WorkTask, prose: TaskProse): string => {
   if (task.completionState === "completed")
     return `due ${formatDate(task.dueAt, prose.timeZone)}`;
   const days = daysUntil(task.dueAt, prose.todayKey, prose.timeZone);
-  if (days < 0) return `overdue by ${countLabel(-days, "day")}`;
-  if (days === 0) return "due today";
+  // A deadline still ahead prints the DATE rather than the distance, on
+  // purpose: "due Jul 24" is what you put in a calendar, and the countdown
+  // only starts being the useful reading once it is spent. So the `deadline`
+  // voice's own future arm ("due in 3 days") is deliberately not taken here —
+  // it exists so the next screen that wants it does not write a seventh one.
+  if (days <= 0) return dayDistance(days, "deadline");
   return `due ${formatDate(task.dueAt, prose.timeZone)}`;
 };
 
