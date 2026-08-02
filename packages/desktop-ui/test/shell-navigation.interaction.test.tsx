@@ -383,9 +383,19 @@ test("przypięte Ustawienia znikają z szyny, bo nie ma czym ich odpiąć", asyn
   // I to jest powód, dla którego pierwsza asercja nie wystarcza: gdyby
   // Ustawienia dało się odpiąć, zablokowana pinezka byłaby niedogodnością,
   // a nie defektem.
-  const unstar = [
+  // NAJPIERW: CZY W OGÓLE JEST CO PRZESZUKIWAĆ. Odsiew po nazwie na zbiorze,
+  // który się nie narysował, wraca pusty i wygląda jak dowód — to jest ta sama
+  // pusta fikstura, którą ta fala łapała już cztery razy, tylko o piętro niżej.
+  // Populacja jest porównywana z lewą kolumną, a nie z liczbą.
+  const toggles = [
     ...container.querySelectorAll<HTMLElement>(".nav-favorite-toggle"),
-  ].filter((button) =>
+  ];
+  assert.equal(
+    toggles.length,
+    navItems().length,
+    "no favourite toggles drew at all, so the absence below would be about the fixture and not about Settings",
+  );
+  const unstar = toggles.filter((button) =>
     (button.getAttribute("aria-label") ?? "").includes("Settings"),
   );
   assert.deepEqual(
