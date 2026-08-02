@@ -49,6 +49,8 @@ import {
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
 import { AccessSection } from "./settings/AccessSection.js";
 import { ActivitySection } from "./settings/ActivitySection.js";
+import { CommercialDefaultsSection } from "./settings/CommercialDefaultsSection.js";
+import { WorkingDaySection } from "./settings/WorkingDaySection.js";
 import {
   ConceptHelpDialog,
   type ConceptHelpTopicId,
@@ -1339,6 +1341,52 @@ export const SettingsSurface = ({
                   </button>
                 </form>
               </div>
+            </section>
+
+            {/* THE FUNNEL AND THE MONEY, in the category that already names
+                the workspace's own vocabulary. Task statuses above are the
+                vocabulary of work; these are the vocabulary of deals, and the
+                control is the same control over a different list. A seventh
+                Settings category was the alternative and it was declined for
+                the reason ACT declined one in #219: the shipped six are the
+                set this wave finishes, not the set it extends. */}
+            <section>
+              <div className="settings-copy">
+                <h2>Pipeline and money</h2>
+                <p>
+                  Stages name the conversation a deal is in, and the two
+                  percentages say what a number on it means. Removing a stage
+                  does not move the deals standing on it — they keep the stage
+                  they had and stay readable; what is refused is moving a deal
+                  into a stage this workspace no longer configures. Totals are
+                  summed into one home currency, and the list of currencies is
+                  what a deal may be recorded in, not what exists.
+                </p>
+              </div>
+              <CommercialDefaultsSection
+                client={client}
+                snapshot={snapshot}
+                onReload={onReload}
+                onFailure={onFailure}
+              />
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Working day</h2>
+                <p>
+                  How much of a day there is to plan into, and on which days.
+                  Today reads the remaining hours from here, never from a number
+                  written into a screen — so a workspace that starts at seven
+                  sees its own morning, not somebody else's.
+                </p>
+              </div>
+              <WorkingDaySection
+                client={client}
+                snapshot={snapshot}
+                onReload={onReload}
+                onFailure={onFailure}
+              />
             </section>
 
             <section>

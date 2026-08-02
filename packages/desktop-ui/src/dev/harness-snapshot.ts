@@ -1,4 +1,7 @@
-import { DEFAULT_WORKING_DAY } from "@constellation/contracts";
+import {
+  DEFAULT_COMMERCIAL_DEFAULTS,
+  DEFAULT_WORKING_DAY,
+} from "@constellation/contracts";
 
 import type { DesktopSnapshot } from "../client/workflow.js";
 
@@ -54,6 +57,14 @@ export const workHarnessSnapshot = {
       // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
       // pomija, opisuje świat, którego nie ma, i wywala powłokę na starcie.
       workingDay: DEFAULT_WORKING_DAY,
+      // TO SAMO ZDANIE, DRUGIE POLE — i tym razem brak był ŻYWY. Ten literał
+      // jedzie przez `as unknown as DesktopSnapshot`, więc kompilator nie
+      // pilnuje tu niczego: `commercialDefaults` jest w projekcji WYMAGANE,
+      // a tutaj go nie było, bo do fali E żaden ekran rysowany tym snapshotem
+      // po nie nie sięgał. Ustawienia sięgają od tego lotu, a bramka układu
+      // wchodzi w `?surface=settings` — więc harness bez tego pola wywala
+      // ekran, którego bramka właśnie ma pilnować.
+      commercialDefaults: DEFAULT_COMMERCIAL_DEFAULTS,
       version: 1,
     },
     spaces: [{ id: ids.space, name: "Personal", version: 1 }],
