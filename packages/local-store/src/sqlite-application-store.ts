@@ -1986,6 +1986,32 @@ class SqliteReadView implements ApplicationWave2ReadView {
         });
   }
 
+  public findDocumentByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): NativeDocument | undefined {
+    const row = this.database
+      .prepare(
+        // `IS NOT 'removed'`, never `!=`, for the reason `findProjectByExternalId`
+        // spells out: SQL `!=` against NULL is NULL, so a row written before
+        // removal existed would drop out of this lookup and let a duplicate
+        // through — which for this field means a second import of the same
+        // vault writing every note twice.
+        "SELECT id, payload_json FROM documents WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.externalId') = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY id LIMIT 1",
+      )
+      .get(workspaceId, spaceId, externalId);
+    return row === undefined
+      ? undefined
+      : parsePayload<NativeDocument>(
+          row,
+          "id",
+          stringValue(row, "id", "document"),
+          "document",
+          { workspaceId, spaceId },
+        );
+  }
+
   public listDocuments(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

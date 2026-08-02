@@ -700,6 +700,19 @@ export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
        * them able to fail on their own and leave the note where nobody put it.
        */
       folderId: FolderIdSchema.optional(),
+      /**
+       * The source row this note was imported from. Claimed once per Space,
+       * exactly as on `project.create`: a create naming a key another note
+       * already holds is refused as `record.already_exists` carrying that
+       * note's id and version, so a re-run corrects rather than duplicates.
+       *
+       * There is NO `document.update`, so — unlike a Person or an
+       * Organization — a note that predates the field can never be stamped
+       * afterwards, and a note whose title changed in the source cannot be
+       * renamed to match. Both are stated where the import reports its
+       * counts rather than papered over with a command invented here.
+       */
+      externalId: ExternalIdSchema.optional(),
       role: z.enum(["note", "document", "deliverable"]).optional(),
     })
     .strict(),

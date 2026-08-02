@@ -8,6 +8,7 @@ import {
 
 import type {
   ConstellationRendererClient,
+  ObsidianVaultScanResult,
   StarterWorkspaceCounts,
   DesktopWorkspaceEntry,
 } from "@constellation/desktop-preload/client";
@@ -36,10 +37,87 @@ import {
 } from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import {
+  notesImportLimitations,
+  type NotesImportLimitationId,
+} from "./notes-import-limitations.js";
+import {
   settingsCategories,
   settingsCategoryElementId,
   type SettingsCategoryId,
 } from "./settings-categories.js";
+
+/**
+ * WHAT WILL NOT MIGRATE, in words — the sentences the Obsidian panel shows
+ * before anything is scanned.
+ *
+ * A TOTAL `Record` keyed by the limitation ids, so an id added to
+ * `notes-import-limitations.ts` without copy DOES NOT COMPILE. The ids and
+ * their vocabulary claims live there because a guard reads them; the words
+ * live HERE because Settings copy is deliberately outside the prose guard —
+ * long text beside a control states a CONSEQUENCE, and no pattern tells that
+ * from a lecture, so this file is judged by hand and that is the reason the
+ * exception exists at all.
+ */
+const notesImportCopy: Record<
+  NotesImportLimitationId,
+  { readonly heading: string; readonly detail: string }
+> = {
+  frontmatter: {
+    heading: "Properties at the top of a note",
+    detail:
+      "A note has no properties, so tags, aliases and dates written in the block at the top of a file cannot become fields. The block is kept at the top of the note as text, so nothing is lost and you can see it.",
+  },
+  tags: {
+    heading: "Tags",
+    detail:
+      "A note carries no tags. A #tag stays as the word you wrote, inside the sentence it was in; folders and links are what filing is made of here.",
+  },
+  embeds: {
+    heading: "Embedded notes",
+    detail:
+      "![[Another note]] shows one note inside another. There is no such thing here — a note names another note, it does not contain it — so the line stays as text.",
+  },
+  callouts: {
+    heading: "Callouts",
+    detail:
+      "A quote can be a quote, but not a warning or a tip: there is nowhere to keep which kind it was. The quote arrives with [!warning] still written in it, so you can still tell.",
+  },
+  "task-checkboxes": {
+    heading: "Checkboxes in a note",
+    detail:
+      "A task lives in exactly one place and a note points at it, so - [ ] does not become a task. The line arrives as an ordinary bullet with the box still in it.",
+  },
+  "block-references": {
+    heading: "Links to a paragraph",
+    detail:
+      "A link can name a note, never a paragraph inside one: ^block-ids have nothing to anchor to. The link resolves to the note, and the part after # or ^ is dropped.",
+  },
+  pictures: {
+    heading: "Pictures in a note",
+    detail:
+      "A picture here is a file this workspace keeps, named by identity. A picture in a vault is a path on one machine, so it cannot be adopted by pointing at it — the line stays as text and the file stays where it is.",
+  },
+  "links-to-files": {
+    heading: "Links to files other than notes",
+    detail:
+      "A link can hold a web address; a link into your vault's own folders has nowhere to point once the notes are here. Those stay as text so you can still read where they went.",
+  },
+  "list-shape": {
+    heading: "A bullet that starts with a sub-list",
+    detail:
+      "Every bullet begins with a line of its own here. A bullet that opens straight into an indented list gets an empty first line rather than losing the list.",
+  },
+  "outside-markdown": {
+    heading: "Canvas, Dataview and plugin syntax",
+    detail:
+      "Only .md files are read. A canvas is a different kind of file and is left alone; anything a plugin renders arrives as the characters that are actually in the file, because that is all a file holds.",
+  },
+  history: {
+    heading: "What the files never had",
+    detail:
+      "Editing history, named versions and who wrote what start here, on the day of the import. A file has one state; a note has every state it passes through from now on.",
+  },
+};
 
 const fieldTypeLabels: Record<string, string> = {
   text: "Text",
@@ -212,6 +290,13 @@ export const SettingsSurface = ({
   const [supportMessage, setSupportMessage] = useState<SectionMessage>();
   const [notesExportMessage, setNotesExportMessage] =
     useState<SectionMessage>();
+  const [busyVaultScan, setBusyVaultScan] = useState(false);
+  const [busyVaultImport, setBusyVaultImport] = useState(false);
+  const [vaultScan, setVaultScan] =
+    useState<
+      Extract<ObsidianVaultScanResult, { readonly outcome: "success" }>
+    >();
+  const [vaultMessage, setVaultMessage] = useState<SectionMessage>();
   const [conceptHelpTopic, setConceptHelpTopic] =
     useState<ConceptHelpTopicId>();
   const [busyExport, setBusyExport] = useState(false);
@@ -622,6 +707,114 @@ export const SettingsSurface = ({
     }
   };
 
+  /**
+   * THE SCAN, WHICH WRITES NOTHING. It is the default path and the only way to
+   * reach the import: there is no button that imports without showing what it
+   * would do first.
+   */
+  const scanObsidianVault = async () => {
+    if (!client?.scanObsidianVault) return;
+    setBusyVaultScan(true);
+    setVaultScan(undefined);
+    setVaultMessage({
+      tone: "status",
+      text: "Choose the vault folder. Nothing in it is moved, renamed or written.",
+    });
+    try {
+      const result = await client.scanObsidianVault();
+      if (result.outcome === "cancelled") {
+        setVaultMessage({
+          tone: "status",
+          text: "Cancelled. Nothing was read.",
+        });
+        return;
+      }
+      if (result.outcome === "empty") {
+        setVaultMessage({
+          tone: "alert",
+          text: `${result.directoryLabel} holds no .md files. Choose the folder the notes are in.`,
+        });
+        return;
+      }
+      if (result.outcome !== "success") {
+        setVaultMessage({
+          tone: "alert",
+          text: "Could not read that folder. Nothing was changed.",
+        });
+        return;
+      }
+      setVaultScan(result);
+      setVaultMessage(undefined);
+    } catch {
+      setVaultMessage({
+        tone: "alert",
+        text: "The import is unavailable right now. Nothing was changed.",
+      });
+    } finally {
+      setBusyVaultScan(false);
+    }
+  };
+
+  const importObsidianVault = async () => {
+    const scan = vaultScan;
+    if (!client?.importObsidianVault || scan === undefined) return;
+    setBusyVaultImport(true);
+    try {
+      const result = await client.importObsidianVault(scan.scanId);
+      if (result.outcome === "expired") {
+        setVaultScan(undefined);
+        setVaultMessage({
+          tone: "alert",
+          text: "That scan is no longer current. Choose the folder again — nothing was written.",
+        });
+        return;
+      }
+      if (result.outcome !== "success") {
+        setVaultMessage({
+          tone: "alert",
+          text: "The import stopped. Run it again: notes already brought in are recognised and not duplicated.",
+        });
+        return;
+      }
+      // WHAT DID NOT ARRIVE IS SAID IN THE SAME BREATH AS WHAT DID, exactly as
+      // the export reports its losses. A round number that quietly excluded
+      // the notes this build could not read looks like a complete import.
+      const left = [
+        result.counts.skipped > 0
+          ? `${result.counts.skipped} could not be stored and were left out`
+          : undefined,
+        result.counts.bodiesFailed > 0
+          ? `${result.counts.bodiesFailed} arrived without their text`
+          : undefined,
+        result.counts.linksUnresolved > 0
+          ? `${result.counts.linksUnresolved} links point at nothing here and stayed as the text you wrote`
+          : undefined,
+        result.counts.titlesDiverged > 0
+          ? `${result.counts.titlesDiverged} kept the title they already had here`
+          : undefined,
+      ].filter((entry) => entry !== undefined);
+      setVaultScan(undefined);
+      setVaultMessage({
+        tone: left.length > 0 ? "alert" : "status",
+        text:
+          `Brought in ${countLabel(result.counts.notesCreated, "note")} and ` +
+          `${countLabel(result.counts.foldersCreated, "folder")} from ${result.directoryLabel}.` +
+          (result.counts.notesMatched > 0
+            ? ` ${countLabel(result.counts.notesMatched, "note")} came from a file already brought in, and had its text replaced with the file's.`
+            : "") +
+          (left.length > 0 ? ` ${left.join("; ")}.` : ""),
+      });
+      await onReload();
+    } catch {
+      setVaultMessage({
+        tone: "alert",
+        text: "The import is unavailable right now. Run it again when it is.",
+      });
+    } finally {
+      setBusyVaultImport(false);
+    }
+  };
+
   const exportSupportReport = async () => {
     if (!client?.exportSupportReport) return;
     setBusySupport(true);
@@ -666,7 +859,7 @@ export const SettingsSurface = ({
     // names what the section does; "Notes 16" would name how many notes exist,
     // which is a fact about the workspace and not about this section — and it
     // is the mistake this row has already been written with once.
-    notes: "Export to Markdown",
+    notes: "Import and export",
     appearance: `Theme: ${themeLabel}`,
     access: "Roles, agents, Calendar and Jamie",
     application: `Version ${snapshot.build.version}`,
@@ -1837,6 +2030,164 @@ export const SettingsSurface = ({
                   <p role={notesExportMessage.tone}>
                     {notesExportMessage.text}
                   </p>
+                )}
+              </div>
+            </section>
+
+            {/* IMPORT Z OBSIDIANA — druga tafla tej samej sekcji.
+                Kolejność jest celowa: WHAT WILL NOT MIGRATE stoi NAD
+                przyciskiem, więc nie da się uruchomić skanu, nie minąwszy
+                listy. Osoba przenosząca 214 notatek ma prawo wiedzieć, co
+                dojedzie zmienione, DOPÓKI jeszcze może się rozmyślić. */}
+            <section className="notes-import-section" data-notes-import="true">
+              <div className="settings-copy">
+                <h2>Import from Obsidian</h2>
+                <p>
+                  Choose a vault folder. It is read where it stands: nothing in
+                  it is moved, renamed or deleted, and the scan writes nothing —
+                  you see what would happen before it does.
+                </p>
+                <p>
+                  Every folder becomes a folder and every <code>.md</code> file
+                  becomes a note. A <code>[[link]]</code> to another note
+                  becomes a real link between them; one that names nothing here
+                  stays as the text you wrote, never a name that could go stale.
+                  Running it twice brings nothing in twice — but a note that
+                  came from a file before has its text REPLACED with what the
+                  file says now, so anything you wrote here since is
+                  overwritten. Only the text: the note keeps its place, its
+                  links to it, and every version it has passed through.
+                </p>
+              </div>
+              <div className="settings-control notes-import-control">
+                <div className="notes-import-limitations">
+                  <h3>What will not migrate</h3>
+                  <dl>
+                    {notesImportLimitations.map((limitation) => {
+                      const found =
+                        limitation.construct === false
+                          ? undefined
+                          : vaultScan?.constructs[limitation.construct];
+                      return (
+                        <div
+                          key={limitation.id}
+                          data-import-limitation={limitation.id}
+                        >
+                          <dt>
+                            {notesImportCopy[limitation.id].heading}
+                            {found !== undefined && found > 0 && (
+                              <span data-limitation-found="true">
+                                {" "}
+                                — {countLabel(found, "found")}
+                              </span>
+                            )}
+                          </dt>
+                          <dd>{notesImportCopy[limitation.id].detail}</dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                </div>
+                <button
+                  type="button"
+                  data-notes-import-scan="true"
+                  disabled={busyVaultScan || !client?.scanObsidianVault}
+                  onClick={() => void scanObsidianVault()}
+                >
+                  {busyVaultScan
+                    ? "Reading the vault…"
+                    : "Choose a vault folder…"}
+                </button>
+                {vaultScan && (
+                  <div className="notes-import-preview" data-vault-scan="true">
+                    <h3>{vaultScan.directoryLabel}, as it would arrive</h3>
+                    <ul>
+                      <li>
+                        {countLabel(vaultScan.counts.notesCreated, "note")} to
+                        bring in
+                        {vaultScan.counts.notesMatched > 0 &&
+                          `, ${countLabel(vaultScan.counts.notesMatched, "note")} already brought in before, whose text will be REPLACED with the file's`}
+                        .
+                      </li>
+                      {/* MATCHED AND CREATED ARE SEPARATE NUMBERS ON PURPOSE.
+                          A folder carries no source key, so a re-run finds it
+                          by its path — rename one here and a second run builds
+                          a second tree beside it. Somebody expecting "31
+                          matched" who reads "31 will be created" stops before
+                          that happens; one total would have hidden it. */}
+                      <li data-vault-folders="true">
+                        {countLabel(vaultScan.counts.foldersCreated, "folder")}{" "}
+                        to create,{" "}
+                        {countLabel(vaultScan.counts.foldersMatched, "folder")}{" "}
+                        matched to one already here.
+                      </li>
+                      <li>
+                        {countLabel(vaultScan.counts.links, "link")} between
+                        notes: {vaultScan.counts.linksToNotes} to a note,{" "}
+                        {vaultScan.counts.linksToRecords} to a record,{" "}
+                        {vaultScan.counts.linksUnresolved} pointing at nothing
+                        here.
+                      </li>
+                      {vaultScan.counts.titlesDiverged > 0 && (
+                        <li>
+                          {countLabel(vaultScan.counts.titlesDiverged, "note")}{" "}
+                          will keep the title it already has here — a note
+                          cannot be renamed from a file yet.
+                        </li>
+                      )}
+                      {vaultScan.skipped.length > 0 && (
+                        <li data-vault-skipped="true">
+                          {countLabel(vaultScan.skipped.length, "file")} cannot
+                          be stored and will be left out:{" "}
+                          {vaultScan.skipped
+                            .slice(0, 5)
+                            .map((entry) => entry.path)
+                            .join(", ")}
+                          .
+                        </li>
+                      )}
+                      {vaultScan.refused.length > 0 && (
+                        <li data-vault-refused="true">
+                          {countLabel(vaultScan.refused.length, "file")} could
+                          not be read at all:{" "}
+                          {vaultScan.refused
+                            .slice(0, 5)
+                            .map((entry) => entry.path)
+                            .join(", ")}
+                          .
+                        </li>
+                      )}
+                    </ul>
+                    {vaultScan.unresolvedTargets.length > 0 && (
+                      <p data-vault-unresolved="true">
+                        Nothing here answers to{" "}
+                        {vaultScan.unresolvedTargets
+                          .slice(0, 8)
+                          .map((target) => `[[${target}]]`)
+                          .join(", ")}
+                        . Those stay as the text you wrote.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      data-notes-import-run="true"
+                      disabled={busyVaultImport || !client?.importObsidianVault}
+                      onClick={() => void importObsidianVault()}
+                    >
+                      {busyVaultImport
+                        ? "Bringing the notes in…"
+                        : vaultScan.counts.notesCreated === 0
+                          ? // NOT "Import 0 notes". A vault whose files are all
+                            // here already still has something to do — every
+                            // body is rewritten from the file — and a button
+                            // reading zero would say it does nothing.
+                            `Bring ${countLabel(vaultScan.counts.notesMatched, "note")} up to date`
+                          : `Import ${countLabel(vaultScan.counts.notesCreated, "note")}`}
+                    </button>
+                  </div>
+                )}
+                {vaultMessage && (
+                  <p role={vaultMessage.tone}>{vaultMessage.text}</p>
                 )}
               </div>
             </section>

@@ -1442,6 +1442,22 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
              * failure than the one it prevents.
              */
             folderId: FolderIdSchema.optional(),
+            /**
+             * The file this note was imported from. Absent means nobody
+             * imported it.
+             *
+             * Looser than the command's `ExternalIdSchema`, exactly as on
+             * `project.list` and the strategic arms: a projection that
+             * re-applied the write constraint would make an already-stored
+             * value unreadable the day that bound moves, and `knowledge.list`
+             * is one answer for the whole Space — a single unreadable value
+             * would fault the Library rather than degrade one row.
+             *
+             * This is the read the Obsidian import enumerates to find what it
+             * already created, so without it a second run cannot recognise
+             * two hundred notes it made itself.
+             */
+            externalId: z.string().optional(),
             role: z.enum(["note", "document", "deliverable"]),
             /**
              * The records this note names in its own body — the axis the
@@ -1492,6 +1508,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           spaceId: SpaceIdSchema,
           title: z.string(),
           folderId: FolderIdSchema.optional(),
+          /** See `knowledge.list.documents`: where this note came from. */
+          externalId: z.string().optional(),
           role: z.enum(["note", "document", "deliverable"]),
           version: z.int().positive(),
           updatedAt: z.iso.datetime({ offset: true }),
@@ -1705,6 +1723,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             spaceId: SpaceIdSchema,
             title: z.string(),
             folderId: FolderIdSchema.optional(),
+            /** See `knowledge.list.documents`: where this note came from. */
+            externalId: z.string().optional(),
             role: z.enum(["note", "document", "deliverable"]),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
@@ -1744,6 +1764,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             spaceId: SpaceIdSchema,
             title: z.string(),
             folderId: FolderIdSchema.optional(),
+            /** See `knowledge.list.documents`: where this note came from. */
+            externalId: z.string().optional(),
             role: z.enum(["note", "document", "deliverable"]),
             /* WHO WROTE IT, resolved at read time and never stored.
              *

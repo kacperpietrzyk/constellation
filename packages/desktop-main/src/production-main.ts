@@ -95,6 +95,13 @@ import {
   type MarkdownExportSpace,
 } from "./markdown-export.js";
 import {
+  applyObsidianImport,
+  planObsidianImport,
+  type ObsidianImportPorts,
+  type ObsidianVaultFile,
+} from "./obsidian-import.js";
+import { readObsidianVault } from "./obsidian-vault-reader.js";
+import {
   DocumentCollaborationBridge,
   createAgentDocumentTextPort,
 } from "./document-collaboration.js";
@@ -109,6 +116,7 @@ import {
   DurableWorkspaceOpenError,
   createDurableKernelService,
   type DurableBootstrapProjection,
+  type DurableKernelService,
 } from "./durable-kernel-service.js";
 import { writeHubAuthorizationFile } from "./hub-authorization-export.js";
 import { loadOrCreateDeviceIdentity } from "./device-identity.js";
@@ -361,6 +369,43 @@ const deliverUrgentAttention = (service: DesktopKernelService): void => {
     },
   });
 };
+
+/**
+ * A read through the QUERY layer, scoped by the same authorization the screens
+ * are, and `undefined` for anything that is not a clean success of the kind
+ * that was asked for.
+ *
+ * Hoisted because BOTH directions of the notes door need it — the markdown
+ * export and the Obsidian import — and a second copy of a query wrapper beside
+ * the first is the restated shape this repository has now paid for in four
+ * waves. Reading `kernel.store` directly instead would be shorter and would
+ * quietly turn "every note you may see" into "every note in the database".
+ */
+const projectionReader =
+  (kernel: DurableKernelService) =>
+  <Kind extends QueryProjection["kind"]>(
+    queryName: Kind,
+    parameters: Readonly<Record<string, unknown>>,
+  ): Extract<QueryProjection, { readonly kind: Kind }> | undefined => {
+    const response = kernel.service.query({
+      contractVersion: 1,
+      queryName,
+      queryId: randomUUID(),
+      workspaceId: kernel.identity.workspaceId,
+      consistency: "local_projection",
+      parameters,
+    });
+    if (
+      response.kind !== "query_result" ||
+      response.result.outcome !== "success" ||
+      response.result.projection.kind !== queryName
+    )
+      return undefined;
+    return response.result.projection as Extract<
+      QueryProjection,
+      { readonly kind: Kind }
+    >;
+  };
 
 const scheduleHubSync = (delay = 0): void => {
   if (manualHubSyncForPackagedSmoke) return;
@@ -2614,29 +2659,7 @@ const startProductionDesktop = async (): Promise<void> => {
     // export is scoped by the same authorization the screens are. Reading the
     // store directly would have been shorter and would have made "every note"
     // mean "every note in the database".
-    const projection = <Kind extends QueryProjection["kind"]>(
-      queryName: Kind,
-      parameters: Readonly<Record<string, unknown>>,
-    ): Extract<QueryProjection, { readonly kind: Kind }> | undefined => {
-      const response = kernel.service.query({
-        contractVersion: 1,
-        queryName,
-        queryId: randomUUID(),
-        workspaceId,
-        consistency: "local_projection",
-        parameters,
-      });
-      if (
-        response.kind !== "query_result" ||
-        response.result.outcome !== "success" ||
-        response.result.projection.kind !== queryName
-      )
-        return undefined;
-      return response.result.projection as Extract<
-        QueryProjection,
-        { readonly kind: Kind }
-      >;
-    };
+    const projection = projectionReader(kernel);
 
     // `workspace.exportScoped` already answers "the Spaces you may export":
     // it filters `listSpaces` by `canViewSpace` AND by the capability check.
@@ -2819,6 +2842,170 @@ const startProductionDesktop = async (): Promise<void> => {
       counts: built.counts,
     } as const;
   });
+  /**
+   * THE OBSIDIAN IMPORT, in two IPC calls because it is two acts.
+   *
+   * The scan opens files and creates NOTHING: the prototype's own words are
+   * "a vault is read where it stands. Nothing in it is moved, renamed or
+   * deleted, and the scan writes nothing — you see what would happen before it
+   * does". It hands back a `scanId`, and the run quotes it. The renderer never
+   * learns a filesystem path, because a path it could send back is a path it
+   * could change, and the second handler writes records.
+   */
+  let obsidianScan: { readonly id: string; readonly root: string } | undefined;
+  const obsidianPorts = (
+    kernel: DurableKernelService,
+  ): ObsidianImportPorts | undefined => {
+    const projection = projectionReader(kernel);
+    const spaceId = kernel.identity.rootSpaceId;
+    return {
+      readExisting: () => {
+        const knowledge = projection("knowledge.list", { spaceId });
+        return {
+          folders: (knowledge?.folders ?? []).map((folder) => ({
+            id: folder.id,
+            name: folder.name,
+            parentFolderId: folder.parentFolderId,
+          })),
+          documents: (knowledge?.documents ?? []).map((document) => ({
+            id: document.id,
+            title: document.title,
+            externalId: document.externalId,
+          })),
+        };
+      },
+      resolveRecord: (name) => {
+        // `text` is capped at 120 characters by the query, and a longer name
+        // cannot be asked for at all rather than asked for truncated — which
+        // would match a DIFFERENT record and answer confidently.
+        if (name.length === 0 || name.length > 120) return undefined;
+        const found = (
+          projection("document.linkCandidates", {
+            spaceId,
+            text: name,
+            limit: 100,
+          })?.items ?? []
+        ).filter((item) => item.label === name);
+        // EXACTLY ONE, OR NOTHING. This query is a ranked SEARCH; names are not
+        // unique and nothing refuses a duplicate, so taking the first result
+        // because something came back is how `[[Budget]]` silently becomes a
+        // reference to a person called "Budget Review".
+        const only = found.length === 1 ? found[0] : undefined;
+        return only === undefined
+          ? undefined
+          : { targetKind: only.targetKind, targetId: only.targetId };
+      },
+    };
+  };
+
+  ipcMain.handle(DESKTOP_CHANNELS.scanObsidianVault, async (event) => {
+    assertTrustedSender(event);
+    const kernel = workspaceRecovery?.kernel;
+    if (kernel === undefined) return { outcome: "failure" } as const;
+    const chosen = await dialog.showOpenDialog({
+      title: "Choose the Obsidian vault folder",
+      properties: ["openDirectory"],
+    });
+    const root = chosen.filePaths[0];
+    if (chosen.canceled || root === undefined)
+      return { outcome: "cancelled" } as const;
+    const resolvedRoot = path.resolve(root);
+    const directoryLabel = path.basename(resolvedRoot);
+    try {
+      const vault = readObsidianVault(resolvedRoot);
+      const refused = vault.refused.map((entry) => ({
+        path: entry.path,
+        reason: entry.reason as string,
+      }));
+      if (vault.files.length === 0)
+        return { outcome: "empty", directoryLabel } as const;
+      const ports = obsidianPorts(kernel);
+      if (ports === undefined) return { outcome: "failure" } as const;
+      const plan = planObsidianImport(vault.files, ports);
+      const scanId = randomUUID();
+      obsidianScan = { id: scanId, root: resolvedRoot };
+      return {
+        outcome: "success",
+        directoryLabel,
+        scanId,
+        counts: plan.counts,
+        constructs: plan.constructs as Readonly<Record<string, number>>,
+        unresolvedTargets: plan.unresolvedTargets,
+        skipped: plan.skipped.map((entry) => ({
+          path: entry.path,
+          reason: entry.reason as string,
+        })),
+        refused,
+      } as const;
+    } catch {
+      return { outcome: "failure" } as const;
+    }
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.importObsidianVault,
+    (event, scanId: unknown) => {
+      assertTrustedSender(event);
+      const kernel = workspaceRecovery?.kernel;
+      const deviceId = installationDeviceId;
+      const scan = obsidianScan;
+      // A run whose scan is gone is REFUSED rather than re-scanned silently:
+      // the person approved counts for one folder, and applying the last plan
+      // to whatever is current would write a vault nobody looked at.
+      if (
+        typeof scanId !== "string" ||
+        scan === undefined ||
+        scan.id !== scanId
+      )
+        return { outcome: "expired" } as const;
+      if (kernel === undefined || deviceId === undefined)
+        return { outcome: "failure" } as const;
+      const ports = obsidianPorts(kernel);
+      if (ports === undefined) return { outcome: "failure" } as const;
+      const documentPort = createAgentDocumentTextPort({
+        workspaceId: kernel.identity.workspaceId,
+        store: kernel.store,
+        connection: () => activeHubConnection,
+      });
+      try {
+        // RE-READ AND RE-PLAN. The disk is the truth at the moment of writing,
+        // not at the moment of scanning, and the result reports what actually
+        // happened rather than what the preview promised.
+        const files: readonly ObsidianVaultFile[] = readObsidianVault(
+          scan.root,
+        ).files;
+        const plan = planObsidianImport(files, ports);
+        const result = applyObsidianImport({
+          service: kernel.service,
+          workspaceId: kernel.identity.workspaceId,
+          spaceId: kernel.identity.rootSpaceId,
+          plan,
+          ports,
+          writeContent: ({ documentId, spaceId, text, content }) => {
+            documentPort.importStructured({
+              documentId: DocumentIdSchema.parse(documentId),
+              spaceId,
+              text,
+              content,
+              // An import is the person's own act, not an agent run.
+              principalId: kernel.context.principalId,
+              deviceId,
+            });
+          },
+        });
+        // One approval, one run: a second press cannot re-apply a plan the
+        // person is no longer looking at.
+        obsidianScan = undefined;
+        if (coordinatedDataHomeProvider !== undefined) scheduleHubSync(0);
+        return {
+          outcome: "success",
+          directoryLabel: path.basename(scan.root),
+          counts: result,
+        } as const;
+      } catch {
+        return { outcome: "failure" } as const;
+      }
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.checkForRelease, (event) => {
     assertTrustedSender(event);
     return releaseService.check();
