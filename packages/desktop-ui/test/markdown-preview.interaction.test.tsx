@@ -119,6 +119,7 @@ const mount = async () => {
         onEntityActivate: () => undefined,
         onReload: async () => undefined,
         onFailure: () => undefined,
+        onRename: async () => false,
       }),
     );
   });
