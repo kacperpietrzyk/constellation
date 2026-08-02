@@ -3960,7 +3960,12 @@ kbd {
   color: var(--text-quaternary);
   font-size: var(--text-sm);
 }
-.meeting-block-unavailable {
+/* Dlaczego kontrolka jest wyłączona — POWIEDZIANE NA EKRANIE, nie w dymku.
+   Dwa miejsca, jedna deklaracja: bloku kalendarza nie da się zapisać (#206)
+   i wrzutki nie da się cofnąć (fala E). Wspólny wygląd stoi w jednym
+   selektorze, bo to jest ta sama rzecz powiedziana o dwóch przyciskach. */
+.meeting-block-unavailable,
+.capture-undo-unavailable {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
