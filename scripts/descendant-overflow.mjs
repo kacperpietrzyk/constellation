@@ -163,46 +163,32 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   // dalej się rysuje i dalej jest mierzona. Sama zieleń bramki tego nie mówi:
   // jest tak samo zgodna z „element zniknął".
 
-  // ── ekran rekordu Zadania: przepełnienie przy DOMYŚLNYM rozmiarze ─────────
-  // Te trzy NIE SĄ artefaktem skalowania i wpisy mówią to wprost, bo inaczej
-  // trafią do wątku skalowania interfejsu i zostaną odłożone drugi raz.
-  // Wychodzą poza swoje pudełka już przy oknie 1440 px (+32, +44, +89) —
-  // czyli przy szerokości, przy której ten ekran jest naprawdę używany —
-  // i nic tego dotąd nie mierzyło. Sufity poniżej są z przelotu 200%, bo tam
-  // są największe; powód istnienia wpisu jest przy pełnym oknie.
-  // Fala D ich NIE NAPRAWIA: to jest ekran zbudowany przez falę B, a lot,
-  // który zacznie go naprawiać, nie skończy przyrządów. Sufit jest po to,
-  // żeby nie urosły po cichu.
-  {
-    surface: "tasks",
-    signature: "span._chipDashed",
-    ceilings: {
-      "text scaled to 200%": 56,
-      "a full-size window": 32,
-    },
-    thread:
-      "fala E — ekran rekordu Zadania, defekt przy DOMYŚLNYM rozmiarze okna",
-  },
-  {
-    surface: "tasks",
-    signature: "p._unavailable",
-    ceilings: {
-      "text scaled to 200%": 78,
-      "a full-size window": 44,
-    },
-    thread:
-      "fala E — ekran rekordu Zadania, defekt przy DOMYŚLNYM rozmiarze okna",
-  },
-  {
-    surface: "tasks",
-    signature: "article._entry",
-    ceilings: {
-      "text scaled to 200%": 162,
-      "a full-size window": 89,
-    },
-    thread:
-      "fala E — komentarze na rekordzie Zadania, defekt przy DOMYŚLNYM rozmiarze okna",
-  },
+  // ── ekran rekordu Zadania: DŁUG SPŁACONY, i dlatego nie ma tu wpisów ──────
+  // Stały tu TRZY wpisy — `span._chipDashed` (56 przy 200%, 32 przy pełnym
+  // oknie), `p._unavailable` (78 / 44) i `article._entry` (162 / 89) — opisane
+  // jako defekt przy DOMYŚLNYM rozmiarze okna, w odróżnieniu od wątku
+  // skalowania interfejsu wyżej. To rozróżnienie było trafne i okazało się
+  // trafne z powodu, którego nikt wtedy nie miał: te trzy przepełnienia nie
+  // były trzema defektami, tylko TRZEMA OBJAWAMI JEDNEGO — potomkami ekranu
+  // rekordu, którego szerokość TREŚCI wynosiła ZERO. Ekran mierzył 48 px, czyli
+  // własny padding wewnętrzny, a tytuł zadania rysował się po jednym znaku
+  // w wierszu. Od #178, przez cztery fale, bramkę CSS, bramkę układu i smoke
+  // paczkowanej apki na trzech systemach.
+  //
+  // Przyczyna spłacona w `styles.css` — `.surface-scroll > *` dostało definitną
+  // `inline-size: 100%`, bez której auto-marginesy w osi poprzecznej wyłączały
+  // `stretch`, a `container-type: inline-size` rozwiązywał fit-content do zera.
+  //
+  // WPISY ZNIKAJĄ, BO ELEMENTY PRZESTAŁY SIĘ PRZEPEŁNIAĆ, a nie dlatego, że
+  // bramka przestała je widzieć — to jest rozróżnienie, które ten rejestr już
+  // raz pomylił i o którym mówi akapit Biblioteki wyżej. DOWÓD, nie założenie:
+  // przelot `LAYOUT_DESCENDANT_REPORT=1` przed poprawką i po niej różni się
+  // DOKŁADNIE o sześć wierszy — te trzy sygnatury przy obu przelotach, które
+  // miały dla nich sufit — i o ANI JEDEN więcej w drugą stronę. Ekran dalej
+  // jest otwierany i mierzony: strażnik `recordKinds` wymaga rekordu `task`
+  // z nazwy, a nowa kontrola geometrii niżej w `verify-renderer-layout.mjs`
+  // mierzy jego szerokość treści i pada, kiedy ta się zapada. Sama zieleń
+  // bramki tego nie mówi: jest tak samo zgodna z „ekran zniknął".
 ];
 
 /** Czy etykieta pomiaru należy do powierzchni z wpisu. */
