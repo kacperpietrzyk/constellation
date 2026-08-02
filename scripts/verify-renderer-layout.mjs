@@ -30,6 +30,7 @@
 // literówkę w CSS.
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -56,7 +57,18 @@ import {
 } from "./surface-height-bound.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = 5178;
+// PORT JEST PARAMETREM, BO INACZEJ PRZYRZĄD NIE UMIE POWIEDZIEĆ, CZYJĄ
+// APLIKACJĘ ZMIERZYŁ. `--strictPort` niżej znaczy, że port ma JEDNEGO
+// właściciela: kto zwiąże go pierwszy, ten go ma. Przy dwóch drzewach roboczych
+// na jednej maszynie drugi serwer dev NIE WSTAJE, a `reachable()` i tak dostaje
+// 200 — od serwera SĄSIADA. Przebieg kończył się wtedy zerem, pięcioma
+// przejściami i ciszą rejestru, mierząc CUDZY PROGRAM. To najgorszy dostępny
+// tryb awarii: bramka całkowicie zielona nad drzewem, którego nie widziała.
+//
+// CI TEGO NIE ZŁAPIE — STRUKTURALNIE, nie przez przeoczenie: na runnerze stoi
+// jedna aplikacja, więc kolizja nie ma jak zajść, a sufit albo próg zmierzony
+// na cudzym drzewie przechodzi tam na zielono NA ZAWSZE.
+const PORT = Number(process.env.LAYOUT_PORT ?? 5178);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 // Powłoka NIE WSTAJE pod gołym adresem — renderer wymaga mostka preload, więc
 // w przeglądarce montuje ją harness deweloperski ze zaślepionym klientem.
@@ -102,6 +114,37 @@ const openBrowser = async () => {
   );
 };
 
+// ── CZY TEN PORT JEST WOLNY, ZANIM O COKOLWIEK ZAPYTAM ───────────────────────
+// To jest kontrola, która NAPRAWDĘ zamyka dziurę „czyją aplikację zmierzyłem",
+// i stoi PRZED uruchomieniem serwera, bo po nim jest już za późno. Zmierzone:
+// przy zajętym porcie własne `npm run dev` kończy się kodem 1 po 225 ms, a cudzy
+// serwer, KTÓRY JUŻ STOI, odpowiada w pojedynczych milisekundach. Pytanie „czy
+// moje dziecko żyje" zadane po pierwszym udanym `fetch` przegrywa więc ten wyścig
+// ZAWSZE — sprawdzone, bramka przeszła na zielono nad podstawionym serwerem.
+//
+// Kolejność odwrócona rozstrzyga: port dowiedziony jako wolny → `--strictPort`
+// wiąże go MOJEMU dziecku → cokolwiek odpowiada pod `ORIGIN`, jest moje. Dowód
+// przez wykluczenie, nie przez tożsamość, i ta różnica jest nazwana niżej.
+//
+// Wiązane jest jawnie `127.0.0.1`, nie wildcard, bo pod tym adresem stawia się
+// vite — próba na `0.0.0.0` odpowiadałaby na inne pytanie niż zadane.
+await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.once("error", (error) =>
+    reject(
+      new Error(
+        `LAYOUT_CHECK_PORT_TAKEN: port ${PORT} is already listening (${error.code}), so this ` +
+          `check cannot know whose application it would be measuring. With --strictPort this ` +
+          `tree's dev server would fail to bind and the pass would silently drive SOMEBODY ` +
+          `ELSE'S program — a second worktree, or a server leaked by an earlier run.\n` +
+          `Re-run on a port nothing else holds:  LAYOUT_PORT=<free port> ...\n` +
+          `Find the current owner with:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`,
+      ),
+    ),
+  );
+  probe.listen(PORT, "127.0.0.1", () => probe.close(resolve));
+});
+
 const server = spawn(
   "npm",
   [
@@ -114,17 +157,112 @@ const server = spawn(
     String(PORT),
     "--strictPort",
   ],
-  { cwd: root, stdio: "ignore" },
+  // WŁASNA GRUPA PROCESÓW, żeby dało się ubić CAŁE drzewo, a nie samą owijkę.
+  // `npm` jest tu pośrednikiem: sygnał wysłany JEMU musi jeszcze zostać
+  // przekazany do vite, a na ścieżce błędu nie zdąża.
+  { cwd: root, stdio: "ignore", detached: true },
 );
 
-const stop = () => {
-  server.kill("SIGTERM");
-};
-process.once("SIGINT", stop);
-process.once("SIGTERM", stop);
+// WYJŚCIE Z TEJ BRAMKI MA ZOSTAWIAĆ PORT WOLNY, i to jest asercja o przyrządzie,
+// nie sprzątanie dla porządku. Następny przebieg zaczyna od próby wiązania tego
+// samego portu, więc serwer, który przeżył poprzedni, ZATRZYMUJE kolejny —
+// a break-test odpala tę bramkę trzy razy na każde złamanie, jedno po drugim.
+//
+// Dokładnie to zaszło przy pierwszym przebiegu break-testów tego lotu: trzecie
+// złamanie zaraportowało „czerwone PO PRZYWRÓCENIU", co czyta się jak niedoszłe
+// przywrócenie kodu, a było zajętym portem po serwerze z poprzedniego złamania.
+// Źródło było przywrócone poprawnie — sprawdzone `git status`.
+//
+// Mechanizm NIE JEST tym, który zgadłem dwa razy. Nie cieknie ani ścieżka
+// czerwona sama z siebie (sprawdzone osobnym harnessem: symulowany rzut po
+// `stop()` zwalnia port), ani przebieg zielony (sprawdzone: port wolny po
+// czystym przejściu). Cieknie przebieg Z PODŁĄCZONĄ PRZEGLĄDARKĄ: vite zamyka
+// się łagodnie i czeka na zamknięcie połączeń, a Playwright trzyma gniazda HMR.
+// SIGTERM zostaje przyjęty i NIC SIĘ NIE DZIEJE.
+//
+// Dlatego zatrzymanie jest CZEKAJĄCE i eskalujące, a nie „wyślij i wyjdź":
+// sygnał idzie do CAŁEJ GRUPY (żeby dosięgnąć vite bez pośrednictwa `npm`,
+// które przy osieroceniu niczego nie przekazuje), a potem pytamy PORTU, czy
+// naprawdę jest wolny — bo tylko to jest warunkiem, na którym zależy następnemu
+// przebiegowi. Po czasie łaski przychodzi SIGKILL, którego łagodne zamykanie
+// zignorować nie może.
+const portFree = async () =>
+  new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once("error", () => resolve(false));
+    probe.listen(PORT, "127.0.0.1", () => probe.close(() => resolve(true)));
+  });
 
+const signalGroup = (signal) => {
+  try {
+    process.kill(-server.pid, signal);
+  } catch {
+    // Grupy już nie ma — czyli dokładnie to, o co chodziło.
+  }
+};
+
+const stop = async () => {
+  signalGroup("SIGTERM");
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (server.exitCode !== null && (await portFree())) return;
+    // Łagodne zamknięcie dostaje sekundę; potem przestajemy prosić.
+    if (attempt === 4) signalGroup("SIGKILL");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `LAYOUT_CHECK_PORT_NOT_RELEASED: port ${PORT} is still held after this run was ` +
+      "told to stop, so the NEXT run would refuse to start or, without the pre-flight " +
+      "probe, would measure this leftover server instead of its own.",
+  );
+};
+const stopQuietly = () => {
+  void stop().catch(() => {});
+};
+process.once("SIGINT", stopQuietly);
+process.once("SIGTERM", stopQuietly);
+
+// SIATKA BEZPIECZEŃSTWA NA KAŻDE WYJŚCIE, i jest tu z powodu ZMIERZONEJ awarii,
+// nie z ostrożności. Serwer wstaje w tym pliku ponad tysiąc linii przed `try`,
+// które go zatrzymuje, a w tym oknie stoją instrukcje, które RZUCAJĄ — przede
+// wszystkim wyprowadzenie podmiotów z deklaracji w źródłach (`derive`) i
+// uruchomienie przeglądarki. Rzut stamtąd omijał zatrzymanie w całości.
+//
+// Tak wyglądała ta awaria z zewnątrz: break-test kasujący deklarację
+// `data-height-bound` szedł na czerwono POPRAWNIE, ale zostawiał serwer, więc
+// przebieg PO PRZYWRÓCENIU dostawał zajęty port i meldował „czerwone po
+// przywróceniu". Czyta się to jak niedoszłe przywrócenie kodu albo zatrute
+// `dist` — czyli jak defekt w drzewie — a było wyłącznie wyciekiem przyrządu.
+// Dwa kolejne przebiegi całej serii utknęły na tym samym trzecim złamaniu.
+//
+// `exit` nie przyjmuje pracy asynchronicznej, więc idzie tu SIGKILL na grupę:
+// to pojedyncze wywołanie systemowe, a na tej ścieżce nie ma już czego zamykać
+// łagodnie. Przy zwykłym wyjściu grupa jest martwa od `stop()` i ESRCH jest
+// wyciszony.
+process.once("exit", () => signalGroup("SIGKILL"));
+
+// „Coś odpowiada pod tym adresem" NIE ZNACZY „mój serwer odpowiada pod tym
+// adresem", a różnicy między tymi zdaniami ten przyrząd nie umiał wypowiedzieć.
+//
+// TA KONTROLA JEST ZABEZPIECZENIEM, NIE MECHANIZMEM — i jest tak nazwana, bo
+// napisana najpierw JAKO mechanizm okazała się nie do wywołania. Sama nie łapie
+// niczego: kiedy cudzy serwer już stoi, pierwszy `fetch` wraca wcześniej, niż
+// własne dziecko zdąży paść (zmierzone: 225 ms do wyjścia, milisekundy do
+// odpowiedzi), więc pętla kończy się sukcesem na pierwszym obiegu i o śmierci
+// dziecka nikt już nie pyta. Dziurę zamyka próba wiązania PRZED uruchomieniem;
+// to zostaje na okno między jej zamknięciem a wiązaniem vite — jedyny przypadek,
+// w którym port był wolny, a mimo to przegraliśmy go komuś innemu.
 const reachable = async () => {
   for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (server.exitCode !== null)
+      throw new Error(
+        `LAYOUT_CHECK_SERVER_DIED: the dev server for this worktree exited with ` +
+          `${server.exitCode} instead of binding ${ORIGIN}. With --strictPort that means ` +
+          `SOMEBODY ELSE HOLDS PORT ${PORT} — most likely a second worktree, or a leaked ` +
+          `server from an earlier run. Whatever answers on that port is NOT this tree, and ` +
+          `measuring it would report somebody else's application as this one's.\n` +
+          `Run this check on a port nothing else holds:  LAYOUT_PORT=<free port> ...\n` +
+          `Find the current owner with:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`,
+      );
     try {
       const response = await fetch(ORIGIN);
       if (response.ok) return true;
@@ -137,7 +275,7 @@ const reachable = async () => {
 };
 
 if (!(await reachable())) {
-  stop();
+  await stop();
   throw new Error(`LAYOUT_CHECK_SERVER_NOT_REACHABLE: ${ORIGIN}`);
 }
 
@@ -887,6 +1025,17 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // Strażnik chodzi RÓWNIEŻ w trybie raportu. Raport jest przyrządem pomiarowym
   // — z niego przepisuje się sufity do rejestru — więc raport zrobiony nad pustą
   // Biblioteką dałby sufity zmierzone na niczym.
+  // A W TRYBIE RAPORTU STRAŻNIK MÓWI TEŻ, ILE NAPRAWDĘ NALICZYŁ. Progi niżej
+  // wyprowadzono z liczb zmierzonych na fikstrze, ale sam przyrząd tych liczb
+  // NIE POKAZYWAŁ — dało się przeczytać wyłącznie „przeszło" albo „za mało".
+  // Próg uzasadniony pomiarem, którego nie da się powtórzyć, jest progiem
+  // wpisanym z ręki jedno odświeżenie fikstury później.
+  if (REPORT_ONLY)
+    console.log(
+      `report: fixture counts — ${Object.entries(measured.rowCounts)
+        .map(([what, drew]) => `${what} ${drew} (floor ${MINIMUM_ROWS[what]})`)
+        .join(", ")}`,
+    );
   for (const [what, minimum] of Object.entries(MINIMUM_ROWS)) {
     const drew = measured.rowCounts[what];
     if (drew < minimum) {
@@ -1079,7 +1228,11 @@ try {
   }
 } finally {
   await browser.close();
-  stop();
+  // Nieudane zatrzymanie jest RAPORTOWANE, nie RZUCANE: `finally`, które rzuca,
+  // podmienia prawdziwy werdykt bramki na własną awarię — a to jest dokładnie ta
+  // klasa kłamstwa, przed którą stoi ten plik. Zablokowany port i tak zatrzyma
+  // NASTĘPNY przebieg, na próbie wiązania, z nazwanym powodem.
+  await stop().catch((error) => console.error(error.message));
 }
 
 if (REPORT_ONLY) {
