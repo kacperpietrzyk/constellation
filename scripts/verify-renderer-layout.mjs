@@ -1030,10 +1030,20 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // NIE POKAZYWAŁ — dało się przeczytać wyłącznie „przeszło" albo „za mało".
   // Próg uzasadniony pomiarem, którego nie da się powtórzyć, jest progiem
   // wpisanym z ręki jedno odświeżenie fikstury później.
+  //
+  // ITERUJEMY PO `MINIMUM_ROWS`, czyli po tym samym źródle, po którym idzie
+  // asercja niżej — NIE po `rowCounts`. Te dwa kształty są deklarowane osobno
+  // i to jest ta sama klasa driftu, co przepisany kształt w dwóch schematach:
+  // licznik dodany bez progu wypisałby tu `floor undefined`, a pętla asercji,
+  // idąca w drugą stronę, milczałaby o tym samym rozjeździe. W trybie raportu
+  // nikt by tego nie zauważył, bo raport niczego nie czerwieni.
   if (REPORT_ONLY)
     console.log(
-      `report: fixture counts — ${Object.entries(measured.rowCounts)
-        .map(([what, drew]) => `${what} ${drew} (floor ${MINIMUM_ROWS[what]})`)
+      `report: fixture counts — ${Object.entries(MINIMUM_ROWS)
+        .map(
+          ([what, floor]) =>
+            `${what} ${measured.rowCounts[what]} (floor ${floor})`,
+        )
         .join(", ")}`,
     );
   for (const [what, minimum] of Object.entries(MINIMUM_ROWS)) {
