@@ -360,6 +360,21 @@ export const libraryFolders = () => {
  * plus jeden tytuł na zmierzonym maksimum (199 znaków) i jedno `unavailable`,
  * którego prawdziwy zbiór nie ma ani jednego, a odczyt ma dla niego osobny
  * stan.
+ *
+ * DWIE POPRAWKI DOPISANE W LOCIE ŹRÓDEŁ, obie o kształt, nie o wygląd:
+ *
+ *   • `createdAt` — data DODANIA rekordu, osobna od `observedAt`, czyli daty
+ *     ZAOBSERWOWANIA treści. Do tej fali projekcja niosła tylko drugą z nich,
+ *     a ekran ma pokazać obie. Tutaj rozjeżdżają się celowo (fragment umowy
+ *     zaobserwowany w 2019, dodany w 2026), bo fikstura, w której obie daty są
+ *     równe, przepuściłaby jedną funkcję formatującą wołaną dwa razy.
+ *   • `referencedBy` niepuste tam, gdzie `referencedByCount` jest niezerowe.
+ *     Poprzedni kształt — pusta próbka przy liczniku 2 — jest NIEOSIĄGALNY
+ *     z kernela: `referencedByCount` to `held.length`, a `referencedBy` to
+ *     `held.slice(0, 20)` (`wave2.ts`), więc niezerowy licznik zawsze ma
+ *     próbkę. Sekcja „What rests on this" rysowała się na harnessie pusta przy
+ *     liczniku mówiącym co innego, i bramka układu nigdy nie mierzyła jej
+ *     wierszy.
  */
 export const librarySources = () => [
   {
@@ -370,6 +385,7 @@ export const librarySources = () => [
       "https://developer.example.com/reference/rate-limits-and-maintenance-windows?section=quotas&revision=2026-07",
     availability: "available" as const,
     observedAt: "2026-07-30T09:00:00.000Z",
+    createdAt: "2026-07-30T09:04:00.000Z",
     version: 2,
     updatedAt: "2026-07-30T09:00:00.000Z",
     referencedBy: [],
@@ -383,9 +399,21 @@ export const librarySources = () => [
       "Protokół z warsztatu przedwdrożeniowego z zespołem klienta, wersja po korekcie uwag zgłoszonych na spotkaniu domykającym, zawierająca uzgodnioną listę wyłączeń zakresu i sposób ich potwierdzenia",
     availability: "available" as const,
     observedAt: "2026-07-24T11:30:00.000Z",
+    createdAt: "2026-07-26T08:20:00.000Z",
     version: 3,
     updatedAt: "2026-07-29T10:14:00.000Z",
-    referencedBy: [],
+    referencedBy: [
+      {
+        recordId: libraryDocumentIds.handover,
+        recordKind: "document" as const,
+        title: "Orbit — dokumentacja powdrożeniowa dla zespołu utrzymania",
+      },
+      {
+        recordId: libraryDocumentIds.acceptance,
+        recordKind: "document" as const,
+        title: "Orbit — kryteria odbioru i protokół testów akceptacyjnych",
+      },
+    ],
     referencedByCount: 2,
   },
   {
@@ -394,6 +422,7 @@ export const librarySources = () => [
     title: "Zrzut konsoli dostawcy z komunikatem o odrzuceniu tokenu",
     availability: "unavailable" as const,
     observedAt: "2026-07-22T18:05:00.000Z",
+    createdAt: "2026-07-22T18:06:00.000Z",
     version: 1,
     updatedAt: "2026-07-22T18:05:00.000Z",
     referencedBy: [],
@@ -404,10 +433,19 @@ export const librarySources = () => [
     sourceKind: "excerpt" as const,
     title: "Fragment umowy: okno serwisowe i kary za przekroczenie",
     availability: "reference_only" as const,
-    observedAt: "2026-07-20T14:00:00.000Z",
+    // Treść zaobserwowana lata przed założeniem rekordu — to jest ten
+    // przypadek, dla którego obie daty istnieją osobno.
+    observedAt: "2019-11-04T14:00:00.000Z",
+    createdAt: "2026-07-20T14:00:00.000Z",
     version: 1,
     updatedAt: "2026-07-20T14:00:00.000Z",
-    referencedBy: [],
+    referencedBy: [
+      {
+        recordId: libraryDocumentIds.retention,
+        recordKind: "document" as const,
+        title: "Orbit — polityka retencji nagrań i dowodów",
+      },
+    ],
     referencedByCount: 1,
   },
   {
@@ -416,6 +454,7 @@ export const librarySources = () => [
     title: "Eksport konfiguracji sieciowej z urządzenia brzegowego",
     availability: "reference_only" as const,
     observedAt: "2026-07-19T09:45:00.000Z",
+    createdAt: "2026-07-19T09:47:00.000Z",
     version: 1,
     updatedAt: "2026-07-19T09:45:00.000Z",
     referencedBy: [],
@@ -429,6 +468,7 @@ export const librarySources = () => [
       "https://support.example.com/hc/pl/articles/4098123456789-zmiana-domyslnego-szyfrowania-woluminow",
     availability: "reference_only" as const,
     observedAt: "2026-07-18T07:10:00.000Z",
+    createdAt: "2026-07-18T07:12:00.000Z",
     version: 1,
     updatedAt: "2026-07-18T07:10:00.000Z",
     referencedBy: [],

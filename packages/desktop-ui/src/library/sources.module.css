@@ -1,0 +1,415 @@
+/* ŹRÓDŁA — arkusz odczytu, CSS Modułem, czyli na leniwym chunku Biblioteki.
+   Reguły globalne `.source-*` w `styles.css` jechały arkuszem ŚCIEŻKI GORĄCEJ:
+   pierwsze wyświetlenie okna płaciło za ekran, którego nikt jeszcze nie
+   otworzył. To jest ta sama konwencja, co `library.module.css`.
+
+   ZAŁOŻENIE O ROZMIARZE TEKSTU, i ono rządzi tu wszystkim. Bramka układu mierzy
+   200% rozmiaru czcionki i potomków, nie tylko pierwsze dziecko. Żadna kolumna
+   nie jest `nowrap` z wielokropkiem: prawdziwe tytuły źródeł mają 36-199 znaków
+   (spis 01.08.2026), a kolumna URL-i ucięta na tym samym przedrostku to kolumna
+   identycznych wierszy. Wszystko się zawija, a wiersz ma wysokość taką, jakiej
+   potrzebuje jego tytuł.
+
+   `overflow-y: auto` zamiast skrótu `overflow: auto` w obu panelach, i to jest
+   celowe: skrót ustawia RÓWNIEŻ `overflow-x`, przez co bramka widzi panel jako
+   „chce się przewijać w bok" i namawia do deklaracji, która byłaby nieprawdą.
+   Te panele przewijają się WYŁĄCZNIE w pionie. */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
+  min-height: 100%;
+  background: var(--surface-window);
+}
+
+.listPanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.listHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--panel-reading-bg);
+}
+
+/* Nagłówek i `?` stoją w jednej linii, ale wolno im się złamać: przy 200%
+   „Everything you collected" nie mieści się obok znaku zapytania w 17rem. */
+.listTitle {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.listTitle h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  letter-spacing: -0.015em;
+}
+
+.count {
+  flex: none;
+}
+
+.groups {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2) var(--space-5);
+}
+
+.group {
+  min-width: 0;
+}
+
+/* GŁOWA GRUPY ZOSTAJE, KIEDY GRUPA JEST PUSTA. Rodzaj należy do słownika, a nie
+   do listy — to, że nic jeszcze nie zostało zrzutem ekranu, mówi coś o twoim
+   tygodniu, a nie o modelu. Dlatego to nie jest `:empty`-warunkowa dekoracja,
+   tylko element rysowany zawsze, dla każdego rodzaju. */
+.groupHead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-raised);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.groupCount {
+  flex: none;
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+.groupEmpty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.rowItem {
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+/* Wybrany wiersz niesie WYPEŁNIENIE i pasek, nie sam cieplejszy kolor. */
+.rowSelected {
+  background: var(--surface-selected);
+  box-shadow: inset 2px 0 var(--text-primary);
+}
+
+.rowTop {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* DWIE LINIE, nie jedna z wielokropkiem: zmierzone tytuły dochodzą do 199
+   znaków, a URL-e różnią się na końcu, nie na początku. */
+.rowTitle {
+  min-width: 0;
+  flex: 1 1 12rem;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.rowMeta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+.kindChip {
+  padding: 0 var(--space-2);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* DOSTĘPNOŚĆ JEST SŁOWEM, ZANIM JEST KOLOREM. Trzy stany różnią się tłem i
+   ramką, ale każdy z nich niesie swoją etykietę tekstem — ekran bez koloru,
+   zrzut w skali szarości i czytnik ekranu dostają cały fakt. */
+.badge {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+/* Tło i ramka niosą TON, tekst zostaje na kolorze o pełnym kontraście. Odwrotna
+   kolejność — kolorowy tekst na tle okna — jest tym, na czym APCA pada przy
+   zielonym i czerwonym w trybie jasnym. */
+.badge_available {
+  border-color: var(--status-success);
+  background: var(--status-success-bg);
+}
+
+.badge_reference_only {
+  color: var(--text-tertiary);
+}
+
+.badge_unavailable {
+  color: var(--text-primary);
+  border-color: var(--status-error);
+  background: var(--status-error-bg);
+}
+
+/* ── Panel czytania ──────────────────────────────────────────────────── */
+
+.reader {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-5);
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+.readerHead h3 {
+  margin: var(--space-1) 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.readerAvailability {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+/* Zdanie, które dostaje WYŁĄCZNIE źródło nieosiągalne. Powód istnienia trzech
+   stanów: adres, który przestał odpowiadać, musi to powiedzieć ZANIM ktoś oprze
+   na nim decyzję, a nie po. */
+.consequence {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  border-left: 2px solid var(--status-error);
+  background: var(--surface-hover);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}
+
+/* DWIE DATY, DWIE ETYKIETY, obok siebie. To jedyne miejsce, gdzie widać je
+   razem, więc jedyne, w którym ich sklejenie byłoby widoczne. */
+.dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+
+.dates dt {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dates dd {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.section {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sectionCount {
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Adres łamie się w dowolnym miejscu. Bez tego jeden długi URL rozpycha panel
+   czytania i przewija cały ekran w bok — dokładnie ten defekt, którego bramka
+   układu nie widziała, dopóki mierzyła pierwsze dziecko. */
+.link {
+  max-width: 100%;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.restsList {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+.restsList li {
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.restsMore {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}
+
+.availabilityChoice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+}
+
+.choice:has(input:checked) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-selected);
+}
+
+.welcome {
+  align-self: center;
+  justify-self: center;
+  max-width: 34rem;
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-xl);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-rest);
+  text-align: center;
+}
+
+.welcome h3 {
+  margin: var(--space-5) 0 var(--space-2);
+  color: var(--text-primary);
+}
+
+/* Te same progi, co `.knowledge-layout`, bo to ta sama szczelina powłoki i dwa
+   różne progi na jednym celu nawigacji czytałyby się jako usterka. */
+@container (max-width: 54rem) {
+  .layout {
+    grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 40rem) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .listPanel {
+    width: 100%;
+    min-width: 0;
+    max-height: 45vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .listHead {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .reader {
+    padding: var(--space-4);
+  }
+}
+
+@media (forced-colors: active) {
+  .rowSelected {
+    outline: 2px solid Highlight;
+  }
+
+  .choice:has(input:checked) {
+    outline: 2px solid Highlight;
+  }
+}

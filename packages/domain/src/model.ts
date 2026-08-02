@@ -34,7 +34,9 @@ import type {
   AgentRunId,
   AgentHandoffId,
   DocumentEntityTargetKind,
+  KnowledgeSourceAvailability,
   KnowledgeSourceId,
+  KnowledgeSourceKind,
   NamedDocumentVersionId,
   StrategicRecordId,
   Currency,
@@ -674,11 +676,11 @@ export interface KnowledgeSource {
    * its audit trail stay, and it leaves every list at once.
    */
   readonly recordState?: "active" | "removed";
-  readonly sourceKind: "url" | "file" | "screenshot" | "excerpt";
+  readonly sourceKind: KnowledgeSourceKind;
   readonly title: string;
   readonly canonicalUrl?: string;
   readonly excerpt?: string;
-  readonly availability: "reference_only" | "available" | "unavailable";
+  readonly availability: KnowledgeSourceAvailability;
   readonly sourceCaptureId?: CaptureId;
   readonly observedAt: string;
   readonly createdBy: PrincipalId;
@@ -1770,8 +1772,7 @@ export type UndoDescriptor =
       readonly priorTitle: string;
       readonly priorCanonicalUrl?: string;
       readonly priorExcerpt?: string;
-      readonly priorAvailability:
-        "reference_only" | "available" | "unavailable";
+      readonly priorAvailability: KnowledgeSourceAvailability;
       readonly priorObservedAt: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
