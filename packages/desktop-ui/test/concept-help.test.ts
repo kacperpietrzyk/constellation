@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { conceptHelpTopics } from "../src/components/ConceptHelpDialog.js";
-import { helpTopics } from "../src/help/help-topics.js";
+import {
+  helpTopic,
+  helpTopics,
+  type HelpTopicId,
+} from "../src/help/help-topics.js";
 
 const trimmed = (value: string): string => value.trim();
 
@@ -133,6 +137,44 @@ describe("the #35 help topics — the six shipped concept topics are out of scop
       assert.ok(
         !/\n/u.test(topic.answer),
         `Topic ${topic.id} answers in more than one paragraph — the cap is 180 characters in ONE.`,
+      );
+    }
+  });
+
+  /* THE VOCABULARY OF TOPIC IDS IS THE ARRAY ITSELF — asserted BOTH WAYS, and
+   * asserted by the COMPILER, because that is where this defect lives.
+   *
+   * `HelpTopicId` used to be a hand-written union standing beside `helpTopics`.
+   * An id added to the union alone compiled, `TopicHelp.tsx` returned `null`
+   * for it — no `?` drew at all — and this very file stayed green, because it
+   * iterates the array and the array had no such entry. So no runtime check
+   * placed here could have caught it: the missing thing is missing from the
+   * only list a runtime check can read.
+   *
+   * Both directions matter and each fails a different way. Widening
+   * `HelpTopicId` past the array reproduces the original defect. Narrowing it
+   * below the array makes an entry that exists unreferenceable. Under a derived
+   * union neither is expressible, and BREAKING THE DERIVATION STOPS THE BUILD
+   * rather than reddening a test — which is the stronger result of the two.
+   */
+  it("keeps the topic-id vocabulary derived from the topics themselves", () => {
+    type ArrayIds = (typeof helpTopics)[number]["id"];
+    const derivedBothWays: [
+      HelpTopicId extends ArrayIds
+        ? true
+        : "HelpTopicId admits an id no topic in the array has",
+      ArrayIds extends HelpTopicId
+        ? true
+        : "a topic in the array has an id HelpTopicId does not admit",
+    ] = [true, true];
+    assert.deepEqual(derivedBothWays, [true, true]);
+
+    // And the runtime half the type cannot state: every id the union admits
+    // resolves to a topic, so `TopicHelp` never takes its silent `null` path.
+    for (const id of helpTopics.map((topic) => topic.id)) {
+      assert.ok(
+        helpTopic(id) !== undefined,
+        `the ? for ${id} would render nothing at all`,
       );
     }
   });
