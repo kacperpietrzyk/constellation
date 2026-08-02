@@ -69,6 +69,16 @@ interface MarkdownContext {
   readonly gaps: string[];
   /** Whether we are already inside a block container (quote, list, cell). */
   readonly nested: boolean;
+  /**
+   * Whether the inline run being rendered is INSIDE a table cell.
+   *
+   * A cell is the one place where markdown's own line break does not exist:
+   * a newline ends the row. `<br>` is what GFM leaves, and the hard break has
+   * to know that at the point it renders — a string replacement afterwards
+   * cannot, because `\` + newline is also what an escaped backslash followed
+   * by a newline looks like once it has been through `escapeInline`.
+   */
+  readonly inTableCell: boolean;
 }
 
 const attribute = (
@@ -228,9 +238,15 @@ const cellMarkdown = (
   const text =
     first === undefined
       ? ""
-      : inlineNodes(first.content, { ...context, nested: true });
+      : inlineNodes(first.content, {
+          ...context,
+          nested: true,
+          inTableCell: true,
+        });
   // A pipe would end the cell and a newline would end the row. `<br>` is the
-  // only line break a GFM cell has.
+  // only line break a GFM cell has; a HARD break already rendered as one
+  // through `inTableCell`, and this catches a newline that arrived inside a
+  // text node.
   return text.replaceAll("|", "\\|").replaceAll("\n", "<br>").trim();
 };
 
@@ -318,7 +334,13 @@ const nodeMarkdown: Record<
   horizontalRule: () => "***",
   // `***`, not `---`: three dashes directly under a paragraph is a setext
   // heading, so the rule would silently retitle the line above it.
-  hardBreak: () => "\\\n",
+  // Backslash + newline everywhere a newline is legal, `<br>` in the one place
+  // it is not. WRITING `\` + newline AND THEN REPLACING THE NEWLINE produced
+  // `\<br>`, in which `\<` is a CommonMark escape — so the tag rendered as the
+  // four literal characters `<br>` and the line break was gone from every
+  // exported table. Found by the import lot's round trip (PR #210); the cell
+  // is the only caller that sets `inTableCell`.
+  hardBreak: (_node, context) => (context.inTableCell ? "<br>" : "\\\n"),
   text: (node) => {
     const text = node.text ?? "";
     return node.marks === undefined || node.marks.length === 0
@@ -374,7 +396,12 @@ export const structuredDocumentToMarkdown = (
   document: StructuredDocument,
   ports: StructuredDocumentMarkdownPorts,
 ): string => {
-  const context: MarkdownContext = { ports, gaps: [], nested: false };
+  const context: MarkdownContext = {
+    ports,
+    gaps: [],
+    nested: false,
+    inTableCell: false,
+  };
   return blockNodes(document.content, context).join("\n\n");
 };
 
