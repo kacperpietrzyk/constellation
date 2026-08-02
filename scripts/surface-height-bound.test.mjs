@@ -25,7 +25,8 @@ const healthy = (overrides) => ({
   rootClientPx: 735,
   rootScrollPx: 735,
   readingClientPx: 577,
-  panelsTallerThanReading: 0,
+  readingScrollPx: 577,
+  panelsSideBySide: true,
   ...overrides,
 });
 
@@ -100,15 +101,30 @@ test("A SCREEN WHOSE OWN CHROME DOES NOT FIT YIELDS THE BOUND, and that is decla
   assert.equal(decision.verdict, "yields");
 });
 
-test("THE SECOND DEFECT: panels taller than the box holding them scroll together", () => {
+test("THE SECOND DEFECT: the box holding side-by-side panels scrolls them together", () => {
   // Rekonesans nazwał to osobno i miał rację: przy związanej powłoce, ale bez
   // własnego przewijania panelu czytania, pudełko czytelni przewijało wszystkie
-  // trzy panele naraz. Sufit i podłoga są wtedy spełnione.
+  // trzy panele naraz. Sufit i podłoga są wtedy spełnione. Zmierzone: 4140 px
+  // treści w 577-pikselowym pudełku.
   const decision = classifyHeightBoundScreen(
-    healthy({ panelsTallerThanReading: 3 }),
+    healthy({ readingScrollPx: 4140 }),
   );
   assert.equal(decision.verdict, "panels-scroll-together");
   assert.match(decision.reason, /loses the file tree/u);
+});
+
+test("AND A ONE-COLUMN READING SCROLLING IN ITS BOX IS CORRECT, not the same defect", () => {
+  // Historia wrzutek jest jedną kolumną i zawsze przewija się w pudełku
+  // czytelni — zmierzone 766 px w 577 px. Reguła nad KSZTAŁTEM, nie nad listą
+  // odczytów: jedna ścieżka w gridzie znaczy, że nie ma czego rozdzielać.
+  const decision = classifyHeightBoundScreen(
+    healthy({
+      surface: "library:captures",
+      panelsSideBySide: false,
+      readingScrollPx: 766,
+    }),
+  );
+  assert.equal(decision.verdict, "bounded");
 });
 
 test("a pane or a screen with no height is an instrument failure, not a layout verdict", () => {

@@ -174,6 +174,23 @@ loops.push({
             ),
         },
         {
+          // Ramię „panele przewijają się razem" i jego BRAMKA KSZTAŁTU. Nie da
+          // się tego pokazać w pętli powolnej inaczej niż przez sam defekt CSS
+          // wyżej: na zdrowym drzewie wyłączenie ramienia niczego nie zmienia,
+          // bo ramię i tak nie miałoby powodu paść. Tutaj widać, że ramię
+          // NIEŚĆ COŚ MUSI — bez niego pudełko czytelni przewijające 4140 px
+          // w 577 px przechodzi jako ekran w porządku.
+          name: "take away the side-by-side arm: a box scrolling three panels at once would pass",
+          file: "scripts/surface-height-bound.mjs",
+          edit: (text) =>
+            replaceOnce(
+              text,
+              "  if (panelsSideBySide && readingScrollPx > readingClientPx + tolerancePx)",
+              "  if (false && readingScrollPx > readingClientPx + tolerancePx)",
+              "the side-by-side arm",
+            ),
+        },
+        {
           // Tolerancja, która jest zapasem zamiast zaokrąglenia, przepuszcza
           // ekran naprawdę wystający.
           name: "turn the rounding tolerance into slack: a screen that really overflows would pass",

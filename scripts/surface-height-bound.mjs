@@ -69,12 +69,20 @@ export const HEIGHT_BOUND_TOLERANCE_PX = 1;
  * Jeden werdykt o jednej czytelni. Świadomie NIE przyjmuje elementu DOM —
  * bierze to, co z niego odczytano, żeby dała się przetestować bez przeglądarki.
  *
- * `panelsTallerThanReading` to liczba paneli czytania WYŻSZYCH od pudełka,
- * które je trzyma. Ta liczba jest tu z powodu nazwanego przez rekonesans jako
- * DRUGI, ODDZIELNY defekt: kiedy panel czytania nie ma własnego przewijania,
- * to pudełko czytelni przewija wszystkie trzy panele naraz — więc czytający
- * długą notatkę traci drzewo plików. Ekran przechodzi wtedy sufit (strona się
- * nie przewija) i podłogę (czytelnia ma swoją wysokość), a defekt zostaje.
+ * `panelsSideBySide` i `readingScrollPx` niosą DRUGI, ODDZIELNY defekt, ten,
+ * który rekonesans nazwał osobno: kiedy panel czytania nie ma własnego
+ * przewijania, to PUDEŁKO CZYTELNI przewija wszystkie trzy panele naraz, więc
+ * czytający długą notatkę traci drzewo plików. Ekran przechodzi wtedy sufit
+ * (strona się nie przewija) i podłogę (czytelnia ma swoją wysokość).
+ *
+ * MIERZONE JEST PRZEWIJANIE PUDEŁKA, NIE WYSOKOŚĆ PANELU, i to jest poprawka
+ * zrobiona po tym, jak pierwsza wersja tej kontroli okazała się PUSTA. Panel bez
+ * `overflow-y` nie robi się wyższy — jego `clientHeight` zostaje równy wierszowi
+ * gridu (zmierzone: 577 px), a treść WYLEWA SIĘ z niego widocznie. Kontrola nad
+ * `clientHeight` panelu liczyła więc zawsze zero, świeciła na zielono i była
+ * dokładnie tym, przed czym ten lot ma bronić: asercją, która przechodzi, nie
+ * mierząc niczego. Złamanie, które ją „potwierdzało", było czerwone z innego
+ * powodu. Pudełko czytelni przewijające 4140 px w 577 px NIE DA SIĘ podrobić.
  */
 export const classifyHeightBoundScreen = ({
   name,
@@ -84,7 +92,8 @@ export const classifyHeightBoundScreen = ({
   rootClientPx,
   rootScrollPx,
   readingClientPx,
-  panelsTallerThanReading,
+  readingScrollPx,
+  panelsSideBySide,
   minimumFraction = MINIMUM_READING_HEIGHT_FRACTION,
   tolerancePx = HEIGHT_BOUND_TOLERANCE_PX,
 }) => {
@@ -153,15 +162,16 @@ export const classifyHeightBoundScreen = ({
         "`overflow: auto` never engages, and the whole screen scrolls as one page",
     };
 
-  if (panelsTallerThanReading > 0)
+  if (panelsSideBySide && readingScrollPx > readingClientPx + tolerancePx)
     return {
       verdict: "panels-scroll-together",
       fraction,
       reason:
-        `${panelsTallerThanReading} panel(s) of ${name} on ${surface} are taller than the ` +
-        "reading box holding them, so that box scrolls all of them at once instead of each " +
-        "scrolling in its own. A reader who scrolls a long note loses the file tree beside " +
-        "it — a separate defect from the page scroll above, and invisible to it",
+        `the panels of ${name} on ${surface} stand side by side and the box holding them ` +
+        `scrolls: ${Math.round(readingScrollPx)} px of content in a ${Math.round(readingClientPx)} px ` +
+        "box. So all of them scroll at once instead of each scrolling in its own, and a reader " +
+        "who scrolls a long note loses the file tree beside it — a separate defect from the page " +
+        "scroll above, and invisible to it",
     };
 
   return { verdict: "bounded", fraction };

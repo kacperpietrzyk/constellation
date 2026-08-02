@@ -350,8 +350,8 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
                   .getComputedStyle(inner)
                   .gridTemplateColumns.split(" ")
                   .filter((track) => track !== "" && track !== "none");
-          const panels =
-            inner === null || tracks.length < 2 ? [] : [...inner.children];
+          const panelsSideBySide = tracks.length >= 2;
+          const panels = inner === null ? [] : [...inner.children];
           heightBound.push({
             name: reading.getAttribute("data-height-bound") ?? "-",
             surface: label,
@@ -361,9 +361,8 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             rootScrollPx: screenRoot.scrollHeight,
             readingClientPx: reading.clientHeight,
             readingScrollPx: reading.scrollHeight,
-            panelsTallerThanReading: panels.filter(
-              (panel) => panel.clientHeight > reading.clientHeight + 1,
-            ).length,
+            panelsSideBySide,
+            panelCount: panels.length,
             somethingScrolls:
               reading.scrollHeight > reading.clientHeight + 1 ||
               panels.some(
@@ -823,7 +822,9 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         `${label}\t${screen.surface}\t${screen.name}\theight-bound\t` +
           `pane ${screen.paneClientPx}\t` +
           `screen ${screen.rootHeightPx} (${screen.rootClientPx}/${screen.rootScrollPx})\t` +
-          `reading ${screen.readingClientPx}\t${decision.verdict}` +
+          `reading ${screen.readingClientPx}/${screen.readingScrollPx}\t` +
+          `panels ${screen.panelCount} ${screen.panelsSideBySide ? "side by side" : "in one column"}\t` +
+          `${decision.verdict}` +
           (decision.fraction === undefined
             ? ""
             : `\t${(decision.fraction * 100).toFixed(1)}%`),
