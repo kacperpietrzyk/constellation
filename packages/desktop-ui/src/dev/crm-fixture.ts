@@ -27,7 +27,10 @@
 // NOTHING HERE INVENTS A SHAPE THE KERNEL CANNOT WRITE. Each record is built to
 // what `domain/src/strategic-depth.ts` actually produces: `cycleKey` is
 // `{organizationId}:{expiry date}`, the way `workflow.ts:3054` generates it;
-// `evidenceSourceIds` are deduplicated and sorted; `offerIds` on a deal and
+// `evidenceSourceIds` are deduplicated and sorted the way `createRenewal` and
+// `createOpportunity` leave them, and they are ids of sources this harness
+// really serves rather than ids minted beside the list they point into;
+// `offerIds` on a deal and
 // `opportunityId` on an offer name each other; a renewal is linked to the deal
 // that renews it by a `work_link`, because that edge is where the money on the
 // next term comes from. A fixture carrying a shape no command can produce looks
@@ -43,7 +46,6 @@
 
 import {
   DocumentIdSchema,
-  KnowledgeSourceIdSchema,
   PrincipalIdSchema,
   StrategicRecordIdSchema,
   TaskIdSchema,
@@ -52,6 +54,7 @@ import {
 } from "@constellation/contracts";
 
 import type { RelationshipWorkspaceProjection } from "../client/workflow.js";
+import { librarySources } from "./library-fixture.js";
 
 const recordId = (suffix: string) =>
   StrategicRecordIdSchema.parse(`00000000-0000-4000-8000-0000000005${suffix}`);
@@ -99,13 +102,34 @@ const principalId = PrincipalIdSchema.parse(
 );
 
 /**
- * The evidence a deal was qualified on. Present rather than `[]`, because an
- * empty array is what every one of these lists carried in the harness that
- * measured nothing, and the chip row that renders them is one of the widest
- * things on the record screen.
+ * The evidence a deal was qualified on — TAKEN FROM THE SOURCES THIS HARNESS
+ * ACTUALLY SERVES, never minted here.
+ *
+ * An id written out beside the list it is supposed to point into is a dangling
+ * reference, and a dangling reference is a shape the kernel cannot produce:
+ * this file's own header names that failure with the fixture that carried
+ * `referencedBy: []` beside `referencedByCount: 2`. Derived, the two cannot
+ * disagree.
+ *
+ * WHAT IT BUYS ON SCREEN, said accurately because the first draft of this
+ * comment overclaimed it: the opportunity record renders the evidence as a
+ * COUNT — "2 sources recorded behind this deal" — not as a row of chips. So the
+ * value here is that the sentence has a real number in it and its other arm
+ * ("No source recorded behind this deal") is reachable from a deal that has
+ * none, which the segmentation deal is.
  */
-const sourceId = (suffix: string) =>
-  KnowledgeSourceIdSchema.parse(`00000000-0000-4000-8000-0000000006${suffix}`);
+const librarySourceIds = librarySources().map((source) => source.id);
+
+const evidence = (...positions: readonly number[]) =>
+  positions.map((position) => {
+    const id = librarySourceIds[position];
+    if (id === undefined)
+      throw new Error(
+        `crm-fixture: the harness serves ${librarySourceIds.length.toString()} sources and this ` +
+          `deal cites position ${position.toString()}, so the citation points at nothing.`,
+      );
+    return id;
+  });
 
 /**
  * Written the way a real qualification is written — several paragraphs, blank
@@ -226,7 +250,7 @@ export const crmRecords = (
       stageEnteredAt: at(-12),
       nextAction:
         "Price the on-site retainer as a separate annex and send both versions to Agata before Thursday.",
-      evidenceSourceIds: [sourceId("01"), sourceId("02")],
+      evidenceSourceIds: evidence(0, 1),
       offerIds: [crmRecordIds.mdrOffer, crmRecordIds.mdrOfferSuperseded],
       projectIds: [],
       state: "pursued",
@@ -244,7 +268,7 @@ export const crmRecords = (
       stage: "proposal",
       stageEnteredAt: at(-6),
       nextAction: "Agree the start date against their current licence term.",
-      evidenceSourceIds: [sourceId("02")],
+      evidenceSourceIds: evidence(1),
       offerIds: [crmRecordIds.edrOffer],
       projectIds: [],
       state: "open",
@@ -379,7 +403,7 @@ export const crmRecords = (
       // far from the boundary between them, so no morning moves this row.
       leadTimeDays: 60,
       ownerPrincipalId: principalId,
-      evidenceSourceIds: [sourceId("01")],
+      evidenceSourceIds: evidence(0),
       followUpTaskId: TaskIdSchema.parse(
         "00000000-0000-4000-8000-000000000006",
       ),
@@ -464,7 +488,7 @@ export const crmRecords = (
       factType: "Production network gateway",
       value:
         "Legacy Fortigate 200E pair at Kraków and Ostrava; migration to the 600F pair slipped twice.",
-      evidenceSourceIds: [sourceId("01")],
+      evidenceSourceIds: evidence(0),
       verifiedAt: at(-190),
       staleAfter: at(-10),
       // Stale, because a fact that has gone out of date is the one the
@@ -479,7 +503,7 @@ export const crmRecords = (
       rationale:
         "Agata asked for a line she can drop without reopening the negotiation, and folding the travel cost into the monthly fee would have made the comparison against the distributor's bid unreadable. The annex keeps both numbers arguable on their own terms.",
       organizationId: crmRecordIds.northwind,
-      evidenceSourceIds: [sourceId("02")],
+      evidenceSourceIds: evidence(1),
       linkedRecordIds: [crmRecordIds.mdrDeal],
       state: "current",
     },

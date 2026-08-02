@@ -158,10 +158,14 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     thread:
       "skalowanie interfejsu (R3-5, za falą E) — wyróżnienie brakującej danej",
   },
-  // Jeden wpis, nie dwa, i to jest własność dopasowania po PREFIKSIE: to samo
-  // przepełnienie melduje się przy 200% pod `renewals` i pod `renewals:record`,
-  // bo etykieta pomiaru zaczyna się od nazwy powierzchni. Rozbicie na etykiety
-  // dałoby rejestr, w którym jeden defekt zajmuje dwa wiersze.
+  // Sufity zmierzone pod SAMĄ etykietą `renewals`, i to jest ślad po
+  // znalezisku tego lotu. Przed usunięciem `[data-renewal-row]` z selektora
+  // otwierającego rekord ta sama kwota meldowała się DRUGI RAZ pod
+  // `renewals:record` — etykietą przelotu, w którym bramka podwójnie klikała
+  // wiersz umowy i nic się nie otwierało. Ten przelot już nie zachodzi, więc
+  // wpis dopasowuje się wyłącznie prefiksem `renewals`; dopasowanie po
+  // prefiksie zostaje, bo to ono unieważnia potrzebę drugiego wpisu, gdyby
+  // ekran kiedyś dostał obiektyw.
   {
     surface: "renewals",
     signature: "div._money",

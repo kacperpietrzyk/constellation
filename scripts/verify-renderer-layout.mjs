@@ -398,6 +398,13 @@ const MINIMUM_ROWS = {
   // which opens on a disclosure this sweep does not click. Written down because
   // a floor of three would have been the obvious number and would have reddened
   // a healthy screen.
+  //
+  // A ZATEM `renewalRows` NIE MA ZAPASU, i to jest wybór, nie przeoczenie. Dwie
+  // OTWARTE sekcje tego ekranu rysują po jednym wierszu, więc próg 2 żąda, żeby
+  // narysowały się OBIE. Próg 1 pozwoliłby dowolnej z nich opustoszeć po cichu
+  // — a ten ekran organizuje pracę SEKCJAMI, więc pusta sekcja jest tą właśnie
+  // rzeczą, o której zieleń nie ma prawa milczeć. Próg jest przypięty do
+  // STRUKTURY ekranu, nie do zawartości fikstury.
   pipelineCards: { floor: 4, needs: "pipeline" },
   renewalRows: { floor: 2, needs: "renewals" },
 };
