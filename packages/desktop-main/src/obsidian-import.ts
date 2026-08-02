@@ -344,18 +344,18 @@ export const planObsidianImport = (
         : found !== undefined
           ? { kind: "note", path: found.path }
           : (() => {
-            // Only then a RECORD: a link naming a project, a person or a note
-            // that is already here rather than in the vault. Exact name, or
-            // nothing — see `resolveRecord`.
-            const record = ports.resolveRecord(target);
-            return record === undefined
-              ? ({ kind: "unresolved" } as const)
-              : ({
-                  kind: "record",
-                  targetKind: record.targetKind,
-                  targetId: record.targetId,
-                } as const);
-          })();
+              // Only then a RECORD: a link naming a project, a person or a note
+              // that is already here rather than in the vault. Exact name, or
+              // nothing — see `resolveRecord`.
+              const record = ports.resolveRecord(target);
+              return record === undefined
+                ? ({ kind: "unresolved" } as const)
+                : ({
+                    kind: "record",
+                    targetKind: record.targetKind,
+                    targetId: record.targetId,
+                  } as const);
+            })();
     answers.set(target, answer);
     return answer;
   };

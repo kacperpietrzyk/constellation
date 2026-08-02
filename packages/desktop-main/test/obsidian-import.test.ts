@@ -411,7 +411,11 @@ test("an ambiguous name is not handed to the record search instead", () => {
       targetId: "3d000000-0000-4000-8000-0000000000a3",
     },
   });
-  assert.equal(plan.counts.linksToRecords, 0, "an ambiguous link found a record");
+  assert.equal(
+    plan.counts.linksToRecords,
+    0,
+    "an ambiguous link found a record",
+  );
   assert.ok(plan.unresolvedTargets.includes("Kickoff"));
   assert.equal(result.linksUnresolved, 4);
   const rollout = [...written.values()].find((document) =>
@@ -419,7 +423,10 @@ test("an ambiguous name is not handed to the record search instead", () => {
       (node.text ?? "").includes("[[Kickoff]]"),
     ),
   );
-  assert.ok(rollout, "the ambiguous link did not stay as the text that was written");
+  assert.ok(
+    rollout,
+    "the ambiguous link did not stay as the text that was written",
+  );
   assert.equal(
     (rollout.content[0]?.content ?? []).some(
       (node) => node.type === "entityReference",
