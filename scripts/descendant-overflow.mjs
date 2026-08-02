@@ -110,13 +110,42 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     },
     thread: "skalowanie interfejsu (recon fali D §3e) — nagłówek dnia",
   },
+  // PRZEKLUCZOWANY, NIE PRZEMIANOWANY. Ten wpis stał pod `access`
+  // z sygnaturą `div.member-list`; treść wsiąkła w sekcję „Access and
+  // connections" Ustawień, więc zmienił się I EKRAN, I SYGNATURA — arkusz
+  // jest teraz CSS Modułem, a bramka normalizuje `_memberList_4zvhy_268`
+  // do `_memberList`.
+  //
+  // SUFIT ZMIERZONY PO PRZEPROWADZCE, nie przepisany: 18 px przy oknie
+  // 320 px, ZERO przy tekście 200% — więc drugiego sufitu ten wpis nie
+  // dostaje, bo brak sufitu jest naruszeniem tylko dla przelotu, w którym
+  // coś naprawdę wystaje. I NIE JEST TO ZERO Z KRAWĘDZI, co ma znaczenie,
+  // bo sufity są prawdą o JEDNEJ maszynie: przy 200% min-content wiersza to
+  // 448 px w pudełku 500 px, czyli 52 px zapasu, więc renderowanie czcionek
+  // na innym systemie nie zamieni tego przelotu w losową czerwień. Zmierzone
+  // przez ustawienie liście `width: min-content` — samo `scrollWidth` NIGDY
+  // nie schodzi poniżej `clientWidth`, więc „zapas 0" z tej różnicy znaczy
+  // tylko „nic nie wystaje" i nie mówi nic o marginesie.
+  //
+  // PO DRODZE BYŁO 52 px i 14 px: scalenie wsadziło treść pod WŁASNY margines
+  // Ustawień i dokładało drugi, więc pudełko listy miało 188 px zamiast 222
+  // na kolumnie 224 px. Sekcja jedzie teraz przy
+  // wąskim oknie na pełną szerokość kategorii i tamte 34 px wróciły —
+  // dokładnie tyle, ile przeprowadzka zabrała, ani piksela więcej.
+  //
+  // ZOSTAJE 18 px, bo PRZYCZYNA JEST NIESPŁACONA i nie jest moja: wiersz
+  // członka ma min-content 240 px (awatar 36 + odstęp 16 + tożsamość 156
+  // + wyściółka 32), a kolumna sekcji przy oknie 320 px ma 224 px. To jest
+  // wątek skalowania interfejsu, który koordynator odłożył ZA falę E
+  // (R3-5), a nie defekt tego scalenia.
   {
-    surface: "access",
-    signature: "div.member-list",
+    surface: "settings",
+    signature: "div._memberList",
     ceilings: {
       "a 320 px window": 18,
     },
-    thread: "fala E — powierzchnia `access`, poza zakresem fali D",
+    thread:
+      "skalowanie interfejsu — wiersz członka nie mieści się w kolumnie 224 px",
   },
   {
     surface: "activity",

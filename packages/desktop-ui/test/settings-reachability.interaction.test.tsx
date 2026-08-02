@@ -50,6 +50,7 @@ const mountSettings = async (): Promise<void> => {
         client,
         snapshot,
         onReload: async () => undefined,
+        onWrote: async () => undefined,
         onFailure: () => undefined,
         onOpenRecovery: () => undefined,
         onNavigate: () => undefined,
@@ -202,4 +203,32 @@ test("contextual help is a button that opens a dialog, never a title attribute",
       "a help route must carry a name, not only an icon",
     );
   }
+});
+
+test("the Access category holds the access content, not a way out of Settings", async () => {
+  // CO PADA, KIEDY KTOŚ SKASUJE `<AccessSection />` Z `SettingsSurface.tsx`?
+  // Przed tą asercją: NIC w `npm run check`. Kontrakt odzyskiwania czyta plik
+  // sekcji, który dalej istnieje; oba testy zachowania montują komponent
+  // BEZPOŚREDNIO; kontrakt nawigacji liczy rzeczy, które należą do samego
+  // ekranu Ustawień. Jedynym strażnikiem była bramka układu — poza
+  // `npm run check`, tylko na macOS i, jak się okazało w tym locie, zdolna
+  // wrócić zielona nad aplikacją z sąsiedniego worktree. To jest dokładnie
+  // kształt „zdolność, której nic nie montuje", więc montowanie ma tu własną
+  // asercję.
+  //
+  // ZACZEPEM jest nagłówek rejestru agentów, a nie lista osób: `shellQueries`
+  // nie odpowiada na `workspace.access`, więc ta fikstura widzi projekcję jako
+  // NIEDOSTĘPNĄ i wierszy osób nie ma. Nagłówek rejestru agentów rysuje się
+  // niezależnie od obu projekcji, więc mierzy montowanie, a nie dane. Treść
+  // wierszy na realnych danych jest pozycją na liście weryfikacji.
+  await mountSettings();
+
+  const category = container.querySelector<HTMLElement>(
+    '[data-settings-category="access"]',
+  );
+  assert.ok(category, "the Access and connections category did not render");
+  assert.ok(
+    category.querySelector("h2#agent-access-title"),
+    "the Access category renders no access content — the section that used to be a destination is not mounted inside it",
+  );
 });

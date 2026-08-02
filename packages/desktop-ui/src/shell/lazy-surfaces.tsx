@@ -30,8 +30,10 @@ export const SettingsSurface = lazy(() =>
   loadSettingsSurface().then((module) => ({ default: module.SettingsSurface })),
 );
 // Arkusz przychodzi z samym komponentem (CSS Module importuje się w nim),
-// więc loader nie musi go dociągać osobno — inaczej niż `access`
-// i `organizations`, które niosą arkusze globalne jako efekt uboczny.
+// więc loader nie musi go dociągać osobno — inaczej niż `organizations`,
+// który niesie arkusz globalny jako efekt uboczny i jest po wycofaniu
+// `access` JEDYNYM takim loaderem, czyli jedynym, który robi DWA importy po
+// kolei.
 const loadCalendarSurface = () => import("../CalendarSurface.js");
 export const CalendarSurface = lazy(() =>
   loadCalendarSurface().then((module) => ({ default: module.CalendarSurface })),
@@ -52,13 +54,6 @@ export const RenewalsSurface = lazy(() =>
   loadRenewalsSurface().then((module) => ({
     default: module.RenewalsSurface,
   })),
-);
-const loadAccessSurface = async () => {
-  await import("../access-surface.css");
-  return import("../AccessSurface.js");
-};
-export const AccessSurface = lazy(() =>
-  loadAccessSurface().then((module) => ({ default: module.AccessSurface })),
 );
 const loadStrategicDepthSurface = async () => {
   await import("../organization-context.css");
@@ -91,7 +86,7 @@ export const WorkspaceRecovery = lazy(() =>
 // bez czytania pliku źródłowego. Klauzula `satisfies` niżej pilnuje jej dziś na
 // etapie kompilacji, ale pilnuje jej TYLKO TUTAJ — gdyby ktoś ją przy rozbiciu
 // powłoki zgubił, nic by nie padło. Nie wołaj tych loaderów w teście na Node:
-// `access` i `relationships` robią `await import("./*.css")`, czego `node --test`
+// `organizations` robi `await import("./*.css")`, czego `node --test`
 // nie rozwiąże. Sprawdzaj obecność klucza, nie wynik wywołania.
 export const lazySurfaceLoaders = {
   calendar: loadCalendarSurface,
@@ -99,7 +94,6 @@ export const lazySurfaceLoaders = {
   meetings: loadMeetingsSurface,
   activity: loadActivitySurface,
   settings: loadSettingsSurface,
-  access: loadAccessSurface,
   organizations: loadStrategicDepthSurface,
   people: loadPeopleSurface,
   pipeline: loadPipelineSurface,
