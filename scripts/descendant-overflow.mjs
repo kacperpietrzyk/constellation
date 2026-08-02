@@ -119,9 +119,17 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   // SUFIT ZMIERZONY PO PRZEPROWADZCE, nie przepisany: 18 px przy oknie
   // 320 px, ZERO przy tekście 200% — więc drugiego sufitu ten wpis nie
   // dostaje, bo brak sufitu jest naruszeniem tylko dla przelotu, w którym
-  // coś naprawdę wystaje. Po drodze było 52 px i 14 px: scalenie wsadziło
-  // treść pod WŁASNY margines Ustawień i dokładało drugi, więc pudełko listy
-  // miało 188 px zamiast 222 na kolumnie 224 px. Sekcja jedzie teraz przy
+  // coś naprawdę wystaje. I NIE JEST TO ZERO Z KRAWĘDZI, co ma znaczenie,
+  // bo sufity są prawdą o JEDNEJ maszynie: przy 200% min-content wiersza to
+  // 448 px w pudełku 500 px, czyli 52 px zapasu, więc renderowanie czcionek
+  // na innym systemie nie zamieni tego przelotu w losową czerwień. Zmierzone
+  // przez ustawienie liście `width: min-content` — samo `scrollWidth` NIGDY
+  // nie schodzi poniżej `clientWidth`, więc „zapas 0" z tej różnicy znaczy
+  // tylko „nic nie wystaje" i nie mówi nic o marginesie.
+  //
+  // PO DRODZE BYŁO 52 px i 14 px: scalenie wsadziło treść pod WŁASNY margines
+  // Ustawień i dokładało drugi, więc pudełko listy miało 188 px zamiast 222
+  // na kolumnie 224 px. Sekcja jedzie teraz przy
   // wąskim oknie na pełną szerokość kategorii i tamte 34 px wróciły —
   // dokładnie tyle, ile przeprowadzka zabrała, ani piksela więcej.
   //

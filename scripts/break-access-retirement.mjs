@@ -38,7 +38,7 @@ const replaceOnce = (text, needle, replacement, what) => {
   return text.slice(0, at) + replacement + text.slice(at + needle.length);
 };
 
-const { results, failed, ok } = runBreakTests({
+const first = runBreakTests({
   root,
   build: { command: "npm", args: ["run", "build"] },
   verify: { command: "node", args: ["scripts/run-tests.mjs"] },
@@ -126,10 +126,58 @@ const { results, failed, ok } = runBreakTests({
   ],
 });
 
+const results = [...first.results];
+const failed = [...first.failed];
+
+// DRUGA PĘTLA, bo `scripts/run-tests.mjs` ŚWIADOMIE nie bierze testów
+// interakcji — te należą do Vitesta. Montowanie sekcji da się sprawdzić tylko
+// tam, więc ma własny `verify`.
+const mount = runBreakTests({
+  root,
+  build: { command: "npm", args: ["run", "build"] },
+  verify: { command: "npm", args: ["run", "test:interaction"] },
+  breaks: [
+    {
+      // ZDOLNOŚĆ, KTÓREJ NIC NIE MONTUJE. Kasujemy `<AccessSection />` razem
+      // z importem — dokładnie tak, jak zrobiłby to ktoś sprzątający. Bez
+      // asercji o montowaniu ta edycja przechodzi CAŁE `npm run check`: plik
+      // sekcji dalej istnieje, oba testy zachowania montują komponent wprost,
+      // a kontrakt nawigacji liczy rzeczy należące do samego ekranu Ustawień.
+      name: "unmount the section: delete <AccessSection /> and its import",
+      file: "packages/desktop-ui/src/SettingsSurface.tsx",
+      edit: (text) => {
+        const withoutImport = replaceOnce(
+          text,
+          'import { AccessSection } from "./settings/AccessSection.js";\n',
+          "",
+          "the section import",
+        );
+        const open = withoutImport.indexOf("            <AccessSection\n");
+        if (open === -1)
+          throw new Error(
+            "the section element is not there any more, so this break would be a no-op",
+          );
+        const close = withoutImport.indexOf("\n            />\n", open);
+        if (close === -1)
+          throw new Error(
+            "the section element has no closing tag where this break expects one",
+          );
+        return (
+          withoutImport.slice(0, open) +
+          withoutImport.slice(close + "\n            />\n".length)
+        );
+      },
+    },
+  ],
+});
+
+results.push(...mount.results);
+failed.push(...mount.failed);
+
 console.log(
   `\n${results.length - failed.length}/${results.length} breaks behaved as expected`,
 );
-if (!ok) {
+if (failed.length > 0) {
   for (const result of failed)
     console.log(`  ${result.name}: ${result.verdict} — ${result.reason}`);
   process.exitCode = 1;
