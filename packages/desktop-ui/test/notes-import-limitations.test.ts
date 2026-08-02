@@ -65,13 +65,21 @@ test("nothing in the list claims a home the schema already has", () => {
   }
 });
 
-test("every entry has its own id and says something", () => {
+test("every entry has its own id", () => {
+  // Two entries under one id would render one row twice and leave the other
+  // construct unnamed — the count beside it would go to the wrong line.
   const ids = notesImportLimitations.map((entry) => entry.id);
   assert.equal(new Set(ids).size, ids.length);
-  for (const entry of notesImportLimitations) {
-    assert.ok(entry.heading.length > 0, `${entry.id} has no heading`);
-    // THE SHAPE, not a phrase: an entry naming a construct with no explanation
-    // of what happens instead is a warning label with nothing on it.
-    assert.ok(entry.detail.length > 40, `${entry.id} explains nothing`);
-  }
+  assert.ok(
+    ids.length > 0,
+    "the list is empty, so this guard measures nothing",
+  );
 });
+
+// THE WORDS are asserted where they are rendered, in
+// `notes-import.interaction.test.tsx`: every entry must draw a `<dd>` saying
+// what happens instead, because an entry naming a construct with no account of
+// the consequence is a warning label with nothing on it. They live in
+// `SettingsSurface.tsx` — deliberately outside the prose guard, which is what
+// the Settings exception exists for — behind a TOTAL `Record` keyed by these
+// ids, so an id added here without copy does not compile.

@@ -36,12 +36,88 @@ import {
   type ConceptHelpTopicId,
 } from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
-import { notesImportLimitations } from "./notes-import-limitations.js";
+import {
+  notesImportLimitations,
+  type NotesImportLimitationId,
+} from "./notes-import-limitations.js";
 import {
   settingsCategories,
   settingsCategoryElementId,
   type SettingsCategoryId,
 } from "./settings-categories.js";
+
+/**
+ * WHAT WILL NOT MIGRATE, in words — the sentences the Obsidian panel shows
+ * before anything is scanned.
+ *
+ * A TOTAL `Record` keyed by the limitation ids, so an id added to
+ * `notes-import-limitations.ts` without copy DOES NOT COMPILE. The ids and
+ * their vocabulary claims live there because a guard reads them; the words
+ * live HERE because Settings copy is deliberately outside the prose guard —
+ * long text beside a control states a CONSEQUENCE, and no pattern tells that
+ * from a lecture, so this file is judged by hand and that is the reason the
+ * exception exists at all.
+ */
+const notesImportCopy: Record<
+  NotesImportLimitationId,
+  { readonly heading: string; readonly detail: string }
+> = {
+  frontmatter: {
+    heading: "Properties at the top of a note",
+    detail:
+      "A note has no properties, so tags, aliases and dates written in the block at the top of a file cannot become fields. The block is kept at the top of the note as text, so nothing is lost and you can see it.",
+  },
+  tags: {
+    heading: "Tags",
+    detail:
+      "A note carries no tags. A #tag stays as the word you wrote, inside the sentence it was in; folders and links are what filing is made of here.",
+  },
+  embeds: {
+    heading: "Embedded notes",
+    detail:
+      "![[Another note]] shows one note inside another. There is no such thing here — a note names another note, it does not contain it — so the line stays as text.",
+  },
+  callouts: {
+    heading: "Callouts",
+    detail:
+      "A quote can be a quote, but not a warning or a tip: there is nowhere to keep which kind it was. The quote arrives with [!warning] still written in it, so you can still tell.",
+  },
+  "task-checkboxes": {
+    heading: "Checkboxes in a note",
+    detail:
+      "A task lives in exactly one place and a note points at it, so - [ ] does not become a task. The line arrives as an ordinary bullet with the box still in it.",
+  },
+  "block-references": {
+    heading: "Links to a paragraph",
+    detail:
+      "A link can name a note, never a paragraph inside one: ^block-ids have nothing to anchor to. The link resolves to the note, and the part after # or ^ is dropped.",
+  },
+  pictures: {
+    heading: "Pictures in a note",
+    detail:
+      "A picture here is a file this workspace keeps, named by identity. A picture in a vault is a path on one machine, so it cannot be adopted by pointing at it — the line stays as text and the file stays where it is.",
+  },
+  "links-to-files": {
+    heading: "Links to files other than notes",
+    detail:
+      "A link can hold a web address; a link into your vault's own folders has nowhere to point once the notes are here. Those stay as text so you can still read where they went.",
+  },
+  "list-shape": {
+    heading: "A bullet that starts with a sub-list",
+    detail:
+      "Every bullet begins with a line of its own here. A bullet that opens straight into an indented list gets an empty first line rather than losing the list.",
+  },
+  "outside-markdown": {
+    heading: "Canvas, Dataview and plugin syntax",
+    detail:
+      "Only .md files are read. A canvas is a different kind of file and is left alone; anything a plugin renders arrives as the characters that are actually in the file, because that is all a file holds.",
+  },
+  history: {
+    heading: "What the files never had",
+    detail:
+      "Editing history, named versions and who wrote what start here, on the day of the import. A file has one state; a note has every state it passes through from now on.",
+  },
+};
 
 const fieldTypeLabels: Record<string, string> = {
   text: "Text",
@@ -1998,7 +2074,7 @@ export const SettingsSurface = ({
                           data-import-limitation={limitation.id}
                         >
                           <dt>
-                            {limitation.heading}
+                            {notesImportCopy[limitation.id].heading}
                             {found !== undefined && found > 0 && (
                               <span data-limitation-found="true">
                                 {" "}
@@ -2006,7 +2082,7 @@ export const SettingsSurface = ({
                               </span>
                             )}
                           </dt>
-                          <dd>{limitation.detail}</dd>
+                          <dd>{notesImportCopy[limitation.id].detail}</dd>
                         </div>
                       );
                     })}

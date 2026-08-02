@@ -1,7 +1,7 @@
 import type { MarkdownImportConstruct } from "@constellation/realtime-documents";
 
 /**
- * WHAT WILL NOT MIGRATE — named on the screen BEFORE the import runs.
+ * WHAT WILL NOT MIGRATE — the list named on the screen BEFORE the import runs.
  *
  * A person about to move two hundred notes is entitled to know what arrives
  * changed, and to know it while they can still decide not to. This list was
@@ -18,18 +18,23 @@ import type { MarkdownImportConstruct } from "@constellation/realtime-documents"
  *     day somebody adds a `callout` node kind this list stops compiling its
  *     own excuse and has to be corrected.
  *
- * An entry with no `construct` states so with `countable: false` rather than
- * omitting the key, because "nothing counts this" is a decision — canvas files
- * are not markdown and never reach the parser at all — and an omitted key
- * reads as an oversight.
+ * An entry with no `construct` states so with `false` rather than omitting the
+ * key, because "nothing counts this" is a decision — a canvas is not markdown
+ * and never reaches the parser at all — and an omitted key reads as an
+ * oversight.
  *
- * The type is imported TYPE-ONLY. This module is data, and pulling the parser
- * behind it would put the whole markdown reader into the Settings chunk.
+ * THE WORDS ARE NOT HERE. They live in `SettingsSurface.tsx`, in a TOTAL
+ * `Record` keyed by these ids, so an id added without copy does not compile.
+ * The split is not cosmetic: Settings copy is deliberately outside the prose
+ * guard, because long text beside a control states a CONSEQUENCE and no
+ * pattern can tell that from a lecture — and this file is data, which the
+ * guard should keep reading.
+ *
+ * The type import is TYPE-ONLY: pulling the parser behind this would put the
+ * whole markdown reader into the Settings chunk.
  */
 export interface NotesImportLimitation {
-  readonly id: string;
-  readonly heading: string;
-  readonly detail: string;
+  readonly id: NotesImportLimitationId;
   /** The scan's counter for this construct, or `false` when nothing counts it. */
   readonly construct: MarkdownImportConstruct | false;
   /** A document node kind that would be needed. Asserted ABSENT by the guard. */
@@ -38,85 +43,26 @@ export interface NotesImportLimitation {
   readonly wouldNeedMark?: string;
 }
 
-export const notesImportLimitations: readonly NotesImportLimitation[] = [
-  {
-    id: "frontmatter",
-    heading: "Properties at the top of a note",
-    detail:
-      "A note has no properties, so tags, aliases and dates written in the block at the top of a file cannot become fields. The block is kept at the top of the note as text, so nothing is lost and you can see it.",
-    construct: "frontmatter",
-  },
-  {
-    id: "tags",
-    heading: "Tags",
-    detail:
-      "A note carries no tags. A #tag stays as the word you wrote, inside the sentence it was in; folders and links are what filing is made of here.",
-    construct: "tag",
-  },
-  {
-    id: "embeds",
-    heading: "Embedded notes",
-    detail:
-      "![[Another note]] shows one note inside another. There is no such thing here — a note names another note, it does not contain it — so the line stays as text.",
-    construct: "embed",
-    wouldNeedNodeKind: "embed",
-  },
-  {
-    id: "callouts",
-    heading: "Callouts",
-    detail:
-      "A quote can be a quote, but not a warning or a tip: there is nowhere to keep which kind it was. The quote arrives with [!warning] still written in it, so you can still tell.",
-    construct: "callout",
-    wouldNeedNodeKind: "callout",
-  },
-  {
-    id: "task-checkboxes",
-    heading: "Checkboxes in a note",
-    detail:
-      "A task lives in exactly one place and a note points at it, so - [ ] does not become a task. The line arrives as an ordinary bullet with the box still in it.",
-    construct: "taskCheckbox",
-  },
-  {
-    id: "block-references",
-    heading: "Links to a paragraph",
-    detail:
-      "A link can name a note, never a paragraph inside one: ^block-ids have nothing to anchor to. The link resolves to the note, and the part after # or ^ is dropped.",
-    construct: "blockReference",
-  },
-  {
-    id: "pictures",
-    heading: "Pictures in a note",
-    detail:
-      "A picture here is a file this workspace keeps, named by identity. A picture in a vault is a path on one machine, so it cannot be adopted by pointing at it — the line stays as text and the file stays where it is.",
-    construct: "imageLink",
-  },
-  {
-    id: "links-to-files",
-    heading: "Links to files other than notes",
-    detail:
-      "A link can hold a web address; a link into your vault's own folders has nowhere to point once the notes are here. Those stay as text so you can still read where they went.",
-    construct: "relativeLink",
-    wouldNeedMark: "file",
-  },
-  {
-    id: "list-shape",
-    heading: "A bullet that starts with a sub-list",
-    detail:
-      "Every bullet begins with a line of its own here. A bullet that opens straight into an indented list gets an empty first line rather than losing the list.",
-    construct: "listItemLead",
-  },
-  {
-    id: "outside-markdown",
-    heading: "Canvas, Dataview and plugin syntax",
-    detail:
-      "Only .md files are read. A canvas is a different kind of file and is left alone; anything a plugin renders arrives as the characters that are actually in the file, because that is all a file holds.",
-    construct: false,
-  },
-  {
-    id: "history",
-    heading: "What the files never had",
-    detail:
-      "Editing history, named versions and who wrote what start here, on the day of the import. A file has one state; a note has every state it passes through from now on.",
-    construct: false,
-  },
-];
+const entries = [
+  { id: "frontmatter", construct: "frontmatter" },
+  { id: "tags", construct: "tag" },
+  { id: "embeds", construct: "embed", wouldNeedNodeKind: "embed" },
+  { id: "callouts", construct: "callout", wouldNeedNodeKind: "callout" },
+  { id: "task-checkboxes", construct: "taskCheckbox" },
+  { id: "block-references", construct: "blockReference" },
+  { id: "pictures", construct: "imageLink" },
+  { id: "links-to-files", construct: "relativeLink", wouldNeedMark: "file" },
+  { id: "list-shape", construct: "listItemLead" },
+  { id: "outside-markdown", construct: false },
+  { id: "history", construct: false },
+] as const;
+
+/**
+ * The ids, DERIVED from the entries above rather than restated beside them —
+ * so the copy `Record` in Settings cannot miss one, and cannot carry one that
+ * no longer exists.
+ */
+export type NotesImportLimitationId = (typeof entries)[number]["id"];
+
+/** The same entries, widened, so a reader can ask any entry for any field. */
+export const notesImportLimitations: readonly NotesImportLimitation[] = entries;
