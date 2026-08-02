@@ -181,6 +181,7 @@ import {
   organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
+  restoreFavoriteSurfaces,
   restoreShellNavigation,
   serializeShellNavigation,
   settingsCategoryContext,
@@ -272,33 +273,16 @@ export const RealApp = ({
         );
   });
   const navigationRef = useRef(navigation);
-  const [favorites, setFavorites] = useState<readonly SurfaceId[]>(() => {
-    try {
-      const parsed = JSON.parse(
-        localStorage.getItem("constellation.favorites") ?? "[]",
-      ) as unknown;
-      // Same map, same reason, and this one is the quieter loss: a favourite
-      // pinned to a surface that has since been renamed was DROPPED from the
-      // rail on first launch after the upgrade — no error, nothing to notice,
-      // just one fewer pin than yesterday. Deduplicated because two retired ids
-      // can resolve onto one successor.
-      return Array.isArray(parsed)
-        ? [
-            ...new Set(
-              parsed.flatMap((item) => {
-                const resolved = resolveDesktopSurface(item);
-                return resolved !== undefined &&
-                  navItems.some((entry) => entry.id === resolved)
-                  ? [resolved as SurfaceId]
-                  : [];
-              }),
-            ),
-          ]
-        : (["today", "tasks"] satisfies readonly SurfaceId[]);
-    } catch {
-      return ["today", "tasks"] satisfies readonly SurfaceId[];
-    }
-  });
+  // Ta sama mapa wycofanych celów co przy zakładkach, plus reguła, że przypiąć
+  // da się tylko cel z lewej kolumny. Obie mieszkają w `shell-navigation.ts`,
+  // przy odtwarzaniu sesji, bo to jest jedno miejsce: STAN URZĄDZENIA CZYTANY
+  // ZE ZAPISU SPRZED PRZEBUDOWY. Wcześniej ta odsiewka stała tutaj i pytała
+  // rejestr o samo ISTNIENIE celu, więc przypięte Ustawienia przeżywały
+  // aktualizację, w której przestały być pozycją nawigacji — a odpiąć je było
+  // można tylko gwiazdką przy pozycji nawigacji, której już nie ma.
+  const [favorites, setFavorites] = useState<readonly SurfaceId[]>(() =>
+    restoreFavoriteSurfaces(localStorage.getItem("constellation.favorites")),
+  );
   const [collapsedNavigationGroups, toggleNavigationGroup] =
     useCollapsedNavigationGroups();
   const [inspectorWidth, setInspectorWidth] = useState<number>(() => {
@@ -3219,7 +3203,14 @@ export const RealApp = ({
                 .filter((item) => item.group === null)
                 .map((item) => navEntry(item))}
               {navigationGroups.map((group) => {
-                const groupItems = navItems.filter(
+                // Też `sidebarNavItems`, a nie `navItems`: obie gałęzie lewej
+                // kolumny — cele bez modułu wyżej i cele w modułach tutaj —
+                // czytają JEDNĄ regułę o tym, co się w niej rysuje. Dziś
+                // wychodzi na to samo, bo tryb Ustawień nie ma modułu; wpis
+                // rejestru z modułem i `chrome: "mode"` rysowałby się mimo
+                // wszystko, a to jest dokładnie ten kształt, który przez dwie
+                // fale odsiewał nic.
+                const groupItems = sidebarNavItems.filter(
                   (item) => item.group === group,
                 );
                 const activeGroupItem = groupItems.find(

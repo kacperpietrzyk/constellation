@@ -25,6 +25,7 @@ import {
   organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
+  restoreFavoriteSurfaces,
   restoreShellNavigation,
   serializeShellNavigation,
   settingsCategoryContext,
@@ -697,5 +698,80 @@ describe("opening a task as a record is asked for, never assumed", () => {
       ],
       "a reopened session disagreed with the one that was saved about which task was open as a record",
     );
+  });
+});
+
+/* PRZYPIĘCIA ODTWARZANE Z ZAPISU SPRZED PRZEBUDOWY.
+ *
+ * Ta sama rodzina co `retiredDesktopSurfaces` przy zakładkach: ZAPISANY STAN
+ * URZĄDZENIA WSKAZUJĄCY NA COŚ, CO PRZESTAŁO BYĆ CELEM. Różnica jest w tym,
+ * co się dzieje, gdy nikt tego nie odsieje — zakładka wskazująca w nicość
+ * odrzuca całą sesję głośno, a przypięcie do trybu Ustawień rysuje się dalej
+ * i NIE DA SIĘ GO ODPIĄĆ: gwiazdka stoi przy pozycji nawigacji, a Ustawienia
+ * przestały nią być.
+ *
+ * Każde `deepEqual` niżej mówi, KTÓRE cele przeżyły, a nie ILE ich zostało.
+ * Liczba przechodzi przy filtrze, który odsiał wszystko, i przy filtrze, który
+ * nie odsiał niczego, jeśli tylko wynik ma właściwą długość.
+ */
+describe("favourites restored from a device that saved them earlier", () => {
+  it("drops a Settings favourite nobody could un-star, and keeps the retired one that has a successor", () => {
+    // Zapis człowieka, który przypiął Ustawienia ZANIM przestały być pozycją
+    // nawigacji, i który ma jeszcze przypięcia z 0.1.9. Trzy cele, trzy różne
+    // rozstrzygnięcia — dlatego stoją w jednej fikstury: `settings` znika, bo
+    // jego chrome to tryb; `history` PRZEŻYWA jako `library`, bo wycofanie
+    // rozwiązuje się przed regułą chrome; `tasks` przechodzi nietknięte.
+    assert.deepEqual(
+      restoreFavoriteSurfaces(
+        JSON.stringify(["settings", "history", "tasks"]),
+      ),
+      ["library", "tasks"],
+      "a favourite pinned to a surface that is no longer a navigation target survived the restore, and nothing on screen can un-star it",
+    );
+  });
+
+  it("drops both retired ids that resolve onto the Settings mode, and says so by name", () => {
+    // `access` i `activity` wsiąkły w Ustawienia w tej fali. Przypięcie do
+    // każdego z nich rozwiązuje się na cel, którego przypiąć się nie da —
+    // więc znika, a nie zostaje jako druga i trzecia zablokowana pinezka.
+    assert.deepEqual(
+      restoreFavoriteSurfaces(
+        JSON.stringify(["access", "activity", "today"]),
+      ),
+      ["today"],
+      "a retired id resolving onto the Settings mode came back as a favourite",
+    );
+  });
+
+  it("keeps two retired ids that land on one successor as ONE favourite", () => {
+    // `documents` i `history` schodzą się na `library`. Szyna z tą samą
+    // pozycją dwa razy to nie jest to, co ktoś przypiął.
+    assert.deepEqual(
+      restoreFavoriteSurfaces(
+        JSON.stringify(["documents", "history", "work"]),
+      ),
+      ["library", "tasks"],
+      "two retired ids resolving onto one target were pinned twice",
+    );
+  });
+
+  it("ignores a saved entry that names no surface at all", () => {
+    assert.deepEqual(
+      restoreFavoriteSurfaces(JSON.stringify(["atlantis", 7, null, "inbox"])),
+      ["inbox"],
+    );
+  });
+
+  it("falls back to the two starting pins only when the saved value is not a list", () => {
+    // Rozróżnienie, które łatwo zgubić: PUSTY zapis to nie jest uszkodzony
+    // zapis. Człowiek, który odpiął wszystko, ma mieć pustą szynę, a nie dwie
+    // pinezki, których nie ustawiał.
+    assert.deepEqual(restoreFavoriteSurfaces(null), []);
+    assert.deepEqual(restoreFavoriteSurfaces("[]"), []);
+    assert.deepEqual(restoreFavoriteSurfaces('{"today":true}'), [
+      "today",
+      "tasks",
+    ]);
+    assert.deepEqual(restoreFavoriteSurfaces("{not json"), ["today", "tasks"]);
   });
 });

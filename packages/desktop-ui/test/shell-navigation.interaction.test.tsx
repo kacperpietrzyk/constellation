@@ -354,3 +354,51 @@ test("przypięcie do wycofanego celu przechodzi na następcę, zamiast zniknąć
     "work i tasks rozwiązały się na ten sam cel, a szyna pokazała go dwa razy",
   );
 });
+
+test("przypięte Ustawienia znikają z szyny, bo nie ma czym ich odpiąć", async () => {
+  // GWIAZDKA ODPINAJĄCA STOI PRZY POZYCJI NAWIGACJI I NIGDZIE INDZIEJ, a
+  // Ustawienia przestały być pozycją nawigacji. Przypięcie zapisane wcześniej
+  // rysowało się więc w szynie NA ZAWSZE: widoczne, klikalne, nieodpinalne.
+  //
+  // Ten test patrzy na to od strony ekranu, a nie funkcji: sprawdza, że po
+  // odtworzeniu NIE MA pinezki Ustawień — i osobno, że nie ma jej dlatego, że
+  // nie istnieje kontrolka, która mogłaby ją zdjąć. Sam brak pinezki
+  // przeszedłby też przy naprawie schowanej w rysowaniu, która zostawia zapis
+  // na dysku nietknięty.
+  localStorage.setItem(
+    "constellation.favorites",
+    JSON.stringify(["settings", "tasks"]),
+  );
+  await mountShell();
+
+  const pinned = [
+    ...container.querySelectorAll<HTMLElement>(".nav-item.nav-favorite"),
+  ].map((item) => (item.textContent ?? "").replace("★", "").trim());
+  assert.deepEqual(
+    pinned,
+    ["Tasks"],
+    "a Settings favourite saved before this wave came back to the rail",
+  );
+
+  // I to jest powód, dla którego pierwsza asercja nie wystarcza: gdyby
+  // Ustawienia dało się odpiąć, zablokowana pinezka byłaby niedogodnością,
+  // a nie defektem.
+  const unstar = [
+    ...container.querySelectorAll<HTMLElement>(".nav-favorite-toggle"),
+  ].filter((button) =>
+    (button.getAttribute("aria-label") ?? "").includes("Settings"),
+  );
+  assert.deepEqual(
+    unstar.map((button) => button.getAttribute("aria-label")),
+    [],
+    "the shell offers a way to star Settings, so the stuck pin can be recreated",
+  );
+
+  // Naprawa jest TRWAŁA: powłoka zapisuje odsianą listę z powrotem, więc
+  // zablokowana pinezka znika z dysku, a nie tylko z ekranu.
+  assert.equal(
+    localStorage.getItem("constellation.favorites"),
+    JSON.stringify(["tasks"]),
+    "the stuck favourite is still on disk and comes back on the next launch",
+  );
+});
