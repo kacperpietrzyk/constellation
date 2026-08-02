@@ -38,6 +38,7 @@ import {
   type OfferPrice,
   type Currency,
   type PipelineStage,
+  type WorkingDayContract,
   type DocumentEntityTargetKind,
 } from "@constellation/contracts";
 import type {
@@ -1713,6 +1714,41 @@ export const setWorkspaceVoiceAudioRetention = (
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind ===
         "workspace.voice_audio_retention_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+/**
+ * The hours and weekdays this workspace works. It is the number Today's
+ * remaining capacity is computed from, and until now it was READABLE
+ * EVERYWHERE AND SETTABLE NOWHERE: the kernel arm, the schema and the
+ * projection all shipped, and no wrapper stood between them and a screen.
+ *
+ * WHOLE, not partial, and that is the schema's decision rather than this
+ * file's: `WorkingDaySchema` refuses an end before its start and refuses a
+ * repeated weekday, and neither refusal can be made over one field at a time.
+ * A caller moving the end of the day sends the day it wants to end up with.
+ */
+export const setWorkspaceWorkingDay = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  workingDay: WorkingDayContract,
+) =>
+  execute(
+    client,
+    {
+      // The working day is a field on the Workspace record, so the Workspace is
+      // what this writes and what the kernel expects a version for — the same
+      // envelope `workspace.rename` sends.
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+      }),
+      commandName: "workspace.setWorkingDay",
+      payload: { workingDay },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "workspace.working_day_changed"
         ? response.outcome.projection
         : undefined,
   );
