@@ -371,6 +371,14 @@ const sweep = async (browser, { width, fontSize, label }) => {
             rowCounts.libraryDocuments,
             count(".knowledge-document-list > li"),
           );
+          // TEN SELEKTOR JEST NOŚNY I EKRAN ŹRÓDEŁ O TYM WIE. Lista źródeł to
+          // dziś JEDEN `role="listbox"` z czterema grupami — po jednej na
+          // rodzaj — i została `<ul>`/`<li>` (z `role="presentation"` na
+          // `<ul>`) WYŁĄCZNIE po to, żeby ta liczba dalej coś liczyła.
+          // Przepisanie jej na `<div>`-y, jak w `ProjectClientsLayout`, wyzeruje
+          // ten licznik po cichu, a komunikat niżej wyśle czytającego szukać
+          // defektu ekranu, którego nie ma. Kto to zmienia, zmienia RÓWNIEŻ ten
+          // selektor — wiersz niesie `data-source-row`.
           rowCounts.librarySources = Math.max(
             rowCounts.librarySources,
             count(".source-list > li"),

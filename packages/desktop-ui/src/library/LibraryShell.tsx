@@ -133,11 +133,14 @@ export const LibraryShell = ({
             onFailure={onFailure}
           />
         ) : reading === "sources" ? (
+          // Sources reads in its SECOND PANEL, not in the shell inspector: the
+          // accepted screen is a list beside the source being read, and a
+          // reader that opened in the rail would put the two dates, the
+          // availability control and what rests on the source outside the
+          // screen they belong to. So this reading takes no inspector host.
           <SourcesReading
             client={client}
             snapshot={snapshot}
-            inspectorHost={inspectorHost}
-            onInspectorOpen={() => onInspectorOpen("sources")}
             onReload={onReload}
             onFailure={onFailure}
           />

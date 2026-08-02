@@ -12824,7 +12824,13 @@ export const executeWave2Query = (
               ? {}
               : { canonicalUrl: source.canonicalUrl }),
             availability: source.availability,
+            // TWO DATES, because they answer two questions. `observedAt` is
+            // when the content was seen to say what it says; `createdAt` is
+            // when this record was added here. They diverge the moment a
+            // source is collected about something older than the collecting,
+            // which on real material is most of them.
             observedAt: source.observedAt,
+            createdAt: source.createdAt,
             // Capped at the same 20 the refusal samples, and paired with the
             // real size for the same reason: nothing in the domain bounds how
             // many records rest on one Source, and a silently truncated list
@@ -13190,6 +13196,7 @@ export const executeWave2Query = (
             : { canonicalUrl: source.canonicalUrl }),
           availability: source.availability,
           observedAt: source.observedAt,
+          createdAt: source.createdAt,
           version: source.version,
           updatedAt: source.updatedAt,
         })),

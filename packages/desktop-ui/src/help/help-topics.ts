@@ -33,7 +33,9 @@ export type HelpTopicId =
   | "relationship-reading"
   | "lead-time"
   | "amendment"
-  | "attached-notes";
+  | "attached-notes"
+  | "sources"
+  | "source-availability";
 
 export type HelpTopic = {
   readonly id: HelpTopicId;
@@ -96,6 +98,29 @@ export const helpTopics: readonly HelpTopic[] = [
     question: "What does this create?",
     answer:
       "An amendment opens a deal for extra work sold on this contract. The contract keeps its own term: nothing here moves the dates the renewal is measured against.",
+  },
+  {
+    // Decision #21 cut this exact explanation as a lecture standing above the
+    // source list. #35's rule is that a `?` goes EXACTLY where a cut lecture
+    // used to stand — the separation between what you collected and what you
+    // wrote is the whole reason the two readings are apart, and a reader who
+    // has not been told it will use Sources as a drawer.
+    id: "sources",
+    term: "Sources",
+    question: "What is a source?",
+    answer:
+      "A source is what you found; a note is what you made of it. A source carries where it came from, and whether it can still be reached.",
+  },
+  {
+    // THE REASON A STATE MEANS WHAT IT MEANS USED TO LIVE IN A `title=`, which
+    // #35 forbids as the sole carrier: a tooltip does not exist for a keyboard,
+    // for touch, or for anybody not hovering. The three labels are on the
+    // screen in words; this answers what they cost, which the labels cannot.
+    id: "source-availability",
+    term: "Availability",
+    question: "What do these three states mean?",
+    answer:
+      "Available means a copy is kept here. Reference only means the address is held, not the content. Unavailable means the address no longer answers.",
   },
 ];
 

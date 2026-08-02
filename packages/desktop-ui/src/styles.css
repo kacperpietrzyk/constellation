@@ -6010,6 +6010,14 @@ kbd {
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
+/* `.source-list` KEEPS ONLY ITS RESET, and the rest of what stood here is gone
+   with the Sources screen that replaced it. Everything visual about a source
+   row now lives in `library/sources.module.css`, on the Library's lazy chunk,
+   so the first paint of the window stops paying for a screen nobody opened yet.
+   What was deleted: the row button, its hover and `.active` states, the
+   nowrap-ellipsis title (real titles run to 199 characters and are read two
+   lines at a time now) and the `.source-kind` dot, which carried availability
+   in COLOUR ALONE and is exactly what #35 and the accessibility floor forbid. */
 .source-list,
 .knowledge-document-list,
 .named-version-list,
@@ -6018,31 +6026,6 @@ kbd {
   margin: 0;
   list-style: none;
 }
-.source-list li button {
-  display: grid;
-  width: 100%;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  color: var(--text-secondary);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  text-align: left;
-}
-.source-list li button:hover {
-  background: var(--surface-hover);
-}
-.source-list li button.active {
-  background: var(--surface-selected);
-  box-shadow: inset 2px 0 var(--text-primary);
-}
-.source-list li button > span:last-child {
-  min-width: 0;
-}
-.source-list strong,
-.source-list small,
 .knowledge-document-list strong,
 .knowledge-document-list small {
   display: block;
@@ -6050,29 +6033,14 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.source-list strong,
 .knowledge-document-list strong {
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
-.source-list small,
 .knowledge-document-list small {
   margin-top: var(--space-1);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-}
-.source-kind {
-  width: 0.55rem;
-  height: 0.55rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-full);
-  background: var(--status-success);
-}
-.source-kind.unavailable {
-  background: var(--status-error);
-}
-.source-kind.unknown {
-  background: var(--status-warning);
 }
 .library-empty,
 .inline-empty,
@@ -6554,7 +6522,6 @@ kbd {
 }
 @media (forced-colors: active) {
   .knowledge-document-list li button.active,
-  .source-list li button.active,
   .role-options button[aria-pressed="true"] {
     outline: 2px solid Highlight;
   }
