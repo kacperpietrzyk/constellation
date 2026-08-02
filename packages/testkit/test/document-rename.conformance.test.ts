@@ -83,6 +83,7 @@ const context = (): ExecutionContext =>
       "relationship.organizationCreate",
       "command.previewUndo",
       "command.undo",
+      "activity.changeFeed",
     ],
     origin: "desktop",
   });
@@ -408,6 +409,42 @@ describe("document.rename", () => {
         `${name} still answers under the title the rename replaced`,
       );
     }
+  });
+
+  /**
+   * A NEW EVENT TYPE IS ONLY REAL IF SOMEBODY CAN SEE IT.
+   *
+   * `activity.changeFeed` passes `event.type` through as an opaque string, so
+   * `document.renamed` reaches a subscriber without a site to edit — which is
+   * exactly why it is asserted rather than assumed: "no vocabulary to update"
+   * and "it arrives" are two different claims, and only the second is the one
+   * an agent watching the feed depends on.
+   *
+   * `activity.meaningful` beside it is the other half of the answer and is
+   * deliberately NOT asserted: its curated map carries no document event at
+   * all — not `document.created`, not `document.folder_changed` — so a rename
+   * is absent there on exactly the terms every other note event already is.
+   * Putting one note event into that feed and not the other two would be worse
+   * than none, and it is a product decision rather than this lot's.
+   */
+  it("reaches an agent watching the change feed", () => {
+    const harness = bootstrapped();
+    const { documentId } = createNote(harness, "Kickoff");
+    assert.equal(rename(harness, documentId, "Falcon", 1).outcome, "success");
+    // Sorted by the note's own version rather than asserted in feed order:
+    // what this test claims is that the rename ARRIVES, carrying the version
+    // it produced. The feed's ordering is ADR-051's claim and belongs to
+    // whatever asserts the cursor, not here.
+    assert.deepEqual(
+      projection(harness, "activity.changeFeed", { spaceId: ids.space })
+        .events.filter((event) => event.recordId === documentId)
+        .map((event) => [event.type, event.recordVersion] as const)
+        .sort((left, right) => left[1] - right[1]),
+      [
+        ["document.created", 1],
+        ["document.renamed", 2],
+      ],
+    );
   });
 
   it("expects the note's own version and nothing else", () => {
