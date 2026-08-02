@@ -69,6 +69,12 @@ export const CompensationKindSchema = z.enum([
   // `document.setFolder` moves a NOTE. It compensates the note's prior folder,
   // which is why it is named for the document and not for the folder.
   "document.restore_folder",
+  // And the sixth: `document.rename` changes what a note is CALLED, so its
+  // compensation carries the prior title the way `folder.restore_details`
+  // carries a folder's prior name. It is named for the field it puts back
+  // rather than for the command, because the command's name is the only thing
+  // the two share.
+  "document.restore_title",
   "knowledge.restore_source",
   "knowledge.restore_evidence",
   "knowledge.void_named_version",
