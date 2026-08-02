@@ -326,10 +326,26 @@ if (!identityProbe.ok) {
 // układu test danych i padałoby przy każdej edycji harnessu. Osobne progi na
 // osobne listy: jedna suma przepuszczała wyzerowanie dokumentów, bo dobijały
 // do niej same źródła.
+//
+// KAŻDY PRÓG NAZYWA CEL, KTÓRY MUSI BYĆ W ZAKRESIE PRZELOTU, ŻEBY PRÓG W OGÓLE
+// COŚ ZNACZYŁ — i to jest ta sama poprawka, którą ten plik ma już przy rekordach
+// (`recordsExpected`) i przy wysokości (`heightBoundExpected`). Przelot ZAWĘŻONY
+// odwiedza wyłącznie cele, które wymienia, więc próg na karty lejka sprawdzany
+// w przelocie zawężonym do Biblioteki nie mierzy zapadniętego ekranu, tylko
+// zamienia ZADEKLAROWANE wyłączenie w czerwień, która nigdy nie miała nic
+// wspólnego z mierzoną rzeczą. Zmierzone od razu: bez tego dwa przeloty
+// Biblioteki fali D czerwieniły się na CRM-ie, którego z definicji nie widzą.
+//
+// LICZENIE ZOSTAJE GLOBALNE — selektory niżej chodzą po KAŻDEJ powierzchni,
+// dokładnie z powodu opisanego przy nich (historia przechwyceń przeniosła się
+// do Biblioteki i licznik przywiązany do nazwy celu przestałby liczyć). Cel
+// stoi tu wyłącznie przy OCZEKIWANIU, nie przy pomiarze: „gdzie to policzono"
+// i „który przelot ma prawo tego żądać" to dwa różne pytania i przez jedną falę
+// miały jedną odpowiedź.
 const MINIMUM_ROWS = {
-  libraryDocuments: 5,
-  librarySources: 4,
-  captureHistory: 5,
+  libraryDocuments: { floor: 5, needs: "library" },
+  librarySources: { floor: 4, needs: "library" },
+  captureHistory: { floor: 5, needs: "library" },
   // Nie wiersz, tylko ZNAKI TREŚCI notatki, i jest tu z powodu zmierzonego na
   // tym PR-ze: fikstura potrafi mieć komplet wierszy i PUSTĄ treść. Tak było —
   // dokument bez stempla formatu czytał się jako `plain-v1`, edytor odpalał
@@ -356,7 +372,41 @@ const MINIMUM_ROWS = {
   // przy pierwszym przebiegu. Tryb raportu wypisuje surową liczbę przy KAŻDYM
   // przelocie, więc różnica między przelotami jest dziś widoczna gołym okiem;
   // to jest świadomie mniej niż asercja i dlatego stoi tu napisane.
-  libraryNoteBody: 1_500,
+  libraryNoteBody: { floor: 1_500, needs: "library" },
+  // ── CRM, AND WHY IT IS COUNTED BY NAME RATHER THAN BY A TOTAL ──────────────
+  // Until Wave E the harness answered no `relationship.workspace` query at all,
+  // so four screens shipped by Wave C rendered "this view's data is unavailable
+  // right now" and every pass here was green over geometry nobody had looked
+  // at. These two counters are what stops that returning in silence.
+  //
+  // TWO ENTRIES, NOT ONE, for the reason the Library counters are three: a
+  // single CRM total would be met by the board alone while the contracts list
+  // emptied, and a guard that is met by the wrong subject is the failure this
+  // wave met twice — a sweep that read 139 of the wrong files while satisfying
+  // its own file-count floor, and a gate that measured the wrong worktree's
+  // application while passing every check it had. A floor must be able to say
+  // WHICH subject it counted.
+  //
+  // Counted off the attributes the record sweep already opens records by, not
+  // off class names: a class name is a CSS Module hash away from silently
+  // counting zero, which `.source-list > li` above carries a warning about.
+  //
+  // Floors sit under what was measured — 5 cards drew and 2 contract rows drew
+  // — because they guard "this screen drew nothing", not the fixture's exact
+  // contents. THE FIXTURE HOLDS THREE CONTRACTS AND TWO ROWS DRAW, and that is
+  // not a discrepancy: the third stands in the "Closed this cycle" section,
+  // which opens on a disclosure this sweep does not click. Written down because
+  // a floor of three would have been the obvious number and would have reddened
+  // a healthy screen.
+  //
+  // A ZATEM `renewalRows` NIE MA ZAPASU, i to jest wybór, nie przeoczenie. Dwie
+  // OTWARTE sekcje tego ekranu rysują po jednym wierszu, więc próg 2 żąda, żeby
+  // narysowały się OBIE. Próg 1 pozwoliłby dowolnej z nich opustoszeć po cichu
+  // — a ten ekran organizuje pracę SEKCJAMI, więc pusta sekcja jest tą właśnie
+  // rzeczą, o której zieleń nie ma prawa milczeć. Próg jest przypięty do
+  // STRUKTURY ekranu, nie do zawartości fikstury.
+  pipelineCards: { floor: 4, needs: "pipeline" },
+  renewalRows: { floor: 2, needs: "renewals" },
 };
 
 // Tryb raportu: wypisz KAŻDE przepełnienie z werdyktem i nie przerywaj. Tak
@@ -484,6 +534,8 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         librarySources: 0,
         captureHistory: 0,
         libraryNoteBody: 0,
+        pipelineCards: 0,
+        renewalRows: 0,
       };
       let recordPanels = 0;
       let lensesDeclared = 0;
@@ -771,6 +823,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             rowCounts.libraryNoteBody,
             drawn?.querySelector(".document-canvas")?.textContent?.length ?? 0,
           );
+          rowCounts.pipelineCards = Math.max(
+            rowCounts.pipelineCards,
+            count("[data-pipeline-card]"),
+          );
+          rowCounts.renewalRows = Math.max(
+            rowCounts.renewalRows,
+            count("[data-renewal-row]"),
+          );
         };
         measure(id);
         openableRows[id] = [...(work?.querySelectorAll("*") ?? [])].filter(
@@ -836,15 +896,35 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // record drawn into that is not a layout defect to fix but a window the
         // OS refuses to make. The 200%-text pass is the real narrow-pane case and
         // it DOES open records.
-        // AND THE THIRD KIND IS REACHED FROM HERE TOO, so the derived set is
-        // not derived against a door only two of its members have. A pipeline
-        // card and a renewal row both open the opportunity record; neither is
-        // drawn by today's harness fixture, so adding them changes nothing
-        // measured today and covers the screen on the day the fixture does.
+        // AND THE THIRD KIND IS REACHED FROM HERE TOO — by the PIPELINE CARD,
+        // and by that door alone.
+        //
+        // THE SENTENCE THAT STOOD HERE UNTIL THE FIXTURE DREW ROWS SAID "a
+        // pipeline card AND A RENEWAL ROW both open the opportunity record",
+        // and `[data-renewal-row]` was in the selector below on the strength of
+        // it. IT IS NOT TRUE AND NEVER WAS. Measured, not reasoned:
+        // `RenewalsSurface.tsx` gives the row an `onClick` that SELECTS it and
+        // no `onDoubleClick` at all; the only route from a contract to a deal
+        // is a button inside the row's outlook panel, and that button exists
+        // only for a contract that HAS a renewing deal. A renewal has no record
+        // screen of its own — `data-record-kind` declares exactly three, and
+        // all three are reached by their own doors: task by `[data-task-row]`,
+        // project by `[data-project-row]`, opportunity by
+        // `[data-pipeline-card]`. So this selector bought ZERO coverage and
+        // cost a red run the moment a renewal row existed to double-click.
+        //
+        // WHY IT SHIPPED GREEN, WHICH IS THE PART WORTH KEEPING. The claim
+        // could not be wrong while the harness held no renewals: the assertion
+        // never reached the thing it was asserting about. An empty fixture does
+        // not merely fail to measure — IT PROTECTS A WRONG ASSERTION FROM EVER
+        // BEING WRONG. That is the same shape as this file's own port
+        // collision, and neither is a mistake of the lot that wrote it: both
+        // are instruments that could not be exercised in the state the repo was
+        // in at the time. Removing the selector deletes a claim, not coverage.
         const row =
           window.innerWidth >= 760
             ? work?.querySelector(
-                "[data-project-row], [data-task-row], [data-pipeline-card], [data-renewal-row]",
+                "[data-project-row], [data-task-row], [data-pipeline-card]",
               )
             : null;
         if (row instanceof HTMLElement) {
@@ -1139,16 +1219,28 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // licznik dodany bez progu wypisałby tu `floor undefined`, a pętla asercji,
   // idąca w drugą stronę, milczałaby o tym samym rozjeździe. W trybie raportu
   // nikt by tego nie zauważył, bo raport niczego nie czerwieni.
+  //
+  // A ZAKRES PRZELOTU JEST WYPISANY PRZY KAŻDYM PROGU, nie domyślny: raport,
+  // który pokazuje „0 (floor 4)" i przemilcza, że ten przelot nigdy nie
+  // odwiedził Lejka, wysyła czytającego szukać pustego ekranu zamiast pustego
+  // pomiaru — dokładnie tak, jak zrobił to komunikat opisany niżej.
+  const expectedHere = (needs) =>
+    surfaces === undefined || surfaces.includes(needs);
   if (REPORT_ONLY)
     console.log(
       `report: fixture counts — ${Object.entries(MINIMUM_ROWS)
         .map(
-          ([what, floor]) =>
-            `${what} ${measured.rowCounts[what]} (floor ${floor})`,
+          ([what, { floor, needs }]) =>
+            `${what} ${measured.rowCounts[what]} (floor ${floor}` +
+            (expectedHere(needs) ? "" : `, not in scope: needs ${needs}`) +
+            ")",
         )
         .join(", ")}`,
     );
-  for (const [what, minimum] of Object.entries(MINIMUM_ROWS)) {
+  for (const [what, { floor: minimum, needs }] of Object.entries(
+    MINIMUM_ROWS,
+  )) {
+    if (!expectedHere(needs)) continue;
     const drew = measured.rowCounts[what];
     if (drew < minimum) {
       failures.push({

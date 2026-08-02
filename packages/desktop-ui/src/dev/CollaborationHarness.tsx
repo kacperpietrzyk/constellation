@@ -24,6 +24,7 @@ import type {
 
 import { RealApp } from "../RealApp.js";
 import { createScenarioClient } from "../client/scenario-client.js";
+import { crmRecords } from "./crm-fixture.js";
 import {
   libraryCaptures,
   libraryDocumentIds,
@@ -442,6 +443,20 @@ const client = createScenarioClient({
           edited: false,
         },
       ],
+    }),
+    // CZTERY EKRANY CRM CZYTAJĄ TĘ JEDNĄ PROJEKCJĘ, i do fali E nie było jej
+    // tutaj wcale. `optionalProjection` połykał odmowę, Lejek, Odnowienia,
+    // Relacje i Ludzie rysowały „this view's data is unavailable right now",
+    // a bramka układu przechodziła na zielono nad czterema ekranami, których
+    // nigdy nie zobaczyła. Materiał i powód jego kształtu: `crm-fixture.ts`.
+    "relationship.workspace": result({
+      kind: "relationship.workspace",
+      records: crmRecords(workspaceId, spaceId),
+      freshness: {
+        mode: "local_authoritative",
+        checkpoint: null,
+        missingCapabilities: [],
+      },
     }),
     "attention.inbox": result({
       kind: "attention.inbox",

@@ -160,6 +160,14 @@ test("a registry entry is a CEILING, not an exemption", () => {
   );
   assert.equal(regressed.verdict, "violation");
   assert.equal(regressed.regressedFrom, 56);
+  // I WŁAŚCICIEL JEDZIE Z REGRESJĄ, nie tylko liczba. Komunikat bramki jest
+  // budowany z tych dwóch pól („worse than the N px recorded for it (owner:
+  // …)"), a bez wątku regresja czyta się jak świeże przepełnienie bez adresu —
+  // czyli jak coś, co znajdzie właściciela dopiero przez `git blame`. Bez tej
+  // asercji „pada NAZYWAJĄC swój wątek" było twierdzeniem o prozie, a nie
+  // o kodzie: break-test odróżnia wyłącznie czerwień od zieleni i nigdy nie
+  // czyta tekstu.
+  assert.equal(regressed.thread, "x");
 });
 
 test("a registry entry covers the destination's lenses and records, not a bare label", () => {

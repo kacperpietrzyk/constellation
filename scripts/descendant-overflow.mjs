@@ -110,6 +110,71 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     },
     thread: "skalowanie interfejsu (recon fali D §3e) — nagłówek dnia",
   },
+  // ── CRM: PIERWSZE CZTERY WPISY ZMIERZONE, A NIE ODZIEDZICZONE ─────────────
+  // Fala C dowiozła cztery ekrany CRM, a ta bramka nie zobaczyła ani jednego
+  // zapełnionego — harness nie odpowiadał na `relationship.workspace` w ogóle,
+  // więc Lejek, Odnowienia, Relacje i Ludzie rysowały odmowę odczytu i każdy
+  // przelot był zielony nad geometrią, której nie było. Fikstura z fali E je
+  // zapełnia i to są cztery przepełnienia, które bramka zobaczyła PIERWSZY RAZ.
+  //
+  // WSZYSTKIE CZTERY NALEŻĄ DO WĄTKU SKALOWANIA INTERFEJSU, i to jest twierdzenie
+  // O DWÓCH POŁOWACH, z których druga jest nośna: pojawiają się przy tekście
+  // 200% albo w oknie 320 px, i NIE POJAWIAJĄ SIĘ przy oknie 1440 px, na którym
+  // produkt stoi. Gdyby choć jedno wystawało przy domyślnym rozmiarze, nie
+  // byłoby materiałem tego wątku i musiałoby zostać naprawione w tej fali —
+  // dokładnie to rozróżnienie zrobił rejestr fali D dla trzech wpisów ekranu
+  // rekordu Zadania i wyłącznie dzięki niemu ta fala znalazła ekran rysujący
+  // tytuł po jednym znaku w wierszu. Wątek jest odłożony ZA falę E (R3-5).
+  //
+  // Sufity zmierzone przelotem `LAYOUT_DESCENDANT_REPORT=1` na tej gałęzi, po
+  // zasianiu fikstury. Fikstura jest materiałem DEWELOPERSKIM: każda z tych
+  // liczb jest zdaniem o JEJ kształcie, nie o workspace'ie Kacpra.
+  {
+    surface: "organizations",
+    signature: "span._nameLine",
+    ceilings: {
+      "text scaled to 200%": 61,
+      "a 320 px window": 43,
+    },
+    thread:
+      "skalowanie interfejsu (R3-5, za falą E) — nazwa klienta w wierszu relacji",
+  },
+  {
+    surface: "people",
+    signature: "span._parts",
+    ceilings: {
+      "text scaled to 200%": 25,
+      "a 320 px window": 24,
+    },
+    thread: "skalowanie interfejsu (R3-5, za falą E) — rozbicie kontaktu",
+  },
+  {
+    surface: "people",
+    signature: "b._absent",
+    ceilings: {
+      "text scaled to 200%": 19,
+      "a 320 px window": 16,
+    },
+    thread:
+      "skalowanie interfejsu (R3-5, za falą E) — wyróżnienie brakującej danej",
+  },
+  // Sufity zmierzone pod SAMĄ etykietą `renewals`, i to jest ślad po
+  // znalezisku tego lotu. Przed usunięciem `[data-renewal-row]` z selektora
+  // otwierającego rekord ta sama kwota meldowała się DRUGI RAZ pod
+  // `renewals:record` — etykietą przelotu, w którym bramka podwójnie klikała
+  // wiersz umowy i nic się nie otwierało. Ten przelot już nie zachodzi, więc
+  // wpis dopasowuje się wyłącznie prefiksem `renewals`; dopasowanie po
+  // prefiksie zostaje, bo to ono unieważnia potrzebę drugiego wpisu, gdyby
+  // ekran kiedyś dostał obiektyw.
+  {
+    surface: "renewals",
+    signature: "div._money",
+    ceilings: {
+      "text scaled to 200%": 19,
+      "a 320 px window": 54,
+    },
+    thread: "skalowanie interfejsu (R3-5, za falą E) — kwota na umowie",
+  },
   // PRZEKLUCZOWANY, NIE PRZEMIANOWANY. Ten wpis stał pod `access`
   // z sygnaturą `div.member-list`; treść wsiąkła w sekcję „Access and
   // connections" Ustawień, więc zmienił się I EKRAN, I SYGNATURA — arkusz
