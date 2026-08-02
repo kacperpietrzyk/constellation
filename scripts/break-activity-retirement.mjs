@@ -106,10 +106,19 @@ collect(
       },
       {
         // R2-1. Pole `chrome` zastąpiło filtr `shortcut !== null`, który NICZEGO
-        // NIE ODSIEWAŁ. Złamanie przywraca Ustawienia do zbioru celów lewej
-        // kolumny: test renderu powłoki musi paść na zakazie
-        // `data-surface="settings"`.
+        // NIE ODSIEWAŁ.
+        //
+        // DOWODEM JEST ODMOWA KOMPILATORA, i to jest MOCNIEJSZY wynik niż
+        // czerwony test, którego się tu spodziewałem. Przestawienie jedynego
+        // wpisu `chrome: "mode"` na `"navigation"` sprawia, że w unii typów
+        // rejestru nie ma już wariantu `"mode"` — więc `surface.chrome === "mode"`
+        // przestaje mieć jakiekolwiek pokrycie i `tsc` odmawia. Innymi słowy:
+        // zbioru celów lewej kolumny NIE DA SIĘ przywrócić do stanu sprzed tej
+        // poprawki bez wywalenia kompilacji, a nie tylko jednego testu.
+        // To jest dokładnie ta totalność, dla której `chrome` jest polem przy
+        // KAŻDYM wpisie, a nie warunkiem u czytającego rejestr.
         name: "put the settings MODE back in the sidebar",
+        expect: "build-refuses",
         file: "packages/desktop-preload/src/surface-registry.ts",
         edit: (text) =>
           replaceOnce(
