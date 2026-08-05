@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 
+import {
+  READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS,
+  structuredDocumentVocabulary,
+} from "@constellation/realtime-documents";
+
 import { buildOperationCatalog, completeOperationScope } from "./catalog.js";
 import { MCP_CONTRACT_VERSION, MCP_TOOL_NAMES } from "./protocol.js";
 
@@ -32,6 +37,14 @@ const fingerprint = (): string => {
         tools: MCP_TOOL_NAMES,
         guidance: catalog.guidance,
         operations: catalog.operations,
+        // The document vocabulary is the one published artifact that can move
+        // without the catalog moving at all: Wave D added `image` and `table`
+        // and changed no operation envelope. Left out, a stale server process
+        // would keep serving the old node set beside a fingerprint that says it
+        // matches the host — the exact failure this stamp exists to report.
+        vocabulary: READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.map(
+          (version) => structuredDocumentVocabulary(version),
+        ),
       }),
     )
     .digest("hex")

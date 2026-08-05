@@ -13,7 +13,10 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-import { READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS } from "@constellation/realtime-documents";
+import {
+  READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS,
+  structuredDocumentVocabulary,
+} from "@constellation/realtime-documents";
 
 import {
   CheckpointIdSchema,
@@ -43,8 +46,10 @@ import {
   HostRunMetadataSchema,
   MAX_MCP_PAYLOAD_BYTES,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
+  MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   MCP_CONTRACT_VERSION,
+  documentVocabularyResourceUri,
   McpPayloadChunkResultSchema,
   StructuredDocumentSchemaVersionSchema,
   type McpOperatorInvocation,
@@ -137,6 +142,37 @@ const unavailableOperation = (): never => {
     { diagnosticCode: MCP_OPERATION_UNAVAILABLE },
   );
 };
+
+/**
+ * A vocabulary asked for at a version this build cannot read. Nothing here is
+ * merged and nothing is withheld — the vocabulary is not authorization, so the
+ * refusal can afford to name the whole readable set and hand the caller the
+ * cure, which is the opposite of the two refusals above.
+ */
+export const MCP_DOCUMENT_VOCABULARY_UNAVAILABLE =
+  "mcp.document_vocabulary_unavailable";
+
+const MCP_DOCUMENT_VOCABULARY_PREFIX =
+  MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE.replace("{schemaVersion}", "");
+
+const unavailableVocabulary = (): never => {
+  throw new McpError(
+    ErrorCode.InvalidRequest,
+    `Constellation does not read that structured content schema version. Read ${MCP_DOCUMENT_VOCABULARY_PREFIX}{schemaVersion} for one of ${READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.join(", ")}.`,
+    { diagnosticCode: MCP_DOCUMENT_VOCABULARY_UNAVAILABLE },
+  );
+};
+
+/**
+ * The one clause the six structured tools carry, built from the template so a
+ * new content schema version cannot leave six hand-typed URIs behind. Until
+ * this existed, no tool schema, no catalog entry and no resource on this
+ * surface said which node kinds a body may hold: the newest content capability
+ * the product gained was discoverable only by reading somebody else's note that
+ * already used it, and a malformed write was refused without naming what would
+ * have been legal.
+ */
+const VOCABULARY_CLAUSE = ` Read ${MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE} for the node kinds, marks, nesting rules and limits legal at the schemaVersion you declare.`;
 
 const parsePayloadResource = (uri: string) => {
   let parsed: URL;
@@ -329,7 +365,8 @@ export const createConstellationMcpServer = (
         name: "constellation.document.structured.read.v1",
         title: "Read a structured native document",
         description:
-          'Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized document. This read always answers: contentState is "absent" for a document with no body yet, "plain-v1" for one written through constellation.document.write.v1, and "rich-v1" once it holds blocks. contentOrigin says whether that body holds anything the system did not put there itself: "absent" when there is no body, "seeded" when it holds only what materialising it would have produced, "authored" once anything else is in it. The digest describes what is stored — quote it back to the structured write — while content and text show the body that write will start from, which for a plain-v1 document is its text split into paragraphs. Requires document.readContent and the document\u2019s Space.',
+          'Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized document. This read always answers: contentState is "absent" for a document with no body yet, "plain-v1" for one written through constellation.document.write.v1, and "rich-v1" once it holds blocks. contentOrigin says whether that body holds anything the system did not put there itself: "absent" when there is no body, "seeded" when it holds only what materialising it would have produced, "authored" once anything else is in it. The digest describes what is stored — quote it back to the structured write — while content and text show the body that write will start from, which for a plain-v1 document is its text split into paragraphs. Requires document.readContent and the document\u2019s Space.' +
+          VOCABULARY_CLAUSE,
         inputSchema: objectInput(
           {
             run: runInput,
@@ -348,7 +385,8 @@ export const createConstellationMcpServer = (
         name: "constellation.document.structured.write.v1",
         title: "Replace a structured native document",
         description:
-          'Replace one authorized document\'s body with bounded versioned blocks and typed entity links. The exact state-vector digest from a prior read is required; stale writes conflict, including the digest a read returns for a document with no body yet — quoting it means "I expect this document to have nothing" and creates one. A plain-v1 document is upgraded to rich in the same write, so the answer carries contentCreated and formatUpgraded and the prior state is saved as an attributed recovery revision. Requires document.replaceContent and the document\u2019s Space.',
+          'Replace one authorized document\'s body with bounded versioned blocks and typed entity links. The exact state-vector digest from a prior read is required; stale writes conflict, including the digest a read returns for a document with no body yet — quoting it means "I expect this document to have nothing" and creates one. A plain-v1 document is upgraded to rich in the same write, so the answer carries contentCreated and formatUpgraded and the prior state is saved as an attributed recovery revision. Requires document.replaceContent and the document\u2019s Space.' +
+          VOCABULARY_CLAUSE,
         inputSchema: objectInput(
           {
             run: runInput,
@@ -385,7 +423,8 @@ export const createConstellationMcpServer = (
         name: "constellation.document.structured.restore.v1",
         title: "Restore a structured document revision",
         description:
-          "Restore the recovery revision returned by a prior structured write as a new collaborative change. Requires the current state-vector digest, an idempotency key, document.replaceContent, and the document's Space; later work conflicts instead of being erased.",
+          "Restore the recovery revision returned by a prior structured write as a new collaborative change. Requires the current state-vector digest, an idempotency key, document.replaceContent, and the document's Space; later work conflicts instead of being erased." +
+          VOCABULARY_CLAUSE,
         inputSchema: objectInput(
           {
             run: runInput,
@@ -422,7 +461,8 @@ export const createConstellationMcpServer = (
         name: "constellation.project.structured.read.v1",
         title: "Read structured Project content",
         description:
-          'Read the current working body, typed entity links, plain text, and state-vector digest of one authorized Project. This read always answers: contentState is "absent" for a Project whose body nobody has opened or written yet, and the body shown is the one the next write will start from — seeded from the Project\u2019s intendedOutcome. contentState alone cannot tell you whether anyone wrote anything: a person merely opening a Project in the app materialises its body from that same intendedOutcome, so "rich-v1" covers both a page that was looked at once and a page holding somebody\u2019s work. contentOrigin separates them \u2014 "seeded" means the stored body holds nothing beyond that seed and costs nothing to write over, "authored" means something else is in it and overwriting it destroys work, "absent" means there is no body yet. Read contentOrigin, not contentState, before deciding whether to write. Quote the digest back to the structured write. Requires project.readContent and the Project\u2019s Space.',
+          'Read the current working body, typed entity links, plain text, and state-vector digest of one authorized Project. This read always answers: contentState is "absent" for a Project whose body nobody has opened or written yet, and the body shown is the one the next write will start from — seeded from the Project\u2019s intendedOutcome. contentState alone cannot tell you whether anyone wrote anything: a person merely opening a Project in the app materialises its body from that same intendedOutcome, so "rich-v1" covers both a page that was looked at once and a page holding somebody\u2019s work. contentOrigin separates them \u2014 "seeded" means the stored body holds nothing beyond that seed and costs nothing to write over, "authored" means something else is in it and overwriting it destroys work, "absent" means there is no body yet. Read contentOrigin, not contentState, before deciding whether to write. Quote the digest back to the structured write. Requires project.readContent and the Project\u2019s Space.' +
+          VOCABULARY_CLAUSE,
         inputSchema: objectInput(
           {
             run: runInput,
@@ -441,7 +481,8 @@ export const createConstellationMcpServer = (
         name: "constellation.project.structured.write.v1",
         title: "Replace structured Project content",
         description:
-          "Replace one authorized Project working body with bounded rich blocks and typed entity links. Requires the exact state-vector digest, an idempotency key, project.replaceContent, and the Project\u2019s Space; the prior state becomes an attributed recovery revision. A Project with no body yet is created by quoting the digest its read returns for that state, seeded from the Project\u2019s intendedOutcome so the field and the page do not start out disagreeing; the answer carries contentCreated and formatUpgraded.",
+          "Replace one authorized Project working body with bounded rich blocks and typed entity links. Requires the exact state-vector digest, an idempotency key, project.replaceContent, and the Project\u2019s Space; the prior state becomes an attributed recovery revision. A Project with no body yet is created by quoting the digest its read returns for that state, seeded from the Project\u2019s intendedOutcome so the field and the page do not start out disagreeing; the answer carries contentCreated and formatUpgraded." +
+          VOCABULARY_CLAUSE,
         inputSchema: objectInput(
           {
             run: runInput,
@@ -478,7 +519,8 @@ export const createConstellationMcpServer = (
         name: "constellation.project.structured.restore.v1",
         title: "Restore a structured Project revision",
         description:
-          "Restore the recovery revision returned by a prior Project structured write as a new collaborative change. Requires the current state-vector digest, an idempotency key, project.replaceContent, and the Project's Space; later work conflicts instead of being erased.",
+          "Restore the recovery revision returned by a prior Project structured write as a new collaborative change. Requires the current state-vector digest, an idempotency key, project.replaceContent, and the Project's Space; later work conflicts instead of being erased." +
+          VOCABULARY_CLAUSE,
         inputSchema: objectInput(
           {
             run: runInput,
@@ -751,6 +793,22 @@ export const createConstellationMcpServer = (
           "Read this first. Every command and query your grant authorizes, each with its full strict envelope JSON Schema and shared invocation guidance (expected versions, idempotency, recovery). Generated from the kernel contract — never hand-maintained.",
         mimeType: "application/json",
       },
+      // One entry per readable version, enumerated from the constant rather
+      // than a single "current" alias: an agent declaring schemaVersion 1 must
+      // see the vocabulary of the version it is going to declare, and a third
+      // version has to publish itself. Listed unconditionally — this handler
+      // never asks the port anything, because the vocabulary is not a function
+      // of the grant (see the template constant).
+      ...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.map((schemaVersion) => ({
+        uri: documentVocabularyResourceUri(schemaVersion),
+        // `-v1` elsewhere on this surface is the CONTRACT version, so the
+        // content schema version is spelled out rather than folded into it.
+        name: `constellation-document-vocabulary-schema-${schemaVersion}`,
+        title: `Structured document vocabulary at content schema ${schemaVersion}`,
+        description:
+          "Read this before writing a document or Project body. Every node kind, mark, nesting rule, attribute name, heading level and bound the content validator enforces at this schemaVersion — generated from the validator's own dictionaries, never hand-maintained. Independent of your grant.",
+        mimeType: "application/json",
+      })),
       {
         uri: "constellation://v1/capabilities",
         name: "constellation-capabilities-v1",
@@ -771,6 +829,13 @@ export const createConstellationMcpServer = (
         title: "One authorized operation with its full envelope schema",
         description:
           "Read one operation's complete strict envelope JSON Schema by name, as listed in constellation://v1/operations. Read these individually: the whole catalog is large enough that hosts truncate it.",
+      },
+      {
+        uriTemplate: MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
+        name: "constellation-document-vocabulary-v1",
+        title: "Structured document vocabulary at one content schema version",
+        description:
+          "Read the node kinds, marks, nesting rules, attribute names and bounds legal at the schemaVersion a structured read, write or restore declares. A kind introduced after that version is refused, so the answer is keyed by the version you will send.",
       },
       {
         uriTemplate: MCP_PAYLOAD_RESOURCE_TEMPLATE,
@@ -846,6 +911,29 @@ export const createConstellationMcpServer = (
             uri: request.params.uri,
             mimeType: "application/json",
             text: JSON.stringify(operation),
+          },
+        ],
+      };
+    }
+    if (request.params.uri.startsWith(MCP_DOCUMENT_VOCABULARY_PREFIX)) {
+      const declared = request.params.uri.slice(
+        MCP_DOCUMENT_VOCABULARY_PREFIX.length,
+      );
+      const schemaVersion = READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.find(
+        (version) => String(version) === declared,
+      );
+      if (schemaVersion === undefined) return unavailableVocabulary();
+      // No `port.invoke` on this path, deliberately: the document vocabulary is
+      // a property of the content schema, not of the caller's capabilities, so
+      // it is served without a grant lookup and without filtering. It is also
+      // the read an agent needs BEFORE it can write anything at all — gating it
+      // would withhold the answer from exactly the caller about to be refused.
+      return {
+        contents: [
+          {
+            uri: request.params.uri,
+            mimeType: "application/json",
+            text: JSON.stringify(structuredDocumentVocabulary(schemaVersion)),
           },
         ],
       };

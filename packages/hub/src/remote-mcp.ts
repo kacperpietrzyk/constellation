@@ -53,6 +53,7 @@ import {
   MCP_RUN_IDENTITY_CONFLICT_MESSAGE,
   MCP_TOOL_NAMES,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
+  MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   McpOperatorResponseSchema,
   RemoteMcpCredentialSchema,
@@ -799,6 +800,11 @@ export class HubRemoteMcpService {
                 ],
                 resources: [
                   "constellation://v1/capabilities",
+                  // The remote transport runs the same MCP server, so the
+                  // vocabulary is reachable here too and is grant-independent
+                  // on both. (This list still omits the operations catalog,
+                  // which the Hub does serve — a separate pre-existing gap.)
+                  MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
                   MCP_PAYLOAD_RESOURCE_TEMPLATE,
                 ],
                 grant: projection(

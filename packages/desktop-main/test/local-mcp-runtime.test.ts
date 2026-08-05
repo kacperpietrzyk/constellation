@@ -947,7 +947,9 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
         parameters: { spaceId: ids.space, limit: 20 },
       }),
     });
-    assert.equal(boundedHistory.outcome, "retryable");
+    // Deterministic: the same query over the same data returns the same
+    // size, so this is a refusal, not a transient condition to retry.
+    assert.equal(boundedHistory.outcome, "rejected");
     assert.equal(
       (boundedHistory.result as Record<string, unknown>).diagnosticCode,
       "mcp.response_too_large",

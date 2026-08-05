@@ -130,10 +130,32 @@ exist.
 
 `requiredCapability` is stated because an operation's name is not always the
 capability that authorizes it. `capture.writeTranscript` is reached through
-`capture.transcriptWrite`, and the two checkpoint operations through
-`agent.checkpoint.create` and `agent.checkpoint.previewRevert`. Compare that
+`capture.transcriptWrite`, the two checkpoint operations through
+`agent.checkpoint.create` and `agent.checkpoint.previewRevert`, and the two
+capture exception commands through `capture.process` — the reason this page
+and the catalog once disagreed about whether they existed at all. Compare that
 field against your `capabilityScope` rather than matching names; the batch is
 the one entry without it, because it authorizes each item individually.
+
+A few operations also carry `additionalCapabilities`, a list of the further
+capabilities the same operation needs because it writes outside its own kind:
+`meeting.promoteWorkItem` inserts a Task and needs `task.create` as well,
+`meeting.linkParticipants` can create a Person and needs
+`relationship.personCreate`, and the template, automation and recurrence
+commands that raise work need `task.create` for the same reason. Your grant
+must hold every capability listed, and an operation your scope cannot reach in
+full is not listed at all — so what the catalog shows you is what the kernel
+will accept.
+
+A document body is neither a command nor a query, so it is in no catalog entry.
+`constellation://v1/document-vocabulary/<schemaVersion>` is where it lives: every
+node kind, mark, attribute name, nesting rule, heading level and bound the
+content validator enforces at the `schemaVersion` you declare, generated from
+that validator's own dictionaries. Read it before a structured write — a kind
+introduced after the version you declare is refused with
+`DOCUMENT_STRUCTURED_SCHEMA_VERSION_TOO_OLD`, and the refusal names no
+alternative. It is not filtered by your grant: what a note may hold is a
+property of the content schema, not of your capabilities.
 
 The `constellation://v1/capabilities` resource reports the active contract and
 authorized scope without credential material.
@@ -218,7 +240,8 @@ Capture History.
   the connection stay, and the widened scope applies from your next call.
 - Read a rejection for what it says. `authorization.denied` means one thing:
   the capability the command needs is not in your grant. Compare the
-  operation's `requiredCapability` with your `capabilityScope`. Every other
+  operation's `requiredCapability` — and its `additionalCapabilities`, where
+  it has any — with your `capabilityScope`. Every other
   refusal is `command.precondition_failed` — a target that does not exist, a
   target in a Space your grant does not reach, a payload the command cannot
   accept. Those are indistinguishable on purpose, so a rejection never reveals
@@ -231,6 +254,11 @@ Capture History.
   where the kind has one, and the real total in `blockedByCount`. Naming them
   is safe because they sit inside the target's own Space, which a caller who
   reached this refusal can already read.
+- Read `rejected` / `mcp.response_too_large` as final, not transient. It means
+  the answer does not fit inside one IPC frame; the same query over the same
+  data is the same size next time, and the uncapped reads that hit this
+  (`person.list`, `organization.list`, `relationship.workspace`,
+  `knowledge.list`) have no smaller form to ask for, so retrying cannot help.
 - Recover one command without a checkpoint. `recovery.preview` and
   `command.previewUndo` take a `targetCommandId`, never a `checkpointId`, and
   are granted independently of the checkpoint capabilities.

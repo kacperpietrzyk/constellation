@@ -2844,6 +2844,47 @@ export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandName = CommandEnvelope["commandName"];
 
 /**
+ * The commands whose payload is PARTIAL BY FIELD: every mutable field optional,
+ * an omitted one left alone by the kernel, and a `.refine` refusing a payload
+ * that changes nothing. JSON Schema can express the first two only as silence
+ * and the third not at all, so the MCP guidance has to say it in prose — and it
+ * said it over a HAND-WRITTEN LIST that had been accurate once and then fell
+ * four commands behind. An agent reading a short list concludes the commands
+ * missing from it REPLACE what they omit, which is the opposite of what the
+ * kernel does and destroys the fields it was not told about.
+ *
+ * This list is a CACHED ANSWER, not the derivation. The derivation lives in
+ * `packages/mcp/test/partial-by-field-catalog.test.ts`, which builds a payload
+ * carrying only each command's required fields and asks the real schema whether
+ * it is refused — the kernel's own definition of partiality, executed. That
+ * test fails on a command joining or leaving this family, so the list cannot
+ * fall behind the schemas the way the sentence did.
+ *
+ * Cached rather than derived at module load because the derivation needs to
+ * SYNTHESIZE a valid value per required field, and a synthesizer is inherently
+ * partial: it works by trying candidate values, so a field it cannot build
+ * would drop that command SILENTLY — recreating the defect inside the machinery
+ * meant to remove it. In a test the same gap is a red run instead.
+ *
+ * Typed as CommandName so a renamed command is a compile error here rather than
+ * a name in the prose matching nothing an agent can send.
+ */
+export const PARTIAL_BY_FIELD_COMMANDS: readonly CommandName[] = [
+  "decision.update",
+  "meeting.route",
+  "opportunity.offerUpdate",
+  "opportunity.update",
+  "project.updateDetails",
+  "relationship.organizationUpdate",
+  "relationship.personUpdate",
+  "relationship.renewalUpdate",
+  "savedView.update",
+  "task.updateDetails",
+  "template.updateContents",
+  "workspace.setCommercialDefaults",
+];
+
+/**
  * ADR-048 — a bounded batch. Its own envelope rather than a command whose
  * payload holds commands: nesting the union inside itself would make it
  * recursive, and the ADR-039 operation catalog generates JSON Schema from that

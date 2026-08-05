@@ -7,6 +7,7 @@ import {
   GrantIdSchema,
   MembershipIdSchema,
   PrincipalIdSchema,
+  ProjectTemplateIdSchema,
   SpaceGrantIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
@@ -47,6 +48,14 @@ const ids = {
   thirdSpace: "41000000-0000-4000-8000-000000000027",
   ownerThirdSpaceGrant: "41000000-0000-4000-8000-000000000028",
   thirdTask: "41000000-0000-4000-8000-000000000029",
+  plainMember: "41000000-0000-4000-8000-000000000030",
+  plainMemberCredential: "41000000-0000-4000-8000-000000000031",
+  plainMemberGrant: "41000000-0000-4000-8000-000000000032",
+  plainMemberMembership: "41000000-0000-4000-8000-000000000033",
+  plainMemberSpaceGrant: "41000000-0000-4000-8000-000000000034",
+  configTaskStatus: "41000000-0000-4000-8000-000000000035",
+  configTemplate: "41000000-0000-4000-8000-000000000036",
+  configAutomationRule: "41000000-0000-4000-8000-000000000037",
 } as const;
 
 let sequence = 30_000;
@@ -809,6 +818,100 @@ describe("agent grant delegation reaches the product without widening scope", ()
     );
     assert.equal(denied.outcome, "rejected");
     assert.equal(denied.diagnosticCode, "authorization.denied");
+  });
+
+  /**
+   * `workspace.setWorkingDay` used to share `workspace.rename`'s arm in
+   * `isCurrentlyAuthorized`, which is `administrative` and carried by no
+   * agent grant — so no preset, however wide, could ever reach it, and the
+   * MCP operations catalog never listed it either, since a capability with
+   * no entry in any `capabilityScope` never passes the catalog's filter.
+   * `workspace.setDefaultTaskStatus` and `workspace.setCommercialDefaults`
+   * are the other workspace-level settings and are both `operate`; a working
+   * day belongs beside them, not beside a rename.
+   */
+  const workspaceVersion = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): number =>
+    harness.store.read((view) =>
+      view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
+    )?.version ?? 0;
+
+  const workingDayCommand = (idempotencyKey: string, workspaceVer: number) => ({
+    ...metadata(idempotencyKey, { [ids.workspace]: workspaceVer }),
+    commandName: "workspace.setWorkingDay" as const,
+    payload: {
+      workingDay: {
+        startMinute: 8 * 60,
+        endMinute: 16 * 60,
+        weekdays: [1, 2, 3, 4, 5],
+      },
+    },
+  });
+
+  it("lets an operate-preset agent grant set the working day in a Space it holds", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const agent = contextFromStoredGrant(harness);
+    const changed = commandOutcome(
+      harness.kernel.execute(
+        agent,
+        workingDayCommand("operate-set-working-day", workspaceVersion(harness)),
+      ),
+    );
+    assert.equal(changed.outcome, "success");
+    assert.equal(changed.diagnosticCode, "workspace.working_day_changed");
+  });
+
+  it("refuses workspace.setWorkingDay as a denial, not a precondition, for a grant that never carried the capability", () => {
+    const { harness } = grantWithScope(
+      capabilitiesForAgentGrantPreset("operate").filter(
+        (capability) => capability !== "workspace.setWorkingDay",
+      ),
+    );
+    const agent = contextFromStoredGrant(harness);
+    const denied = commandOutcome(
+      harness.kernel.execute(
+        agent,
+        workingDayCommand(
+          "operate-set-working-day-denied",
+          workspaceVersion(harness),
+        ),
+      ),
+    );
+    assert.equal(denied.outcome, "rejected");
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+  });
+
+  it("keeps workspace.rename and workspace.setVoiceAudioRetention refused for an operate-preset agent", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const agent = contextFromStoredGrant(harness);
+    const renameDenied = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("operate-rename-denied", {
+          [ids.workspace]: workspaceVersion(harness),
+        }),
+        commandName: "workspace.rename",
+        payload: { name: "Should not happen" },
+      }),
+    );
+    assert.equal(renameDenied.outcome, "rejected");
+    assert.equal(renameDenied.diagnosticCode, "authorization.denied");
+
+    const retentionDenied = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("operate-voice-retention-denied", {
+          [ids.workspace]: workspaceVersion(harness),
+        }),
+        commandName: "workspace.setVoiceAudioRetention",
+        payload: { retentionPolicy: "retain" },
+      }),
+    );
+    assert.equal(retentionDenied.outcome, "rejected");
+    assert.equal(retentionDenied.diagnosticCode, "authorization.denied");
   });
 
   const agentSpaceGrants = (
@@ -2077,5 +2180,356 @@ describe("agent grant delegation reaches the product without widening scope", ()
       undone.outcome === "conflict" && undone.diagnosticCode,
       "undo.not_available",
     );
+  });
+
+  /**
+   * Workspace-level configuration — the working day, the default Task status,
+   * the commercial defaults, the status and template vocabularies, the
+   * automations — is `operate` in `CAPABILITY_DELEGATION` and published by the
+   * MCP catalog, but every one of those arms asked
+   * `canManageWorkspaceAccess` first, and an agent grant's own membership is
+   * always minted with role `guest`. The catalog offered the operation and the
+   * kernel answered `command.precondition_failed`, blaming the payload for a
+   * door that was nailed shut.
+   *
+   * `canConfigureWorkspace` asks the role of a human and the grant of an
+   * agent. Both halves have to be proven here: an agent that now gets through,
+   * and a human `member` that still does not. The second is the load-bearing
+   * one — it is the difference between this fix and simply deleting the role
+   * check, which would have handed the working day to every editor.
+   */
+  const configurationCapabilities = () => [
+    ...capabilitiesForAgentGrantPreset("operate"),
+  ];
+
+  /**
+   * A human who is neither `owner` nor `admin`, carrying every configuration
+   * capability there is and holding `edit` on the root Space. Both are
+   * deliberate: whatever refuses this context cannot be the capability scope
+   * and cannot be Space access, so only the membership role is left. A fixture
+   * without the membership row would be refused by both branches of the
+   * predicate and would prove nothing at all.
+   */
+  const plainMemberContext = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): ExecutionContext => {
+    harness.store.transact((transaction) => {
+      transaction.insertMembership({
+        id: MembershipIdSchema.parse(ids.plainMemberMembership),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        principalId: PrincipalIdSchema.parse(ids.plainMember),
+        displayName: "Ordinary member",
+        role: "member",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      transaction.insertSpaceGrant({
+        id: SpaceGrantIdSchema.parse(ids.plainMemberSpaceGrant),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.space),
+        principalId: PrincipalIdSchema.parse(ids.plainMember),
+        access: "edit",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+    const member = ExecutionContextSchema.parse({
+      principalId: ids.plainMember,
+      principalKind: "human",
+      credentialId: ids.plainMemberCredential,
+      grantId: ids.plainMemberGrant,
+      policyVersion: currentPolicyVersion(harness),
+      workspaceId: ids.workspace,
+      spaceScope: [ids.space],
+      capabilityScope: configurationCapabilities(),
+      origin: "desktop",
+    });
+    harness.authorization.register(member);
+    return member;
+  };
+
+  /** The workspace owner, carrying the configuration vocabulary as well. */
+  const ownerWithConfiguration = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): ExecutionContext => {
+    const owner = ExecutionContextSchema.parse({
+      ...ownerContext(),
+      policyVersion: currentPolicyVersion(harness),
+      capabilityScope: [
+        ...ownerContext().capabilityScope,
+        ...configurationCapabilities(),
+      ],
+    });
+    harness.authorization.register(owner);
+    return owner;
+  };
+
+  const workspaceNow = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): number =>
+    harness.store.read((view) =>
+      view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
+    )?.version ?? 0;
+
+  /**
+   * One representative per arm the predicate now governs: `template.create`
+   * for the nine-command arm in `wave2.ts` (which additionally demands
+   * `task.create`), `taskStatus.create` and the two `workspace.set*` rows for
+   * the thirteen-command arm, and `workspace.setWorkingDay` for its own arm in
+   * `kernel.ts`. A hand-written list of expectations would measure nothing, so
+   * each entry is a real command the kernel executes end to end.
+   *
+   * Each envelope is built when it is sent, not when the list is made: two of
+   * the four write the Workspace record, so an envelope stamped up front
+   * carries a version its predecessor has already superseded and comes back
+   * `record.version_conflict` — a failure that looks like a refusal and is not.
+   */
+  const configurationCommands = (
+    harness: ReturnType<typeof createReferenceHarness>,
+    keyPrefix: string,
+    statusId: string,
+  ) =>
+    [
+      {
+        name: "template.create",
+        build: () => ({
+          ...metadata(`${keyPrefix}-template-create`),
+          commandName: "template.create" as const,
+          payload: {
+            templateId: ids.configTemplate,
+            name: "Configured by the caller under test",
+            taskTitles: ["First"],
+            fieldIds: [],
+          },
+        }),
+      },
+      {
+        name: "taskStatus.create",
+        build: () => ({
+          ...metadata(`${keyPrefix}-status-create`),
+          commandName: "taskStatus.create" as const,
+          payload: {
+            statusId,
+            label: `Configured ${keyPrefix}`,
+            operationalSemantics: "actionable" as const,
+          },
+        }),
+      },
+      {
+        name: "workspace.setCommercialDefaults",
+        build: () => ({
+          ...metadata(`${keyPrefix}-commercial-defaults`, {
+            [ids.workspace]: workspaceNow(harness),
+          }),
+          commandName: "workspace.setCommercialDefaults" as const,
+          payload: { markupPct: 12 },
+        }),
+      },
+      {
+        name: "workspace.setWorkingDay",
+        build: () =>
+          workingDayCommand(`${keyPrefix}-working-day`, workspaceNow(harness)),
+      },
+    ] as const;
+
+  it("lets an operate-preset agent grant configure the workspace it was granted", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    const agent = contextFromStoredGrant(harness);
+    for (const { name, build } of configurationCommands(
+      harness,
+      "agent-config",
+      ids.configTaskStatus,
+    )) {
+      const result = commandOutcome(harness.kernel.execute(agent, build()));
+      assert.equal(result.outcome, "success", `${name}: ${result.outcome}`);
+    }
+    // The default-status change is executed apart from the loop because it can
+    // only name a status that already exists: it is the second half of
+    // `taskStatus.create` above, not an independent fixture.
+    const defaulted = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("agent-config-default-status", {
+          [ids.workspace]: workspaceNow(harness),
+        }),
+        commandName: "workspace.setDefaultTaskStatus",
+        payload: { statusId: ids.configTaskStatus },
+      }),
+    );
+    assert.equal(defaulted.outcome, "success");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
+      )?.defaultTaskStatusId,
+      ids.configTaskStatus,
+    );
+  });
+
+  it("keeps automation.sweep out of an agent's reach even though it is operate-class", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    // The rule has to exist first, and this is the whole reason the case is
+    // written this way: a sweep with no active rule answers
+    // `command.precondition_failed` whether the caller was authorized or not,
+    // so without the rule this assertion would stay green after the row was
+    // moved into the permissive arm. With the rule in place an authorized
+    // caller sweeps successfully, and only the refusal is a refusal.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(ownerWithConfiguration(harness), {
+          ...metadata("agent-automation-rule"),
+          commandName: "automation.create",
+          payload: {
+            ruleId: ids.configAutomationRule,
+            name: "Waiting review signals",
+            recipe: { kind: "waiting_review_signals" },
+          },
+        }),
+      ),
+      "success",
+    );
+    const agent = contextFromStoredGrant(harness);
+    // The deliberate exception, pinned so a later tidy-up cannot fold this row
+    // back into the arm beside it: the sweep's executor walks every Space in
+    // the workspace without asking `canEditSpace`, and returns the task ids it
+    // touched. A one-Space grant would write into Spaces it was never given
+    // and read their identifiers back. That is a Space-scope defect in the
+    // executor, and until it is fixed the strict role check stands in for it.
+    const refused = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("agent-automation-sweep"),
+        commandName: "automation.sweep",
+        payload: {},
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+  });
+
+  it("still refuses a human member who is neither owner nor admin", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    const member = plainMemberContext(harness);
+    for (const { name, build } of configurationCommands(
+      harness,
+      "member-config",
+      ids.configTaskStatus,
+    )) {
+      const result = commandOutcome(harness.kernel.execute(member, build()));
+      assert.equal(result.outcome, "rejected", `${name}: ${result.outcome}`);
+      // Not `authorization.denied`: this caller's grant does carry the
+      // capability, so the refusal is deliberately indistinguishable from
+      // every other non-grant reason the pass can refuse (`kernel.ts`,
+      // `RecordedAuthorization`). What matters is that it is a refusal.
+      assert.equal(
+        result.diagnosticCode,
+        "command.precondition_failed",
+        `${name}: ${result.diagnosticCode}`,
+      );
+    }
+    const defaulted = commandOutcome(
+      harness.kernel.execute(member, {
+        ...metadata("member-config-default-status", {
+          [ids.workspace]: workspaceNow(harness),
+        }),
+        commandName: "workspace.setDefaultTaskStatus",
+        payload: { statusId: ids.configTaskStatus },
+      }),
+    );
+    assert.equal(defaulted.outcome, "rejected");
+    // Nothing was written on the way to the refusal.
+    assert.equal(
+      harness.store.read((view) =>
+        view.getProjectTemplate(
+          ProjectTemplateIdSchema.parse(ids.configTemplate),
+        ),
+      ),
+      undefined,
+    );
+  });
+
+  it("keeps the workspace owner able to configure the workspace", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    const owner = ownerWithConfiguration(harness);
+    for (const { name, build } of configurationCommands(
+      harness,
+      "owner-config",
+      ids.configTaskStatus,
+    )) {
+      const result = commandOutcome(harness.kernel.execute(owner, build()));
+      assert.equal(result.outcome, "success", `${name}: ${result.outcome}`);
+    }
+    const defaulted = commandOutcome(
+      harness.kernel.execute(owner, {
+        ...metadata("owner-config-default-status", {
+          [ids.workspace]: workspaceNow(harness),
+        }),
+        commandName: "workspace.setDefaultTaskStatus",
+        payload: { statusId: ids.configTaskStatus },
+      }),
+    );
+    assert.equal(defaulted.outcome, "success");
+  });
+
+  it("refuses an agent grant that never carried the configuration capability as a denial", () => {
+    // One capability removed at a time, because the arms differ: a grant that
+    // lost everything would be refused by the first check in every arm and
+    // would not prove which one answered.
+    for (const missing of [
+      "template.create",
+      "taskStatus.create",
+      "workspace.setCommercialDefaults",
+      "workspace.setDefaultTaskStatus",
+    ] as const) {
+      const { harness } = grantWithScope(
+        configurationCapabilities().filter(
+          (capability) => capability !== missing,
+        ),
+      );
+      const agent = contextFromStoredGrant(harness);
+      const envelope =
+        missing === "template.create"
+          ? {
+              ...metadata(`denied-${missing}`),
+              commandName: "template.create" as const,
+              payload: {
+                templateId: ids.configTemplate,
+                name: "Should not happen",
+                taskTitles: [],
+                fieldIds: [],
+              },
+            }
+          : missing === "taskStatus.create"
+            ? {
+                ...metadata(`denied-${missing}`),
+                commandName: "taskStatus.create" as const,
+                payload: {
+                  statusId: ids.configTaskStatus,
+                  label: "Should not happen",
+                  operationalSemantics: "actionable" as const,
+                },
+              }
+            : missing === "workspace.setCommercialDefaults"
+              ? {
+                  ...metadata(`denied-${missing}`, {
+                    [ids.workspace]: workspaceNow(harness),
+                  }),
+                  commandName: "workspace.setCommercialDefaults" as const,
+                  payload: { markupPct: 3 },
+                }
+              : {
+                  ...metadata(`denied-${missing}`, {
+                    [ids.workspace]: workspaceNow(harness),
+                  }),
+                  commandName: "workspace.setDefaultTaskStatus" as const,
+                  payload: { statusId: ids.configTaskStatus },
+                };
+      const denied = commandOutcome(harness.kernel.execute(agent, envelope));
+      assert.equal(denied.outcome, "rejected", missing);
+      // The whole point of the split diagnostic: a missing capability is a
+      // statement about the grant, and must not read as a bad payload.
+      assert.equal(denied.diagnosticCode, "authorization.denied", missing);
+    }
   });
 });

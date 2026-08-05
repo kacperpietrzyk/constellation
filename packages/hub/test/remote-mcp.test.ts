@@ -1174,7 +1174,14 @@ describe("remote MCP Hub gateway", () => {
       const templates = await client.listResourceTemplates();
       assert.deepEqual(
         templates.resourceTemplates.map((template) => template.name),
-        ["constellation-operation-v1", "constellation-capture-payload-v1"],
+        [
+          "constellation-operation-v1",
+          // The remote transport runs the same MCP server, so the content
+          // vocabulary is reachable over HTTP as well — and it is the transport
+          // whose callers have no desktop to look at.
+          "constellation-document-vocabulary-v1",
+          "constellation-capture-payload-v1",
+        ],
       );
       const resource = await client.readResource({
         uri:

@@ -15,6 +15,7 @@
   "dependencies": {
     "@constellation/application": "0.0.0",
     "@constellation/contracts": "0.0.0",
-    "@constellation/domain": "0.0.0"
+    "@constellation/domain": "0.0.0",
+    "zod": "4.4.3"
   }
 }
