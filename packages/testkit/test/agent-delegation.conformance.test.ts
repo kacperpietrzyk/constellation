@@ -2471,6 +2471,7 @@ describe("agent grant delegation reaches the product without widening scope", ()
   ): {
     readonly raisedTaskIds: readonly string[];
     readonly already: number;
+    readonly skipped: number;
   } => {
     const result = commandOutcome(
       harness.kernel.execute(caller, {
@@ -2487,6 +2488,7 @@ describe("agent grant delegation reaches the product without widening scope", ()
     return {
       raisedTaskIds: result.projection.raisedTaskIds,
       already: result.projection.alreadySignaledCount,
+      skipped: result.projection.skippedSpaceCount,
     };
   };
 
@@ -2547,16 +2549,31 @@ describe("agent grant delegation reaches the product without widening scope", ()
       [ids.space],
       "and wrote in only that Space",
     );
-    // The control that makes the two assertions above capable of failing: the
-    // same fixture, swept by a caller that CAN edit the other two Spaces,
-    // raises exactly the two Tasks the agent left alone. Without it, a fixture
-    // whose Tasks were never sweep-eligible would produce the same green.
+    // What the narrowing owes the caller. Two of the workspace's three Spaces
+    // went unvisited, and without this number the agent could not tell a sweep
+    // that found nothing from a sweep that was not allowed to look. The count
+    // is the whole answer on purpose: the ids would name Spaces this grant may
+    // not know exist.
+    assert.equal(
+      swept.skipped,
+      2,
+      "the Space granted `view` and the Space outside the scope, both counted",
+    );
+    // The control that makes the assertions above capable of failing: the same
+    // fixture, swept by a caller that CAN edit the other two Spaces, raises
+    // exactly the two Tasks the agent left alone. Without it, a fixture whose
+    // Tasks were never sweep-eligible would produce the same green.
     const byOwner = sweep(harness, owner, "owner-automation-sweep");
     assert.deepEqual(byOwner.raisedTaskIds, [ids.otherTask, ids.thirdTask]);
     assert.equal(
       byOwner.already,
       1,
       "the agent's own Space was already signalled, so the fixture is one sweep, not two",
+    );
+    assert.equal(
+      byOwner.skipped,
+      0,
+      "and the same sweep by a caller who may edit everything skipped nothing — the count is about this caller, not about the workspace",
     );
   });
 
@@ -2648,10 +2665,16 @@ describe("agent grant delegation reaches the product without widening scope", ()
     });
     harness.authorization.register(admin);
     // The regression a maintainer has to decide about: this used to raise the
-    // Task. It is not a refusal — the command succeeds and reports an empty
-    // sweep, which reads exactly like a workspace with nothing due.
+    // Task. It is still not a refusal — the command succeeds and reports an
+    // empty sweep — but it no longer reads like a workspace with nothing due,
+    // because it says how many Spaces it never opened. Every Space of the
+    // workspace, here: the admin holds `view` on the root and no grant at all
+    // on the other two, and `admin` has no role branch in
+    // `effectiveSpaceAccess`. An empty sweep with skipped 0 would be the honest
+    // report of a quiet workspace; this is the other thing.
     const byAdmin = sweep(harness, admin, "admin-automation-sweep");
     assert.deepEqual(byAdmin.raisedTaskIds, []);
+    assert.equal(byAdmin.skipped, 3);
     assert.deepEqual(signalledSpaces(harness), []);
 
     // The owner half. Downgrading the owner's own grant on the second Space
@@ -2676,6 +2699,11 @@ describe("agent grant delegation reaches the product without widening scope", ()
       byOwner.raisedTaskIds,
       [ids.task],
       "an owner is exempt on the root Space only",
+    );
+    assert.equal(
+      byOwner.skipped,
+      1,
+      "the downgraded Space, and only it — the third is still granted `edit`",
     );
     assert.deepEqual(signalledSpaces(harness), [ids.space]);
 

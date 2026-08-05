@@ -594,6 +594,18 @@ export const AutomationSweptProjectionSchema = z
     kind: z.literal("automation.swept"),
     raisedTaskIds: z.array(TaskIdSchema),
     alreadySignaledCount: z.int().nonnegative(),
+    // Spaces the sweep never opened because the caller may not edit them. The
+    // executor's access filter otherwise trades a cross-Space leak for silence:
+    // a caller who may edit nothing gets success with an empty raisedTaskIds,
+    // which is the same answer a workspace with nothing due gives.
+    //
+    // A COUNT, never the Space ids. Naming the Spaces would answer a question
+    // the caller is not entitled to ask — the same oracle this kernel closes
+    // everywhere else, where a refusal never reveals whether a record you
+    // cannot see exists. A number says "your view of this workspace is partial"
+    // without saying what is in it, which is exactly enough to tell an empty
+    // sweep apart from a blind one.
+    skippedSpaceCount: z.int().nonnegative(),
     truncated: z.boolean(),
   })
   .strict();
@@ -604,6 +616,16 @@ export const RecurrenceSweptProjectionSchema = z
     // Recurrences examined and found not yet due — the honest counterpart to
     // generatedTaskIds, so an empty sweep is distinguishable from no cadences.
     pendingCount: z.int().nonnegative(),
+    // The same count, for the same filter one arm above, on the same terms: a
+    // number and not the ids. It answers a different question here, though, and
+    // the difference is a kind rather than a degree: this executor rejects with
+    // command.precondition_failed whenever it generated nothing, so the case
+    // that motivates the count on automation.swept — a caller who may edit
+    // nothing, answered `success` with an empty list — cannot be read from here
+    // at all, because a rejection carries no projection. What it does report is
+    // the PARTIAL sweep, the ordinary shape for a Space-scoped grant, and that
+    // is the same reach pendingCount already has.
+    skippedSpaceCount: z.int().nonnegative(),
     truncated: z.boolean(),
   })
   .strict();

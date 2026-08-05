@@ -7241,6 +7241,7 @@ export const executeWave2Command = (
         "task" | "project" | "attentionSignal" | "relation" | "strategicRecord"
       > = {};
       let pendingCount = 0;
+      let skippedSpaceCount = 0;
       let truncated = false;
       let lastRecurrence: StrategicRecord | undefined;
       for (const space of transaction.listSpaces(command.workspaceId)) {
@@ -7250,8 +7251,17 @@ export const executeWave2Command = (
         // cross-Space leak the authorization model exists to prevent. A
         // cadence in an unreadable Space simply waits for a sweep by someone
         // who can edit it.
-        if (!canEditSpace(transaction, context, command.workspaceId, space.id))
+        //
+        // Counted, so the caller learns its sweep was partial. Only this branch
+        // increments: a Space left unvisited because the limit was reached is
+        // already reported by `truncated`, and folding the two would name the
+        // rate bound as an access problem.
+        if (
+          !canEditSpace(transaction, context, command.workspaceId, space.id)
+        ) {
+          skippedSpaceCount += 1;
           continue;
+        }
         for (const record of transaction.listStrategicRecords(
           command.workspaceId,
           space.id,
@@ -7344,6 +7354,7 @@ export const executeWave2Command = (
             kind: "recurrence.swept",
             generatedTaskIds,
             pendingCount,
+            skippedSpaceCount,
             truncated,
           },
         },
@@ -7369,6 +7380,7 @@ export const executeWave2Command = (
       const limit = 50;
       const raisedTaskIds: TaskId[] = [];
       let alreadySignaledCount = 0;
+      let skippedSpaceCount = 0;
       let truncated = false;
       const owner = transaction
         .listMemberships(command.workspaceId)
@@ -7385,8 +7397,20 @@ export const executeWave2Command = (
         // command was undelegable, because a grant scoped to one Space would
         // have swept the whole workspace. A task in an unreachable Space is not
         // dropped, it waits for a sweep by someone who can edit that Space.
-        if (!canEditSpace(transaction, context, command.workspaceId, space.id))
+        //
+        // Counting the skips is what keeps the filter from trading a leak for
+        // silence: without it a caller who may edit nothing succeeds with an
+        // empty `raisedTaskIds`, which is byte-for-byte the answer a workspace
+        // with nothing due gives, and no caller could tell those apart. Only
+        // this branch increments — a Space the limit cut short is `truncated`,
+        // a different fact — and it stays a number rather than the ids, because
+        // the caller may not know which Spaces those are.
+        if (
+          !canEditSpace(transaction, context, command.workspaceId, space.id)
+        ) {
+          skippedSpaceCount += 1;
           continue;
+        }
         for (const task of transaction.listTasksInSpace(
           command.workspaceId,
           space.id,
@@ -7460,6 +7484,7 @@ export const executeWave2Command = (
             kind: "automation.swept",
             raisedTaskIds,
             alreadySignaledCount,
+            skippedSpaceCount,
             truncated,
           },
         },
