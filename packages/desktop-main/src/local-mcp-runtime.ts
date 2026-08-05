@@ -31,6 +31,7 @@ import {
   AuthenticatedIpcRequestSchema,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
   MCP_CHECKPOINT_REVERT_DIAGNOSTICS,
+  MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   MAX_IPC_MESSAGE_BYTES,
   MCP_CONTRACT_VERSION,
@@ -107,8 +108,13 @@ export const localMcpEndpoint = (
 const serializeResponse = (response: McpOperatorResponse): string => {
   const encoded = `${JSON.stringify(response)}\n`;
   if (Buffer.byteLength(encoded) <= MAX_IPC_MESSAGE_BYTES) return encoded;
+  // Same query, same data, same size: a retry can never fit this through the
+  // frame, and the queries most likely to land here (person.list,
+  // organization.list, relationship.workspace, knowledge.list) are uncapped
+  // by design and have no smaller form to ask for. "rejected" says so once;
+  // "retryable" would send an agent back to try the identical call forever.
   return `${JSON.stringify(
-    contentSafeResponse(response.requestId, "retryable", {
+    contentSafeResponse(response.requestId, "rejected", {
       diagnosticCode: "mcp.response_too_large",
     }),
   )}\n`;
@@ -497,6 +503,11 @@ export class LocalMcpRuntime {
         resources: [
           "constellation://v1/operations",
           "constellation://v1/capabilities",
+          // Served by the MCP server process, not from here — this list is the
+          // host's self-description, and leaving the vocabulary out of it would
+          // hide from a `capabilities` reader the one resource that says what a
+          // document body may contain.
+          MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
           MCP_PAYLOAD_RESOURCE_TEMPLATE,
         ],
         grant: {

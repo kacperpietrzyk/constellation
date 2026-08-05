@@ -71,6 +71,27 @@ export const MCP_PAYLOAD_RESOURCE_TEMPLATE =
   "constellation://v1/workspaces/{workspaceId}/captures/{captureId}/payload{?agentRunId,hostRunId,hostName}";
 
 /**
+ * The structured document vocabulary, keyed by the version a caller declares.
+ *
+ * It is a TEMPLATE and not one resource because the answer genuinely differs
+ * per version: a kind introduced after the declared version is refused, so
+ * "what may I write" cannot be answered without knowing what the write will
+ * say. The concrete URIs are enumerated from the readable-version set, so a
+ * third version publishes itself.
+ *
+ * Unlike the operations catalog, this one is GRANT-INDEPENDENT and must never
+ * be gated on capabilityScope: the node kinds a note may hold are a property of
+ * the content schema, not of anybody's authorization. Filtering it by grant
+ * would answer a question nobody asked and hide the vocabulary from precisely
+ * the agent about to be refused for guessing at it.
+ */
+export const MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE =
+  "constellation://v1/document-vocabulary/{schemaVersion}";
+
+export const documentVocabularyResourceUri = (schemaVersion: number): string =>
+  `constellation://v1/document-vocabulary/${schemaVersion}`;
+
+/**
  * A run's identity is claimed once and never reassigned: the first invocation
  * carrying an `agentRunId` binds it to the grant, the agent principal and the
  * host run that registered it, and a grant plus a host run names at most one

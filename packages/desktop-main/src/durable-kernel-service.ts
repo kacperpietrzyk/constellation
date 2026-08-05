@@ -167,6 +167,7 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "taskStatus.restore",
   "workspace.setDefaultTaskStatus",
   "workspace.setCommercialDefaults",
+  "workspace.setWorkingDay",
   "task.setStatus",
   "task.setOperationalState",
   "task.complete",

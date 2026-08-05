@@ -13,6 +13,7 @@ import {
 } from "./collaboration.js";
 import {
   activeMembership,
+  canConfigureWorkspace,
   canEditSpace,
   canManageWorkspaceAccess,
   canViewSpace,
@@ -21,10 +22,13 @@ import {
   AuditReceiptIdSchema,
   AttentionSignalIdSchema,
   CaptureIdSchema,
+  COMMAND_CAPABILITIES,
+  QUERY_CAPABILITIES,
   CommandOutcomeSchema,
   EventIdSchema,
   MembershipIdSchema,
   KnowledgeSourceIdSchema,
+  operationPermitsPrincipalKind,
   OutboxEntryIdSchema,
   QueryResultSchema,
   TaskIdSchema,
@@ -244,10 +248,12 @@ const isWorkspaceAdministrator = (
  * does not carry, a revoked grant, a stale policy version — is denial. Every
  * other refusal is a precondition.
  *
- * The capabilities are recorded rather than restated because each branch
- * decides for itself which one it needs (`capture.writeTranscript` authorizes
+ * The capabilities are recorded rather than restated because a branch's
+ * requirement is not its command name (`capture.writeTranscript` authorizes
  * against `capture.transcriptWrite`), and a second table would drift from the
- * pass the first time either changed.
+ * pass the first time either changed. Every branch now reads that requirement
+ * from `COMMAND_CAPABILITIES` in contracts, which is also what the MCP catalog
+ * publishes — so a capability stated once cannot be published as another.
  *
  * Deliberately indistinguishable: a record that does not exist, a record in a
  * Space the caller cannot reach, and a caller with no membership all answer
@@ -289,35 +295,48 @@ const isCurrentlyAuthorized = (
     return false;
   }
 
+  // Stated once, in contracts, and read here rather than restated: the arms
+  // keep their structural checks and their ordering, but which capability each
+  // one needs is no longer a literal this file owns a private copy of.
+  const required = COMMAND_CAPABILITIES[command.commandName];
+
   switch (command.commandName) {
     case "workspace.createLocal":
       return (
         authorization.authorize({
           context,
-          capability: command.commandName,
+          capability: required.capability,
           workspaceId: command.workspaceId,
           spaceId: command.payload.rootSpaceId,
         }) &&
-        context.principalKind === "human" &&
+        // Read from the table, in the position the literal `=== "human"`
+        // occupied, so the catalog cannot advertise to an agent a command this
+        // line refuses it. Position unchanged on purpose: the consult still
+        // comes first, so a caller without the capability reads a denial.
+        operationPermitsPrincipalKind(required, context.principalKind) &&
         context.principalId === command.payload.ownerPrincipalId &&
         command.workspaceId === command.payload.workspaceId &&
         canUseSpace(context, command.workspaceId, command.payload.rootSpaceId)
       );
     case "workspace.rename":
-    case "workspace.setVoiceAudioRetention":
-    case "workspace.setWorkingDay": {
+    case "workspace.setVoiceAudioRetention": {
       // Asked before anything is read, for the reason stated at the top of this
       // file: a branch that refuses before consulting the policy consults
       // nothing, and a verdict reached over nothing is reported as a
       // precondition — so the caller is told to fix a payload when the real
-      // answer is that its grant never carried the capability. The literal
-      // stays `workspace.rename`: `setVoiceAudioRetention` deliberately
-      // consults it, and using the command name would newly refuse a scope
-      // that holds one without the other.
+      // answer is that its grant never carried the capability. Both rows read
+      // `workspace.rename` from the table: `setVoiceAudioRetention` decides
+      // whether recorded audio is kept or deleted, which is administrative
+      // authority over sensitive material rather than an ordinary setting, and
+      // using the command name would newly refuse a scope that holds one
+      // without the other. `workspace.setWorkingDay` used to sit in this same
+      // arm on the strength of that reasoning alone; a working day is neither
+      // an identity nor a retention policy, and it now consults its own
+      // capability in the arm below.
       if (
         !authorization.authorize({
           context,
-          capability: "workspace.rename",
+          capability: required.capability,
           workspaceId: command.workspaceId,
         })
       )
@@ -331,7 +350,7 @@ const isCurrentlyAuthorized = (
         workspace !== undefined &&
         authorization.authorize({
           context,
-          capability: "workspace.rename",
+          capability: required.capability,
           workspaceId: command.workspaceId,
           spaceId: workspace.rootSpaceId,
         }) &&
@@ -342,6 +361,39 @@ const isCurrentlyAuthorized = (
           workspace.rootSpaceId,
         ) &&
         isWorkspaceAdministrator(membership)
+      );
+    }
+    case "workspace.setWorkingDay": {
+      // Same ordering as the arm above, for the same reason, but its own
+      // capability: the working day is an ordinary operate-class setting —
+      // the class `workspace.setCommercialDefaults` and
+      // `workspace.setDefaultTaskStatus` already carry — not administrative
+      // authority, so it is delegable to an agent grant. `canConfigureWorkspace`
+      // rather than a bare `isWorkspaceAdministrator`: the role still decides
+      // for a human, so a plain `member` cannot move the working day any more
+      // than it could before this command left `workspace.rename`'s arm, while
+      // an agent is decided by the grant a workspace administrator wrote for
+      // it. Dropping the role for everyone would have widened the command for
+      // humans, which nobody asked for.
+      if (
+        !authorization.authorize({
+          context,
+          capability: required.capability,
+          workspaceId: command.workspaceId,
+        })
+      )
+        return false;
+      const workspace = view.getWorkspace(command.workspaceId);
+      return (
+        workspace !== undefined &&
+        canConfigureWorkspace(view, context, command.workspaceId) &&
+        authorization.authorize({
+          context,
+          capability: required.capability,
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+        }) &&
+        canEditSpace(view, context, command.workspaceId, workspace.rootSpaceId)
       );
     }
     case "workspace.memberAdd":
@@ -355,7 +407,7 @@ const isCurrentlyAuthorized = (
       const canManage =
         authorization.authorize({
           context,
-          capability: "workspace.manageAccess",
+          capability: required.capability,
           workspaceId: command.workspaceId,
         }) && canManageWorkspaceAccess(view, context, command.workspaceId);
       if (!canManage) return false;
@@ -384,7 +436,7 @@ const isCurrentlyAuthorized = (
       // it here would turn the denial into an existence oracle.
       return authorization.authorize({
         context,
-        capability: "agent.checkpoint.revert",
+        capability: required.capability,
         workspaceId: command.workspaceId,
       });
     case "agent.grantCreate":
@@ -417,7 +469,7 @@ const isCurrentlyAuthorized = (
       return (
         authorization.authorize({
           context,
-          capability: command.commandName,
+          capability: required.capability,
           workspaceId: command.workspaceId,
           spaceId: command.payload.spaceId,
         }) &&
@@ -446,17 +498,13 @@ const isCurrentlyAuthorized = (
       // answer the caller is entitled to. Without it, refusing here consults
       // nothing and the caller reads a precondition for a capability it never
       // held. Same shape as `agent.checkpointRevert` below.
-      const capability =
-        command.commandName === "capture.reportException" ||
-        command.commandName === "capture.resolveException"
-          ? "capture.process"
-          : command.commandName === "capture.writeTranscript"
-            ? "capture.transcriptWrite"
-            : command.commandName === "capture.requestAudioDeletion"
-              ? "capture.process"
-              : command.commandName === "capture.confirmAudioDeletion"
-                ? "capture.audioDeleteConfirm"
-                : command.commandName;
+      //
+      // The five-branch ternary this replaces was the kernel's private copy of
+      // the alias table the MCP catalog also kept, and the copies had already
+      // drifted: the catalog listed neither exception command, so a
+      // `capture.process` grant could run both and was told by
+      // `constellation://v1/operations` that they did not exist.
+      const capability = required.capability;
       if (
         !authorization.authorize({
           context,
@@ -465,12 +513,23 @@ const isCurrentlyAuthorized = (
         })
       )
         return false;
+      // The kind question is now asked for all seven commands in this arm
+      // rather than for the two named ones, which widens nothing: the table
+      // leaves `principalKinds` absent everywhere else and absent means any.
+      // What it buys is that the two deletion rows state their restriction
+      // where the MCP catalog can read it — the restriction was invisible to
+      // the catalog while it lived in this condition, and the catalog began
+      // listing `capture.requestAudioDeletion` to every `operate` agent the
+      // day it started deriving reachability from `capture.process`.
+      if (!operationPermitsPrincipalKind(required, context.principalKind))
+        return false;
+      // Origin stays a literal and stays out of the table. It restricts one
+      // command, and that command's capability is `runtime`-class, so no grant
+      // an operator can write ever reaches this line: a column in the table
+      // would state a rule with no second reader.
       if (
-        (command.commandName === "capture.requestAudioDeletion" &&
-          context.principalKind !== "human") ||
-        (command.commandName === "capture.confirmAudioDeletion" &&
-          (context.principalKind !== "human" ||
-            context.origin !== "maintenance"))
+        command.commandName === "capture.confirmAudioDeletion" &&
+        context.origin !== "maintenance"
       )
         return false;
       const capture = view.getCapture(command.payload.captureId);
@@ -1407,19 +1466,21 @@ export class ApplicationKernel {
     occurredAt: string,
   ): CommandOutcome {
     const workspace = transaction.getWorkspace(command.workspaceId);
-    const membership = transaction.getMembership(
-      command.workspaceId,
-      context.principalId,
-    );
+    // The same predicate the arm in `isCurrentlyAuthorized` used, re-taken
+    // against the transaction: a bare `isWorkspaceAdministrator` here (as in
+    // `renameWorkspace` and `setWorkspaceVoiceAudioRetention` below) would
+    // silently re-close the door for agents that the arm opens, and omitting
+    // the check entirely would leave the human role gate enforced in one place
+    // only. Neither half of this fix survives without the other.
     if (
       workspace === undefined ||
+      !canConfigureWorkspace(transaction, context, command.workspaceId) ||
       !canEditSpace(
         transaction,
         context,
         command.workspaceId,
         workspace.rootSpaceId,
-      ) ||
-      !isWorkspaceAdministrator(membership)
+      )
     )
       return this.outcome(command, occurredAt, {
         outcome: "rejected",
@@ -3168,7 +3229,7 @@ export class ApplicationKernel {
       membership === undefined ||
       !this.dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
       })
     ) {
@@ -3186,7 +3247,7 @@ export class ApplicationKernel {
         canViewSpace(view, context, query.workspaceId, space.id) &&
         this.dependencies.authorization.authorize({
           context,
-          capability: query.queryName,
+          capability: QUERY_CAPABILITIES[query.queryName].capability,
           workspaceId: query.workspaceId,
           spaceId: space.id,
         }),
@@ -3284,7 +3345,7 @@ export class ApplicationKernel {
       space?.workspaceId !== query.workspaceId ||
       !this.dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: query.parameters.spaceId,
       }) ||
@@ -3413,7 +3474,7 @@ export class ApplicationKernel {
       space?.workspaceId !== query.workspaceId ||
       !this.dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: query.parameters.spaceId,
       }) ||
@@ -3729,7 +3790,7 @@ export class ApplicationKernel {
       !canViewSpace(view, context, query.workspaceId, space.id) ||
       !this.dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: space.id,
       })
@@ -3810,7 +3871,7 @@ export class ApplicationKernel {
       membership === undefined ||
       !this.dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: receipt.spaceId,
       }) ||

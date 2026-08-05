@@ -5,8 +5,21 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
-import { CapabilitySchema } from "@constellation/contracts";
-import { READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS } from "@constellation/realtime-documents";
+import {
+  COMMAND_CAPABILITIES,
+  QUERY_CAPABILITIES,
+  CapabilitySchema,
+  type CommandName,
+  type OperationCapabilityRequirement,
+  type QueryName,
+} from "@constellation/contracts";
+import {
+  MAX_IMAGE_ALT_LENGTH,
+  READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS,
+  STRUCTURED_DOCUMENT_HEADING_LEVELS,
+  STRUCTURED_DOCUMENT_MARK_KINDS,
+  STRUCTURED_DOCUMENT_NODE_KINDS,
+} from "@constellation/realtime-documents";
 
 import {
   CONTRACT_SPLIT_WARNING,
@@ -14,7 +27,9 @@ import {
 } from "../src/contract-stamp.js";
 import {
   MCP_CHECKPOINT_REVERT_DIAGNOSTICS,
+  MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE,
   checkpointRevertRefusal,
+  documentVocabularyResourceUri,
 } from "../src/protocol.js";
 import { createConstellationMcpServer } from "../src/server.js";
 import type {
@@ -249,7 +264,11 @@ test("assembles and verifies an authorized Capture payload resource", async () =
     const templates = await client.listResourceTemplates();
     assert.deepEqual(
       templates.resourceTemplates.map((template) => template.name),
-      ["constellation-operation-v1", "constellation-capture-payload-v1"],
+      [
+        "constellation-operation-v1",
+        "constellation-document-vocabulary-v1",
+        "constellation-capture-payload-v1",
+      ],
     );
     const uri =
       `constellation://v1/workspaces/${workspaceId}/captures/${captureId}/payload` +
@@ -339,6 +358,12 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     // Held under a name its own command does not use; the catalog has to say
     // so rather than leave an integrator to infer the bridge.
     "capture.transcriptWrite",
+    // A hand-narrowed pair, and the point of the pair is that one half is
+    // missing: promotion also needs task.create, which this scope holds, while
+    // linking also needs relationship.personCreate, which it does not. The
+    // kernel refuses the second, so the catalog must not list it.
+    "meeting.promoteWorkItem",
+    "meeting.linkParticipants",
   ];
   const server = createConstellationMcpServer({
     invoke: (invocation) =>
@@ -381,19 +406,52 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         readonly schema: string;
         readonly revertable?: string;
         readonly requiredCapability?: string;
+        readonly additionalCapabilities?: readonly string[];
       }[];
     };
     const names = catalog.operations.map((operation) => operation.name);
+    // Asked BEFORE the whole-list comparison below, which would otherwise fire
+    // first and report the difference as an unexplained extra name. One
+    // capability, one row: deriving reachability from capabilities gave
+    // `agent.checkpoint.revert` two — the dedicated tool and the ordinary
+    // command that authorizes against the same capability. An agent choosing
+    // between them has nothing to choose on, and the command path is the worse
+    // one: it answers through constellation.command.v1, which carries none of
+    // the `blocked` list and none of the agent.checkpoint_revert_* diagnostics
+    // the recovery guidance promises. Asserted as a pair, because an absence
+    // alone is also satisfied by losing the capability's row altogether.
+    assert.ok(
+      names.includes("agent.checkpoint.revert"),
+      "the dedicated revert tool is the supported path and must be listed",
+    );
+    assert.ok(
+      !names.includes("agent.checkpointRevert"),
+      "the command row for the same capability must stay unlisted: it answers through constellation.command.v1, which returns none of the blocked list and none of the agent.checkpoint_revert_* diagnostics INVOCATION_GUIDANCE.recovery promises, so listing both advertises a trap and makes an agent choose between two paths with nothing to choose on",
+    );
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "agent.checkpoint.revert",
+      )?.tool,
+      "constellation.checkpoint.revert.v1",
+      "and the surviving row must point at the dedicated tool, not at the command tool",
+    );
     assert.deepEqual(
       [...names].sort(),
       [
         "agent.checkpoint.revert",
         "agent.checkpointCreate",
         "agent.checkpointPreviewRevert",
+        // `agent.checkpointRevert` is deliberately NOT here; the two
+        // assertions after this list say why.
         "capture.writeTranscript",
         // Unconditional: a batch authorizes each item, so any grant that can
         // run a command can batch it (ADR-048).
         "command.batch",
+        // Its sibling meeting.linkParticipants is deliberately ABSENT: this
+        // scope holds the command's own capability and not the second one the
+        // kernel consults, so the operation is unreachable and saying
+        // otherwise is what sent an agent into an unfixable denial.
+        "meeting.promoteWorkItem",
         "project.create",
         "project.updateDetails",
         "record.relate",
@@ -402,26 +460,43 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         "task.updateDetails",
         "work.overview",
       ],
-      "only in-scope operations with envelopes appear; capture.audioRead has no envelope and no entry",
+      "only operations this scope can actually reach appear; capture.audioRead has no envelope and no entry",
     );
-    // The capability an operation needs is stated, never inferred from the
-    // operation name. Four operations are reachable only under a differently
-    // spelled capability, and an agent comparing this catalog against its own
-    // capabilityScope has no other way to see the bridge.
+    // DERIVED from the contracts table the kernel authorizes against, not
+    // restated. The assertion this replaces listed the divergent rows by hand
+    // — a mirror of the same four-row alias table the catalog itself used, so
+    // it agreed with the defect it was there to catch and could not see an
+    // omission by construction. Its comment said "Four operations" over a list
+    // of three, which is what an expectation that measures nothing looks like.
+    const stated = (
+      name: string,
+      kind: string,
+    ): OperationCapabilityRequirement =>
+      kind === "query"
+        ? QUERY_CAPABILITIES[name as QueryName]
+        : COMMAND_CAPABILITIES[name as CommandName];
+    for (const operation of catalog.operations) {
+      if (operation.kind === "batch" || operation.kind === "checkpoint_revert")
+        continue;
+      const requirement = stated(operation.name, operation.kind);
+      assert.equal(
+        operation.requiredCapability,
+        requirement.capability,
+        `${operation.name} must publish the capability the kernel consults`,
+      );
+      assert.deepEqual(
+        operation.additionalCapabilities ?? [],
+        requirement.additionalCapabilities ?? [],
+        `${operation.name} must publish every further capability the kernel consults`,
+      );
+    }
+    // The A2 half at the wire: an operation needing two capabilities says so,
+    // in a field a 0.1.9 host that only parses requiredCapability ignores.
     assert.deepEqual(
-      catalog.operations
-        .filter(
-          (operation) =>
-            operation.requiredCapability !== undefined &&
-            operation.requiredCapability !== operation.name,
-        )
-        .map((operation) => [operation.name, operation.requiredCapability])
-        .sort(),
-      [
-        ["agent.checkpointCreate", "agent.checkpoint.create"],
-        ["agent.checkpointPreviewRevert", "agent.checkpoint.previewRevert"],
-        ["capture.writeTranscript", "capture.transcriptWrite"],
-      ],
+      catalog.operations.find(
+        (operation) => operation.name === "meeting.promoteWorkItem",
+      )?.additionalCapabilities,
+      ["task.create"],
     );
     assert.equal(
       catalog.operations.find((operation) => operation.name === "command.batch")
@@ -931,6 +1006,218 @@ test("accepts both content schema versions a structured request may declare", as
       invocations.length,
       before,
       "An unreadable version reached the operator.",
+    );
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+/**
+ * The document vocabulary was reachable from NOWHERE on this surface. The
+ * operations catalog covers commands and queries, and a document body is
+ * neither — so `content` was an untyped object beside a version number, and the
+ * node kinds Wave D added were discoverable only by reading somebody else's
+ * note that already contained one.
+ *
+ * Every assertion below is made against the parser's own constants rather than
+ * against a list written here. A test that compares a published list to a list
+ * in the test file is a mirror: it agrees with itself and cannot see the one
+ * failure that matters, a kind added to the schema and forgotten in the
+ * descriptor.
+ */
+test("serves the document vocabulary the parser enforces, ungated by any grant", async () => {
+  const invocations: McpOperatorInvocation[] = [];
+  const server = createConstellationMcpServer({
+    invoke: (invocation) => {
+      invocations.push(invocation);
+      return Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        // A grant holding nothing at all: the vocabulary is not authorization,
+        // and this scope would filter the operations catalog down to nothing.
+        result: { grant: { capabilityScope: [] } },
+      } satisfies McpOperatorResponse);
+    },
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "vocabulary-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  interface Vocabulary {
+    readonly schemaVersion: number;
+    readonly nodes: readonly {
+      readonly kind: string;
+      readonly group: string;
+      readonly mayContain: readonly string[];
+      readonly attributes: readonly string[];
+      readonly attributesRequired: boolean;
+      readonly introducedIn: number;
+    }[];
+    readonly marks: readonly {
+      readonly kind: string;
+      readonly attributes: readonly string[];
+    }[];
+    readonly headingLevels: readonly number[];
+    readonly limits: Readonly<Record<string, number>>;
+  }
+  try {
+    const resources = await client.listResources();
+    assert.deepEqual(
+      resources.resources
+        .map((resource) => resource.uri)
+        .filter((uri) =>
+          uri.startsWith("constellation://v1/document-vocabulary"),
+        ),
+      READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS.map((version) =>
+        documentVocabularyResourceUri(version),
+      ),
+      "every readable content schema version is listed, without being asked for",
+    );
+
+    const byVersion = new Map<number, Vocabulary>();
+    for (const version of READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS) {
+      const read = await client.readResource({
+        uri: documentVocabularyResourceUri(version),
+      });
+      const content = read.contents[0];
+      const text =
+        content !== undefined && "text" in content ? content.text : undefined;
+      assert.ok(
+        typeof text === "string",
+        `version ${version} returned no text`,
+      );
+      byVersion.set(version, JSON.parse(text) as Vocabulary);
+    }
+
+    // The grant was never consulted — not by the listing and not by the read.
+    // An empty capabilityScope would have proved nothing on its own: it is the
+    // absence of the call that fails if somebody later gates this on scope.
+    assert.deepEqual(
+      invocations,
+      [],
+      "the vocabulary asked the Application Port about the caller's grant",
+    );
+
+    const newest = byVersion.get(
+      Math.max(...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS),
+    );
+    assert.ok(newest !== undefined);
+    assert.deepEqual(
+      newest.nodes.map((node) => node.kind).sort(),
+      [...STRUCTURED_DOCUMENT_NODE_KINDS].sort(),
+      "a node kind the parser accepts is missing from the published vocabulary",
+    );
+    assert.deepEqual(
+      newest.marks.map((mark) => mark.kind).sort(),
+      [...STRUCTURED_DOCUMENT_MARK_KINDS].sort(),
+      "a mark kind the parser accepts is missing from the published vocabulary",
+    );
+    // Marks carry no version rule in the parser, so every version publishes all
+    // of them; the union across versions has to close over the node kinds too.
+    assert.deepEqual(
+      [
+        ...new Set(
+          [...byVersion.values()].flatMap((vocabulary) =>
+            vocabulary.nodes.map((node) => node.kind),
+          ),
+        ),
+      ].sort(),
+      [...STRUCTURED_DOCUMENT_NODE_KINDS].sort(),
+    );
+
+    assert.deepEqual(
+      newest.headingLevels,
+      [...STRUCTURED_DOCUMENT_HEADING_LEVELS],
+      "the levels an agent is told about are not the levels the validator enforces — the h4 defect",
+    );
+    assert.equal(newest.limits["imageAltLength"], MAX_IMAGE_ALT_LENGTH);
+
+    // Every kind is reachable by walking from the root: a nesting rule that
+    // derived wrongly would orphan one, and an agent reading the descriptor
+    // would have no legal parent to put it under.
+    assert.deepEqual(
+      [...new Set(newest.nodes.flatMap((node) => node.mayContain))].sort(),
+      [...STRUCTURED_DOCUMENT_NODE_KINDS]
+        .filter((kind) => kind !== "doc")
+        .sort(),
+    );
+
+    // The older version publishes exactly the kinds it may declare — derived
+    // from introducedIn, never from a hand-written list of what Wave D added.
+    const oldest = byVersion.get(
+      Math.min(...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS),
+    );
+    assert.ok(oldest !== undefined);
+    const withheld = newest.nodes.filter(
+      (node) => node.introducedIn > oldest.schemaVersion,
+    );
+    assert.ok(
+      withheld.length > 0,
+      "no kind is version-gated at all — this comparison measures nothing",
+    );
+    assert.deepEqual(
+      oldest.nodes.map((node) => node.kind).sort(),
+      newest.nodes
+        .filter((node) => node.introducedIn <= oldest.schemaVersion)
+        .map((node) => node.kind)
+        .sort(),
+    );
+    for (const node of withheld)
+      assert.ok(
+        !oldest.nodes.some((older) => older.mayContain.includes(node.kind)),
+        `${node.kind} is offered as a legal child at a version that refuses it`,
+      );
+
+    // The attribute names come from the specs the validator's exact-key check
+    // reads, so an image publishes the two attributes a write must carry.
+    const image = newest.nodes.find((node) => node.kind === "image");
+    assert.deepEqual([...(image?.attributes ?? [])].sort(), [
+      "alt",
+      "sourceId",
+    ]);
+    assert.equal(image?.attributesRequired, true);
+
+    // Six tools take `content` or return it; the clause pointing here belongs
+    // on all of them, enumerated from the published contract rather than named.
+    const tools = await client.listTools();
+    const structured = tools.tools.filter(
+      (tool) =>
+        (tool.inputSchema.properties as Record<string, unknown> | undefined)?.[
+          "schemaVersion"
+        ] !== undefined,
+    );
+    assert.equal(structured.length, 6, "the structured tools were not found");
+    for (const tool of structured)
+      assert.ok(
+        tool.description?.includes(MCP_DOCUMENT_VOCABULARY_RESOURCE_TEMPLATE),
+        `${tool.name} does not say where the content vocabulary is`,
+      );
+
+    // A version nobody reads is refused the way this surface refuses — and,
+    // unlike the operations catalog, it may name the whole readable set,
+    // because withholding it would protect nothing.
+    await assert.rejects(
+      client.readResource({
+        uri: documentVocabularyResourceUri(
+          Math.max(...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS) + 1,
+        ),
+      }),
+      (error: unknown) => {
+        assert.equal((error as { readonly code?: number }).code, -32600);
+        assert.equal(
+          (
+            (error as { readonly data?: { readonly diagnosticCode?: string } })
+              .data ?? {}
+          ).diagnosticCode,
+          "mcp.document_vocabulary_unavailable",
+        );
+        return true;
+      },
     );
   } finally {
     await client.close();

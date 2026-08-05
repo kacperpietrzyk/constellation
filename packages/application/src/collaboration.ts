@@ -1,5 +1,6 @@
 import {
   AuditReceiptIdSchema,
+  QUERY_CAPABILITIES,
   CommandOutcomeSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
@@ -484,7 +485,7 @@ export const executeCollaborationQuery = (
     (workspace.policyVersion ?? 1) !== context.policyVersion ||
     !dependencies.authorization.authorize({
       context,
-      capability: query.queryName,
+      capability: QUERY_CAPABILITIES[query.queryName].capability,
       workspaceId: query.workspaceId,
     })
   )
@@ -547,7 +548,7 @@ export const executeCollaborationQuery = (
       canViewSpace(view, context, workspace.id, space.id) &&
       dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: workspace.id,
         spaceId: space.id,
       }),

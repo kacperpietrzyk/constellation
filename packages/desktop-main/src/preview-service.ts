@@ -191,6 +191,7 @@ export const PREVIEW_CAPABILITY_DISPOSITION: Readonly<
   "taskStatus.restore": "granted",
   "workspace.setDefaultTaskStatus": "granted",
   "workspace.setCommercialDefaults": "granted",
+  "workspace.setWorkingDay": "granted",
   "task.setStatus": "granted",
   "task.complete": "granted",
   "task.reopen": "granted",

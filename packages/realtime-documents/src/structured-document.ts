@@ -50,9 +50,38 @@ export type ReadableStructuredDocumentSchemaVersion =
 // w `library/KnowledgeEditor.tsx` i `ProjectRichBody.tsx` czyta stąd, więc
 // zwężenie jednej strony przestaje być zmianą kompilującą się po cichu.
 export const STRUCTURED_DOCUMENT_HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+
+/**
+ * Every bound below is enforced ONCE, here, and published by
+ * `structuredDocumentVocabulary` by reference. They are exported — several of
+ * them stopped being module-private for exactly this — because the alternative
+ * is the descriptor carrying its own copy of a number, which is the h4 defect
+ * again with a different pair of files: an agent reads a limit that nothing
+ * checks against, writes to it, and is refused by a validator holding the real
+ * one. A published bound that is not the enforced bound is worse than an
+ * unpublished one.
+ */
 export const MAX_STRUCTURED_DOCUMENT_BYTES = 512 * 1024;
-const MAX_DOCUMENT_NODES = 20_000;
-const MAX_URL_LENGTH = 2_048;
+export const MAX_DOCUMENT_NODES = 20_000;
+export const MAX_URL_LENGTH = 2_048;
+export const MAX_MARKS_PER_TEXT_NODE = 8;
+export const MAX_CODE_BLOCK_LANGUAGE_LENGTH = 80;
+export const MAX_ORDERED_LIST_START = 100_000;
+/** The schemes a link mark may point at; anything else is refused. */
+export const STRUCTURED_DOCUMENT_LINK_PROTOCOLS = [
+  "http:",
+  "https:",
+  "mailto:",
+] as const;
+
+/**
+ * What a node NEWER than the declared version is refused with. Named because
+ * the descriptor tells an agent which refusal its own `schemaVersion` will
+ * produce, and a refusal code the agent cannot match against the one it
+ * receives teaches nothing.
+ */
+export const STRUCTURED_DOCUMENT_VERSION_TOO_OLD =
+  "DOCUMENT_STRUCTURED_SCHEMA_VERSION_TOO_OLD";
 
 /**
  * The document's node vocabulary, CLOSED.
@@ -135,20 +164,21 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * kind that is never anybody's child, which is why a nested `doc` is refused
  * everywhere without a rule saying so.
  */
-type NodeGroup =
+export type StructuredDocumentNodeGroup =
   "root" | "block" | "inline" | "listItem" | "tableRow" | "tableCell";
 
 /**
- * What a kind admits as children. The three shared with `NodeGroup` mean
- * "any kind in that group" — `listItem` is its own group precisely so that
+ * What a kind admits as children. The three shared with the group vocabulary
+ * mean "any kind in that group" — `listItem` is its own group precisely so that
  * `block` can mean "block, and NOT a list item" without restating the
  * exception at each of the four places that used to carry it.
  */
-type ContentModel = "none" | "text" | Exclude<NodeGroup, "root">;
+type ContentModel =
+  "none" | "text" | Exclude<StructuredDocumentNodeGroup, "root">;
 
 interface StructuredDocumentNodeRule {
   readonly spec: NodeSpec;
-  readonly group: NodeGroup;
+  readonly group: StructuredDocumentNodeGroup;
   readonly content: ContentModel;
   /**
    * The oldest schema version that may DECLARE this kind. It is what makes
@@ -210,10 +240,36 @@ const exactKeys = (
     throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
 };
 
+/**
+ * The attribute sets, declared ONCE per kind and used three times over: as the
+ * ProseMirror `NodeSpec.attrs` the canonicalising round trip is built from, as
+ * the allow-list `exactKeys` refuses an unknown key against, and as the names
+ * `structuredDocumentVocabulary` publishes. They used to be a spec object and
+ * a hand-written array sitting some two hundred lines apart, which is the
+ * "manual list beside a closed dictionary" shape this repository keeps
+ * meeting: renaming an attribute in the spec left the validator refusing the
+ * new name and accepting the old.
+ */
+const headingAttrs = { level: { default: 1 } };
+const orderedListAttrs = { start: { default: 1 }, type: { default: null } };
+const codeBlockAttrs = { language: { default: null } };
+const imageAttrs = { sourceId: { default: null }, alt: { default: "" } };
+const entityReferenceAttrs = {
+  targetKind: { default: null },
+  targetId: { default: null },
+};
+const linkAttrs = {
+  href: { default: null },
+  target: { default: "_blank" },
+  rel: { default: "noopener noreferrer nofollow" },
+  class: { default: null },
+  title: { default: null },
+};
+
 const assertHeadingAttrs = (attrs: unknown): void => {
   if (!isRecord(attrs)) schemaInvalid();
   else {
-    exactKeys(attrs, ["level"]);
+    exactKeys(attrs, Object.keys(headingAttrs));
     if (
       !(STRUCTURED_DOCUMENT_HEADING_LEVELS as readonly number[]).includes(
         Number(attrs.level),
@@ -226,11 +282,11 @@ const assertHeadingAttrs = (attrs: unknown): void => {
 const assertOrderedListAttrs = (attrs: unknown): void => {
   if (attrs === undefined) return;
   if (!isRecord(attrs)) return schemaInvalid();
-  exactKeys(attrs, ["start", "type"]);
+  exactKeys(attrs, Object.keys(orderedListAttrs));
   if (
     !Number.isInteger(attrs.start ?? 1) ||
     Number(attrs.start ?? 1) < 1 ||
-    Number(attrs.start ?? 1) > 100_000
+    Number(attrs.start ?? 1) > MAX_ORDERED_LIST_START
   )
     schemaInvalid();
   if (
@@ -244,11 +300,12 @@ const assertOrderedListAttrs = (attrs: unknown): void => {
 const assertCodeBlockAttrs = (attrs: unknown): void => {
   if (attrs === undefined) return;
   if (!isRecord(attrs)) return schemaInvalid();
-  exactKeys(attrs, ["language"]);
+  exactKeys(attrs, Object.keys(codeBlockAttrs));
   if (
     attrs.language !== null &&
     attrs.language !== undefined &&
-    (typeof attrs.language !== "string" || attrs.language.length > 80)
+    (typeof attrs.language !== "string" ||
+      attrs.language.length > MAX_CODE_BLOCK_LANGUAGE_LENGTH)
   )
     schemaInvalid();
 };
@@ -266,7 +323,7 @@ const assertCodeBlockAttrs = (attrs: unknown): void => {
  */
 const assertImageAttrs = (attrs: unknown): void => {
   if (!isRecord(attrs)) return schemaInvalid();
-  exactKeys(attrs, ["sourceId", "alt"]);
+  exactKeys(attrs, Object.keys(imageAttrs));
   if (typeof attrs.sourceId !== "string" || !uuid.test(attrs.sourceId))
     schemaInvalid();
   if (typeof attrs.alt !== "string" || attrs.alt.length > MAX_IMAGE_ALT_LENGTH)
@@ -275,7 +332,7 @@ const assertImageAttrs = (attrs: unknown): void => {
 
 const assertEntityReferenceAttrs = (attrs: unknown): void => {
   if (!isRecord(attrs)) throw new Error("DOCUMENT_ENTITY_REFERENCE_INVALID");
-  exactKeys(attrs, ["targetKind", "targetId"]);
+  exactKeys(attrs, Object.keys(entityReferenceAttrs));
   if (
     typeof attrs.targetKind !== "string" ||
     !entityKinds.has(attrs.targetKind as DocumentEntityReferenceKind) ||
@@ -339,7 +396,7 @@ const nodeRules: Record<
     spec: {
       content: "listItem+",
       group: "block",
-      attrs: { start: { default: 1 }, type: { default: null } },
+      attrs: orderedListAttrs,
     },
     group: "block",
     content: "listItem",
@@ -367,7 +424,7 @@ const nodeRules: Record<
       group: "block",
       code: true,
       defining: true,
-      attrs: { language: { default: null } },
+      attrs: codeBlockAttrs,
     },
     group: "block",
     content: "text",
@@ -382,7 +439,7 @@ const nodeRules: Record<
       content: "inline*",
       group: "block",
       defining: true,
-      attrs: { level: { default: 1 } },
+      attrs: headingAttrs,
     },
     group: "block",
     content: "inline",
@@ -430,7 +487,7 @@ const nodeRules: Record<
       group: "inline",
       atom: true,
       selectable: true,
-      attrs: { targetKind: { default: null }, targetId: { default: null } },
+      attrs: entityReferenceAttrs,
     },
     group: "inline",
     content: "none",
@@ -448,7 +505,7 @@ const nodeRules: Record<
       atom: true,
       selectable: true,
       draggable: true,
-      attrs: { sourceId: { default: null }, alt: { default: "" } },
+      attrs: imageAttrs,
     },
     group: "block",
     content: "none",
@@ -516,7 +573,7 @@ interface StructuredDocumentMarkRule {
 
 const assertLink = (attrs: unknown): void => {
   if (!isRecord(attrs)) throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
-  exactKeys(attrs, ["href", "target", "rel", "class", "title"]);
+  exactKeys(attrs, Object.keys(linkAttrs));
   const href = attrs.href;
   if (typeof href !== "string" || href.length > MAX_URL_LENGTH)
     throw new Error("DOCUMENT_STRUCTURED_LINK_INVALID");
@@ -526,7 +583,11 @@ const assertLink = (attrs: unknown): void => {
   } catch {
     throw new Error("DOCUMENT_STRUCTURED_LINK_INVALID");
   }
-  if (!["http:", "https:", "mailto:"].includes(parsed.protocol))
+  if (
+    !(STRUCTURED_DOCUMENT_LINK_PROTOCOLS as readonly string[]).includes(
+      parsed.protocol,
+    )
+  )
     throw new Error("DOCUMENT_STRUCTURED_LINK_INVALID");
   for (const key of ["target", "rel", "class", "title"] as const) {
     const current = attrs[key];
@@ -557,16 +618,7 @@ const markRules: Record<
   underline: { spec: {}, assertAttrs: bareMarkAttrs },
   code: { spec: { code: true, excludes: "_" }, assertAttrs: bareMarkAttrs },
   link: {
-    spec: {
-      inclusive: false,
-      attrs: {
-        href: { default: null },
-        target: { default: "_blank" },
-        rel: { default: "noopener noreferrer nofollow" },
-        class: { default: null },
-        title: { default: null },
-      },
-    },
+    spec: { inclusive: false, attrs: linkAttrs },
     assertAttrs: assertLink,
   },
 };
@@ -617,8 +669,143 @@ const marks = Object.fromEntries(
 
 export const structuredDocumentSchema = new Schema({ nodes, marks });
 
+export interface StructuredDocumentNodeDescriptor {
+  readonly kind: StructuredDocumentNodeKind;
+  readonly group: StructuredDocumentNodeGroup;
+  /** The kinds this one admits as children, already narrowed to the version. */
+  readonly mayContain: readonly StructuredDocumentNodeKind[];
+  readonly mayBeEmpty: boolean;
+  readonly firstChildMustBe?: StructuredDocumentNodeKind;
+  readonly attributes: readonly string[];
+  readonly attributesRequired: boolean;
+  readonly introducedIn: ReadableStructuredDocumentSchemaVersion;
+  /** The error a node of this kind is refused with when its shape is wrong. */
+  readonly refusalCode: string;
+}
+
+export interface StructuredDocumentMarkDescriptor {
+  readonly kind: StructuredDocumentMarkKind;
+  readonly attributes: readonly string[];
+}
+
+export interface StructuredDocumentVocabulary {
+  readonly schemaVersion: ReadableStructuredDocumentSchemaVersion;
+  readonly readableSchemaVersions: readonly ReadableStructuredDocumentSchemaVersion[];
+  readonly writesSchemaVersion: typeof STRUCTURED_DOCUMENT_SCHEMA_VERSION;
+  readonly root: "doc";
+  readonly nodes: readonly StructuredDocumentNodeDescriptor[];
+  readonly marks: readonly StructuredDocumentMarkDescriptor[];
+  readonly headingLevels: readonly number[];
+  readonly entityReferenceKinds: readonly DocumentEntityReferenceKind[];
+  readonly linkProtocols: readonly string[];
+  readonly limits: Readonly<Record<string, number>>;
+  readonly guidance: readonly string[];
+}
+
+/**
+ * Whether a kind may omit `attrs` entirely — ASKED of the validator rather than
+ * restated beside it. `assertAttrs` is the function that will judge the write,
+ * so a rule that starts requiring attributes changes this answer by itself.
+ *
+ * It reads as wrong for `heading` and it is not: the spec defaults `level` to 1,
+ * so ProseMirror would canonicalise a heading without attributes — but
+ * `assertNodes` calls `assertAttrs` unconditionally and the heading check
+ * demands a record, so the write is refused before the schema ever sees it.
+ * Publishing the spec's answer instead of the validator's would tell an agent
+ * to omit a field that gets its document rejected.
+ */
+const attributesRequired = (rule: StructuredDocumentNodeRule): boolean => {
+  try {
+    rule.assertAttrs(undefined);
+    return false;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * The document vocabulary, MACHINE-READABLE, as of one declared schema version.
+ *
+ * Everything an agent may put in a note lives in this file and nowhere on the
+ * MCP surface: the operations catalog covers commands and queries, and document
+ * content is neither. So the newest thing the product learned to hold — an
+ * image, a table — was discoverable only by reading somebody else's note that
+ * already contained one, and a malformed write came back refused without ever
+ * naming what would have been legal.
+ *
+ * Every field is DERIVED: the kinds from the closed dictionaries, the nesting
+ * from `admits` — the same predicate `assertNodes` refuses with — the attribute
+ * names from the specs the ProseMirror schema is built from, the bounds from
+ * the constants the parser compares against. A hand-written copy would be the
+ * defect it is meant to close: a list that drifts in silence, and that an agent
+ * trusts precisely because it is published.
+ *
+ * It is keyed by version because the answer differs by version: `introducedIn`
+ * refuses a kind newer than the version the caller declares, so the honest
+ * answer to "what may I write" needs to know what the caller will declare.
+ */
+export const structuredDocumentVocabulary = (
+  schemaVersion: ReadableStructuredDocumentSchemaVersion,
+): StructuredDocumentVocabulary => {
+  const legal = (kind: StructuredDocumentNodeKind): boolean =>
+    nodeRules[kind].introducedIn <= schemaVersion;
+  return {
+    schemaVersion,
+    readableSchemaVersions: [...READABLE_STRUCTURED_DOCUMENT_SCHEMA_VERSIONS],
+    writesSchemaVersion: STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+    root: "doc",
+    nodes: STRUCTURED_DOCUMENT_NODE_KINDS.filter(legal).map((kind) => {
+      const rule = nodeRules[kind];
+      return {
+        kind,
+        group: rule.group,
+        mayContain: STRUCTURED_DOCUMENT_NODE_KINDS.filter(
+          (candidate) => admits(rule.content, candidate) && legal(candidate),
+        ),
+        mayBeEmpty: rule.childlessAllowed,
+        ...(rule.firstChild === undefined
+          ? {}
+          : { firstChildMustBe: rule.firstChild }),
+        attributes: Object.keys(rule.spec.attrs ?? {}),
+        attributesRequired: attributesRequired(rule),
+        introducedIn: rule.introducedIn,
+        refusalCode: rule.invalidError,
+      };
+    }),
+    // Marks carry no `introducedIn` and are not filtered here: `assertMarks`
+    // enforces no version rule over them, and describing one would publish a
+    // restriction the parser does not apply.
+    marks: STRUCTURED_DOCUMENT_MARK_KINDS.map((kind) => ({
+      kind,
+      attributes: Object.keys(markRules[kind].spec.attrs ?? {}),
+    })),
+    headingLevels: [...STRUCTURED_DOCUMENT_HEADING_LEVELS],
+    entityReferenceKinds: [...DOCUMENT_ENTITY_REFERENCE_KINDS],
+    linkProtocols: [...STRUCTURED_DOCUMENT_LINK_PROTOCOLS],
+    limits: {
+      documentBytes: MAX_STRUCTURED_DOCUMENT_BYTES,
+      nodes: MAX_DOCUMENT_NODES,
+      textLength: MAX_DOCUMENT_TEXT_LENGTH,
+      imageAltLength: MAX_IMAGE_ALT_LENGTH,
+      linkHrefLength: MAX_URL_LENGTH,
+      marksPerTextNode: MAX_MARKS_PER_TEXT_NODE,
+      codeBlockLanguageLength: MAX_CODE_BLOCK_LANGUAGE_LENGTH,
+      orderedListStart: MAX_ORDERED_LIST_START,
+    },
+    // The handful of rules that are branches in the parser rather than entries
+    // in a dictionary, so there is no constant to point at. Kept to what a
+    // write is actually refused for; anything longer becomes prose that rots.
+    guidance: [
+      'The body is { "schemaVersion", "type": "doc", "content": [...] } and content may not be empty. A node is { "type", and optionally "attrs", "content", "marks", "text" } — any other key is refused.',
+      "Only a text node carries `text` (never empty) and only a text node carries `marks`; either on any other kind is refused.",
+      `A kind whose introducedIn exceeds the schemaVersion you declare is refused with ${STRUCTURED_DOCUMENT_VERSION_TOO_OLD}, so declare the highest version you can read rather than the oldest.`,
+      "An attrs object is exact: every attribute listed for the kind is checked and an unlisted key is refused. An image stores sourceId, the id of an attachment already in this workspace, never a URL; alt is required and may be empty, which means decorative.",
+    ],
+  };
+};
+
 const assertMarks = (value: unknown): void => {
-  if (!Array.isArray(value) || value.length > 8)
+  if (!Array.isArray(value) || value.length > MAX_MARKS_PER_TEXT_NODE)
     throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
   const seen = new Set<string>();
   for (const mark of value) {
@@ -655,7 +842,7 @@ const assertNodes = (
       throw new Error("DOCUMENT_STRUCTURED_SCHEMA_INVALID");
     const rule = nodeRules[node.type];
     if (rule.introducedIn > declaredVersion)
-      throw new Error("DOCUMENT_STRUCTURED_SCHEMA_VERSION_TOO_OLD");
+      throw new Error(STRUCTURED_DOCUMENT_VERSION_TOO_OLD);
 
     if (node.type === "text") {
       if (

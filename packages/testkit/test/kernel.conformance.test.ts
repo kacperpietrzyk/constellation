@@ -49,6 +49,7 @@ const context = (principalId: string = ids.principal): ExecutionContext =>
     capabilityScope: [
       "workspace.createLocal",
       "workspace.rename",
+      "workspace.setWorkingDay",
       "workspace.bootstrapContext",
       "capture.submit",
       "capture.process",

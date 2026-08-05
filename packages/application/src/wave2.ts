@@ -1,5 +1,6 @@
 import {
   canCommentInSpace,
+  canConfigureWorkspace,
   canEditSpace,
   canManageWorkspaceAccess,
   canViewSpace,
@@ -13,6 +14,8 @@ import type {
 } from "@constellation/contracts";
 import {
   AuditReceiptIdSchema,
+  COMMAND_CAPABILITIES,
+  QUERY_CAPABILITIES,
   CommandOutcomeSchema,
   DEPENDENT_SAMPLE_LIMIT,
   DOCUMENT_ENTITY_TARGET_KINDS,
@@ -366,7 +369,8 @@ export type Wave2Query = Extract<
  * `spaceId !== undefined` and `canEditSpace`, and every policy in the tree
  * reads the ExecutionContext alone, so reordering pure predicates cannot
  * change the answer — and no second capability table is introduced, because
- * the capability is the one this helper already used.
+ * the capability comes from `COMMAND_CAPABILITIES` in contracts, the same
+ * statement the MCP catalog publishes.
  */
 const authorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
@@ -377,12 +381,41 @@ const authorized = (
 ): boolean =>
   dependencies.authorization.authorize({
     context,
-    capability: command.commandName,
+    capability: COMMAND_CAPABILITIES[command.commandName].capability,
     workspaceId: command.workspaceId,
     ...(spaceId === undefined ? {} : { spaceId }),
   }) &&
   spaceId !== undefined &&
   canEditSpace(view, context, command.workspaceId, spaceId);
+
+/**
+ * The capabilities an arm asks for AFTER it has resolved its target, because
+ * the command writes outside its own kind — promotion inserts a Task, linking
+ * can create a Person. Read from the same table the primary comes from and
+ * looped rather than spelled out: a hard-coded `task.create` beside a table
+ * that separately lists `task.create` is two sources again, and the second one
+ * is the one the catalog would fail to publish.
+ *
+ * `spaceId` is passed by the arms that have resolved a record's Space and
+ * omitted by the workspace-level ones, so the consult keeps the exact reach
+ * each arm always asked for.
+ */
+const additionallyAuthorized = (
+  dependencies: Pick<ApplicationKernelDependencies, "authorization">,
+  context: ExecutionContext,
+  command: Exclude<Wave2Command, { commandName: "agent.checkpointRevert" }>,
+  spaceId: SpaceId | undefined,
+): boolean =>
+  (
+    COMMAND_CAPABILITIES[command.commandName].additionalCapabilities ?? []
+  ).every((capability) =>
+    dependencies.authorization.authorize({
+      context,
+      capability,
+      workspaceId: command.workspaceId,
+      ...(spaceId === undefined ? {} : { spaceId }),
+    }),
+  );
 
 export const isWave2CommandAuthorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
@@ -810,7 +843,7 @@ export const isWave2CommandAuthorized = (
           !canEditSpace(view, context, command.workspaceId, target.id) ||
           !dependencies.authorization.authorize({
             context,
-            capability: command.commandName,
+            capability: COMMAND_CAPABILITIES[command.commandName].capability,
             workspaceId: command.workspaceId,
             spaceId: target.id,
           })
@@ -832,15 +865,12 @@ export const isWave2CommandAuthorized = (
       if (record?.kind !== "meeting")
         return authorized(dependencies, view, context, command, undefined);
       // ADR-040 §7: promotion inserts a Task directly, so it must not become a
-      // privilege path around the Task-creation grant.
+      // privilege path around the Task-creation grant. Which grant that is now
+      // comes from the table, so the catalog publishes the same second
+      // capability this arm consults.
       return (
         authorized(dependencies, view, context, command, record.spaceId) &&
-        dependencies.authorization.authorize({
-          context,
-          capability: "task.create",
-          workspaceId: command.workspaceId,
-          spaceId: record.spaceId,
-        })
+        additionallyAuthorized(dependencies, context, command, record.spaceId)
       );
     }
     case "meeting.editWorkItem":
@@ -884,12 +914,7 @@ export const isWave2CommandAuthorized = (
       // Linking can create a Person, so it carries the relationship grant too.
       return (
         authorized(dependencies, view, context, command, record.spaceId) &&
-        dependencies.authorization.authorize({
-          context,
-          capability: "relationship.personCreate",
-          workspaceId: command.workspaceId,
-          spaceId: record.spaceId,
-        })
+        additionallyAuthorized(dependencies, context, command, record.spaceId)
       );
     }
     case "project.updateOutcome":
@@ -927,22 +952,50 @@ export const isWave2CommandAuthorized = (
       // Maintenance like automation.sweep, but it inserts Tasks directly, so
       // it carries the Task-creation grant too rather than becoming a path
       // around it (the rule ADR-040 §7 established for meeting promotion).
+      // Nine commands sit here and all nine carry it; the table states that
+      // once, and no `spaceId` is passed because this arm never resolved one.
+      //
+      // `canConfigureWorkspace`, not `canManageWorkspaceAccess`: all nine are
+      // `operate` and reach an agent grant through the catalog, and the role
+      // an agent grant is minted with (`guest`) refuses every one of them. A
+      // human is still asked for `owner`/`admin`; see the predicate.
+      // `recurrence.sweep` can sit here — unlike `automation.sweep` below —
+      // because its executor skips every Space the caller cannot edit, so a
+      // Space-scoped grant sweeps only what it was given.
+      return (
+        view.getWorkspace(command.workspaceId) !== undefined &&
+        canConfigureWorkspace(view, context, command.workspaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: COMMAND_CAPABILITIES[command.commandName].capability,
+          workspaceId: command.workspaceId,
+        }) &&
+        additionallyAuthorized(dependencies, context, command, undefined)
+      );
+    }
+    case "automation.sweep": {
+      // Deliberately left on the strict predicate while every neighbouring
+      // `operate` row moved to `canConfigureWorkspace`, so an agent grant still
+      // cannot reach it. The executor walks `listSpaces(workspaceId)` with no
+      // `canEditSpace` filter — unlike `recurrence.sweep` one arm above, which
+      // skips a Space the caller cannot edit for exactly this reason — and then
+      // reports every task it touched through `raisedTaskIds`. A grant scoped
+      // to one Space would raise attention signals across Spaces it was never
+      // given and read their task identifiers back out of its own outcome.
+      // That is a Space-scope leak, not a role question, so widening the role
+      // gate is the wrong fix and narrowing the sweep is a change to human
+      // behaviour nobody asked for. Whoever fixes the executor's Space filter
+      // can move this row down into the arm below.
       return (
         view.getWorkspace(command.workspaceId) !== undefined &&
         canManageWorkspaceAccess(view, context, command.workspaceId) &&
         dependencies.authorization.authorize({
           context,
-          capability: command.commandName,
-          workspaceId: command.workspaceId,
-        }) &&
-        dependencies.authorization.authorize({
-          context,
-          capability: "task.create",
+          capability: COMMAND_CAPABILITIES[command.commandName].capability,
           workspaceId: command.workspaceId,
         })
       );
     }
-    case "automation.sweep":
     case "fieldDef.create":
     case "fieldDef.rename":
     case "fieldDef.archive":
@@ -955,15 +1008,22 @@ export const isWave2CommandAuthorized = (
     case "taskStatus.restore":
     case "workspace.setDefaultTaskStatus":
     case "workspace.setCommercialDefaults": {
-      // Workflow definitions are workspace-level shared configuration:
-      // maintainers (owner/admin) publish them; the capability grant still
-      // gates each operation for agents and humans alike.
+      // Workflow definitions are workspace-level shared configuration. Who may
+      // publish them depends on who is asking: a human is asked for the
+      // `owner`/`admin` role as before, an agent for the capability its grant
+      // was written with. The old comment here claimed "the capability grant
+      // still gates each operation for agents and humans alike" while
+      // `canManageWorkspaceAccess` refused first — the grant was never reached
+      // for an agent, whose membership is always `guest`, so all twelve
+      // `operate` rows were advertised by the catalog and denied by the kernel.
+      // None of the twelve enumerates records: they define vocabulary, so what
+      // an agent learns from a success is what it already sent.
       return (
         view.getWorkspace(command.workspaceId) !== undefined &&
-        canManageWorkspaceAccess(view, context, command.workspaceId) &&
+        canConfigureWorkspace(view, context, command.workspaceId) &&
         dependencies.authorization.authorize({
           context,
-          capability: command.commandName,
+          capability: COMMAND_CAPABILITIES[command.commandName].capability,
           workspaceId: command.workspaceId,
         })
       );
@@ -1050,7 +1110,7 @@ export const isWave2CommandAuthorized = (
       return (
         dependencies.authorization.authorize({
           context,
-          capability: command.commandName,
+          capability: COMMAND_CAPABILITIES[command.commandName].capability,
           workspaceId: command.workspaceId,
           ...(spaceId === undefined ? {} : { spaceId }),
         }) &&
@@ -1066,14 +1126,14 @@ export const isWave2CommandAuthorized = (
         comment?.workspaceId === command.workspaceId
           ? comment.spaceId
           : undefined;
-      // The existing ternary is moved up as-is, never re-derived from the
-      // command name: `comment.reopen` is itself a capability, and probing for
-      // it would newly refuse a grant that holds `comment.resolve` without it.
-      const capability =
-        command.commandName === "comment.resolve" ||
-        command.commandName === "comment.reopen"
-          ? "comment.resolve"
-          : "comment.edit";
+      // The ternary this replaces said `comment.reopen` authorizes against
+      // `comment.resolve`, and it said so ONLY here — the catalog listed the
+      // operation under the identically named `comment.reopen` capability,
+      // which nothing in the kernel consults. Stated in the table now, so both
+      // readers see the same rule; the answer is byte-for-byte the one the
+      // ternary gave, because probing for `comment.reopen` would newly refuse
+      // a grant that holds `comment.resolve` without it.
+      const capability = COMMAND_CAPABILITIES[command.commandName].capability;
       return (
         dependencies.authorization.authorize({
           context,
@@ -1096,7 +1156,7 @@ export const isWave2CommandAuthorized = (
       return (
         dependencies.authorization.authorize({
           context,
-          capability: command.commandName,
+          capability: COMMAND_CAPABILITIES[command.commandName].capability,
           workspaceId: command.workspaceId,
           ...(spaceId === undefined ? {} : { spaceId }),
         }) &&
@@ -1140,7 +1200,7 @@ export const isWave2CommandAuthorized = (
       // would look like a policy decision rather than a routing detail.
       return dependencies.authorization.authorize({
         context,
-        capability: "agent.checkpoint.revert",
+        capability: COMMAND_CAPABILITIES[command.commandName].capability,
         workspaceId: command.workspaceId,
       });
     case "command.previewUndo":
@@ -12076,7 +12136,7 @@ const authorizeSpaces = (
       canViewSpace(view, context, query.workspaceId, spaceId) &&
       dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId,
       })
@@ -12203,7 +12263,7 @@ export const executeWave2Query = (
       !canViewSpace(view, context, query.workspaceId, space.id) ||
       !dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: space.id,
       })
@@ -12410,7 +12470,7 @@ export const executeWave2Query = (
       !canViewSpace(view, context, query.workspaceId, space.id) ||
       !dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: space.id,
       })
@@ -12462,7 +12522,7 @@ export const executeWave2Query = (
       !canViewSpace(view, context, query.workspaceId, record.spaceId) ||
       !dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
         spaceId: record.spaceId,
       })
@@ -12537,7 +12597,7 @@ export const executeWave2Query = (
     if (
       !dependencies.authorization.authorize({
         context,
-        capability: query.queryName,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: query.workspaceId,
       })
     )

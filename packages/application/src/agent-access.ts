@@ -1,7 +1,10 @@
 import {
   AuditReceiptIdSchema,
+  COMMAND_CAPABILITIES,
+  QUERY_CAPABILITIES,
   DELEGABLE_CAPABILITIES,
   grantScopeDrift,
+  operationPermitsPrincipalKind,
   CommandOutcomeSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
@@ -237,10 +240,13 @@ export const isAgentAccessCommandAuthorized = (
     return (
       dependencies.authorization.authorize({
         context,
-        capability: "agent.manageAccess",
+        capability: COMMAND_CAPABILITIES[command.commandName].capability,
         workspaceId: command.workspaceId,
       }) &&
-      context.principalKind === "human" &&
+      operationPermitsPrincipalKind(
+        COMMAND_CAPABILITIES[command.commandName],
+        context.principalKind,
+      ) &&
       canManageWorkspaceAccess(view, context, command.workspaceId)
     );
   }
@@ -248,14 +254,20 @@ export const isAgentAccessCommandAuthorized = (
   // names the run the caller is executing is a property of the payload, not of
   // the grant, and a denial routes an integrator to the access it already
   // holds; the handler rejects the mismatch as a failed precondition instead.
+  // The kind is asked BEFORE the consult here, unlike everywhere else, and it
+  // stays that way: these two commands write into an agent run, so a human
+  // reaching them has no run to name and the honest answer is a precondition
+  // rather than a statement about its grant. Reading the table rather than a
+  // literal changes which line owns the rule, not when it is asked — the whole
+  // point being that a rule the catalog must respect cannot live only here.
   return (
-    context.principalKind === "agent" &&
+    operationPermitsPrincipalKind(
+      COMMAND_CAPABILITIES[command.commandName],
+      context.principalKind,
+    ) &&
     dependencies.authorization.authorize({
       context,
-      capability:
-        command.commandName === "agent.checkpointCreate"
-          ? "agent.checkpoint.create"
-          : "agent.handoff.submit",
+      capability: COMMAND_CAPABILITIES[command.commandName].capability,
       workspaceId: command.workspaceId,
     })
   );
@@ -858,7 +870,7 @@ export const executeAgentAccessQuery = (
       canManageWorkspaceAccess(view, context, workspace.id) &&
       dependencies.authorization.authorize({
         context,
-        capability: "agent.access",
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
         workspaceId: workspace.id,
       });
     const grants = canManage
@@ -948,7 +960,7 @@ export const executeAgentAccessQuery = (
         canManageWorkspaceAccess(view, context, workspace.id))) &&
     dependencies.authorization.authorize({
       context,
-      capability: "agent.checkpoint.previewRevert",
+      capability: QUERY_CAPABILITIES[query.queryName].capability,
       workspaceId: workspace.id,
     });
   if (!canRead || checkpoint === undefined) return denied(query, kernelTime);
