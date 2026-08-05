@@ -378,12 +378,19 @@ export const COMMAND_CAPABILITIES: Readonly<
   "comment.add": { capability: "comment.add" },
   "comment.edit": { capability: "comment.edit" },
   "comment.resolve": { capability: "comment.resolve" },
-  // Reopening is the other half of resolving and has always authorized against
-  // `comment.resolve`; the identically named `comment.reopen` capability is
-  // consulted by nothing. Stating the command's own name here would newly
-  // refuse a hand-narrowed scope that holds `comment.resolve` alone — the
-  // scope every preset from `operate` up actually carries both of.
-  "comment.reopen": { capability: "comment.resolve" },
+  // Reopening authorized against `comment.resolve` for as long as the ternary
+  // in the kernel said so, which left `comment.reopen` as dead vocabulary: it
+  // exists in `CapabilitySchema`, it is classified `operate`, every preset from
+  // `operate` up carries it — and nothing ever consulted it. Granting it alone
+  // achieved nothing, and a scope holding `comment.resolve` alone could reopen
+  // without ever having been given the permission named after the act.
+  //
+  // Both capabilities are `operate` and every preset carries both, so no
+  // preset-issued grant loses anything here. What changes is the one shape that
+  // was lying: a hand-narrowed scope holding `comment.resolve` without
+  // `comment.reopen` is now refused, which is the honest answer to a scope that
+  // was deliberately narrowed.
+  "comment.reopen": { capability: "comment.reopen" },
   "attention.markRead": { capability: "attention.markRead" },
   "attention.dismiss": { capability: "attention.dismiss" },
   "record.relate": { capability: "record.relate" },

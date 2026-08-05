@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   AgentRunIdSchema,
+  CommentIdSchema,
   ExecutionContextSchema,
   GrantIdSchema,
   MembershipIdSchema,
@@ -62,6 +63,7 @@ const ids = {
   sweepAdminMembership: "41000000-0000-4000-8000-000000000041",
   sweepAdminSpaceGrant: "41000000-0000-4000-8000-000000000042",
   agentViewSpaceGrant: "41000000-0000-4000-8000-000000000043",
+  comment: "41000000-0000-4000-8000-000000000044",
 } as const;
 
 let sequence = 30_000;
@@ -2851,5 +2853,115 @@ describe("agent grant delegation reaches the product without widening scope", ()
       // statement about the grant, and must not read as a bad payload.
       assert.equal(denied.diagnosticCode, "authorization.denied", missing);
     }
+  });
+
+  /**
+   * A resolved comment thread, ready to be reopened, written by the agent
+   * itself so no second principal is needed. Returned by id rather than
+   * asserted about, because what every case below reads is the reopen.
+   */
+  const resolvedComment = (
+    harness: ReturnType<typeof createReferenceHarness>,
+    agent: ExecutionContext,
+  ): void => {
+    const created = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("reopen-task"),
+        commandName: "task.create",
+        payload: {
+          taskId: ids.task,
+          spaceId: ids.space,
+          title: "Something worth arguing about",
+        },
+      }),
+    );
+    assert.equal(created.outcome, "success");
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("reopen-comment", { [ids.task]: 1 }),
+          commandName: "comment.add",
+          payload: {
+            commentId: ids.comment,
+            target: { kind: "task", taskId: ids.task },
+            body: "Is this still right?",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("reopen-resolve", { [ids.comment]: 1 }),
+          commandName: "comment.resolve",
+          payload: { commentId: ids.comment },
+        }),
+      ),
+      "success",
+    );
+  };
+
+  it("refuses to reopen a comment thread to a scope holding only comment.resolve", () => {
+    const withoutReopen = capabilitiesForAgentGrantPreset("operate").filter(
+      (capability) => capability !== "comment.reopen",
+    );
+    const { harness } = grantWithScope(withoutReopen);
+    const agent = contextFromStoredGrant(harness);
+    // Resolving is what the scope still carries, so the fixture reaches the
+    // reopen through the real command rather than through a seeded row — and
+    // the refusal below cannot be the thread being in the wrong state.
+    resolvedComment(harness, agent);
+    // The capability `comment.reopen` was dead vocabulary: classified
+    // `operate`, carried by every preset from `operate` up, consulted by
+    // nothing, because the requirements table said reopening authorizes
+    // against `comment.resolve`. So a scope narrowed by hand to exclude it
+    // reopened anyway, and a scope granted it alone achieved nothing.
+    const denied = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("reopen-denied", { [ids.comment]: 2 }),
+        commandName: "comment.reopen",
+        payload: { commentId: ids.comment },
+      }),
+    );
+    assert.equal(denied.outcome, "rejected");
+    // A denial and not a precondition: the grant is what is missing, and an
+    // agent comparing requiredCapability against its own scope has something
+    // to act on. Reading the code alone would not separate the two.
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getComment(CommentIdSchema.parse(ids.comment)),
+      )?.threadState,
+      "resolved",
+      "the refusal is a refusal — the thread is still resolved",
+    );
+  });
+
+  it("lets a scope holding comment.reopen reopen the thread it resolved", () => {
+    // The control that makes the case above capable of failing. Same fixture,
+    // same commands, one capability added back: without it, a reopen refused
+    // for any unrelated reason — a version, a target, a Space — would read as
+    // the new requirement working.
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const agent = contextFromStoredGrant(harness);
+    resolvedComment(harness, agent);
+    const reopened = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("reopen-allowed", { [ids.comment]: 2 }),
+        commandName: "comment.reopen",
+        payload: { commentId: ids.comment },
+      }),
+    );
+    assert.equal(reopened.outcome, "success");
+    assert.equal(reopened.diagnosticCode, "comment.reopened");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getComment(CommentIdSchema.parse(ids.comment)),
+      )?.threadState,
+      "open",
+    );
   });
 });
