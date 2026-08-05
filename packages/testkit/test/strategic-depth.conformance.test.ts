@@ -2101,6 +2101,12 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   // The future cadence is reported as pending; the paused one is not counted
   // at all, because a paused cadence is skipped rather than attempted.
   assert.equal(swept.projection.pendingCount, 1);
+  // The Private Space above, and only it. Without this number the sweep's
+  // answer would be the same whether that Space held nothing or held work this
+  // caller may not touch — the count says the view was partial, and stays a
+  // count because naming the Space would say what is in a Space the caller
+  // cannot open.
+  assert.equal(swept.projection.skippedSpaceCount, 1);
 
   const recurrenceOf = (id: string) => {
     const record = harness.store

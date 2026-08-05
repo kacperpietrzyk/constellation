@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   AgentRunIdSchema,
+  CommentIdSchema,
   ExecutionContextSchema,
   GrantIdSchema,
   MembershipIdSchema,
@@ -56,6 +57,13 @@ const ids = {
   configTaskStatus: "41000000-0000-4000-8000-000000000035",
   configTemplate: "41000000-0000-4000-8000-000000000036",
   configAutomationRule: "41000000-0000-4000-8000-000000000037",
+  sweepAdmin: "41000000-0000-4000-8000-000000000038",
+  sweepAdminCredential: "41000000-0000-4000-8000-000000000039",
+  sweepAdminGrant: "41000000-0000-4000-8000-000000000040",
+  sweepAdminMembership: "41000000-0000-4000-8000-000000000041",
+  sweepAdminSpaceGrant: "41000000-0000-4000-8000-000000000042",
+  agentViewSpaceGrant: "41000000-0000-4000-8000-000000000043",
+  comment: "41000000-0000-4000-8000-000000000044",
 } as const;
 
 let sequence = 30_000;
@@ -2368,18 +2376,46 @@ describe("agent grant delegation reaches the product without widening scope", ()
     );
   });
 
-  it("keeps automation.sweep out of an agent's reach even though it is operate-class", () => {
-    const { harness } = grantWithScope(configurationCapabilities());
-    // The rule has to exist first, and this is the whole reason the case is
-    // written this way: a sweep with no active rule answers
-    // `command.precondition_failed` whether the caller was authorized or not,
-    // so without the rule this assertion would stay green after the row was
-    // moved into the permissive arm. With the rule in place an authorized
-    // caller sweeps successfully, and only the refusal is a refusal.
+  /**
+   * The owner as the desktop rebuilds it for a workspace holding more than one
+   * Space: the configuration vocabulary plus every Space the owner really has
+   * a grant in. `ownerWithConfiguration` carries the root Space alone, and
+   * Space access is only effective inside the context's own scope, so the
+   * narrower context could neither seed nor sweep the Spaces `grantWithScope`
+   * adds — and a sweep that skipped them for the wrong reason would read as
+   * the filter working.
+   */
+  const ownerAcrossSpaces = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): ExecutionContext => {
+    const owner = ExecutionContextSchema.parse({
+      ...ownerWithConfiguration(harness),
+      spaceScope: [ids.space, ids.secondSpace, ids.thirdSpace],
+    });
+    harness.authorization.register(owner);
+    return owner;
+  };
+
+  /**
+   * Both preconditions the sweep needs before any assertion about it can fail:
+   * an active `waiting_review_signals` rule, and at least one open Task whose
+   * waiting review date has already passed.
+   *
+   * Neither is optional. A sweep with no active rule answers
+   * `command.precondition_failed` whether the caller was authorized or not, so
+   * a refusal assertion without the rule proves nothing; a sweep with nothing
+   * due answers `success` with an empty `raisedTaskIds`, so a leak assertion
+   * without elapsed tasks is indistinguishable from a filter that works.
+   */
+  const seedSweepFixture = (
+    harness: ReturnType<typeof createReferenceHarness>,
+    owner: ExecutionContext,
+    tasks: readonly { readonly taskId: string; readonly spaceId: string }[],
+  ): void => {
     assert.equal(
       outcome(
-        harness.kernel.execute(ownerWithConfiguration(harness), {
-          ...metadata("agent-automation-rule"),
+        harness.kernel.execute(owner, {
+          ...metadata("sweep-rule"),
           commandName: "automation.create",
           payload: {
             ruleId: ids.configAutomationRule,
@@ -2390,22 +2426,308 @@ describe("agent grant delegation reaches the product without widening scope", ()
       ),
       "success",
     );
-    const agent = contextFromStoredGrant(harness);
-    // The deliberate exception, pinned so a later tidy-up cannot fold this row
-    // back into the arm beside it: the sweep's executor walks every Space in
-    // the workspace without asking `canEditSpace`, and returns the task ids it
-    // touched. A one-Space grant would write into Spaces it was never given
-    // and read their identifiers back. That is a Space-scope defect in the
-    // executor, and until it is fixed the strict role check stands in for it.
+    tasks.forEach(({ taskId, spaceId }, index) => {
+      assert.equal(
+        outcome(
+          harness.kernel.execute(owner, {
+            ...metadata(`sweep-task-${index}`),
+            commandName: "task.create",
+            payload: { taskId, spaceId, title: `Waiting review ${index}` },
+          }),
+        ),
+        "success",
+        `seeding the Task in ${spaceId}`,
+      );
+      assert.equal(
+        outcome(
+          harness.kernel.execute(owner, {
+            ...metadata(`sweep-waiting-${index}`, { [taskId]: 1 }),
+            commandName: "task.setOperationalState",
+            payload: {
+              taskId,
+              operationalState: "waiting",
+              waitingOn: {
+                kind: "external",
+                label: "Review date long past",
+                direction: "waiting_on_them",
+                expectedAt: "2020-01-01T00:00:00.000Z",
+              },
+            },
+          }),
+        ),
+        "success",
+        `making the Task in ${spaceId} due`,
+      );
+    });
+    assert.equal(
+      tasks.length > 0,
+      true,
+      "a sweep fixture with no due Task cannot fail",
+    );
+  };
+
+  const sweep = (
+    harness: ReturnType<typeof createReferenceHarness>,
+    caller: ExecutionContext,
+    key: string,
+  ): {
+    readonly raisedTaskIds: readonly string[];
+    readonly already: number;
+    readonly skipped: number;
+  } => {
+    const result = commandOutcome(
+      harness.kernel.execute(caller, {
+        ...metadata(key),
+        commandName: "automation.sweep",
+        payload: {},
+      }),
+    );
+    if (
+      result.outcome !== "success" ||
+      result.projection.kind !== "automation.swept"
+    )
+      throw new Error(`Expected a sweep, received ${result.outcome}.`);
+    return {
+      raisedTaskIds: result.projection.raisedTaskIds,
+      already: result.projection.alreadySignaledCount,
+      skipped: result.projection.skippedSpaceCount,
+    };
+  };
+
+  /**
+   * The leak's first half. `raisedTaskIds` is the second, and both are read in
+   * every case below: a filter applied to the projection alone would keep the
+   * writes, and a filter applied to the writes alone would keep handing the
+   * caller identifiers of Tasks it may not read.
+   */
+  const signalledSpaces = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): readonly string[] =>
+    [...(harness.store.snapshot().attentionSignals ?? [])]
+      .filter((signal) => signal.reason === "waiting_review_elapsed")
+      .map((signal) => signal.spaceId as string)
+      .sort();
+
+  it("lets an operate-preset agent grant sweep only the Spaces it may edit", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    const owner = ownerAcrossSpaces(harness);
+    seedSweepFixture(harness, owner, [
+      { taskId: ids.task, spaceId: ids.space },
+      { taskId: ids.otherTask, spaceId: ids.secondSpace },
+      { taskId: ids.thirdTask, spaceId: ids.thirdSpace },
+    ]);
+    // Three Spaces because the filter has two halves to answer for. The agent's
+    // grant carries `edit` on the first; the second is inside its context scope
+    // and granted `view`, which is the case that separates `canEditSpace` from
+    // `canViewSpace`; the third it was never given at all. A fixture with only
+    // the third would be refused at the scope gate and would never reach the
+    // access level.
+    harness.store.transact((transaction) =>
+      transaction.insertSpaceGrant({
+        id: SpaceGrantIdSchema.parse(ids.agentViewSpaceGrant),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.secondSpace),
+        principalId: PrincipalIdSchema.parse(ids.agent),
+        access: "view",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const agent = ExecutionContextSchema.parse({
+      ...contextFromStoredGrant(harness),
+      spaceScope: [ids.space, ids.secondSpace],
+    });
+    harness.authorization.register(agent);
+    const swept = sweep(harness, agent, "agent-automation-sweep");
+    assert.deepEqual(
+      swept.raisedTaskIds,
+      [ids.task],
+      "the sweep reports back only the Space the grant may edit",
+    );
+    assert.deepEqual(
+      signalledSpaces(harness),
+      [ids.space],
+      "and wrote in only that Space",
+    );
+    // What the narrowing owes the caller. Two of the workspace's three Spaces
+    // went unvisited, and without this number the agent could not tell a sweep
+    // that found nothing from a sweep that was not allowed to look. The count
+    // is the whole answer on purpose: the ids would name Spaces this grant may
+    // not know exist.
+    assert.equal(
+      swept.skipped,
+      2,
+      "the Space granted `view` and the Space outside the scope, both counted",
+    );
+    // The control that makes the assertions above capable of failing: the same
+    // fixture, swept by a caller that CAN edit the other two Spaces, raises
+    // exactly the two Tasks the agent left alone. Without it, a fixture whose
+    // Tasks were never sweep-eligible would produce the same green.
+    const byOwner = sweep(harness, owner, "owner-automation-sweep");
+    assert.deepEqual(byOwner.raisedTaskIds, [ids.otherTask, ids.thirdTask]);
+    assert.equal(
+      byOwner.already,
+      1,
+      "the agent's own Space was already signalled, so the fixture is one sweep, not two",
+    );
+    assert.equal(
+      byOwner.skipped,
+      0,
+      "and the same sweep by a caller who may edit everything skipped nothing — the count is about this caller, not about the workspace",
+    );
+  });
+
+  it("still refuses automation.sweep to a human member who is neither owner nor admin", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    const owner = ownerAcrossSpaces(harness);
+    seedSweepFixture(harness, owner, [
+      { taskId: ids.task, spaceId: ids.space },
+    ]);
+    // The member carries the whole operate vocabulary and holds `edit` on the
+    // Space being swept, so neither the capability nor Space access can be the
+    // thing refusing: only the role is left. This is the half that separates
+    // `canConfigureWorkspace` from deleting the role check outright.
     const refused = commandOutcome(
-      harness.kernel.execute(agent, {
-        ...metadata("agent-automation-sweep"),
+      harness.kernel.execute(plainMemberContext(harness), {
+        ...metadata("member-automation-sweep"),
         commandName: "automation.sweep",
         payload: {},
       }),
     );
     assert.equal(refused.outcome, "rejected");
     assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.deepEqual(signalledSpaces(harness), []);
+    assert.deepEqual(
+      sweep(harness, owner, "owner-sweep-after-member").raisedTaskIds,
+      [ids.task],
+      "the refusal was the role, not an empty fixture",
+    );
+  });
+
+  /**
+   * What the Space filter costs a human, pinned rather than assumed.
+   *
+   * `effectiveSpaceAccess` hands out `edit` by role in exactly one case —
+   * `owner` on the workspace's own root Space. `admin` has no role branch at
+   * all, and neither role reaches a second Space without an active `edit`
+   * Space grant. So the filter is NOT free for humans: before it,
+   * `canManageWorkspaceAccess` let any `owner`/`admin` sweep every Space of the
+   * workspace; after it, both sweep only where they hold `edit`.
+   *
+   * Two cases, in order of how reachable they are today. `workspace.memberAdd`
+   * takes `role` and `access` as independent fields, so an `admin` whose Space
+   * grant says `view` is constructible through the product as it ships — and
+   * its sweep now succeeds while raising nothing, with no diagnostic saying so.
+   * The owner half is latent: no command mints a second Space, so it needs a
+   * restored snapshot to occur.
+   */
+  it("stops sweeping a Space whose caller holds no edit grant there, admin or owner", () => {
+    const { harness } = grantWithScope(configurationCapabilities());
+    const owner = ownerAcrossSpaces(harness);
+    seedSweepFixture(harness, owner, [
+      { taskId: ids.task, spaceId: ids.space },
+      { taskId: ids.otherTask, spaceId: ids.secondSpace },
+    ]);
+    harness.store.transact((transaction) => {
+      transaction.insertMembership({
+        id: MembershipIdSchema.parse(ids.sweepAdminMembership),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        principalId: PrincipalIdSchema.parse(ids.sweepAdmin),
+        displayName: "Admin who may only read the Space",
+        role: "admin",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      transaction.insertSpaceGrant({
+        id: SpaceGrantIdSchema.parse(ids.sweepAdminSpaceGrant),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.space),
+        principalId: PrincipalIdSchema.parse(ids.sweepAdmin),
+        access: "view",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+    const admin = ExecutionContextSchema.parse({
+      principalId: ids.sweepAdmin,
+      principalKind: "human",
+      credentialId: ids.sweepAdminCredential,
+      grantId: ids.sweepAdminGrant,
+      policyVersion: currentPolicyVersion(harness),
+      workspaceId: ids.workspace,
+      spaceScope: [ids.space],
+      capabilityScope: configurationCapabilities(),
+      origin: "desktop",
+    });
+    harness.authorization.register(admin);
+    // The regression a maintainer has to decide about: this used to raise the
+    // Task. It is still not a refusal — the command succeeds and reports an
+    // empty sweep — but it no longer reads like a workspace with nothing due,
+    // because it says how many Spaces it never opened. Every Space of the
+    // workspace, here: the admin holds `view` on the root and no grant at all
+    // on the other two, and `admin` has no role branch in
+    // `effectiveSpaceAccess`. An empty sweep with skipped 0 would be the honest
+    // report of a quiet workspace; this is the other thing.
+    const byAdmin = sweep(harness, admin, "admin-automation-sweep");
+    assert.deepEqual(byAdmin.raisedTaskIds, []);
+    assert.equal(byAdmin.skipped, 3);
+    assert.deepEqual(signalledSpaces(harness), []);
+
+    // The owner half. Downgrading the owner's own grant on the second Space
+    // leaves the role untouched, so whatever changes is the access level: the
+    // root Space is still swept (the role grants `edit` there and nowhere
+    // else), the second Space is not.
+    harness.store.transact((transaction) => {
+      const grant = transaction.getSpaceGrant(
+        SpaceGrantIdSchema.parse(ids.ownerSecondSpaceGrant),
+      );
+      if (grant === undefined) throw new Error("Expected the owner's grant.");
+      assert.equal(
+        transaction.updateSpaceGrant(
+          { ...grant, access: "view", version: grant.version + 1 },
+          grant.version,
+        ),
+        true,
+      );
+    });
+    const byOwner = sweep(harness, owner, "owner-sweep-without-edit");
+    assert.deepEqual(
+      byOwner.raisedTaskIds,
+      [ids.task],
+      "an owner is exempt on the root Space only",
+    );
+    assert.equal(
+      byOwner.skipped,
+      1,
+      "the downgraded Space, and only it — the third is still granted `edit`",
+    );
+    assert.deepEqual(signalledSpaces(harness), [ids.space]);
+
+    // The control for both halves: restoring `edit` raises the Task the two
+    // sweeps above skipped, so neither empty result was an ineligible fixture.
+    harness.store.transact((transaction) => {
+      const grant = transaction.getSpaceGrant(
+        SpaceGrantIdSchema.parse(ids.ownerSecondSpaceGrant),
+      );
+      if (grant === undefined) throw new Error("Expected the owner's grant.");
+      assert.equal(
+        transaction.updateSpaceGrant(
+          { ...grant, access: "edit", version: grant.version + 1 },
+          grant.version,
+        ),
+        true,
+      );
+    });
+    assert.deepEqual(
+      sweep(harness, owner, "owner-sweep-with-edit").raisedTaskIds,
+      [ids.otherTask],
+    );
   });
 
   it("still refuses a human member who is neither owner nor admin", () => {
@@ -2531,5 +2853,115 @@ describe("agent grant delegation reaches the product without widening scope", ()
       // statement about the grant, and must not read as a bad payload.
       assert.equal(denied.diagnosticCode, "authorization.denied", missing);
     }
+  });
+
+  /**
+   * A resolved comment thread, ready to be reopened, written by the agent
+   * itself so no second principal is needed. Returned by id rather than
+   * asserted about, because what every case below reads is the reopen.
+   */
+  const resolvedComment = (
+    harness: ReturnType<typeof createReferenceHarness>,
+    agent: ExecutionContext,
+  ): void => {
+    const created = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("reopen-task"),
+        commandName: "task.create",
+        payload: {
+          taskId: ids.task,
+          spaceId: ids.space,
+          title: "Something worth arguing about",
+        },
+      }),
+    );
+    assert.equal(created.outcome, "success");
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("reopen-comment", { [ids.task]: 1 }),
+          commandName: "comment.add",
+          payload: {
+            commentId: ids.comment,
+            target: { kind: "task", taskId: ids.task },
+            body: "Is this still right?",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("reopen-resolve", { [ids.comment]: 1 }),
+          commandName: "comment.resolve",
+          payload: { commentId: ids.comment },
+        }),
+      ),
+      "success",
+    );
+  };
+
+  it("refuses to reopen a comment thread to a scope holding only comment.resolve", () => {
+    const withoutReopen = capabilitiesForAgentGrantPreset("operate").filter(
+      (capability) => capability !== "comment.reopen",
+    );
+    const { harness } = grantWithScope(withoutReopen);
+    const agent = contextFromStoredGrant(harness);
+    // Resolving is what the scope still carries, so the fixture reaches the
+    // reopen through the real command rather than through a seeded row — and
+    // the refusal below cannot be the thread being in the wrong state.
+    resolvedComment(harness, agent);
+    // The capability `comment.reopen` was dead vocabulary: classified
+    // `operate`, carried by every preset from `operate` up, consulted by
+    // nothing, because the requirements table said reopening authorizes
+    // against `comment.resolve`. So a scope narrowed by hand to exclude it
+    // reopened anyway, and a scope granted it alone achieved nothing.
+    const denied = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("reopen-denied", { [ids.comment]: 2 }),
+        commandName: "comment.reopen",
+        payload: { commentId: ids.comment },
+      }),
+    );
+    assert.equal(denied.outcome, "rejected");
+    // A denial and not a precondition: the grant is what is missing, and an
+    // agent comparing requiredCapability against its own scope has something
+    // to act on. Reading the code alone would not separate the two.
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getComment(CommentIdSchema.parse(ids.comment)),
+      )?.threadState,
+      "resolved",
+      "the refusal is a refusal — the thread is still resolved",
+    );
+  });
+
+  it("lets a scope holding comment.reopen reopen the thread it resolved", () => {
+    // The control that makes the case above capable of failing. Same fixture,
+    // same commands, one capability added back: without it, a reopen refused
+    // for any unrelated reason — a version, a target, a Space — would read as
+    // the new requirement working.
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const agent = contextFromStoredGrant(harness);
+    resolvedComment(harness, agent);
+    const reopened = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("reopen-allowed", { [ids.comment]: 2 }),
+        commandName: "comment.reopen",
+        payload: { commentId: ids.comment },
+      }),
+    );
+    assert.equal(reopened.outcome, "success");
+    assert.equal(reopened.diagnosticCode, "comment.reopened");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getComment(CommentIdSchema.parse(ids.comment)),
+      )?.threadState,
+      "open",
+    );
   });
 });

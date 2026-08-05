@@ -2,7 +2,6 @@ import {
   canCommentInSpace,
   canConfigureWorkspace,
   canEditSpace,
-  canManageWorkspaceAccess,
   canViewSpace,
   effectiveSpaceAccess,
 } from "./collaboration-policy.js";
@@ -948,20 +947,23 @@ export const isWave2CommandAuthorized = (
     case "automation.create":
     case "automation.rename":
     case "automation.setState":
+    case "automation.sweep":
     case "recurrence.sweep": {
-      // Maintenance like automation.sweep, but it inserts Tasks directly, so
-      // it carries the Task-creation grant too rather than becoming a path
-      // around it (the rule ADR-040 §7 established for meeting promotion).
-      // Nine commands sit here and all nine carry it; the table states that
-      // once, and no `spaceId` is passed because this arm never resolved one.
+      // Ten commands sit here; nine of them insert Tasks directly and so carry
+      // the Task-creation grant rather than becoming a path around it (the rule
+      // ADR-040 §7 established for meeting promotion). `automation.sweep` is
+      // the tenth and carries no second grant, because it only moves work that
+      // already exists; the table states which is which, and no `spaceId` is
+      // passed because this arm never resolved one.
       //
-      // `canConfigureWorkspace`, not `canManageWorkspaceAccess`: all nine are
+      // `canConfigureWorkspace`, not `canManageWorkspaceAccess`: all ten are
       // `operate` and reach an agent grant through the catalog, and the role
       // an agent grant is minted with (`guest`) refuses every one of them. A
       // human is still asked for `owner`/`admin`; see the predicate.
-      // `recurrence.sweep` can sit here — unlike `automation.sweep` below —
-      // because its executor skips every Space the caller cannot edit, so a
-      // Space-scoped grant sweeps only what it was given.
+      // Both sweeps may sit here only because their executors skip every Space
+      // the caller cannot edit, so a Space-scoped grant sweeps — and reports
+      // back through its own projection — nothing but what it was given. Move
+      // no further enumerating command into this arm without that filter.
       return (
         view.getWorkspace(command.workspaceId) !== undefined &&
         canConfigureWorkspace(view, context, command.workspaceId) &&
@@ -971,29 +973,6 @@ export const isWave2CommandAuthorized = (
           workspaceId: command.workspaceId,
         }) &&
         additionallyAuthorized(dependencies, context, command, undefined)
-      );
-    }
-    case "automation.sweep": {
-      // Deliberately left on the strict predicate while every neighbouring
-      // `operate` row moved to `canConfigureWorkspace`, so an agent grant still
-      // cannot reach it. The executor walks `listSpaces(workspaceId)` with no
-      // `canEditSpace` filter — unlike `recurrence.sweep` one arm above, which
-      // skips a Space the caller cannot edit for exactly this reason — and then
-      // reports every task it touched through `raisedTaskIds`. A grant scoped
-      // to one Space would raise attention signals across Spaces it was never
-      // given and read their task identifiers back out of its own outcome.
-      // That is a Space-scope leak, not a role question, so widening the role
-      // gate is the wrong fix and narrowing the sweep is a change to human
-      // behaviour nobody asked for. Whoever fixes the executor's Space filter
-      // can move this row down into the arm below.
-      return (
-        view.getWorkspace(command.workspaceId) !== undefined &&
-        canManageWorkspaceAccess(view, context, command.workspaceId) &&
-        dependencies.authorization.authorize({
-          context,
-          capability: COMMAND_CAPABILITIES[command.commandName].capability,
-          workspaceId: command.workspaceId,
-        })
       );
     }
     case "fieldDef.create":
@@ -7262,6 +7241,7 @@ export const executeWave2Command = (
         "task" | "project" | "attentionSignal" | "relation" | "strategicRecord"
       > = {};
       let pendingCount = 0;
+      let skippedSpaceCount = 0;
       let truncated = false;
       let lastRecurrence: StrategicRecord | undefined;
       for (const space of transaction.listSpaces(command.workspaceId)) {
@@ -7271,8 +7251,17 @@ export const executeWave2Command = (
         // cross-Space leak the authorization model exists to prevent. A
         // cadence in an unreadable Space simply waits for a sweep by someone
         // who can edit it.
-        if (!canEditSpace(transaction, context, command.workspaceId, space.id))
+        //
+        // Counted, so the caller learns its sweep was partial. Only this branch
+        // increments: a Space left unvisited because the limit was reached is
+        // already reported by `truncated`, and folding the two would name the
+        // rate bound as an access problem.
+        if (
+          !canEditSpace(transaction, context, command.workspaceId, space.id)
+        ) {
+          skippedSpaceCount += 1;
           continue;
+        }
         for (const record of transaction.listStrategicRecords(
           command.workspaceId,
           space.id,
@@ -7365,6 +7354,7 @@ export const executeWave2Command = (
             kind: "recurrence.swept",
             generatedTaskIds,
             pendingCount,
+            skippedSpaceCount,
             truncated,
           },
         },
@@ -7390,6 +7380,7 @@ export const executeWave2Command = (
       const limit = 50;
       const raisedTaskIds: TaskId[] = [];
       let alreadySignaledCount = 0;
+      let skippedSpaceCount = 0;
       let truncated = false;
       const owner = transaction
         .listMemberships(command.workspaceId)
@@ -7398,6 +7389,28 @@ export const executeWave2Command = (
             membership.role === "owner" && membership.status !== "revoked",
         );
       for (const space of transaction.listSpaces(command.workspaceId)) {
+        // The same guard `recurrence.sweep` states one arm above, and for the
+        // same reason twice over: raising an attention signal in a Space the
+        // caller cannot edit writes there on their behalf, and `raisedTaskIds`
+        // then hands the caller the identifiers of tasks it was never given —
+        // a read it could not have made through any query. Without this the
+        // command was undelegable, because a grant scoped to one Space would
+        // have swept the whole workspace. A task in an unreachable Space is not
+        // dropped, it waits for a sweep by someone who can edit that Space.
+        //
+        // Counting the skips is what keeps the filter from trading a leak for
+        // silence: without it a caller who may edit nothing succeeds with an
+        // empty `raisedTaskIds`, which is byte-for-byte the answer a workspace
+        // with nothing due gives, and no caller could tell those apart. Only
+        // this branch increments — a Space the limit cut short is `truncated`,
+        // a different fact — and it stays a number rather than the ids, because
+        // the caller may not know which Spaces those are.
+        if (
+          !canEditSpace(transaction, context, command.workspaceId, space.id)
+        ) {
+          skippedSpaceCount += 1;
+          continue;
+        }
         for (const task of transaction.listTasksInSpace(
           command.workspaceId,
           space.id,
@@ -7471,6 +7484,7 @@ export const executeWave2Command = (
             kind: "automation.swept",
             raisedTaskIds,
             alreadySignaledCount,
+            skippedSpaceCount,
             truncated,
           },
         },
