@@ -27,7 +27,15 @@
   --text-xl: 1.375rem;
   --text-2xl: 1.75rem;
   --text-3xl: 2.25rem;
-  --text-display: clamp(1.9rem, 2.2vw, 2.6rem);
+  /* Skala kończy się na `--text-3xl`, który NIE MA DZIŚ KONSUMENTA — stoi pod
+     Fazę 3, razem z resztą grupy opisanej niżej.
+     Stopień display (clamp 1.9-2.6rem) stał tu do Fazy 2 i miał DWÓCH
+     konsumentów w `styles.css`, i obaj okazali się TYM SAMYM: tytułem ekranu.
+     Drugi rysował się pod klasą `.meeting-hero`, więc pierwsza próba
+     potraktowała go jako tytuł rekordu i dała mu `--text-3xl`, powiększając
+     go zamiast zmniejszyć; obala to `id="surface-title"` na tym elemencie.
+     Oba zjechały na proporcje paska okruszków. Zdjęty po ostatnim użyciu —
+     przeszukane wszystkie arkusze wysyłane z apką, `*.module.css` włącznie. */
   --leading-tight: 1.12;
   --leading-snug: 1.3;
   --leading-normal: 1.52;
@@ -419,7 +427,7 @@
      zmierzywszy jednej pozycji, i nic nie krzyknęło.
      Policzone 2026-08-06 skryptem po `git ls-files` (bez `dist/` i `build/`),
      z komentarzami wyciętymi z liczenia i z granicą `var(` zamiast `\b`, na
-     drzewie PO zmianach tego lotu; ta sama metoda daje 183 zadeklarowane
+     drzewie PO zmianach tego lotu; ta sama metoda daje 182 zadeklarowane
      tokeny. Pełna lista, w grupach:
 
      (1) DOŁOŻONE POD KONKRETNE FAZY — trzynaście, i to jest ZAMIERZONE, a nie
@@ -433,7 +441,7 @@
        --grain, --grain-opacity            ziarno okna (Faza 3)
        --ease-spring, --duration-exit      ruch (Faza 3)
        --row-height, --sidebar-rail        gęstość powłoki (Faza 3)
-       --text-3xl                          skala po zdjęciu `--text-display` (Faza 2)
+       --text-3xl                          skala po zdjęciu stopnia display (Faza 3)
        --surface-elevated, --surface-sidebar  czwarty plan (Faza 3)
        --neutral-925, --a-300              pełne rampy, bez dziur
 

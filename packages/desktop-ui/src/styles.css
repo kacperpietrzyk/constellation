@@ -534,6 +534,104 @@ button:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* ── JEDEN WŁAŚCICIEL PIERŚCIENIA OGNISKA ─────────────────────────────────────
+   Pierścień należy do reguły globalnej w `tokens.css`. Ta reguła stoi na
+   `:where(button, a, …):focus-visible`, czyli ma swoistość (0,1,0), i maluje
+   ognisko przez `box-shadow`. Kontrolka, która ma WŁASNY cień spoczynkowy,
+   deklaruje `box-shadow` selektorem klasowym — (0,1,0) albo (0,2,0) — i przy
+   ognisku po prostu ZASTĘPUJE pierścień swoim własnym cieniem. Wygląda wtedy
+   przy ognisku DOKŁADNIE tak samo jak w spoczynku.
+
+   ILE TEGO BYŁO — ZMIERZONE 2026-08-06 PRAWDZIWYM TABEM W CHROMIUM, na
+   dwunastu ekranach powłoki plus dwunastu przelotach po układach i trybach,
+   w obu motywach: 644 przystanki Tab, z czego 130 nie zmieniało przy ognisku
+   NICZEGO, co widać (ani cienia, ani rysującego konturu, ani tła). Po tej
+   poprawce zostają DWA i oba są tym samym miejscem w dwóch motywach.
+   Sygnatur z własnym cieniem spoczynkowym jest jedenaście, a niewidocznych przy
+   ognisku było DZIEWIĘĆ: `.nav-item.active`, `.capture-dock`,
+   `.secondary-button` w czterech wariantach (goły, `.compact`,
+   `.document-rename-trigger`, `.document-markdown-toggle`),
+   `.strategic-create-toggle`, goła sygnatura `button` w Ustawieniach (23
+   przystanki na motyw) oraz `.knowledge-document-list li button.active`. Recon
+   wymieniał trzy z nich — trzy wpisy naprawiłyby trzy, a czwarty przyszedłby
+   w kolejnym locie razem z ciszą bramki.
+
+   LEKARSTWO JEST NA ROLI CIENIA, NIE NA KONTROLCE. Ognisko nadpisuje SAM TOKEN
+   elewacji na czas ogniska, więc każda kontrolka — dzisiejsza i przyszła —
+   która maluje `box-shadow` rolą elewacji, dostaje pierścień ZŁOŻONY ze swoim
+   cieniem, nie zamiast niego. Pierścień idzie PIERWSZY, bo pierwsza warstwa
+   listy cieni maluje się na wierzchu.
+
+   DLACZEGO PARY `-resting`: podstawienie w custom property rozstrzyga się na
+   elemencie, NA KTÓRYM property zadeklarowano. `--elevation-rest` stoi w bloku
+   `:root`, więc jego wartość jest tam już rozwinięta i schodzi w dół jako
+   gotowy literał — a nadpisanie na ognisku musi mieć skąd wziąć wartość
+   spoczynkową, nie odwołując się do siebie. Kopia robiona raz na `:root` jest
+   tym źródłem i rozstrzyga się per motyw, bo motyw jasny remapuje te same
+   tokeny na tym samym elemencie.
+
+   SŁOWNIK JEST ZAMKNIĘTY I MA SZEŚĆ POZYCJI, nie trzy kontrolki w przebraniu:
+   trzy role elewacji plus trzy aliasy, które `tokens.css` rozwija w bloku
+   `:root` (a więc też z góry) i które mają własnych konsumentów w tym pliku.
+
+   ILE Z NICH JEST DZIŚ ĆWICZONYCH — DWIE, i to trzeba było powiedzieć, zanim
+   powie to adwersarz. Policzone po konsumentach: rolę cienia spoczynku niesie
+   kontrolka (nawigacja, akcja drugorzędna, przyciski Ustawień), alias doku
+   przechwytywania też. Pozostałe cztery mają dziś WYŁĄCZNIE konsumentów, którzy
+   nie są kontrolkami — jedenaście dialogów, menu i toastów pod aliasem nakładki
+   oraz jeden panel pod aliasem kontekstu — więc nadpisanie nigdy się dla nich
+   nie odpala. Stoją tu nie dlatego, że coś naprawiają, tylko dlatego, że
+   pierwsza kontrolka, która sięgnie po którąś z tych ról, ma dostać pierścień
+   bez czyjejkolwiek pamięci o tym pliku. Nadpisanie nieodpalone to ta sama
+   klasa ciszy, którą to repo zna z pustych fikstur: nie dowodzi niczego,
+   dopóki go coś nie dosięgnie.
+
+   NAKŁADKI SĄ BEZPIECZNE STRUKTURALNIE, nie przez szczęście: własność
+   niestandardowa dziedziczy W DÓŁ, a dialog jest PRZODKIEM kontrolki, nie jej
+   potomkiem. Sprawdzone też od drugiej strony — panel wyskakujący jest
+   portowany do `document.body`, więc nie jest potomkiem swojego wyzwalacza.
+   Zmierzone: na 644 przystankach ani jeden potomek kontrolki z ogniskiem nie
+   zmienił cienia.
+
+   CZEGO TO NIE OBEJMUJE — NAZWANE, BO ZMIERZONE: kontrolka, która maluje
+   `box-shadow` wartością SPOZA tej rodziny, dalej wygrywa z pierścieniem.
+   Dziś jest taka jedna i jest nią `.knowledge-document-list li button.active`
+   (`styles.css`, kreska zaznaczenia `inset 2px 0`): przy ognisku nie rysuje
+   nic, co widać, i ten lot jej nie rusza, bo nie jest kontrolką z jego zakresu.
+   Kto ją zamyka, ma tu adres i pomiar.
+
+   GDZIE TO MIESZKA: kopie spoczynkowe stoją w TYM pliku, a nie w warstwie
+   tokenów, bo `tokens.css` był poza zakresem tego lotu. To jest miejsce
+   tymczasowe, nie wybór architektoniczny — należą do warstwy, która definiuje
+   role cieni. */
+:root {
+  --elevation-rest-resting: var(--elevation-rest);
+  --elevation-raised-resting: var(--elevation-raised);
+  --elevation-overlay-resting: var(--elevation-overlay);
+  --capture-shadow-resting: var(--capture-shadow);
+  --overlay-shadow-resting: var(--overlay-shadow);
+  --context-shadow-resting: var(--context-shadow);
+}
+:where(
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  summary,
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  --elevation-rest: var(--control-focus-ring), var(--elevation-rest-resting);
+  --elevation-raised:
+    var(--control-focus-ring), var(--elevation-raised-resting);
+  --elevation-overlay:
+    var(--control-focus-ring), var(--elevation-overlay-resting);
+  --capture-shadow: var(--control-focus-ring), var(--capture-shadow-resting);
+  --overlay-shadow: var(--control-focus-ring), var(--overlay-shadow-resting);
+  --context-shadow: var(--control-focus-ring), var(--context-shadow-resting);
+}
+
 svg {
   width: 1rem;
   height: 1rem;
@@ -619,9 +717,28 @@ kbd {
   background: var(--action-primary-pressed);
   transform: translateY(1px);
 }
+/* SKRÓT NA AKCJI GŁÓWNEJ NIE MA JUŻ WŁASNEGO KOLORU — dziedziczy kolor pisma
+   przycisku. Wygaszanie go przezroczystością nie mieściło się w AA i nie da się
+   go zmieścić przy zachowaniu wygaszenia, które cokolwiek znaczy. Policzone tą
+   samą matematyką co bramki kontrastu (`scripts/color-contrast.mjs`), na trzech
+   wypełnieniach akcji głównej — identycznych w obu motywach:
+
+     udział pisma   spoczynek   hover    pressed
+       62 %  (było)   2,983      3,934    4,989   ← dwa stany z trzech NIE ZDAJĄ
+       85 %            4,222      5,963    8,039   ← spoczynek dalej nie zdaje
+       90 %            4,532      6,480    8,832   ← zdaje, zapas 0,032
+      100 %  (jest)    5,195      7,599   10,563   ← zdaje, zapas 0,695
+   Próg AA dla tekstu zwykłego to 4,5 i nie wolno go ruszyć.
+
+   90 % ZDAJE I ZOSTAŁO ODRZUCONE ŚWIADOMIE: zapas 0,032 to siedem promili progu,
+   a w tym drzewie nie ma ani jednej zakomitowanej asercji o tej wartości (bramki
+   kontrastu czytają `tokens.css`, a to jest `styles.css`), więc pierwsza zmiana
+   akcentu zabrałaby ten stan po cichu. Wygaszenie nie zniknęło, tylko przestało
+   być kolorem: reguła `kbd` wyżej daje skrótowi mniejszy stopień pisma
+   (`--text-2xs`) i grubość 600 przy 650 przycisku, czyli ten sam sygnał niesiony
+   kształtem, a nie kontrastem. */
 .primary-button kbd {
   margin-left: var(--space-2);
-  color: color-mix(in oklch, var(--action-primary-text) 62%, transparent);
 }
 .secondary-button {
   color: var(--action-secondary-text);
@@ -1292,13 +1409,26 @@ kbd {
 .shell-tab-close svg {
   width: 0.8rem;
 }
+/* PROPORCJE PASKA `crumbbar` Z PROTOTYPU (`v3/app.css:282-293`), NIE SAM PASEK.
+   Prototypowy `crumbbar` jest pasmem na całą szerokość płótna, z własną dolną
+   krawędzią; tutaj przejęte są WYŁĄCZNIE jego proporcje — wysokość pasma, skala
+   tytułu i akcja po prawej — a nagłówek zostaje w kolumnie czytelnej
+   (`--surface-measure`), którą ma cała powłoka. Pełne pasmo przesunęłoby
+   poziome wyrównanie względem treści na jedenastu powierzchniach i jest ZMIANĄ
+   WIĘKSZĄ, niż ten lot obejmuje.
+
+   `min-height`, a nie `height`, dokładnie jak w prototypie: przy skalowaniu
+   tekstu pasmo ma rosnąć, a nie przycinać. */
 .surface-header {
   max-width: var(--surface-measure, 58rem);
+  min-height: var(--header-band-height);
   margin: 0 auto var(--space-6);
   display: flex;
-  align-items: flex-start;
+  /* Było `flex-start` — akcja równała się do GÓRY nagłówka display, czyli do
+     niczego, co widać. W rzędzie o wysokości pasma równa się do rzędu tytułu. */
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-4);
   /* Przy skalowaniu tekstu do 200% nagłówek przestaje się mieścić w wierszu
      i wypycha powierzchnię poza jej własne pudełko — czyli robi poziomy pasek
      przewijania na ekranie, który go nie ma. Zawijanie nic nie zmienia, dopóki
@@ -1311,16 +1441,43 @@ kbd {
 }
 /* Historia wrzutek jest ODCZYTEM Biblioteki, a nie własnym celem, więc jej
    nagłówek zjeżdża na `h2` pod `h1` powłoki. Wygląd zostaje ten sam: poziom
-   nagłówka niesie hierarchię dokumentu, nie rozmiar liter. */
+   nagłówka niesie hierarchię dokumentu, nie rozmiar liter.
+
+   I TA ZASADA JEST TU TERAZ CAŁĄ POINTĄ. Tytuł jechał `--text-display`, czyli
+   30-42 px (zmierzone 31.68 px przy 1440 px) o wadze 590 — i POWTARZAŁ
+   etykietę aktywnej zakładki powłoki tuż nad sobą. Zmierzone na żywo, oba
+   motywy: jedenaście przystanków nawigacji, na których rysuje się
+   `.surface-header`, i na WSZYSTKICH JEDENASTU tekst `h1` jest identyczny
+   z etykietą aktywnej zakładki — Today, Calendar, Inbox, Tasks, Projects,
+   Pipeline, Organizations, People, Renewals, Settings, plus ekran startowy,
+   który pokazuje ten sam nagłówek co Today. Jedyny nagłówek, który NIE
+   dubluje, to odczyt Historii przechwyceń — `h2` „Capture history" pod
+   zakładką „Library".
+
+   Zdublowany KRZYK znika, `<h1>` ZOSTAJE i zostaje WIDOCZNY: element ukryty
+   albo `display: none` opróżniłby podmiot sondy wierności zamiast naprawić
+   ekran. Rozmiar i waga są z bieżącego okruszka prototypu (`v3/app.css:292`),
+   który tak samo stoi pod paskiem zakładek nazywającym ten sam ekran.
+   `-0.008em` jest literałem, bo żaden token trackingu nie niesie tej wartości
+   (`--tracking-tight` to -0.035em, `--tracking-wide` to 0.025em). */
 .surface-header h1,
 .surface-header h2 {
-  margin: 0.42rem 0 0.3rem;
-  font-size: var(--text-display);
-  font-weight: 590;
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tight);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: var(--leading-snug);
 }
-.surface-header p:last-child {
+/* `p:last-child` NIE WYSTARCZA i przez to opis bywał WIĘKSZY od tytułu.
+   W Ustawieniach po akapicie stoi jeszcze przycisk pomocy
+   (`SettingsSurface.tsx:951-960`), więc akapit nie jest ostatnim dzieckiem
+   i zostawał na 14 px w kolorze pisma podstawowego — obok tytułu 13 px.
+   Dopóki tytuł miał 30-42 px, odwrócenie było niewidoczne; skrócenie tytułu
+   w Fazie 2 je ujawniło. Reguła celuje więc w KAŻDY akapit nagłówka, a nie
+   w ostatnie dziecko: dziesięć ekranów, na których to działało, wygląda
+   tak samo, a dwa, na których nie działało, dołączają. */
+.surface-header p:not(.eyebrow),
+.meeting-hero > div:first-child > p:not(.eyebrow) {
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
@@ -3241,12 +3398,23 @@ kbd {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
+/* TO JEST TYTUŁ EKRANU, tylko pod inną klasą — i pierwsza wersja tej noty
+   twierdziła coś przeciwnego („tytuł rekordu spotkania"), na tej podstawie
+   POWIĘKSZAJĄC go z 31,68 px do 36 px. Obala to `MeetingsSurface.tsx:729-733`:
+   ten `h1` niesie `id="surface-title"` i literał „Meetings", czyli dokładnie
+   etykietę aktywnej zakładki tuż nad sobą. Dubluje tak samo jak jedenaście
+   pozostałych i dostaje to samo lekarstwo co one.
+
+   Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
+   `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero` — dlatego zła
+   liczba przeszła. Podmiot sondy jest teraz wyprowadzony z `id="surface-title"`,
+   nie z klasy nagłówka; patrz `scripts/verify-renderer-layout.mjs`. */
 .meeting-hero h1 {
-  margin: var(--space-2) 0;
-  font-size: var(--text-display);
-  line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-tight);
-  font-weight: 500;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: var(--leading-snug);
 }
 .meeting-hero > div:first-child > p:last-child {
   max-width: 48rem;
@@ -7017,12 +7185,16 @@ kbd {
     flex-direction: column;
   }
 }
-@media (max-width: 30rem) {
-  .wave2-header h1,
-  .wave2-header h2 {
-    font-size: 1.75rem;
-  }
-}
+/* Tu stała korekta wąskiego okna: `font-size: 1.75rem` dla `.wave2-header h1,h2`.
+   Była SKURCZENIEM nagłówka display (30-42 px) do 28 px, żeby zmieścił się przy
+   ≤480 px. Po sprowadzeniu tytułu do proporcji okruszka (13 px) ta sama reguła
+   robi coś odwrotnego: POWIĘKSZA go 2,15×, czyli odtwarza nagłówek display
+   dokładnie tam, gdzie miejsca jest najmniej. Zmierzone przed skasowaniem:
+   28,00 px przy ≤480 px, przy suficie sondy 20,0 px, i 56,00 px przy 320 px
+   ze skalowaniem tekstu do 200%, gdzie sufit rośnie razem z korzeniem do
+   40,0 px — sufit jest w `rem`, więc jedna liczba nie opisuje obu geometrii.
+   Na `projects` i `settings`, w obu motywach.
+   Skasowana, bo korygowała rozmiar, którego już nie ma. */
 @media (prefers-reduced-transparency: reduce) {
   .search-backdrop,
   .undo-backdrop,

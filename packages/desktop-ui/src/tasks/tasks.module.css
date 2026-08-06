@@ -64,12 +64,14 @@
   font-size: var(--text-sm);
 }
 
-.switch:focus-visible,
-.search input:focus-visible,
-.control select:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+/* Pierścienia ogniska nie deklaruje tu nic i to jest rozstrzygnięcie. Reguła,
+   która tu stała, pisała pierścień jako `outline` — a pierścień jest listą
+   cieni, więc po podstawieniu deklaracja stawała się niepoprawna i kontur
+   spadał do wartości początkowej. Zmierzone Tabem w Chromium, oba motywy:
+   `.switch` przy ognisku miał `outline-style: none` przy grubości 0 px,
+   a widoczny pierścień malowała reguła globalna z `tokens.css`. Deklaracja nie
+   dodawała nic, a odbierała kontur, którym `tokens.css` podkłada tryb
+   wymuszonych kolorów — zmierzone tam: `outline: none 0px` zamiast Highlight. */
 
 .search,
 .control {

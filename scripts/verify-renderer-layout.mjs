@@ -466,7 +466,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   await page.goto(HARNESS, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
   const measured = await page.evaluate(
-    async ({ fontSize, scrollAttribute, surfaces, SETTINGS_SURFACE }) => {
+    async ({
+      fontSize,
+      scrollAttribute,
+      surfaces,
+      SETTINGS_SURFACE,
+      titleSelector,
+      recordScreenSelector,
+    }) => {
       const frame = () =>
         new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve)),
@@ -530,6 +537,15 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       // otworzyć — czyli o którym ten przebieg nie mówi nic.
       const openableRows = {};
       const openAttempts = [];
+      // ── TYTUŁ EKRANU NA KAŻDEJ GEOMETRII ──────────────────────────────────
+      // Sonda wierności wizualnej otwiera JEDNO okno 1440×900 i tyle. Reguła
+      // `@media (max-width: 30rem)` powiększająca tytuł 2,15× (28,0 px przy
+      // suficie 20,0 px) przechodziła przez nią zielono, bo tamten przelot
+      // nigdy nie schodzi do 480 px. Te przeloty schodzą — 320 px, 200% tekstu,
+      // dwie szerokości Biblioteki — więc pomiar jedzie TUTAJ, na już otwartych
+      // celach, bez ani jednego dodatkowego wczytania strony.
+      const titles = [];
+      const titleCounts = [];
       const rowCounts = {
         libraryDocuments: 0,
         librarySources: 0,
@@ -782,6 +798,36 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             documentWidth: document.documentElement.scrollWidth,
             viewportWidth: window.innerWidth,
           });
+          // Podmiot z DEKLARACJI (`id="surface-title"`), a nie z klasy
+          // nagłówka — powód stoi przy `TITLE_SELECTOR`. Pytany jest CAŁY
+          // dokument, nie `drawn`: liczba dopasowań ma być liczbą wystąpień
+          // identyfikatora na stronie, bo dwa z nich to awaria przyrządu
+          // niezależnie od tego, w którym poddrzewie siedzą.
+          {
+            const found = [...document.querySelectorAll(titleSelector)];
+            titleCounts.push({ surface: label, matched: found.length });
+            for (const element of found) {
+              const style = window.getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              titles.push({
+                surface: label,
+                selector: titleSelector,
+                signature: signature(element),
+                record: element.closest(recordScreenSelector) !== null,
+                // PRZYCIĘTY DO NICZEGO ALBO NIEWIDOCZNY — po KSZTAŁCIE, nie po
+                // nazwie klasy: sr-only `<h1>` stanu ładowania ma tę postać,
+                // a osąd rozmiaru nad nim mówiłby o afordancji, której nikt
+                // nie ogląda.
+                parked:
+                  element.getClientRects().length === 0 ||
+                  rect.width * rect.height <= 4 ||
+                  style.visibility === "hidden" ||
+                  style.opacity === "0",
+                value: `${style.fontSize} ${style.fontWeight}`,
+                text: (element.textContent ?? "").trim().slice(0, 48),
+              });
+            }
+          }
           sweepDescendants(drawn, label);
           sweepRecordScreens(drawn, label);
           sweepHeightBound(drawn, label);
@@ -973,6 +1019,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         recordPanels,
         recordKinds,
         lensesDeclared,
+        titles,
+        titleCounts,
+        // Rem MIERZONY, nie wyliczony z napisu „200%": pasmo tytułu jest w rem,
+        // więc sufit w pikselach musi wyjść z tego samego korzenia, który
+        // narysował literę.
+        rootFontSizePx: Number.parseFloat(
+          window.getComputedStyle(document.documentElement).fontSize,
+        ),
       };
     },
     {
@@ -980,6 +1034,8 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       scrollAttribute: HORIZONTAL_SCROLL_ATTRIBUTE,
       surfaces,
       SETTINGS_SURFACE,
+      titleSelector: TITLE_SELECTOR,
+      recordScreenSelector: RECORD_SCREEN_SELECTOR,
     },
   );
 
@@ -1354,8 +1410,76 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       });
     }
   }
+  // ── TYTUŁ EKRANU NA TEJ GEOMETRII ─────────────────────────────────────────
+  // Osobna lista zwracana z tego przelotu, a nie `layoutProblems`, i to jest
+  // decyzja o KSIĘGOWOŚCI, nie o stylu. `layoutProblems` to rejestr przepełnień
+  // i tryb raportu (`LAYOUT_DESCENDANT_REPORT=1`) je wycisza, bo mają rejestr
+  // do odświeżenia. Werdykt o rozmiarze tytułu żadnego rejestru nie ma i wyciszać
+  // go nie ma po co — sonda wierności egzekwuje swoje bezwarunkowo i ten pomiar
+  // jest jej drugim zakresem, a nie nowym trybem.
+  const titleProblems = [];
+  for (const seen of measured.titleCounts.filter(
+    (entry) => entry.matched !== 1,
+  ))
+    failures.push({
+      surface: seen.surface,
+      reason:
+        `„${TITLE_SELECTOR}" matched ${seen.matched} element(s) here, not exactly one — an id is ` +
+        "unique by definition, so with two this pass judges whichever came first and cannot say " +
+        "which, and with none it judges nothing. Instrument failure, not a verdict about the title",
+    });
+  const rootFontSizePx = measured.rootFontSizePx;
+  if (!Number.isFinite(rootFontSizePx) || rootFontSizePx <= 0) {
+    failures.push({
+      surface: "-",
+      reason: `the document element computed a root font size of „${rootFontSizePx}", so the ${TITLE_MIN_REM}–${TITLE_MAX_REM}rem title band cannot be turned into pixels and no title was judged on this geometry`,
+    });
+  } else {
+    const parkedTitles = measured.titles.filter(
+      (entry) => entry.parked === true,
+    );
+    const recordTitles = measured.titles.filter(
+      (entry) => entry.record === true && entry.parked !== true,
+    );
+    const screenTitles = measured.titles.filter(
+      (entry) => entry.record !== true && entry.parked !== true,
+    );
+    const judgedTitles = judgeTitleBand({
+      entries: screenTitles,
+      rootFontSizePx,
+      where: label,
+    });
+    for (const failure of judgedTitles.failures)
+      failures.push({ surface: "-", reason: failure });
+    titleProblems.push(...judgedTitles.problems);
+    console.log(
+      `${label}\tscreen title\t${screenTitles.length} screen title(s), ` +
+        `${judgedTitles.lines.length} distinct size/weight pair(s), on ` +
+        `${new Set(screenTitles.map((entry) => entry.surface)).size} of ` +
+        `${measured.titleCounts.length} screen state(s) measured\t` +
+        `${recordTitles.length} record title(s) reported but NOT judged by this band, ` +
+        `${parkedTitles.length} clipped to nothing\tband ` +
+        `${judgedTitles.floorPx.toFixed(1)}–${judgedTitles.ceilingPx.toFixed(1)}px ` +
+        `(${TITLE_MIN_REM}–${TITLE_MAX_REM}rem at a ${rootFontSizePx}px root), weight floor ` +
+        `${TITLE_MIN_WEIGHT}`,
+    );
+    for (const line of judgedTitles.lines) console.log(`${label}\t${line}`);
+    for (const group of groupMeasurements(recordTitles))
+      console.log(
+        `${label}\trecord title\t${group.signature}\ton ${group.surfaces.join(", ")}\t` +
+          `${group.value}\treported only — the crumbbar band does not describe a record title`,
+      );
+    // PRZELOT, KTÓRY NIE ZMIERZYŁ ANI JEDNEGO TYTUŁU EKRANU, nie jest przelotem
+    // zielonym — jest przelotem niemym. Bez tego zdania wycięcie tytułu ze
+    // wszystkich powierzchni naraz przechodziłoby tu w ciszy.
+    if (screenTitles.length === 0)
+      failures.push({
+        surface: "-",
+        reason: `no visible screen title was measured on any of the ${measured.titleCounts.length} screen state(s) this pass walked, so this pass says NOTHING about the size of the title at this geometry`,
+      });
+  }
   await page.close();
-  return { failures, layoutProblems, matchedRegistryEntries };
+  return { failures, layoutProblems, matchedRegistryEntries, titleProblems };
 };
 
 // ── SONDA WIERNOŚCI WIZUALNEJ ────────────────────────────────────────────────
@@ -1437,8 +1561,8 @@ const ACCENT = {
   //   rampa neutralna (`--n-*`, :36-51)   0.004 0.005 0.007 0.009 0.010 0.011
   //                                       0.012 0.013 0.014 0.015 (maks 0.015)
   //   NAJSILNIEJSZY PODSZYWACZ, odcień 285, czyli WEWNĄTRZ pasa ±25:
-  //     cienie motywu jasnego `oklch(40% 0.03 285 / …)` (:255-259)   0.03
-  //     obramowania motywu jasnego `oklch(30% 0.02 285 / …)` (:236)  0.02
+  //     cienie motywu jasnego `oklch(40% 0.03 285 / …)` (:224-227)      0.03
+  //     obramowania motywu jasnego `oklch(30% 0.02 285 / …)` (:200-202) 0.02
   //
   // Rozdzielany przedział to więc (0.03, 0.12], a NIE (0.015, 0.19]: rampa
   // neutralna nie jest tu wiążąca, wiążące są cienie i obramowania jasnego
@@ -1465,9 +1589,12 @@ const ACCENT = {
   // 0.04 siedzi wyraźnie pod 0.07 i cztery razy nad niewidzialnym 0.01.
   alphaFloor: 0.04,
 };
-// Sufit tytułu ekranu w `rem`. Łapie regresję do nagłówka display: dziś tytuł
-// rysuje `--text-display: clamp(1.9rem, 2.2vw, 2.6rem)`, czyli 30–42 px, a
-// prototyp daje temu samemu tytułowi `--text-sm` o wadze 600 w pasku crumbbar.
+// Sufit tytułu ekranu w `rem`. Łapie regresję do nagłówka display. Gdy ta
+// asercja powstawała, tytuł rysował `--text-display: clamp(1.9rem, 2.2vw,
+// 2.6rem)`, czyli 30–42 px; Faza 2 ten stopień ZDJĘŁA i dziś zmierzone jest
+// 13,0 px o wadze 600 na dwunastu z trzynastu celów, bo prototyp daje temu
+// samemu tytułowi `--text-sm` o wadze 600 w pasku crumbbar. Trzynasty cel
+// (Biblioteka) rysuje 28,0 px i jest werdyktem tej bramki, nie wyjątkiem.
 const TITLE_MAX_REM = 1.25;
 // I PODŁOGA, bo sam sufit przepuszcza tytuł czterech pikseli — „mniejszy" nie
 // znaczy „poprawiony". v3 rysuje tytuł `--text-sm`, czyli 0.8125rem; podłoga
@@ -1813,25 +1940,112 @@ const groupMeasurements = (entries) => {
   return [...groups.values()];
 };
 
-// Tytuł ekranu stoi tu Z RĘKI i to jest jedyny wpisany selektor w tej sondzie.
-// DLACZEGO: nie ma tokenu, po którym dałoby się go wyprowadzić z arkusza tak,
-// żeby wyprowadzenie PRZEŻYŁO POPRAWKĘ. Dziś tytuł rysuje `--text-display`, ale
-// Faza 2 planu ten token USUWA — sonda wyprowadzona z „co używa --text-display"
-// zwracałaby wtedy zbiór pusty i meldowała awarię przyrządu w chwili, w której
-// naprawa wylądowała. `.surface-header` i `<h1>` przeżywają tę zmianę oba:
-// plan sprowadza nagłówek do proporcji crumbbara, ale ZOSTAWIA `<h1>` ze względu
-// na dostępność (poziom nagłówka niesie hierarchię dokumentu, nie rozmiar liter).
+// ── PODMIOT TYTUŁU: DEKLARACJA, NIE KLASA NAGŁÓWKA ───────────────────────────
+// Do tej wersji podmiotem był `.surface-header h1, .surface-header h2`, czyli
+// KLASA NAGŁÓWKA. Kosztowało to dwa niezauważone defekty i oba wyszły z jednej
+// dziury: sonda mierzyła to, co NAZYWA SIĘ `.surface-header`, a nie to, co JEST
+// tytułem ekranu.
 //
-// CO SIĘ STANIE, GDY TO ZNIKNIE: `.surface-header h1, h2` przestaje się
-// dopasowywać, sonda nie znajduje ANI JEDNEGO tytułu na żadnym celu i pada
-// z `VISUAL_PROBE_NO_SCREEN_TITLE` — czyli głośno, jako awaria przyrządu,
-// z nazwą selektora do poprawienia. Nigdy jako cicha zieleń.
+//   * Spotkania rysują `.meeting-hero`, Biblioteka — nagłówek z modułu CSS.
+//     Raport UCZCIWIE pisał „no title drawn on: meetings, library" (11 z 13
+//     powierzchni, oba motywy), czyli przyrząd MÓWIŁ, że nie mierzy — i nikt
+//     tego nie przekuł w asercję. Powiększenie tytułu Spotkań przeszło zielono.
+//   * `h2` w tamtym selektorze nie dopasowało DZIŚ ani jednego elementu:
+//     zmierzone 11 tytułów, JEDNA grupa rozmiar/waga, sygnatura `h1`, w obu
+//     motywach. Wymiana selektora nie zabiera więc żadnego żywego pokrycia —
+//     zabiera tylko martwe ramię, które przez trzy fale wyglądało na zakres.
 //
-// `h2` jest w selektorze, bo dzieli z `h1` JEDNĄ regułę w arkuszu
-// (`styles.css`: „.surface-header h1, .surface-header h2") — to tytuł odczytu
-// zagnieżdżonego, jadący na tej samej deklaracji. Asercja na samym `h1`
-// zostawiłaby połowę tej reguły niezmierzoną.
-const TITLE_SELECTOR = ".surface-header h1, .surface-header h2";
+// AFORDANCJA JEST ZADEKLAROWANA, A POWŁOKA JUŻ NA NIEJ STOI: tytuł każdego
+// ekranu niesie `id="surface-title"`, a `RealApp` używa go dwa razy —
+// `aria-labelledby="surface-title"` nazywa płaszczyznę pracy, a efekt po zmianie
+// celu przenosi tam ognisko. Niesie go 16 plików renderera. Zmierzone na 105
+// stanach ekranu, przez które przechodzi ten skrypt (13 celów plus soczewki
+// i otwarte rekordy, pięć geometrii): DOKŁADNIE JEDEN element z tym
+// identyfikatorem na każdym z nich.
+//
+// ZERO ALBO DWA TO GŁOŚNA AWARIA PRZYRZĄDU, nie werdykt: identyfikator jest
+// jeden z definicji, a sonda mierząca „któryś z dwóch" nie wie, o czym mówi.
+// Obie liczby padają nazwanym kodem (`VISUAL_PROBE_TITLE_NOT_UNIQUE`).
+//
+// CO SIĘ STANIE, GDY TO ZNIKNIE: `#surface-title` przestaje się dopasowywać,
+// sonda nie znajduje ANI JEDNEGO tytułu i pada z `VISUAL_PROBE_NO_SCREEN_TITLE`
+// — czyli głośno, z nazwą afordancji do poprawienia. Nigdy jako cicha zieleń.
+const TITLE_SELECTOR = "#surface-title";
+
+// TYTUŁ REKORDU TO NIE TYTUŁ EKRANU, a pasmo crumbbara nie jest jego pasmem.
+// Rozdzielone STRUKTURALNIE, nie listą nazw ekranów: ekran rekordu deklaruje
+// `data-record-kind` — ten sam rejestr, z którego ten plik bierze podmioty przez
+// `derive()` — i tytuł rekordu siedzi w środku tej deklaracji. Zmierzone przy
+// 1440 px: Zadanie i Projekt 28,0 px o wadze 580, Szansa 22,0 px o wadze 620.
+// Trzech wartości, których pasmo 10–20 px nie opisuje, ta sonda nie ma prawa nim
+// osądzać — v3 daje tytułowi REKORDU inne proporcje niż tytułowi EKRANU, a lot
+// NAG pomylił jedno z drugim dokładnie dlatego, że nic ich nie rozdzielało.
+// Są za to RAPORTOWANE z liczbami: nieosądzone i przemilczane to dwie różne
+// rzeczy, a ten plik zbiera od fal wyłącznie tę drugą.
+const RECORD_SCREEN_SELECTOR = "[data-record-kind]";
+
+// ── JEDNA MIARA PASMA DLA OBU PRZELOTÓW ──────────────────────────────────────
+// Sonda wierności pyta o tytuł przy 1440 px w obu motywach; przeloty geometrii
+// pytają o ten sam tytuł przy 320 px, przy tekście przeskalowanym do 200% i przy
+// dwóch szerokościach Biblioteki. To jest JEDNO pytanie i ma mieć JEDNO zdanie
+// odpowiedzi, więc osąd stoi w jednym miejscu, a nie w dwóch kopiach, które
+// rozjadą się po cichu przy pierwszej zmianie pasma.
+//
+// SUFIT LICZONY Z ŻYWEGO `rem`, nie z wpisanych 20 px, i to jest warunek, bez
+// którego cały ten drugi zakres byłby kłamstwem: `1.25rem` znaczy „dwadzieścia
+// pikseli przy domyślnym rem", a przy tekście przeskalowanym do 200% znaczy
+// czterdzieści. Zmierzone: tytuł ekranu rysuje 13,0 px przy rem 16 px i 26,0 px
+// przy rem 32 px, czyli SKALUJE SIĘ. Pod wpisaną liczbą pikseli przelot 200%
+// meldowałby OVER nad tytułem, który urósł dokładnie tak, jak ma.
+const judgeTitleBand = ({ entries, rootFontSizePx, where }) => {
+  const ceilingPx = TITLE_MAX_REM * rootFontSizePx;
+  const floorPx = TITLE_MIN_REM * rootFontSizePx;
+  const lines = [];
+  const problems = [];
+  const failures = [];
+  for (const group of groupMeasurements(entries)) {
+    const [size, weight] = group.value.split(" ");
+    const px = Number.parseFloat(size);
+    const fontWeight = Number.parseFloat(weight);
+    if (!Number.isFinite(px) || !Number.isFinite(fontWeight)) {
+      failures.push(
+        `VISUAL_PROBE_UNREADABLE_TITLE_TYPE (${where}): ${group.signature} on ` +
+          `${group.surfaces.join(", ")} computed a font size/weight of „${group.value}", which ` +
+          "this probe cannot read as a number of pixels and a numeric weight.",
+      );
+      continue;
+    }
+    lines.push(
+      `screen title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${px.toFixed(1)}px\t` +
+        `weight ${fontWeight}\t` +
+        `${px > ceilingPx ? "OVER" : px < floorPx ? "UNDER" : "WITHIN"} the ` +
+        `${floorPx.toFixed(1)}–${ceilingPx.toFixed(1)}px band\t` +
+        `${fontWeight >= TITLE_MIN_WEIGHT ? "weight ok" : "TOO LIGHT"}`,
+    );
+    if (px > ceilingPx)
+      problems.push(
+        `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
+          `${px.toFixed(1)}px, over the ${ceilingPx.toFixed(1)}px ceiling ` +
+          `(${TITLE_MAX_REM}rem at a ${rootFontSizePx}px root). That is a display heading, not a ` +
+          "title bar — the v3 header is a crumbbar carrying the title at --text-sm with weight 600.",
+      );
+    else if (px < floorPx)
+      problems.push(
+        `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
+          `${px.toFixed(1)}px, under the ${floorPx.toFixed(1)}px floor (${TITLE_MIN_REM}rem at a ` +
+          `${rootFontSizePx}px root). Shrinking the display heading past the crumbbar is not the ` +
+          "fix either — v3 draws this title at --text-sm, 0.8125rem.",
+      );
+    if (fontWeight < TITLE_MIN_WEIGHT)
+      problems.push(
+        `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at weight ` +
+          `${fontWeight}, under the ${TITLE_MIN_WEIGHT} the v3 crumbbar gives it ` +
+          "(v3/app.css:292). At --text-sm the weight is what separates a title from body text, " +
+          "so a lighter title is not a smaller title — it is no title.",
+      );
+  }
+  return { lines, problems, failures, ceilingPx, floorPx };
+};
 
 // Alfa bez osądzania akcentu — potrzebna, żeby powiedzieć „ten kontur NIC nie
 // maluje", zanim w ogóle stanie się kandydatem na nośnik. Nieczytelny zapis
@@ -1846,7 +2060,7 @@ const paintAlpha = (literal) => {
 
 // Wyliczony `outline` → „czy to w ogóle coś rysuje". Trzy warunki, bo trzy różne
 // sposoby na kontur, którego nie widać: styl `none`, zerowa grubość i alfa 0.
-// Dzisiejsza aplikacja trafia w ten trzeci (`tokens.css:278` daje przy fokusie
+// Dzisiejsza aplikacja trafia w ten trzeci (`tokens.css:881` daje przy fokusie
 // `outline: 2px solid transparent` jako podkładkę pod tryb wymuszonych kolorów),
 // a v3 stawia tam `outline: 2px solid var(--accent)` — czyli linię pierścienia.
 const outlineOf = (paint) => {
@@ -1863,6 +2077,131 @@ const outlineOf = (paint) => {
     width: Number.isFinite(width) ? width : 0,
     literal,
   };
+};
+
+// ── WIDOCZNOŚĆ OGNISKA: DRUGIE PYTANIE, DRUGI ZBIÓR PODMIOTÓW ────────────────
+// DLACZEGO SĄ DWA ZBIORY, a nie jeden — bo to są dwa różne pytania i mają dwie
+// różne odpowiedzi na tej samej kontrolce.
+//
+// PYTANIE PIERWSZE (sonda akcentu wyżej): „czy pierścień fokusa jest w kolorze
+// v3". Podmiotem jest `painting`, czyli przystanki, na których fokus COKOLWIEK
+// namalował. Kontrolka nadpisująca globalny pierścień własnym cieniem wypada
+// z tamtego zbioru SŁUSZNIE: jej elewacja nie jest pierścieniem fokusa,
+// a werdykt „ten pierścień nie niesie akcentu" wydany nad cudzym cieniem
+// mówiłby o rzeczy, o którą nikt nie pytał.
+//
+// PYTANIE DRUGIE (tutaj): „czy człowiek idący Tabem widzi, gdzie stoi". Na to
+// pytanie „nadpisała pierścień własnym cieniem" NIE JEST ulgą — jest
+// odpowiedzią „NIE". Dlatego to wykluczenie NIE MA PRAWA tu przejść i podmiotem
+// jest `armed` (przystanek w zakresie reguły pierścienia, z uzbrojonym
+// `:focus-visible`), a nie `painting`.
+//
+// ZMIERZONE NA DZISIEJSZYM DRZEWIE, W OBU MOTYWACH: sonda akcentu osądza
+// DZIEWIĘĆ przystanków z dziewięciu. Bramka wypisuje 18 wierszy „CARRIES THE
+// RING" — po jednym na przystanek 0–8 w każdym z dwóch motywów — a raport
+// „focus ring" wymienia wszystkie dziewięć numerów w obu przebiegach.
+//
+// TEN AKAPIT MÓWIŁ „SIEDEM" I WYMIENIAŁ DWA WYJĄTKI (`button.nav-item.active`,
+// `button.capture-dock`), i tak BYŁO, zanim lot FOK przeniósł lekarstwo na ROLĘ
+// CIENIA: `styles.css:608-633` zapamiętuje cień spoczynkowy pod drugą nazwą
+// i przy `:focus-visible` remapuje SAM TOKEN na „pierścień, potem to, co było"
+// (`--elevation-rest: var(--control-focus-ring), var(--elevation-rest-resting)`).
+// Kontrolka z własnym cieniem rysuje go więc dalej, a pierścień stoi PRZED nim,
+// czyli nie ma już czego nadpisywać. Zmierzone na przystanku 8
+// (`button.capture-dock`, `styles.css:1867`): przy fokusie
+// `oklch(0.55 0.21 295) 0px 0px 0px 1px` i trzy warstwy własnej elewacji za nim.
+// Wykluczenie zostaje w kodzie, bo jest poprawne dla kontrolki, która ten remap
+// ominie — ale DZIŚ nie odsiewa ani jednego przystanku.
+//
+// Aktywna pozycja nawigacji (`styles.css:1116`) jest trzecim przystankiem Tab na
+// każdym ekranie (WCAG 2.4.7).
+//
+// PODŁOGA LICZBY PODMIOTÓW. Werdykt liczony na zbiorze, który fikstura albo
+// powłoka mogą cicho opróżnić, jest nieodróżnialny od poprawnego — ta sama
+// klasa kłamstwa, którą ten plik zbiera od fal. Dziewięć to POMIAR (przystanki
+// 0–8, oba motywy, dzisiejszy harness), nie życzenie.
+const FOCUS_VISIBILITY_MIN_STOPS = 9;
+
+// Krawędź maluje coś tylko wtedy, gdy ma styl inny niż `none`, dodatnią grubość
+// i niezerową alfę — te same trzy warunki co kontur w `outlineOf`, bo to ta sama
+// pułapka: przemalowanie krawędzi o zerowej grubości nie jest wskaźnikiem
+// ogniska, tylko zmianą napisu w wyliczonym stylu.
+const borderSideVisible = (side) => {
+  const width = Number.parseFloat(side.width);
+  const literal = colorLiterals(side.color)[0];
+  const alpha = literal === undefined ? undefined : paintAlpha(literal);
+  return (
+    side.style !== "none" &&
+    Number.isFinite(width) &&
+    width > 0 &&
+    alpha !== undefined &&
+    alpha > 0
+  );
+};
+
+const describeBorder = (border) =>
+  Array.isArray(border)
+    ? border
+        .map((side) => `${side.side} ${side.style} ${side.width} ${side.color}`)
+        .join(" | ")
+    : "NOT SNAPSHOTTED";
+
+// CZTERY RAMIONA, BO NA CZTERY SPOSOBY KONTROLKA MOŻE POKAZAĆ OGNISKO: cieniem,
+// konturem, krawędzią albo tłem. Pytanie „czy fokus wygląda inaczej" postawione
+// na samym `box-shadow` odpowiadałoby „nie" nad kontrolką, która zaznacza
+// ognisko konturem — i byłoby wtedy werdyktem o rzeczy, której sonda nie
+// zmierzyła.
+//
+// KAŻDE RAMIĘ MA WŁASNY WARUNEK WIDOCZNOŚCI i to nie jest ozdoba. Ramię konturu
+// porównujące SAM NAPIS byłoby zielone na wszystkich dziewięciu przystankach:
+// `tokens.css:881` stawia przy fokusie `outline: 2px solid transparent` jako
+// podkładkę pod tryb wymuszonych kolorów, więc napis konturu zmienia się ZAWSZE
+// (zmierzone: `none 0px …` → `solid 2px rgba(0, 0, 0, 0)` na całej dziewiątce,
+// w obu motywach). Ten werdykt mierzyłby wtedy podkładkę, a nie wskaźnik.
+//
+// Obie strony każdego porównania pochodzą z JEDNEJ funkcji
+// (`__focusProbeRingPaint`), więc pole nie może istnieć po jednej stronie
+// i zniknąć po drugiej — a przystanek bez zdjęcia spoczynkowego jest odsiewany
+// wcześniej, jako awaria przyrządu.
+const judgeFocusVisibility = ({ resting, paint, focusedOutline }) => {
+  const restBorder = Array.isArray(resting.border) ? resting.border : [];
+  const focusedBorder = Array.isArray(paint.border) ? paint.border : [];
+  const arms = [
+    {
+      name: "box-shadow",
+      rest: resting.boxShadow,
+      focused: paint.boxShadow,
+      changed: paint.boxShadow !== resting.boxShadow,
+    },
+    {
+      name: "outline",
+      rest: resting.outline,
+      focused: focusedOutline,
+      changed: focusedOutline !== resting.outline && outlineOf(paint).visible,
+    },
+    {
+      name: "border",
+      rest: describeBorder(resting.border),
+      focused: describeBorder(paint.border),
+      changed: focusedBorder.some((side, index) => {
+        const was = restBorder[index];
+        if (was === undefined) return false;
+        return (
+          (side.style !== was.style ||
+            side.width !== was.width ||
+            side.color !== was.color) &&
+          borderSideVisible(side)
+        );
+      }),
+    },
+    {
+      name: "background",
+      rest: resting.background,
+      focused: paint.background,
+      changed: paint.background !== resting.background,
+    },
+  ];
+  return { arms, visible: arms.some((arm) => arm.changed) };
 };
 
 // ── OBA MOTYWY, JAWNIE ───────────────────────────────────────────────────────
@@ -1936,6 +2275,12 @@ const measureTheme = async (
     // warstwa cienia. Zdjęcie obejmuje OBIE własności, bo inaczej przyjęcie
     // zapisu prototypowego zamieniłoby zieleń w `FOCUS_PAINTS_NOTHING` —
     // głośną awarię przyrządu dokładnie w chwili, w której poprawka ląduje.
+    //
+    // KRAWĘDŹ I TŁO DOKŁADANE SĄ POD DRUGIE PYTANIE — „czy fokus w ogóle coś
+    // zmienia" — i NIE WCHODZĄ do osądu akcentu: `painting` (zbiór podmiotów
+    // sondy akcentu) porównuje dalej wyłącznie cień i widoczny kontur. Gdyby
+    // krawędź i tło wpadły tam, sonda akcentu zaczęłaby osądzać jako pierścień
+    // kontrolkę, która przy fokusie zmienia samo tło.
     window.__focusProbeRingPaint = (element) => {
       const style = window.getComputedStyle(element);
       return {
@@ -1943,6 +2288,19 @@ const measureTheme = async (
         outlineStyle: style.outlineStyle,
         outlineWidth: style.outlineWidth,
         outlineColor: style.outlineColor,
+        // Cztery boki osobno, bo `border-color` skraca się do jednego napisu
+        // dopiero wtedy, gdy wszystkie cztery są równe — a wskaźnik ogniska
+        // bywa krawędzią JEDNEGO boku.
+        border: ["Top", "Right", "Bottom", "Left"].map((side) => ({
+          side: side.toLowerCase(),
+          style: style[`border${side}Style`],
+          width: style[`border${side}Width`],
+          color: style[`border${side}Color`],
+        })),
+        // Kolor I OBRAZ tła w jednym napisie, tak samo jak przy akcji głównej:
+        // przy gradiencie cały wskaźnik siedziałby w `background-image`, a sam
+        // `background-color` byłby przezroczysty.
+        background: `${style.backgroundColor} ${style.backgroundImage}`,
       };
     };
     window.__focusProbeOutline = (paint) =>
@@ -1955,6 +2313,8 @@ const measureTheme = async (
       window.__focusProbeResting.set(element, {
         boxShadow: paint.boxShadow,
         outline: window.__focusProbeOutline(paint),
+        border: paint.border,
+        background: paint.background,
       });
     }
   });
@@ -2012,14 +2372,20 @@ const measureTheme = async (
   // Trzy różne awarie przyrządu, trzy różne komunikaty — bo prowadzą do trzech
   // różnych miejsc.
   const armed = stops.filter((stop) => stop.inScope && stop.focusVisible);
-  // ELEMENT, NA KTÓRYM FOKUS COKOLWIEK NAMALOWAŁ. Filtr jest konieczny i jego
-  // powód jest zmierzony: reguła pierścienia w `tokens.css` stoi na
-  // `:where(button, a, …):focus-visible`, czyli ma specyficzność (0,1,0), a
-  // `styles.css` jest importowany PO `tokens.css` — więc każda kontrolka
-  // z własnym `box-shadow` o specyficzności ≥ (0,1,0) NADPISUJE pierścień
-  // (`.nav-item.active` = (0,2,0), `.secondary-button` = (0,1,0) później
-  // w kolejności). Mierzenie takiej kontrolki dałoby czerwień, która nie mówi
-  // nic o `--focus-ring`.
+  // ELEMENT, NA KTÓRYM FOKUS COKOLWIEK NAMALOWAŁ. Filtr powstał, bo reguła
+  // pierścienia w `tokens.css` stoi na `:where(button, a, …):focus-visible`,
+  // czyli ma specyficzność (0,1,0), a `styles.css` jest importowany PO
+  // `tokens.css` — więc kontrolka z własnym `box-shadow` o specyficzności
+  // ≥ (0,1,0) NADPISYWAŁA pierścień (`.nav-item.active` = (0,2,0),
+  // `.secondary-button` = (0,1,0) później w kolejności). Mierzenie takiej
+  // kontrolki dałoby czerwień, która nie mówi nic o `--focus-ring`.
+  //
+  // DZIŚ NIE ODSIEWA NIKOGO — zmierzone, nie założone: lot FOK remapuje przy
+  // `:focus-visible` same tokeny cienia (`styles.css:608-633`), więc pierścień
+  // stoi PRZED cieniem własnym kontrolki i nadpisywać nie ma czego. Wszystkie
+  // dziewięć przystanków wpada do `painting` w obu motywach. Filtr zostaje jako
+  // zabezpieczenie na kontrolkę, która ten remap ominie własną deklaracją
+  // `box-shadow` przy fokusie.
   //
   // A PRZYSTANEK BEZ ZDJĘCIA SPOCZYNKOWEGO NIE JEST PODMIOTEM, tylko AWARIĄ
   // PRZYRZĄDU — i to jest dokładnie ta klasa kłamstwa, przeciwko której stoi cała
@@ -2038,12 +2404,15 @@ const measureTheme = async (
         "cannot tell that control's focus ring from its own shadow, and it measured NOTHING about " +
         "the ring there. Instrument failure, not a verdict about the accent.",
     );
-  // ZMIANA, KTÓRĄ WIDAĆ — nie każda zmiana napisu. `tokens.css:278` ustawia przy
+  // ZMIANA, KTÓRĄ WIDAĆ — nie każda zmiana napisu. `tokens.css:881` ustawia przy
   // fokusie `outline: 2px solid transparent`, więc SAM NAPIS konturu zmienia się
-  // na KAŻDEJ kontrolce, także na tych, które nadpisują pierścień własnym cieniem
-  // (`.nav-item.active`, `.capture-dock`). Wpuszczenie ich tutaj kazałoby sondzie
-  // osądzić CUDZY cień jako pierścień fokusa — zmierzone: dwa takie przystanki
-  // dostawały werdykt o „pierścieniu", który jest ich własną elewacją.
+  // na KAŻDEJ kontrolce, także na tej, która nadpisze pierścień własnym cieniem.
+  // Wpuszczenie takiej kontrolki tutaj kazałoby sondzie osądzić CUDZY cień jako
+  // pierścień fokusa — zmierzone przed lotem FOK: dwa przystanki
+  // (`.nav-item.active`, `.capture-dock`) dostawały werdykt o „pierścieniu",
+  // który był ich własną elewacją. Po remapie ról cienia
+  // (`styles.css:608-633`) oba niosą pierścień naprawdę i ten warunek ich już
+  // nie dotyczy.
   // Kontur liczy się więc dopiero, gdy jest WIDOCZNY (styl, grubość, alfa), czyli
   // dokładnie wtedy, gdy zapis prototypowy (`outline: 2px solid var(--accent)`)
   // naprawdę zastąpi dzisiejszy cień.
@@ -2128,12 +2497,99 @@ const measureTheme = async (
       );
   }
 
+  // ── WIDOCZNOŚĆ OGNISKA — OSOBNY WERDYKT, SZERSZY ZBIÓR PODMIOTÓW ──────────
+  // Podmiotem jest `armed` ze zdjęciem spoczynkowym, NIE `painting`. Powód stoi
+  // przy `judgeFocusVisibility`: przystanki, które nadpisują pierścień własnym
+  // cieniem, mają tu ZOSTAĆ OSĄDZONE, bo to pytanie jest właśnie o nie.
+  // Przystanek bez zdjęcia spoczynkowego jest już wyżej awarią przyrządu
+  // (`VISUAL_PROBE_NO_RESTING_SHADOW`) i tutaj nie ma czego mierzyć.
+  const focusSubjects = armed.filter((stop) => stop.resting !== null);
+  if (focusSubjects.length < FOCUS_VISIBILITY_MIN_STOPS)
+    failures.push(
+      `VISUAL_PROBE_TOO_FEW_FOCUS_STOPS (${theme}): focus visibility was judged on only ` +
+        `${focusSubjects.length} tab stop(s), under the floor of ${FOCUS_VISIBILITY_MIN_STOPS} ` +
+        "measured on today's harness in both themes. The fixture, the shell or the Tab budget " +
+        "shrank the walk, so silence below would be silence over a smaller product than the one " +
+        "this floor describes — not evidence that focus is visible. Instrument failure.",
+    );
+  // NAZWANY BRAK POKRYCIA, WYPISANY Z DANYCH, nie z prozy. Pętla Tabów chodzi po
+  // ŚWIEŻO WCZYTANEJ powłoce — kolejność wyżej jest asercją o przyrządzie, bo
+  // chodzenie po celach KLIKA, a kliknięcie przestawia `activeElement` — więc
+  // zbiór przystanków jest zbiorem afordancji LĄDOWANIA. Zmierzone: nie ma w nim
+  // ani `.primary-button`, ani `.secondary-button`, a `.secondary-button` jedzie
+  // `box-shadow: var(--elevation-rest)` (`styles.css:747`), czyli ma dokładnie
+  // ten kształt, który przed lotem FOK dawał odpowiedź „NIE".
+  //
+  // NIE PODNOSZĘ BUDŻETU TABÓW, żeby po niego sięgnąć, i to jest decyzja
+  // o zakresie: `stops` karmi też `painting`, więc głębszy spacer dokłada
+  // podmioty SONDZIE AKCENTU i zamienia jej dzisiejszy wynik w inny — czerwień
+  // o czymś, o co ten werdykt nie pyta. Brak jest więc NAZWANY, a przed cichym
+  // zniknięciem chroni go podłoga liczby przystanków wyżej.
+  const uncoveredSubjects = ["primary-button", "secondary-button"].filter(
+    (name) => !focusSubjects.some((stop) => stop.signature.includes(name)),
+  );
+  report(
+    `focus visibility\tcoverage\t${focusSubjects.length} tab stop(s) judged ` +
+      `(floor ${FOCUS_VISIBILITY_MIN_STOPS})\tnot a tab stop on the landing shell, ` +
+      `so NOT judged here: ${uncoveredSubjects.join(", ") || "none"}`,
+  );
+  for (const stop of focusSubjects) {
+    const judged = judgeFocusVisibility(stop);
+    // WSZYSTKIE CZTERY RAMIONA W RAPORCIE, nie tylko to, które rozstrzygnęło.
+    // Werdykt „nic nie widać" bez wypisanego spoczynku i fokusu na każdej
+    // własności jest twierdzeniem, a nie pomiarem — czytelnik ma móc go
+    // sprawdzić bez odpalania sondy.
+    for (const arm of judged.arms)
+      report(
+        `focus visibility\ttab stop ${stop.index}\t${stop.signature}\t${arm.name}\t` +
+          `rest: ${arm.rest}\tfocused: ${arm.focused}\t` +
+          `${arm.changed ? "CHANGES VISIBLY" : "no visible change"}`,
+      );
+    report(
+      `focus visibility\ttab stop ${stop.index}\t${stop.signature}\tVERDICT\t` +
+        `${judged.visible ? "focus is visible" : "FOCUS LOOKS IDENTICAL TO REST"}`,
+    );
+    if (!judged.visible)
+      // KAŻDE ZDANIE TEGO WERDYKTU JEST WYPROWADZONE Z POMIARU. Ramiona
+      // dostają trzy stany, nie dwa, bo „nie zmieniło się" i „zmieniło się na
+      // coś, co nic nie rysuje" to dwie różne prawdy — a poprzedni zapis
+      // twierdził jedno o wszystkich czterech. Zdanie o przyczynie jest
+      // WARUNKOWE: mówi o cieniu własnym kontrolki tylko wtedy, gdy ta kontrolka
+      // naprawdę go w spoczynku ma. Bez tego werdykt nad kontrolką bez cienia
+      // podawałby przyczynę, której u niej nie ma.
+      layoutProblems.push(
+        `focus on ${stop.signature} (tab stop ${stop.index}) draws NOTHING a person can see: ` +
+          `${judged.arms
+            .map(
+              (arm) =>
+                `${arm.name} ${
+                  arm.changed
+                    ? "changes visibly"
+                    : arm.rest === arm.focused
+                      ? "is identical to rest"
+                      : "changes to something that draws nothing"
+                }`,
+            )
+            .join(", ")}. ` +
+          (stop.resting.boxShadow === "none"
+            ? ""
+            : "This control carries its own box-shadow at rest and that shadow wins over the " +
+              "global ring: the ring rule is written with " +
+              "`:where(button, a, …):focus-visible`, so it has specificity (0,1,0), and " +
+              "styles.css loads after tokens.css. ") +
+          "This is not a verdict about the accent: if the accent probe skipped this stop, it did " +
+          "so because the paint here is not the ring. It is a keyboard user unable to tell where " +
+          "focus is. WCAG 2.4.7.",
+      );
+  }
+
   // ── AKCJA GŁÓWNA, AKTYWNA NAWIGACJA I TYTUŁ — NA KAŻDYM CELU ──────────────
   const collected = await page.evaluate(
     async ({
       actionSelectors,
       navActiveSelectors,
       titleSelector,
+      recordScreenSelector,
       wantedTheme,
       settingsSurface,
     }) => {
@@ -2155,7 +2611,7 @@ const measureTheme = async (
       // z KSZTAŁTU, nie z nazwy klasy: pytanie brzmi „czy człowiek to widzi",
       // a nie „czy to się nazywa skip-link". Afordancja dostępnościowa siedzi
       // dziś nad początkiem układu (`transform: translate(-50%, -180%)`,
-      // `styles.css:4275-4285`) i zjeżdża w kadr dopiero z fokusem.
+      // `styles.css:4434-4444`) i zjeżdża w kadr dopiero z fokusem.
       //
       // CELOWO NIE liczymy „poniżej zgięcia" jako zaparkowania: kontrolka pod
       // spodem jest osiągalna przewinięciem, a ta nad początkiem kadru — tylko
@@ -2175,6 +2631,7 @@ const measureTheme = async (
       const action = [];
       const navActive = [];
       const title = [];
+      const titleCounts = [];
       const themeDrift = [];
       // Motyw sprawdzany PRZY KAŻDYM POMIARZE, nie raz na przebieg. Renderer
       // przemontowuje ekrany przy przejściu, a stempel postawiony raz nie jest
@@ -2209,7 +2666,12 @@ const measureTheme = async (
             }
           }
         }
-        for (const element of document.querySelectorAll(titleSelector)) {
+        // LICZBA DOPASOWAŃ ZAPISANA OSOBNO OD POMIARU. Identyfikator ma być
+        // jeden; zero i dwa to dwie różne awarie przyrządu, a filtr widoczności
+        // niżej zamieniłby obie w ciszę.
+        const found = [...document.querySelectorAll(titleSelector)];
+        titleCounts.push({ surface, matched: found.length });
+        for (const element of found) {
           if (!visible(element)) continue;
           const style = window.getComputedStyle(element);
           title.push({
@@ -2217,6 +2679,10 @@ const measureTheme = async (
             selector: titleSelector,
             signature: signature(element),
             parked: parkedOutOfFrame(element),
+            // TYTUŁ REKORDU ODDZIELONY PRZY POMIARZE, nie przy osądzie: to jest
+            // fakt o elemencie (siedzi w deklaracji `data-record-kind`), a nie
+            // ulga wybrana po zobaczeniu wyniku.
+            record: element.closest(recordScreenSelector) !== null,
             // ROZMIAR I WAGA W JEDNYM NAPISIE, bo grupowanie idzie po wartości:
             // tytuł 13 px o wadze 400 i tytuł 13 px o wadze 600 to DWA różne
             // pomiary i mają nie wpaść do jednej grupy.
@@ -2269,6 +2735,7 @@ const measureTheme = async (
         action,
         navActive,
         title,
+        titleCounts,
         rootFontSizePx: Number.parseFloat(
           window.getComputedStyle(document.documentElement).fontSize,
         ),
@@ -2278,6 +2745,7 @@ const measureTheme = async (
       actionSelectors,
       navActiveSelectors,
       titleSelector: TITLE_SELECTOR,
+      recordScreenSelector: RECORD_SCREEN_SELECTOR,
       wantedTheme: theme,
       settingsSurface: SETTINGS_SURFACE,
     },
@@ -2401,10 +2869,23 @@ const measureTheme = async (
   }
 
   // ── TYTUŁ EKRANU ──────────────────────────────────────────────────────────
-  // Sufit liczony z ŻYWEGO `rem`, nie z wpisanych 20 px: `1.25rem` znaczy
-  // „dwadzieścia pikseli przy domyślnym rem", a przy przeskalowanym tekście
-  // znaczy odpowiednio więcej. Wpisana liczba pikseli byłaby asercją, która
-  // gnije przy pierwszej zmianie rozmiaru bazowego.
+  // Osąd pasma stoi w `judgeTitleBand`, wspólnie z przelotami geometrii — tutaj
+  // zostaje to, czego tamten przelot nie umie: nazwa motywu i pokrycie liczone
+  // po celach powłoki.
+  //
+  // NIEJEDNOZNACZNY IDENTYFIKATOR IDZIE PIERWSZY. Zero dopasowań i dwa
+  // dopasowania to dwie awarie przyrządu, nie werdykty o rozmiarze: przy dwóch
+  // sonda mierzy „któryś z nich" i nie wie który, a przy zerze nie mierzy nic
+  // i milczy tak samo jak nad zdrowym ekranem.
+  for (const seen of collected.titleCounts.filter(
+    (entry) => entry.matched !== 1,
+  ))
+    failures.push(
+      `VISUAL_PROBE_TITLE_NOT_UNIQUE (${theme}): „${TITLE_SELECTOR}" matched ${seen.matched} ` +
+        `element(s) on ${seen.surface}, not exactly one. An id is unique by definition — with two ` +
+        "this probe judges whichever came first and cannot say which, with none it judges nothing. " +
+        "Instrument failure, not a verdict about the title.",
+    );
   if (
     !Number.isFinite(collected.rootFontSizePx) ||
     collected.rootFontSizePx <= 0
@@ -2422,64 +2903,60 @@ const measureTheme = async (
         "has to move with it. Not evidence that the title is the right size.",
     );
   else {
-    const ceilingPx = TITLE_MAX_REM * collected.rootFontSizePx;
-    const floorPx = TITLE_MIN_REM * collected.rootFontSizePx;
-    const groups = groupMeasurements(collected.title);
-    const titled = new Set(collected.title.map((entry) => entry.surface));
-    // Pokrycie tytułu jest RAPORTOWANE Z NAZWAMI, a asertowana jest tylko
-    // podłoga „co najmniej jeden" (wyżej). Dziś dwa cele nie rysują `<h1>`
-    // w `.surface-header` — podniesienie tej podłogi do „każdy cel" zamieniłoby
-    // znany brak pokrycia w awarię przyrządu, czyli w czerwień, która nie mówi
-    // nic o języku wizualnym.
+    // TRZY POPULACJE, NIE JEDNA. Tytuł ekranu jest osądzany pasmem crumbbara;
+    // tytuł REKORDU jest raportowany z liczbami i nie jest nim osądzany (powód
+    // przy `RECORD_SCREEN_SELECTOR`); tytuł zaparkowany poza kadrem albo
+    // przycięty do niczego jest LICZONY, ale nie osądzany — sr-only `<h1>`
+    // w stanie ładowania Spotkań ma tę postać, a osąd rozmiaru nad afordancją,
+    // której nikt nie widzi, mówiłby o czymś, o co nikt nie pytał.
+    const parked = collected.title.filter((entry) => entry.parked === true);
+    const recordTitles = collected.title.filter(
+      (entry) => entry.record === true && entry.parked !== true,
+    );
+    const screenTitles = collected.title.filter(
+      (entry) => entry.record !== true && entry.parked !== true,
+    );
+    const judged = judgeTitleBand({
+      entries: screenTitles,
+      rootFontSizePx: collected.rootFontSizePx,
+      where: theme,
+    });
+    const titled = new Set(screenTitles.map((entry) => entry.surface));
+    const blind = scanned.filter((surface) => !titled.has(surface));
     report(
-      `screen title\t${collected.title.length} title(s), ${groups.length} distinct size/weight ` +
-        `pair(s), on ${titled.size} of ${scanned.length} surface(s) walked\tno title drawn on: ` +
-        `${scanned.filter((surface) => !titled.has(surface)).join(", ") || "none"}\t` +
-        `band ${floorPx.toFixed(1)}–${ceilingPx.toFixed(1)}px ` +
+      `screen title\t${screenTitles.length} screen title(s), ${judged.lines.length} distinct ` +
+        `size/weight pair(s), on ${titled.size} of ${scanned.length} surface(s) walked\t` +
+        `${recordTitles.length} record title(s) reported but NOT judged by this band, ` +
+        `${parked.length} parked out of frame\tno title drawn on: ${blind.join(", ") || "none"}\t` +
+        `band ${judged.floorPx.toFixed(1)}–${judged.ceilingPx.toFixed(1)}px ` +
         `(${TITLE_MIN_REM}–${TITLE_MAX_REM}rem at a ${collected.rootFontSizePx}px root), ` +
         `weight floor ${TITLE_MIN_WEIGHT}`,
     );
-    for (const group of groups) {
-      const [size, weight] = group.value.split(" ");
-      const px = Number.parseFloat(size);
-      const fontWeight = Number.parseFloat(weight);
-      if (!Number.isFinite(px) || !Number.isFinite(fontWeight)) {
-        failures.push(
-          `VISUAL_PROBE_UNREADABLE_TITLE_TYPE (${theme}): ${group.signature} on ` +
-            `${group.surfaces.join(", ")} computed a font size/weight of „${group.value}", which ` +
-            "this probe cannot read as a number of pixels and a numeric weight.",
-        );
-        continue;
-      }
+    for (const line of judged.lines) report(line);
+    failures.push(...judged.failures);
+    layoutProblems.push(...judged.problems);
+    // TYTUŁY REKORDÓW WYPISANE, NIE OSĄDZONE. Sonda wierności rekordów nie
+    // otwiera, więc dziś ta lista jest pusta i wiersz tego nie ukrywa — pusto
+    // ma się czytać jako pomiar, a nie jako brak tematu.
+    for (const group of groupMeasurements(recordTitles))
       report(
-        `screen title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${px.toFixed(1)}px\t` +
-          `weight ${fontWeight}\t` +
-          `${px > ceilingPx ? "OVER" : px < floorPx ? "UNDER" : "WITHIN"} the ` +
-          `${floorPx.toFixed(1)}–${ceilingPx.toFixed(1)}px band\t` +
-          `${fontWeight >= TITLE_MIN_WEIGHT ? "weight ok" : "TOO LIGHT"}`,
+        `record title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${group.value}\t` +
+          "reported only — the crumbbar band does not describe a record title",
       );
-      if (px > ceilingPx)
-        layoutProblems.push(
-          `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
-            `${px.toFixed(1)}px, over the ${ceilingPx.toFixed(1)}px ceiling ` +
-            `(${TITLE_MAX_REM}rem). That is a display heading, not a title bar — the v3 header is ` +
-            "a crumbbar carrying the title at --text-sm with weight 600.",
-        );
-      else if (px < floorPx)
-        layoutProblems.push(
-          `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
-            `${px.toFixed(1)}px, under the ${floorPx.toFixed(1)}px floor (${TITLE_MIN_REM}rem). ` +
-            "Shrinking the display heading past the crumbbar is not the fix either — v3 draws " +
-            "this title at --text-sm, 0.8125rem.",
-        );
-      if (fontWeight < TITLE_MIN_WEIGHT)
-        layoutProblems.push(
-          `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at weight ` +
-            `${fontWeight}, under the ${TITLE_MIN_WEIGHT} the v3 crumbbar gives it ` +
-            "(v3/app.css:292). At --text-sm the weight is what separates a title from body text, " +
-            "so a lighter title is not a smaller title — it is no title.",
-        );
-    }
+    // POKRYCIE JEST TERAZ ASERCJĄ, NIE WIERSZEM RAPORTU, i to jest ta zmiana,
+    // która złapałaby defekt Spotkań. Poprzednia wersja pisała „no title drawn
+    // on: meetings, library" i szła dalej — przyrząd sam meldował, że dwóch
+    // ekranów nie widzi, a zieleń czytała się jak zdanie o wszystkich
+    // trzynastu. Podmiot wyprowadzony z `id="surface-title"` daje dziś
+    // 13 z 13, więc podłoga „każdy obejrzany cel" jest POMIAREM, nie życzeniem.
+    if (blind.length > 0)
+      failures.push(
+        `VISUAL_PROBE_SCREEN_TITLE_COVERAGE (${theme}): no visible screen title was measured on ` +
+          `${blind.join(", ")} (${blind.length} of ${scanned.length} surface(s) walked). Every ` +
+          'destination names itself with id="surface-title" — so either a screen stopped drawing ' +
+          "its title, or it drew one this probe could not see. Either way the size of the title " +
+          "on those screens was NOT measured, and silence about them is not a pass.",
+      );
   }
 
   await page.close();
@@ -2586,10 +3063,8 @@ const problems = [];
 const matchedRegistry = new Set();
 try {
   for (const pass of passes) {
-    const { failures, layoutProblems, matchedRegistryEntries } = await sweep(
-      browser,
-      pass,
-    );
+    const { failures, layoutProblems, matchedRegistryEntries, titleProblems } =
+      await sweep(browser, pass);
     for (const entry of matchedRegistryEntries) matchedRegistry.add(entry);
     for (const failure of failures) {
       problems.push(`${pass.label} — ${failure.surface}: ${failure.reason}`);
@@ -2603,13 +3078,33 @@ try {
         problems.push(`${pass.label} — ${problem.surface}: ${problem.reason}`);
       }
     }
-    const counted = failures.length + layoutProblems.length;
+    // BEZWARUNKOWO, RÓWNIEŻ W TRYBIE RAPORTU — powód przy `titleProblems`
+    // w `sweep`: tryb raportu odświeża REJESTR PRZEPEŁNIEŃ, a rozmiar tytułu
+    // żadnego rejestru nie ma.
+    for (const problem of titleProblems) {
+      problems.push(`${pass.label} — visual fidelity: ${problem}`);
+    }
+    const counted =
+      failures.length + layoutProblems.length + titleProblems.length;
     console.log(
-      `${pass.label}: ${counted === 0 ? "no overflow" : `${counted} problem(s)`}`,
+      `${pass.label}: ${
+        counted === 0
+          ? "no overflow, title within band"
+          : `${counted} problem(s)`
+      }`,
     );
   }
-  // SONDA WIERNOŚCI WIZUALNEJ — osobny przelot, bo mierzy KOLOR i ROZMIAR, a nie
-  // geometrię, i nie ma czego szukać w wąskim oknie ani przy 200% tekstu.
+  // SONDA WIERNOŚCI WIZUALNEJ — osobny przelot, bo KOLOR mierzy się inaczej niż
+  // geometrię: wymaga dwóch motywów, świeżego kontekstu na każdy z nich
+  // i sekwencji prawdziwych Tabów na nieklikniętej powłoce. Barwa akcentu nie
+  // zmienia się od szerokości okna, więc ten przelot chodzi po jednym viewporcie.
+  //
+  // ROZMIAR TYTUŁU JUŻ TAK NIE CHODZI, i to jest poprawka po dwóch defektach:
+  // pasmo tytułu jest asertowane RÓWNIEŻ w przelotach geometrii wyżej (320 px,
+  // 200% tekstu, dwie szerokości Biblioteki), bo reguła `@media` może zmienić
+  // tytuł w oknie, którego ten przelot nigdy nie otwiera. Tutaj zostaje to,
+  // czego tamte przeloty nie umieją: nazwa motywu przy każdym werdykcie
+  // i pokrycie liczone po celach powłoki.
   //
   // OBIE LISTY EGZEKWOWANE BEZWARUNKOWO, RÓWNIEŻ W TRYBIE RAPORTU. `REPORT_ONLY`
   // ma w tym pliku jeden, nazwany zakres — rejestr przepełnień („tryb raportu

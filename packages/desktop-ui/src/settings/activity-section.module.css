@@ -97,10 +97,27 @@
   color: var(--text-quaternary);
 }
 
-.search:focus-within {
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--focus-ring) 24%, transparent);
-}
+/* TU BYŁA REGUŁA `:focus-within`, KTÓREJ OBIE DEKLARACJE BYŁY MARTWE, a trzecia
+   linia niżej dobijała to, co po nich zostawało.
+
+   Zmierzone w Chromium na obu motywach (pole wyszukiwania zdarzeń nie powstaje
+   w fikstrze harnessu — nie ma tam ani jednego zdarzenia — więc etykieta została
+   zmontowana w żywej stronie z klasą wziętą z ZAŁADOWANEGO arkusza):
+     * `border-color` w kolorze pierścienia — pierścień jest LISTĄ CIENI, więc po
+       podstawieniu deklaracja jest niepoprawna i własność spada do wartości
+       początkowej, czyli `currentColor`. Zmierzone: krawędź szła z koloru pola
+       na `--text-quaternary`, a nie na kolor ogniska. Zmiana widoczna, ale
+       przypadkowa i w złym kolorze.
+     * halo `color-mix(…)` z tej samej listy cieni w slocie koloru — cała funkcja
+       niepoprawna, cała deklaracja odrzucona. Zmierzone: `box-shadow: none`
+       zarówno w spoczynku, jak i przy ognisku. Halo NIGDY nie narysowało piksela.
+     * `box-shadow: none` na polu wejściowym wygrywało z regułą globalną
+       z `tokens.css` swoistością (0,1,1) do (0,1,0). Zmierzone: pole przy
+       ognisku miało `box-shadow: none` i przezroczysty kontur — pierścień nie
+       rysował się w ogóle.
+   Zdjęcie z tego reset cienia i pole dostaje pierścień, który należy do reguły
+   globalnej. Reset niczego nie chronił: pole wejściowe nie ma w tej aplikacji
+   ŻADNEGO cienia spoczynkowego (zmierzone na polach poza tą sekcją). */
 
 .search input {
   width: 100%;
@@ -108,7 +125,6 @@
   height: 100%;
   padding: 0;
   border: 0;
-  box-shadow: none;
   background: transparent;
   color: var(--input-text);
 }

@@ -126,13 +126,23 @@
   background: var(--surface-selected);
 }
 
-/* `--focus-ring` is a box-shadow list, not a colour: written as an outline it
-   parses to nothing and the row loses its focus entirely. The outline beside it
-   is the forced-colours fallback, where shadows are dropped. */
+/* JEDNA DEKLARACJA, BO WIERSZ SIEDZI W PRZEWIJARCE. Zmierzone Tabem w Chromium
+   (oba motywy): zapas między pudełkiem wiersza a pudełkiem dopełnienia
+   najbliższego przycinającego przodka (`.scroller`, `overflow-x: auto`) wynosi
+   0 px z lewej i 0 px z prawej, więc zewnętrzny pierścień globalny jest na obu
+   bokach przycinany do zera.
+
+   Zniknęły dwie rzeczy i obie były długiem: `box-shadow: var(--focus-ring)` to
+   co do znaku ta sama wartość, którą reguła globalna z `tokens.css` tu podstawia
+   (dublowanie = piętrzenie), a kontur 2 px w `--text-primary` był białym kadrem
+   piętrzonym na fioletowym pierścieniu — zakazanym ograniczeniem z 2026-07-12.
+   Zostaje krispowa krawędź 1 px w kolorze ogniska, wsunięta, żeby przeżyła
+   przycięcie. Poprzedni komentarz mówił, że biały kontur jest podkładką pod tryb
+   wymuszonych kolorów; podkładkę ma reguła globalna, a w tym trybie i tak
+   wygrywa kolor systemowy. */
 .row:focus-visible {
-  outline: 2px solid var(--text-primary);
-  outline-offset: -2px;
-  box-shadow: var(--focus-ring);
+  outline: 1px solid var(--focus-ring-color);
+  outline-offset: -1px;
 }
 
 .label {

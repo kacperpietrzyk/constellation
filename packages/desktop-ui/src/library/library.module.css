@@ -53,7 +53,23 @@
   overflow-wrap: anywhere;
 }
 
+/* Ten tytuł NIE MIAŁ ANI JEDNEJ deklaracji rozmiaru — ani tu, ani w żadnym
+   arkuszu — więc brał domyślne przeglądarkowe `2em`/`bold` liczone od
+   `--text-base`: zmierzone 28,0 px przy 1440 px, 56,0 px przy 200% tekstu
+   i 84,0 px przy 300%. Nie widział tego nikt, bo sonda wierności brała podmiot
+   po klasie `.surface-header`, a Biblioteka rysuje własny nagłówek; sonda
+   pisała wtedy „no title drawn on: library" i szła dalej. Po przepięciu
+   podmiotu na `id="surface-title"` i po dopięciu asercji do wąskich przelotów
+   wyszło to jako siedem werdyktów naraz.
+   Dostaje te same proporcje co jedenaście pozostałych tytułów ekranu
+   (`styles.css`, reguła `.surface-header h1, h2`), bo jest tym samym: powtarza
+   etykietę zakładki „Library" tuż nad sobą. */
 .header h1 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: var(--leading-snug);
   text-wrap: balance;
 }
 

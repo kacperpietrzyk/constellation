@@ -299,10 +299,15 @@ button.row:hover {
   color: var(--text-primary);
 }
 
-button.row:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
+/* Ognisko wiersza-przycisku należy do reguły globalnej w `tokens.css`. Stała tu
+   ta sama odrzucana deklaracja co w pięciu innych arkuszach — pierścień pisany
+   jako `outline`, czyli lista cieni w slocie koloru. NAZWANE WPROST: tego
+   JEDNEGO z sześciu nie udało się zmierzyć na żywo, bo fikstura harnessu otwiera
+   ekran rekordu zadania BEZ ani jednego `[data-record-row]` (zmierzone: rodzaj
+   rekordu `task` otwarty, zero wierszy). Rozstrzygnięcie jest takie samo jak dla
+   pięciu zmierzonych, bo deklaracja jest ta sama co do znaku, a wybór między
+   „skasować" a „przepiąć na token koloru" wypadł na skasowanie w KAŻDYM
+   zmierzonym przypadku. */
 
 .rowMark {
   flex: 0 0 auto;

@@ -101,13 +101,20 @@
   background: var(--surface-selected);
 }
 
-/* `--focus-ring` is a box-shadow list, not a colour: written as an outline it
-   parses to nothing and the row loses its focus entirely. The outline beside it
-   is the forced-colours fallback, where shadows are dropped. */
+/* Ta sama poprawka i ten sam powód co na osi czasu projektów: wiersz siedzi
+   w przewijarce (`.scroller`, `overflow-x: auto`), więc zewnętrzny pierścień
+   globalny jest przycinany na bokach, a piętrzony biały kadr 2 px jest zakazany
+   ograniczeniem z 2026-07-12. Zostaje jedna krispowa krawędź 1 px w kolorze
+   ogniska, wsunięta do środka.
+
+   NAZWANE WPROST: TEGO WIERSZA NIE ZMIERZONO NA ŻYWO. Fikstura harnessu nie ma
+   ani jednego zadania z datą — zmierzone: układ osi czasu rysuje 0 wierszy
+   i wypisuje „Nothing here sits on a date". Pomiar przycięcia (0 px z lewej,
+   0 px z prawej) pochodzi z osi czasu PROJEKTÓW, która ma identyczną budowę
+   przewijarki i identyczną regułę wiersza. */
 .row:focus-visible {
-  outline: 2px solid var(--text-primary);
-  outline-offset: -2px;
-  box-shadow: var(--focus-ring);
+  outline: 1px solid var(--focus-ring-color);
+  outline-offset: -1px;
 }
 
 .label {
