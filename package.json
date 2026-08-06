@@ -36,7 +36,7 @@
     "test:renderer-bundle": "node scripts/verify-renderer-bundle.mjs",
     "test:renderer-layout": "node scripts/verify-renderer-layout.mjs",
     "test:distribution:packaged": "node scripts/run-distribution-continuity.mjs",
-    "test:scripts": "npm run audit:licenses && node --test scripts/desktop-runtime-notices.test.mjs scripts/desktop/packaged-credential-store-policy.test.mjs scripts/macos-distribution-signing.test.mjs scripts/prepare-github-release.test.mjs scripts/verify-dependency-licenses.test.mjs scripts/dev-state.test.mjs scripts/dev-snapshot.test.mjs scripts/descendant-overflow.test.mjs scripts/record-screen-geometry.test.mjs scripts/surface-height-bound.test.mjs scripts/renderer-declarations.test.mjs scripts/break-test.test.mjs scripts/desktop/production-desktop-files.test.mjs",
+    "test:scripts": "npm run audit:licenses && node --test scripts/desktop-runtime-notices.test.mjs scripts/desktop/packaged-credential-store-policy.test.mjs scripts/macos-distribution-signing.test.mjs scripts/prepare-github-release.test.mjs scripts/verify-dependency-licenses.test.mjs scripts/dev-state.test.mjs scripts/dev-snapshot.test.mjs scripts/descendant-overflow.test.mjs scripts/record-screen-geometry.test.mjs scripts/surface-height-bound.test.mjs scripts/renderer-declarations.test.mjs scripts/break-test.test.mjs scripts/color-contrast.test.mjs scripts/status-contrast.test.mjs scripts/desktop/production-desktop-files.test.mjs",
     "test": "npm run clean && npm run build && npm run test:renderer-bundle && npm run test:scripts && node scripts/run-tests.mjs && npm run test:interaction",
     "typecheck": "tsc -b --pretty false",
     "test:interaction": "npm run test:interaction -w @constellation/desktop-ui",

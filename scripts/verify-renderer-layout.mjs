@@ -29,12 +29,13 @@
 // szybką wersją tej samej gwarancji, żeby nie płacić cyklu paczkowania za
 // literówkę w CSS.
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 
+import { parseColor, srgbToOklch } from "./color-contrast.mjs";
 import {
   HORIZONTAL_SCROLL_ATTRIBUTE,
   KNOWN_DESCENDANT_OVERFLOWS,
@@ -1357,6 +1358,650 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   return { failures, layoutProblems, matchedRegistryEntries };
 };
 
+// ── SONDA WIERNOŚCI WIZUALNEJ ────────────────────────────────────────────────
+// Wszystko powyżej pyta o GEOMETRIĘ. Ta sonda pyta o JĘZYK WIZUALNY, i powstała,
+// bo przez trzy fale przebudowy nie było ŻADNEJ bramki, która porównywałaby
+// wygląd. Skutek jest zmierzony i nazwany w planie adopcji: aplikacja stoi na
+// systemie „Black Glass" (bez akcentu, rampa neutralna hue 255), który prototyp
+// v3 ŚWIADOMIE zastąpił jednym akcentem indygo-fioletowym o hue 295 i chłodną
+// fioletową rampą. Rozjazd rósł bez jednego czerwonego przebiegu, bo nikt go nie
+// mierzył. Ta sonda jest JEDYNYM ŚLEDZONYM egzekutorem tego języka: kontrakt
+// projektowy `.ui-craft/` jest gitignorowany, więc nie jedzie w PR-ze i CI go
+// nie widzi.
+//
+// CZTERY RZECZY, KTÓRE MOGŁYBY ZAMIENIĆ TĘ SONDĘ W KŁAMSTWO, i jak każda jest
+// obchodzona — spisane, bo każda z nich jest udokumentowaną klasą defektu tego
+// repo, a nie hipotezą:
+//
+//   A. `:focus-visible` NIE ARMUJE SIĘ od `element.focus()` wywołanego z
+//      `page.evaluate()` — Chromium wymaga modalności KLAWIATUROWEJ. Sonda
+//      naciska więc prawdziwy Tab (`page.keyboard.press`) i dodatkowo PYTA
+//      elementu, czy `:focus-visible` naprawdę na nim siedzi. Bez tego odczyt
+//      brzmiałby „brak pierścienia", ktoś „naprawiłby" to osłabieniem asercji
+//      i zbudowałby dokładnie to, czemu ta sonda ma zapobiec.
+//
+//   B. CZYTAMY WŁAŚCIWOŚĆ ROZWIĄZANĄ, nie własność niestandardową.
+//      `getComputedStyle(el).getPropertyValue("--focus-ring")` oddaje SUROWY
+//      TEKST TOKENU — to jest kontrola ŹRÓDŁA, czyli dokładnie ten fałszywy
+//      spokój, który to repo zbiera od fal: nazwa tokenu w arkuszu przechodzi,
+//      gdy nikt jej nie użył. Mierzone są `backgroundColor`, `backgroundImage`,
+//      `boxShadow` i `fontSize`, czyli to, co przeglądarka NAPRAWDĘ narysowała.
+//
+//   C. ROZRÓŻNIAMY PO CHROMIE I ODCIENIU, nie po „to nie jest neutralny".
+//      Porównanie napisów z neutralnym przechodzi na czymkolwiek. Wyliczony
+//      kolor idzie do OKLCH (`color-contrast.mjs` — JEDYNA implementacja
+//      matematyki koloru w tym repo, nie pisz drugiej) i pytanie brzmi: czy
+//      chroma jest powyżej podłogi ORAZ czy odcień siedzi w pasie akcentu.
+//      Podłoga 0.05 czysto oddziela akcent v3 (0.19–0.21) od rampy neutralnej
+//      (0.008–0.015) — między tymi zbiorami jest rząd wielkości.
+//
+//   D. PODMIOT NIEZNALEZIONY = GŁOŚNA AWARIA PRZYRZĄDU, nigdy czerwona asercja.
+//      Sonda czerwona, bo nic nie zmierzyła, czyta się IDENTYCZNIE jak sonda
+//      czerwona, bo brakuje akcentu — i wtedy ktoś „naprawia" akcent, nie
+//      zmierzywszy nigdy niczego. Każdy podmiot ma osobny, nazwany komunikat
+//      awarii, a te lecą do `failures`, nie do werdyktów.
+const ACCENT = {
+  // Odcień akcentu v3 (`v3/tokens.css:57-61`) — indygo-fiolet 295, postawiony
+  // celowo z dala od czterech odcieni semantycznych (150 / 78 / 22 / 232), żeby
+  // akcentu nie dało się pomylić ze stanem.
+  hue: 295,
+  // Pas, nie równość: rampa akcentu ma pięć kroków, a przeglądarka wraca
+  // z zaokrągleniem przez sRGB, więc odcień pływa o kilka stopni. ±25 zostawia
+  // zapas na krok jasności i wciąż nie sięga sąsiednich odcieni semantycznych
+  // (najbliższy, info 232, jest 63 stopnie stąd).
+  hueTolerance: 25,
+  // ROZSTRZYGAJĄCY PRÓG — I TO NIE JEST FIGURA RETORYCZNA, tylko jedyny warunek,
+  // który po Fazie 1 cokolwiek rozdziela. Rampa neutralna v3 ma odcień 285, czyli
+  // DZIESIĘĆ STOPNI od akcentu: siedzi WEWNĄTRZ pasa wyżej. Odcień odsiewa więc
+  // wyłącznie kolory semantyczne i dzisiejszą rampę hue 255; neutralnego od
+  // akcentu nie odróżni ani teraz, ani nigdy potem. Robi to CHROMA i tylko ona:
+  // neutralne 0.008–0.015, akcent 0.12–0.21, podłoga między nimi (i o rząd
+  // wielkości od dolnego zbioru). Kto zechce „uprościć" tę podłogę w przekonaniu,
+  // że odcień ją dubluje, skasuje całą asercję.
+  chromaFloor: 0.05,
+};
+// Sufit tytułu ekranu w `rem`. Łapie regresję do nagłówka display: dziś tytuł
+// rysuje `--text-display: clamp(1.9rem, 2.2vw, 2.6rem)`, czyli 30–42 px, a
+// prototyp daje temu samemu tytułowi `--text-sm` o wadze 600 w pasku crumbbar.
+const TITLE_MAX_REM = 1.25;
+
+// Arkusz GLOBALNY renderera — i tylko on, świadomie. Klasy z `*.module.css` są
+// w DOM-ie zahaszowane (`_title_1kitm_195`), więc selektor wyprowadzony z modułu
+// nie dopasowałby się do niczego i sonda meldowałaby awarię przyrządu przy
+// zdrowym ekranie.
+const RENDERER_SHEET = path.join(RENDERER_SOURCE, "styles.css");
+
+// ── PODMIOTY WYPROWADZONE Z DEKLARACJI, NIE WYPISANE OBOK NICH ───────────────
+// Ten plik ma już ten idiom dwa razy (`derive()` czyta atrybuty z TSX-ów, sweep
+// bierze cele z `.nav-item[data-surface]` w ŻYWYM DOM-ie). Tutaj podmiotem jest
+// „co maluje się tokenem X" — więc pytamy o to ARKUSZA, zamiast wpisywać listę
+// selektorów, która rozjedzie się z nim po cichu.
+//
+// Selektory ze stanem (`:hover`, `:active`, `:focus*`) są odsiewane: sonda mierzy
+// stan SPOCZYNKOWY, a `document.querySelector(".x:hover")` i tak nie dopasowałby
+// niczego i udawałby, że podmiotu nie ma.
+const paintedBy = ({ property, token }) => {
+  const sheet = readFileSync(RENDERER_SHEET, "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const declaration = new RegExp(
+    `(?:^|;)\\s*${property}\\s*:[^;]*var\\(\\s*--${token}\\b`,
+    "i",
+  );
+  const found = [];
+  // Reguły zagnieżdżone w `@media` też są łapane — wzorzec dopasowuje BLOK BEZ
+  // KLAMER W ŚRODKU, więc owijka medialna jest przeskakiwana, a reguła w niej
+  // znaleziona. Warunek medialny ginie i to jest w porządku: dopasowanie i tak
+  // rozstrzyga się na żywym DOM-ie.
+  for (const [, selectorText, body] of sheet.matchAll(
+    /([^{}]+)\{([^{}]*)\}/g,
+  )) {
+    if (!declaration.test(body)) continue;
+    for (const selector of selectorText.split(",")) {
+      const one = selector.trim();
+      if (one === "" || one.startsWith("@")) continue;
+      if (/:(?:hover|active|focus|focus-visible|focus-within)\b/u.test(one))
+        continue;
+      if (!found.includes(one)) found.push(one);
+    }
+  }
+  return found;
+};
+
+// Wyliczony kolor bywa oddany w kilku zapisach: `rgb()/rgba()` dla starych
+// kolorów sRGB, ale `oklch(...)` dla literału OKLCH — Chromium ZACHOWUJE
+// przestrzeń koloru w wartości wyliczonej. Wyciągamy WSZYSTKIE, bo `box-shadow`
+// jest wartością złożoną z kilkoma kolorami naraz.
+const COLOR_LITERAL =
+  /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)|#[0-9a-f]{3,8}\b/giu;
+const colorLiterals = (value) => String(value).match(COLOR_LITERAL) ?? [];
+
+const hueDistance = (hue) => {
+  const raw = Math.abs(hue - ACCENT.hue) % 360;
+  return Math.min(raw, 360 - raw);
+};
+
+// Literał → werdykt o akcencie, z LICZBAMI. Komunikat porażki ma powiedzieć,
+// KTÓRY warunek nie przeszedł i z jaką wartością: „chroma 0.0041 poniżej podłogi
+// 0.05" jest zdaniem, „nie jest akcentem" nie jest. Neutralny, którego odcień
+// przypadkiem wypadnie koło 295, ma dalej paść NA CHROMIE i raport ma to pokazać.
+const accentOf = (literal) => {
+  const parsed = parseColor(literal);
+  const color = parsed.space === "oklch" ? parsed : srgbToOklch(parsed);
+  const alpha = color.alpha ?? 1;
+  const distance = hueDistance(color.h);
+  return {
+    literal,
+    l: color.l,
+    c: color.c,
+    h: color.h,
+    alpha,
+    hueDistance: distance,
+    // Alfa 0 nie maluje NICZEGO, więc kolor o zerowej alfie nie niesie akcentu
+    // niezależnie od tego, jak wygląda jego chroma.
+    accent:
+      color.c >= ACCENT.chromaFloor &&
+      distance <= ACCENT.hueTolerance &&
+      alpha > 0,
+  };
+};
+const describeOklch = (verdict) =>
+  `oklch(${(verdict.l * 100).toFixed(1)}% ${verdict.c.toFixed(4)} ${verdict.h.toFixed(1)}` +
+  `${verdict.alpha < 1 ? ` / ${verdict.alpha.toFixed(3)}` : ""})`;
+
+// Jedna zmierzona rzecz → werdykt albo AWARIA PRZYRZĄDU. Rozdział jest tu, a nie
+// u wołającego, bo to jest miejsce, w którym „nie umiem tego odczytać" musi
+// przestać wyglądać jak „nie ma akcentu".
+const judgeAccent = ({ subject, where, signature, paint }) => {
+  const literals = colorLiterals(paint);
+  if (literals.length === 0) {
+    return {
+      failure:
+        `VISUAL_PROBE_UNREADABLE_PAINT: ${subject} on ${where} (${signature}) computed to ` +
+        `„${paint}", and this probe found NO colour literal in it. It measured nothing about ` +
+        `the accent — this is an instrument failure, not a verdict about the visual language.`,
+    };
+  }
+  const verdicts = [];
+  for (const literal of literals) {
+    try {
+      verdicts.push(accentOf(literal));
+    } catch (error) {
+      return {
+        failure:
+          `VISUAL_PROBE_UNKNOWN_COLOUR_NOTATION: ${subject} on ${where} (${signature}) computed ` +
+          `to „${paint}" and this probe cannot read the colour „${literal}" ` +
+          `(${error instanceof Error ? error.message : String(error)}). ` +
+          "Most likely cause: the token was written with color-mix(), which Chromium computes " +
+          "to oklab()/color(srgb …). Write the accent as a plain oklch() literal, or teach " +
+          "scripts/color-contrast.mjs the notation — do not weaken this assertion.",
+      };
+    }
+  }
+  const carrying = verdicts.find((verdict) => verdict.accent);
+  return {
+    verdicts,
+    // `box-shadow` niesie kilka kolorów naraz (pierścień to dziś cztery warstwy),
+    // więc warunek brzmi: CO NAJMNIEJ JEDEN z nich jest akcentem.
+    accent: carrying !== undefined,
+    carrying,
+  };
+};
+
+// Zbieramy KAŻDE wystąpienie na KAŻDYM celu, bez wcześniejszego wyjścia z pętli.
+// Podmiot znaleziony na pierwszym ekranie, który go ma, i uznany za dowód dla
+// wszystkich, jest dokładnie tym kształtem, który to repo zbiera od fal:
+// asercja, do której fikstura nie dosięga, jest nieodróżnialna od poprawnej.
+// `.surface-header` renderuje JEDENAŚCIE powierzchni i jedna poprawka może nie
+// sięgnąć wszystkich.
+const groupMeasurements = (entries) => {
+  const groups = new Map();
+  for (const entry of entries) {
+    const key = `${entry.signature}|${entry.value}`;
+    const group = groups.get(key) ?? {
+      signature: entry.signature,
+      selector: entry.selector,
+      value: entry.value,
+      surfaces: [],
+    };
+    if (!group.surfaces.includes(entry.surface))
+      group.surfaces.push(entry.surface);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+};
+
+// Tytuł ekranu stoi tu Z RĘKI i to jest jedyny wpisany selektor w tej sondzie.
+// DLACZEGO: nie ma tokenu, po którym dałoby się go wyprowadzić z arkusza tak,
+// żeby wyprowadzenie PRZEŻYŁO POPRAWKĘ. Dziś tytuł rysuje `--text-display`, ale
+// Faza 2 planu ten token USUWA — sonda wyprowadzona z „co używa --text-display"
+// zwracałaby wtedy zbiór pusty i meldowała awarię przyrządu w chwili, w której
+// naprawa wylądowała. `.surface-header` i `<h1>` przeżywają tę zmianę oba:
+// plan sprowadza nagłówek do proporcji crumbbara, ale ZOSTAWIA `<h1>` ze względu
+// na dostępność (poziom nagłówka niesie hierarchię dokumentu, nie rozmiar liter).
+//
+// CO SIĘ STANIE, GDY TO ZNIKNIE: `.surface-header h1, h2` przestaje się
+// dopasowywać, sonda nie znajduje ANI JEDNEGO tytułu na żadnym celu i pada
+// z `VISUAL_PROBE_NO_SCREEN_TITLE` — czyli głośno, jako awaria przyrządu,
+// z nazwą selektora do poprawienia. Nigdy jako cicha zieleń.
+//
+// `h2` jest w selektorze, bo dzieli z `h1` JEDNĄ regułę w arkuszu
+// (`styles.css`: „.surface-header h1, .surface-header h2") — to tytuł odczytu
+// zagnieżdżonego, jadący na tej samej deklaracji. Asercja na samym `h1`
+// zostawiłaby połowę tej reguły niezmierzoną.
+const TITLE_SELECTOR = ".surface-header h1, .surface-header h2";
+
+const visualFidelity = async (browser) => {
+  const failures = [];
+  const layoutProblems = [];
+  const report = (line) => console.log(`visual fidelity\t${line}`);
+
+  const actionSelectors = paintedBy({
+    property: "background(?:-color)?",
+    token: "action-primary-bg",
+  });
+  const navActiveSelectors = paintedBy({
+    property: "background(?:-color)?",
+    token: "nav-active-bg",
+  });
+  if (actionSelectors.length === 0)
+    failures.push(
+      "VISUAL_PROBE_NO_PRIMARY_ACTION_RULE: no rule in packages/desktop-ui/src/styles.css paints " +
+        "background from var(--action-primary-bg), so this probe has no subject to measure for the " +
+        "primary action. The affordance moved, or the token was renamed — the accent was NOT checked.",
+    );
+  if (navActiveSelectors.length === 0)
+    failures.push(
+      "VISUAL_PROBE_NO_NAV_ACTIVE_RULE: no rule in packages/desktop-ui/src/styles.css paints " +
+        "background from var(--nav-active-bg), so this probe has no subject to measure for the " +
+        "active navigation item. The affordance moved, or the token was renamed — the accent was " +
+        "NOT checked.",
+    );
+
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+  });
+  page.on("pageerror", (error) =>
+    failures.push(`VISUAL_PROBE_PAGE_ERROR: ${String(error)}`),
+  );
+  await page.goto(HARNESS, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+
+  // ── PIERŚCIEŃ FOKUSA IDZIE PIERWSZY, NA ŚWIEŻO WCZYTANEJ STRONIE ───────────
+  // Kolejność jest asercją o przyrządzie, nie porządkiem. Chodzenie po celach
+  // KLIKA, a kliknięcie przestawia `document.activeElement` — sekwencja Tabów
+  // ruszałaby wtedy z nieznanego miejsca i dawała inny zbiór przystanków przy
+  // każdym przebiegu. Zdjęcie spoczynkowych cieni też musi być zrobione, ZANIM
+  // cokolwiek dostanie fokus.
+  await page.evaluate(() => {
+    window.__focusProbeResting = new WeakMap();
+    for (const element of document.querySelectorAll(
+      'button, a, input, textarea, select, summary, [tabindex]:not([tabindex="-1"])',
+    )) {
+      window.__focusProbeResting.set(
+        element,
+        window.getComputedStyle(element).boxShadow,
+      );
+    }
+  });
+  const stops = [];
+  for (let index = 0; index < 14; index += 1) {
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(80);
+    const stop = await page.evaluate(() => {
+      const element = document.activeElement;
+      if (
+        element === null ||
+        element === document.body ||
+        element === document.documentElement
+      )
+        return null;
+      const style = window.getComputedStyle(element);
+      const classes = [...element.classList]
+        .map((token) => {
+          const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+          return match === null ? token : `_${match[1]}`;
+        })
+        .join(".");
+      return {
+        signature:
+          classes === ""
+            ? element.tagName.toLowerCase()
+            : `${element.tagName.toLowerCase()}.${classes}`,
+        // Czy reguła pierścienia w ogóle OBEJMUJE ten element. Fokus na czymś
+        // spoza jej zakresu nie mówi nic o pierścieniu.
+        inScope: element.matches(
+          'button, a, input, textarea, select, summary, [tabindex]:not([tabindex="-1"])',
+        ),
+        // PUŁAPKA A, sprawdzona wprost: czy modalność klawiaturowa naprawdę
+        // uzbroiła `:focus-visible`. `element.focus()` z `page.evaluate` tego
+        // NIE robi; prawdziwy Tab robi.
+        focusVisible: element.matches(":focus-visible"),
+        focused: style.boxShadow,
+        resting: window.__focusProbeResting?.get(element) ?? null,
+      };
+    });
+    if (stop === null) continue;
+    if (stops.some((seen) => seen.signature === stop.signature)) continue;
+    stops.push({ index, ...stop });
+  }
+  for (const stop of stops)
+    report(
+      `focus stop ${stop.index}\t${stop.signature}\tin scope: ${stop.inScope}\t` +
+        `:focus-visible: ${stop.focusVisible}\tresting box-shadow: ${stop.resting}\t` +
+        `focused box-shadow: ${stop.focused}`,
+    );
+  // Trzy różne awarie przyrządu, trzy różne komunikaty — bo prowadzą do trzech
+  // różnych miejsc.
+  const armed = stops.filter((stop) => stop.inScope && stop.focusVisible);
+  // ELEMENT, NA KTÓRYM FOKUS COKOLWIEK NAMALOWAŁ. Filtr jest konieczny i jego
+  // powód jest zmierzony: reguła pierścienia w `tokens.css` stoi na
+  // `:where(button, a, …):focus-visible`, czyli ma specyficzność (0,1,0), a
+  // `styles.css` jest importowany PO `tokens.css` — więc każda kontrolka
+  // z własnym `box-shadow` o specyficzności ≥ (0,1,0) NADPISUJE pierścień
+  // (`.nav-item.active` = (0,2,0), `.secondary-button` = (0,1,0) później
+  // w kolejności). Mierzenie takiej kontrolki dałoby czerwień, która nie mówi
+  // nic o `--focus-ring`.
+  //
+  // A PRZYSTANEK BEZ ZDJĘCIA SPOCZYNKOWEGO NIE JEST PODMIOTEM, tylko AWARIĄ
+  // PRZYRZĄDU — i to jest dokładnie ta klasa kłamstwa, przeciwko której stoi cała
+  // ta sonda. Zdjęcie robi się PRZED pętlą Tabów, więc kontrolka zamontowana
+  // w jej trakcie (albo wtedy jeszcze poza zakresem reguły) ma `resting === null`,
+  // a `focused !== null` jest wtedy PRAWDZIWE ZAWSZE. Taki przystanek wpadłby do
+  // `painting`, a sonda osądziłaby JEGO WŁASNY cień jako pierścień fokusa
+  // i wydała werdykt o rzeczy, która pierścieniem nie jest. Dziś nie zachodzi —
+  // każdy z dziewięciu przystanków miał wartość spoczynkową — więc to jest
+  // zamknięcie luki, nie poprawka wyniku.
+  for (const stop of armed.filter((stop) => stop.resting === null))
+    failures.push(
+      `VISUAL_PROBE_NO_RESTING_SHADOW: tab stop ${stop.index} (${stop.signature}) was not in the ` +
+        "resting box-shadow snapshot taken before the Tab loop — it mounted during the loop, or it " +
+        "was outside the ring rule's scope when the snapshot was taken. This probe therefore cannot " +
+        "tell that control's focus ring from its own shadow, and it measured NOTHING about the ring " +
+        "there. Instrument failure, not a verdict about the accent.",
+    );
+  const painting = armed.filter(
+    (stop) => stop.resting !== null && stop.focused !== stop.resting,
+  );
+  if (stops.length === 0)
+    failures.push(
+      "VISUAL_PROBE_NO_TAB_STOP: fourteen Tab presses moved focus nowhere — document.activeElement " +
+        "never left <body>. Nothing was measured about the focus ring.",
+    );
+  else if (armed.length === 0)
+    failures.push(
+      `VISUAL_PROBE_FOCUS_VISIBLE_NOT_ARMED: ${stops.length} tab stop(s) took focus and NONE of them ` +
+        "matched :focus-visible while in the ring rule's scope. That is the probe failing to reach " +
+        "keyboard modality, not the application missing a ring — do NOT weaken the assertion, fix " +
+        "the probe (real key events, not element.focus()).",
+    );
+  else if (painting.length === 0)
+    failures.push(
+      `VISUAL_PROBE_FOCUS_PAINTS_NOTHING: ${armed.length} tab stop(s) were :focus-visible and in the ` +
+        "ring rule's scope, and on none of them did focus change box-shadow at all. Either " +
+        "--focus-ring resolves to nothing, or every stop reached here overrides the ring with its " +
+        "own box-shadow (the :where() rule has specificity (0,1,0) and styles.css loads after " +
+        "tokens.css). Check that before hunting a missing accent — nothing was measured either way.",
+    );
+  for (const stop of painting) {
+    const judged = judgeAccent({
+      subject: "focus ring",
+      where: `tab stop ${stop.index}`,
+      signature: stop.signature,
+      paint: stop.focused,
+    });
+    if (judged.failure !== undefined) {
+      failures.push(judged.failure);
+      continue;
+    }
+    const best = judged.carrying ?? judged.verdicts[0];
+    report(
+      `focus ring\ttab stop ${stop.index}\t${stop.signature}\t${describeOklch(best)}\t` +
+        `chroma ${best.c.toFixed(4)} (floor ${ACCENT.chromaFloor})\thue ${best.h.toFixed(1)} ` +
+        `(${best.hueDistance.toFixed(1)}° from ${ACCENT.hue}, tolerance ${ACCENT.hueTolerance})\t` +
+        `${judged.accent ? "ACCENT" : "NOT ACCENT"}`,
+    );
+    if (!judged.accent)
+      layoutProblems.push(
+        `the focus ring on ${stop.signature} (tab stop ${stop.index}) carries no accent: ` +
+          `${judged.verdicts
+            .map(
+              (verdict) =>
+                `${describeOklch(verdict)} — ${
+                  verdict.c < ACCENT.chromaFloor
+                    ? `chroma ${verdict.c.toFixed(4)} below the ${ACCENT.chromaFloor} floor`
+                    : verdict.hueDistance > ACCENT.hueTolerance
+                      ? `hue ${verdict.h.toFixed(1)} is ${verdict.hueDistance.toFixed(1)}° from ${ACCENT.hue}`
+                      : `alpha ${verdict.alpha} paints nothing`
+                }`,
+            )
+            .join(
+              "; ",
+            )}. The v3 language puts the accent exactly where focus is.`,
+      );
+  }
+
+  // ── AKCJA GŁÓWNA, AKTYWNA NAWIGACJA I TYTUŁ — NA KAŻDYM CELU ──────────────
+  const collected = await page.evaluate(
+    async ({ actionSelectors, navActiveSelectors, titleSelector }) => {
+      const frame = () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        );
+      const normaliseClass = (token) => {
+        const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+        return match === null ? token : `_${match[1]}`;
+      };
+      const signature = (element) => {
+        const tag = element.tagName.toLowerCase();
+        const classes = [...element.classList].map(normaliseClass).join(".");
+        return classes === "" ? tag : `${tag}.${classes}`;
+      };
+      const visible = (element) => element.getClientRects().length > 0;
+      const action = [];
+      const navActive = [];
+      const title = [];
+      const scan = (surface) => {
+        for (const [selectors, into] of [
+          [actionSelectors, action],
+          [navActiveSelectors, navActive],
+        ]) {
+          for (const selector of selectors) {
+            for (const element of document.querySelectorAll(selector)) {
+              if (!visible(element)) continue;
+              const style = window.getComputedStyle(element);
+              into.push({
+                surface,
+                selector,
+                signature: signature(element),
+                // Kolor tła I OBRAZ tła w jednym napisie: gdyby przycisk kiedyś
+                // dostał gradient, `backgroundColor` byłby przezroczysty, a cały
+                // akcent siedziałby w `background-image`. Czytanie samego koloru
+                // dałoby wtedy czerwień nad poprawnym ekranem.
+                value: `${style.backgroundColor} ${style.backgroundImage}`,
+              });
+            }
+          }
+        }
+        for (const element of document.querySelectorAll(titleSelector)) {
+          if (!visible(element)) continue;
+          const style = window.getComputedStyle(element);
+          title.push({
+            surface,
+            selector: titleSelector,
+            signature: signature(element),
+            value: style.fontSize,
+            text: (element.textContent ?? "").trim().slice(0, 48),
+          });
+        }
+      };
+      const destinations = [
+        ...document.querySelectorAll(".nav-item[data-surface]"),
+      ].map((item) => item.dataset.surface);
+      const visited = [];
+      scan("landing");
+      for (const id of destinations) {
+        const target = document.querySelector(
+          `.nav-item[data-surface="${id}"]`,
+        );
+        if (!(target instanceof HTMLElement)) continue;
+        target.click();
+        await frame();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await frame();
+        visited.push(id);
+        scan(id);
+      }
+      return {
+        destinations,
+        visited,
+        action,
+        navActive,
+        title,
+        rootFontSizePx: Number.parseFloat(
+          window.getComputedStyle(document.documentElement).fontSize,
+        ),
+      };
+    },
+    { actionSelectors, navActiveSelectors, titleSelector: TITLE_SELECTOR },
+  );
+
+  if (collected.destinations.length < 5)
+    failures.push(
+      `VISUAL_PROBE_EMPTY_SHELL: only ${collected.destinations.length} navigation destination(s) ` +
+        "rendered, so this probe walked almost nothing. An empty walk is a broken measurement, " +
+        "not a pass.",
+    );
+
+  for (const [subject, entries, selectors, code] of [
+    [
+      "primary action background",
+      collected.action,
+      actionSelectors,
+      "VISUAL_PROBE_NO_PRIMARY_ACTION",
+    ],
+    [
+      "active navigation item",
+      collected.navActive,
+      navActiveSelectors,
+      "VISUAL_PROBE_NO_ACTIVE_NAV",
+    ],
+  ]) {
+    if (selectors.length === 0) continue;
+    if (entries.length === 0) {
+      failures.push(
+        `${code}: none of the ${selectors.length} selector(s) derived from styles.css ` +
+          `(${selectors.join(", ")}) drew a visible element on any of the ` +
+          `${collected.visited.length} destination(s) walked (${collected.visited.join(", ") || "none"}). ` +
+          `THIS PROBE MEASURED NOTHING about the ${subject} — that is an instrument failure, not ` +
+          "evidence that the accent is missing.",
+      );
+      continue;
+    }
+    const groups = groupMeasurements(entries);
+    report(
+      `${subject}\t${entries.length} element(s), ${groups.length} distinct paint(s), on ` +
+        `${new Set(entries.map((entry) => entry.surface)).size} of ` +
+        `${collected.visited.length + 1} destination(s)`,
+    );
+    for (const group of groups) {
+      const judged = judgeAccent({
+        subject,
+        where: group.surfaces.join("/"),
+        signature: group.signature,
+        paint: group.value,
+      });
+      if (judged.failure !== undefined) {
+        failures.push(judged.failure);
+        continue;
+      }
+      const best = judged.carrying ?? judged.verdicts[0];
+      report(
+        `${subject}\t${group.signature}\t[${group.selector}]\ton ${group.surfaces.join(", ")}\t` +
+          `${describeOklch(best)}\tchroma ${best.c.toFixed(4)} (floor ${ACCENT.chromaFloor})\t` +
+          `hue ${best.h.toFixed(1)} (${best.hueDistance.toFixed(1)}° from ${ACCENT.hue}, ` +
+          `tolerance ${ACCENT.hueTolerance})\t${judged.accent ? "ACCENT" : "NOT ACCENT"}`,
+      );
+      if (!judged.accent)
+        layoutProblems.push(
+          `the ${subject} ${group.signature} on ${group.surfaces.join(", ")} resolves to a NEUTRAL, ` +
+            `not to the accent: ${judged.verdicts
+              .map(
+                (verdict) =>
+                  `${describeOklch(verdict)} — ${
+                    verdict.c < ACCENT.chromaFloor
+                      ? `chroma ${verdict.c.toFixed(4)} below the ${ACCENT.chromaFloor} floor`
+                      : verdict.hueDistance > ACCENT.hueTolerance
+                        ? `hue ${verdict.h.toFixed(1)} is ${verdict.hueDistance.toFixed(1)}° from ${ACCENT.hue}`
+                        : `alpha ${verdict.alpha} paints nothing`
+                  }`,
+              )
+              .join(
+                "; ",
+              )}. The v3 language spends its one accent on exactly this: what is active, ` +
+            "what is primary, and where focus is.",
+        );
+    }
+  }
+
+  // ── TYTUŁ EKRANU ──────────────────────────────────────────────────────────
+  // Sufit liczony z ŻYWEGO `rem`, nie z wpisanych 20 px: `1.25rem` znaczy
+  // „dwadzieścia pikseli przy domyślnym rem", a przy przeskalowanym tekście
+  // znaczy odpowiednio więcej. Wpisana liczba pikseli byłaby asercją, która
+  // gnije przy pierwszej zmianie rozmiaru bazowego.
+  if (
+    !Number.isFinite(collected.rootFontSizePx) ||
+    collected.rootFontSizePx <= 0
+  )
+    failures.push(
+      `VISUAL_PROBE_NO_ROOT_FONT_SIZE: the document element computed a root font size of ` +
+        `„${collected.rootFontSizePx}", so the ${TITLE_MAX_REM}rem ceiling cannot be turned into ` +
+        "pixels and the screen title was not measured.",
+    );
+  else if (collected.title.length === 0)
+    failures.push(
+      `VISUAL_PROBE_NO_SCREEN_TITLE: „${TITLE_SELECTOR}" matched no visible element on any of the ` +
+        `${collected.visited.length} destination(s) walked (${collected.visited.join(", ") || "none"}). ` +
+        "THIS PROBE MEASURED NOTHING about the screen title — the header affordance moved and this " +
+        "selector has to move with it. Not evidence that the title is the right size.",
+    );
+  else {
+    const ceilingPx = TITLE_MAX_REM * collected.rootFontSizePx;
+    const groups = groupMeasurements(collected.title);
+    report(
+      `screen title\t${collected.title.length} title(s), ${groups.length} distinct size(s), on ` +
+        `${new Set(collected.title.map((entry) => entry.surface)).size} of ` +
+        `${collected.visited.length + 1} destination(s)\tceiling ${ceilingPx.toFixed(1)}px ` +
+        `(${TITLE_MAX_REM}rem at a ${collected.rootFontSizePx}px root)`,
+    );
+    for (const group of groups) {
+      const px = Number.parseFloat(group.value);
+      if (!Number.isFinite(px)) {
+        failures.push(
+          `VISUAL_PROBE_UNREADABLE_TITLE_SIZE: ${group.signature} on ${group.surfaces.join(", ")} ` +
+            `computed a font-size of „${group.value}", which this probe cannot read as pixels.`,
+        );
+        continue;
+      }
+      report(
+        `screen title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${px.toFixed(1)}px\t` +
+          `${px <= ceilingPx ? "WITHIN" : "OVER"} the ${ceilingPx.toFixed(1)}px ceiling`,
+      );
+      if (px > ceilingPx)
+        layoutProblems.push(
+          `the screen title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
+            `${px.toFixed(1)}px, over the ${ceilingPx.toFixed(1)}px ceiling ` +
+            `(${TITLE_MAX_REM}rem). That is a display heading, not a title bar — the v3 header is ` +
+            "a crumbbar carrying the title at --text-sm with weight 600.",
+        );
+    }
+  }
+
+  await page.close();
+  return { failures, layoutProblems };
+};
+
 const browser = await openBrowser();
 const passes = [
   { width: 1024, fontSize: "200%", label: "text scaled to 200%" },
@@ -1415,6 +2060,30 @@ try {
       `${pass.label}: ${counted === 0 ? "no overflow" : `${counted} problem(s)`}`,
     );
   }
+  // SONDA WIERNOŚCI WIZUALNEJ — osobny przelot, bo mierzy KOLOR i ROZMIAR, a nie
+  // geometrię, i nie ma czego szukać w wąskim oknie ani przy 200% tekstu.
+  //
+  // OBIE LISTY EGZEKWOWANE BEZWARUNKOWO, RÓWNIEŻ W TRYBIE RAPORTU. `REPORT_ONLY`
+  // ma w tym pliku jeden, nazwany zakres — rejestr przepełnień („tryb raportu
+  // zdejmuje tylko to jedno: czy przepełnienie robi się błędem") — a dla werdyktu
+  // o akcencie nie ma żadnego rejestru do odświeżenia. Wyciszenie go tutaj
+  // zrobiłoby z tej sondy dziewiąty przyrząd opowiadający dwie różne historie
+  // zależnie od zmiennej środowiskowej, czego ten plik ma już jeden opisany
+  // przypadek.
+  const fidelity = await visualFidelity(browser);
+  for (const failure of fidelity.failures) {
+    problems.push(`visual fidelity — instrument: ${failure}`);
+  }
+  for (const problem of fidelity.layoutProblems) {
+    problems.push(`visual fidelity — ${problem}`);
+  }
+  console.log(
+    `visual fidelity: ${
+      fidelity.failures.length + fidelity.layoutProblems.length === 0
+        ? "the v3 visual language holds"
+        : `${fidelity.failures.length} instrument failure(s), ${fidelity.layoutProblems.length} verdict(s)`
+    }`,
+  );
   // Wpis, którego nie dopasował ŻADEN przelot, opisuje element, którego nie ma
   // — albo dług spłacono i wpis ma zniknąć, albo pomiar przestał ten ekran
   // widzieć. Oba przypadki znaczą, że zieleń wyżej nie mówi tego, co wygląda,
