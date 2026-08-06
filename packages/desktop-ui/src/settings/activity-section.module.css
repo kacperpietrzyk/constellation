@@ -115,9 +115,22 @@
        z `tokens.css` swoistością (0,1,1) do (0,1,0). Zmierzone: pole przy
        ognisku miało `box-shadow: none` i przezroczysty kontur — pierścień nie
        rysował się w ogóle.
-   Zdjęcie z tego reset cienia i pole dostaje pierścień, który należy do reguły
-   globalnej. Reset niczego nie chronił: pole wejściowe nie ma w tej aplikacji
-   ŻADNEGO cienia spoczynkowego (zmierzone na polach poza tą sekcją). */
+   PIERWSZA POPRAWKA ZDJĘŁA RESET Z POLA i na tym poprzestała — pole dostawało
+   wtedy pierścień z reguły globalnej. Ognisko było widoczne, ale NA ZŁYM
+   ELEMENCIE, i skompilowany test `interaction-recovery-contract` poszedł na
+   czerwono, słusznie: `.search` jest kontrolką ZŁOŻONĄ (ikona plus pole
+   w jednym pudełku z krawędzią), a pierścień na gołym polu obrysowuje wnętrze
+   zamiast widocznej kontrolki. Ten sam kontrakt trzyma `styles.css:2692-2698`
+   dla `.task-search-control`, `.task-create-title` i `.capture-file`.
+   Właściwa poprawka jest więc dwuczęściowa: reguła `:focus-within` opakowania
+   dostaje deklaracje, które NAPRAWDĘ się rysują (pierścień jako lista cieni
+   tam, gdzie oczekiwana jest lista cieni; kolor krawędzi z tokenu KOLORU),
+   a pole zachowuje reset, żeby nie rysować drugiego pierścienia w środku
+   pierwszego. */
+.search:focus-within {
+  border-color: var(--focus-ring-color);
+  box-shadow: var(--focus-ring);
+}
 
 .search input {
   width: 100%;
@@ -125,6 +138,11 @@
   height: 100%;
   padding: 0;
   border: 0;
+  /* Pierścień należy do opakowania `.search`, nie tutaj. Bez tego resetu reguła
+     globalna z `tokens.css` narysowałaby drugi pierścień wokół samego pola,
+     w środku pierwszego. `outline` NIE jest zerowany — tryb wymuszonych
+     kolorów musi móc narysować swój własny. */
+  box-shadow: none;
   background: transparent;
   color: var(--input-text);
 }

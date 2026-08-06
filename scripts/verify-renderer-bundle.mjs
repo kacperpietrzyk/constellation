@@ -175,9 +175,27 @@ import path from "node:path";
 //   CSS łącznie      308 750 B                    (sufit  330 000)
 //   największy leniwy 603 238 B                   (sufit  700 000)
 //
+// PRZEBAZOWANIE NA ZAMKNIĘCIU FALI ADOPCJI JĘZYKA WIZUALNEGO, 2026-08-07.
+// Ten sam warunek 2, ta sama przyczyna. Zmierzone na `agent/wizualny-jezyk-v3`
+// po Fazach 0-2, czystym rebuildem:
+//
+//   ścieżka gorąca   629 151 B / 171 032 B gzip   (sufity 648 000 / 174 000)
+//   CSS gorący       183 035 B                    (sufit  200 000)
+//   JS łącznie     1 700 725 B                    (sufit 1 770 000)
+//   CSS łącznie      331 771 B                    (sufit  450 000)
+//   największy leniwy 617 695 B                   (sufit  700 000)
+//
+// UWAGA NA SUFIT CSS ŁĄCZNIE: blok o fali C mówi „sufit 330 000", a w kodzie
+// stoi 450 000 (`:251`). Ta proza zwietrzała — nie ruszono jej przy podniesieniu
+// — i rekonesans Fazy 3 przeczytał ją jako obowiązującą, po czym oparł na niej
+// szacunki. Dokładnie ta klasa, którą ta fala naprawiała przez trzy fazy:
+// dokument mówi jedno, egzekwuje się co innego, i nic nie krzyczy.
+// ROZSTRZYGA STAŁA W KODZIE, NIE KOMENTARZ.
+//
 // TO JEST NOWY BASELINE. Kto czyta te liczby przy następnej fali, porównuje się
-// z nimi, a nie z buildem z 2026-07-28 — bo właśnie porównywanie z martwym
-// baselinem doprowadziło do 22 bajtów zapasu, których nikt nie zauważył.
+// z nimi, a nie z buildem z 2026-07-28 ani z liczbami fali C wyżej — bo właśnie
+// porównywanie z martwym baselinem doprowadziło do 22 bajtów zapasu, których
+// nikt nie zauważył.
 //
 // CO ZOSTAŁO Z ZAPASU, i to jest wynik do przeczytania, a nie do przemilczenia:
 //   gzip ścieżki gorącej   2 355 B  (1,4% sufitu)
