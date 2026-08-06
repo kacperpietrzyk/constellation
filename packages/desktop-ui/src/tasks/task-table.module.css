@@ -108,8 +108,15 @@
   background: var(--surface-selected);
 }
 
+/* Kreska zaznaczenia jest NEUTRALNA, nie akcentowa: zaznaczony jest KAŻDY
+   zwykły wiersz, a akcent wolno wydać tylko na to, co aktywne, co główne
+   i gdzie jest fokus (`.ui-craft/tokens.md`, „Accent rule"). `--text-primary`
+   to najmocniejszy atrament motywu, czyli ta sama ROLA, którą pełniła tu
+   wartość sprzed Fazy 1 — ale nie ta sama liczba: token przeskoczył w tym
+   samym locie na `--neutral-50` za v3, więc kreska idzie na płótnie
+   16,98:1 → 19,05:1 w ciemnym i 19,05:1 → 19,50:1 w jasnym. */
 .row[aria-selected="true"] td:first-child {
-  box-shadow: inset 2px 0 0 var(--action-primary-bg);
+  box-shadow: inset 2px 0 0 var(--text-primary);
 }
 
 .row:focus-visible {
@@ -205,10 +212,15 @@
   border-radius: var(--radius-full);
 }
 
+/* Znacznik STANU planu jest neutralny: akcent nazywający stan byłby czwartym
+   znaczeniem obok „aktywne / główne / fokus", a kontrakt nazywa to naruszeniem,
+   nie rozszerzeniem (`.ui-craft/tokens.md`, „Accent rule"). Token i jego
+   przesunięcie względem stanu sprzed Fazy 1 — jak przy kresce zaznaczenia
+   wyżej. */
 .plan[data-plan-state="held"] .planMark {
   border-radius: var(--radius-xs);
-  border-color: var(--action-primary-bg);
-  background: var(--action-primary-bg);
+  border-color: var(--text-primary);
+  background: var(--text-primary);
 }
 
 /* ── Deadline ─────────────────────────────────────────────────────── */

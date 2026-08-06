@@ -1,4 +1,9 @@
-/* Distilled runtime copy of the accepted private Black Glass token contract. */
+/* Warstwa tokenów aplikacji, przepięta na język wizualny v3
+   (`docs/plans/2026-07-27-ui-ux-rebuild/v3/tokens.css`). Poprzedni system
+   („Black Glass") był świadomie bez akcentu i prawie achromatyczny; prototyp
+   v3 zastąpił go rampą neutralną o chłodnym fioletowym odcieniu (hue 285)
+   i JEDNYM akcentem indygo-fiolet (hue 295) używanym na małej powierzchni:
+   co aktywne, co główne, gdzie jest fokus. Kontrakt: `.ui-craft/tokens.md`. */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
@@ -21,6 +26,7 @@
   --text-lg: 1.125rem;
   --text-xl: 1.375rem;
   --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
   --text-display: clamp(1.9rem, 2.2vw, 2.6rem);
   --leading-tight: 1.12;
   --leading-snug: 1.3;
@@ -28,20 +34,60 @@
   --tracking-tight: -0.035em;
   --tracking-wide: 0.025em;
 
-  --neutral-1000: oklch(7.4% 0.003 255);
-  --neutral-950: oklch(10.2% 0.004 255);
-  --neutral-900: oklch(13.2% 0.005 255);
-  --neutral-850: oklch(16.4% 0.006 255);
-  --neutral-800: oklch(21% 0.006 255);
-  --neutral-750: oklch(27% 0.007 255);
-  --neutral-700: oklch(35% 0.007 255);
-  --neutral-600: oklch(49% 0.007 255);
-  --neutral-500: oklch(58% 0.007 255);
-  --neutral-400: oklch(66% 0.006 255);
-  --neutral-300: oklch(77% 0.006 255);
-  --neutral-200: oklch(86% 0.005 255);
-  --neutral-100: oklch(93.5% 0.004 255);
-  --neutral-50: oklch(97.3% 0.003 255);
+  /* RAMPA NEUTRALNA — wartości z `v3/tokens.css:37-52`, hue 285, wyższa chroma.
+     Nazwy zostają aplikacyjne (`--neutral-N`), więc żadne miejsce wywołania nie
+     zmienia się przez tę fazę; mapowanie jest 1:1 po stopniu (`--n-950`
+     → `--neutral-950`).
+
+     RYZYKO NAZWANE WPROST: rodzina nazywa się „neutral", a jej wartości nie są
+     już achromatyczne — niosą fioletowy odcień. Przemianowanie na `--n-*` za
+     prototypem rozważono i ODRZUCONO — ale NIE dlatego, że jest drogie.
+     Pierwsza wersja tej noty uzasadniała odrzucenie „39 arkuszami miejsc
+     wywołania" i była nieprawdziwa: odwołań do tej rampy jest TRZYNAŚCIE
+     i wszystkie trzynaście stoi w TYM pliku, zero poza nim (39 to liczba
+     arkuszy w `src`, nie liczba odwołań). Przemianowanie kosztuje więc jedną
+     edycję jednego pliku. Składni odwołania nie piszemy tu dosłownie — nota
+     o grupie tokenów bez konsumenta niżej tłumaczy, dlaczego: `css-token-lint`
+     czyta arkusz razem z komentarzami i zgłosił tę frazę jako token
+     niezdefiniowany (zmierzone, bramka poszła na czerwono).
+     Prawdziwy powód, dla którego nazwy zostają: skoro nic poza tym plikiem nie
+     woła rampy po nazwie, jest ona prymitywem PRYWATNYM — myli wyłącznie
+     czytelnika tych czterdziestu linijek, a jego ostrzega ten akapit. Reszta
+     aplikacji rozmawia z warstwą semantyczną (`--surface-*`, `--text-*`),
+     której nazwy nic nie obiecują o odcieniu. Pełny zapis decyzji stoi
+     w `.ui-craft/tokens.md`, w sekcji warstwy prymitywnej.
+
+     Stopnie `975` i `925` są nowe: aplikacja miała czternaście, v3 ma
+     szesnaście. `975` niesie plan okna (`--surface-window`); `925` NIE MA dziś
+     konsumenta ani tu, ani w prototypie — stoi, bo rampa z dziurą jest gorsza
+     niż rampa pełna, a nie dlatego, że ktoś go potrzebuje. */
+  --neutral-1000: oklch(6.2% 0.008 285);
+  --neutral-975: oklch(8.4% 0.009 285);
+  --neutral-950: oklch(10.4% 0.01 285);
+  --neutral-925: oklch(12.6% 0.011 285);
+  --neutral-900: oklch(15.2% 0.012 285);
+  --neutral-850: oklch(18.6% 0.013 285);
+  --neutral-800: oklch(22.8% 0.014 285);
+  --neutral-750: oklch(28.4% 0.015 285);
+  --neutral-700: oklch(35.6% 0.015 285);
+  --neutral-600: oklch(48.6% 0.014 285);
+  --neutral-500: oklch(58.4% 0.013 285);
+  --neutral-400: oklch(67.2% 0.011 285);
+  --neutral-300: oklch(77.6% 0.009 285);
+  --neutral-200: oklch(86.4% 0.007 285);
+  --neutral-100: oklch(93.6% 0.005 285);
+  --neutral-50: oklch(97.4% 0.004 285);
+
+  /* AKCENT — jeden odcień, pięć kroków (`v3/tokens.css:57-61`). Indygo-fiolet
+     295 stoi z dala od czterech odcieni semantycznych (success 150,
+     warning 78, error 22, info 232), więc akcentu nie da się pomylić ze
+     stanem. */
+  --a-700: oklch(46% 0.19 295);
+  --a-600: oklch(55% 0.21 295);
+  --a-500: oklch(64% 0.2 295);
+  --a-400: oklch(72% 0.17 295);
+  --a-300: oklch(80% 0.12 295);
+
   --white-a02: oklch(100% 0 0 / 0.02);
   --white-a035: oklch(100% 0 0 / 0.035);
   --white-a055: oklch(100% 0 0 / 0.055);
@@ -52,10 +98,13 @@
   --black-a24: oklch(0% 0 0 / 0.24);
   --black-a48: oklch(0% 0 0 / 0.48);
   --black-a72: oklch(0% 0 0 / 0.72);
-  --green-400: oklch(74% 0.1 150);
-  --amber-400: oklch(79% 0.1 78);
-  --red-400: oklch(71% 0.14 25);
-  --blue-400: oklch(73% 0.075 245);
+  /* Prymitywy semantyczne motywu ciemnego z `v3/tokens.css:71-74`. Wszystkie
+     osiem par motywu ciemnego przechodzi próg z dużym zapasem — zmierzone,
+     patrz `scripts/status-contrast.test.mjs`. */
+  --green-400: oklch(74% 0.15 150);
+  --amber-400: oklch(80% 0.14 78);
+  --red-400: oklch(68% 0.19 22);
+  --blue-400: oklch(74% 0.13 232);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -86,9 +135,13 @@
   --duration-fast: 150ms;
   --duration-normal: 240ms;
   --duration-slow: 360ms;
+  /* Wyjście jest krótsze od wejścia — odchodzenie ma być szybsze niż
+     przychodzenie (`v3/tokens.css:91-92`). */
+  --duration-exit: 130ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
   --z-base: 0;
   --z-raised: 2;
   --z-sticky: 20;
@@ -97,10 +150,33 @@
   --z-toast: 50;
   --z-tooltip: 60;
 
+  /* CZTERY PLANY ZAMIAST TRZECH (`v3/tokens.css:123-128`). Do tej pory okno
+     i płótno leżały na tym samym stopniu (950), a treść na 850. Układ v3
+     przesuwa treść W DÓŁ na 900 i uwalnia 850 dla planu wyniesionego, a okno
+     dostaje własny stopień 975. Skok płótno → treść to ~4,8 punktu jasności,
+     czyli granica czytelna bez obramowania.
+
+     TA FAZA ZMIENIA GŁĘBIĘ, i to na dwóch żywych planach — wcześniejszy zapis
+     twierdził tu coś odwrotnego, bo patrzył wyłącznie na dwa nowe tokeny bez
+     konsumentów. Zmierzone:
+
+       --surface-content   16,4% → 15,2%   (żywy przez `--panel-reading-bg`)
+       --surface-window    10,2% →  8,4%   (11 konsumentów w arkuszach)
+       skok płótno → treść  6,2 →  4,8 punktu
+
+     Kontrakt (`.ui-craft/tokens.md`, motyw ciemny) żąda „at least a four-point
+     perceptual lightness step" — 4,8 ≥ 4, więc kontrakt TRZYMA, choć zapas
+     spadł o połowę. To jest liczba do pilnowania w Fazie 3, nie cisza.
+     Sprawdzone osobno: żaden arkusz nie zakłada, że `--surface-content` jest
+     najjaśniejszym planem, a `--surface-elevated` i `--surface-sidebar` nie
+     mają dziś ANI JEDNEGO konsumenta (patrz nota o tokenach bez konsumenta
+     przy `--shadow-*`). */
   --surface-stage: var(--neutral-1000);
-  --surface-window: var(--neutral-950);
+  --surface-window: var(--neutral-975);
+  --surface-sidebar: var(--neutral-1000);
   --surface-canvas: var(--neutral-950);
-  --surface-content: var(--neutral-850);
+  --surface-content: var(--neutral-900);
+  --surface-elevated: var(--neutral-850);
   --surface-raised: var(--white-a055);
   --surface-overlay: oklch(13.5% 0.005 255 / 0.94);
   --surface-sunken: var(--black-a24);
@@ -119,31 +195,204 @@
     oklch(10.5% 0.004 255 / 0.72);
   --glass-blur: 1.25rem;
   --glass-saturation: 0.72;
-  --text-primary: var(--neutral-100);
+  /* Tekst pierwszorzędny idzie na `--neutral-50` ZA v3 (`v3/tokens.css:139`),
+     a nie na `--neutral-100`, na którym stał poprzedni system. Faza 1 zostawiła
+     tu stopień aplikacji przy przepiętej rampie, czyli JEDYNY token tekstu,
+     który rozjeżdżał się z prototypem (secondary/tertiary/quaternary/disabled
+     trafiają w `--n-300/400/500/600` co do stopnia). Zmierzone na płótnie
+     i powierzchni treści motywu ciemnego:
+
+       neutral-100 (93,6%)  17,01:1 / 16,26:1
+       neutral-50  (97,4%)  19,05:1 / 18,21:1   ← przyjęte
+
+     Motyw jasny zgadzał się z v3 od początku (`--neutral-950`) i nie zmienia
+     się tutaj. */
+  --text-primary: var(--neutral-50);
   --text-secondary: var(--neutral-300);
   --text-tertiary: var(--neutral-400);
-  --text-quaternary: var(--neutral-500);
-  --text-disabled: var(--neutral-600);
-  --text-on-action: var(--neutral-1000);
+  /* DWA NAJCICHSZE STOPNIE SCHODZĄ Z RAMPY I SĄ LITERAŁAMI WYLICZONYMI —
+     dokładnie tym samym ruchem, co `--action-primary-pressed` niżej i co
+     jasność 50% statusów motywu jasnego: „nasza wartość, zmierzona, spoza v3".
+     v3 mapuje je na `--n-500` / `--n-600`, ta aplikacja mierzy je na
+     NAJJAŚNIEJSZYM planie czytania (`--surface-elevated`, 18,6%), a v3 tej
+     pary nie liczył.
+
+     ROZSTRZYGAJĄCY POMIAR, dla `--n-600` (48,6%), NIEZALEŻNY OD POWIERZCHNI:
+     kontrast tego stopnia z CZERNIĄ ABSOLUTNĄ to 3,29:1. Nie ma w motywie
+     ciemnym tła, na którym `--n-600` zdaje 4,5:1 — nie „nie zdaje na naszych
+     planach", tylko NIGDZIE. Dlatego to nie jest strojenie planów, tylko ruch
+     tokenu tekstu. Zmierzone (`scripts/status-contrast.test.mjs`, część
+     „tekst na powierzchniach czytania", próg 4,5:1):
+
+       stopień            płótno   treść   wyniesiony
+       --n-500  58,4%      4,86    4,65      4,41   ← PONIŻEJ, o 0,09
+       60%  (disabled)     5,19    4,96      4,71
+       63%  (quaternary)   5,86    5,60      5,31
+       --n-400  67,2%      6,90    6,60      6,26   (tertiary, bez zmian)
+
+     Próg przecina rampę przy 58,9% jasności, czyli POWYŻEJ `--n-500`. Pasmo
+     stopni przyciszonych zwęża się w ciemnym z [48,6; 77,6] do [58,9; 77,6]
+     i to jest KOSZT DO WYPOWIEDZENIA: „nieaktywne" dzieli od „czwartorzędnego"
+     trzy punkty jasności, więc sam kolor ledwie je rozdziela. W motywie jasnym
+     ta sama para ma 4,4 punktu, bo najjaśniejszy plan czytania stoi tam na
+     skraju skali (100%), a w ciemnym daleko od czerni (18,6%).
+
+     `--text-disabled` NIE JEST tu zwolniony wyjątkiem „Incidental" z SC 1.4.3
+     (tekst nieaktywnej kontrolki): ten token maluje w tym repo także treść
+     żywą — cztery miejsca wyliczone przy asercji w bramce.
+
+     WIĄŻĄCY PLAN NIE MA DZIŚ ANI JEDNEGO KONSUMENTA. `--surface-elevated` to
+     czwarty plan, dołożony pod Fazę 3 (patrz lista tokenów bez konsumenta przy
+     `--shadow-*`), a mimo to jest najjaśniejszą powierzchnią czytania i to on
+     wypycha te dwa stopnie z rampy. Jeżeli Faza 3, montując czwarty plan, da mu
+     inną jasność, oba literały mogą wrócić na stopnie `--neutral-*` — sprawdzić
+     wtedy ponownie, zamiast przepisywać te wartości w ciemno.
+
+     ODCIEŃ I CHROMA ZOSTAJĄ RODZINNE: hue 285 jak cała rampa, chroma między
+     stopniami sąsiednimi (0.011 przy `--n-400`, 0.013 przy `--n-500`, 0.014
+     przy `--n-600`). Kontrakt `.ui-craft/tokens.md` żąda tylko tego („Text maps
+     to the same neutral family") i to jest spełnione — z rampy schodzi JASNOŚĆ,
+     nie rodzina. */
+  --text-quaternary: oklch(63% 0.012 285);
+  --text-disabled: oklch(60% 0.013 285);
+  /* Jedyny konsument to `--action-primary-text` (sprawdzone grepem), a akcja
+     główna niesie teraz akcent — więc tekst na niej to `--on-accent`, a nie
+     najciemniejszy stopień rampy. */
+  --text-on-action: var(--on-accent);
   --text-link: var(--text-secondary);
   --text-link-hover: var(--text-primary);
   --border-subtle: var(--white-a055);
   --border-default: oklch(100% 0 0 / 0.095);
   --border-strong: var(--white-a14);
   --edge-specular: oklch(100% 0 0 / 0.18);
+  /* Górna krawędź materiału (`v3/tokens.css:148`) — jaśniejsza kreska, która
+     odkleja panel od tła bez pełnego obramowania. */
+  --edge-top: oklch(100% 0 0 / 0.09);
+
+  /* AKCENT JAKO ROLA SEMANTYCZNA (`v3/tokens.css:150-156`). Używany na MAŁEJ
+     powierzchni i tylko do trzech rzeczy: co aktywne, co główne, gdzie jest
+     fokus. Zapisany zwykłymi literałami `oklch()`, a nie przez `color-mix()`,
+     bo DOKŁADNIE TAK stoi w prototypie (`v3/tokens.css:152-156`) — przepisanie
+     tych sześciu wartości na mieszanie nie dałoby ani jednej z nich taniej,
+     a wprowadziłoby krok, którego v3 nie robi.
+
+     WCZEŚNIEJSZY ZAPIS PODAWAŁ TU POWÓD NIEPRAWDZIWY: twierdził, że Chromium
+     wylicza `color-mix()` do `oklab()`/`color(srgb …)`, których sonda wierności
+     wizualnej nie umie odczytać. Zmierzone 2026-08-06 w tym samym Chromium,
+     którym jeździ sonda: `color-mix(in oklch, oklch(64% 0.2 295) 62%,
+     transparent)` wraca jako `oklch(0.64 0.2 295 / 0.62)` — czyli notacja,
+     którą `scripts/color-contrast.mjs` czyta wprost. Wybór literałów jest dobry
+     i zostaje; uzasadnienie było zmyślone i dlatego zniknęło. */
+  --accent: var(--a-500);
+  --accent-hover: var(--a-400);
+  --accent-quiet: oklch(64% 0.2 295 / 0.16);
+  --accent-quieter: oklch(64% 0.2 295 / 0.08);
+  --accent-edge: oklch(64% 0.2 295 / 0.42);
+  --accent-glow: oklch(64% 0.2 295 / 0.28);
+  --on-accent: oklch(99% 0.005 285);
+
   --status-success: var(--green-400);
   --status-warning: var(--amber-400);
   --status-error: var(--red-400);
   --status-info: var(--blue-400);
-  --status-success-bg: oklch(74% 0.1 150 / 0.1);
-  --status-warning-bg: oklch(79% 0.1 78 / 0.1);
-  --status-error-bg: oklch(71% 0.14 25 / 0.1);
-  --status-info-bg: oklch(73% 0.075 245 / 0.1);
+  --status-success-bg: oklch(74% 0.15 150 / 0.13);
+  --status-warning-bg: oklch(80% 0.14 78 / 0.13);
+  --status-error-bg: oklch(68% 0.19 22 / 0.13);
+  --status-info-bg: oklch(74% 0.13 232 / 0.13);
+  /* PIERŚCIEŃ FOKUSA — DWUWARSTWOWY, I TO JEST REGUŁA, NIE PRZYPADEK.
+     GEOMETRIA zostaje dokładnie ta, co przed fazą (krawędź 1 px, halo 3 px,
+     miękki spadek 14 px, wewnętrzny refleks): ograniczenie z 2026-07-12
+     (`.ui-craft/brief.md`, powtórzone w `.ui-craft/tokens.md`) zabrania grubych,
+     piętrzonych, systemowych kadrów i DALEJ OBOWIĄZUJE. Zmieniają się WARTOŚCI
+     KOLORU — dwóch warstw, nie jednej, i poniżej stoi prawda o każdej.
+
+     PODZIAŁ PRACY: pierścień siada na dwóch rodzajach podłoża i na każdym musi
+     go nieść PRZYNAJMNIEJ JEDNA warstwa. Na planach neutralnych niesie KRAWĘDŹ
+     AKCENTU — w motywie jasnym jest tam jedyną warstwą, która zdaje. Na
+     wypełnieniu akcentowym (akcja główna, ten sam odcień co pierścień) krawędź
+     akcentu ZNIKA i niesie WEWNĘTRZNY REFLEKS, w obu motywach. Bez tej drugiej
+     warstwy wskaźnik ogniska na przycisku głównym nie istnieje: w motywie
+     jasnym `--accent` i `--action-primary-bg` to DOKŁADNIE TEN SAM LITERAŁ.
+     Zmierzone (`scripts/status-contrast.test.mjs`, część „kontrast niebędący
+     tekstem", próg WCAG 1.4.11 to 3:1; wypełnienia akcji głównej są identyczne
+     w obu motywach, więc refleks mierzy na nich to samo):
+
+       podłoże                     krawędź akcentu    refleks 0,36   refleks 0,70
+       płótno    (ciemny/jasny)      5,64 / 5,08      3,18 / 1,02    9,86 / 1,04
+       treść     (ciemny/jasny)      5,39 / 5,35      3,27 / 1,00    9,67 / 1,00
+       wyniesiony(ciemny/jasny)      5,11 / 5,35      3,33 / 1,00    9,40 / 1,00
+       --action-primary-bg   (a-600)  1,47 / 1,00        1,95           3,46
+       --action-primary-hover (a-700) 2,15 / 1,46        2,32           4,69
+       --action-primary-pressed (38%) 2,99 / 2,03        2,68           6,09
+
+     W CIEMNYM na planach neutralnych zdają obie warstwy (i tabela bramki
+     wskazuje tam refleks jako mocniejszą) — podział ról jest projektowy:
+     krawędź akcentu rysuje pierścień przy kształcie, refleks jest materiałem
+     wewnątrz. Wiążący jest tylko motyw jasny, gdzie każda z tych warstw zdaje
+     dokładnie na jednym rodzaju podłoża i na żadnym innym.
+
+     WIĄŻE PIERWSZY WIERSZ AKCJI GŁÓWNEJ, bo `--a-600` jest najjaśniejszym
+     z trzech wypełnień. Próg 3:1 przecina alfę refleksu przy 0,610; przyjęte
+     0,70 zostawia 0,46 zapasu. Zmierzona czułość na jasność `--a-600` (bo to
+     ona, a nie alfa, jest tu tokenem, który ktoś jeszcze będzie stroił):
+
+       jasność --a-600     54%     55%     56%     57%
+       refleks 0,65       3,303   3,200   3,100   3,004   ← wyczerpany
+       refleks 0,70       3,581   3,462   3,348   3,238
+
+     Czyli 0,65 kończy zapas dokładnie na dwóch punktach w górę, a 0,70 ma tam
+     jeszcze 0,24. Dlatego 0,70, a nie mniej.
+
+     KOSZT JEST ASYMETRYCZNY I TRZEBA GO WYPOWIEDZIEĆ. W motywie jasnym refleks
+     na planach neutralnych mierzy 1,00–1,05 przy KAŻDEJ alfie — jest tam
+     niewidzialny i podniesienie go nie kosztuje nic. W ciemnym ten sam ruch
+     idzie z 3,18 na 9,86, czyli wewnątrz każdej kontrolki z ogniskiem staje
+     biały włos wyraźnie jaśniejszy niż dotąd. To JEST cena i płacimy ją
+     świadomie: druga warstwa o innej jasności to jedyny sposób, żeby jedna
+     geometria działała na podłożu ciemnym, jasnym i akcentowym naraz.
+
+     CZWARTA WARSTWA — KRAWĘDŹ NOŚNA — ZMIENIŁA TEŻ KRYCIE, i wcześniejszy zapis
+     tego przemilczał, zapewniając „zmienia się wyłącznie kolor" i „alfy są te
+     sprzed fazy". Dla halo i spadku to prawda, dla krawędzi NIE:
+
+       warstwa           przed fazą   po Fazie 1   tutaj
+       refleks inset        0,36         0,36       0,70   ← nośnik na akcencie
+       krawędź (nośna)      0,84         1,000      1,000  ← nośnik na neutralnych
+       halo 3 px            0,12         0,16       0,12
+       miękki spadek        0,12         0,28       0,12
+
+     Krawędź niosła przed fazą `oklch(97.3% 0.003 255 / 0.84)`, a dziś niesie
+     `var(--accent)`, czyli alfę 1,000: krycie w górę o 19%. Zostaje tak, bo to
+     TA warstwa odpowiada za widoczność na planach neutralnych i jej pomiar
+     (5,11–5,64) jest tam jedynym, który zdaje.
+
+     HALO I SPADEK STOJĄ LITERAŁAMI, A NIE NA `--accent-quiet` / `--accent-glow`
+     — i uzasadnienie jest TYLKO JEDNO, bo drugie było zmyślone. Prawdziwe:
+     tamte tokeny niosą 0,16 i 0,28 w ciemnym (0,13 i 0,22 w jasnym), więc
+     podstawienie ich tutaj zagęściłoby miękki spadek 2,3× — zmiana CIĘŻARU
+     wizualnego, czyli dokładnie to, czego zabrania ograniczenie z 2026-07-12.
+     Skreślone: wcześniejszy zapis dodawał, że są „zestrojone dla podbarwień".
+     Policzone grepem po całym śledzonym drzewie: `--accent-quiet` i
+     `--accent-glow` mają dziś ZERO odwołań, a więc zero podbarwień, pod które
+     mogłyby być zestrojone. Argument z liczby alfy stoi; argument z roli nie
+     miał podmiotu. */
   --focus-ring:
-    inset 0 0 0 0.0625rem oklch(100% 0 0 / 0.36),
-    0 0 0 0.0625rem oklch(97.3% 0.003 255 / 0.84),
-    0 0 0 0.1875rem oklch(97.3% 0.003 255 / 0.12),
-    0 0 0.875rem oklch(97.3% 0.003 255 / 0.12);
+    inset 0 0 0 0.0625rem oklch(100% 0 0 / 0.7), 0 0 0 0.0625rem var(--accent),
+    0 0 0 0.1875rem oklch(64% 0.2 295 / 0.12),
+    0 0 0.875rem oklch(64% 0.2 295 / 0.12);
+  /* TEN SAM PIERŚCIEŃ, ALE JAKO KOLOR. `--focus-ring` jest LISTĄ CIENI, więc
+     `outline: 2px solid var(--focus-ring)` jest deklaracją NIEPOPRAWNĄ, którą
+     przeglądarka odrzuca w całości — a `css-token-lint` tego nie widzi, bo
+     token jest zdefiniowany. Arkusze, które potrzebują konturu albo obramowania
+     w kolorze ogniska, biorą TEN token.
+
+     ZADEKLAROWANY RAZ, ROZWIĄZUJE SIĘ W OBU MOTYWACH — oba te zdania są
+     prawdziwe naraz i arkusze modułów mają mówić dokładnie to samo. Deklaracja
+     stoi wyłącznie w bloku `:root`, bo nie niesie ŻADNEGO literału zależnego od
+     motywu; jest czystym aliasem `--accent`, a `--accent` blok jasny remapuje,
+     więc podstawienie rozstrzyga się per motyw w miejscu użycia. Blok jasny nie
+     musi go powtarzać i nie powtarza. */
+  --focus-ring-color: var(--accent);
   --elevation-rest:
     inset 0 0.0625rem 0 var(--white-a10), 0 0 0 0.0625rem var(--white-a035),
     0 0.25rem 0.75rem oklch(0% 0 0 / 0.18);
@@ -154,6 +403,103 @@
   --elevation-overlay:
     inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
     0 1.75rem 5rem oklch(0% 0 0 / 0.56), 0 0.5rem 1.5rem oklch(0% 0 0 / 0.42);
+  /* Cienie v3 (`v3/tokens.css:168-171`). Alfy bieli wpisane literałami, bo
+     stopnie prototypu (0.04 / 0.06 / 0.08) nie pokrywają się z aplikacyjnymi
+     (0.035 / 0.055 / 0.075) — podstawienie „prawie tego samego" tokenu byłoby
+     cichym odstępstwem. Warstwa `--elevation-*` zostaje: niesie ją działająca
+     powłoka, a prototyp jej nie ma.
+
+     ── TOKENY BEZ KONSUMENTA ───────────────────────────────────────────────
+     DWADZIEŚCIA OSIEM nazw z tego pliku nie ma dziś ANI JEDNEGO odwołania
+     w całym śledzonym drzewie. Wcześniejszy zapis mówił „trzynaście" i wymieniał
+     trzynaście — liczba dotyczyła JEDNEJ GRUPY, a zdanie mówiło o pliku; drugi
+     mówił „dwadzieścia siedem" i gubił `--ease-in`, bo liczył granicą słowa,
+     a `\b` po `--ease-in` dopasowuje się WEWNĄTRZ `--ease-in-out`. Ta sama
+     klasa, o którą chodzi w całej tej fali: przyrząd zwrócił liczbę, nie
+     zmierzywszy jednej pozycji, i nic nie krzyknęło.
+     Policzone 2026-08-06 skryptem po `git ls-files` (bez `dist/` i `build/`),
+     z komentarzami wyciętymi z liczenia i z granicą `var(` zamiast `\b`, na
+     drzewie PO zmianach tego lotu; ta sama metoda daje 183 zadeklarowane
+     tokeny. Pełna lista, w grupach:
+
+     (1) DOŁOŻONE POD KONKRETNE FAZY — trzynaście, i to jest ZAMIERZONE, a nie
+     zaległość. Stoją tu, bo plan
+     `docs/plans/2026-08-06-adopcja-jezyka-wizualnego/plan.md` (Faza 1, akapit
+     „Tokeny potrzebne dalszym fazom") kazał położyć warstwę tokenów RAZ,
+     zamiast dokładać ją po kawałku przy każdym locie Faz 2-3:
+
+       --shadow-drag                       przeciąganie kart (Faza 3)
+       --edge-top                          górna krawędź materiału (Faza 3)
+       --grain, --grain-opacity            ziarno okna (Faza 3)
+       --ease-spring, --duration-exit      ruch (Faza 3)
+       --row-height, --sidebar-rail        gęstość powłoki (Faza 3)
+       --text-3xl                          skala po zdjęciu `--text-display` (Faza 2)
+       --surface-elevated, --surface-sidebar  czwarty plan (Faza 3)
+       --neutral-925, --a-300              pełne rampy, bez dziur
+
+     (2) TRZY TOKENY AKCENTU Z FAZY 1, których poprzednia lista nie wymieniała
+     wcale — i to nie jest arytmetyka, bo nota pierścienia wyżej UZASADNIAŁA
+     nimi swoje literały:
+
+       --accent-hover, --accent-quiet, --accent-glow
+
+     `--accent-hover` czeka na Fazę 2 (żaden hover nie niesie dziś akcentu),
+     a dwa pozostałe są podbarwieniami bez podbarwionej powierzchni. Argument
+     „są zestrojone dla podbarwień" został przy pierścieniu skreślony właśnie
+     dlatego.
+
+     (3) STARSZE OD TEJ FAZY, zastane bez konsumenta — dwanaście:
+
+       --neutral-100, --neutral-200, --neutral-500, --neutral-800  stopnie rampy
+       --white-a02, --white-a20                                    stopnie alfy
+       --shell-chrome-bg, --shell-inspector-bg  powłoka bierze szkło wprost
+       --context-seam                           szew materiału kontekstu
+       --radius-2xl, --z-base                   skrajne stopnie skal
+       --ease-in                                krzywa wejścia; używana jest
+                                                wyłącznie `--ease-in-out`
+
+     `--neutral-500` DOŁĄCZYŁ DO TEJ LISTY W TYM LOCIE: był stopniem dwóch
+     tokenów tekstu, które zeszły z rampy na literały wyliczone (patrz noty przy
+     `--text-quaternary` i przy jasnym `--text-disabled`).
+
+     I DLATEGO TA GRUPA MA WŁASNĄ NOTĘ: `css-token-lint` łapie odwołanie BEZ
+     definicji, ale NIGDY definicji bez odwołania. Literówka w tej grupie
+     (`--sidebar-rall`, `--shadow-drg`) przeleży więc cicho aż do dnia, w którym
+     ktoś jej użyje — i wyjdzie wtedy jako „token rozwiązał się do niczego",
+     czyli w miejscu odległym od przyczyny. Trzynaście nazw z GRUPY (1) zostało
+     sprawdzonych LITEROWO przeciw `v3/tokens.css` (2026-08-06, przez porównanie
+     rozwiniętych wartości, nie wzrokiem): wszystkie zgadzają się co do znaku,
+     przy dwóch podstawieniach nazewniczych, które ta aplikacja robi świadomie
+     (`--n-N` → `--neutral-N`; podstawienia bieli `--w-0N` rozwinięte do tego
+     samego literału — nazwy tej rodziny NIE piszemy tu w składni odwołania,
+     bo `css-token-lint` czyta arkusz razem z komentarzami i zgłosiłby ją jako
+     token niezdefiniowany; zmierzone, bramka poszła na czerwono). Grupy (2)
+     i (3) tego porównania NIE PRZESZŁY — nie pochodzą z tamtego akapitu planu
+     i nikt ich literowo z v3 nie zestawiał.
+
+     JEDNA RÓŻNICA ZNALEZIONA PRZY TYM SPRAWDZENIU, świadomie nieuzupełniona:
+     v3 ma TRZECIĄ deklarację `--grain-opacity: 0` w bloku
+     `@media (prefers-reduced-transparency: reduce)` (`v3/tokens.css:231-233`),
+     razem z `--glass-blur: 0px` i podmianą `--surface-overlay`. Ta aplikacja
+     obsługuje ograniczoną przezroczystość w `styles.css` (siedem bloków), więc
+     miejsce na to jest tam, a nie tutaj — i należy do fazy, w której `--grain`
+     dostanie pierwszego konsumenta. */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.4), 0 0 0 1px oklch(100% 0 0 / 0.04);
+  --shadow-md:
+    0 2px 4px oklch(0% 0 0 / 0.3), 0 6px 16px oklch(0% 0 0 / 0.34),
+    0 0 0 1px oklch(100% 0 0 / 0.06);
+  --shadow-lg:
+    0 8px 24px oklch(0% 0 0 / 0.4), 0 24px 56px oklch(0% 0 0 / 0.44),
+    0 0 0 1px oklch(100% 0 0 / 0.08);
+  --shadow-drag:
+    0 12px 28px oklch(0% 0 0 / 0.46), 0 32px 64px oklch(0% 0 0 / 0.4),
+    0 0 0 1px var(--accent-edge);
+  /* Bardzo drobne ziarno na oknie (`v3/tokens.css:113`). Przy ~3,5% jest
+     niewidoczne jako tekstura i widoczne jako materiał — powstrzymuje duże
+     ciemne pola przed czytaniem się jak płaska czerń ekranu. Data-URI rzędu
+     300 B; budżet CSS ma zapas. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+  --grain-opacity: 0.035;
   --shell-window-bg: var(--surface-window);
   --shell-chrome-bg: var(--surface-glass);
   --shell-sidebar-bg: var(--surface-glass);
@@ -163,9 +509,61 @@
   --panel-reading-border: var(--border-default);
   --panel-raised-bg: var(--surface-raised);
   --panel-raised-border: var(--border-default);
-  --action-primary-bg: var(--neutral-100);
-  --action-primary-hover: var(--neutral-50);
-  --action-primary-pressed: var(--neutral-200);
+  /* AKCJA GŁÓWNA niesie akcent — do tej pory był to biały przycisk
+     (`--neutral-100`) w ciemnym i prawie czarny w jasnym.
+
+     ZBOCZE JEST WYLICZONE, NIE PRZEPISANE, i NIE BIERZE STOPNIA `--accent`.
+     Wypełnienie akcji głównej jest jedynym miejscem, gdzie akcent NIESIE
+     TEKST (`--on-accent`, prawie biel), więc wiąże je próg WCAG AA 4,5:1 —
+     a `--accent` (fokus, aktywna nawigacja) nie niesie tekstu i tego progu nie
+     dotyka. Dlatego te dwie rzeczy rozjeżdżają się na stopniach rampy i to jest
+     zamierzone. Zmierzone przeciw `--on-accent`
+     (`scripts/status-contrast.test.mjs`, część „tekst na wypełnieniu"):
+
+       --a-300  80%   1,88:1   PONIŻEJ
+       --a-400  72%   2,57:1   PONIŻEJ   (do tego 0.031 poza gamutem sRGB)
+       --a-500  64%   3,54:1   PONIŻEJ
+       --a-600  55%   5,19:1   AA        ← spoczynek
+       --a-700  46%   7,60:1   AA        ← hover
+       literał  38%  10,56:1   AA        ← pressed
+
+     Próg przecina rampę przy ~58,3% jasności, więc PRZECHODZĄ TYLKO DWA
+     STOPNIE. Trzeci stan musi więc być literałem — i jest nim, zamiast nowego
+     `--a-800`: dołożenie stopnia do rampy twierdziłoby, że v3 ma sześć stopni,
+     a v3 ma pięć, i przemianowanie rampy jest zapisem w `.ui-craft/tokens.md`,
+     nie w tym pliku. Literał mówi prawdę: „nasza wartość, zmierzona, spoza v3".
+     Sprawdzone, że pressed MUSI się różnić od hovera: pięć miejsc wywołania
+     (`styles.css:454`, `:619`, `:7845`, `:8028` oraz `.inline-popover`) używa
+     `:active` jako stanu osobnego, a `:active` przychodzi NA hoverze — trzy
+     z nich nie mają przy tym żadnej innej różnicy niż kolor.
+
+     ODSTĘPSTWO OD v3, NAZWANE: prototyp maluje akcję główną gradientem
+     `--a-400 → --a-500 → --a-600` z hoverem `--a-300 → --a-400 → --a-500`
+     (`v3/app.css:321-331`) i tym samym prawie białym tekstem. Zmierzone na tej
+     samej matematyce: górny stopień spoczynku 2,57:1, górny stopień hovera
+     1,88:1 — czyli wartość prototypu NIE PRZECHODZI, i to nie o włos. Zostaje
+     wartość wyliczona, dokładnie jak przy statusach motywu jasnego wyżej.
+     Progu nie wolno obniżyć; to zamieniłoby pomiar z powrotem w deklarację.
+
+     DRUGIE ODSTĘPSTWO, NAZWANE: zbocze idzie MONOTONICZNIE CIEMNIEJ w OBU
+     motywach, więc w ciemnym hover POGŁĘBIA zamiast rozjaśniać. To jest
+     odwrotność i poprzedniej pary aplikacji (`neutral-100 → neutral-50`),
+     i intencji v3 (hover o stopień jaśniej). Nie da się inaczej: rozjaśnienie
+     spoczynku o jeden stopień to `--a-500`, czyli 3,54:1 — napis na przycisku
+     przestaje zdawać. Wypełnienie jest przy tym IDENTYCZNE w obu motywach, bo
+     identyczne jest ograniczenie, które je wyznacza (ten sam tekst na tym samym
+     wypełnieniu), a prototyp też nie rozdziela tu motywów — `.btn.primary` ma
+     w `v3/app.css` jedną regułę na oba.
+
+     ZOSTAJE OTWARTE DLA FAZY 2 (nie ruszam `styles.css` w tym locie):
+     `.primary-button kbd` (`styles.css:624`) maluje się przez
+     `color-mix(in oklch, var(--action-primary-text) 62%, transparent)`. Na
+     dzisiejszym wypełnieniu dawało to 2,29:1; po tej poprawce daje 2,98:1 na
+     spoczynku, 3,93:1 na hoverze i 4,99:1 na pressed. Skrót klawiszowy na
+     przycisku głównym DALEJ NIE ZDAJE AA w dwóch stanach z trzech. */
+  --action-primary-bg: var(--a-600);
+  --action-primary-hover: var(--a-700);
+  --action-primary-pressed: oklch(38% 0.17 295);
   --action-primary-text: var(--text-on-action);
   --action-secondary-bg: var(--surface-raised);
   --action-secondary-hover: var(--surface-hover);
@@ -176,9 +574,49 @@
   --input-border-hover: var(--border-strong);
   --input-text: var(--text-primary);
   --input-placeholder: var(--text-quaternary);
-  --nav-active-bg: var(--surface-selected);
+  /* AKTYWNA NAWIGACJA niesie akcent — najcichszy jego stopień jako wypełnienie
+     (`v3/app.css:218-220`) i krawędź jako obramowanie. Zwykłe zaznaczenie
+     wiersza i hover ZOSTAJĄ neutralne (`--surface-selected`, `--surface-hover`):
+     akcent na hoverze albo na każdym zaznaczeniu łamie regułę małej
+     powierzchni. */
+  --nav-active-bg: var(--accent-quieter);
   --nav-active-text: var(--text-primary);
-  --nav-active-border: var(--border-default);
+  /* KRAWĘDŹ NIESIE STAN „ta pozycja jest aktywna", a stan komponentu jest
+     w WCAG 1.4.11 wymieniony wprost — więc wiąże ją próg 3:1, tak samo jak
+     pierścień ogniska. `--accent-edge` (0,42 w ciemnym, 0,40 w jasnym) go NIE
+     ZDAWAŁ i nie zdawał w żadnym z czterech sąsiedztw. Zmierzone
+     (`scripts/status-contrast.test.mjs`, część „krawędź aktywnej nawigacji"):
+
+       sąsiedztwo                          --accent-edge   var(--accent)
+       ciemny, plan okna                       1,80             5,70
+       ciemny, podbarwienie nad planem okna    1,86             5,36
+       ciemny, szyna                           1,79             5,74
+       ciemny, podbarwienie nad szyną          1,85             5,40
+       jasny,  plan okna                       1,82             4,84
+       jasny,  podbarwienie nad planem okna    1,77             4,42
+       jasny,  szyna                           1,80             4,68
+       jasny,  podbarwienie nad szyną          1,75             4,27
+
+     PEŁNY AKCENT, A NIE MOCNIEJSZA ALFA, I TO JEST WYBÓR ZMIERZONY. Próg 3:1
+     przecina alfę przy 0,671 w ciemnym i 0,774 w jasnym (wiąże podbarwienie nad
+     szyną), więc każda okrągła alfa poniżej jedynki zostawia motyw jasny na
+     3,0–3,1, czyli na włosku — i kosztuje osobny literał per motyw. `--accent`
+     jest jednym aliasem, remapowanym w bloku jasnym, i zdaje z zapasem w obu.
+
+     JEST TO ZGODNE Z v3, choć v3 nie ma tu krawędzi w ogóle: prototyp znaczy
+     pozycję aktywną podbarwieniem `--accent-quieter`, tekstem pierwszorzędnym,
+     wagą 500 i SZYNKĄ `::before` o wypełnieniu `var(--accent)`, czyli akcentem
+     o pełnym kryciu (`v3/app.css:218-226`). Ta aplikacja wydaje tę samą pełną
+     wartość na krawędź zamiast na szynkę.
+
+     `--accent-edge` ZOSTAJE NIETKNIĘTY, i powód jest JEDEN: to literał v3 co do
+     znaku (`v3/tokens.css:154`, `:209`). Odrzucone uzasadnienie drugie, żeby nie
+     powtórzyć błędu skreślonego przy pierścieniu wyżej: „ma jeszcze drugiego
+     konsumenta, `--shadow-drag`" — bo `--shadow-drag` sam nie ma dziś ANI
+     JEDNEGO odwołania (lista tokenów bez konsumenta niżej, grupa 1). Łańcuch
+     kończy się w powietrzu, więc dziś tego tokenu NIC NIE MALUJE i nie na tym
+     ma stać jego obrona. */
+  --nav-active-border: var(--accent);
   --context-bg:
     linear-gradient(
       145deg,
@@ -208,19 +646,26 @@
   --control-focus-ring: var(--focus-ring);
 
   --sidebar-width: 13.75rem;
+  --sidebar-rail: 3.25rem;
   --inspector-width: 20rem;
   --titlebar-height: 2.875rem;
   /* Height of the tab/header band below the titlebar. The work-column tabbar
      and the inspector header share it so their bottom borders form one seam. */
   --header-band-height: 2.55rem;
+  --row-height: 2.125rem;
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --surface-stage: oklch(94.5% 0.004 255);
-  --surface-window: oklch(97.2% 0.003 255);
-  --surface-canvas: oklch(98.2% 0.003 255);
+  /* Cztery plany także tutaj (`v3/tokens.css:179-184`). W motywie jasnym plan
+     treści i plan wyniesiony ZLEWAJĄ SIĘ na czystej bieli — tak jest
+     w prototypie i tak zostaje; głębię niesie tu cień, nie jasność. */
+  --surface-stage: oklch(93.4% 0.006 285);
+  --surface-window: oklch(96.6% 0.004 285);
+  --surface-sidebar: oklch(95.4% 0.005 285);
+  --surface-canvas: oklch(98.2% 0.003 285);
   --surface-content: oklch(100% 0 0);
+  --surface-elevated: oklch(100% 0 0);
   --surface-raised: oklch(100% 0 0 / 0.76);
   --surface-overlay: oklch(99% 0.002 255 / 0.94);
   --surface-sunken: oklch(91.5% 0.005 255 / 0.72);
@@ -242,19 +687,168 @@
   --text-secondary: var(--neutral-750);
   --text-tertiary: var(--neutral-700);
   --text-quaternary: var(--neutral-600);
-  --text-disabled: var(--neutral-500);
-  --text-on-action: var(--neutral-50);
-  --status-success: oklch(52% 0.1 150);
-  --status-warning: oklch(52% 0.1 78);
-  --status-error: oklch(52% 0.14 25);
-  --status-info: oklch(52% 0.075 245);
+  /* Ten sam ruch, co w bloku ciemnym, i z tego samego powodu — tyle że tutaj
+     wiąże PŁÓTNO (98,2%), nie plan wyniesiony (plan wyniesiony zlewa się tu
+     z treścią na czystej bieli). Zmierzone, próg 4,5:1:
+
+       stopień          płótno   treść
+       --n-500  58,4%    4,01    4,22   ← PONIŻEJ na obu
+       53%  (przyjęte)   5,03    5,29
+       --n-600  48,6%    6,06    6,39   (quaternary, bez zmian)
+
+     Próg przecina rampę przy 55,6% jasności; 53% zostawia 0,52 zapasu i 4,4
+     punktu odstępu od `--text-quaternary`. `--n-500` traci przez to ostatniego
+     konsumenta w całym repo — stoi dalej, bo rampa z dziurą jest gorsza niż
+     rampa pełna, i jest wymieniony w nocie o tokenach bez konsumenta. */
+  --text-disabled: oklch(53% 0.014 285);
+  --text-on-action: var(--on-accent);
+
+  /* AKCENT W MOTYWIE JASNYM (`v3/tokens.css:205-211`) — ten sam odcień, krok
+     ciemniejszy, żeby biały tekst na nim był czytelny. */
+  --accent: var(--a-600);
+  --accent-hover: var(--a-700);
+  --accent-quiet: oklch(55% 0.21 295 / 0.13);
+  --accent-quieter: oklch(55% 0.21 295 / 0.07);
+  --accent-edge: oklch(55% 0.21 295 / 0.4);
+  --accent-glow: oklch(55% 0.21 295 / 0.22);
+  --on-accent: oklch(99% 0.005 285);
+
+  /* STATUSY MOTYWU JASNEGO — odcień i chroma dokładnie z v3
+     (`v3/tokens.css:214-221`), JASNOŚĆ OBNIŻONA DO 50% zamiast prototypowych
+     52–54%. To jest ODSTĘPSTWO ZMIERZONE, nie przeoczenie.
+
+     Prototyp nie kłamie: przy 52% na jego płótnie tekst statusu trzyma ~4,9:1.
+     Ale on liczył parę „tekst na PŁÓTNIE". Ta aplikacja mierzy trzecią parę,
+     której prototyp nie liczył — „tekst na SWOIM podbarwionym tle", czyli
+     `--status-*-bg` przy 10% krycia ZŁOŻONE na płótnie. Ta para jest wiążąca,
+     bo to ona rysuje plakietkę. Zmierzone na płótnie tej aplikacji
+     (`scripts/status-contrast.test.mjs`, próg 4.5:1):
+
+       54/52% (v3):  success 4.32   warning 4.29   info 4.37   — PONIŻEJ
+       51%:          success 4.49                              — PONIŻEJ
+       50%:          success 4.67   warning 5.03   info 4.72   error 5.32
+
+     50% to NAJWYŻSZA jednolita jasność, przy której przechodzą wszystkie
+     cztery — i trafia w dzisiejszą podłogę pomiaru (4,66). Progu nie wolno
+     obniżyć, żeby zmieścić kolor prototypu; obniżenie zamieniłoby pomiar
+     z powrotem w deklarację. Odrzucono też ścieżkę „zostaw 52%, ścisz tło
+     do 5-6% krycia": dawała zapas rzędu 0,05 i plakietkę bez widocznego
+     wypełnienia, czyli zdawanie bramki kosztem rzeczy, której ona pilnuje.
+
+     ZNANY DEFEKT, KTÓRY TU ZNIKA: blok jasny nie definiował dotąd
+     `--status-*-bg` W OGÓLE, więc DZIEDZICZYŁ podbarwienia z bloku ciemnego
+     (kolory o jasności 68–80%) i malował je przy 10% nad prawie białym
+     płótnem. To dlatego dzisiejszy pomiar pokazywał 4,66 dla success: tło
+     z ciemnego motywu jest JAŚNIEJSZE od poprawnego i sztucznie podnosiło
+     kontrast. Po naprawie ta sama wartość aplikacji (`52% 0.1 150`) dawałaby
+     4,39 — czyli PONIŻEJ progu. Ani wartość prototypu, ani wartość aplikacji
+     nie przechodziły; dlatego jasność jest tu wyliczona, a nie przepisana. */
+  --status-success: oklch(50% 0.13 150);
+  --status-warning: oklch(50% 0.12 78);
+  --status-error: oklch(50% 0.18 22);
+  --status-info: oklch(50% 0.12 232);
+  --status-success-bg: oklch(50% 0.13 150 / 0.1);
+  --status-warning-bg: oklch(50% 0.12 78 / 0.1);
+  --status-error-bg: oklch(50% 0.18 22 / 0.1);
+  --status-info-bg: oklch(50% 0.12 232 / 0.1);
+
   --border-subtle: oklch(12% 0.006 255 / 0.08);
   --border-default: oklch(12% 0.006 255 / 0.13);
   --border-strong: oklch(12% 0.006 255 / 0.2);
   --edge-specular: oklch(100% 0 0 / 0.86);
-  --action-primary-bg: var(--neutral-900);
-  --action-primary-hover: var(--neutral-950);
-  --action-primary-pressed: var(--neutral-800);
+  --edge-top: oklch(100% 0 0 / 0.9);
+  /* Ta sama geometria i te same alfy co w bloku ciemnym. Alias
+     `--focus-ring-color` literału nie niesie, więc jego blok jasny nie
+     powtarza.
+
+     REFLEKS NIESIE TU CAŁY PIERŚCIEŃ I DLATEGO MA TĘ SAMĄ ALFĘ, CO W CIEMNYM.
+     Wcześniejszy zapis zjeżdżał go z 0,9 na 0,36 i nazywał „drugą,
+     konkurencyjną linią WEWNĄTRZ krawędzi akcentu". Rozumowanie było odwrócone:
+     krawędź, z którą ta linia rzekomo konkurowała, ma na wypełnieniu akcji
+     głównej motywu jasnego kontrast 1,00:1, bo `--accent` i
+     `--action-primary-bg` rozwijają się TU DO TEGO SAMEGO LITERAŁU
+     (`oklch(55% 0.21 295)`). Nie ma z czym konkurować — nie ma czego zobaczyć.
+     Refleks nie był konkurencją, był JEDYNYM NOŚNIKIEM.
+
+     Zmierzone, co ta biała kreska rysuje w motywie jasnym (próg 1.4.11 to 3:1):
+
+       podłoże                                biel 0,36   biel 0,70
+       płótno / treść / plan okna                1,02        1,04
+                                                 1,00        1,00
+                                                 1,04        1,07
+       --action-primary-bg                       1,95        3,46   ← WIĄŻE
+       --action-primary-hover                    2,32        4,69
+       --action-primary-pressed                  2,68        6,09
+
+     Czyli na porcelanie podniesienie alfy nie kupuje NIC i nie kosztuje NIC
+     (1,00–1,07 przy obu wartościach — biel na bieli), a na wypełnieniu akcji
+     głównej jest różnicą między wskaźnikiem, którego nie ma, a wskaźnikiem,
+     który zdaje. Pełne uzasadnienie doboru 0,70 i koszt w motywie ciemnym stoją
+     przy pierścieniu w bloku wyżej.
+
+     Reszta warstw zostaje: geometria ta sama, halo i spadek na 0,12, krawędź
+     na `var(--accent)`. `--focus-ring` stoi w OBU blokach, bo halo i miękki
+     spadek niosą LITERAŁ AKCENTU MOTYWU. */
+  --focus-ring:
+    inset 0 0 0 0.0625rem oklch(100% 0 0 / 0.7), 0 0 0 0.0625rem var(--accent),
+    0 0 0 0.1875rem oklch(55% 0.21 295 / 0.12),
+    0 0 0.875rem oklch(55% 0.21 295 / 0.12);
+  --shadow-sm:
+    0 1px 2px oklch(40% 0.03 285 / 0.08), 0 0 0 1px oklch(30% 0.02 285 / 0.06);
+  --shadow-md:
+    0 2px 4px oklch(40% 0.03 285 / 0.06), 0 8px 20px oklch(40% 0.03 285 / 0.1),
+    0 0 0 1px oklch(30% 0.02 285 / 0.07);
+  --shadow-lg:
+    0 8px 24px oklch(40% 0.03 285 / 0.12),
+    0 24px 56px oklch(40% 0.03 285 / 0.14), 0 0 0 1px oklch(30% 0.02 285 / 0.08);
+  --shadow-drag:
+    0 12px 28px oklch(40% 0.03 285 / 0.18),
+    0 32px 64px oklch(40% 0.03 285 / 0.16), 0 0 0 1px var(--accent-edge);
+  --grain-opacity: 0.02;
+  /* ELEWACJA MOTYWU JASNEGO. `--elevation-rest` / `--elevation-raised` /
+     `--elevation-overlay` są w bloku ciemnym LITERAŁAMI TYLKO CIEMNYMI (białe
+     insety i czarne cienie), a obowiązują także tutaj — więc motyw jasny malował
+     dotąd białe insety i czarne cienie na porcelanie. Dwumotywowa rodzina
+     `--shadow-*` przyszła z Fazą 1 poprawna i została z ZEREM konsumentów:
+     lekarstwo leżało obok chorego, niepodłączone.
+
+     ILU JEST TYCH KONSUMENTÓW — ROZBICIE PER TOKEN, bo wcześniejszy zapis
+     mówił „szesnastu" o CAŁEJ RODZINIE, a szesnaście to liczba JEDNEGO z nich.
+     Kto by to przepinał w Fazie 3 z tamtą liczbą w ręku, przepiąłby połowę
+     i uznał robotę za skończoną. Policzone 2026-08-06 po `git ls-files`
+     (bez `dist/` i `build/`, komentarze wycięte):
+
+       --elevation-rest      16   styles.css 14, sources.module 1,
+                                  activity-section.module 1
+       --elevation-raised    11   styles.css 7, access-section.module 3,
+                                  task-calendar.module 1
+       --elevation-overlay    4   styles.css 2 oraz DWA ALIASY w tym pliku
+                                  (`--capture-shadow`, `--overlay-shadow`),
+                                  które mają własnych konsumentów dalej
+       ────────────────────────────────────────────────────────────────────
+       razem                 31   (29 poza tym plikiem)
+
+     Poprawka jest MINIMALNA — nadpisane zostają trzy tokeny w bloku jasnym,
+     a tych trzydziestu jeden odwołań NIKT NIE PRZEPINA (to Faza 3). Zmierzone na
+     `--elevation-rest` nad `--surface-window` (96,6%) i `--surface-content`:
+
+       warstwa                                 PRZED      PO
+       wewnętrzny inset (biel 0,10 na bieli)   1,00:1     — (znika)
+       obrys 1 px                              1,00:1     1,11:1
+       spadek                                  1,52:1     1,13:1
+
+     Czyli PRZED: panel bez ŻADNEJ widocznej krawędzi (dwie warstwy z trzech
+     rysowały dokładnie nic) i z czarnym cieniem o kontraście 1,52:1, za ciężkim
+     na porcelanę. PO: hairline z grafitu, który krawędź naprawdę rysuje, i cień
+     dwa razy lżejszy. */
+  --elevation-rest: var(--shadow-sm);
+  --elevation-raised: var(--shadow-md);
+  --elevation-overlay: var(--shadow-lg);
+  /* AKCJA GŁÓWNA NIE MA TU CZEGO NADPISYWAĆ — i to jest zmiana wobec Fazy 1,
+     która nadpisywała tutaj `pressed` na `--a-500`. Zbocze `a-600 → a-700 →
+     literał 38%` jest wiązane progiem kontrastu, a nie motywem (patrz tabela
+     przy `--action-primary-bg`), więc jest identyczne w obu motywach. Wartość
+     `--a-500` dawała tu 3,54:1 i była trzecim czerwonym wierszem bramki. */
   --context-bg:
     linear-gradient(
       145deg,

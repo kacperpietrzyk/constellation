@@ -19,6 +19,19 @@
 /** Próg WCAG 2.x AA dla tekstu o normalnej wielkości. */
 export const WCAG_AA_NORMAL_TEXT = 4.5;
 
+/**
+ * Próg WCAG 2.x AA dla kontrastu NIEBĘDĄCEGO TEKSTEM (SC 1.4.11): informacja
+ * wizualna potrzebna, żeby ROZPOZNAĆ kontrolkę i JEJ STAN, oraz części grafik
+ * potrzebne do zrozumienia treści. Wskaźnik ogniska i krawędź aktywnej pozycji
+ * nawigacji są takimi stanami — i nic w tym repo dotąd o nie nie pytało.
+ *
+ * Stoi TUTAJ, obok progu tekstowego, celowo. Trzymanie dwóch progów WCAG
+ * w dwóch plikach to ta sama klasa defektu, którą to repo już nazwało po
+ * imieniu (ten sam kształt przepisany w kilku miejscach); kto szuka progu,
+ * ma znaleźć oba w jednym miejscu.
+ */
+export const WCAG_AA_NON_TEXT = 3;
+
 // Ile poza [0, 1] może wyjść kanał liniowy, zanim uznamy kolor za spoza gamutu.
 // Czysty zaokrągleniowy szum konwersji siedzi rzędy wielkości niżej.
 const GAMUT_TOLERANCE = 1e-6;
