@@ -832,11 +832,17 @@ kbd {
   opacity: 0.38;
 }
 
+/* TWO ROWS, AND THE FIRST ONE IS THE TITLE BAND (`v3/app.css:84-90`: the
+   prototype's `.titlebar` is a sibling of `.body`, above it, spanning the
+   window). This grid had one row and the band was the work column's first
+   child, which is why the band started at the sidebar's right edge and the
+   strip over the sidebar was empty. The band now takes row 1 across every
+   column and the three panes take row 2. */
 .desktop-shell {
   position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -916,8 +922,10 @@ kbd {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: calc(var(--titlebar-height) + var(--space-2)) var(--space-3)
-    var(--space-3);
+  /* The top inset used to reserve `--titlebar-height` for a band that was drawn
+     over the sidebar. The band is above the sidebar now, so the reservation is
+     over — the column starts where the column starts. */
+  padding: var(--space-2) var(--space-3) var(--space-3);
   border-right: 1px solid var(--shell-border);
   /* Lewa kolumna jest PLANEM, nie szybą (`v3/app.css:155-160`). Stało tu
      rozmycie tła, którego prototyp nie ma nigdzie w powłoce; pod nim leży
@@ -938,17 +946,12 @@ kbd {
 .sidebar > .fixture-condition {
   flex: none;
 }
-.window-drag {
-  position: absolute;
-  inset: 0 0 auto;
-  height: var(--titlebar-height);
-  -webkit-app-region: drag;
-}
+/* The mark is a flex child of the band. `.window-drag` — a second absolutely
+   positioned box whose only job was to make the sidebar's top strip draggable —
+   is gone with it: the band is the drag region now, and it covers the whole
+   window width instead of the sidebar's. */
 .brand-row {
-  position: absolute;
-  top: 0;
-  left: 5.6rem;
-  height: var(--titlebar-height);
+  flex: none;
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -1418,25 +1421,12 @@ kbd {
   box-shadow: inset 2px 0 0 var(--accent);
   font-weight: 600;
 }
-/* Rail width: this column carries no glyphs, so the shared collapse rule
-   (`:3599`) turns all seven entries into blank 2.75rem squares. The section
-   list stands down — the surface's narrow-width category picker already
-   carries reachability, and that is what the packaged smoke exercises — while
-   the way OUT keeps its chevron and, through `aria-label`, its name. */
-@media (max-width: 50rem) {
-  .settings-mode-column .settings-mode-section {
-    display: none;
-  }
-  /* The two-track rule above is a class MORE specific than the rail rule at
-     `:3626`, so it would keep its chevron track here unless it is undone by
-     hand. Specificity beats source order across media blocks. */
-  .settings-mode-column .settings-mode-back {
-    grid-template-columns: 1fr;
-  }
-  .settings-mode-back > span[aria-hidden] {
-    display: block;
-  }
-}
+/* THE THREE RULES THAT USED TO STAND HERE MOVED, and the move is position 13's
+   split rather than a tidy-up: they were keyed on `@media (max-width: 50rem)`,
+   which is the window, and what they are really about is the RAIL. They now sit
+   beside the rest of the rail rules, keyed on `.desktop-shell.rail`, so the
+   column behaves the same way whether the window forced the rail or a person
+   asked for it. One trigger, one behaviour, one place to read it. */
 /* Unread attention weighs more than an informational task count: a filled
    pill distinguishes it by shape and background.
 
@@ -1508,9 +1498,18 @@ kbd {
 .sidebar-spacer {
   flex: 1;
 }
+/* FOUR TRACKS, BECAUSE THE FOOT NOW HOSTS TWO CONTROLS (`v3/app.js:662-664`
+   puts the collapse control and Settings side by side in the sidebar foot, and
+   this is that foot). Measured before the change: with two tracks and three
+   children the Settings button wrapped onto a second row and stretched to the
+   full 171 px of the label track — it was never given a box of its own, so it
+   read as a full-width strip under the identity rather than as a glyph beside
+   it. Both buttons now take the shared `.icon-button` box instead of a bespoke
+   one; the app already had that rule and the shell's history controls already
+   use it. */
 .preview-identity {
   display: grid;
-  grid-template-columns: 0.5rem minmax(0, 1fr);
+  grid-template-columns: 0.5rem minmax(0, 1fr) auto auto;
   gap: var(--space-2);
   align-items: start;
   margin: var(--space-3) var(--space-1) 0;
@@ -1552,7 +1551,8 @@ kbd {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Two rows, not three: the tab band left this column for the shell. */
+  grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   background:
     radial-gradient(ellipse at 50% 0%, var(--white-a055), transparent 68%) top /
@@ -1569,14 +1569,42 @@ kbd {
   background: var(--surface-canvas);
   scrollbar-color: var(--border-default) transparent;
 }
+/* THE BAND ITSELF (`v3/app.css:84-90`). Three things changed with the move and
+   each of them is the prototype's own arrangement rather than a taste call:
+
+   IT SPANS THE GRID. `1 / -1` covers two columns or three, so opening the
+   inspector does not shorten the band — the inspector opens UNDER it, which is
+   what `v3` does by putting `.titlebar` outside `.body` entirely.
+
+   IT IS ONE BAND TALL, NOT TWO. The old box was `--titlebar-height +
+   --header-band-height` with the upper half spent as `padding-top` — an empty
+   strip that existed only because the real title strip was somewhere else, over
+   the sidebar. The prototype's title bar is exactly `--titlebar-height`, and
+   `.shell-tab` is already cut for it: 2.25 rem of tab under 0.25 rem of top
+   padding is 2.5 rem, `v3/app.css:129`'s `calc(var(--titlebar-height) - 4px)`
+   to the pixel.
+
+   IT IS THE DRAG REGION. `.window-drag` used to be a separate box over the
+   sidebar's top strip. A band that spans the window can carry the region
+   itself — but only if everything interactive in it opts out, or the tabs stop
+   taking clicks and the tab strip stops scrolling under the pointer. The three
+   groups below opt out by name, which is why this is a list and not a `*`. */
 .shell-tabbar {
+  grid-column: 1 / -1;
   min-width: 0;
-  height: calc(var(--titlebar-height) + var(--header-band-height));
+  height: var(--titlebar-height);
   display: flex;
-  align-items: flex-end;
+  /* `stretch`, then each group picks its own alignment — the prototype's
+     arrangement (`v3/app.css:84-90` stretches, `:91` centres the groups, `:105`
+     bottoms the tab strip). One `flex-end` for the whole band would have put
+     the mark and the chrome glyphs on the bottom border with the tabs. */
+  align-items: stretch;
   gap: var(--space-2);
-  padding: var(--titlebar-height) var(--space-3) 0;
+  /* Left inset clears the macOS traffic lights, exactly the 5.6 rem the mark
+     used to be positioned at inside the sidebar. */
+  padding: 0 var(--space-3) 0 5.6rem;
   border-bottom: 1px solid var(--shell-border);
+  -webkit-app-region: drag;
   /* To pasmo jest w prototypie pasmem tytułu (`v3/app.css:84-90`), więc bierze
      plan sceny, a nie plan lewej kolumny — w motywie jasnym to dwie różne
      jasności i szew między nimi jest zamierzony. Rozmycie znika z tego samego
@@ -1586,15 +1614,24 @@ kbd {
 .shell-history-controls {
   display: flex;
   flex: none;
+  align-items: center;
   gap: var(--space-1);
-  padding-bottom: var(--space-1);
+  -webkit-app-region: no-drag;
 }
-.shell-history-controls .icon-button {
-  width: 1.85rem;
-  height: 1.85rem;
+/* 1.75 rem, THE PROTOTYPE'S OWN `.icon-btn` (`v3/app.css:135-143`), replacing
+   the 1.85 rem this band invented. One declaration serves both ends of the band
+   because the prototype gives both ends the same button — a right-hand group
+   sized differently from the left would have been the position half-done. Above
+   the 24 px floor of WCAG 2.5.8 at 28 px, so the size is a fidelity choice with
+   room to spare, not a threshold traded away. */
+.shell-history-controls .icon-button,
+.shell-tab-actions .icon-button {
+  width: 1.75rem;
+  height: 1.75rem;
   color: var(--text-tertiary);
 }
-.shell-history-controls .icon-button:disabled {
+.shell-history-controls .icon-button:disabled,
+.shell-tab-actions .icon-button:disabled {
   color: var(--text-disabled);
   opacity: 0.45;
 }
@@ -1602,6 +1639,9 @@ kbd {
   min-width: 0;
   display: flex;
   flex: 1;
+  align-items: flex-end;
+  padding-top: 0.25rem;
+  -webkit-app-region: no-drag;
   gap: 1px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1624,32 +1664,20 @@ kbd {
     transparent
   );
 }
-.shell-detach {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
+/* The right-hand group mirrors the history group at the left end of the same
+   band, down to the button size — `v3/app.css:135-143` gives both ends the one
+   `.icon-btn`, and this application already had that rule under the name
+   `.icon-button`. Nine declarations of bespoke button paint went away with the
+   wide text button; nothing here restates them. */
+.shell-tab-actions {
+  display: flex;
   flex: none;
-  font: inherit;
-  font-size: var(--text-2xs);
-  margin-bottom: var(--space-1);
-  padding: 0.42rem 0.6rem;
+  align-items: center;
+  gap: var(--space-1);
+  -webkit-app-region: no-drag;
 }
 .shell-detach:not(:disabled) {
   cursor: pointer;
-}
-.shell-detach:not(:disabled):hover {
-  color: var(--text-secondary);
-  background: var(--surface-hover);
-}
-.shell-detach:not(:disabled):active {
-  background: var(--surface-pressed);
-}
-.shell-detach:disabled {
-  opacity: 0.4;
-}
-.shell-detach-short {
-  display: none;
 }
 .context-menu-layer {
   position: fixed;
@@ -2350,12 +2378,20 @@ kbd {
     display: none;
   }
 }
+/* THE SEAM THIS HEIGHT EXISTS FOR MOVED, so the height moved with it. The
+   inspector is a COLUMN of the shell grid, and until the title band became a
+   row of that grid the inspector started at the top of the window — so its
+   header had to be as tall as the work column's band (`--titlebar-height +
+   --header-band-height`) for the two bottom borders to line up. Both panes now
+   start below the band, so the seam is between this header and nothing at all:
+   the header is a header again, one band tall, and its content centres in it
+   instead of hanging from the bottom of a box twice its size. */
 .inspector-header {
-  height: calc(var(--titlebar-height) + var(--header-band-height));
+  height: var(--header-band-height);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-4) var(--space-3);
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 .inspector-header > div {
@@ -2372,12 +2408,12 @@ kbd {
   font-size: var(--text-2xs);
 }
 .inspector-body {
-  height: calc(100% - var(--titlebar-height) - var(--header-band-height));
+  height: calc(100% - var(--header-band-height));
   overflow-y: auto;
   padding: var(--space-5) var(--space-4) var(--space-8);
 }
 .surface-inspector-host {
-  height: calc(100% - var(--titlebar-height) - var(--header-band-height));
+  height: calc(100% - var(--header-band-height));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--border-default) transparent;
@@ -3581,74 +3617,140 @@ kbd {
   }
 }
 
+/* ── THE RAIL, SPLIT FROM THE NARROW WINDOW ──────────────────────────────────
+   Everything below used to live inside `@media (max-width: 50rem)`, which made
+   the window the ONLY thing that could collapse the left column. Position 13 of
+   this lot gives a person the same power, and the honest way to do that is to
+   SPLIT this block rather than copy it: a second set of rules hiding the same
+   children by the same class names is two owners for one behaviour, and they
+   drift the first time one of them is edited.
+
+   So the trigger moves into `railMode` (`RealApp.tsx`), which is `narrowRail ||
+   sidebarCollapsed`, and stamps `.rail` on the shell. The media query keeps ONLY
+   what is genuinely about a narrow WINDOW — the tab bar's own padding, the
+   history controls, the capture sheet's stacking — because those must not change
+   when someone on a 1440 px screen asks for more room.
+
+   WIDTH COMES FROM THE TOKEN NOW (`v3/app.css:152`: `.body.rail { --sidebar-width:
+   var(--sidebar-rail) }`). `--sidebar-rail` has stood in `tokens.css` since Phase 1
+   with no consumer at all; the hard-coded `4rem` here was the reason. One
+   declaration re-points the shell grid and every rule already written against
+   `var(--sidebar-width)` follows it.
+
+   THE SETTINGS NAVIGATOR IS THE SIDEBAR, and this was measured after being
+   guessed wrong. The first version of this split scoped the nav rules to
+   `.sidebar` on the reasoning that `.settings-mode-column` lives in the work
+   column and must not collapse when a person collapses the shell's left column.
+   It does not live there: `RealApp.tsx:3280` renders it INSIDE the same
+   `<aside class="sidebar">`, replacing the destination list while settings are
+   open. So the scope bought nothing — and it cost: the extra `.sidebar` lifted
+   these rules to (0,3,0), which then beat the (0,2,0) rule that stands the
+   section list down, and six glyphless 44 px squares appeared at 320 px where
+   the design has them stand down. Measured in Chromium at 320 px: six
+   `.settings-mode-section` computed `display: grid`, width 44 px, back label
+   hidden. The rules are therefore back on a bare `.nav-item`, and settings mode
+   gets its own three rail rules at the end of this block. */
+.desktop-shell.rail {
+  --sidebar-width: var(--sidebar-rail);
+}
+.desktop-shell.rail .sidebar {
+  padding-inline: 0.25rem;
+}
+/* `.brand-row strong` is NOT in this list any more, and the rule that used to
+   slide the mark to `left: 1.25rem` in the rail is gone with it: the mark left
+   the sidebar for the title band in position 11, so collapsing the column has
+   nothing to do with it. */
+.desktop-shell.rail .workspace-switcher > span:nth-child(2),
+.desktop-shell.rail .workspace-switcher > svg,
+.desktop-shell.rail .search-control span,
+.desktop-shell.rail .nav-label,
+.desktop-shell.rail .nav-item > span,
+.desktop-shell.rail .nav-item small,
+.desktop-shell.rail .preview-identity div {
+  display: none;
+}
+/* W trybie rail sekcje Ulubione i Ostatnie duplikowałyby ikony docelowych
+   widoków — pozostaje jedna lista ikon z tooltipami. */
+.desktop-shell.rail .nav-item.nav-favorite,
+.desktop-shell.rail .nav-item.nav-recent {
+  display: none;
+}
+/* Drugi poziom też znika: wiersz potomny nie ma ikony, więc w szynie ikon
+   zostałby pustym kwadratem z niewidoczną etykietą. Reguła stoi TU, obok
+   pozostałych, mimo że renderer też go nie rysuje w tym trybie — teraz oba
+   idą za tym samym `railMode`, więc arkusz i drzewo Reacta nie mogą już
+   rozjechać się o jedną klatkę, jak rozjeżdżały się pod zdarzeniem `change`. */
+.desktop-shell.rail .nav-children {
+  display: none;
+}
+.desktop-shell.rail .workspace-switcher {
+  grid-template-columns: 1fr;
+  padding: 0.5rem;
+}
+.desktop-shell.rail .workspace-avatar {
+  margin: auto;
+}
+.desktop-shell.rail .search-control,
+.desktop-shell.rail .nav-item {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-self: center;
+  align-self: center;
+  place-items: center;
+  padding: 0;
+}
+/* In the rail the foot has 44 px of usable width and two controls to place, so
+   they stack rather than sit side by side — measured, a row of dot + two 2rem
+   squares wants 87 px and overhung the column by 10 px on the right. */
+.desktop-shell.rail .preview-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+/* SETTINGS MODE IN THE RAIL, moved here from `@media (max-width: 50rem)` and
+   re-keyed on the rail rather than on the window — which is the same move the
+   whole block makes, applied to the one screen that swaps the sidebar's content
+   out. This column carries no glyphs, so the rules above turn all six section
+   entries into blank 2.75 rem squares. The section list stands down (the
+   surface's narrow-width category picker already carries reachability, and that
+   is what the packaged smoke exercises) while the way OUT keeps its chevron
+   and, through `aria-label`, its name.
+
+   ALL THREE RULES MUST OUTWEIGH THE RULES ABOVE, and that is why they carry the
+   shell prefix rather than the bare class they used to have: the general rail
+   rules now weigh (0,2,0) instead of the (0,1,0) they weighed inside the media
+   query, so the old (0,2,0) selectors would tie and lose on source order. */
+.desktop-shell.rail .settings-mode-section {
+  display: none;
+}
+.desktop-shell.rail .settings-mode-back {
+  grid-template-columns: 1fr;
+}
+.desktop-shell.rail .settings-mode-back > span[aria-hidden] {
+  display: block;
+}
+/* The chevron points the way OUT: left while the column is open (click to
+   collapse), right while it is a rail (click to expand). The name says the same
+   thing in words — the rotation is the redundant channel, not the only one. */
+.sidebar-collapse[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
 @media (max-width: 50rem) {
-  .desktop-shell {
-    grid-template-columns: 4rem minmax(0, 1fr);
-  }
-  .sidebar {
-    padding-inline: 0.25rem;
-  }
-  .brand-row {
-    left: 1.25rem;
-  }
-  .brand-row strong,
-  .workspace-switcher > span:nth-child(2),
-  .workspace-switcher > svg,
-  .search-control span,
-  .nav-label,
-  .nav-item > span,
-  .nav-item small,
-  .preview-identity div {
-    display: none;
-  }
-  /* W trybie rail sekcje Ulubione i Ostatnie duplikowałyby ikony docelowych
-     widoków — pozostaje jedna lista ikon z tooltipami. */
-  .nav-item.nav-favorite,
-  .nav-item.nav-recent {
-    display: none;
-  }
-  /* Drugi poziom też znika: wiersz potomny nie ma ikony, więc w szynie ikon
-     zostałby pustym kwadratem z niewidoczną etykietą. Reguła stoi TU, obok
-     pozostałych, mimo że renderer też go nie rysuje przy tej szerokości —
-     próg jest ten sam (50rem), a stan Reacta dojeżdża po zdarzeniu `change`,
-     nie w tej samej klatce co przeliczenie arkusza. */
-  .nav-children {
-    display: none;
-  }
-  .workspace-switcher {
-    grid-template-columns: 1fr;
-    padding: 0.5rem;
-  }
-  .workspace-avatar {
-    margin: auto;
-  }
-  .search-control,
-  .nav-item {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    display: grid;
-    grid-template-columns: 1fr;
-    justify-self: center;
-    align-self: center;
-    place-items: center;
-    padding: 0;
-  }
-  .preview-identity {
-    display: flex;
-    justify-content: center;
-  }
   .work-surface {
     padding-inline: var(--space-4);
   }
+  /* The left inset stays: the traffic lights are the same size at 320 px as at
+     1440. Only the right side gives its space back. */
   .shell-tabbar {
     margin-inline: 0;
-    padding-inline: var(--space-2);
+    padding-right: var(--space-2);
   }
   .shell-history-controls {
     display: none;
-  }
-  .work-surface::before {
-    left: 4rem;
   }
   .surface-header .secondary-button {
     width: 2.25rem;
@@ -3665,8 +3767,13 @@ kbd {
     grid-column: 2;
     justify-self: start;
   }
+  /* TWO DEAD DECLARATIONS FOUND BY THE SPLIT AND NOT CARRIED THROUGH IT, named
+     here so nobody restores them as "the rail offsets that went missing":
+     `.work-surface::before { left: 4rem }` styled a pseudo-element no rule in
+     this tree ever gives `content`, and `.capture-dock-layer { left: 4rem }`
+     set an inset on a statically positioned flex child. Both looked like they
+     tracked the sidebar width; neither ever moved a pixel. */
   .capture-dock-layer {
-    left: 4rem;
     padding-inline: 0.75rem;
   }
   .capture-dock {
@@ -3684,14 +3791,9 @@ kbd {
   }
 }
 
-@media (max-width: 30rem) {
-  .shell-detach-long {
-    display: none;
-  }
-  .shell-detach-short {
-    display: inline;
-  }
-}
+/* The 30 rem block that stood here swapped „Separate window" for „Window" on
+   the wide text button. A 1.75 rem square needs no second wording, so the
+   breakpoint went with the button. */
 
 /* Tooltip trybu rail: etykieta i skrót pozycji sidebaru przy hover/fokusie.
    Element jest renderowany tylko w trybie rail i pozycjonowany fixed obok
@@ -6967,11 +7069,12 @@ kbd {
   min-width: 0;
   padding: clamp(var(--space-4), 3vw, var(--space-8));
   background: var(--surface-sunken);
-  /* Shell height minus titlebar, header band and the editor header keeps the
-     canvas full-height without a magic viewport constant. */
-  min-height: calc(
-    100dvh - var(--titlebar-height) - var(--header-band-height) - 5.5rem
-  );
+  /* Shell height minus the title band and the editor header keeps the canvas
+     full-height without a magic viewport constant. The `--header-band-height`
+     term went out with the work column's own band: subtracting a strip that is
+     no longer above this canvas made the plane 40 px shorter than the room it
+     actually has. */
+  min-height: calc(100dvh - var(--titlebar-height) - 5.5rem);
 }
 .knowledge-writing-plane > .document-canvas {
   display: block;
@@ -8856,38 +8959,42 @@ kbd {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-/* PYTANIE ZMIENIŁO SIĘ, WIĘC ZMIENIŁO SIĘ ZAPYTANIE. Kontrolka natywna była
-   dotąd zamiennikiem drugiego nawigatora i odpalała się od szerokości SAMEJ
-   POWIERZCHNI (58rem, zapytanie kontenerowe). Nawigator jest teraz jeden i
-   stoi w powłoce, a powłoka zwija swoją kolumnę do szyny ikon pod
-   `@media (max-width: 50rem)` (`:3539`). Spis sekcji nie ma glifów, więc
-   w szynie stoi na baczność i nie da się w niego kliknąć — od tego progu
-   osiągalność niesie ta kontrolka. Próg jest TEN SAM, co próg zwinięcia, i to
-   jest jedyna liczba, przy której odpowiedź „czy da się wybrać kategorię"
-   zmienia się naprawdę. */
-@media (max-width: 50rem) {
-  .settings-category-picker {
-    align-items: stretch;
-    display: grid;
-    gap: var(--space-2);
-    margin-bottom: var(--space-5);
-  }
+/* PYTANIE ZMIENIŁO SIĘ DRUGI RAZ, WIĘC ZNOWU ZMIENIŁO SIĘ ZAPYTANIE. Kontrolka
+   natywna była najpierw zamiennikiem drugiego nawigatora i odpalała się od
+   szerokości SAMEJ POWIERZCHNI (58rem, zapytanie kontenerowe). Potem nawigator
+   został jeden, w powłoce, a powłoka zwijała kolumnę WYŁĄCZNIE pod
+   `@media (max-width: 50rem)` — więc kontrolka wzięła ten sam próg.
 
-  .settings-category-picker label {
-    color: var(--text-quaternary);
-    font-size: var(--text-2xs);
-  }
+   OD POZYCJI 13 SZEROKOŚĆ OKNA NIE JEST JUŻ JEDYNYM POWODEM ZWINIĘCIA: człowiek
+   może o nie poprosić na dowolnej szerokości. Zapytanie medialne przestało więc
+   opisywać stan, o który tu chodzi, i gdyby zostało, istniałaby szerokość —
+   1440 px ze zwiniętą kolumną — przy której spis sekcji stoi w szynie bez
+   glifów, a kontrolki natywnej nie ma. Zmierzone: sześć wpisów `display: grid`
+   szerokości 44 px, każdy bez widocznej etykiety, i ani jednej innej drogi do
+   kategorii. Warunek jest teraz TEN SAM CO WARUNEK ZWINIĘCIA, dosłownie ten sam
+   selektor, a nie ta sama liczba przepisana w dwóch miejscach — bo to była
+   liczba, która potrafiła się rozjechać, i właśnie się rozjechała. */
+.desktop-shell.rail .settings-category-picker {
+  align-items: stretch;
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
 
-  .settings-category-picker select {
-    background: var(--surface-content);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font: inherit;
-    min-height: 2.75rem;
-    padding: 0 var(--space-3);
-    width: 100%;
-  }
+.desktop-shell.rail .settings-category-picker label {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+.desktop-shell.rail .settings-category-picker select {
+  background: var(--surface-content);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  width: 100%;
 }
 
 @container (max-width: 47.5rem) {

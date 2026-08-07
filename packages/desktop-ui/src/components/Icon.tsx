@@ -54,6 +54,8 @@ export type IconName =
   | "chevron-down"
   | "flag"
   | "list"
+  | "panel"
+  | "fields"
   | "folder"
   | "folder-loose";
 
@@ -143,6 +145,17 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     ),
     /* `v3/app.js:34` */
     list: <path d="M4.5 6.75h15M4.5 12h15M4.5 17.25h15" />,
+    /* `v3/app.js:53` (`panel`) and `:42` (`fields`), both scaled x1.5 — the two
+       glyphs the prototype puts at the right end of its title bar
+       (`v3/app.js:554-557`). The prototype's third member of that group is a
+       theme toggle; this application keeps appearance in Settings and has no
+       such control, so the group is two, not three. A glyph invented for a
+       control that does not exist would be the more expensive kind of
+       fidelity. */
+    panel: (
+      <path d="M3.75 6a1.5 1.5 0 0 1 1.5-1.5h13.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V6Zm10.5 0v13.5" />
+    ),
+    fields: <path d="M3.75 5.25h16.5v13.5H3.75zM9 5.25v13.5" />,
     /* `v3/screens/knowledge.js:358`. The prototype draws its folder with the
        SAME outline it gives `project` (`v3/app.js:18`); this file does not,
        because `project` above is an older, squarer app glyph and quietly

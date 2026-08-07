@@ -770,17 +770,32 @@
      SZEROKOŚĆ KOLUMNY ZOSTAJE NA 13,75 rem, wbrew `v3/tokens.css:103`, i to jest
      pomiar, nie ostrożność. Podniesienie jej do 15 rem przechodzi przy 100 %
      pisma i przy 320 px — tam `--sidebar-width` nie obowiązuje w ogóle, bo
-     `@media (max-width: 50rem)` przełącza siatkę powłoki na 4 rem, więc zdanie
-     z `verify-renderer-layout.mjs:942` („przy 320 sam sidebar ma 220") opisuje
-     stan, którego przy tej szerokości nie ma. ŁAMIE SIĘ GDZIE INDZIEJ: jednostki
-     w zapytaniu medialnym liczą się od korzenia 16 px, więc przy 200 % i 300 %
-     pisma szyna się NIE włącza, kolumna zabiera 240 px zamiast 220, a panelowi
-     pracy ubywa 20 px. Zmierzone jednym przelotem bramki: 21 przepełnień na
-     ośmiu ekranach, z czego pięć to wpisy rejestru długu, które urosły
-     (`projects:client` 194→234 px, `settings` 117→157 px, `organizations`
-     61→72 px, `people` 25→35 px, `renewals` 19→59 px). Żaden z tych ekranów nie
-     należy do tego lotu, a przepisanie cudzych progów po to, żeby zmieścić swój
-     token, jest odwrotnością tego, po co ten rejestr istnieje. */
+     `@media (max-width: 50rem)` włącza szynę, więc zdanie, które stało
+     w `verify-renderer-layout.mjs` („przy 320 sam sidebar ma 220"), opisywało
+     stan, którego przy tej szerokości nie ma; jest tam dziś sprostowane
+     pomiarem. ŁAMIE SIĘ GDZIE INDZIEJ: jednostki w zapytaniu medialnym liczą się
+     od korzenia 16 px, więc przy 200 % i 300 % pisma szyna się NIE włącza,
+     kolumna zabiera 240 px zamiast 220, a panelowi pracy ubywa 20 px.
+
+     PRZEMIERZONE PO LOTACH 2-6, 2026-08-07, bo lot 1 mierzył to PRZED nimi
+     i część jego liczb już nie obowiązuje. Wynik: bramka układu wraca ZIELONA
+     na 13,75 rem i CZERWONA na 15 rem, z 21 problemami na dziewięciu stanach
+     ekranu — ta sama łączna liczba co u lotu 1, ale nie ten sam zbiór:
+
+       * przelot 200 % (1024 px), 5 problemów: `projects:client` 194→234 px,
+         `settings` 117→157 px, `organizations` 61→72 px, `people` 25→35 px —
+         cztery wpisy rejestru długu, które UROSŁY — plus JEDEN problem, którego
+         w rejestrze nie ma wcale: `tasks:calendar`, `span._dow` przelewa się
+         o 4 px. `renewals` (19→59 px u lotu 1) już się nie przelewa: lot 3
+         przepisał ten wiersz i wpis zszedł z listy sam.
+       * przelot „Library at 300 % text" (1092 px), 16 problemów na czterech
+         stanach Biblioteki (`library`, `:notes`, `:sources`, `:captures`),
+         wszystkie świeże — przy 13,75 rem ten przelot nie ma ANI JEDNEGO.
+
+     Żaden z tych ekranów nie należy do tego lotu, żaden z 16 problemów
+     Biblioteki nie ma wpisu w rejestrze, a `tasks:calendar` byłby nową wadą
+     wprowadzoną cudzemu ekranowi. Przepisanie cudzych progów po to, żeby
+     zmieścić swój token, jest odwrotnością tego, po co ten rejestr istnieje. */
   --sidebar-width: 13.75rem;
   --sidebar-rail: 3.25rem;
   --inspector-width: 20rem;

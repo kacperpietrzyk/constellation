@@ -128,19 +128,30 @@ describe("enterprise settings navigation contract", () => {
   it("keeps every category available through a native narrow-width control", () => {
     assert.match(settings, /<select\s+id="settings-category-select"/s);
     assert.match(settings, /settingsCategories\.map\(\(category\) =>/);
-    // Wąskie okno: powłoka zwija lewą kolumnę do szyny ikon pod
-    // `@media (max-width: 50rem)`, a spis sekcji nie ma glifów — więc od tego
-    // samego progu osiągalność niesie kontrolka natywna. PRÓG MUSI BYĆ TEN
-    // SAM co próg zwinięcia: gdyby kontrolka pojawiała się później,
-    // istniałaby szerokość, przy której żadna kategoria nie jest klikalna.
+    // Zwinięta kolumna: spis sekcji nie ma glifów, więc w szynie stoi na
+    // baczność i nie da się w niego kliknąć — od tego momentu osiągalność
+    // niesie kontrolka natywna. WARUNEK MUSI BYĆ TEN SAM co warunek zwinięcia,
+    // bo inaczej istnieje stan, w którym żadna kategoria nie jest klikalna.
+    //
+    // ASERCJA PYTA O SELEKTOR, NIE O LICZBĘ, I TO JEST POPRAWKA, NIE
+    // PRZEPISANIE. Do pozycji 13 oba warunki brzmiały `@media (max-width:
+    // 50rem)` i ta asercja pilnowała, żeby to była TA SAMA liczba w dwóch
+    // miejscach. Zwinięcie ma od tej pozycji drugi powód — prośbę człowieka na
+    // dowolnej szerokości — i liczba natychmiast przestała opisywać jeden
+    // z nich. Dwie reguły na jednej klasie `.desktop-shell.rail` nie mogą się
+    // rozjechać tak, jak rozjechały się dwie kopie progu.
     assert.match(
       styles,
-      /@media \(max-width: 50rem\)[^@]*?\.settings-category-picker\s*\{[^}]*display: grid/s,
+      /\.desktop-shell\.rail \.settings-category-picker\s*\{[^}]*display: grid/s,
     );
     assert.match(
       styles,
-      /@media \(max-width: 50rem\)[^@]*?\.settings-mode-column \.settings-mode-section\s*\{[^}]*display: none/s,
+      /\.desktop-shell\.rail \.settings-mode-section\s*\{[^}]*display: none/s,
     );
+    // I zwinięcie dalej ma swój próg szerokości — tylko już nie w arkuszu:
+    // `railMode` w powłoce to „okno poniżej 50rem LUB prośba człowieka".
+    assert.match(shell, /window\.matchMedia\("\(max-width: 50rem\)"\)/);
+    assert.match(shell, /const railMode = narrowRail \|\| sidebarCollapsed;/);
     // I nie ma już drugiego nawigatora w treści ekranu, którego ta kontrolka
     // była zamiennikiem (`v3/screens/settings.css:36-80` — jeden spis sekcji,
     // w lewej kolumnie).

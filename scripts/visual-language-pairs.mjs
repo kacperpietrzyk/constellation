@@ -510,12 +510,16 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".shell-tabbar",
-      why: "geometry, not paint: the band lives inside <main>, so its left edge sits at the sidebar's width",
-      app: "packages/desktop-ui/src/styles.css:1224-1236, RealApp.tsx:3359",
+      why: "geometry, not paint: the band used to live inside <main>, so its left edge sat at the sidebar's width",
+      app: "packages/desktop-ui/src/styles.css:1571-1608, RealApp.tsx:3149",
     },
     read: { property: "rect.left" },
     expect: { kind: "literal", value: "0px" },
-    status: "pending: LOT 1",
+    // ODDANE 2026-08-07. Przełączone PO przelocie, który wypisał
+    // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES` w OBU motywach: „.shell-tabbar
+    // computes rect.left = 0px". Pasmo jest teraz wierszem siatki powłoki
+    // (`grid-column: 1 / -1`), a nie pierwszym dzieckiem kolumny roboczej.
+    status: "enforced",
   },
 
   // ── POZYCJA 13 — nie ma czym zwinąć lewej kolumny ─────────────────────────
@@ -541,7 +545,73 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", equals: 1 },
-    status: "pending: LOT 1",
+    // ODDANE 2026-08-07, przełączone PO przelocie, który wypisał
+    // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES` w obu motywach. Kontrolka stoi
+    // w stopce kolumny, obok Ustawień — tam, gdzie trzyma ją prototyp — i niesie
+    // `aria-expanded` oraz nazwę zmieniającą się ze stanem. Tryb rail ma teraz
+    // JEDNEGO właściciela (`railMode` = szerokość okna LUB prośba człowieka),
+    // a reguły arkusza są przy nim rozszczepione, nie zduplikowane.
+    status: "enforced",
+  },
+
+  // ── POZYCJA 14 — prawy koniec paska zakładek ──────────────────────────────
+  // TA POZYCJA STAŁA NA LIŚCIE NIEOBJĘTYCH I SCHODZI Z NIEJ, a powód zejścia
+  // jest wart tyle, co para. Wpis mówił: „nie ma tu WŁASNOŚCI do porównania,
+  // a selektor na samą szerokość `.shell-detach` mierzyłby przycisk, który po
+  // poprawce ma przestać istnieć". Pierwsze zdanie było prawdziwe o LICZBIE
+  // afordancji i dalej jest — mapa nadal nie mówi, ILU glifów ma być w grupie,
+  // bo to narzucałoby kształt znaczników. Drugie okazało się fałszywe przy
+  // budowie: przycisk NIE przestał istnieć, przestał być szeroki. Klasa została
+  // (`run-packaged-alpha-smoke.mjs:895` też ją czyta), więc podmiot jest ten
+  // sam i da się o niego zapytać o jedyną własność, która TU rozstrzyga.
+  //
+  // KWADRAT JEST TĄ WŁASNOŚCIĄ. Wada nazywała się „szeroki przycisk tekstowy":
+  // 2xs pismo w ramce, ~130 px szerokości, druga treść pod 30 rem. Prototyp ma
+  // w tym miejscu `.icon-btn` — 1,75 rem na 1,75 rem. Szerokość równa
+  // wysokości równej wartości prototypu wyklucza KAŻDY przycisk z napisem
+  // w środku, i robi to bez jednego słowa o tym, ile ich ma być obok.
+  {
+    id: "L1-14a",
+    lot: 1,
+    position: 14,
+    title: "the right end of the tab strip is a glyph, not a word",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "135-143",
+      value: "`.icon-btn { width: 1.75rem; height: 1.75rem }`",
+    },
+    subject: {
+      selector: ".shell-detach",
+      why: "global class in styles.css, kept through the change and also read by the packaged smoke",
+      app: "packages/desktop-ui/src/styles.css:1589-1595, RealApp.tsx:3593-3651",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 1.75 },
+    status: "enforced",
+  },
+  {
+    id: "L1-14b",
+    lot: 1,
+    position: 14,
+    title: "and it is square, so no label can be hiding inside it",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "135-143",
+      value: "`.icon-btn` is as tall as it is wide",
+    },
+    subject: {
+      // DRUGA POŁOWA JEDNEGO ZDANIA, NIE OZDOBNIK. Sama szerokość 1,75 rem
+      // przechodzi też na przycisku, który jest wąski i WYSOKI; dopiero para
+      // wymiarów mówi „kwadrat".
+      selector: ".shell-detach",
+      why: "same subject as L1-14a",
+      app: "packages/desktop-ui/src/styles.css:1589-1595",
+    },
+    read: { property: "height" },
+    expect: { kind: "rem", value: 1.75 },
+    status: "enforced",
   },
 
   // ── POZYCJA 15 — kolumna węższa, pasmo tytułu wyższe ──────────────────────
@@ -550,10 +620,18 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 15,
     title: "the sidebar is 15rem wide",
-    // UWAGA DLA LOTU: `verify-renderer-layout.mjs` niesie WŁASNY rachunek na
-    // 320 px („sam sidebar ma 220, zostaje sto pikseli"). Przy 15rem zostaje
-    // osiemdziesiąt i tamta bramka to złapie. Ta para mierzy szerokość, nie
-    // rozstrzyga tamtego rachunku.
+    // ZOSTAJE „PENDING", Z POWODEM PRZEMIERZONYM 2026-08-07 (lot 1 mierzył go
+    // przed lotami 2-6). Ostrzeżenie, które tu stało — „`verify-renderer-layout`
+    // niesie własny rachunek na 320 px, przy 15rem zostaje osiemdziesiąt" — było
+    // FAŁSZYWE: przy 320 px szyna jest włączona i `--sidebar-width` nie
+    // obowiązuje; tamten rachunek jest już sprostowany pomiarem u siebie.
+    // Prawdziwa blokada jest gdzie indziej i dalej stoi: zapytania medialne
+    // liczą `rem` od korzenia 16 px, więc przy 200 % i 300 % pisma szyna się nie
+    // włącza i kolumna zabiera 20 px panelowi pracy. Przemierzone: bramka układu
+    // czerwienieje z 21 problemami na dziewięciu stanach ekranu, w tym 16
+    // świeżych w Bibliotece i jednym NOWYM na `tasks:calendar`. Pełny rozpis
+    // stoi przy samym tokenie (`packages/desktop-ui/src/tokens.css`), żeby nie
+    // było go w dwóch miejscach.
     contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
@@ -662,29 +740,6 @@ export const VISUAL_LANGUAGE_PAIRS = [
 export const VISUAL_LANGUAGE_NOT_COVERED = [
   {
     lot: 1,
-    position: 14,
-    // `probe` NIE JEST ASERCJĄ — to selektor, którego liczbę dopasowań przelot
-    // WYPISUJE przy każdym przebiegu. Nieobjęta pozycja ma zostawić w raporcie
-    // liczbę, żeby jej nieobjęcie dało się podważyć pomiarem, a nie tylko
-    // przeczytać jako deklarację.
-    probe: ".shell-detach",
-    title:
-      "the right end of the tab strip: an icon group instead of a wide text button",
-    prototype:
-      "v3/app.css:135-143 (`.icon-btn` — 1.75rem square), v3/app.js:554-557",
-    app: "packages/desktop-ui/src/styles.css:1278-1304 (`.shell-detach`), RealApp.tsx:3437-3465",
-    why:
-      "Nie ma tu WŁASNOŚCI do porównania — różnica jest w LICZBIE i RODZAJU afordancji, " +
-      `a każdy licznik, który umiałbym napisać („ile kontrolek w prawej grupie", „ile z nich ` +
-      `jest kwadratowych"), narzuca lotowi kształt znaczników zamiast mierzyć farbę. ` +
-      "Selektor na samą szerokość `.shell-detach` mierzyłby przycisk, który po poprawce ma " +
-      "przestać istnieć — czyli byłby parą, która po oddaniu lotu wraca NOT_MEASURED.",
-    greenWrong:
-      "Lot może zostawić szeroki przycisk tekstowy, zmienić mu tylko etykietę, i cała ta mapa " +
-      "będzie zielona.",
-  },
-  {
-    lot: 1,
     position: 10,
     title: "the capture dock's hover state takes the accent edge",
     prototype:
@@ -722,22 +777,22 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
  * czerwoną na KAŻDEJ oddanej pozycji.
  */
 export const VISUAL_LANGUAGE_EXPECTED = {
-  pairs: 25,
-  enforced: 22,
-  pending: 3,
-  notCovered: 2,
+  pairs: 27,
+  enforced: 26,
+  pending: 1,
+  notCovered: 1,
   lots: {
     1: {
       // Pozycje briefu Lotu 1 (`docs/plans/2026-08-06-adopcja-jezyka-wizualnego/
       // faza-3-build-brief.md:180-196`).
       positionsInBrief: 15,
-      // Pozycje, dla których mapa ma CO NAJMNIEJ jedną parę:
-      // 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15.
-      positionsWithPairs: 14,
-      // Pozycja, dla której mapa nie ma ANI JEDNEJ pary. Pozycja 10 ma wpis
-      // w `NOT_COVERED` na CZĘŚĆ swojej treści (hover), więc nie liczy się
-      // tutaj — ma trzy pary.
-      positionsWithoutPairs: [14],
+      // Pozycje, dla których mapa ma CO NAJMNIEJ jedną parę: wszystkie
+      // piętnaście. Pozycja 14 dołączyła jako ostatnia, razem z lotem, który ją
+      // oddał — do tego czasu była jedyną pozycją briefu bez pary.
+      positionsWithPairs: 15,
+      // Pozycja 10 ma wpis w `NOT_COVERED` na CZĘŚĆ swojej treści (hover), więc
+      // nie liczy się tutaj — ma trzy pary.
+      positionsWithoutPairs: [],
     },
   },
 };

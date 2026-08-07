@@ -957,10 +957,22 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // `BrowserWindow` sets `minWidth: 760` (desktop-main/src/main.ts:111), so
         // a 320 px window is a stress case for the collections — which do have to
         // survive it, and are still swept there — and not a state a record can be
-        // read in. At 320 the sidebar alone is 220, leaving a hundred pixels: a
-        // record drawn into that is not a layout defect to fix but a window the
-        // OS refuses to make. The 200%-text pass is the real narrow-pane case and
-        // it DOES open records.
+        // read in: a record drawn into a window the OS refuses to make is not a
+        // layout defect to fix. The 200%-text pass is the real narrow-pane case
+        // and it DOES open records.
+        //
+        // THE ARITHMETIC THAT USED TO STAND HERE WAS WRONG AND IS REPLACED BY A
+        // MEASUREMENT. It read „at 320 the sidebar alone is 220, leaving a
+        // hundred pixels", and that sentence has never described this pass: at
+        // 320 px the shell is in the rail, so the sidebar is `--sidebar-rail`
+        // and the work column keeps the rest. Measured in Chromium at 320 px on
+        // 2026-08-07: sidebar 52 px, work column 268 px. The wrong number was
+        // load-bearing in the wrong direction — a lot reading it would conclude
+        // that raising `--sidebar-width` breaks this pass, when `--sidebar-width`
+        // does not apply here at all. Where raising it DOES break things is the
+        // 200 % and 300 % passes, whose media queries resolve `rem` against the
+        // unscaled root and therefore never reach the rail; that measurement
+        // lives at `tokens.css` beside the token itself.
         // AND THE THIRD KIND IS REACHED FROM HERE TOO — by the PIPELINE CARD,
         // and by that door alone.
         //

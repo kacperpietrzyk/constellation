@@ -182,7 +182,8 @@ import path from "node:path";
 // pomiaru, przez lot nasady Fazy 3:
 //   gzip ścieżki gorącej   2 355 B  (174 000 − 171 645)
 //   CSS łącznie           21 250 B  — liczone wobec sufitu 330 000, którego
-//                                     ten plik JUŻ NIE MA (dziś 450 000, `:300`)
+//                                     ten plik JUŻ NIE MA (dziś 450 000, stała
+//                                     `totalStylesheetBytes` w `const limits`)
 //   surowy JS ścieżki     16 886 B  · JS łącznie 140 403 B · leniwy 96 762 B
 //
 // PRZEBAZOWANIE NA ZAMKNIĘCIU FALI ADOPCJI JĘZYKA WIZUALNEGO, 2026-08-07.
@@ -196,17 +197,23 @@ import path from "node:path";
 //   największy leniwy 617 695 B                   (sufit  700 000)
 //
 // UWAGA NA SUFIT CSS ŁĄCZNIE: blok o fali C mówi „sufit 330 000", a w kodzie
-// stoi 450 000 (`:300`). Ta proza zwietrzała — nie ruszono jej przy podniesieniu
+// stoi 450 000 (stała `totalStylesheetBytes` w `const limits`; stał tu numer
+// linii `:300`, który wskazywał na środek cudzego rachunku już przed
+// domknięciem Fazy 3 — cytat z NAZWY nie gnije, cytat z numeru gnije przy
+// każdej wstawce). Ta proza zwietrzała — nie ruszono jej przy podniesieniu
 // — i rekonesans Fazy 3 przeczytał ją jako obowiązującą, po czym oparł na niej
 // szacunki. Dokładnie ta klasa, którą ta fala naprawiała przez trzy fazy:
 // dokument mówi jedno, egzekwuje się co innego, i nic nie krzyczy.
 // ROZSTRZYGA STAŁA W KODZIE, NIE KOMENTARZ.
 //
 // ── STAN NA 2026-08-07 PO LOCIE POWŁOKI I LOCIE NASADY FAZY 3 ───────────────
-// TO JEST NOWY BASELINE i to z nim porównuje się każdy lot Fazy 3 — nie
-// z buildem z 2026-07-28, nie z falą C, i nie z wierszem „po Fazach 0-2" wyżej,
-// który jest starszy o jeden zmergowany lot (`0cf1745`, powłoka). Brief Fazy 3
-// cytuje ten starszy wiersz jako stan wejściowy; różnica jest realna i nazwana.
+// TO BYŁ BASELINE LOTÓW FAZY 3 — nie build z 2026-07-28, nie fala C, i nie
+// wiersz „po Fazach 0-2" wyżej, który jest starszy o jeden zmergowany lot
+// (`0cf1745`, powłoka). Brief Fazy 3 cytuje ten starszy wiersz jako stan
+// wejściowy; różnica jest realna i nazwana. PRZESTAŁ BYĆ STANEM DZISIEJSZYM
+// z chwilą lotów 2-6 i domknięcia powłoki — aktualny wiersz stoi w bloku
+// „PRZEBAZOWANIE NA ZAMKNIĘCIU FAZY 3" niżej, razem z powodem, dla którego
+// ten tutaj zdążył się zestarzeć o 10 681 B, zanim ktokolwiek to zauważył.
 // Zmierzone czystym rebuildem (`npm run check`, czyli `clean` + `build`, potem
 // `node scripts/verify-renderer-bundle.mjs`), cytat z linii tego skryptu,
 // drzewo = `0cf1745` plus CAŁY lot nasady Fazy 3 — R3 (`--radius-md` →
@@ -285,6 +292,57 @@ import path from "node:path";
 //   jest jeszcze sufitem BEZPIECZEŃSTWA — zostało odpowiedziane blokiem niżej,
 //   z 2026-08-01: sufit poszedł na 450 000 i rola wróciła. Skreślone jako
 //   otwarte, żeby nikt nie odpowiadał na nie drugi raz.)
+//
+// ── PRZEBAZOWANIE NA ZAMKNIĘCIU FAZY 3, 2026-08-07 ──────────────────────────
+// Warunek 2 obu podniesień wyżej, wykonany przy odbiorze końcowym fazy. Blok
+// nad tym stał tu jako „stan" przez pięć lotów i przestał nim być przy
+// pierwszym z nich. Zmierzone czystym rebuildem (`npm run check` = `clean` +
+// `build`, potem `node scripts/verify-renderer-bundle.mjs`), cytat z linii tego
+// skryptu; drzewo = `4b9c646` plus niezakomitowany lot domknięcia powłoki
+// (pozycje 11, 13 i 14 Lotu 1):
+//
+//   budżet                  zmierzone         sufit        zapas
+//   ścieżka gorąca surowa     631 907 B      648 000 B    16 093 B
+//   ścieżka gorąca gzip       171 702 B      174 000 B     2 298 B  ← najciaśniej
+//   CSS gorący                184 092 B      200 000 B    15 908 B
+//   JS łącznie              1 708 649 B    1 770 000 B    61 351 B
+//   CSS łącznie               343 803 B      450 000 B   106 197 B
+//   największy leniwy         617 695 B      700 000 B    82 305 B
+//
+// DRYF WOBEC BLOKU WYŻEJ, i to jest ta liczba, którą warto zapamiętać:
+//   surowy JS  +913 B · gzip +224 B · CSS gorący −181 B
+//   JS łącznie +6 081 B · CSS łącznie +10 681 B · leniwy 0 B
+//
+// DLACZEGO DRYF JEST DZIESIĘCIOTYSIĘCZNY, A NIE DWUSETNY — przyczyna jest
+// procesowa, nie techniczna, i należy do tego pliku bardziej niż same liczby.
+// Warunek 3 wyżej mówi: „Każdy lot fali podaje ZMIERZONY
+// `totalStylesheetBytes` i zapas — obok `hotPathJavaScriptGzipBytes`". Żaden
+// z trzech lotów ekranowych tej fazy (`8860d06`, `6ee59c5`, `4b9c646`) nie
+// podał ani jednej z tych dwóch liczb w komunikacie commita.
+//
+// A MECHANIZM, KTÓRY TO UKRYŁ, JEST WART WIĘCEJ NIŻ SAMO PRZEOCZENIE: lot 2-4
+// (`8860d06`) nie dotknął `styles.css` ANI RAZ — wydał 1 360 linii w dziewięciu
+// CSS Modułach. `totalStylesheetBytes` liczy MODUŁY TAK SAMO jak arkusz
+// wspólny, więc największy pojedynczy wydatek CSS tej fazy jest niewidzialny
+// dla każdego, kto szuka dryfu w `styles.css`. To ta sama ślepota, którą
+// zamknął `consumer-contrast.test.mjs` po stronie kontrastu (bramki czytały
+// WYŁĄCZNIE `tokens.css`) — po stronie budżetu nikt jej jeszcze nie zamknął.
+//
+// Bramka była za każdym razem zielona, bo sufit CSS łącznie ma 106 kB zapasu —
+// a tabela, która ma być „stanem", zestarzała się cicho przez pięć commitów.
+// Sufit nie jest przyrządem do pilnowania tej tabeli; jedynym przyrządem jest
+// to, że bramka DRUKUJE sześć liczb, a ktoś na nie patrzy. Tym razem patrzył
+// dopiero odbiór końcowy.
+//
+// CZEGO TU DALEJ ŚWIADOMIE NIE MA: asercji równości między tabelą a pomiarem —
+// z tym samym uzasadnieniem, co w bloku wyżej. Jeżeli przebazowanie przy
+// odbiorze końcowym okaże się za późnym momentem drugi raz, decyzja
+// o przypięciu (i o trybie aktualizacji tabeli) należy do właściciela.
+//
+// ZAPAS GZIP ŚCIEŻKI GORĄCEJ ZSZEDŁ Z 2 522 B NA 2 298 B. Reguła stopu z bloku
+// wyżej (poniżej 500 B lot zatrzymuje się i pyta) nie została uruchomiona ani
+// razu w tej fazie. Uwaga dla następnej fali zostaje bez zmian i jest teraz
+// o 224 B pilniejsza.
 //
 // ── PODNIESIENIE SUFITU ARKUSZY, 2026-08-01, fala D (lot S1) ────────────────
 // Rozstrzygnięcie drugiego z dwóch pytań zostawionych wyżej otwartych, podjęte
