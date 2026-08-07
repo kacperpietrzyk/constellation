@@ -181,6 +181,7 @@ export const SettingsSurface = ({
   onOpenRecovery,
   onNavigate,
   requestedCategory,
+  onCategoryChange,
   onUndo,
 }: {
   readonly client: ConstellationRendererClient | undefined;
@@ -203,6 +204,14 @@ export const SettingsSurface = ({
    * its own category exactly as it did before this prop existed.
    */
   readonly requestedCategory?: SettingsCategoryId;
+  /**
+   * Which section the reader is looking at, reported OUT. The intersection
+   * observer that decides it lives here, next to the sections it watches; the
+   * one navigator that draws the answer lives in the shell. Optional, because
+   * a surface-only mount has no navigator to tell — and because the screen
+   * still works without anybody listening.
+   */
+  readonly onCategoryChange?: (category: SettingsCategoryId) => void;
   /**
    * Preview undoing one confirmed change. Reached from the Activity pane,
    * which used to be a destination of its own and asked the shell for this
@@ -940,26 +949,68 @@ export const SettingsSurface = ({
     navigateToCategory(requestedCategory);
   }, [requestedCategory]);
 
+  // Ta sama odpowiedź, dwóch czytających. Sekcję w polu widzenia rozstrzyga
+  // obserwator przecięć TUTAJ, bo tylko tutaj są obserwowane elementy; rysuje
+  // ją kolumna trybu w powłoce, bo tylko tam stoi jedyny nawigator. Efekt
+  // zależy od samej wartości, więc powłoka dostaje wiadomość dokładnie tyle
+  // razy, ile razy odpowiedź się zmienia.
+  useEffect(() => {
+    onCategoryChange?.(activeCategory);
+  }, [activeCategory, onCategoryChange]);
+
   return (
-    <div className="surface-scroll settings-surface">
-      <header className="surface-header wave2-header">
+    <div
+      className="surface-scroll settings-surface"
+      // WHICH SECTION IS IN VIEW, DECLARED. The shell's left column is the one
+      // navigator now, so the surface no longer draws the marker itself — and
+      // an assertion that reads a marker from a class name would be reading a
+      // navigator that only exists in the whole application, never in a
+      // surface-only mount. The fact is declared instead: `renderer-declarations`
+      // is the pattern this repository already uses for exactly that, and the
+      // packaged smoke and the interaction test can both read it.
+      data-settings-active-category={activeCategory}
+    >
+      {/* NAGŁÓWEK JEST PASMEM, NIE CZTEROSPADOWĄ KOLUMNĄ
+          (`v3/screens/settings.css:84-94`): jeden rząd o wysokości pasma,
+          tytuł i podtytuł na wspólnej linii bazowej, akcja po prawej. Stały tu
+          cztery wiersze jeden pod drugim — nadkreślenie, tytuł, akapit i link
+          pomocy — i zajmowały 111,89 px zmierzone przy 1440 px.
+
+          PODTYTUŁ JEST POLICZONY, i liczy TO SAMO, co dotąd niósł nawigator:
+          `categoryStatus` mówi, co dana sekcja robi w tym workspace. Prototyp
+          trzyma dokładnie taki podtytuł dokładnie tutaj — `st-panel-sub` jest
+          funkcją bieżącej sekcji (`v3/screens/settings.js:1005-1007`,
+          `:928-954`) — a nie w spisie sekcji, gdzie pozycja niesie etykietę
+          i najwyżej liczbę (`v3/screens/settings.css:61-71`).
+
+          CZEGO TU NIE MA I DLACZEGO: liczby rekordów („Notes 16"). Prototyp
+          liczy ją funkcją `s.n()` z własnej fikstury; ten ekran ma zapisane
+          wprost, że byłby to fakt o workspace, a nie o sekcji, i że raz już
+          tak napisano. Podtytuł zostaje ZDANIEM O SEKCJI. */}
+      <header className="surface-header wave2-header settings-header">
         <div>
           <p className="eyebrow">Workspace</p>
           <h1 id="surface-title" tabIndex={-1}>
             Settings
           </h1>
-          <p>Identity, data, appearance, access and release.</p>
-          <button
-            type="button"
-            className="settings-help-entry"
-            aria-haspopup="dialog"
-            onClick={() => setConceptHelpTopic("data-home")}
-          >
-            Explain data and access
-          </button>
+          <p className="settings-band-sub">{categoryStatus[activeCategory]}</p>
         </div>
+        <button
+          type="button"
+          className="settings-help-entry"
+          aria-haspopup="dialog"
+          onClick={() => setConceptHelpTopic("data-home")}
+        >
+          Explain data and access
+        </button>
       </header>
 
+      {/* JEDNA KONTROLKA OSIĄGALNOŚCI, NIE DRUGI NAWIGATOR. Poniżej 50rem
+          powłoka zwija lewą kolumnę do szyny ikon, a spis sekcji nie ma
+          glifów — stoi więc tam, gdzie stał: natywna kontrolka, przez którą
+          każda kategoria daje się wybrać bez wskaźnika. Prototyp nie ma tego
+          przypadku, bo jego kolumna nigdy się nie zwija
+          (`v3/screens/settings.css:33` zwęża ją do 12rem i tyle). */}
       <div className="settings-category-picker">
         <label htmlFor="settings-category-select">Settings category</label>
         <select
@@ -977,28 +1028,14 @@ export const SettingsSurface = ({
         </select>
       </div>
 
+      {/* TU STAŁ DRUGI NAWIGATOR — przyklejony spis kategorii w treści ekranu,
+          obok trzeciego (kontrolka natywna) i pierwszego (kolumna trybu
+          w powłoce). Prototyp ma JEDEN i trzyma go w lewej kolumnie
+          (`v3/screens/settings.css:36-80`); żadna z jego sekcji nie rysuje
+          spisu sekcji wewnątrz siebie. Znacznik „tu jesteś" przeniósł się na
+          `.settings-mode-column` (`RealApp.tsx`), a statusy kategorii — do
+          pasma nagłówka, gdzie prototyp je trzyma. */}
       <div className="settings-layout">
-        <nav className="settings-navigator" aria-label="Settings categories">
-          <p>Categories</p>
-          <ol>
-            {settingsCategories.map((category) => (
-              <li key={category.id}>
-                <button
-                  type="button"
-                  aria-controls={settingsCategoryElementId(category.id)}
-                  aria-current={
-                    activeCategory === category.id ? "location" : undefined
-                  }
-                  onClick={() => navigateToCategory(category.id)}
-                >
-                  <span>{category.label}</span>
-                  <small>{categoryStatus[category.id]}</small>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </nav>
-
         <div className="settings-sections">
           <div
             className="settings-category"
@@ -2156,8 +2193,26 @@ export const SettingsSurface = ({
                     </ul>
                   </div>
                 </div>
+                {/* AKCJA GŁÓWNA TEJ TAFLI, więc niesie akcent
+                    (`v3/app.css:321-332` `.btn.primary`; `.ui-craft/tokens.md`
+                    „Usage constraints" 3 — jedna akcja główna NA POJEMNIK,
+                    który ją ma, a nie na widok).
+
+                    KONTRAKT PRZEPISANY W TYM SAMYM PRZEBIEGU, bo mówił co
+                    innego niż maluje prototyp. Do 2026-08-07 punkt 3 brzmiał
+                    „one per view" i ten lot łamałby go dwa razy — a prototyp
+                    stawia na ekranie Ustawień DWIE akcje główne naraz, po
+                    jednej w każdej tafli: „Choose a vault folder…"
+                    (`v3/screens/settings.js:812`) i „Export to Markdown…"
+                    (`:830`). Policzone w źródle, nie założone.
+
+                    Klasa, nie własne malowanie: `.settings-control button`
+                    ma specyficzność 0,2,1 i wygrywała z 0,1,0 samej klasy,
+                    więc dopisanie jej bez zawężenia tamtej reguły nie zmieniło
+                    by ANI JEDNEGO piksela — a znacznik czytałby się poprawnie. */}
                 <button
                   type="button"
+                  className="primary-button"
                   data-notes-export="true"
                   disabled={busyNotesExport || !client?.exportNotesMarkdown}
                   onClick={() => void exportNotesMarkdown()}
@@ -2226,8 +2281,22 @@ export const SettingsSurface = ({
                     })}
                   </dl>
                 </div>
+                {/* Drugi akcent tego ekranu, akcja główna tafli importu:
+                    „Choose a vault folder…" w `v3/screens/settings.js:812`.
+
+                    POPRAWIONE PRZY ODBIORZE — poprzednia wersja tego zdania
+                    mówiła „i JEDYNY, który prototyp maluje imiennie", i było to
+                    nieprawdą policzalną w źródle: `.btn.primary` stoi na tym
+                    ekranie prototypu trzy razy (`:779` „Import N notes",
+                    `:812` tutaj, `:830` „Export to Markdown…"), z czego dwa
+                    pierwsze są dwoma stanami tej samej tafli. Zdanie uczyłoby
+                    następnego czytelnika, że akcent na przycisku eksportu jest
+                    wymysłem tego lotu, podczas gdy prototyp maluje go imiennie
+                    tak samo — i wprost stąd bierze się przepisanie
+                    `.ui-craft/tokens.md` „Usage constraints" 3. */}
                 <button
                   type="button"
+                  className="primary-button"
                   data-notes-import-scan="true"
                   disabled={busyVaultScan || !client?.scanObsidianVault}
                   onClick={() => void scanObsidianVault()}

@@ -1145,24 +1145,52 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           await frame();
           const categories = [...document.querySelectorAll("[data-settings-category]")]
             .map((element) => element.dataset.settingsCategory);
-          const current = () => {
-            const marked = document.querySelector(
-              '.settings-navigator [aria-current="location"]'
-            );
-            return marked?.getAttribute("aria-controls") ?? null;
-          };
+          // BIEŻĄCA SEKCJA CZYTANA Z DEKLARACJI. Do lotu 6 stała jako
+          // aria-current na pozycji nawigatora rysowanego przez sam ekran;
+          // nawigator Ustawień jest teraz JEDEN i stoi w powłoce
+          // (.settings-mode-column), a przy 320 px powłoka zwija lewą kolumnę
+          // do szyny ikon i spis sekcji w niej nie stoi. Odczyt znacznika
+          // z nawigatora zwracałby więc null przy KAŻDEJ kategorii i cała
+          // ta kontrola raportowałaby, że nic nie jest osiągalne — mierząc
+          // szerokość okna zamiast osiągalności.
+          // (Komentarz bez apostrofów odwrotnych ŚWIADOMIE: cały ten blok
+          // jest literałem szablonowym, więc apostrof odwrotny zamknąłby go
+          // w połowie zdania.)
+          //
+          // KTÓRA GAŁĄŹ TU CHODZI, POWIEDZIANE WPROST, BO PRZY 320 PX CHODZI
+          // TYLKO JEDNA. Powłoka zwija lewą kolumnę pod
+          // @media (max-width: 50rem), a spis sekcji dostaje tam display: none
+          // — więc getClientRects() wpisu sekcji jest puste, visible(navButton)
+          // jest fałszem i gałąź nawigatora NIE WYKONUJE SIĘ ANI RAZU. Cała
+          // osiągalność mierzona w tym oknie jest osiągalnością przez
+          // kontrolkę natywną. Selektor .settings-mode-column
+          // [data-settings-section] jest tu pisany dla POPRAWNOŚCI drugiej
+          // gałęzi, a nie dlatego, że ten przelot ją sprawdza — kto go zmieni,
+          // nie dowie się tego stąd.
+          //
+          // I DRUGA RZECZ DLA TEGO, KTO KIEDYŚ URUCHOMI TO SZERZEJ: obie
+          // gałęzie pytają current(), czyli deklarację ekranu, ale ustawiają
+          // DWA RÓŻNE fakty. Kontrolka natywna woła navigateToCategory, które
+          // ustawia activeCategory synchronicznie i deklaracja zmienia się
+          // w tej samej klatce. Wpis kolumny ustawia settingsCategory
+          // W POWŁOCE i przewija; deklaracja idzie za obserwatorem przecięć,
+          // więc jedno await frame() może nie wystarczyć i gałąź nawigatora
+          // mierzyłaby czas obserwatora, a nie osiągalność.
+          const current = () =>
+            document
+              .querySelector("[data-settings-active-category]")
+              ?.getAttribute("data-settings-active-category") ?? null;
           const unreachable = [];
           for (const id of categories) {
-            const sectionId = "settings-category-" + id;
-            const navButton = [...document.querySelectorAll(
-              ".settings-navigator button[aria-controls]"
-            )].find((button) => button.getAttribute("aria-controls") === sectionId);
+            const navButton = document.querySelector(
+              '.settings-mode-column [data-settings-section="' + id + '"]'
+            );
             const picker = document.getElementById("settings-category-select");
             let reached = false;
             if (visible(navButton)) {
               navButton.click();
               await frame();
-              reached = current() === sectionId;
+              reached = current() === id;
             } else if (visible(picker)) {
               // Kontrolka natywna musi NAPRAWDĘ przestawiać bieżącą kategorię,
               // nie tylko zawierać opcję. Sama obecność wpisu w liście to nie
@@ -1170,7 +1198,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               picker.value = id;
               picker.dispatchEvent(new Event("change", { bubbles: true }));
               await frame();
-              reached = current() === sectionId;
+              reached = current() === id;
             }
             if (!reached) {
               unreachable.push({

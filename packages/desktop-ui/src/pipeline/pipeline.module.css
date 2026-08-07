@@ -237,7 +237,29 @@
 }
 
 /* The stage a deal already stands on is not a destination. It says so with a
-   fill and a stronger border, not only with a warmer colour. */
+   fill and a stronger border, not only with a warmer colour.
+
+   ASLEEP, NOT HEALTHY — READ THIS BEFORE CHANGING EITHER RULE. This one weighs
+   (0,2,0) against the (0,3,0) of `.moveButton:hover:not(:disabled)`, so on
+   weight alone hover wins every property the two share. It costs nothing TODAY
+   for three independent reasons, and the day any ONE of them stops holding the
+   current-stage marker vanishes under the cursor with no gate saying so:
+
+     1. the button carrying this rule is ALWAYS `disabled` — the stage a deal
+        already stands on is not a destination (`PipelineSurface.tsx`,
+        `disabled={busy || selected.opportunity.stage === stage.id}`), so the
+        hover rule's own `:not(:disabled)` guard excludes it;
+     2. the two declarations the rules share are byte-identical
+        (`--text-primary`, `--border-strong`), so even a match would repaint
+        nothing;
+     3. `background` — the one channel that actually distinguishes the current
+        stage — is declared here and nowhere in the hover rule.
+
+   Make the current stage clickable, give the hover rule a `background`, or
+   change either colour, and this becomes the wave's fourth instance. The rule
+   for that situation is written down once, in `styles.css` at
+   the block headed „SELECTION VERSUS HOVER”; the branch this
+   one would take is the second (guarded hover ⇒ exclude the state by name). */
 .moveButton[aria-current="true"] {
   color: var(--text-primary);
   font-weight: 500;

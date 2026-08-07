@@ -3523,6 +3523,41 @@ const judgeVisualPair = (pair, measured, rootFontSizePx, theme) => {
       expected: `„${expect.value}"`,
     };
 
+  // HOW MANY TRACKS A GRID RESOLVED TO, and it exists because the track COUNT
+  // is sometimes the whole position while every track WIDTH is a function of
+  // the window. `grid-template-columns` computes to used pixel sizes, so
+  // neither `literal` nor `rem` can ask „the label has a track of its own"
+  // without pinning a number that changes with the viewport. Counting is the
+  // part that does not move.
+  //
+  // Line names are skipped rather than counted: `[name] 12px [name] 40px`
+  // declares TWO tracks and four bracketed tokens, and a pair that reported
+  // six would be a gate failing for a reason nobody can trace to a layout.
+  if (expect.kind === "tracks") {
+    if (observed === "none" || observed === "")
+      return {
+        state: "DIFFERS",
+        observed: `„${observed}" — the element declares no explicit track list`,
+        expected: `exactly ${expect.equals} column track(s)`,
+      };
+    const tracks = observed
+      .split(/\s+/u)
+      .filter((token) => token !== "" && !token.startsWith("["));
+    if (tracks.some((token) => !Number.isFinite(Number.parseFloat(token))))
+      return {
+        state: "NOT_MEASURED",
+        reason:
+          `„${pair.read.property}" computed to „${observed}", which is not a resolved list of ` +
+          "track sizes. A grid that never generated a box computes to keywords, not lengths — " +
+          "counting them would be counting words, not tracks.",
+      };
+    return {
+      state: tracks.length === expect.equals ? "MATCH" : "DIFFERS",
+      observed: `${tracks.length} track(s) — „${observed}"`,
+      expected: `exactly ${expect.equals} column track(s)`,
+    };
+  }
+
   return {
     state: "NOT_MEASURED",
     reason:
@@ -4181,9 +4216,109 @@ const STICKY_PENDING_SUBJECTS = [
 // rekord zadania w harnessie zbija liczbę do 4 tak samo skutecznie jak zmiana
 // `overflow`. Czerwień na tej podłodze to pytanie „co się skróciło", nie tylko
 // „co się zmieniło w arkuszu".
-const STICKY_EXPECTED = { pending: 0, liveExercised: 5 };
+// ── 5 → 4 PRZY LOCIE 6, 2026-08-07 ──────────────────────────────────────────
+// Podmiot ZNIKNĄŁ, bo zniknęła jego reguła, a nie dlatego, że przestał być
+// mierzony — i to jest dokładnie rozróżnienie, o które prosi rejestr długu
+// obok. `.settings-navigator { position: sticky }` był drugim nawigatorem
+// Ustawień w treści ekranu; pozycja #2 lotu 6 kasuje go w całości, bo prototyp
+// ma JEDEN spis sekcji i trzyma go w lewej kolumnie
+// (`v3/screens/settings.css:36-80`). Reguła jest usunięta ze `styles.css`,
+// więc `declaredStickyRules()` też jej już nie liczy: 11 zadeklarowanych → 10.
+//
+// CO TA PODŁOGA DALEJ CHRONI, i dlatego spada o dokładnie jeden: `div._strip`
+// na przystanku „tasks › record" ZOSTAJE w czwórce, więc przywrócenie
+// `overflow-x: hidden` w `tasks/tasks.module.css` — awaria, dla której
+// podniesiono ją na 5 — dalej zbija liczbę do 3 i dalej czerwieni bramkę.
+// Obniżenie o dwa albo do zera skasowałoby tamto zamknięcie; obniżenie o jeden
+// oddaje dokładnie tyle, ile ten lot zabrał.
+const STICKY_EXPECTED = { pending: 0, liveExercised: 4 };
 
 const STICKY_PROBE_PX = 40;
+
+// ── P8 · CZY ZAZNACZENIE PRZEŻYWA KURSOR ─────────────────────────────────────
+// TRZY RAZY W TEJ FALI ta sama wada przeszła KAŻDĄ bramkę: wiersz źródła
+// (lot 5), wiersz etapu lejka i pozycja „tu jesteś" w lewej kolumnie (oba
+// lot 6). Za każdym razem znalazł ją człowiek wodzący myszą, nie przyrząd —
+// i przyczyna była zawsze ta sama: ŻADEN pomiar w tym repozytorium nie pytał
+// o stan POD KURSOREM. Pary wierności czytają element W SPOCZYNKU, sonda
+// ogniska chodzi Tabem, a spacer układu nie rusza wskaźnika ani razu.
+//
+// TO JEST TEN PRZYRZĄD, i mierzy DOKŁADNIE jedno zdanie: „element, który mówi
+// «tu jesteś», maluje się tak samo pod kursorem, jak bez niego".
+//
+// CZEGO NIE WOLNO TU ZROBIĆ, i jest to jedyny sposób, w jaki ta bramka mogłaby
+// wrócić zielona nad niczym: `element.dispatchEvent(new MouseEvent("mouseover"))`
+// NIE USTAWIA `:hover`. Pseudoklasa bierze się z hit-testingu przeglądarki, nie
+// ze zdarzenia DOM, więc syntetyczne zdarzenie zmierzyłoby ten sam spoczynek
+// dwa razy i zameldowało spokój. Wskaźnik jest tu ruszany PRAWDZIWY —
+// `page.mouse.move` schodzi do `Input.dispatchMouseEvent` w CDP — i dlatego ta
+// część stoi POZA `page.evaluate`.
+//
+// ZBROJENIE, BO ZAZNACZENIE NIE BIERZE SIĘ SAMO: wiersz etapu trzeba wpierw
+// wybrać. Klik idzie przez `element.click()` W STRONIE — to NIE rusza
+// wskaźnika, więc odczyt spoczynkowy zaraz po nim jest naprawdę spoczynkowy.
+//
+// KOLEJNOŚĆ W PRZELOCIE: ta sonda stoi PRZED skanem przyklejenia, bo tamten
+// przewija stronę, a `boundingBox()` mierzy pozycję w oknie.
+const SELECTION_UNDER_CURSOR_SUBJECTS = [
+  {
+    id: "P8-01",
+    title: "the selected funnel stage keeps its accent wash under the cursor",
+    route: { settingsMode: true },
+    arm: '[data-commercial-defaults] li[data-stage] button:not([aria-pressed="true"])',
+    selector:
+      '[data-commercial-defaults] li[data-stage] button[aria-pressed="true"]',
+    read: ["backgroundColor", "borderTopColor", "boxShadow"],
+    // A PROBE THAT ONLY ASKS „DID IT CHANGE" IS HALF AN INSTRUMENT, and this
+    // subject is where that half showed. The row's accent wash was overridden
+    // by `.settings-control button` at BOTH readings, so „unchanged under the
+    // cursor" was true of a row painted the wrong colour twice. The at-rest
+    // side names the token it must resolve to.
+    restIs: { property: "backgroundColor", token: "--accent-quieter" },
+    app: "packages/desktop-ui/src/settings/commercial-defaults-section.module.css",
+    why:
+      "the defect this probe exists for, measured before the fix: at rest the row resolved " +
+      "`--action-secondary-bg` and under the cursor `--surface-hover` — two wrong colours, " +
+      "neither of them the accent the selection rule declares",
+  },
+  {
+    id: "P8-02",
+    title: "the settings section the reader is on keeps its wash",
+    route: { settingsMode: true },
+    arm: null,
+    selector: '.settings-mode-column .nav-item[aria-current="location"]',
+    read: ["backgroundColor", "color"],
+    restIs: { property: "backgroundColor", token: "--nav-active-bg" },
+    app: "packages/desktop-ui/src/styles.css (.settings-mode-column .nav-item[aria-current])",
+    why:
+      "the carrier L6-02b reads AT REST. That pair passed while this element went neutral " +
+      "under the cursor on every sibling rule that outweighed it — the two measurements are " +
+      "not the same measurement",
+  },
+  {
+    id: "P8-03",
+    title: "the navigation item the reader is on keeps its wash",
+    route: { surface: "pipeline" },
+    arm: null,
+    selector: ".nav-item.active",
+    read: ["backgroundColor", "color"],
+    restIs: { property: "backgroundColor", token: "--nav-active-bg" },
+    app: "packages/desktop-ui/src/styles.css (.nav-item.active)",
+    why:
+      "the primary navigation, and the defect was live on it for the whole wave: `.nav-item.active` " +
+      "(0,2,0) lost to `.nav-item:not(:disabled):hover` (0,3,0), so the accent wash under „you are " +
+      "here" +
+      '" went to `--surface-hover` whenever the pointer crossed it',
+  },
+];
+
+// PODŁOGA, NIE SUMA: podmiot, który przestaje się rysować, ma zaczerwienić tę
+// bramkę zamiast po cichu zmniejszyć jej zasięg. To ta sama doktryna, co przy
+// `STICKY_EXPECTED.liveExercised`, i z tego samego powodu — bramka mierząca
+// OBECNOŚĆ nigdy nie mierzy JAKOŚCI, a bramka, której podmioty wyparowały,
+// mierzy zero i wygląda identycznie jak bramka, która przeszła.
+// 3 podmioty × 2 motywy = 6.
+const SELECTION_UNDER_CURSOR_EXPECTED = { judged: 6 };
 
 // ── ILE REGUŁ PRZYKLEJENIA ISTNIEJE, A ILE TEN SPACER OSĄDZIŁ ────────────────
 // Bez tej liczby raport P7 czyta się jako „przyklejenie jest zmierzone", a mówi
@@ -4414,6 +4549,16 @@ const routedStops = () => {
     const key = routeKey(subject.route);
     if (stops.has(key)) continue;
     stops.set(key, { key, route: subject.route, pairs: [], stickyOnly: true });
+  }
+  // To samo dla sondy kursora: podmiot bez przystanku byłby podmiotem
+  // NIEMIERZONYM, a podłoga niżej zamieniłaby to w czerwień bez wskazania
+  // przyczyny. Oba dzisiejsze przystanki (Ustawienia, „pipeline") fundują
+  // pary, więc ta pętla nic dziś nie dokłada — i ma nie dokładać po cichu,
+  // jeśli któraś para zniknie.
+  for (const subject of SELECTION_UNDER_CURSOR_SUBJECTS) {
+    const key = routeKey(subject.route);
+    if (stops.has(key)) continue;
+    stops.set(key, { key, route: subject.route, pairs: [], hoverOnly: true });
   }
   // TRYB USTAWIEŃ NA KOŃCU. Wejście PODMIENIA lewą kolumnę, więc pozycja
   // nawigacji następnego celu przestaje istnieć — ten sam powód, dla którego
@@ -4981,6 +5126,7 @@ const routedVisualLanguage = async (browser) => {
   };
   const startedAt = Date.now();
   let liveSeen = 0;
+  let hoverJudged = 0;
   const judgedSignatures = new Set();
 
   for (const theme of THEME_ORDER) {
@@ -5126,6 +5272,153 @@ const routedVisualLanguage = async (browser) => {
           );
       }
 
+      // ── P8 · ZAZNACZENIE POD KURSOREM ───────────────────────────────────
+      // PRZED skanem przyklejenia: tamten przewija stronę, a tu mierzy się
+      // pozycję w oknie. Wskaźnik jest odsuwany PRZED odczytem spoczynkowym
+      // i po całości, żeby następny pomiar nie zastał go na czymkolwiek.
+      for (const subject of SELECTION_UNDER_CURSOR_SUBJECTS.filter(
+        (entry) => routeKey(entry.route) === stop.key,
+      )) {
+        if (subject.arm !== null) {
+          const armed = await page.evaluate((selector) => {
+            const node = document.querySelector(selector);
+            if (!(node instanceof HTMLElement)) return false;
+            node.click();
+            return true;
+          }, subject.arm);
+          if (!armed) {
+            failures.push(
+              `SELECTION_HOVER_ARM_MISSING (${theme}) — ${subject.id} „${subject.title}": the ` +
+                `arming selector „${subject.arm}" matched no element at ${routeLabel(stop.route)}, ` +
+                "so nothing could be selected and this probe measured nothing. Instrument failure " +
+                `(app: ${subject.app}).`,
+            );
+            continue;
+          }
+          await page.waitForTimeout(120);
+        }
+        await page.mouse.move(2, 2);
+        await page.waitForTimeout(80);
+        const box = await page
+          .locator(subject.selector)
+          .first()
+          .boundingBox()
+          .catch(() => null);
+        const rest = await page.evaluate(
+          ([selector, properties, restIs]) => {
+            const node = document.querySelector(selector);
+            if (!(node instanceof HTMLElement)) return null;
+            const style = getComputedStyle(node);
+            let wanted = null;
+            if (restIs !== null) {
+              // Token rozwiązany NA PRÓBCE, dokładnie tak jak `resolveAs`
+              // w pomiarze par: `getPropertyValue` oddaje NAPIS ze źródła
+              // (`var(--white-a055)`), a nie kolor, którym przeglądarka
+              // naprawdę maluje — porównanie tamtego z `getComputedStyle`
+              // nie zgodziłoby się nigdy.
+              const probe = document.createElement("div");
+              probe.style.position = "absolute";
+              probe.style.left = "-9999px";
+              probe.style.visibility = "hidden";
+              probe.style[restIs.property] = `var(${restIs.token})`;
+              document.body.append(probe);
+              wanted = getComputedStyle(probe)[restIs.property] ?? "";
+              probe.remove();
+            }
+            return {
+              wanted,
+              read: Object.fromEntries(
+                properties.map((property) => [property, style[property]]),
+              ),
+            };
+          },
+          [subject.selector, subject.read, subject.restIs ?? null],
+        );
+        if (rest === null || box === null) {
+          failures.push(
+            `SELECTION_HOVER_SUBJECT_MISSING (${theme}) — ${subject.id} „${subject.title}": ` +
+              `„${subject.selector}" ${rest === null ? "matched no element" : "has no box"} at ` +
+              `${routeLabel(stop.route)}. A declared subject that stops being drawn takes its ` +
+              `measurement with it and reads exactly like a pass (app: ${subject.app}).`,
+          );
+          continue;
+        }
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(120);
+        const hovered = await page.evaluate(
+          ([selector, properties]) => {
+            const node = document.querySelector(selector);
+            if (!(node instanceof HTMLElement)) return null;
+            const style = getComputedStyle(node);
+            return {
+              hoverReached: node.matches(":hover"),
+              ...Object.fromEntries(
+                properties.map((property) => [property, style[property]]),
+              ),
+            };
+          },
+          [subject.selector, subject.read],
+        );
+        await page.mouse.move(2, 2);
+        if (hovered === null || hovered.hoverReached !== true) {
+          // BEZ TEJ KONTROLI CAŁA SONDA JEST WYDMUSZKĄ: gdyby wskaźnik nie
+          // trafił w element, oba odczyty byłyby spoczynkowe, zgodziłyby się
+          // i bramka zameldowałaby spokój. Pytamy więc przeglądarkę wprost,
+          // czy podmiot NAPRAWDĘ pasuje do `:hover`.
+          failures.push(
+            `SELECTION_HOVER_NOT_REACHED (${theme}) — ${subject.id} „${subject.title}": the ` +
+              `pointer was moved to the centre of „${subject.selector}" and the element does ` +
+              "NOT match `:hover`. Both readings would be at-rest readings, so a pass here " +
+              "would mean nothing. Instrument failure — something is covering the subject.",
+          );
+          continue;
+        }
+        // ── CZY W SPOCZYNKU JEST W OGÓLE DOBRZE ─────────────────────────
+        if (subject.restIs !== undefined && subject.restIs !== null) {
+          if (rest.wanted === "" || rest.wanted === null)
+            failures.push(
+              `SELECTION_HOVER_TOKEN_EMPTY (${theme}) — ${subject.id}: var(${subject.restIs.token}) ` +
+                "resolved to nothing on this page, so the at-rest side of this probe can never " +
+                "match and can never say why. Instrument failure.",
+            );
+          else if (rest.read[subject.restIs.property] !== rest.wanted)
+            failures.push(
+              `SELECTION_WRONG_AT_REST (${theme}) — ${subject.id} „${subject.title}" at ` +
+                `${routeLabel(stop.route)}: „${subject.selector}" resolves ` +
+                `${subject.restIs.property} = ${rest.read[subject.restIs.property]} at rest, and ` +
+                `its rule declares var(${subject.restIs.token}) → ${rest.wanted}. Something with a ` +
+                "heavier selector is painting over the selected state. This half of the probe " +
+                'exists because „unchanged under the cursor" is also true of an element painted ' +
+                `the wrong colour twice (app: ${subject.app}).`,
+            );
+        }
+        const moved = subject.read.filter(
+          (property) => rest.read[property] !== hovered[property],
+        );
+        hoverJudged += 1;
+        report(
+          `selection under cursor\t${subject.id}\t${moved.length === 0 ? "HOLDS" : "REPAINTED"}\t` +
+            `${subject.selector}\t` +
+            subject.read
+              .map(
+                (property) =>
+                  `${property} ${rest.read[property]} → ${hovered[property]}`,
+              )
+              .join("\t"),
+        );
+        if (moved.length > 0)
+          failures.push(
+            `SELECTION_REPAINTED_UNDER_CURSOR (${theme}) — ${subject.id} „${subject.title}" at ` +
+              `${routeLabel(stop.route)}: „${subject.selector}" changes ` +
+              `${moved.map((property) => `${property} from ${rest.read[property]} to ${hovered[property]}`).join("; ")} ` +
+              "when the pointer rests on it. A hover rule is repainting the element that says " +
+              "where the reader is. The rule for this is written once, in `styles.css` at " +
+              "the block headed „SELECTION VERSUS HOVER”: bare hover ⇒ equal weight and selection " +
+              `declared second; guarded hover ⇒ the hover excludes the state by name. Why this ` +
+              `subject is on the list: ${subject.why}.`,
+          );
+      }
+
       if (measureSticky) {
         const pendingHere = STICKY_PENDING_SUBJECTS.filter(
           (subject) => routeKey(subject.route) === stop.key,
@@ -5226,6 +5519,18 @@ const routedVisualLanguage = async (browser) => {
   }
 
   const elapsedMs = Date.now() - startedAt;
+  console.log(
+    `routed\tselection under cursor\t${hoverJudged} of ${SELECTION_UNDER_CURSOR_EXPECTED.judged} ` +
+      `declared subject×theme probe(s) actually hovered and judged\t` +
+      `${SELECTION_UNDER_CURSOR_SUBJECTS.length} subject(s) × ${THEME_ORDER.length} theme(s)`,
+  );
+  if (hoverJudged < SELECTION_UNDER_CURSOR_EXPECTED.judged)
+    failures.push(
+      `SELECTION_HOVER_COVERAGE_FELL: ${hoverJudged} subject×theme probe(s) reached a real ` +
+        `pointer, under a floor of ${SELECTION_UNDER_CURSOR_EXPECTED.judged}. Every miss above ` +
+        "names itself; this line exists so that a probe list quietly emptied of subjects cannot " +
+        "pass as a probe list every subject survived.",
+    );
   if (liveSeen < STICKY_EXPECTED.liveExercised)
     failures.push(
       `STICKY_NOTHING_EXERCISED: across every stop this pass walked, ${liveSeen} live sticky ` +

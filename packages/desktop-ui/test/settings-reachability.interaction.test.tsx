@@ -6,6 +6,7 @@ import { afterEach, beforeEach, test } from "vitest";
 
 import type { DesktopSnapshot } from "../src/client/workflow.js";
 
+import { settingsCategories } from "../src/settings-categories.js";
 import { shellQueries } from "./shell-fixture.js";
 
 // PR 5 zamienia Ustawienia w TRYB: wejście podmienia całą lewą kolumnę na spis
@@ -69,28 +70,28 @@ const mountSettings = async (): Promise<DesktopSnapshot> => {
 const categoryPicker = (): HTMLSelectElement | null =>
   container.querySelector<HTMLSelectElement>("#settings-category-select");
 
-const navigatorButtons = (): readonly HTMLButtonElement[] => [
-  ...container.querySelectorAll<HTMLButtonElement>(
-    ".settings-navigator button",
-  ),
-];
-
-// Etykieta kategorii siedzi we WŁASNYM `<span>`, obok `<small>` z plakietką
-// stanu. Czytanie całego `textContent` skleiłoby jedno z drugim i porównywało
-// „Setup and app" z „Setup and appVersion scenario".
-const labelOf = (element: Element | null): string | undefined =>
-  element?.querySelector("span")?.textContent?.trim();
-
-const currentCategory = (): string | undefined =>
-  labelOf(
-    container.querySelector<HTMLElement>(
-      '.settings-navigator [aria-current="location"]',
-    ),
-  );
+// KTÓRA SEKCJA JEST BIEŻĄCA — CZYTANE Z DEKLARACJI, NIE Z NAZWY KLASY.
+//
+// Do lotu 6 ta odpowiedź stała jako `aria-current="location"` na pozycji
+// nawigatora RYSOWANEGO PRZEZ TEN EKRAN. Nawigator Ustawień jest teraz jeden
+// i stoi w POWŁOCE (`RealApp.tsx`, `.settings-mode-column`) — a ten plik montuje
+// samą powierzchnię, więc żadnego nawigatora w jego drzewie nie ma i nigdy nie
+// będzie. Selektor po klasie nie miał tu czego szukać: nie „zepsuł się", tylko
+// przestał opisywać ten montaż.
+//
+// Gwarancja jest bez zmian i jest o ZACHOWANIU: każda kategoria daje się
+// wybrać bez wskaźnika i wybór NAPRAWDĘ przestawia bieżącą sekcję. Nośnikiem
+// odpowiedzi jest deklaracja na korzeniu powierzchni, którą czyta tak samo ten
+// test, jak i smoke spakowanej apki — czyli jedno źródło dla dwóch czytających,
+// zamiast dwóch selektorów po dwóch nazwach klas.
+const currentCategory = (): string | null =>
+  container
+    .querySelector<HTMLElement>("[data-settings-active-category]")
+    ?.getAttribute("data-settings-active-category") ?? null;
 
 test("every settings category is reachable without a pointer", async () => {
   // Gwarancja jest o OSIĄGALNOŚCI, nie o szerokości okna: happy-dom nie liczy
-  // układu, więc „poniżej 58rem" jest tu niemierzalne — ale to, czy każda
+  // układu, więc „poniżej 50rem" jest tu niemierzalne — ale to, czy każda
   // kategoria DA SIĘ wybrać kontrolką natywną, jest mierzalne w pełni.
   await mountSettings();
 
@@ -98,12 +99,14 @@ test("every settings category is reachable without a pointer", async () => {
   assert.ok(picker, "settings must offer a native category control");
 
   const offered = [...picker.options].map((option) => option.value);
-  const listed = navigatorButtons().length;
-  assert.ok(listed > 1, `expected several categories, found ${listed}`);
-  assert.equal(
-    offered.length,
-    listed,
-    `the native control must offer every category the navigator lists, got ${offered.join(", ")}`,
+  // ODNIESIENIEM JEST REJESTR, NIE DRUGI ELEMENT DOM. Poprzednia wersja
+  // porównywała listę opcji z liczbą przycisków nawigatora — czyli dwa
+  // rysunki tej samej listy ze sobą nawzajem. Rejestr `settingsCategories`
+  // jest źródłem prawdy dla obu stron trybu, więc to on rozstrzyga.
+  assert.deepEqual(
+    offered,
+    settingsCategories.map((category) => category.id),
+    `the native control must offer every configured category, got ${offered.join(", ")}`,
   );
 
   // Wybranie każdej z nich musi naprawdę przestawić bieżącą kategorię —
@@ -113,77 +116,57 @@ test("every settings category is reachable without a pointer", async () => {
       picker.value = value;
       picker.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    const marked = container.querySelector<HTMLElement>(
-      '.settings-navigator [aria-current="location"]',
+    assert.equal(
+      currentCategory(),
+      value,
+      `choosing ${value} did not make it the current section`,
     );
-    assert.ok(marked, `choosing ${value} left no category marked as current`);
   }
 });
 
-test("exactly one category is marked as the current location", async () => {
-  // `aria-current="location"` jest tym, co czytnik ekranu ogłasza jako „tu
-  // jesteś". Dwie takie pozycje znaczą, że nie mówi nic użytecznego.
+test("exactly one section is current, and the screen says which", async () => {
+  // „Bieżąca sekcja" jest JEDNA i jest ZADEKLAROWANA. Dwie deklaracje znaczą,
+  // że powłoka dostaje dwie odpowiedzi na jedno pytanie i maluje którąś.
   await mountSettings();
 
-  const marked = container.querySelectorAll(
-    '.settings-navigator [aria-current="location"]',
+  const declared = container.querySelectorAll(
+    "[data-settings-active-category]",
   );
   assert.equal(
-    marked.length,
+    declared.length,
     1,
-    `exactly one category may claim the current location, found ${marked.length}`,
+    `exactly one element may declare the current section, found ${declared.length}`,
   );
-
-  const buttons = navigatorButtons();
-  const last = buttons[buttons.length - 1];
-  assert.ok(last, "the navigator must render category buttons");
-  const label = labelOf(last);
-
-  await act(async () => {
-    last.click();
-  });
-
-  assert.equal(
-    container.querySelectorAll('.settings-navigator [aria-current="location"]')
-      .length,
-    1,
-    "the current location must move, not multiply",
-  );
+  const first = settingsCategories[0];
+  assert.ok(first);
   assert.equal(
     currentCategory(),
-    label,
-    "the current location must follow the category the user chose",
+    first.id,
+    "settings must open on its first section",
   );
 });
 
-test("the navigator and the native control stay in agreement", async () => {
-  // Dwa wejścia do tej samej rzeczy rozjeżdżają się po cichu: klik w nawigator
-  // przestawia stan, a `<select>` dalej pokazuje starą wartość, więc człowiek
-  // czyta dwie różne odpowiedzi na to samo pytanie.
+test("the native control and the declared section stay in agreement", async () => {
+  // Dwa wejścia do tej samej rzeczy rozjeżdżają się po cichu: coś przestawia
+  // stan, a `<select>` dalej pokazuje starą wartość, więc człowiek czyta dwie
+  // różne odpowiedzi na to samo pytanie.
   await mountSettings();
 
   const picker = categoryPicker();
   assert.ok(picker);
-  const buttons = navigatorButtons();
-  const target = buttons[buttons.length - 1];
-  assert.ok(target);
+  const last = settingsCategories[settingsCategories.length - 1];
+  assert.ok(last);
 
   await act(async () => {
-    target.click();
+    picker.value = last.id;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
   });
 
-  const marked = container.querySelector<HTMLElement>(
-    '.settings-navigator [aria-current="location"]',
-  );
-  assert.ok(marked);
-  const chosen = [...picker.options].find(
-    (option) => option.value === picker.value,
-  );
-  assert.ok(chosen, "the native control must hold a value");
+  assert.equal(currentCategory(), last.id);
   assert.equal(
-    chosen.textContent?.trim(),
-    labelOf(marked),
-    "the native control must show the category the navigator marks as current",
+    picker.value,
+    last.id,
+    "the native control must show the section the screen declares as current",
   );
 });
 
@@ -303,7 +286,7 @@ test("a requested category is the one the screen opens on", async () => {
 
   assert.equal(
     currentCategory(),
-    "Data and privacy",
+    "data",
     "a deep link into a category must open on it, not on the screen's own default",
   );
 });
@@ -332,8 +315,6 @@ test("every category badge states a setting and never counts records", async () 
   // value happens to be numeric, and it stays green here — that is the other
   // direction of this assertion and it is measured on every run, because the
   // shipped `application` badge is exactly that shape.
-  const { settingsCategories, settingsCategoryElementId } =
-    await import("../src/settings-categories.js");
   await mountSettings();
 
   const looksLikeACount = /^\d+$|^\d+\s|\s\d+$/u;
@@ -341,18 +322,35 @@ test("every category badge states a setting and never counts records", async () 
     settingsCategories.length > 0,
     "an empty vocabulary would satisfy this loop while measuring nothing",
   );
+  // GDZIE TEN NAPIS DZIŚ STOI. Statusy przeprowadziły się z drugiego
+  // nawigatora — którego nie ma — do podtytułu pasma nagłówka, gdzie prototyp
+  // trzyma `st-panel-sub` (`v3/screens/settings.js:1005-1007`). Rysowany jest
+  // status BIEŻĄCEJ sekcji, więc żeby przejść cały słownik, trzeba przez cały
+  // słownik przejść: kontrolką natywną, po jednej kategorii naraz. To jest
+  // MOCNIEJSZY przelot niż poprzedni, bo mierzy napis, który naprawdę się
+  // rysuje, a nie sześć napisów, z których widać było sześć naraz.
+  const picker = container.querySelector<HTMLSelectElement>(
+    "#settings-category-select",
+  );
+  assert.ok(picker, "settings offers no way to choose a category");
   let measured = 0;
   for (const category of settingsCategories) {
-    const button = navigatorButtons().find(
-      (candidate) =>
-        candidate.getAttribute("aria-controls") ===
-        settingsCategoryElementId(category.id),
+    await act(async () => {
+      picker.value = category.id;
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert.equal(
+      container
+        .querySelector("[data-settings-active-category]")
+        ?.getAttribute("data-settings-active-category"),
+      category.id,
+      `„${category.id}" cannot be made the current section`,
     );
-    assert.ok(button, `the navigator does not list „${category.id}"`);
-    const badge = button.querySelector("small")?.textContent?.trim() ?? "";
+    const badge =
+      container.querySelector(".settings-band-sub")?.textContent?.trim() ?? "";
     assert.ok(
       badge.length > 0,
-      `„${category.id}" carries no status statement beside its label`,
+      `„${category.id}" carries no status statement in the header band`,
     );
     assert.ok(
       /[A-Za-z]/u.test(badge),

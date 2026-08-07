@@ -71,3 +71,46 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
+/* SKUTEK LICZBY (`v3/screens/settings.css:206-218`, `.st-effect`;
+   KONTRAKT: `.ui-craft/tokens.md:193-194` i `:85-92`, tak samo jak w sekcji
+   obok). Ten sam
+   kształt co w sekcji obok i ŚWIADOMIE osobna kopia, nie wspólna klasa
+   w `styles.css`: ten ekran jest leniwy, więc każda reguła przeniesiona do
+   arkusza globalnego jest bajtem na ścieżce gorącej, a ta faza ma tam zapas
+   liczony w setkach bajtów. */
+.effect {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.effectKey {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.effectValue {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.effectValue b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.effectNote {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  max-width: var(--surface-read);
+}

@@ -537,6 +537,14 @@ export const RealApp = ({
   // zapamiętujemy przy WEJŚCIU, bo po otwarciu Ustawień aktywnym kontekstem są
   // już one same i nie da się go odtworzyć.
   const [settingsReturn, setSettingsReturn] = useState<ShellContext>();
+  // WHICH SETTINGS SECTION THE READER IS LOOKING AT, held here because the
+  // section list is here. The surface owns the fact (its intersection observer
+  // decides which category is in view); the shell owns the only navigator that
+  // shows it, so the fact has to cross the boundary. One value, one setter —
+  // deliberately not six status strings: this state lives on the hot path and
+  // the wave's gzip headroom is measured in hundreds of bytes.
+  const [settingsCategory, setSettingsCategory] =
+    useState<SettingsCategoryId>();
   const openSettings = useCallback(() => {
     surfaceFocusPendingRef.current = true;
     setNavigation((current) => {
@@ -2422,6 +2430,9 @@ export const RealApp = ({
             onNavigate={(next, label) =>
               openContext(destinationContext(next, label))
             }
+            // The surface owns the fact of which section is in view; the
+            // shell's left column is the only navigator that shows it.
+            onCategoryChange={setSettingsCategory}
             // Kategoria ŻĄDANA przez kontekst zakładki — głęboki link. Podana
             // tylko wtedy, gdy naprawdę o nią proszono: bez tego pola ekran
             // wybiera kategorię własnym stanem, i to jest zachowanie, które
@@ -3263,6 +3274,13 @@ export const RealApp = ({
                 type="button"
                 className="nav-item settings-mode-back"
                 data-settings-back="true"
+                // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
+                // rule `.nav-item > span { display: none }` (styles.css:3599)
+                // takes BOTH children out of the accessibility tree, and the
+                // only way out of settings mode was left announcing itself as
+                // „‹". The label is now on the button, so it survives the
+                // width at which the text disappears.
+                aria-label="Leave settings"
                 onClick={leaveSettings}
               >
                 <span aria-hidden="true">‹</span>
@@ -3274,11 +3292,31 @@ export const RealApp = ({
                   type="button"
                   className="nav-item settings-mode-section"
                   data-settings-section={category.id}
-                  onClick={() =>
+                  // CO TA POZYCJA STEROWANIE — przeprowadzone razem ze
+                  // znacznikiem. Skasowany nawigator w treści ekranu niósł
+                  // `aria-controls`; ten niósł tylko atrybut danych, czyli
+                  // adres dla testu, a nie dla czytnika ekranu.
+                  aria-controls={settingsCategoryElementId(category.id)}
+                  // JEDEN NAWIGATOR USTAWIEŃ, I TO JEST TEN
+                  // (`v3/screens/settings.css:36-80`, `:76-80`). Do fali E
+                  // stały trzy: ta kolumna, drugi nawigator w treści ekranu
+                  // i natywna kontrolka wąskiego okna. Kolumna była jedyną,
+                  // która NIE mówiła, gdzie czytelnik jest — a jest jedyną,
+                  // która stoi tam, gdzie prototyp trzyma spis sekcji.
+                  aria-current={
+                    settingsCategory === category.id ? "location" : undefined
+                  }
+                  onClick={() => {
+                    // Stan ustawiony OD RAZU, a nie dopiero z obserwatora
+                    // przecięć na ekranie: ostatnia sekcja bywa krótsza niż
+                    // okno i przewinięcie do niej nie zawsze przesuwa próg,
+                    // więc znacznik zostawał na poprzedniej. Obserwator
+                    // poprawia tę wartość przy każdym dalszym przewinięciu.
+                    setSettingsCategory(category.id);
                     document
                       .getElementById(settingsCategoryElementId(category.id))
-                      ?.scrollIntoView({ block: "start", behavior: "auto" })
-                  }
+                      ?.scrollIntoView({ block: "start", behavior: "auto" });
+                  }}
                 >
                   <span>{category.label}</span>
                 </button>

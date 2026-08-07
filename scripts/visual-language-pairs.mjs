@@ -2587,12 +2587,20 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // kolumnę, więc ten cel idzie OSTATNI albo trzeba z niego wyjść przez
   // `[data-settings-back]` — inaczej pozycja nawigacji następnego celu przestaje
   // istnieć i przelot zmierzy Ustawienia pod cudzą etykietą.
+  //
+  // DWIE PARY TEGO LOTU ROZPADŁY SIĘ PRZY ODBIORZE, 2026-08-07, I OBIE Z TEGO
+  // SAMEGO POWODU, CO L5-01b I L5-09b W TYM SAMYM PLIKU: mierzyły NIEOBECNOŚĆ
+  // STAREJ WADY, a nie OBECNOŚĆ DOSTAWY, i to są dwa różne zdania. „Nawigatora
+  // w treści nie ma" jest prawdą także o aplikacji, w której nikt nigdzie nie
+  // mówi, gdzie czytelnik jest; „etykieta nie zawija" jest prawdą także
+  // o etykiecie wciśniętej w tor ikony 1,1 rem, bo `nowrap` daje wtedy
+  // WYLANIE, nie zawinięcie. Obie połowy zostają, każda ze swoim odczytem.
   {
-    id: "L6-02",
+    id: "L6-02a",
     lot: 6,
     position: 2,
     kind: "prescribed",
-    title: "there is ONE settings navigator, and it is the mode column",
+    title: "the second settings navigator is gone",
     contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
     prototype: {
       file: "v3/screens/settings.css",
@@ -2608,11 +2616,44 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", equals: 0 },
-    risk: "TO JEST ZAŁOŻENIE O KSZTAŁCIE, NIE POMIAR: brief mówi „trzy nawigatory zamiast jednego” i wskazuje przeprowadzkę `aria-current`, ale nie deklaruje, KTÓRY z trzech zostaje. Jeśli lot zostawi nawigator w treści i skasuje inny, ta para skłamie w obie strony.",
-    status: "pending: LOT 6",
+    risk: "TO JEST ZAŁOŻENIE O KSZTAŁCIE, NIE POMIAR: brief mówi „trzy nawigatory zamiast jednego” i wskazuje przeprowadzkę `aria-current`, ale nie deklaruje, KTÓRY z trzech zostaje. Ryzyko domyka dopiero L6-02b: kasując tamten nawigator i NIE oznaczając bieżącej sekcji w kolumnie trybu, przechodzi się tę parę i oblewa tamtą.",
+    status: "enforced",
   },
   {
-    id: "L6-03",
+    // DRUGA POŁOWA POZYCJI 2, DOŁOŻONA PRZY ODBIORZE. Nie da się jej wyczytać
+    // z ekranu Ustawień — znacznik „tu jesteś" stoi od tego lotu w POWŁOCE
+    // (`RealApp.tsx`), więc para jest jedynym miejscem w mapie, które pyta, czy
+    // przeprowadzka faktycznie dojechała. Sonda wierności to RAPORTUJE
+    // (`navActiveSelectors` wypisuje dziś `.settings-mode-column
+    // .nav-item[aria-current="location"]` jako 1 on screen), ale nie jest to
+    // strażnik: lista selektorów malujących z `--nav-active-bg` zostaje
+    // niepusta dzięki samej powłoce, więc skasowanie TEJ reguły nie zapala
+    // `VISUAL_PROBE_NO_NAV_ACTIVE_RULE`. Raport i bramka to nie to samo.
+    id: "L6-02b",
+    lot: 6,
+    position: 2,
+    kind: "restyle",
+    title: "and the one that stays says where the reader is",
+    contract:
+      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is active")',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "74-80",
+      value:
+        "`.st-nav-item[aria-current]` — zaznaczona sekcja niesie WYPEŁNIENIE, wagę i szynę, nie sam kolor pisma",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: '.settings-mode-column .nav-item[aria-current="location"]',
+      why: "the shell's own carrier: zero matches here means either nothing is marked as current (the fact never crossed from the surface to the shell) or it is marked somewhere the reader's column is not",
+      app: "packages/desktop-ui/src/RealApp.tsx:3306-3308, styles.css:1415-1420",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--nav-active-bg" },
+    status: "enforced",
+  },
+  {
+    id: "L6-03a",
     lot: 6,
     position: 3,
     kind: "restyle",
@@ -2636,7 +2677,52 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "whiteSpace" },
     expect: { kind: "literal", value: "nowrap" },
-    status: "pending: LOT 6",
+    // ZMIERZONY BREAK-TEST TEJ PARY, wykonany przez lot: pierwsza wersja
+    // poprawki deklarowała `white-space` wyłącznie na `> span`, i para wróciła
+    // DIFFERS z `observed: normal`. Czyli ten odczyt UMIE oblać — nie jest
+    // oczekiwaniem, które nigdy nie zawodzi. Nie umie natomiast odróżnić
+    // etykiety w SWOIM torze od etykiety wylewającej się z toru ikony, i po to
+    // stoi obok L6-03b.
+    status: "enforced",
+  },
+  {
+    // DRUGA POŁOWA POZYCJI 3, I TO ONA JEST SAMĄ POZYCJĄ. Brief nazywa wadę
+    // wprost: „etykiety lądują w torze ikony 1,1 rem", bo `.nav-item` jest
+    // siatką trzytorową, a wpis sekcji renderuje JEDNO dziecko. Zmierzone przez
+    // lot przed poprawką przy 1440 px: `grid-template-columns` wpisu wynosiło
+    // `17.5938px 143.406px 0px`, a etykieta miała 17,59 px szerokości.
+    //
+    // LICZY SIĘ LICZBA TORÓW, NIE ICH SZEROKOŚĆ, i to jest cała treść nowego
+    // rodzaju oczekiwania `tracks`: szerokość jednego toru jest funkcją okna
+    // (177 px przy 1440), więc `literal` albo `rem` przypinałyby liczbę, która
+    // zmienia się przy każdej zmianie szerokości kolumny. Liczba torów nie.
+    //
+    // DEKLARACJA JEST JUŻ PILNOWANA REGEXEM PO ŹRÓDLE ARKUSZA
+    // (`settings-navigation-contract.test.ts`), i to jest DRUGI kanał, nie ten
+    // sam: tamten czyta NAPIS w `styles.css`, ten czyta ROZWIĄZANĄ wartość na
+    // narysowanym elemencie. Pamięć tego projektu ma osobny wpis o czterech
+    // regexach, które były zielone nad zachowaniem, które nie działało.
+    id: "L6-03b",
+    lot: 6,
+    position: 3,
+    kind: "restyle",
+    title: "and the label gets a track of its own instead of the icon track",
+    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "61-71",
+      value:
+        "`.st-navitem .lbl { flex: 1; min-width: 0 }` — etykieta zajmuje CAŁY wpis, bo wpis nie ma toru ikony",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-column .settings-mode-section",
+      why: "the entry itself, not its label: the three-track grid is declared on the entry, so the entry is where the defect resolves",
+      app: "packages/desktop-ui/src/styles.css:1387-1395, :1227-1240 (the shared three-track .nav-item grid it overrides)",
+    },
+    read: { property: "gridTemplateColumns" },
+    expect: { kind: "tracks", equals: 1 },
+    status: "enforced",
   },
   {
     id: "L6-04",
@@ -2651,7 +2737,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "321-332",
       value:
         "`.btn.primary` (gradient a-400/a-500/a-600), wybrany w v3/screens/settings.js:812 " +
-        "dla „Choose a vault folder…” i :779 dla „Import N notes”",
+        "dla „Choose a vault folder…” i :830 dla „Export to Markdown…”, czyli dla OBU " +
+        "przycisków, które ta para mierzy (:779 to „Import N notes”, drugi stan tej samej " +
+        "tafli importu — nie trzeci akcent)",
     },
     route: { settingsMode: true },
     subject: {
@@ -2670,24 +2758,46 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // o nie — oba niosą własną deklarację danych, więc podmiot nie zależy od
       // nazwy klasy modułu ani od kolejności sekcji.
       //
-      // ODWZOROWANIE V3↔APLIKACJA NIE JEST 1:1 I NIE UDAJE, ŻE JEST. Zgadza się
-      // JEDEN przycisk: „Choose a vault folder…" (v3/screens/settings.js:812 ↔
-      // `data-notes-import-scan`). Drugi akcent v3 to „Import N notes" (:779),
-      // któremu odpowiada `data-notes-import-run` (SettingsSurface.tsx:2311) —
-      // a ten montuje się DOPIERO po skanie, więc w tym harnessie byłby ślepy.
-      // Akcent na „Export to Markdown…" bierze się więc Z BRIEFU (wiersze
-      // 100-104), nie z prototypu, i jest tu zapisany jako taki. Kto uzna to za
-      // za dużo, zmienia brief — nie tę parę po cichu.
+      // ODWZOROWANIE V3↔APLIKACJA JEST 1:1 NA OBU PRZYCISKACH — POPRAWIONE
+      // PRZY ODBIORZE, BO POPRZEDNIA WERSJA TEGO AKAPITU BYŁA NIEPRAWDZIWA
+      // I UCZYŁA ZŁEJ REGUŁY. Mówiła: „zgadza się JEDEN przycisk … akcent na
+      // «Export to Markdown…» bierze się Z BRIEFU, nie z prototypu". Policzone
+      // w źródle: `.btn.primary` stoi na ekranie Ustawień prototypu TRZY razy —
+      // `v3/screens/settings.js:812` „Choose a vault folder…" (↔
+      // `data-notes-import-scan`), `:830` „Export to Markdown…" (↔
+      // `data-notes-export`) i `:779` „Import N notes", które jest DRUGIM
+      // STANEM tej samej tafli importu co :812, a nie trzecim akcentem.
+      // Odpowiada mu `data-notes-import-run`, montowany dopiero po skanie,
+      // więc w tym harnessie byłby ślepy — i to jest jedyne, czego ta para nie
+      // mierzy. Fałszywe uzasadnienie kosztowałoby następnego czytelnika
+      // dokładnie tyle: uznałby akcent na eksporcie za wymysł lotu, wpisał
+      // sobie „prototyp maluje tu jeden przycisk" i przy najbliższej zmiany
+      // zdjął jeden z dwóch.
+      //
+      // TO JEST TEŻ ŹRÓDŁO PRZEPISANIA KONTRAKTU: `.ui-craft/tokens.md`
+      // „Usage constraints" 3 mówił do 2026-08-07 „one primary action per
+      // view", czyli ZABRANIAŁ tego, co prototyp maluje. Punkt jest przepisany
+      // na „jedna na POJEMNIK, który ją ma" i dalej czegoś zabrania: dwóch
+      // akcentów w jednej tafli, akcentu na akcji niszczącej i akcentu na
+      // czymkolwiek, co nie jest jedyną akcją główną swojego pojemnika.
       selector:
         ".settings-control button[data-notes-export], " +
         ".settings-control button[data-notes-import-scan]",
-      why: "the two buttons Settings #4 names (SettingsSurface.tsx:2159-2166 export to Markdown, :2229-2238 choose a vault folder); both are painted today by the generic .settings-control button rule (styles.css:8138-8150 → --action-secondary-bg), so 0 of 2 carry the accent and the pending entry can fail",
-      app: "packages/desktop-ui/src/styles.css:8138-8150 (today's secondary paint), :8203-8209 (the accent that already exists on this screen and made the loose version pass), SettingsSurface.tsx:2159-2166, :2229-2238",
+      why: "the two buttons Settings #4 names (SettingsSurface.tsx:2213-2222 export to Markdown, :2297-2306 choose a vault folder); both now carry .primary-button, which styles.css:8523 excludes by name from the generic secondary paint — before lot 6 that rule painted them --action-secondary-bg and 0 of 2 carried the accent",
+      app: "packages/desktop-ui/src/styles.css:8523-8535 (the secondary paint and its two named exceptions), :8593-8599 (the accent that already existed on this screen and made the loose version pass), :724-727 (.primary-button), SettingsSurface.tsx:2213-2222, :2297-2306",
     },
     read: { property: "paint" },
     expect: { kind: "accentCount", atLeast: 2 },
     risk: "TA PARA WCIĄŻ NIE ODRÓŻNIA POPRAWKI POPRAWNEJ OD ZAKAZANEJ, i to jest zapisane, nie przeoczone: pomalowanie akcentem CAŁEJ reguły `.settings-control button` — którą brief nazywa wprost („zaspokoi oko i nie da sondzie NIC”) — pomaluje też te dwa przyciski i zaliczy tę parę. Zawężenie kupuje co innego: para mierzy TERAZ COKOLWIEK (przedtem przechodziła na akcencie raportu wsparcia, którego pozycja #4 w ogóle nie dotyczy). Dowód dostawy niesie `actionSelectors` sondy wierności, nie ta para.",
-    status: "pending: LOT 6",
+    // PRZEŁĄCZONE PRZY ODBIORZE, 2026-08-07, I RYZYKO WYŻEJ JEST DOMKNIĘTE
+    // POMIAREM, nie obietnicą. Odczyt: 2 of 2 w obu motywach. Sonda wierności
+    // wypisała w tym samym przebiegu `button.primary-button [.primary-button]
+    // on renewals, meetings, settings — 4 on screen / 0 parked — ACCENT`, czyli
+    // przycisk NIESIE KLASĘ akcji głównej i jest widziany przez podmiot, który
+    // brief nazwał jedynym dowodem („pomalowanie całej reguły `.settings-control
+    // button` … nie da sondzie NIC”). Ta droga jest więc zamknięta obserwacją:
+    // gdyby lot zrobił to zakazanym sposobem, ta linia sondy by nie powstała.
+    status: "enforced",
   },
   {
     id: "L6-05",
@@ -2711,7 +2821,14 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     read: { property: "maxWidth" },
     expect: { kind: "token", token: "--surface-read" },
     risk: "jeżeli lot przeniesie wyjaśnienie pod kontrolkę POD NOWĄ KLASĄ, `.settings-copy > p` przestanie istnieć i para wróci NOT_MEASURED zamiast MATCH — to jest ta sama pułapka, dla której L1-14 nie dostała pary",
-    status: "pending: LOT 6",
+    // PRZEŁĄCZONE PRZY ODBIORZE, 2026-08-07: `maxWidth: 736px` = 46 rem =
+    // rozwiązane `var(--surface-read)`, w obu motywach. Ryzyko wyżej NIE
+    // ZASZŁO — lot zostawił klasę i zapisał, że zostawił ją świadomie, więc
+    // para mierzy element, a nie swoją własną nieobecność. Różnica wobec v3
+    // (notka stoi NAD kontrolką, nie POD) jest zapisana przy regule
+    // w `styles.css:8080-8085` i ta para jej nie dotyczy: mierzy MIARĘ, a nie
+    // kolejność.
+    status: "enforced",
   },
 ];
 
@@ -2846,16 +2963,25 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     lot: 6,
     position: 8,
     scope: "cała pozycja",
-    title: "--row-height still has no consumer in Settings",
+    // PRZEPISANE PRZY ODBIORZE, 2026-08-07: tytuł „still has no consumer" był
+    // prawdą do lotu 6 i przestał nią być razem z nim. Wpis ZOSTAJE na liście
+    // nieobjętych — pary dalej nie ma — ale lista nieobjętych jest deliverable
+    // i wpis, który kłamie o stanie aplikacji, jest gorszy niż jego brak:
+    // czytający wziąłby ją za dowód, że token dalej stoi pusty.
+    title: "--row-height has two consumers in Settings, and neither is paired",
     prototype: "v3/screens/settings.css:113-118, :343-347, :435-439",
-    app: "packages/desktop-ui/src/styles.css:7521-7546, tokens.css:715",
+    app: "packages/desktop-ui/src/styles.css:2678-2685 (`.status-list li`), settings/commercial-defaults-section.module.css:76-87 (wiersz etapu)",
     why:
       "Brief nazywa TOKEN, ale nie nazywa KONSUMENTA. Dwaj oczywiści kandydaci niosą próg dostępności " +
       "2,75 rem, którego lot ma NIE zjeżdżać (`.settings-help-entry`, picker) — a `--row-height` to " +
-      "2,125 rem, czyli para na którymkolwiek z nich asertowałaby złamanie tamtego progu. Wskazanie " +
-      "trzeciego elementu byłoby wymyśleniem konsumenta za lot.",
+      "2,125 rem, czyli para na którymkolwiek z nich asertowałaby złamanie tamtego progu. Lot wskazał " +
+      "zamiast nich DWA WIERSZE LISTY, czyli dokładnie ten rodzaj elementu, którym token wiąże " +
+      "prototyp — ale para czytająca `minHeight` na wierszu byłaby zielona również nad wierszem " +
+      "z wpisanym `2.125rem`, bo `getComputedStyle` oddaje piksele, nie nazwę tokenu. SAMEGO " +
+      "ODWOŁANIA nie pilnuje dziś NIC — sprawdzone grepem po `scripts/`: ani jeden przyrząd w tym " +
+      "repo nie wymienia `--row-height`.",
     greenWrong:
-      "Token może zostać bez konsumenta, dokładnie tak jak jest dziś.",
+      "Konsument może odwoływać się do liczby zamiast do tokenu, albo zniknąć razem z regułą.",
   },
 ];
 
@@ -2890,7 +3016,16 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // Bramka pilnowała nieobecności STAREJ WADY i nie dotykała dostawy. L5-01b
   // i L5-09b czytają wypełnienie `--accent-quieter` na tych samych podmiotach.
   // Znowu tylko `pairs` i `lots.5.pairs`; `positionsWithPairs` bez zmian.
-  pairs: 60,
+  //
+  // 60 → 62 PRZY ODBIORZE LOTU 6, 2026-08-07, TĄ SAMĄ DROGĄ I Z TEGO SAMEGO
+  // POWODU, CO OBA POPRZEDNIE PRZYROSTY. L6-02 i L6-03 czytały NIEOBECNOŚĆ
+  // starej wady („nie ma drugiego nawigatora", „etykieta nie zawija") — zdania
+  // prawdziwe także o ekranie, na którym nikt nie mówi, gdzie czytelnik jest,
+  // i o etykiecie wylewającej się z toru ikony. L6-02b czyta wypełnienie
+  // `--nav-active-bg` na oznaczonej pozycji kolumny trybu, L6-03b liczy TORY
+  // siatki wpisu. Pozycje briefu się nie zmieniły, więc rośnie tylko `pairs`
+  // tutaj i `lots.6.pairs` niżej — `positionsWithPairs` zostaje 4.
+  pairs: 62,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -2965,7 +3100,9 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
     6: {
       // faza-3-build-brief.md:369-378
       positionsInBrief: 8,
-      pairs: 4,
+      // 4 → 6: rozpad L6-02 na L6-02a/L6-02b i L6-03 na L6-03a/L6-03b przy
+      // odbiorze — patrz nota przy `pairs` wyżej. Pozycje objęte parą bez zmian.
+      pairs: 6,
       positionsWithPairs: 4, // 2, 3, 4, 5
       positionsWithoutPairs: [1, 6, 7, 8],
     },

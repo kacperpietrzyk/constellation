@@ -4,7 +4,6 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test } from "vitest";
 
-import { settingsCategories } from "../src/settings-categories.js";
 import { shellQueries } from "./shell-fixture.js";
 
 /**
@@ -99,16 +98,32 @@ const exportButton = (): HTMLButtonElement => {
   return button;
 };
 
-const notesStatus = (): string => {
-  const entry = [
-    ...container.querySelectorAll<HTMLElement>(".settings-navigator button"),
-  ].find(
-    (button) =>
-      button.querySelector("span")?.textContent?.trim() ===
-      settingsCategories.find((category) => category.id === "notes")?.label,
+// STATUS SEKCJI PRZEPROWADZIŁ SIĘ Z NAWIGATORA DO PASMA NAGŁÓWKA (lot 6):
+// nawigator w treści ekranu zniknął — Ustawienia mają jeden spis sekcji i stoi
+// on w powłoce — a status bieżącej sekcji jest tam, gdzie trzyma go prototyp,
+// czyli w podtytule pasma (`v3/screens/settings.js:1005-1007`). Żeby przeczytać
+// status Notatek, trzeba więc najpierw UCZYNIĆ Notatki bieżącą sekcją; robi to
+// kontrolka natywna, ta sama, która niesie osiągalność przy wąskim oknie.
+const notesStatus = async (): Promise<string> => {
+  const picker = container.querySelector<HTMLSelectElement>(
+    "#settings-category-select",
   );
-  assert.ok(entry, "the navigator does not list the Notes section");
-  return entry.querySelector("small")?.textContent?.trim() ?? "";
+  assert.ok(picker, "settings offers no way to choose a category");
+  await act(async () => {
+    picker.value = "notes";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const current = container.querySelector<HTMLElement>(
+    "[data-settings-active-category]",
+  );
+  assert.equal(
+    current?.getAttribute("data-settings-active-category"),
+    "notes",
+    "choosing Notes did not make it the current section",
+  );
+  const band = container.querySelector<HTMLElement>(".settings-band-sub");
+  assert.ok(band, "the header band carries no section status");
+  return band.textContent?.trim() ?? "";
 };
 
 test("the Notes section holds the two panels this wave shipped, and no third", () => {
@@ -141,7 +156,7 @@ test("the Notes section holds the two panels this wave shipped, and no third", (
 
 test("the section's status names what the section does, not how many records exist", async () => {
   await mountSettings();
-  const status = notesStatus();
+  const status = await notesStatus();
   assert.ok(status.length > 0, "the Notes section carries no status at all");
   // THE SHAPE, not a phrase. A badge counting records is a NUMBER, and the
   // number would be the workspace's note count — a fact about the graph that

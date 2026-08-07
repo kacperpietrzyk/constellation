@@ -1426,10 +1426,15 @@ test("kształty spoza matematyki koloru są DOKŁADNIE tymi, o których wiem", (
   const shapes = [...new Set(unsupportedShapes.map((row) => row.key))].sort();
   assert.deepEqual(
     shapes,
+    // 58% ZNIKŁO, BO ZNIKŁ JEGO JEDYNY KONSUMENT, a nie dlatego, że
+    // wykrywanie przestało działać: `.settings-navigator button[aria-current]`
+    // malował tym drugi nawigator Ustawień, a Ustawienia mają od lotu 6 jeden
+    // nawigator i stoi on w powłoce. Reguła jest skasowana wraz z całym
+    // blokiem `.settings-navigator`; asercja pozytywna niżej („gradienty są
+    // rozłożone") dalej dowodzi, że rozkład sam w sobie żyje.
     [
       "--capture-bg",
       "color-mix(in oklch, var(--status-error) 9%, transparent)",
-      "color-mix(in srgb, var(--surface-raised) 58%, transparent)",
       "color-mix(in srgb, var(--surface-raised) 78%, transparent)",
     ],
     `Zbiór kształtów, których nie umiem rozłożyć, się zmienił. Dziś: ` +

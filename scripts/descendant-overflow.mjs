@@ -368,6 +368,20 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   // pierścień mieści (np. `padding-inline` równy odsadzce), albo ta bramka uczy
   // się PIĄTEJ szuflady dla świadomego wycieku dekoracji. Do tego czasu wpis
   // pilnuje, żeby wyciek nie urósł.
+  //
+  // LOT 6 OBEJRZAŁ I ZOSTAWIŁ — ŚWIADOMIE, z pomiarem, nie przez przeoczenie.
+  // Zmierzone w przeglądarce po całej robocie lotu: dwa wystąpienia znaku,
+  // wyciek 5 px i 2 px przy korzeniu 16 px, czyli DOKŁADNIE tyle co przed
+  // lotem — sufity zostają bez zmiany. Odrzucone zostały obie drogi wyjścia,
+  // każda z podanym powodem:
+  //   * `padding-inline: 0.18rem` na `.orbitMark` NIE jest zmianą pomiaru,
+  //     tylko RYSUNKU. Odsadzka `inset: … -0.18rem` liczy się od pudełka
+  //     wyściółki, więc przy `box-sizing: border-box` pierścień zwęża się
+  //     o 0,36 rem, a bez niego okrąg 2,25 rem rośnie o tyle samo. Jedno
+  //     i drugie zmienia znak, którego ten lot nie dotyka.
+  //   * piąta szuflada tej bramki to ROBOTA PRZYRZĄDOWA, a przyrządy tej fazy
+  //     są osobną pozycją (sekcja 4 briefu), nie pozycją ekranową lotu 6.
+  // Wpis zostaje więc tam, gdzie był, i dalej pilnuje, żeby wyciek nie urósł.
   {
     surface: "settings",
     signature: "span._orbitMark",
