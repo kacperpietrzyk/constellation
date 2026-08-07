@@ -57,9 +57,13 @@ import {
   classifyHeightBoundSweep,
 } from "./surface-height-bound.mjs";
 import {
+  RECORD_TITLE_BAND_OWNER,
   VISUAL_LANGUAGE_EXPECTED,
   VISUAL_LANGUAGE_NOT_COVERED,
   VISUAL_LANGUAGE_PAIRS,
+  VISUAL_LANGUAGE_ROUTED_EXPECTED,
+  VISUAL_LANGUAGE_ROUTED_NOT_COVERED,
+  VISUAL_LANGUAGE_ROUTED_PAIRS,
 } from "./visual-language-pairs.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -819,6 +823,15 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
                 selector: titleSelector,
                 signature: signature(element),
                 record: element.closest(recordScreenSelector) !== null,
+                // The record KIND, taken from the same declaration that says
+                // this is a record screen at all. The coverage guard over the
+                // record-title band needs to answer "which kind stopped being
+                // measured", and the surface label (`tasks:task:comments`)
+                // only spells the kind by convention — this reads it.
+                recordKind:
+                  element
+                    .closest(recordScreenSelector)
+                    ?.getAttribute("data-record-kind") ?? null,
                 // PRZYCIĘTY DO NICZEGO ALBO NIEWIDOCZNY — po KSZTAŁCIE, nie po
                 // nazwie klasy: sr-only `<h1>` stanu ładowania ma tę postać,
                 // a osąd rozmiaru nad nim mówiłby o afordancji, której nikt
@@ -1457,23 +1470,44 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
     for (const failure of judgedTitles.failures)
       failures.push({ surface: "-", reason: failure });
     titleProblems.push(...judgedTitles.problems);
+    // DRUGIE PASMO, NIE DRUGI RAPORT. Tytuł rekordu ma teraz własny osąd
+    // (`judgeRecordTitleBand`) i wchodzi do tej samej listy werdyktów, co
+    // tytuł ekranu — powód przy definicji pasma.
+    //
+    // `problems` IS EMPTY HERE while lot 4 has not delivered the position: the
+    // measurement comes out in `pending` instead and is printed below, without
+    // failing the pass. `openedKinds` IS THIS PASS'S COVERAGE FLOOR and comes
+    // from what the pass ACTUALLY opened — the same field it reports as
+    // "opened here" above. A pass that opens no record (320 px, Library) owes
+    // no record title and is not reddened for it.
+    const judgedRecords = judgeRecordTitleBand({
+      entries: recordTitles,
+      rootFontSizePx,
+      where: label,
+      openedKinds: measured.recordKinds,
+    });
+    for (const failure of judgedRecords.failures)
+      failures.push({ surface: "-", reason: failure });
+    titleProblems.push(...judgedRecords.problems);
     console.log(
       `${label}\tscreen title\t${screenTitles.length} screen title(s), ` +
         `${judgedTitles.lines.length} distinct size/weight pair(s), on ` +
         `${new Set(screenTitles.map((entry) => entry.surface)).size} of ` +
         `${measured.titleCounts.length} screen state(s) measured\t` +
-        `${recordTitles.length} record title(s) reported but NOT judged by this band, ` +
+        `${recordTitles.length} record title(s) judged against the ` +
+        `${judgedRecords.wantedPx.toFixed(1)}px --text-xl band, ` +
         `${parkedTitles.length} clipped to nothing\tband ` +
         `${judgedTitles.floorPx.toFixed(1)}–${judgedTitles.ceilingPx.toFixed(1)}px ` +
         `(${TITLE_MIN_REM}–${TITLE_MAX_REM}rem at a ${rootFontSizePx}px root), weight floor ` +
         `${TITLE_MIN_WEIGHT}`,
     );
     for (const line of judgedTitles.lines) console.log(`${label}\t${line}`);
-    for (const group of groupMeasurements(recordTitles))
-      console.log(
-        `${label}\trecord title\t${group.signature}\ton ${group.surfaces.join(", ")}\t` +
-          `${group.value}\treported only — the crumbbar band does not describe a record title`,
-      );
+    for (const line of judgedRecords.lines) console.log(`${label}\t${line}`);
+    // THE MEASUREMENT OF AN UNDELIVERED POSITION PRINTS EVERY TIME. A silent
+    // "pending" is worse than a throwing assertion: the throwing one at least
+    // says where to look.
+    for (const line of judgedRecords.pending)
+      console.log(`${label}\trecord title band\tPENDING\t${line}`);
     // PRZELOT, KTÓRY NIE ZMIERZYŁ ANI JEDNEGO TYTUŁU EKRANU, nie jest przelotem
     // zielonym — jest przelotem niemym. Bez tego zdania wycięcie tytułu ze
     // wszystkich powierzchni naraz przechodziłoby tu w ciszy.
@@ -2050,6 +2084,250 @@ const judgeTitleBand = ({ entries, rootFontSizePx, where }) => {
       );
   }
   return { lines, problems, failures, ceilingPx, floorPx };
+};
+
+// ── PASMO TYTUŁU REKORDU — DRUGA POŁOWA P4 ───────────────────────────────────
+// Do tej wersji tytuł rekordu był RAPORTOWANY i wprost NIE OSĄDZANY (zdanie
+// „reported only — the crumbbar band does not describe a record title" stało
+// w dwóch miejscach). Powód był dobry: pasmo crumbbara 0,625–1,25 rem opisuje
+// tytuł EKRANU i osądzanie nim tytułu REKORDU mówiłoby o czymś innym niż
+// mierzy. Powód nie był jednak argumentem za milczeniem, tylko za DRUGIM
+// pasmem — i to jest ono. Brief Fazy 3, przyrząd P4: „plus pasmo tytułu
+// REKORDU wyprowadzone z --text-xl i żywego rem, zadeklarowane per
+// data-record-kind".
+//
+// WARTOŚĆ Z PROTOTYPU, NIE Z DZISIEJSZEJ APLIKACJI: `v3/app.css:651` —
+// `.rec-title { font-size: var(--text-xl) }`, a `v3/tokens.css:29` daje
+// `--text-xl: 1.375rem`. Aplikacja ma DOKŁADNIE TĘ SAMĄ wartość tokenu
+// (`packages/desktop-ui/src/tokens.css:27`), więc pasmo nie zależy od tego,
+// czy Faza 3 przesunie skalę — zależy od liczby, którą obie strony deklarują
+// dziś tak samo. Zmierzone przy 1440 px: Projekt i Zadanie 28,0 px
+// (`--text-2xl`, project-record.module.css:28, task-record.module.css:34),
+// Szansa 22,0 px (`--text-xl`, opportunity-record.module.css:34). Dwa z trzech
+// ekranów są OVER i to jest pozycja #1 lotu 4.
+//
+// SUFIT LICZONY Z ŻYWEGO `rem` — z tego samego powodu, co przy pasmie ekranu:
+// `1.375rem` przy tekście przeskalowanym do 200% znaczy 44 px, a wpisana liczba
+// pikseli meldowałaby OVER nad tytułem, który urósł dokładnie tak, jak ma.
+//
+// WAGA JEST RAPORTOWANA, NIE OSĄDZANA, i to NIE jest ostrożność — to zakaz
+// zapisany w briefie. Lot 4: „Nie rusza wag pisma 580/590/620 (konwencja całej
+// aplikacji, nie dryf tego ekranu)". Podłoga 600 wzięta z v3 (`.rec-title
+// { font-weight: 600 }`) czerwieniłaby się WIECZNIE na 580, którego właściciel
+// tej pozycji ma zakaz ruszać — czyli asercja nie do spłacenia przez nikogo.
+// Liczba jest w wierszu raportu, żeby zmiana wagi nie przeszła w ciszy.
+//
+// ── WHAT CHANGED AFTER THE FIRST RUN OF THIS BAND, AND WHY ───────────────────
+// EVERYTHING ABOVE DESCRIBES THE MEASUREMENT AND THE MEASUREMENT STAYS. The
+// only thing that changed is whether an UNDELIVERED position turns the run
+// red, and the reason is symmetry, not comfort: on this exact tree the band
+// threw over lot 4 position #1 while 104 other measurements of positions lots
+// 2-6 have not delivered only REPORTED. Two instruments, one map, opposite
+// consequences for the same kind of fact — so lots 2, 3, 5 and 6 could not
+// read this gate's exit code as a signal about their own work until lot 4
+// landed. A gate whose red has to be interpreted gets switched off; that is a
+// written lesson of this repo, not a prediction.
+//
+// THE RULE NOW IS ONE RULE FOR BOTH INSTRUMENTS: an undelivered position
+// REPORTS, a delivered position that broke THROWS. The band asks the pairs map
+// which of the two it is (`RECORD_TITLE_BAND_OWNER` → L4-01a/L4-01b), so lot 4
+// arms it by flipping those entries to "enforced" — the same single switch
+// that arms the routed pass. There is no second place to remember.
+//
+// THREE THINGS KEEP THIS FROM BEING A MUTE BUTTON, and each is asserted below,
+// because "pending" written without them is exactly how a measurement is lost:
+//   * the numbers are still PRINTED every pass, on every geometry, with the
+//     owner's name on them (`lot 4 #1`) — see `lines` and the pending report;
+//   * a record kind the pass OPENED and whose title this band then did not
+//     measure is an instrument failure, per pass and by kind — the same
+//     doctrine as NOT_MEASURED in the pairs map, and the pairs additionally
+//     carry it per kind through ROUTED_NOT_MEASURED;
+//   * a pending position that suddenly MATCHES is already loud through
+//     ROUTED_PENDING_ALREADY_MATCHES on L4-01a/L4-01b, which read the same
+//     property on the same subjects. That mechanism is not duplicated here on
+//     purpose: two instruments shouting the same "flip the status" at a reader
+//     who has one status to flip is how the second one gets ignored.
+const RECORD_TITLE_REM = 1.375;
+// Pół piksela: `getComputedStyle` oddaje wartość użytą, a 1,375 rem przy
+// nieparzystym korzeniu nie musi wypaść na całkowitej liczbie pikseli.
+const RECORD_TITLE_TOLERANCE_PX = 0.5;
+
+// ── IS THE BAND ARMED? ASK THE MAP, AND CHECK WHAT IT ANSWERS ────────────────
+// Resolved ONCE, at load, because a pointer into the pairs map that only
+// resolves on the unhappy path is a pointer nobody notices has rotted. The
+// three ways this can go wrong are all named failures, never silence:
+// a missing id, an id that drifted to another lot/position, and an id that no
+// longer reads the property this band judges.
+const recordTitleBandDelivery = () => {
+  const failures = [];
+  const statuses = [];
+  for (const id of RECORD_TITLE_BAND_OWNER.pairs) {
+    const pair = VISUAL_LANGUAGE_ROUTED_PAIRS.find((entry) => entry.id === id);
+    if (pair === undefined) {
+      failures.push(
+        `RECORD_TITLE_BAND_OWNER_MISSING: „${id}" is declared as an owner of the record-title ` +
+          "band in visual-language-pairs.mjs (RECORD_TITLE_BAND_OWNER), and there is no pair " +
+          "with that id in VISUAL_LANGUAGE_ROUTED_PAIRS. The band cannot tell whether the " +
+          "position was delivered, so it judges nothing and says so.",
+      );
+      continue;
+    }
+    const mismatch = [
+      pair.lot === RECORD_TITLE_BAND_OWNER.lot
+        ? null
+        : `lot ${pair.lot}, not ${RECORD_TITLE_BAND_OWNER.lot}`,
+      pair.position === RECORD_TITLE_BAND_OWNER.position
+        ? null
+        : `position ${pair.position}, not ${RECORD_TITLE_BAND_OWNER.position}`,
+      pair.read?.property === RECORD_TITLE_BAND_OWNER.read
+        ? null
+        : `reads ${pair.read?.property ?? "nothing"}, not ${RECORD_TITLE_BAND_OWNER.read}`,
+      pair.expect?.token === RECORD_TITLE_BAND_OWNER.token
+        ? null
+        : `expects ${pair.expect?.token ?? pair.expect?.kind ?? "nothing"}, not ` +
+          `${RECORD_TITLE_BAND_OWNER.token}`,
+    ].filter((part) => part !== null);
+    if (mismatch.length > 0) {
+      failures.push(
+        `RECORD_TITLE_BAND_OWNER_DRIFTED: „${id}" is named as an owner of the record-title band, ` +
+          `but it ${mismatch.join("; ")}. A SIZE band armed by a pair that measures something ` +
+          "else would fire for a reason no reader can trace back to what it judges.",
+      );
+      continue;
+    }
+    statuses.push({ id, status: pair.status });
+  }
+  return {
+    failures,
+    statuses,
+    // Armed only when EVERY owner is enforced. Half a flip is half a delivery,
+    // and it stays reported — visibly, with both statuses spelled out below,
+    // so "one enforced, one pending" cannot read as "nothing happened".
+    armed:
+      failures.length === 0 &&
+      statuses.length === RECORD_TITLE_BAND_OWNER.pairs.length &&
+      statuses.every((entry) => entry.status === "enforced"),
+  };
+};
+const RECORD_TITLE_BAND = recordTitleBandDelivery();
+// The owners' statuses spelled out, or the reason there are none: "pending"
+// without naming what has to flip is an instruction with no address.
+const RECORD_TITLE_BAND_STATUS =
+  RECORD_TITLE_BAND.statuses.length === 0
+    ? "no owning pair resolved — see the instrument failure on this run"
+    : RECORD_TITLE_BAND.statuses
+        .map((entry) => `${entry.id}: ${entry.status}`)
+        .join(", ");
+
+// ── THE BAND'S CENSUS: WHAT THIS RUN ACTUALLY MEASURED ───────────────────────
+// A pending measurement that measures nothing is indistinguishable from a
+// pending measurement that holds, and it is the cheaper of the two to write by
+// accident. This census exists so the run can assert, at the end, that the
+// band was not simply absent — and so the numbers land in ONE summary line
+// instead of only in the 480-line stream nobody greps when the run is green.
+const RECORD_TITLE_BAND_CENSUS = {
+  passes: 0,
+  entries: 0,
+  groups: 0,
+  kinds: new Set(),
+  pending: [],
+};
+
+const judgeRecordTitleBand = ({
+  entries,
+  rootFontSizePx,
+  where,
+  openedKinds = [],
+}) => {
+  const wantedPx = RECORD_TITLE_REM * rootFontSizePx;
+  const lines = [];
+  const problems = [];
+  const pending = [];
+  const failures = [];
+  const measuredKinds = new Set(
+    entries
+      .map((entry) => entry.recordKind)
+      .filter((kind) => typeof kind === "string" && kind.length > 0),
+  );
+  for (const group of groupMeasurements(entries)) {
+    const [size, weight] = group.value.split(" ");
+    const px = Number.parseFloat(size);
+    const fontWeight = Number.parseFloat(weight);
+    if (!Number.isFinite(px) || !Number.isFinite(fontWeight)) {
+      failures.push(
+        `VISUAL_PROBE_UNREADABLE_RECORD_TITLE_TYPE (${where}): ${group.signature} on ` +
+          `${group.surfaces.join(", ")} computed a font size/weight of „${group.value}", which ` +
+          "this probe cannot read as a number of pixels and a numeric weight.",
+      );
+      continue;
+    }
+    const off = px - wantedPx;
+    lines.push(
+      `record title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${px.toFixed(1)}px\t` +
+        `weight ${fontWeight} (reported, not judged — lot 4 may not touch 580/590/620)\t` +
+        `${
+          Math.abs(off) <= RECORD_TITLE_TOLERANCE_PX
+            ? "AT"
+            : off > 0
+              ? "OVER"
+              : "UNDER"
+        } the ${wantedPx.toFixed(1)}px --text-xl band\t` +
+        `[${RECORD_TITLE_BAND_OWNER.label}, ${
+          RECORD_TITLE_BAND.armed ? "enforced" : "pending"
+        }]`,
+    );
+    if (Math.abs(off) <= RECORD_TITLE_TOLERANCE_PX) continue;
+    // ONE SENTENCE, TWO DESTINATIONS. The measurement — which title, on which
+    // screens, how many pixels against how many — is identical either way; the
+    // difference is who is being told and what it costs them. The verdict says
+    // which of the two it is, so a reader never has to work it out from where
+    // the line came out.
+    const verdict =
+      `the record title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
+      `${px.toFixed(1)}px, ${off > 0 ? "over" : "under"} the ${wantedPx.toFixed(1)}px the ` +
+      `prototype gives it (v3/app.css:651 — .rec-title is --text-xl, ${RECORD_TITLE_REM}rem ` +
+      `at a ${rootFontSizePx}px root; the app declares the same token in tokens.css:27). ` +
+      "Lot 4, position #1 — the three record screens carry three different title sizes.";
+    if (RECORD_TITLE_BAND.armed) {
+      problems.push(verdict);
+      continue;
+    }
+    pending.push(
+      `${verdict} REPORTED, NOT THROWN: ${RECORD_TITLE_BAND_OWNER.label} has not been delivered ` +
+        `(${RECORD_TITLE_BAND_STATUS}), and this band throws the moment those entries flip ` +
+        'to "enforced" — the same flip the routed pass demands when they start matching. ' +
+        "Do not spend this by softening the band.",
+    );
+  }
+  // ── A SUBJECT THAT DISAPPEARED IS AN INSTRUMENT FAILURE ───────────────────
+  // The floor is not a written number, it is what THIS pass opened: a record
+  // kind whose screen was walked and whose title this band then did not
+  // measure means the title stopped being drawn, was clipped to nothing, or
+  // the selector stopped reaching it. All three are silence dressed as a pass
+  // — a pending band that measures nothing reads exactly like a pending band
+  // that measures three record screens. Passes that open no records owe
+  // nothing and stay quiet; the fidelity pass is one of them by design.
+  for (const kind of new Set(openedKinds))
+    if (!measuredKinds.has(kind))
+      failures.push(
+        `VISUAL_PROBE_RECORD_TITLE_NOT_MEASURED (${where}): this pass OPENED a „${kind}" record ` +
+          `and the record-title band then measured no visible title inside ` +
+          `[data-record-kind="${kind}"] — it measured ${
+            measuredKinds.size === 0
+              ? "none of the kinds it opened"
+              : `only ${[...measuredKinds].join(", ")}`
+          }. Instrument failure, not a verdict about the size: the band said NOTHING about that ` +
+          `record screen, and ${RECORD_TITLE_BAND_OWNER.label} is measured by it.`,
+      );
+  if (entries.length > 0) {
+    RECORD_TITLE_BAND_CENSUS.passes += 1;
+    RECORD_TITLE_BAND_CENSUS.entries += entries.length;
+    RECORD_TITLE_BAND_CENSUS.groups += lines.length;
+    for (const kind of measuredKinds) RECORD_TITLE_BAND_CENSUS.kinds.add(kind);
+  }
+  for (const line of pending)
+    RECORD_TITLE_BAND_CENSUS.pending.push(`${where} — ${line}`);
+  return { lines, problems, pending, failures, wantedPx };
 };
 
 // Alfa bez osądzania akcentu — potrzebna, żeby powiedzieć „ten kontur NIC nie
@@ -2688,6 +2966,15 @@ const measureTheme = async (
             // fakt o elemencie (siedzi w deklaracji `data-record-kind`), a nie
             // ulga wybrana po zobaczeniu wyniku.
             record: element.closest(recordScreenSelector) !== null,
+            // Same shape as the geometry pass reads (`recordKind` there too).
+            // This pass opens no records, so it is null here — and the shape
+            // is written anyway, because one measurement restated in two
+            // places with two different sets of fields is how a consumer of
+            // the second one silently reads `undefined`.
+            recordKind:
+              element
+                .closest(recordScreenSelector)
+                ?.getAttribute("data-record-kind") ?? null,
             // ROZMIAR I WAGA W JEDNYM NAPISIE, bo grupowanie idzie po wartości:
             // tytuł 13 px o wadze 400 i tytuł 13 px o wadze 600 to DWA różne
             // pomiary i mają nie wpaść do jednej grupy.
@@ -2926,12 +3213,18 @@ const measureTheme = async (
       rootFontSizePx: collected.rootFontSizePx,
       where: theme,
     });
+    const judgedRecords = judgeRecordTitleBand({
+      entries: recordTitles,
+      rootFontSizePx: collected.rootFontSizePx,
+      where: theme,
+    });
     const titled = new Set(screenTitles.map((entry) => entry.surface));
     const blind = scanned.filter((surface) => !titled.has(surface));
     report(
       `screen title\t${screenTitles.length} screen title(s), ${judged.lines.length} distinct ` +
         `size/weight pair(s), on ${titled.size} of ${scanned.length} surface(s) walked\t` +
-        `${recordTitles.length} record title(s) reported but NOT judged by this band, ` +
+        `${recordTitles.length} record title(s) judged against the ` +
+        `${judgedRecords.wantedPx.toFixed(1)}px --text-xl band, ` +
         `${parked.length} parked out of frame\tno title drawn on: ${blind.join(", ") || "none"}\t` +
         `band ${judged.floorPx.toFixed(1)}–${judged.ceilingPx.toFixed(1)}px ` +
         `(${TITLE_MIN_REM}–${TITLE_MAX_REM}rem at a ${collected.rootFontSizePx}px root), ` +
@@ -2940,14 +3233,18 @@ const measureTheme = async (
     for (const line of judged.lines) report(line);
     failures.push(...judged.failures);
     layoutProblems.push(...judged.problems);
-    // TYTUŁY REKORDÓW WYPISANE, NIE OSĄDZONE. Sonda wierności rekordów nie
-    // otwiera, więc dziś ta lista jest pusta i wiersz tego nie ukrywa — pusto
-    // ma się czytać jako pomiar, a nie jako brak tematu.
-    for (const group of groupMeasurements(recordTitles))
-      report(
-        `record title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${group.value}\t` +
-          "reported only — the crumbbar band does not describe a record title",
-      );
+    // TYTUŁY REKORDÓW OSĄDZONE WŁASNYM PASMEM. Ta sonda rekordów NIE OTWIERA,
+    // więc tutaj lista jest pusta i pusto ma się czytać jako pomiar — otwiera
+    // je przelot geometrii i nowy przelot tras, i tam to pasmo coś mierzy.
+    //
+    // `openedKinds` STAYS EMPTY for the same reason: the coverage floor is a
+    // debt of the pass that OPENED a record, not a sentence about records
+    // spoken by a pass that never walks into one.
+    for (const line of judgedRecords.lines) report(line);
+    for (const line of judgedRecords.pending)
+      report(`record title band\tPENDING\t${line}`);
+    failures.push(...judgedRecords.failures);
+    layoutProblems.push(...judgedRecords.problems);
     // POKRYCIE JEST TERAZ ASERCJĄ, NIE WIERSZEM RAPORTU, i to jest ta zmiana,
     // która złapałaby defekt Spotkań. Poprzednia wersja pisała „no title drawn
     // on: meetings, library" i szła dalej — przyrząd sam meldował, że dwóch
@@ -3310,6 +3607,245 @@ const auditVisualLanguageMap = () => {
   return failures;
 };
 
+// ── JEDNA DEFINICJA POMIARU PARY, DWA PRZELOTY ───────────────────────────────
+// Ten blok stał do tej wersji WEWNĄTRZ `visualLanguagePairs`, jako domknięcie
+// przekazywane do `page.evaluate`. Wyszedł na poziom modułu, bo przelot tras
+// (`routedVisualLanguage` niżej) mierzy DOKŁADNIE TE SAME pary tą samą
+// arytmetyką, tylko po dojściu na miejsce — a dwie kopie tej arytmetyki
+// rozjechałyby się przy pierwszej poprawce i dwa przeloty mówiłyby o tej samej
+// wartości dwie różne rzeczy. Funkcja jest bezkontekstowa (Playwright
+// serializuje jej ŹRÓDŁO, nie domknięcie), więc wszystko, czego potrzebuje,
+// przychodzi argumentem.
+const measureVisualLanguageInPage = async ({
+  pairs,
+  notCovered,
+  wantedTheme,
+  pseudoAbsent,
+  // GDZIE TO ZMIERZONO, PODANE Z ZEWNĄTRZ. Do rozdzielenia przelotów ta funkcja
+  // pisała w każdej diagnozie „on the landing shell", bo mierzył ją wyłącznie
+  // przelot powłoki. Przelot tras stoi na Bibliotece albo na otwartym rekordzie
+  // i to samo zdanie wysyłałoby czytającego szukać afordancji na ekranie, na
+  // którym jej z definicji nie ma.
+  where,
+}) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  document.documentElement.dataset.theme = wantedTheme;
+  await frame();
+  const shell = window.getComputedStyle(document.body);
+  const fingerprint = `${shell.backgroundColor} on ${shell.color}`;
+
+  // Token rozwiązywany PRZEZ TĘ SAMĄ WŁAŚCIWOŚĆ, którą para czyta —
+  // inaczej obie strony porównania przechodziłyby przez inną
+  // normalizację przeglądarki i „oklch(…)" nigdy nie zrównałoby się
+  // z „rgb(…)". Sonda jest ukryta, ale NIE `display: none`: wartość
+  // użyta długości bierze się z układu.
+  const resolveAs = (property, value) => {
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.left = "-9999px";
+    probe.style.top = "0";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    probe.style[property] = value;
+    document.body.append(probe);
+    const resolved = window.getComputedStyle(probe)[property];
+    probe.remove();
+    return resolved ?? "";
+  };
+  const rendered = (element) => {
+    const style = window.getComputedStyle(element);
+    if (style.display === "none") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const signature = (element) => {
+    const classes = [...element.classList]
+      .map((token) => {
+        const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+        return match === null ? token : `_${match[1]}`;
+      })
+      .join(".");
+    return classes === ""
+      ? element.tagName.toLowerCase()
+      : `${element.tagName.toLowerCase()}.${classes}`;
+  };
+  const paintOf = (element) => {
+    const style = window.getComputedStyle(element);
+    return `${style.backgroundColor} ${style.backgroundImage}`;
+  };
+  const readValue = (element, read) => {
+    if (read.pseudo !== undefined && read.pseudo !== null) {
+      const style = window.getComputedStyle(element, read.pseudo);
+      const content = style.content;
+      if (content === "none" || content === "normal" || content === "")
+        return pseudoAbsent;
+      return style[read.property] ?? "";
+    }
+    if (read.property === "paint") return paintOf(element);
+    if (read.property === "text") return (element.textContent ?? "").trim();
+    if (read.property === "rect.left") {
+      const rect = element.getBoundingClientRect();
+      return `${Math.round(rect.left * 100) / 100}px`;
+    }
+    return window.getComputedStyle(element)[read.property] ?? "";
+  };
+
+  const measurements = [];
+  for (const pair of pairs) {
+    // PODMIOT TOKENOWY: para mierzy wartość tokenu, bo element, który go
+    // niesie, składa dziś DWA tokeny w jedną wysokość.
+    if (pair.subject.token !== undefined) {
+      const observed = resolveAs(
+        pair.read.property,
+        `var(${pair.subject.token})`,
+      );
+      measurements.push({
+        id: pair.id,
+        state: observed === "" ? "not-measured" : "measured",
+        reason:
+          observed === ""
+            ? `var(${pair.subject.token}) resolved to nothing on this page — the token was ` +
+              "renamed or never defined, so this pair measured NOTHING."
+            : undefined,
+        matches: 1,
+        observed,
+        signature: `var(${pair.subject.token})`,
+      });
+      continue;
+    }
+    let found;
+    try {
+      found = [...document.querySelectorAll(pair.subject.selector)];
+    } catch (error) {
+      measurements.push({
+        id: pair.id,
+        state: "not-measured",
+        reason:
+          `the selector „${pair.subject.selector}" is not valid in this engine ` +
+          `(${String(error)}).`,
+      });
+      continue;
+    }
+    if (pair.expect.kind === "count") {
+      measurements.push({
+        id: pair.id,
+        state: "measured",
+        matches: found.length,
+      });
+      continue;
+    }
+    if (pair.expect.kind === "accentCount") {
+      measurements.push({
+        id: pair.id,
+        state: "measured",
+        matches: found.length,
+        paints: found.filter(rendered).map((element) => ({
+          signature: signature(element),
+          value: paintOf(element),
+        })),
+      });
+      continue;
+    }
+    if (found.length === 0) {
+      // ── DIAGNOZA, KTÓRA ROZDZIELA DWIE AWARIE O JEDNYM OBJAWIE ────────────
+      // „Selektor nie trafił w nic" ma dwie zupełnie różne przyczyny i
+      // WYMAGAJĄ ONE RÓŻNEJ ROBOTY: (a) nazwa klasy się zmieniła albo
+      // przedrostek jest zły — wtedy poprawia się MAPĘ; (b) nazwa żyje, tylko
+      // ten stan fikstury jej nie rysuje (rekord bez wyjść, komentarz bez
+      // agenta, ekran powitalny przy wybranej notatce) — wtedy poprawia się
+      // FIKSTURĘ albo dopisuje `blind`. Bez tej liczby oba czyta się jako
+      // literówkę w selektorze, a to jest ta sama pomyłka, którą ten plik
+      // zbiera od fal: „nigdzie nie ma X" było prawdą o pasie, który się nie
+      // narysował. Każda część selektora rozdzielona spacją liczona OSOBNO
+      // w całym dokumencie.
+      const parts = pair.subject.selector
+        .split(/\s+/u)
+        .filter((part) => part !== "" && part !== ">");
+      const census = parts
+        .map((part) => {
+          try {
+            return `${part} → ${document.querySelectorAll(part).length}`;
+          } catch {
+            return `${part} → not a valid selector on its own`;
+          }
+        })
+        .join(", ");
+      measurements.push({
+        id: pair.id,
+        state: "not-measured",
+        reason:
+          `„${pair.subject.selector}" matched NO element on ${where}. This pair measured ` +
+          "nothing. Each part of the selector counted separately across the whole document: " +
+          `${census}. A part at ZERO is a name that is not on this page at all — renamed, or ` +
+          "this fixture state does not draw it. Every part above zero while the whole is zero " +
+          "means the parts ARE on the page and are not nested the way the map says.",
+      });
+      continue;
+    }
+    const live = found.filter(rendered);
+    if (live.length === 0) {
+      measurements.push({
+        id: pair.id,
+        state: "not-measured",
+        reason:
+          `„${pair.subject.selector}" matched ${found.length} element(s) on ${where}, and NONE ` +
+          "of them is rendered (display: none or a zero-area box). A computed style read off " +
+          "an unrendered box describes nothing a person can see.",
+      });
+      continue;
+    }
+    const values = live.map((element) => readValue(element, pair.read));
+    const distinct = [...new Set(values)];
+    if (distinct.length > 1) {
+      measurements.push({
+        id: pair.id,
+        state: "not-measured",
+        reason:
+          `„${pair.subject.selector}" matched ${live.length} rendered element(s) on ${where} ` +
+          `computing ` +
+          `${distinct.length} DIFFERENT values for ${pair.read.property} ` +
+          `(${distinct.join(" | ")}). This pair cannot say which one it judged.`,
+      });
+      continue;
+    }
+    measurements.push({
+      id: pair.id,
+      state: "measured",
+      matches: live.length,
+      observed: distinct[0],
+      signature: signature(live[0]),
+      expectedResolved:
+        pair.expect.kind === "token"
+          ? resolveAs(pair.read.property, `var(${pair.expect.token})`)
+          : undefined,
+    });
+  }
+
+  // Selektory pozycji NIEOBJĘTYCH: nie asercja, tylko liczba w raporcie.
+  const probes = notCovered.map((entry) => ({
+    lot: entry.lot,
+    position: entry.position,
+    selector: entry.probe ?? null,
+    matched:
+      entry.probe === undefined || entry.probe === null
+        ? null
+        : document.querySelectorAll(entry.probe).length,
+  }));
+
+  return {
+    applied: document.documentElement.dataset.theme ?? "",
+    fingerprint,
+    measurements,
+    probes,
+    rootFontSizePx: Number.parseFloat(
+      window.getComputedStyle(document.documentElement).fontSize,
+    ),
+  };
+};
+
 const visualLanguagePairs = async (browser) => {
   const failures = auditVisualLanguageMap();
   const verdicts = [];
@@ -3327,207 +3863,13 @@ const visualLanguagePairs = async (browser) => {
     await page.goto(HARNESS, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
 
-    const collected = await page.evaluate(
-      async ({ pairs, notCovered, wantedTheme, pseudoAbsent }) => {
-        const frame = () =>
-          new Promise((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(resolve)),
-          );
-        document.documentElement.dataset.theme = wantedTheme;
-        await frame();
-        const shell = window.getComputedStyle(document.body);
-        const fingerprint = `${shell.backgroundColor} on ${shell.color}`;
-
-        // Token rozwiązywany PRZEZ TĘ SAMĄ WŁAŚCIWOŚĆ, którą para czyta —
-        // inaczej obie strony porównania przechodziłyby przez inną
-        // normalizację przeglądarki i „oklch(…)" nigdy nie zrównałoby się
-        // z „rgb(…)". Sonda jest ukryta, ale NIE `display: none`: wartość
-        // użyta długości bierze się z układu.
-        const resolveAs = (property, value) => {
-          const probe = document.createElement("div");
-          probe.style.position = "absolute";
-          probe.style.left = "-9999px";
-          probe.style.top = "0";
-          probe.style.visibility = "hidden";
-          probe.style.pointerEvents = "none";
-          probe.style[property] = value;
-          document.body.append(probe);
-          const resolved = window.getComputedStyle(probe)[property];
-          probe.remove();
-          return resolved ?? "";
-        };
-        const rendered = (element) => {
-          const style = window.getComputedStyle(element);
-          if (style.display === "none") return false;
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        };
-        const signature = (element) => {
-          const classes = [...element.classList]
-            .map((token) => {
-              const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
-              return match === null ? token : `_${match[1]}`;
-            })
-            .join(".");
-          return classes === ""
-            ? element.tagName.toLowerCase()
-            : `${element.tagName.toLowerCase()}.${classes}`;
-        };
-        const paintOf = (element) => {
-          const style = window.getComputedStyle(element);
-          return `${style.backgroundColor} ${style.backgroundImage}`;
-        };
-        const readValue = (element, read) => {
-          if (read.pseudo !== undefined && read.pseudo !== null) {
-            const style = window.getComputedStyle(element, read.pseudo);
-            const content = style.content;
-            if (content === "none" || content === "normal" || content === "")
-              return pseudoAbsent;
-            return style[read.property] ?? "";
-          }
-          if (read.property === "paint") return paintOf(element);
-          if (read.property === "text")
-            return (element.textContent ?? "").trim();
-          if (read.property === "rect.left") {
-            const rect = element.getBoundingClientRect();
-            return `${Math.round(rect.left * 100) / 100}px`;
-          }
-          return window.getComputedStyle(element)[read.property] ?? "";
-        };
-
-        const measurements = [];
-        for (const pair of pairs) {
-          // PODMIOT TOKENOWY: para mierzy wartość tokenu, bo element, który go
-          // niesie, składa dziś DWA tokeny w jedną wysokość.
-          if (pair.subject.token !== undefined) {
-            const observed = resolveAs(
-              pair.read.property,
-              `var(${pair.subject.token})`,
-            );
-            measurements.push({
-              id: pair.id,
-              state: observed === "" ? "not-measured" : "measured",
-              reason:
-                observed === ""
-                  ? `var(${pair.subject.token}) resolved to nothing on this page — the token was ` +
-                    "renamed or never defined, so this pair measured NOTHING."
-                  : undefined,
-              matches: 1,
-              observed,
-              signature: `var(${pair.subject.token})`,
-            });
-            continue;
-          }
-          let found;
-          try {
-            found = [...document.querySelectorAll(pair.subject.selector)];
-          } catch (error) {
-            measurements.push({
-              id: pair.id,
-              state: "not-measured",
-              reason:
-                `the selector „${pair.subject.selector}" is not valid in this engine ` +
-                `(${String(error)}).`,
-            });
-            continue;
-          }
-          if (pair.expect.kind === "count") {
-            measurements.push({
-              id: pair.id,
-              state: "measured",
-              matches: found.length,
-            });
-            continue;
-          }
-          if (pair.expect.kind === "accentCount") {
-            measurements.push({
-              id: pair.id,
-              state: "measured",
-              matches: found.length,
-              paints: found.filter(rendered).map((element) => ({
-                signature: signature(element),
-                value: paintOf(element),
-              })),
-            });
-            continue;
-          }
-          if (found.length === 0) {
-            measurements.push({
-              id: pair.id,
-              state: "not-measured",
-              reason:
-                `„${pair.subject.selector}" matched NO element on the landing shell. This pair ` +
-                "measured nothing — the affordance moved and the map has to move with it. That " +
-                "is not the same as the property having the wrong value.",
-            });
-            continue;
-          }
-          const live = found.filter(rendered);
-          if (live.length === 0) {
-            measurements.push({
-              id: pair.id,
-              state: "not-measured",
-              reason:
-                `„${pair.subject.selector}" matched ${found.length} element(s), and NONE of them ` +
-                "is rendered (display: none or a zero-area box). A computed style read off an " +
-                "unrendered box describes nothing a person can see.",
-            });
-            continue;
-          }
-          const values = live.map((element) => readValue(element, pair.read));
-          const distinct = [...new Set(values)];
-          if (distinct.length > 1) {
-            measurements.push({
-              id: pair.id,
-              state: "not-measured",
-              reason:
-                `„${pair.subject.selector}" matched ${live.length} rendered element(s) computing ` +
-                `${distinct.length} DIFFERENT values for ${pair.read.property} ` +
-                `(${distinct.join(" | ")}). This pair cannot say which one it judged.`,
-            });
-            continue;
-          }
-          measurements.push({
-            id: pair.id,
-            state: "measured",
-            matches: live.length,
-            observed: distinct[0],
-            signature: signature(live[0]),
-            expectedResolved:
-              pair.expect.kind === "token"
-                ? resolveAs(pair.read.property, `var(${pair.expect.token})`)
-                : undefined,
-          });
-        }
-
-        // Selektory pozycji NIEOBJĘTYCH: nie asercja, tylko liczba w raporcie.
-        const probes = notCovered.map((entry) => ({
-          lot: entry.lot,
-          position: entry.position,
-          selector: entry.probe ?? null,
-          matched:
-            entry.probe === undefined || entry.probe === null
-              ? null
-              : document.querySelectorAll(entry.probe).length,
-        }));
-
-        return {
-          applied: document.documentElement.dataset.theme ?? "",
-          fingerprint,
-          measurements,
-          probes,
-          rootFontSizePx: Number.parseFloat(
-            window.getComputedStyle(document.documentElement).fontSize,
-          ),
-        };
-      },
-      {
-        pairs: VISUAL_LANGUAGE_PAIRS,
-        notCovered: VISUAL_LANGUAGE_NOT_COVERED,
-        wantedTheme: theme,
-        pseudoAbsent: PSEUDO_ABSENT,
-      },
-    );
+    const collected = await page.evaluate(measureVisualLanguageInPage, {
+      pairs: VISUAL_LANGUAGE_PAIRS,
+      notCovered: VISUAL_LANGUAGE_NOT_COVERED,
+      wantedTheme: theme,
+      pseudoAbsent: PSEUDO_ABSENT,
+      where: "the landing shell",
+    });
 
     if (collected.applied !== theme)
       failures.push(
@@ -3626,6 +3968,1249 @@ const visualLanguagePairs = async (browser) => {
         "statement about two themes. Instrument failure.",
     );
   return { failures, verdicts };
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// PRZELOT TRAS — PARY LOTÓW 2-6 I PRZYRZĄD P7 (POZYCJA PO PRZEWINIĘCIU)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// DWA PRZYRZĄDY W JEDNYM SPACERZE, I TO NIE JEST OSZCZĘDNOŚĆ CZASU. Gdyby P7
+// miał WŁASNĄ, ręcznie wypisaną listę ekranów, powstałaby dokładnie ta awaria,
+// przed którą P7 stoi: podmiot przyklejony żyjący na ekranie, którego lista P7
+// zapomniała odwiedzić, asercja, która nigdy nie biegnie, i bramka zielona.
+// Przystanki są więc WYPROWADZONE z map par — jedna deklaracja tras dla obu
+// przyrządów. Kto dopisze parę na nowym ekranie, dostaje pod nią pomiar
+// przyklejenia za darmo; kto skasuje ostatnią parę ekranu, straci go w obu
+// przyrządach naraz i zobaczy to w księgowości niżej.
+//
+// KOLEJNOŚĆ NA PRZYSTANKU: pary (bez przewijania) → przyklejenie (przewija)
+// → `scrollTop = 0` przed następnym kliknięciem. Pary czytają `rect.left`
+// i filtrują po `rendered()`, więc przewinięcie pionowe nie rusza żadnej z tych
+// dwóch rzeczy — ale ta kolejność znaczy, że nie trzeba tego udowadniać.
+//
+// PRZYKLEJENIE MIERZONE W JEDNYM MOTYWIE, pary w dwóch. `position` i
+// `getBoundingClientRect()` nie są funkcją farby; dwa przeloty przyklejenia
+// dałyby dwa razy tę samą liczbę i dwa razy ten sam czas bramki.
+
+// Marker DOJŚCIA na ekran, z deklaracji ekranu, nie z klasy przycisku
+// nawigacji. Klasa `active` na pozycji nawigacji mówi, co się PODŚWIETLIŁO;
+// ten marker mówi, co się NARYSOWAŁO — a przelot, który zaliczy powłokę
+// zamiast ekranu, zmierzy pary Pipeline'u na powierzchni lądowania i wpisze
+// je wszystkie jako awarię przyrządu.
+const ROUTED_ARRIVAL = {
+  // PipelineSurface.tsx:737 / RenewalsSurface.tsx:774 — deklaracja korzenia
+  // ekranu, ta sama, z której pary tej mapy biorą przedrostek podmiotu.
+  pipeline: "[data-pipeline-surface]",
+  renewals: "[data-renewals-surface]",
+  // Projekty i Zadania nie deklarują korzenia, więc markerem jest afordancja,
+  // którą ten przystanek i tak zaraz otworzy: bez wiersza nie ma ekranu, a bez
+  // ekranu nie ma czego mierzyć. ZAKRES `#main-content` jest tu nośny —
+  // `[data-task-row]` rysuje też panel zadań NA REKORDZIE i kalendarz.
+  projects: "#main-content [data-project-row]",
+  tasks: "#main-content [data-task-row]",
+  // Biblioteka: przełącznik soczewek (LibraryShell.tsx:111). Ten sam znacznik,
+  // po którym przelot geometrii wylicza obiektywy.
+  library: "#main-content [data-layout]",
+};
+
+// RODZAJ REKORDU, KTÓREGO SIĘ SPODZIEWAMY PO TYCH DRZWIACH. Trzy drzwi, trzy
+// rodzaje — spisane w tym pliku wyżej, przy przelocie geometrii: zadanie przez
+// `[data-task-row]`, projekt przez `[data-project-row]`, szansa przez
+// `[data-pipeline-card]`, i wiersz odnowienia NIE OTWIERA niczego. Sprawdzenie
+// rodzaju jest tu po to, żeby „otworzył się JAKIŚ rekord" nie przeszło za
+// „otworzył się TEN rekord": para `[data-record-kind="project"] …` zmierzona
+// na otwartym zadaniu wraca jako awaria przyrządu, a przyczyną jest trasa.
+const ROUTED_RECORD_KIND = {
+  "[data-project-row]": "project",
+  "[data-task-row]": "task",
+  "[data-pipeline-card]": "opportunity",
+  // THE SAME DOOR, NARROWED TO ONE COLUMN. `[data-pipeline-card]` takes the
+  // first card in board order, which is stage order, which puts the deal that
+  // has nothing priced yet first — so a pair about offers opened a record with
+  // none. A door scoped by `[data-pipeline-column]` is still declaration-based
+  // (`PipelineSurface.tsx:406` stamps the stage id from the closed dictionary
+  // in `commercial-defaults.ts:140`), and it opens the same KIND.
+  '[data-pipeline-column="negotiation"] [data-pipeline-card]': "opportunity",
+};
+
+// Klucz przystanku — jedna postać dla map par i dla rejestru P7, żeby wpis
+// przyklejenia nie mógł wskazać na trasę, której nikt nie chodzi.
+const routeKey = (route) =>
+  route.settingsMode === true
+    ? "settings"
+    : [
+        route.surface ?? "?",
+        route.layout ?? "-",
+        route.openRecord ?? "-",
+        route.recordTab ?? "-",
+      ].join(" | ");
+
+const routeLabel = (route) =>
+  route.settingsMode === true
+    ? "Settings (mode)"
+    : [
+        route.surface,
+        route.layout === undefined ? null : `lens ${route.layout}`,
+        route.openRecord === undefined
+          ? null
+          : `record via ${route.openRecord}`,
+        route.recordTab === undefined ? null : `tab ${route.recordTab}`,
+      ]
+        .filter((part) => part !== null && part !== undefined)
+        .join(" › ");
+
+// ── REJESTR P7: PODMIOTY, KTÓRE MAJĄ SIĘ PRZYKLEIĆ, A JESZCZE SIĘ NIE KLEJĄ ──
+// Podmiot żywy bierze się Z DEKLARACJI ROZWIĄZANEJ — skan pyta każdy narysowany
+// element o `getComputedStyle().position === "sticky"`. Podmiot OCZEKIWANY tak
+// się wziąć nie da, bo on się dziś liczy do `static`: jest niewidzialny dla
+// każdego skanu, który pyta o stan faktyczny. Dlatego stoi wypisany, z
+// właścicielem i adresem prototypu — i jest głośny w OBIE strony: selektor,
+// który nie trafia w nic, to awaria przyrządu (afordancja się przeniosła),
+// a podmiot, który JUŻ się klei, to sygnał, że lot dowiózł i wpis ma zniknąć.
+// Bez tej drugiej połowy lista gnije w ciszy — ta sama doktryna, co
+// `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`.
+const STICKY_PENDING_SUBJECTS = [
+  {
+    id: "P7-01",
+    owner: "lot 4 #8",
+    title: "the record tab bar sticks to the top of the reading column",
+    // Deklaracja po OBU stronach: ekran rekordu stempluje `data-record-kind`,
+    // a pasek zakładek jest `role="tablist"` (RecordTabStrip.tsx). Nie klasa
+    // modułowa — powód przy `TITLE_SELECTOR`.
+    selector: '[data-record-kind] [role="tablist"]',
+    // TRASA WYBRANA POD DRUGĄ POŁOWĘ POZYCJI, NIE POD PIERWSZĄ. Zakładka
+    // Przeglądu rysuje pasek zakładek i NIC PRZYKLEJONEGO POD NIM — zmierzone:
+    // przy przystanku „projects › record" żywy skan nie znalazł ani jednego
+    // podmiotu przyklejonego. Nagłówki grup z `record-panels.module.css:36`
+    // rysuje WYŁĄCZNIE `RecordTasksPanel.tsx:212`, czyli zakładka Zadań.
+    // To tam pasek na --z-sticky (20) ma przechodzić NAD nimi (--z-raised, 2)
+    // i tam ta pozycja jest naprawdę groźna, więc tam stoi jej pomiar.
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "tasks",
+    },
+    prototype:
+      "v3/app.css:655-658 (.tabstrip { position: sticky; top: 0; z-index: --z-sticky })",
+    app: "packages/desktop-ui/src/record/record-tabs.module.css:11-18",
+    // NAJGROŹNIEJSZA POZYCJA CAŁEJ FALI wg briefu Fazy 3, i powód jest tu
+    // dopisany, bo bez niego wpis czyta się jak drobiazg: `record-panels.module.css:36`
+    // JUŻ przykleja nagłówki grup na warstwie --z-raised (2), a pasek zakładek
+    // idzie na --z-sticky (20) i ma nad nimi PRZECHODZIĆ. Pasek, który się
+    // przykleja, ale maluje się POD nagłówkiem grupy, spełnia każdą asercję
+    // o `rect.top` — dlatego niżej stoi druga, o trafieniu kursorem.
+    // TA UWAGA MÓWI O MECHANIZMIE, NIE O POKRYCIU, i różnica jest zmierzona.
+    // `elementFromPoint` JEST w tym przyrządzie i zadziała — ale na tej
+    // fiksturze nie ma na czym: spis powszechny na tym przystanku pokazał
+    // ZERO narysowanych nagłówków grup (`RecordTasksPanel.tsx:212` jest
+    // jedynym miejscem, które je rysuje, a projekt harnessu nie ma ANI JEDNEGO
+    // zadania: `CollaborationHarness.tsx`, odczyt `project.operationalOverview`,
+    // `relatedTasks: []`). ADRES JEST WAŻNY: fikstura tej bramki to
+    // `CollaborationHarness.tsx` — `main.tsx:73-75` montuje go pod
+    // `?surface=collaboration` — a NIE `harness-snapshot.ts`, który zasila inne
+    // harnessy `?surface=`. Warunek wyjścia wskazujący nie ten plik kazałby
+    // lotowi 4 zasiać dane, po których nic by się nie zmieniło.
+    // Napisanie tu „asserted by elementFromPoint" byłoby powołaniem się na
+    // asercję, której nic nie dosięga.
+    note:
+      "must pass OVER the group heads already sticky at --z-raised (2) — " +
+      "record-panels.module.css:36. The z-order half WILL be asserted by elementFromPoint the " +
+      "moment the fixture draws task groups; measured 0 group heads on this stop today, so that " +
+      "half of the position is UNMEASURABLE on this fixture.",
+  },
+  {
+    id: "P7-02",
+    owner: "lot 2 #6",
+    title: "the pipeline column head sticks to the top of the board",
+    // Przedrostek z deklaracji, bo `_columnHead_` NIE JEST unikalne w
+    // dokumencie: w zbudowanym arkuszu stoją dwie różne klasy o tej nazwie
+    // (`_columnHead_1c08a_247` i `_columnHead_1epo7_70`) — policzone, nie
+    // przypuszczone.
+    selector: '[data-pipeline-column] [class*="_columnHead_"]',
+    route: { surface: "pipeline" },
+    prototype:
+      "v3/screens/pipeline.css:58-59 (.pp-head { position: sticky; top: 0; z-index: --z-raised })",
+    app: "packages/desktop-ui/src/pipeline/pipeline.module.css:247-254",
+    // Brief nazywa drugą połowę tej pozycji wprost: „osobno może przykleić się
+    // do ZŁEJ krawędzi i wyglądać gorzej niż dziś". Diagnoza przodków niżej
+    // mówi, do której krawędzi ten podmiot BY się przykleił, zanim ktokolwiek
+    // napisze deklarację — `pipeline.module.css:203-208` daje planszy
+    // `overflow-x: auto`, a pudełko, które przewija się poziomo, jest dla
+    // `top: 0` pudełkiem, które nie przewija się wcale.
+    note:
+      "the board scrolls HORIZONTALLY (pipeline.module.css:203-208); a top-sticky " +
+      "head inside a box that never scrolls vertically is silently inert",
+  },
+];
+
+// Ile podmiotów przyklejenia ten przelot ma ZOBACZYĆ. Liczba stoi tu z tego
+// samego powodu, co `VISUAL_LANGUAGE_EXPECTED`: podmiot, który zniknie razem
+// z ekranem, ma zrobić czerwień w księgowości, a nie ubyć po cichu z raportu.
+// ZMIERZONE, nie założone — wpisane po pierwszym przebiegu.
+// ILE PODMIOTÓW ŻYWYCH TEN SPACER MA NAPRAWDĘ PRZEWINĄĆ. Bez tej podłogi
+// przelot, któremu skan przestał cokolwiek znajdować — bo zmieniła się fikstura,
+// bo `getComputedStyle` przestał liczyć się do „sticky", bo pętla skanu
+// wyleciała przy refaktorze — meldowałby ZERO defektów przyklejenia i wyglądał
+// identycznie jak przelot, na którym wszystko trzyma.
+//
+// LICZONE SĄ WERDYKTY ZACHOWANIA (HELD/SLIPPED/COVERED), NIE ZNALEZIONE
+// PODMIOTY, i ta różnica jest cała treść tej podłogi. Podmiot, który skan
+// znalazł, ale którego fikstura nie umiała przewinąć, wraca jako
+// NOT_EXERCISED — i policzenie go tutaj dałoby próg spełniony przez trzy
+// pomiary, z których żaden niczego nie sprawdził. To jest ta sama hollow green
+// piętro wyżej niż `STICKY_NOT_EXERCISED`.
+//
+// LICZBA ZMIERZONA NA TYM DRZEWIE: 3 (nagłówek grupy notatek, nagłówek grupy
+// źródeł, nawigator Ustawień), wszystkie trzy HELD. Podłoga, nie równość: nowy
+// przyklejony nagłówek na dowolnym z tych ekranów ma tę bramkę wzmacniać.
+const STICKY_EXPECTED = { pending: 2, liveExercised: 3 };
+
+const STICKY_PROBE_PX = 40;
+
+// ── ILE REGUŁ PRZYKLEJENIA ISTNIEJE, A ILE TEN SPACER OSĄDZIŁ ────────────────
+// Bez tej liczby raport P7 czyta się jako „przyklejenie jest zmierzone", a mówi
+// wyłącznie „zmierzone są te reguły przyklejenia, które trafiły się na trasach
+// mapy par". Podmioty są tu WYPROWADZONE ZE ŹRÓDŁA, tą samą doktryną, co
+// `derive()` wyżej: lista obok kodu, który decyduje, ile ich jest, gnije.
+// Dopasowanie idzie po OSTATNIEJ klasie selektora, bo tak właśnie wygląda
+// sygnatura w przeglądarce po normalizacji hasha modułu (`.groupHead` →
+// `._groupHead`). To jest raport, nie asercja — reguła może być poprawnie
+// nieosiągalna na dzisiejszej fiksturze, a przełożenie tego na czerwień
+// zrobiłoby z zasięgu przelotu warunek poprawności produktu.
+const declaredStickyRules = () => {
+  const found = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".css")) {
+        // KOMENTARZE WYCIĘTE, NUMERY LINII ZACHOWANE. Bez tego skan czytał
+        // `project-timeline.module.css:63` — zdanie PROZĄ o tym, że
+        // `position: sticky` przypięłoby się tam do złego pudełka — jako
+        // deklarację, i raportował nieistniejącą regułę jako niezmierzoną.
+        // To ta sama pułapka, którą ten repozytorium ma zapisaną przy
+        // `css-token-lint`: arkusz czytany RAZEM Z KOMENTARZAMI.
+        const lines = readFileSync(full, "utf8")
+          .replace(/\/\*[\s\S]*?\*\//gu, (block) =>
+            block.replace(/[^\n]/gu, " "),
+          )
+          .split("\n");
+        for (const [index, line] of lines.entries()) {
+          if (!/position:\s*sticky/u.test(line)) continue;
+          // Selektor to ostatnia niepusta linia przed nawiasem otwierającym
+          // blok, w którym stoi ta deklaracja.
+          let at = index;
+          while (at > 0 && !lines[at].includes("{")) at -= 1;
+          const selector = lines[at].split("{")[0].trim();
+          const classes = [...selector.matchAll(/\.([A-Za-z0-9_-]+)/gu)].map(
+            (match) => match[1],
+          );
+          // JAK TA KLASA WYGLĄDA W PRZEGLĄDARCE. Arkusz modułowy dostaje hash,
+          // który `signature()` normalizuje do `._nazwa`; arkusz globalny
+          // zostaje `.nazwa`. Bez tego rozróżnienia `.settings-navigator`
+          // — reguła, którą ten przelot NAPRAWDĘ osądził — meldowała się jako
+          // niezmierzona, bo szukano jej pod postacią modułową.
+          const leaf =
+            classes.length === 0 ? null : classes[classes.length - 1];
+          found.push({
+            file: path.relative(root, full),
+            line: index + 1,
+            selector,
+            leaf,
+            token:
+              leaf === null
+                ? null
+                : entry.name.endsWith(".module.css")
+                  ? `._${leaf}`
+                  : `.${leaf}`,
+          });
+        }
+      }
+    }
+  };
+  walk(RENDERER_SOURCE);
+  return found;
+};
+
+// ── KSIĘGOWOŚĆ MAPY TRAS ─────────────────────────────────────────────────────
+const auditRoutedMap = () => {
+  const failures = [];
+  const seen = new Set();
+  for (const pair of VISUAL_LANGUAGE_ROUTED_PAIRS) {
+    if (seen.has(pair.id))
+      failures.push(
+        `ROUTED_DUPLICATE_ID: two entries in the routed map carry id „${pair.id}".`,
+      );
+    seen.add(pair.id);
+    // A STATUS THIS PASS CANNOT READ IS SILENCE IN BOTH DIRECTIONS, and it
+    // became so the moment the two branches below started reading it: a pair
+    // filed as neither "enforced" nor "pending: LOT N" now gets no verdict
+    // when it differs AND no already-matches when it matches. The lot-1 map
+    // has carried this guard from the start (VISUAL_LANGUAGE_UNKNOWN_STATUS);
+    // the routed map did not need it while every branch was unconditional,
+    // and needs it now. A typo in a status is a pair that measures for
+    // nobody.
+    if (
+      pair.status !== "enforced" &&
+      !/^pending: LOT \d+$/u.test(pair.status ?? "")
+    )
+      failures.push(
+        `ROUTED_UNKNOWN_STATUS: ${pair.id} „${pair.title}" carries the status „${pair.status}", ` +
+          'which is neither „enforced" nor „pending: LOT N". This pass decides what a measurement ' +
+          "COSTS from that string — a delivered pair that broke throws, an undelivered one " +
+          "reports — so a status it cannot read makes the pair cost nothing in either direction.",
+      );
+    const route = pair.route;
+    if (route === undefined || route === null) {
+      failures.push(
+        `ROUTED_NO_ROUTE: ${pair.id} „${pair.title}" declares no route. A pair without a route ` +
+          "is measured on whatever screen happened to be open, which is the failure this whole " +
+          "pass exists to remove.",
+      );
+      continue;
+    }
+    if (route.settingsMode !== true) {
+      if (ROUTED_ARRIVAL[route.surface] === undefined)
+        failures.push(
+          `ROUTED_UNKNOWN_SURFACE: ${pair.id} routes to „${route.surface}", and this pass has no ` +
+            "arrival marker for that screen. Add one to ROUTED_ARRIVAL — a screen this pass " +
+            "cannot prove it reached is a screen it may not report a measurement from.",
+        );
+      if (
+        route.openRecord !== undefined &&
+        ROUTED_RECORD_KIND[route.openRecord] === undefined
+      )
+        failures.push(
+          `ROUTED_UNKNOWN_RECORD_DOOR: ${pair.id} opens a record through „${route.openRecord}", ` +
+            "and this pass does not know which record kind that door opens.",
+        );
+    }
+  }
+  const blind = VISUAL_LANGUAGE_ROUTED_PAIRS.filter(
+    (pair) => pair.blind !== undefined && pair.blind !== null,
+  );
+  for (const [label, seenCount, wanted] of [
+    [
+      "routed pairs",
+      VISUAL_LANGUAGE_ROUTED_PAIRS.length,
+      VISUAL_LANGUAGE_ROUTED_EXPECTED.pairs,
+    ],
+    [
+      "not-covered entries",
+      VISUAL_LANGUAGE_ROUTED_NOT_COVERED.length,
+      VISUAL_LANGUAGE_ROUTED_EXPECTED.notCovered,
+    ],
+    // PARY ŚLEPE SĄ POLICZONE, bo `blind` jest JEDYNYM polem w tej mapie, które
+    // ZDEJMUJE awarię przyrządu (NOT_MEASURED przestaje być czerwienią). Pole,
+    // które wycisza, i którego nikt nie liczy, jest wyłącznikiem bramki
+    // dopisywalnym jednym słowem.
+    ["blind pairs", blind.length, VISUAL_LANGUAGE_ROUTED_EXPECTED.blind],
+    [
+      "declared sticky subjects",
+      STICKY_PENDING_SUBJECTS.length,
+      STICKY_EXPECTED.pending,
+    ],
+  ])
+    if (seenCount !== wanted)
+      failures.push(
+        `ROUTED_COUNT_DRIFT: this pass holds ${seenCount} ${label}, and the declared number is ` +
+          `${wanted}. Either an entry was added or removed without saying so, or the declared ` +
+          "number is stale.",
+      );
+  for (const [lot, expectation] of Object.entries(
+    VISUAL_LANGUAGE_ROUTED_EXPECTED.lots,
+  )) {
+    const ofLot = VISUAL_LANGUAGE_ROUTED_PAIRS.filter(
+      (pair) => String(pair.lot) === lot,
+    );
+    if (ofLot.length !== expectation.pairs)
+      failures.push(
+        `ROUTED_LOT_DRIFT (lot ${lot}): ${ofLot.length} pair(s) carried, ${expectation.pairs} declared.`,
+      );
+    const positions = new Set(ofLot.map((pair) => pair.position));
+    if (positions.size !== expectation.positionsWithPairs)
+      failures.push(
+        `ROUTED_POSITION_DRIFT (lot ${lot}): ${positions.size} brief position(s) covered, ` +
+          `${expectation.positionsWithPairs} declared.`,
+      );
+    for (const position of expectation.positionsWithoutPairs)
+      if (positions.has(position))
+        failures.push(
+          `ROUTED_POSITION_CONTRADICTION (lot ${lot}): position ${position} is declared as ` +
+            "having no pair, and the map holds one for it.",
+        );
+    if (
+      positions.size + expectation.positionsWithoutPairs.length !==
+      expectation.positionsInBrief
+    )
+      failures.push(
+        `ROUTED_POSITION_GAP (lot ${lot}): ${positions.size} covered plus ` +
+          `${expectation.positionsWithoutPairs.length} declared uncovered does not add up to the ` +
+          `${expectation.positionsInBrief} position(s) the brief lists.`,
+      );
+  }
+  // Podmiot przyklejenia MUSI mieć trasę, którą ten przelot umie przejść —
+  // inaczej `routedStops` dokłada przystanek, którego `walkRouteInPage` nie
+  // dowiezie, i pojawia się awaria trasy pod nazwą awarii selektora.
+  for (const subject of STICKY_PENDING_SUBJECTS) {
+    if (subject.route.settingsMode === true) continue;
+    if (ROUTED_ARRIVAL[subject.route.surface] === undefined)
+      failures.push(
+        `STICKY_UNKNOWN_SURFACE: ${subject.id} routes to „${subject.route.surface}", and this ` +
+          "pass has no arrival marker for that screen.",
+      );
+    if (
+      subject.route.openRecord !== undefined &&
+      ROUTED_RECORD_KIND[subject.route.openRecord] === undefined
+    )
+      failures.push(
+        `STICKY_UNKNOWN_RECORD_DOOR: ${subject.id} opens a record through ` +
+          `„${subject.route.openRecord}", and this pass does not know which kind that opens.`,
+      );
+  }
+  return failures;
+};
+
+// ── PRZYSTANKI: WYPROWADZONE Z MAPY, NIGDY Z DOM-U ───────────────────────────
+// Sonda wierności buduje spacer z `[...document.querySelectorAll(".nav-item[data-surface]")]`
+// i klika KAŻDY — nowy wiersz nawigacji po cichu wydłuża jej trasę. Ten przelot
+// klika DOKŁADNIE te ekrany, których żąda mapa; brak pozycji nawigacji jest tu
+// głośną awarią trasy z nazwą ekranu, a nie krótszym spacerem.
+const routedStops = () => {
+  const stops = new Map();
+  for (const pair of VISUAL_LANGUAGE_ROUTED_PAIRS) {
+    if (pair.route === undefined || pair.route === null) continue;
+    const key = routeKey(pair.route);
+    const stop = stops.get(key) ?? { key, route: pair.route, pairs: [] };
+    stop.pairs.push(pair);
+    stops.set(key, stop);
+  }
+  // PRZYSTANEK MOŻE ISTNIEĆ WYŁĄCZNIE DLA PRZYKLEJENIA, i to jest poprawka po
+  // pierwszym przebiegu. Wersja, w której trasy brały się TYLKO z par, kazała
+  // podmiotowi P7 mieszkać na przystanku, który ma parę — a najgroźniejsza
+  // pozycja fali (pasek zakładek NAD przyklejonymi nagłówkami grup) jest
+  // groźna dokładnie na zakładce, do której żadna para nie prowadzi.
+  // Wybór był między „zmierz to na ekranie, gdzie konflikt nie istnieje"
+  // a „dołóż przystanek". Drugie mierzy rzecz, pierwsze mierzy jej nazwę.
+  for (const subject of STICKY_PENDING_SUBJECTS) {
+    const key = routeKey(subject.route);
+    if (stops.has(key)) continue;
+    stops.set(key, { key, route: subject.route, pairs: [], stickyOnly: true });
+  }
+  // TRYB USTAWIEŃ NA KOŃCU. Wejście PODMIENIA lewą kolumnę, więc pozycja
+  // nawigacji następnego celu przestaje istnieć — ten sam powód, dla którego
+  // sonda wierności stawia go ostatnim. Wyjście `[data-settings-back]` i tak
+  // jest klikane na wejściu każdego przystanku, więc to jest pas i szelki.
+  return [...stops.values()].sort(
+    (left, right) =>
+      Number(left.route.settingsMode === true) -
+      Number(right.route.settingsMode === true),
+  );
+};
+
+// ── DOJŚCIE NA MIEJSCE ───────────────────────────────────────────────────────
+// TWARDY WARUNEK ZADANIA: jeśli kliknięcie nie dowiozło ekranu, ten przelot ma
+// paść GŁOŚNO z nazwą ekranu — nie zmierzyć po cichu powłoki i zapisać par jako
+// oczekujących. Każdy krok ma więc warunek DOJŚCIA, a nie tylko kliknięcie.
+const walkRouteInPage = async ({ route, arrival, recordKind }) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  const settle = async (ms) => {
+    await frame();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await frame();
+  };
+  const rendered = (element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const steps = [];
+
+  // Wyjście z trybu Ustawień PRZED każdym krokiem nawigacji: bez tego każdy
+  // cel po Ustawieniach mierzyłby Ustawienia (zmierzone w tym pliku przy
+  // `sweep`, gdzie kosztowało trzynaście powierzchni zmierzonych jako jedna).
+  const back = document.querySelector("[data-settings-back]");
+  if (back instanceof HTMLElement) {
+    back.click();
+    await settle(400);
+    steps.push("left settings mode");
+  }
+
+  if (route.settingsMode === true) {
+    const entry = document.querySelector("[data-settings-entry]");
+    if (!(entry instanceof HTMLElement))
+      return {
+        ok: false,
+        steps,
+        step: "settings",
+        reason:
+          "„[data-settings-entry]" +
+          "” matched no element — Settings is a MODE entered by the gear, and this shell drew no gear.",
+      };
+    entry.click();
+    await settle(700);
+    if (document.querySelector("[data-settings-back]") === null)
+      return {
+        ok: false,
+        steps,
+        step: "settings",
+        reason:
+          "the gear was clicked and the left column did NOT swap — „[data-settings-back]” is " +
+          "absent, so this pass is still standing on the shell it started from.",
+      };
+    steps.push("entered settings mode");
+    return { ok: true, steps };
+  }
+
+  const item = document.querySelector(
+    `.nav-item[data-surface="${route.surface}"]`,
+  );
+  if (!(item instanceof HTMLElement))
+    return {
+      ok: false,
+      steps,
+      step: `surface ${route.surface}`,
+      reason: `.nav-item[data-surface="${route.surface}"] matched no element — the destination is not in the left column.`,
+    };
+  item.click();
+  await settle(700);
+  const landed = document.querySelector(arrival);
+  if (!rendered(landed))
+    return {
+      ok: false,
+      steps,
+      step: `surface ${route.surface}`,
+      reason:
+        `the nav item for „${route.surface}" was clicked and its arrival marker „${arrival}" is ` +
+        `${landed === null ? "absent" : "present but not rendered"}. The click did NOT deliver ` +
+        "the screen, so anything measured here would be a statement about whatever stayed on " +
+        "the page.",
+    };
+  steps.push(
+    `surface ${route.surface} (aria-current=${item.getAttribute("aria-current") ?? "none"})`,
+  );
+
+  if (route.layout !== undefined) {
+    const lens = document.querySelector(
+      `#main-content [data-layout="${route.layout}"]`,
+    );
+    if (!(lens instanceof HTMLElement))
+      return {
+        ok: false,
+        steps,
+        step: `lens ${route.layout}`,
+        reason: `#main-content [data-layout="${route.layout}"] matched no element on ${route.surface}.`,
+      };
+    lens.click();
+    await settle(700);
+    const after = document.querySelector(
+      `#main-content [data-layout="${route.layout}"]`,
+    );
+    const selected = after?.getAttribute("aria-selected") ?? null;
+    if (selected !== "true")
+      return {
+        ok: false,
+        steps,
+        step: `lens ${route.layout}`,
+        reason:
+          `the lens switch „${route.layout}" was clicked and reads aria-selected="${selected}". ` +
+          "The reading did not change, so the pairs below would describe the lens this screen " +
+          "opens on, under the name of one it never showed.",
+      };
+    steps.push(`lens ${route.layout} (aria-selected=true)`);
+  }
+
+  if (route.openRecord !== undefined) {
+    const row = document.querySelector(`#main-content ${route.openRecord}`);
+    if (!(row instanceof HTMLElement))
+      return {
+        ok: false,
+        steps,
+        step: `record via ${route.openRecord}`,
+        reason: `#main-content ${route.openRecord} matched no row on ${route.surface} — nothing to open.`,
+      };
+    row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await settle(900);
+    const opened = document.querySelector("[data-record-kind]");
+    const kind = opened?.getAttribute("data-record-kind") ?? null;
+    if (kind === null)
+      return {
+        ok: false,
+        steps,
+        step: `record via ${route.openRecord}`,
+        reason:
+          `the row was double-clicked and no [data-record-kind] screen is on the page. The ` +
+          "record did not open.",
+      };
+    if (kind !== recordKind)
+      return {
+        ok: false,
+        steps,
+        step: `record via ${route.openRecord}`,
+        reason:
+          `the row opened a „${kind}" record and this route expects „${recordKind}". Pairs are ` +
+          "written against one record kind each; measuring them on another is a route defect " +
+          "reported as a selector defect.",
+      };
+    steps.push(`record ${kind}`);
+  }
+
+  if (route.recordTab !== undefined) {
+    const tab = document.querySelector(
+      `[role="tab"][data-record-tab="${route.recordTab}"]`,
+    );
+    if (!(tab instanceof HTMLElement))
+      return {
+        ok: false,
+        steps,
+        step: `tab ${route.recordTab}`,
+        reason: `[role="tab"][data-record-tab="${route.recordTab}"] matched no element on the open record.`,
+      };
+    tab.click();
+    await settle(500);
+    const selected =
+      document
+        .querySelector(`[role="tab"][data-record-tab="${route.recordTab}"]`)
+        ?.getAttribute("aria-selected") ?? null;
+    if (selected !== "true")
+      return {
+        ok: false,
+        steps,
+        step: `tab ${route.recordTab}`,
+        reason: `the tab „${route.recordTab}" was clicked and reads aria-selected="${selected}".`,
+      };
+    steps.push(`tab ${route.recordTab}`);
+  }
+
+  return { ok: true, steps };
+};
+
+// ── P7: POZYCJA PO PRZEWINIĘCIU ──────────────────────────────────────────────
+// `position: sticky` MILKNIE BEZ BŁĘDU pod dowolnym przodkiem z `overflow`
+// innym niż `visible`. Nie ma ostrzeżenia w konsoli, nie ma czerwieni w
+// arkuszu, nie ma niczego — deklaracja jest poprawna i nie robi nic. Dlatego
+// asercja o OBECNOŚCI deklaracji (para L4-08a czyta `position` i wystarczy jej
+// „sticky") jest tu nie do przyjęcia jako całość dowodu: ona mierzy, że ktoś
+// napisał słowo, a nie że nagłówek zostaje na ekranie.
+//
+// FAŁSZYWA ZIELEŃ TEGO PRZYRZĄDU MA JEDNO IMIĘ: „nic się nie przewinęło".
+// Lista krótsza niż jej pojemnik nie przewija się wcale, `rect.top` nie maleje,
+// asercja przechodzi — nad elementem, którego przyklejenia NIKT NIE SPRAWDZIŁ.
+// To ten sam kształt, co „pusta fikstura chroni fałszywą asercję". Dlatego
+// `STICKY_NOT_EXERCISED` jest OSOBNYM kubełkiem: nie zaliczeniem i nie awarią,
+// tylko zmierzonym faktem o dzisiejszej fiksturze.
+//
+// ILE PRZEWINĄĆ, POLICZONE, NIE WPISANE. Dwie liczby wychodzą z geometrii:
+//   `needed` = ile brakuje, żeby element DOSZEDŁ do swojej pozycji przyklejenia
+//              (odległość od górnej krawędzi pojemnika minus wcięcie `top`),
+//   `range`  = jak długo POZOSTAJE przyklejony, zanim wypchnie go dolna
+//              krawędź jego własnego bloku zawierającego.
+// Przewijamy `min(range, needed + próbka)`. Ograniczenie przez `range` nie jest
+// ostrożnością — bez niego przy KILKU nagłówkach grup w jednym pojemniku
+// przelot przewinąłby pierwszy nagłówek POZA jego własną grupę, gdzie ma prawo
+// odjechać do góry (tak działają przyklejone nagłówki), i zgłosiłby poprawne
+// zachowanie jako defekt.
+//
+// DRUGA POŁOWA: KOLEJNOŚĆ MALOWANIA. Element, który się przykleja, ale maluje
+// się POD sąsiadem, spełnia każdą asercję o `rect.top`. Pytanie o to zadaje się
+// trafieniem kursorem (`document.elementFromPoint`), a nie odczytem
+// `z-index` — bo `z-index` bez kontekstu układania nie mówi nic.
+const measureStickyInPage = async ({ pending, probePx }) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  const signature = (element) => {
+    const classes = [...element.classList]
+      .map((token) => {
+        const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+        return match === null ? token : `_${match[1]}`;
+      })
+      .join(".");
+    return classes === ""
+      ? element.tagName.toLowerCase()
+      : `${element.tagName.toLowerCase()}.${classes}`;
+  };
+  const rendered = (element) => {
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  // Pojemnik przewijania: najbliższy przodek, którego `overflow` w osi Y NIE
+  // jest `visible`. Sticky pozycjonuje się względem NIEGO, nawet jeśli ten
+  // przodek nigdy nie przewija — i to jest dokładnie ta cicha awaria.
+  const scrollBoxOf = (element) => {
+    let node = element.parentElement;
+    while (node !== null && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      if (style.overflowY !== "visible" || style.overflowX !== "visible")
+        return node;
+      node = node.parentElement;
+    }
+    return null;
+  };
+  const overflowChain = (element, box) => {
+    const chain = [];
+    let node = element.parentElement;
+    while (node !== null && node !== box && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      if (style.overflowY !== "visible" || style.overflowX !== "visible")
+        chain.push(
+          `${signature(node)} {overflow-x: ${style.overflowX}; overflow-y: ${style.overflowY}}`,
+        );
+      node = node.parentElement;
+    }
+    return chain;
+  };
+
+  const judge = async (element) => {
+    const style = window.getComputedStyle(element);
+    const insetRaw = style.top;
+    if (insetRaw === "auto")
+      return {
+        verdict: "UNJUDGED",
+        reason:
+          `it declares position: sticky with top: auto (bottom: ${style.bottom}). This probe ` +
+          "asserts the TOP edge; a bottom-sticky subject needs its own assertion and this pass " +
+          "does not pretend to have made one.",
+      };
+    const inset = Number.parseFloat(insetRaw);
+    if (!Number.isFinite(inset))
+      return {
+        verdict: "UNJUDGED",
+        reason: `its top inset computed „${insetRaw}", which this probe cannot read as pixels.`,
+      };
+    const box = scrollBoxOf(element);
+    const scroller =
+      box ?? document.scrollingElement ?? document.documentElement;
+    const boxTop = box === null ? 0 : box.getBoundingClientRect().top;
+    const before = element.getBoundingClientRect();
+    const parent = element.parentElement;
+    const parentBottom =
+      parent === null ? before.bottom : parent.getBoundingClientRect().bottom;
+    const needed = before.top - boxTop - inset;
+    const range = parentBottom - boxTop - inset - before.height;
+    const amount = Math.min(range, Math.max(needed, 0) + probePx);
+    const shape = {
+      signature: signature(element),
+      box: box === null ? "the document" : signature(box),
+      boxOverflowY:
+        box === null
+          ? window.getComputedStyle(document.documentElement).overflowY
+          : window.getComputedStyle(box).overflowY,
+      inset,
+      needed: Math.round(needed * 10) / 10,
+      range: Math.round(range * 10) / 10,
+      amount: Math.round(amount * 10) / 10,
+      chain: overflowChain(element, box),
+    };
+    if (!(amount > needed + 1))
+      return {
+        ...shape,
+        verdict: "NOT_EXERCISED",
+        reason:
+          `the furthest this subject can be scrolled inside its own containing block is ` +
+          `${shape.range}px, and it needs ${shape.needed}px just to REACH its sticky position. ` +
+          "The fixture cannot push it past the pin, so nothing about its stickiness was tested.",
+      };
+    const scrolledFrom = scroller.scrollTop;
+    scroller.scrollTop = scrolledFrom + amount;
+    await frame();
+    const moved = scroller.scrollTop - scrolledFrom;
+    if (moved < amount - 2) {
+      scroller.scrollTop = scrolledFrom;
+      await frame();
+      return {
+        ...shape,
+        verdict: "NOT_EXERCISED",
+        moved: Math.round(moved * 10) / 10,
+        reason:
+          `this pass asked ${shape.box} to scroll ${shape.amount}px and it moved ${Math.round(moved * 10) / 10}px. ` +
+          "A container that does not scroll cannot demonstrate stickiness, and an assertion over " +
+          "it would pass without having tested anything.",
+      };
+    }
+    const after = element.getBoundingClientRect();
+    const wanted = boxTop + inset;
+    const held = after.top >= wanted - 1;
+    // Trafienie kursorem w środku pudełka PO przewinięciu — druga połowa, bez
+    // której „przykleiło się, ale pod spodem" czyta się jako zaliczenie.
+    const x = Math.min(
+      Math.max(after.left + after.width / 2, 1),
+      window.innerWidth - 1,
+    );
+    const y = Math.min(
+      Math.max(after.top + after.height / 2, 1),
+      window.innerHeight - 1,
+    );
+    const hit = document.elementFromPoint(x, y);
+    const onTop =
+      hit !== null &&
+      (hit === element || element.contains(hit) || hit.contains(element));
+    scroller.scrollTop = scrolledFrom;
+    await frame();
+    return {
+      ...shape,
+      verdict: held ? (onTop ? "HELD" : "COVERED") : "SLIPPED",
+      moved: Math.round(moved * 10) / 10,
+      top: Math.round(after.top * 10) / 10,
+      wanted: Math.round(wanted * 10) / 10,
+      hit: hit === null ? "nothing" : signature(hit),
+      reason: held
+        ? onTop
+          ? undefined
+          : `it holds its position and something else paints over it: the point at its centre ` +
+            `hits ${hit === null ? "nothing" : signature(hit)}.`
+        : `after ${shape.amount}px of scroll its top edge sits at ${Math.round(after.top * 10) / 10}px, ` +
+          `below the ${Math.round(wanted * 10) / 10}px its own top inset asks for. It scrolled away ` +
+          "with the content — position: sticky is declared and inert.",
+    };
+  };
+
+  // ── PODMIOTY ŻYWE: Z DEKLARACJI ROZWIĄZANEJ ────────────────────────────────
+  // Jeden podmiot na (sygnatura × pojemnik), i to jest wymuszone przez samą
+  // rzecz: przyklejone nagłówki rodzeństwa WYPYCHAJĄ SIĘ NAWZAJEM, więc drugi
+  // i trzeci nagłówek grupy mają pełne prawo odjechać do góry. Sądzony jest
+  // PIERWSZY w kolejności dokumentu.
+  const live = [];
+  const claimed = new Set();
+  for (const element of document.querySelectorAll("*")) {
+    if (window.getComputedStyle(element).position !== "sticky") continue;
+    if (!rendered(element)) continue;
+    const box = scrollBoxOf(element);
+    const key = `${signature(element)}|${box === null ? "-" : signature(box)}`;
+    if (claimed.has(key)) continue;
+    claimed.add(key);
+    live.push({ key, element });
+  }
+  const liveResults = [];
+  for (const entry of live)
+    liveResults.push({ key: entry.key, ...(await judge(entry.element)) });
+
+  // ── PODMIOTY OCZEKUJĄCE: Z REJESTRU ───────────────────────────────────────
+  const pendingResults = [];
+  for (const subject of pending) {
+    let found;
+    try {
+      found = [...document.querySelectorAll(subject.selector)];
+    } catch (error) {
+      pendingResults.push({
+        id: subject.id,
+        state: "instrument",
+        reason: `the selector „${subject.selector}" is not valid in this engine (${String(error)}).`,
+      });
+      continue;
+    }
+    const drawn = found.filter(rendered);
+    if (drawn.length === 0) {
+      pendingResults.push({
+        id: subject.id,
+        state: "instrument",
+        matched: found.length,
+        reason:
+          `„${subject.selector}" matched ${found.length} element(s) and ${found.length === 0 ? "none exists" : "none is rendered"} ` +
+          "on the stop this subject declares. The affordance moved and the registry has to move " +
+          "with it — an entry that matches nothing is measured by nobody.",
+      });
+      continue;
+    }
+    const element = drawn[0];
+    const position = window.getComputedStyle(element).position;
+    if (position === "sticky") {
+      pendingResults.push({
+        id: subject.id,
+        state: "delivered",
+        matched: drawn.length,
+        signature: signature(element),
+        ...(await judge(element)),
+      });
+      continue;
+    }
+    const box = scrollBoxOf(element);
+    // CZY TO PUDEŁKO W OGÓLE PRZEWIJA SIĘ W PIONIE — bo to jest CAŁA prognoza
+    // dla obu tych pozycji, nie przypis. `top: 0` w pudełku, którego treść się
+    // mieści, jest deklaracją bez skutku i BEZ OSTRZEŻENIA; brief nazywa to
+    // przy Pipeline #6 („może przykleić się do ZŁEJ krawędzi"). Dwie surowe
+    // liczby, nie sam werdykt: lot ma zobaczyć, o ile treść przerasta pudełko.
+    const scrollBox =
+      box ?? document.scrollingElement ?? document.documentElement;
+    pendingResults.push({
+      id: subject.id,
+      state: "pending",
+      matched: drawn.length,
+      signature: signature(element),
+      position,
+      box: box === null ? "the document" : signature(box),
+      boxOverflowX:
+        box === null ? "visible" : window.getComputedStyle(box).overflowX,
+      boxOverflowY:
+        box === null ? "visible" : window.getComputedStyle(box).overflowY,
+      boxScrollHeight: Math.round(scrollBox.scrollHeight),
+      boxClientHeight: Math.round(scrollBox.clientHeight),
+      boxScrollsVertically: scrollBox.scrollHeight > scrollBox.clientHeight + 1,
+      // DIAGNOZA WYPRZEDZAJĄCA, policzona ZANIM ktokolwiek napisze deklarację:
+      // przodkowie z `overflow` innym niż `visible` między podmiotem a jego
+      // pudełkiem przewijania to lista rzeczy, które UCISZĄ przyklejenie
+      // w dniu, w którym lot je doda. Brief nazywa to przy pozycji 10 lotu 4.
+      chain: overflowChain(element, box),
+    });
+  }
+
+  // SPIS POWSZECHNY PODMIOTU, KTÓRY MIAŁBY BYĆ PRZYKLEJONY, ALE GO NIE MA.
+  // Zero żywych podmiotów na przystanku nie drukuje dziś ŻADNEGO wiersza,
+  // czyli czyta się identycznie jak przystanek, na którym wszystko trzyma.
+  // Ta liczba zamienia brak w pomiar — a przy pozycji 8 lotu 4 jest wprost
+  // odpowiedzią na pytanie „czy konflikt kolejności malowania ma na tym
+  // ekranie jakikolwiek podmiot".
+  return {
+    live: liveResults,
+    pending: pendingResults,
+    census: {
+      sticky: liveResults.length,
+      groupHeads: document.querySelectorAll('[class*="_groupHead_"]').length,
+      tablists: document.querySelectorAll('[role="tablist"]').length,
+    },
+  };
+};
+
+// ── PRZELOT ──────────────────────────────────────────────────────────────────
+const routedVisualLanguage = async (browser) => {
+  const failures = auditRoutedMap();
+  // Verdicts about the PRODUCT, kept apart from instrument and route
+  // failures. The list is empty today by measurement, not by assumption: no
+  // pair in this map is "enforced" yet. Empty is to be read as "nothing that
+  // was delivered has broken".
+  const verdicts = [];
+  const stops = routedStops();
+  const buckets = new Map();
+  const bump = (lot, bucket) => {
+    const row = buckets.get(lot) ?? {
+      MATCH: 0,
+      DIFFERS: 0,
+      NOT_MEASURED: 0,
+      BLIND: 0,
+      ROUTE_FAILED: 0,
+    };
+    row[bucket] += 1;
+    buckets.set(lot, row);
+  };
+  const startedAt = Date.now();
+  let liveSeen = 0;
+  const judgedSignatures = new Set();
+
+  for (const theme of THEME_ORDER) {
+    const report = (line) => console.log(`routed\t${theme}\t${line}`);
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      colorScheme: theme,
+    });
+    page.on("pageerror", (error) =>
+      failures.push(`ROUTED_PAGE_ERROR (${theme}): ${String(error)}`),
+    );
+    await page.goto(HARNESS, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+    // PRZYKLEJENIE MIERZONE W PIERWSZYM MOTYWIE. Powód przy nagłówku bloku.
+    const measureSticky = theme === THEME_ORDER[0];
+
+    for (const stop of stops) {
+      // Przystanek istniejący WYŁĄCZNIE dla przyklejenia nie ma po co chodzić
+      // w drugim motywie: `position` i `getBoundingClientRect()` nie są
+      // funkcją farby, a przejście tej trasy kosztuje ~2,5 s.
+      if (stop.pairs.length === 0 && !measureSticky) continue;
+      const walked = await page.evaluate(walkRouteInPage, {
+        route: stop.route,
+        arrival: ROUTED_ARRIVAL[stop.route.surface] ?? "body",
+        recordKind:
+          stop.route.openRecord === undefined
+            ? null
+            : (ROUTED_RECORD_KIND[stop.route.openRecord] ?? null),
+      });
+      if (!walked.ok) {
+        // GŁOŚNO, Z NAZWĄ EKRANU, I NIGDY JAKO „pending". Trasa, która nie
+        // dowiozła ekranu, jest awarią NAWIGACJI — zapisanie jej jako
+        // niezmierzonej pary wysyła czytającego szukać defektu selektora,
+        // którego nie ma, a zapisanie jako oczekującej jest po prostu
+        // kłamstwem o tym, co przelot zobaczył.
+        failures.push(
+          `ROUTED_ROUTE_FAILED (${theme}) — ${routeLabel(stop.route)}: ${walked.reason} ` +
+            `Steps that DID land: ${walked.steps.join(" → ") || "none"}. ` +
+            `${stop.pairs.length} pair(s) on this stop measured NOTHING.`,
+        );
+        report(
+          `ROUTE_FAILED\t${routeLabel(stop.route)}\tat step ${walked.step}\t${stop.pairs.length} pair(s) lost`,
+        );
+        for (const pair of stop.pairs) bump(pair.lot, "ROUTE_FAILED");
+        continue;
+      }
+      report(`arrived\t${routeLabel(stop.route)}\t${walked.steps.join(" → ")}`);
+
+      const collected = await page.evaluate(measureVisualLanguageInPage, {
+        pairs: stop.pairs,
+        notCovered: [],
+        wantedTheme: theme,
+        pseudoAbsent: PSEUDO_ABSENT,
+        where: routeLabel(stop.route),
+      });
+      if (collected.applied !== theme)
+        failures.push(
+          `ROUTED_THEME_NOT_STAMPED (${theme}) at ${routeLabel(stop.route)}: read back ` +
+            `„${collected.applied}".`,
+        );
+      const byId = new Map(
+        collected.measurements.map((entry) => [entry.id, entry]),
+      );
+      for (const pair of stop.pairs) {
+        const measured = byId.get(pair.id);
+        if (measured === undefined) {
+          failures.push(
+            `ROUTED_NOT_MEASURED (${theme}) — ${pair.id} „${pair.title}": the in-page pass ` +
+              "returned no measurement at all. Instrument failure.",
+          );
+          bump(pair.lot, "NOT_MEASURED");
+          continue;
+        }
+        const judged = judgeVisualPair(
+          pair,
+          measured,
+          collected.rootFontSizePx,
+          theme,
+        );
+        const subject = pair.subject.selector ?? `var(${pair.subject.token})`;
+        const cite =
+          `${pair.prototype.file}:${pair.prototype.lines} („${pair.prototype.value}") ` +
+          `↔ ${subject} [${pair.read?.property ?? "count"}]`;
+        if (judged.state === "NOT_MEASURED") {
+          // ŚLEPA PARA NIE JEST AWARIĄ PRZYRZĄDU. `blind` znaczy „dzisiejsza
+          // fikstura tego nie rysuje" i jest FAKTEM O DANYCH, nie o kodzie.
+          // Liczba ślepych par jest za to asertowana w księgowości wyżej, bo
+          // pole, które wycisza czerwień, i którego nikt nie liczy, jest
+          // wyłącznikiem bramki dopisywalnym jednym słowem.
+          if (pair.blind !== undefined && pair.blind !== null) {
+            report(
+              `${pair.id}\tBLIND\t${pair.title}\t${judged.reason}\t${pair.blind}`,
+            );
+            bump(pair.lot, "BLIND");
+            continue;
+          }
+          failures.push(
+            `ROUTED_NOT_MEASURED (${theme}) — ${pair.id} „${pair.title}" [${pair.status}] at ` +
+              `${routeLabel(stop.route)}: ${judged.reason} Pair: ${cite}. The route DID land ` +
+              "(steps above), so this is the selector, not the navigation.",
+          );
+          report(`${pair.id}\tNOT_MEASURED\t${judged.reason}`);
+          bump(pair.lot, "NOT_MEASURED");
+          continue;
+        }
+        report(
+          `${pair.id}\t${judged.state}\t${pair.status}\t${pair.title}\t` +
+            `observed: ${judged.observed}\texpected: ${judged.expected}\t${cite}`,
+        );
+        bump(pair.lot, judged.state === "MATCH" ? "MATCH" : "DIFFERS");
+        // ── THE STATUS IS READ BOTH WAYS NOW, NOT ONLY ONE ────────────────
+        // This branch used to look ONLY at the measurement and never at the
+        // pair's status, and that was invisible because EVERY pair in this
+        // map is pending today. Measured, by flipping L4-01a to "enforced"
+        // with an expectation that matches: the pass printed „is filed as
+        // «enforced» … the entry must flip to «enforced»" — a red nothing can
+        // clear, because it demands the state the entry is already in, and it
+        // appears EXACTLY when a lot delivers the position. The other half of
+        // the same hole is quiet and worse: an "enforced" pair that STOPPED
+        // matching reached nothing at all, so the routed map could not enforce
+        // a single delivered position.
+        //
+        // The rule is the one `visualLanguagePairs` already follows and the
+        // one the record-title band was just given: an UNDELIVERED position
+        // reports, a DELIVERED one that broke throws. The verdict goes on its
+        // own list, because calling a sentence about the product an
+        // "instrument failure" sends the reader off to repair the instrument.
+        if (pair.status === "enforced" && judged.state !== "MATCH")
+          verdicts.push(
+            `${theme} theme at ${routeLabel(stop.route)} — ${pair.id} „${pair.title}": ` +
+              `${subject} computes ${pair.read?.property ?? "count"} = ${judged.observed}, and ` +
+              `${pair.prototype.file}:${pair.prototype.lines} says ${judged.expected}. ` +
+              `Contract: ${pair.contract}.`,
+          );
+        if (pair.status.startsWith("pending") && judged.state === "MATCH")
+          failures.push(
+            `ROUTED_PENDING_ALREADY_MATCHES (${theme}) — ${pair.id} „${pair.title}" is filed as ` +
+              `„${pair.status}", and it MATCHES today: ${subject} computes ` +
+              `${pair.read?.property ?? "count"} = ${judged.observed}, which is what ` +
+              `${pair.prototype.file}:${pair.prototype.lines} asks for. Either the lot delivered ` +
+              'this and the entry must flip to "enforced", or the expectation is written so it ' +
+              "can never fail. Do not soften it to keep it pending.",
+          );
+      }
+
+      if (measureSticky) {
+        const pendingHere = STICKY_PENDING_SUBJECTS.filter(
+          (subject) => routeKey(subject.route) === stop.key,
+        );
+        const sticky = await page.evaluate(measureStickyInPage, {
+          pending: pendingHere.map((subject) => ({
+            id: subject.id,
+            selector: subject.selector,
+          })),
+          probePx: STICKY_PROBE_PX,
+        });
+        liveSeen += sticky.live.filter((entry) =>
+          ["HELD", "SLIPPED", "COVERED"].includes(entry.verdict),
+        ).length;
+        for (const entry of sticky.live)
+          if (entry.verdict !== "UNJUDGED")
+            judgedSignatures.add(entry.signature);
+        report(
+          `sticky scan\t${routeLabel(stop.route)}\t${sticky.census.sticky} live subject(s)\t` +
+            `${sticky.census.groupHeads} group head(s) drawn\t` +
+            `${sticky.census.tablists} tablist(s) drawn`,
+        );
+        for (const entry of sticky.live) {
+          report(
+            `sticky live\t${entry.signature ?? entry.key}\tin ${entry.box ?? "-"}\t` +
+              `${entry.verdict}\ttop ${entry.top ?? "-"}px vs wanted ${entry.wanted ?? "-"}px\t` +
+              `scrolled ${entry.moved ?? 0}/${entry.amount ?? 0}px (needed ${entry.needed ?? "-"}, ` +
+              `range ${entry.range ?? "-"})\thit ${entry.hit ?? "-"}`,
+          );
+          if (entry.verdict === "SLIPPED" || entry.verdict === "COVERED")
+            failures.push(
+              `STICKY_${entry.verdict} (${routeLabel(stop.route)}) — ${entry.signature} declares ` +
+                `position: sticky and ${entry.reason}` +
+                (entry.chain !== undefined && entry.chain.length > 0
+                  ? ` Ancestors between it and ${entry.box} that clip: ${entry.chain.join("; ")}.`
+                  : ""),
+            );
+          if (entry.verdict === "UNJUDGED")
+            failures.push(
+              `STICKY_UNJUDGED (${routeLabel(stop.route)}) — ${entry.signature ?? entry.key}: ${entry.reason}`,
+            );
+        }
+        for (const subject of pendingHere) {
+          const entry = sticky.pending.find((row) => row.id === subject.id);
+          if (entry === undefined) {
+            failures.push(
+              `STICKY_SUBJECT_NOT_MEASURED — ${subject.id} „${subject.title}" returned nothing ` +
+                "from the in-page pass. Instrument failure.",
+            );
+            continue;
+          }
+          if (entry.state === "instrument") {
+            failures.push(
+              `STICKY_SUBJECT_MISSING — ${subject.id} „${subject.title}" (owner: ${subject.owner}): ` +
+                `${entry.reason} Registered selector: ${subject.selector}, app: ${subject.app}.`,
+            );
+            report(`sticky pending\t${subject.id}\tSUBJECT MISSING`);
+            continue;
+          }
+          if (entry.state === "delivered") {
+            failures.push(
+              `STICKY_PENDING_ALREADY_STICKY — ${subject.id} „${subject.title}" is registered as ` +
+                `waiting for ${subject.owner}, and ${entry.signature} computes position: sticky ` +
+                `TODAY (verdict after scrolling: ${entry.verdict}). Either the lot delivered it ` +
+                "and this entry must go, or something else made it sticky by accident. A pending " +
+                "list nobody contradicts is a list that rots.",
+            );
+            report(
+              `sticky pending\t${subject.id}\tALREADY STICKY\t${entry.verdict}`,
+            );
+            continue;
+          }
+          report(
+            `sticky pending\t${subject.id}\t${subject.title}\towner ${subject.owner}\t` +
+              `${entry.signature} computes position: ${entry.position}\t` +
+              `scroll box ${entry.box} {overflow-x: ${entry.boxOverflowX}; overflow-y: ${entry.boxOverflowY}}\t` +
+              `${entry.boxScrollsVertically ? "SCROLLS vertically" : "DOES NOT scroll vertically"} ` +
+              `(${entry.boxScrollHeight}px of content in a ${entry.boxClientHeight}px box) — a ` +
+              "top-sticky subject in a box that never scrolls vertically is silently inert\t" +
+              `clipping ancestors: ${entry.chain.length === 0 ? "none" : entry.chain.join("; ")}\t` +
+              `prototype ${subject.prototype}`,
+          );
+        }
+      }
+
+      // Powrót na górę PRZED następnym kliknięciem: przewinięty ekran zostaje
+      // przewinięty, a następny przystanek mierzyłby pary na widoku, którego
+      // nie wybrał.
+      await page.evaluate(() => {
+        for (const node of [
+          document.scrollingElement,
+          ...document.querySelectorAll("*"),
+        ])
+          if (node !== null && node.scrollTop > 0) node.scrollTop = 0;
+      });
+    }
+    await page.close();
+  }
+
+  const elapsedMs = Date.now() - startedAt;
+  if (liveSeen < STICKY_EXPECTED.liveExercised)
+    failures.push(
+      `STICKY_NOTHING_EXERCISED: across every stop this pass walked, ${liveSeen} live sticky ` +
+        `subject(s) were actually scrolled past their pin and judged, under a floor of ` +
+        `${STICKY_EXPECTED.liveExercised}. A subject that is FOUND but never exercised reports ` +
+        "no defect and reads exactly like a subject that holds. Instrument failure — either a " +
+        "screen stopped drawing its sticky heading, or its list got too short to demonstrate " +
+        "stickiness and the fixture has to grow.",
+    );
+  for (const entry of VISUAL_LANGUAGE_ROUTED_NOT_COVERED)
+    console.log(
+      `routed\tnot covered\tL${entry.lot}-${String(entry.position).padStart(2, "0")}\t` +
+        `${entry.scope}\t${entry.title}`,
+    );
+  for (const [lot, row] of [...buckets.entries()].sort())
+    console.log(
+      `routed\tlot ${lot}\t${row.MATCH} MATCH\t${row.DIFFERS} DIFFERS\t` +
+        `${row.NOT_MEASURED} NOT_MEASURED\t${row.BLIND} BLIND\t${row.ROUTE_FAILED} ROUTE_FAILED\t` +
+        "(counted over both themes)",
+    );
+  // ZASIĘG P7, WYPISANY JAKO UŁAMEK. Reguła nieosądzona to reguła NIEZMIERZONA,
+  // a nie reguła poprawna — i tylko ta linia odróżnia jedno od drugiego.
+  const declared = declaredStickyRules();
+  // NIEJEDNOZNACZNOŚĆ NAZWANA, NIE ZALICZONA. Sześć różnych arkuszy modułowych
+  // deklaruje regułę `.groupHead`, a sygnatura w przeglądarce po normalizacji
+  // hasha brzmi w każdym z nich `._groupHead`. Przypisanie osądzonego podmiotu
+  // do KONKRETNEJ reguły jest więc niemożliwe tym dopasowaniem — a wpisanie
+  // sześciu reguł jako „JUDGED", bo osądzono trzy podmioty o tej nazwie, byłoby
+  // dokładnie tym, czego ten plik zabrania: bramką mierzącą OBECNOŚĆ nazwy.
+  const shared = new Map();
+  for (const rule of declared)
+    if (rule.token !== null)
+      shared.set(rule.token, (shared.get(rule.token) ?? 0) + 1);
+  const statusOf = (rule) => {
+    if (rule.token === null) return "NO CLASS — this walk cannot address it";
+    const hit = [...judgedSignatures].some((signature) =>
+      signature.includes(rule.token),
+    );
+    if (!hit) return "NOT MEASURED by this walk — no stop draws it";
+    return shared.get(rule.token) > 1
+      ? `AMBIGUOUS — ${shared.get(rule.token)} declared rules share the class „${rule.leaf}", ` +
+          "so a judged subject cannot be attributed to this one"
+      : "JUDGED";
+  };
+  const statuses = declared.map(statusOf);
+  console.log(
+    `routed\tsticky coverage\t${statuses.filter((status) => status === "JUDGED").length} of ` +
+      `${declared.length} declared position: sticky rule(s) in packages/desktop-ui/src judged ` +
+      `unambiguously\t${statuses.filter((status) => status.startsWith("AMBIGUOUS")).length} ` +
+      `matched a judged subject but share a class name\t` +
+      `${statuses.filter((status) => status.startsWith("NOT MEASURED")).length} on screens no ` +
+      `stop draws\t${liveSeen} live subject(s) actually exercised`,
+  );
+  for (const [index, rule] of declared.entries())
+    console.log(
+      `routed\tsticky rule\t${rule.file}:${rule.line}\t${rule.selector}\t${statuses[index]}`,
+    );
+  console.log(
+    `routed\twalk\t${stops.length} stop(s) × ${THEME_ORDER.length} theme(s)\t` +
+      `${liveSeen} live sticky subject(s) exercised and judged (floor ` +
+      `${STICKY_EXPECTED.liveExercised}), ` +
+      `${STICKY_PENDING_SUBJECTS.length} declared-pending subject(s)\t${elapsedMs} ms wall clock`,
+  );
+  return { failures, verdicts, buckets, elapsedMs, stops: stops.length };
 };
 
 const browser = await openBrowser();
@@ -3728,6 +5313,44 @@ try {
         : `${fidelity.failures.length} instrument failure(s), ${fidelity.layoutProblems.length} verdict(s)`
     }`,
   );
+  // ── THE RECORD-TITLE BAND: ONE LINE THAT TELLS THE WHOLE TRUTH ───────────
+  // This band's verdicts are scattered across the geometry passes and, while
+  // the position is undelivered, they do not stop the run — so without this
+  // line the whole measurement would live only in a stream nobody returns to
+  // when the run is green. The line prints UNCONDITIONALLY, every run, and
+  // carries the owner, its pairs' statuses and how many titles were judged.
+  // A measurement that vanished shows up here as a zero, not as a missing
+  // paragraph.
+  const bandFailures = [...RECORD_TITLE_BAND.failures];
+  // ZERO TITLES JUDGED IN THE WHOLE RUN is not "a pending that holds" — it is
+  // a band that does not exist. The per-pass floor (over the record kinds a
+  // pass opened) cannot see this: a pass that stopped opening records owes no
+  // kind at all.
+  if (RECORD_TITLE_BAND_CENSUS.entries === 0)
+    bandFailures.push(
+      "RECORD_TITLE_BAND_MEASURED_NOTHING: not one visible record title was judged against the " +
+        `${RECORD_TITLE_REM}rem band in ANY pass of this run. The band is filed as ` +
+        `${RECORD_TITLE_BAND_OWNER.label} (${RECORD_TITLE_BAND_STATUS}), and a pending position ` +
+        "that measures nothing is indistinguishable from one that holds — so this is an " +
+        "instrument failure, not silence.",
+    );
+  console.log(
+    `record title band: ${RECORD_TITLE_BAND_OWNER.label} — ` +
+      `${RECORD_TITLE_BAND.armed ? "ENFORCED (a verdict fails this run)" : "PENDING (verdicts are reported, not thrown)"}\t` +
+      `owners ${RECORD_TITLE_BAND_STATUS}\t` +
+      `${RECORD_TITLE_BAND_CENSUS.entries} record title(s) judged in ` +
+      `${RECORD_TITLE_BAND_CENSUS.passes} pass(es), ` +
+      `${RECORD_TITLE_BAND_CENSUS.groups} size/weight group observation(s) across those passes ` +
+      `(each pass groups its own geometry, so this is a sum, not a count of distinct sizes)\t` +
+      `on record kind(s): ` +
+      `${[...RECORD_TITLE_BAND_CENSUS.kinds].sort().join(", ") || "NONE"}\t` +
+      `${RECORD_TITLE_BAND_CENSUS.pending.length} verdict(s) reported`,
+  );
+  for (const line of RECORD_TITLE_BAND_CENSUS.pending)
+    console.log(`record title band\treported\t${line}`);
+  for (const failure of bandFailures) {
+    problems.push(`record title band — instrument: ${failure}`);
+  }
   // ── P1: PARY JĘZYKA WIZUALNEGO ──────────────────────────────────────────
   // OSOBNY PRZELOT, powody przy `visualLanguagePairs`. Obie listy egzekwowane
   // bezwarunkowo, również w trybie raportu, z tego samego powodu co sonda
@@ -3757,6 +5380,37 @@ try {
           `themes; ${VISUAL_LANGUAGE_NOT_COVERED.length} aspect(s) declared NOT COVERED`
         : `${language.failures.length} instrument failure(s), ${language.verdicts.length} verdict(s)`
     }`,
+  );
+  // ── P7 + PARY LOTÓW 2-6: PRZELOT TRAS ───────────────────────────────────
+  // OSOBNY PRZELOT OD `visualLanguagePairs`, i to nie jest podział estetyczny:
+  // tamten chodzi po POWŁOCE LĄDOWANIA i mierzy pary lotu 1 bez jednego
+  // kliknięcia, ten chodzi po EKRANACH i bez kliknięć nie mierzy niczego.
+  // Zlanie ich w jeden dałoby przelot, w którym awaria nawigacji kładzie
+  // również pary, które nawigacji nie potrzebują.
+  //
+  // CZERWIEŃ TEGO PRZELOTU JEST OCZEKIWANA I NIE JEST TYM SAMYM CO AWARIA.
+  // Werdykt „DIFFERS" na parze oczekującej NIE trafia do `problems` — lot 2
+  // jeszcze nie pobiegł i wpisanie mu tego jako błędu bramki uczyniłoby ją
+  // czerwoną do końca Fazy 3, czyli bezużyteczną. Do `problems` idą WYŁĄCZNIE
+  // awarie przyrządu i trasy: selektor, który nie trafia, ekran, który się nie
+  // otworzył, para oczekująca, która JUŻ pasuje, i przyklejenie, które milczy.
+  //
+  // AND — from this version — A VERDICT OVER A DELIVERED PAIR. "Pending does
+  // not throw" does not mean "nothing throws": a pair flipped to "enforced"
+  // that stopped matching is a regression of delivered work and must fail the
+  // run, or "enforced" would mean nothing in this map. The list is empty
+  // today because the routed map has no delivered pair yet.
+  const routed = await routedVisualLanguage(browser);
+  for (const failure of routed.failures) {
+    problems.push(`routed — instrument: ${failure}`);
+  }
+  for (const verdict of routed.verdicts) {
+    problems.push(`routed — ${verdict}`);
+  }
+  console.log(
+    `routed: ${routed.stops} stop(s) walked in ${routed.elapsedMs} ms; ` +
+      `${routed.failures.length} instrument/route failure(s), ` +
+      `${routed.verdicts.length} verdict(s) over delivered pair(s)`,
   );
   // Wpis, którego nie dopasował ŻADEN przelot, opisuje element, którego nie ma
   // — albo dług spłacono i wpis ma zniknąć, albo pomiar przestał ten ekran

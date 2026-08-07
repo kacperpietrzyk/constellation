@@ -43,6 +43,13 @@ import {
   parseColor,
   toSrgb,
 } from "./color-contrast.mjs";
+// Kaskada motywów i podstawianie `var()` stoją od 2026-08-07 w `css-tokens.mjs`,
+// bo druga bramka kontrastu (`consumer-contrast.test.mjs`, mierząca KONSUMENTÓW
+// z arkuszy powierzchni) potrzebuje TEJ SAMEJ odpowiedzi. Przepisane drugi raz,
+// milczałyby osobno w każdej z dwóch bramek — a to jest w tym repo nazwana klasa
+// defektu. Przeniesienie było czyste: ciała funkcji bez zmian, wyjście tego pliku
+// porównane przed i po co do znaku.
+import { looksLikeAColor, tokenSheet } from "./css-tokens.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -69,132 +76,13 @@ const tokensCss = readFileSync(tokensPath, "utf8").replace(
   "",
 );
 
-/** Reguły najwyższego poziomu, po selektorze i ciele. */
-const topLevelRules = (css) => {
-  const rules = [];
-  let depth = 0;
-  let selectorStart = 0;
-  let bodyStart = -1;
-  for (let index = 0; index < css.length; index += 1) {
-    const character = css[index];
-    if (character === "{") {
-      depth += 1;
-      if (depth === 1) bodyStart = index + 1;
-    } else if (character === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        rules.push({
-          selector: css.slice(selectorStart, bodyStart - 1).trim(),
-          body: css.slice(bodyStart, index),
-        });
-        selectorStart = index + 1;
-      }
-    }
-  }
-  return rules;
-};
-
-/** Deklaracje `--token: wartość` z ciała reguły; wartości bywają wielowierszowe. */
-const customProperties = (body) => {
-  const declarations = [];
-  let depth = 0;
-  let start = 0;
-  const push = (chunk) => {
-    const text = chunk.trim();
-    const colon = text.indexOf(":");
-    if (colon < 0) return;
-    const name = text.slice(0, colon).trim();
-    if (!name.startsWith("--")) return;
-    declarations.push([name, text.slice(colon + 1).trim()]);
-  };
-  for (let index = 0; index < body.length; index += 1) {
-    const character = body[index];
-    if (character === "(") depth += 1;
-    else if (character === ")") depth -= 1;
-    else if (character === ";" && depth === 0) {
-      push(body.slice(start, index));
-      start = index + 1;
-    }
-  }
-  push(body.slice(start));
-  return declarations;
-};
-
-const rules = topLevelRules(tokensCss);
-
-// Kaskada, nie „blok motywu". Pierwszy blok arkusza ma selektor
-// `:root, [data-theme="dark"]`, więc na `<html data-theme="light">` DALEJ się
-// stosuje — przez `:root`. Motyw jasny nadpisuje tylko to, co wymienia u siebie.
-// Ta bramka odkryła w ten sposób, że `--status-*-bg` motyw jasny DZIEDZICZY
-// z bloku ciemnego (patrz raport z pomiarów).
-const themeTokens = (themeName) => {
-  const map = new Map();
-  for (const { selector, body } of rules) {
-    const selects = selector
-      .split(",")
-      .map((part) => part.trim())
-      .some(
-        (part) => part === ":root" || part === `[data-theme="${themeName}"]`,
-      );
-    if (!selects) continue;
-    for (const [name, value] of customProperties(body)) {
-      map.set(name, { value, from: selector.replace(/\s+/g, " ") });
-    }
-  }
-  return map;
-};
-
-/** `var(--x)` rozwiązywane w obrębie motywu; brak definicji = GŁOŚNY błąd. */
-const resolve = (tokens, name, themeName, seen = new Set()) => {
-  const entry = tokens.get(name);
-  if (!entry) {
-    throw new Error(
-      `Motyw „${themeName}" nie definiuje ${name} w ${tokensPath}. ` +
-        "Bramka kontrastu nie ma czego zmierzyć — nazwa tokenu zmieniła kształt " +
-        "albo token zniknął.",
-    );
-  }
-  if (seen.has(name)) {
-    throw new Error(`Cykl var() na ${name} w motywie „${themeName}".`);
-  }
-  seen.add(name);
-  // Bloki, które DOŁOŻYŁY SIĘ do wartości — nie tylko blok tokenu nazwanego
-  // w rodzinie. `--action-primary-bg` jest zadeklarowane raz, w `:root`, ale
-  // w motywie jasnym jego wartość przychodzi przez `--accent` remapowany
-  // w bloku jasnym. Sama prowieniencja głowy łańcucha czytałaby się wtedy jak
-  // sprzeczność („blok ciemny, a wartość jasna") — dlatego ślad jest z całej
-  // ścieżki podstawień.
-  const blocks = [entry.from];
-  const substituted = entry.value.replace(
-    /var\(\s*(--[a-zA-Z0-9-]+)\s*\)/g,
-    // Każde podstawienie dostaje WŁASNĄ kopię śladu. Wspólny zbiór między
-    // rodzeństwem znaczyłby, że wartość wymieniająca ten sam token dwa razy
-    // (np. cień z `var(--accent)` w dwóch warstwach) melduje „cykl var()",
-    // którego nie ma. Kłamiąca diagnoza jest gorsza od braku diagnozy;
-    // prawdziwy cykl dalej rośnie wzdłuż ŁAŃCUCHA i zostaje złapany.
-    (_match, referenced) => {
-      const inner = resolve(tokens, referenced, themeName, new Set(seen));
-      blocks.push(...inner.blocks);
-      return inner.literal;
-    },
-  );
-  return { literal: substituted.trim(), from: entry.from, blocks };
-};
-
-/** Rozwiązany token → kolor. Wszystko, czego nie umiem rozłożyć, ma krzyknąć. */
-const colorOf = (tokens, name, themeName) => {
-  const { literal, from, blocks } = resolve(tokens, name, themeName);
-  let color;
-  try {
-    color = parseColor(literal);
-  } catch (cause) {
-    throw new Error(
-      `Motyw „${themeName}", token ${name} = „${literal}" — nie umiem tego rozłożyć ` +
-        `na kolor, więc NIE ZGADUJĘ. (${cause.message})`,
-    );
-  }
-  return { ...color, token: name, literal, from, blocks };
-};
+// `themeTokens` odkryło w ten sposób, że `--status-*-bg` motyw jasny DZIEDZICZY
+// z bloku ciemnego (patrz raport z pomiarów) — kaskada `:root` + `[data-theme]`
+// jest tu istotą, nie szczegółem, i dlatego ma JEDNEGO właściciela.
+const { declaredTokenNames, themeTokens, resolve, colorOf } = tokenSheet({
+  css: tokensCss,
+  sourcePath: tokensPath,
+});
 
 // Zbiór statusów bierze się z ARKUSZA, nie z listy w tym pliku. Lista wpisana
 // tutaj po obu stronach porównania dałaby asercję liczby pomiarów, która nie może
@@ -405,10 +293,8 @@ test("podbarwione tło zostaje ZŁOŻONE, a nie potraktowane jak farba kryjąca"
 //   * przyciemnione stopnie akcentu pod akcją główną → EXIT=0, 14/14.
 //     Bramka, która nie umie zzielenieć, nie jest pomiarem tylko blokadą.
 
-/** Wszystkie nazwy tokenów zadeklarowane GDZIEKOLWIEK w arkuszu. */
-const declaredTokenNames = new Set(
-  rules.flatMap(({ body }) => customProperties(body).map(([name]) => name)),
-);
+// `declaredTokenNames` (wszystkie nazwy zadeklarowane GDZIEKOLWIEK w arkuszu)
+// przychodzi z `css-tokens.mjs` razem z resztą kaskady.
 
 // Role w obrębie rodziny. Z samej nazwy NIE DA SIĘ odgadnąć, czy token maluje
 // płaszczyznę, czy kreskę (`--action-secondary-hover` maluje tło,
@@ -699,14 +585,6 @@ const surfaceNamesOutsideTheBgSuffix = [...declaredTokenNames]
   .filter((name) => name.startsWith("--surface-"))
   .filter((name) => !name.endsWith(BG_SUFFIX))
   .sort();
-const looksLikeAColor = (literal) => {
-  try {
-    parseColor(literal);
-    return true;
-  } catch {
-    return false;
-  }
-};
 // `declaredTokenNames` jest sumą po WSZYSTKICH blokach, więc token zadeklarowany
 // wyłącznie w bloku jasnym rzuciłby tu z `resolve` — NA POZIOMIE MODUŁU, czyli
 // kasując cały plik: zero testów, zero tabel, a `EXIT=1` z zera testów wygląda

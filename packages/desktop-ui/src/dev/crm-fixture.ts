@@ -245,8 +245,23 @@ export const crmRecords = (
       // deal looked worth before anybody wrote an offer.
       estimate: { amountMinor: 92_487_00, currency: "PLN" },
       stage: "negotiation",
-      // Well inside DEAL_STALE_DAYS, so the "not moving" warning is a state
-      // this fixture can reach without being permanently in it.
+      // THIS COMMENT USED TO SAY the deal sits "well inside DEAL_STALE_DAYS,
+      // so the 'not moving' warning is a state this fixture can reach without
+      // being permanently in it". IT WAS FALSE, and it was false about the
+      // wrong field: the card's age does NOT come from `stageEnteredAt` at all.
+      // `pipeline-view.ts:331` derives it from `createdAt`, every record here
+      // inherits `base.createdAt: at(-420)` (:172), and `DEAL_STALE_DAYS` is 45
+      // (`:71`) — so EVERY card on this board is stale, permanently, and no
+      // value written here changes that. `stageEnteredAt` is read by exactly
+      // one place, the "in this stage since …" line on the open deal
+      // (`PipelineSurface.tsx:905-907`).
+      //
+      // The value STAYS and the sentence goes. Two pairs of the visual-language
+      // map read the stale badge (L2-05a, L2-05b), so a fixture with no stale
+      // card would take their subject off the page — the fix here is the
+      // comment, not the date. What is genuinely unmeasured is the OTHER
+      // branch: no card on this board is fresh, so nobody has looked at the
+      // badge's quiet state.
       stageEnteredAt: at(-12),
       nextAction:
         "Price the on-site retainer as a separate annex and send both versions to Agata before Thursday.",

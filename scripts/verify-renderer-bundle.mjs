@@ -175,6 +175,16 @@ import path from "node:path";
 //   CSS łącznie      308 750 B                    (sufit  330 000)
 //   największy leniwy 603 238 B                   (sufit  700 000)
 //
+// ZAPAS PO TAMTYM POMIARZE — WSZYSTKIE PIĘĆ LICZB NALEŻĄ DO WIERSZA WYŻEJ,
+// z 2026-07-31, i do sufitów, które wtedy obowiązywały. Do 2026-08-07 stały
+// niżej, pod świeższym pomiarem, i czytały się jak stan dzisiejszy — dokładnie
+// ta klasa, którą ten plik miał naprawiać. Przeniesione tutaj, do swojego
+// pomiaru, przez lot nasady Fazy 3:
+//   gzip ścieżki gorącej   2 355 B  (174 000 − 171 645)
+//   CSS łącznie           21 250 B  — liczone wobec sufitu 330 000, którego
+//                                     ten plik JUŻ NIE MA (dziś 450 000, `:300`)
+//   surowy JS ścieżki     16 886 B  · JS łącznie 140 403 B · leniwy 96 762 B
+//
 // PRZEBAZOWANIE NA ZAMKNIĘCIU FALI ADOPCJI JĘZYKA WIZUALNEGO, 2026-08-07.
 // Ten sam warunek 2, ta sama przyczyna. Zmierzone na `agent/wizualny-jezyk-v3`
 // po Fazach 0-2, czystym rebuildem:
@@ -186,32 +196,95 @@ import path from "node:path";
 //   największy leniwy 617 695 B                   (sufit  700 000)
 //
 // UWAGA NA SUFIT CSS ŁĄCZNIE: blok o fali C mówi „sufit 330 000", a w kodzie
-// stoi 450 000 (`:251`). Ta proza zwietrzała — nie ruszono jej przy podniesieniu
+// stoi 450 000 (`:300`). Ta proza zwietrzała — nie ruszono jej przy podniesieniu
 // — i rekonesans Fazy 3 przeczytał ją jako obowiązującą, po czym oparł na niej
 // szacunki. Dokładnie ta klasa, którą ta fala naprawiała przez trzy fazy:
 // dokument mówi jedno, egzekwuje się co innego, i nic nie krzyczy.
 // ROZSTRZYGA STAŁA W KODZIE, NIE KOMENTARZ.
 //
-// TO JEST NOWY BASELINE. Kto czyta te liczby przy następnej fali, porównuje się
-// z nimi, a nie z buildem z 2026-07-28 ani z liczbami fali C wyżej — bo właśnie
-// porównywanie z martwym baselinem doprowadziło do 22 bajtów zapasu, których
-// nikt nie zauważył.
+// ── STAN NA 2026-08-07 PO LOCIE POWŁOKI I LOCIE NASADY FAZY 3 ───────────────
+// TO JEST NOWY BASELINE i to z nim porównuje się każdy lot Fazy 3 — nie
+// z buildem z 2026-07-28, nie z falą C, i nie z wierszem „po Fazach 0-2" wyżej,
+// który jest starszy o jeden zmergowany lot (`0cf1745`, powłoka). Brief Fazy 3
+// cytuje ten starszy wiersz jako stan wejściowy; różnica jest realna i nazwana.
+// Zmierzone czystym rebuildem (`npm run check`, czyli `clean` + `build`, potem
+// `node scripts/verify-renderer-bundle.mjs`), cytat z linii tego skryptu,
+// drzewo = `0cf1745` plus CAŁY lot nasady Fazy 3 — R3 (`--radius-md` →
+// 0.75rem), skonsolidowany zbiór ikon (R6) ORAZ rola `--accent-legible-*`:
 //
-// CO ZOSTAŁO Z ZAPASU, i to jest wynik do przeczytania, a nie do przemilczenia:
-//   gzip ścieżki gorącej   2 355 B  (1,4% sufitu)
-//   CSS łącznie           21 250 B  (6,4% sufitu)
-//   surowy JS ścieżki     16 886 B  · JS łącznie 140 403 B · leniwy 96 762 B
+//   budżet                  zmierzone         sufit        zapas
+//   ścieżka gorąca surowa     630 994 B      648 000 B    17 006 B
+//   ścieżka gorąca gzip       171 478 B      174 000 B     2 522 B  ← najciaśniej
+//   CSS gorący                184 273 B      200 000 B    15 727 B
+//   JS łącznie              1 702 568 B    1 770 000 B    67 432 B
+//   CSS łącznie               333 122 B      450 000 B   116 878 B
+//   największy leniwy         617 695 B      700 000 B    82 305 B
 //
-// DWIE RZECZY DO ROZSTRZYGNIĘCIA PRZED NASTĘPNĄ FALĄ, świadomie NIEROZSTRZYGNIĘTE
-// tutaj, bo podnoszenie sufitu bez roboty w ręku to ten sam nawyk, przeciwko
-// któremu stoi cały ten blok:
-//   • 2 355 B gzip nie pokryje żadnej fali ekranowej. Następna fala albo zaczyna
-//     od nazwanego, ZMIERZONEGO podniesienia z projektem w ręku, albo od rozmowy
-//     o tym, CO jest ładowane od razu. Nie od odkrycia w połowie, jak ta.
-//   • `totalStylesheetBytes` przestał być sufitem BEZPIECZEŃSTWA: model z planu
-//     daje mu ~30% zapasu, a 330 000 nad 308 750 to 6,4%. Albo dostaje rozmiar
-//     zgodny ze swoją rolą, albo przestaje być tak nazywany. Jedno albo drugie —
-//     nie zostawiać go w tym stanie po cichu.
+// DWIE LICZBY CSS PRZEPISANE PRZY ODBIORZE KOŃCOWYM LOTU NASADY, 2026-08-07.
+// Stały tu 184 275 i 333 124 i były nieprawdą o kilka godzin: tabelę zmierzono,
+// ZANIM ostatnia runda lotu przełożyła gradient kafla przestrzeni
+// (`.workspace-avatar` w `styles.css`) z trzech stopni rampy na dwa. Ten sam
+// wzorzec, który ten blok opisuje akapit wyżej przy „sufit 330 000", powtórzył
+// się WEWNĄTRZ jednego lotu — dlatego stoi tu z datą i przyczyną, a nie został
+// poprawiony po cichu.
+//
+// TA JEDNA ATRYBUCJA JEST WYIZOLOWANA REBUILDEM, a nie wywnioskowana z diffa:
+// gradient cofnięto do trzech stopni, `npm run build` przeleciał, bramka podała
+// 184 275 B / 333 124 B — dokładnie liczby, które tu stały — po czym gradient
+// przywrócono, build powtórzono i bramka wróciła na 184 273 B / 333 122 B. Dwa
+// stopnie zamiast trzech kosztują −2 B CSS w obu sumach, a JS stoi co do bajta
+// w obu przelotach. Cena tej pewności to dwa pełne buildy; kto następnym razem
+// przepisuje tabelę, wie, ile kosztuje NIE zgadywać.
+//
+// ATRYBUCJA WCZEŚNIEJSZYCH 115 B ZOSTAJE WYWNIOSKOWANA Z DIFFA i tak ma zostać
+// opisana. Te dwie liczby stały w tym bloku o tyle niżej (184 160 i 333 009),
+// bo zmierzono je, zanim powstała rola „akcent, który niesie tekst"; nikt tamtej
+// zmiany nie cofnął i nie zmierzył osobno. Podstawą jest to, że JS łącznie stoi
+// co do bajta (1 702 568 B), a jedyne niekomentarzowe zmiany CSS w drzewie to ta
+// rola i R3. Kto rusza ten plik albo `tokens.css`, przelatuje bramkę i przepisuje
+// tabelę — ona nie jest historią, tylko stanem.
+//
+// CZEGO TU ŚWIADOMIE NIE MA: asercji równości między tą tabelą a pomiarem.
+// Bramką są sufity niżej, a nie ta tabela; przypięcie jej co do bajta zamieniłoby
+// KAŻDĄ zmianę stylu w czerwień i byłoby cichą zmianą polityki wprowadzoną przy
+// odbiorze, a nie przez właściciela. Rot tej tabeli łapie się tak, jak złapano
+// go dziś: bramka DRUKUJE sześć zmierzonych liczb, więc porównanie kosztuje
+// jedno spojrzenie. Jeśli to okaże się za mało, decyzja o przypięciu należy do
+// właściciela — i wtedy razem z nią idzie tryb aktualizacji tabeli.
+//
+// STAN WEJŚCIOWY TEGO LOTU, dla porównania (`0cf1745`, przed R3 i R6):
+//   630 994 ← 629 930 B surowo · 171 478 ← 171 145 B gzip · CSS gorący
+//   184 160 ← 184 162 B · JS łącznie 1 702 568 ← 1 701 504 B · CSS łącznie
+//   333 009 ← 333 011 B · największy leniwy bez zmiany.
+//
+// CO TEN LOT WYDAŁ, ROZLICZONE OSOBNO, bo o to prosi warunek 2 i 3 wyżej:
+//   R6, dziesięć glifów w `components/Icon.tsx`  +1 064 B surowo / +328 B gzip
+//     (sam chunk `Icon-*.js`: 1 610 → 2 674 B surowo, 775 → 1 103 B gzip;
+//      jest na `modulepreload`, więc płaci się za niego przy otwarciu okna
+//      niezależnie od tego, czy ktokolwiek renderuje te glify)
+//   R3, `--radius-md` 0.5625rem → 0.75rem            −2 B CSS (krótszy literał;
+//                                                    83 odwołań idzie przez
+//                                                    `var()` i nie kosztuje nic)
+//
+// ZAPAS GZIP ŚCIEŻKI GORĄCEJ TO DZIŚ 2 522 B I TO JEST CAŁA REZERWA FAZY 3.
+// Pytanie 7 z sekcji 6 briefu Fazy 3 („której liczbie ufamy przy odbiorze
+// lotu") jest tym blokiem zamknięte: ufa się tabeli wyżej, bo jest zmierzona po
+// ostatnim zmergowanym locie. Zostają cztery roszczenia do JS ścieżki gorącej
+// wypisane w sekcji 3 briefu; jedno z nich (R6) właśnie zapłacono. Lot, który
+// zejdzie poniżej 500 B zapasu, ZATRZYMUJE SIĘ i pyta o nazwane podniesienie —
+// nie podnosi sufitu sam.
+//
+// JEDNA RZECZ DO ROZSTRZYGNIĘCIA PRZED NASTĘPNĄ FALĄ, świadomie
+// NIEROZSTRZYGNIĘTA tutaj, bo podnoszenie sufitu bez roboty w ręku to ten sam
+// nawyk, przeciwko któremu stoi cały ten blok:
+//   • 2 522 B gzip nie pokryje żadnej kolejnej fali ekranowej. Następna fala
+//     albo zaczyna od nazwanego, ZMIERZONEGO podniesienia z projektem w ręku,
+//     albo od rozmowy o tym, CO jest ładowane od razu. Nie od odkrycia
+//     w połowie, jak fala C.
+//   (Drugie z dwóch pytań zostawionych tu 2026-07-31 — czy `totalStylesheetBytes`
+//   jest jeszcze sufitem BEZPIECZEŃSTWA — zostało odpowiedziane blokiem niżej,
+//   z 2026-08-01: sufit poszedł na 450 000 i rola wróciła. Skreślone jako
+//   otwarte, żeby nikt nie odpowiadał na nie drugi raz.)
 //
 // ── PODNIESIENIE SUFITU ARKUSZY, 2026-08-01, fala D (lot S1) ────────────────
 // Rozstrzygnięcie drugiego z dwóch pytań zostawionych wyżej otwartych, podjęte

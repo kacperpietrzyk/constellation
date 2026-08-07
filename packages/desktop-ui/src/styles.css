@@ -952,7 +952,20 @@ kbd {
    `padding` (pudełko jest `border-box`, więc 1,25 rem minus 2 × 0,1875 rem daje
    0,875 rem rysunku — prototypowe 0,8125 rem z dokładnością do ćwierci piksela
    przy korzeniu 16 px). Węzeł opakowujący kosztowałby JS na ścieżce gorącej,
-   której zapas w tej fali wynosi mniej niż 3 kB. */
+   której zapas w tej fali wynosi mniej niż 3 kB.
+
+   ZOSTAJE PRZY FARBIE PROTOTYPU, CHOĆ KAFEL PRZESTRZENI JĄ OPUŚCIŁ, i to jest
+   różnica z powodu, nie z niedopatrzenia. Ten glif nie jest tekstem: to
+   `<svg aria-hidden="true">` z kółkami i kreskami (`components/BrandMark.tsx`),
+   stojące obok wypisanej literami nazwy produktu (`.brand-row strong`). WCAG
+   2.x SC 1.4.3 wiąże tekst, więc tego kafla nie wiąże — najjaśniejszy stopień
+   jego gradientu liczy 2,57:1 przeciw `--on-accent` i jest to dług estetyczny,
+   nie dostępnościowy. Kafel przełącznika przestrzeni NIESIE PRAWDZIWĄ LITERĘ
+   i dlatego siedzi dwa stopnie niżej na rampie (nota przy `.workspace-avatar`).
+   NIE UJEDNOLICAJ tych dwóch wartości bez zmiany jednego z tych dwóch faktów.
+   Pilnuje tego `scripts/consumer-contrast.test.mjs`: rozkłada OBA kafle na
+   stopnie i mierzy każdy, a zwolnienie znaku marki jest wymienione z nazwy
+   razem ze swoim dowodem i pada, gdy `aria-hidden` przy tej klasie zniknie. */
 .brand-mark {
   width: 1.25rem;
   height: 1.25rem;
@@ -991,7 +1004,56 @@ kbd {
    Obramowanie `--border-strong` znika: krawędź niesie teraz `--accent-edge`
    w cieniu, tak jak w prototypie, a neutralna obwódka na akcencie czytała się
    jak druga ramka. Litera schodzi na `--text-2xs`, bo na 1,5 rem kafla
-   `--text-sm` dotykała krawędzi. */
+   `--text-sm` dotykała krawędzi.
+
+   LITERA JEST PRAWDZIWA, WIĘC WIĄŻE JĄ PRÓG NAPISU. W kaflu stoi inicjał nazwy
+   przestrzeni (`RealApp.tsx`, przełącznik przestrzeni) — treść, nie ozdoba.
+   Pisze go `--on-accent` przy `--text-2xs` (0,6875 rem) i wadze 700, czyli
+   grubo poniżej 18,66 px, więc ulga WCAG dla tekstu POWIĘKSZONEGO nie
+   przysługuje i wiąże próg 4,5:1. Gradient nie ma przy tym jednej wartości:
+   KAŻDY jego stopień jest farbą, którą ta litera może przykryć, więc próg wiąże
+   każdy stopień z osobna, a nie ich średnią.
+
+   ODSTĘPSTWO OD v3, NAZWANE. Prototypowy kafel (`v3/app.css:169-175`, klasa
+   `.ws-mark`) idzie od `--a-400` przez `--a-600` na 62% do `--a-700` i pisze po
+   nim tym samym prawie białym tuszem. Zmierzone tą samą matematyką
+   (`scripts/color-contrast.mjs`); wynik jest identyczny w OBU motywach, bo ani
+   rampa akcentu, ani `--on-accent` nie różnią się między nimi:
+
+     stopień          v3 (`.ws-mark`)      tutaj
+     --a-400  72%     2,57:1  PONIŻEJ      —
+     --a-600  55%     5,19:1  AA           5,19:1  ← stopień górny, przez rolę
+     --a-700  46%     7,60:1  AA           7,60:1  ← stopień dolny, od 62% w dół
+
+   Górny stopień prototypu nie przechodzi i nie o włos: 2,57:1 przy progu 4,5:1,
+   do tego na kolorze wychodzącym 0,031 poza gamut sRGB (liczone po przycięciu,
+   bo tyle widać na ekranie). Zostaje WARTOŚĆ WYLICZONA, dokładnie jak przy
+   akcji głównej w `tokens.css`: progu nie wolno obniżyć, to zamieniłoby pomiar
+   z powrotem w deklarację.
+
+   FORMA ZOSTAJE, ZMIENIA SIĘ POŁOŻENIE NA RAMPIE — ten sam kąt 150°, ten sam
+   odcień 295, ten sam kształt kafla, ta sama krawędź i to samo halo. Próg
+   czytelności przecina rampę przy ~58,3% jasności, więc stopni niosących tekst
+   jest DOKŁADNIE DWA (tabela stopni akcentu w `tokens.css`) — i tyle ich tu
+   stoi. Punkt przegięcia 62% z prototypu zostaje jako pozycja stopnia dolnego:
+   gradient przebywa całą drogę na pierwszych 62% i dalej stoi, czyli zachowuje
+   prototypowe „szybko na górze, spokojnie na dole", tylko na dwóch farbach
+   zamiast trzech. TRZECIEJ FARBY NIE MA ŚWIADOMIE: cokolwiek ciemniejszego niż
+   `--a-700` musiałoby być literałem spoza rampy, a literał o wartości stanu
+   wciśniętego akcji byłby kopią wartości (w tym repo nazwana klasa defektu),
+   podczas gdy nowy stopień rampy twierdziłby, że v3 ma sześć stopni. Ma pięć.
+
+   GÓRNY STOPIEŃ BIERZE ROLĘ „AKCENT, KTÓRY NIESIE TEKST"
+   (`--accent-legible-bg`), a dolny jest zwykłym stopniem rampy — i ta różnica
+   pisowni jest ZAMIERZONA, nie do posprzątania. Rola nazywa NAJJAŚNIEJSZY
+   stopień akcentu, po którym wolno pisać; gradient wiąże dokładnie swój
+   najjaśniejszy stopień, więc tam właśnie ograniczenie jest deklarowane,
+   a wszystko poniżej jest czytelne z konstrukcji, bo idzie w ciemno tym samym
+   odcieniem. Kto przestroi rolę, przestroi ten kafel — i o to chodzi.
+   Odrzucone zostało wzięcie `--action-primary-bg`, choć wartość byłaby ta sama:
+   przełącznik przestrzeni JEST przyciskiem, ale ten kafel nie jest jego
+   wypełnieniem ani nie ma jego stanów, a pierwsze przestrojenie akcji
+   przesunęłoby go po cichu (ten sam wybór stoi przy roli w `tokens.css`). */
 .workspace-avatar {
   display: grid;
   width: 1.5rem;
@@ -1001,9 +1063,8 @@ kbd {
   color: var(--on-accent);
   background: linear-gradient(
     150deg,
-    var(--a-400),
-    var(--a-600) 62%,
-    var(--a-700)
+    var(--accent-legible-bg),
+    var(--a-700) 62%
   );
   box-shadow:
     0 0 0 1px var(--accent-edge),
@@ -1250,13 +1311,27 @@ kbd {
    295 to ten sam akcent co wszędzie; zmienia się to, że plakietka mówi „coś tu
    czeka" tuszem, a nie neutralnym zaznaczeniem, którego jest to jedyny
    konsument w powłoce. Liczba oczekujących jest faktem zaksięgowanym, nie
-   walencją: nic tu nie jest dobre ani złe. */
+   walencją: nic tu nie jest dobre ani złe.
+
+   BIERZE GO PRZEZ ROLĘ „AKCENT, KTÓRY NIESIE TEKST", A NIE PRZEZ `--accent`,
+   i to jest poprawka do pierwszego brzmienia tej reguły. `--accent` nie jest
+   wiązany progiem czytelności (maluje kreskę, glif, obwódkę), więc w motywie
+   CIEMNYM stoi o stopień jaśniej i liczba na plakietce dawała tam 3,54:1 przy
+   progu 4,5. Rola stoi na `--a-600` w obu motywach i daje 5,19:1 w obu.
+
+   ODSTĘPSTWO OD v3, NAZWANE: prototyp maluje tę plakietkę wprost swoim
+   `--accent` (`v3/app.css:235-239`), czyli w ciemnym stopniem `--a-500` — więc
+   plakietka prototypu liczy w ciemnym te same 3,54:1. W motywie jasnym nie ma
+   żadnej różnicy (tam `--accent` to już `--a-600`); w ciemnym plakietka jest
+   o jeden stopień ciemniejsza od prototypowej. To jest ten sam wyjątek, który
+   `tokens.css` zapisał przy akcji głównej: próg dostępności bije wierność,
+   a odstępstwo jest nazwane, nie przemilczane. */
 .nav-count--attention {
   min-width: 1.0625rem;
   padding: 0 0.25rem;
   border-radius: var(--radius-full);
-  color: var(--on-accent);
-  background: var(--accent);
+  color: var(--accent-legible-text);
+  background: var(--accent-legible-bg);
   font-weight: 600;
   text-align: center;
 }

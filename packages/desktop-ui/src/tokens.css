@@ -124,9 +124,39 @@
   --space-10: 2.5rem;
   --space-12: 3rem;
 
+  /* R3, rozstrzygnięte przez właściciela 2026-08-07 i dowiezione tutaj, raz,
+     w warstwie tokenów: `--radius-md` schodzi z 0.5625rem (9 px) na 0.75rem
+     (12 px) za prototypem v3 (`v3/tokens.css:82`). Zapis rozstrzygnięcia:
+     `.ui-craft/decisions.md`, wpis 2026-08-07 R3. Trafia 83 odwołania — każdy
+     narożnik karty, powiadomienia i menu kontekstowego na pięciu ekranach był
+     o ~25% ostrzejszy niż na zrzutach. ŻADEN LOT EKRANOWY TEGO NIE RUSZA.
+
+     RUSZONY JEST JEDEN STOPIEŃ, I TO JEST CAŁE ORZECZENIE. Obie skale zmierzone
+     w źródle: prototyp ma 0.375 / 0.5 / 0.75 / 1 / 1.25rem, aplikacja ma
+     0.25 / 0.375 / 0.5625 / 0.75 / 1 / 1.375rem. Rozjeżdżają się nie tylko na
+     `md` — `sm` to 9 px kontra 8 px, a prototyp nie ma stopnia 22 px. Reszta
+     rozjazdu zostaje ZAPISANA, nie dociągnięta, i to nie jest przeoczenie:
+     zmierzone konsumenty aplikacji dzielą się na dwie grupy. Jedne trzymają
+     się NAZWY prototypu (`.nav-item` bierze `sm` w obu), drugie trzymają się
+     jego WARTOŚCI (`.task-panel` bierze dziś `lg` = 0.75rem, dokładnie tyle,
+     ile prototyp daje swojemu `.panel` przez `md`). Przesunięcie całej skali
+     o stopień poprawiłoby pierwszą grupę i odsunęłoby drugą od prototypu, za
+     161 dalszych odwołań — więc się tego nie robi.
+
+     SKUTEK, KTÓREGO NIE MA CO CHOWAĆ: po tej zmianie `md` i `lg` mają TĘ SAMĄ
+     wartość 0.75rem. Skala ma płaskie miejsce. Nazwy dalej niosą zamiar (co
+     jest kartą, a co planem) i rozjadą się z powrotem, kiedy któryś stopień
+     dostanie własne orzeczenie — ale kto czyta te dwie linie, ma wiedzieć, że
+     dziś rysują to samo, zanim odkryje to na ekranie.
+
+     CZEGO TA ZMIANA NIE PSUJE, sprawdzone przed nią: żadna reguła w tym
+     pakiecie nie liczy promienia z proporcji (zero wystąpień calc() na
+     którymkolwiek stopniu), a najniższy konsument `md` z zadeklarowaną
+     wysokością stoi na 2.25rem (36 px) — 12 px promienia to 2/3 połowy tej
+     wysokości, więc żadna kontrolka nie zamienia się w pigułkę. */
   --radius-xs: 0.25rem;
   --radius-sm: 0.375rem;
-  --radius-md: 0.5625rem;
+  --radius-md: 0.75rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-2xl: 1.375rem;
@@ -263,9 +293,10 @@
      nie rodzina. */
   --text-quaternary: oklch(63% 0.012 285);
   --text-disabled: oklch(60% 0.013 285);
-  /* Jedyny konsument to `--action-primary-text` (sprawdzone grepem), a akcja
-     główna niesie teraz akcent — więc tekst na niej to `--on-accent`, a nie
-     najciemniejszy stopień rampy. */
+  /* Jedyny konsument to `--accent-legible-text` (sprawdzone grepem; do
+     2026-08-07 było to `--action-primary-text`, które od tej daty bierze pismo
+     przez rolę „akcent, który niesie tekst"). Akcent na akcji głównej znaczy, że
+     tekst na niej to `--on-accent`, a nie najciemniejszy stopień rampy. */
   --text-on-action: var(--on-accent);
   --text-link: var(--text-secondary);
   --text-link-hover: var(--text-primary);
@@ -292,6 +323,11 @@
      Sama powłoka niesie po tej zmianie PIĘĆ nosicieli tuszu i wszystkie mieszczą
      się w formie: kreska 2 px pod aktywną zakładką, kafel znaku marki, kafel
      awatara przestrzeni, glif aktywnej pozycji nawigacji i plakietka Inbox.
+     Dwa z tych pięciu NIE BIORĄ `--accent` i nie mogą: plakietka Inbox niesie
+     na sobie tekst, więc idzie przez rolę `--accent-legible-bg` (nota przy tej
+     roli niżej), a kafle znaku marki i awatara mają gradient akcentu wprost
+     z prototypu. Reguła formy jest o POWIERZCHNI i obowiązuje wszystkie pięć;
+     o STOPIEŃ rozstrzyga to, czy dana rzecz niesie tekst.
      Czego akcent dalej NIE robi: nie wchodzi na hover wiersza, karty ani
      kolumny (tam chodzi neutralne `--surface-hover`), nie niesie walencji —
      od tego są `--status-*` — i nie jest dekoracją.
@@ -552,26 +588,62 @@
   --panel-reading-border: var(--border-default);
   --panel-raised-bg: var(--surface-raised);
   --panel-raised-border: var(--border-default);
-  /* AKCJA GŁÓWNA niesie akcent — do tej pory był to biały przycisk
-     (`--neutral-100`) w ciemnym i prawie czarny w jasnym.
+  /* AKCENT, KTÓRY NIESIE TEKST, JEST OSOBNĄ ROLĄ — I MA WŁASNĄ PARĘ.
 
-     ZBOCZE JEST WYLICZONE, NIE PRZEPISANE, i NIE BIERZE STOPNIA `--accent`.
-     Wypełnienie akcji głównej jest jedynym miejscem, gdzie akcent NIESIE
-     TEKST (`--on-accent`, prawie biel), więc wiąże je próg WCAG AA 4,5:1 —
-     a `--accent` (fokus, aktywna nawigacja) nie niesie tekstu i tego progu nie
-     dotyka. Dlatego te dwie rzeczy rozjeżdżają się na stopniach rampy i to jest
-     zamierzone. Zmierzone przeciw `--on-accent`
-     (`scripts/status-contrast.test.mjs`, część „tekst na wypełnieniu"):
+     Do 2026-08-07 tej roli nie było, bo nosiciel był jeden: akcja główna
+     trzymała wypełnienie sama, a ta nota nazywała ją „jedynym miejscem, gdzie
+     akcent niesie tekst". Lot 1 powłoki dołożył DRUGIEGO nosiciela — plakietkę
+     Inbox (`.nav-count--attention` w `styles.css`) — i wziął jej wypełnienie
+     z `--accent`, czyli ze stopnia, którego próg czytelności NIE WIĄŻE.
+     W motywie ciemnym dało to 3,54:1 przy progu 4,5. Złapała to dopiero bramka
+     pytająca o REGUŁĘ arkusza zamiast o parę tokenów
+     (`scripts/consumer-contrast.test.mjs`) — bo `--accent` × `--on-accent` nie
+     jest rodziną `--X-bg` + `--X-text` i bramka tokenowa nie miała jak o nią
+     zapytać. Nie zły kod: brakujący przyrząd, a przed nim brakująca rola.
+
+     ROLA JEST PARĄ `-bg` + `-text`, A NIE POJEDYNCZYM ALIASEM, i to jest wybór
+     o POMIARZE, nie o nazewnictwie: `scripts/status-contrast.test.mjs` mierzy
+     KAŻDĄ rodzinę o kształcie `--X-bg` + `--X-text` (`:322-337`), więc ta para
+     dostaje asercję NA WARSTWIE TOKENÓW za darmo — tam, gdzie ograniczenie jest
+     ZADEKLAROWANE, a nie tylko tam, gdzie jest skonsumowane. Pojedynczy alias
+     obok `--on-accent` nie byłby rodziną i nie zostałby zmierzony nigdzie.
+
+     NAZWA MÓWI OGRANICZENIE, NIE KONSUMENTA: „stopień akcentu, po którym wolno
+     pisać". Odrzucone zostało ponowne użycie `--action-primary-bg`
+     i `--action-primary-text` przez plakietkę, choć wartość byłaby ta sama:
+     plakietka nie jest akcją, nie ma hovera ani stanu wciśniętego, i pierwsze
+     przestrojenie przycisku przesunęłoby ją po cichu, a pierwsze przestrojenie
+     plakietki musiałoby udawać przestrojenie przycisku. Rola nazwana
+     ograniczeniem przyjmuje obu konsumentów bez kłamstwa; rola nazwana jednym
+     z nich zmusza drugiego albo do kłamstwa nazwą, albo do kopii wartości —
+     a kopia wartości jest w tym repo nazwaną klasą defektu.
+
+     ROLA NAZYWA STOPIEŃ SPOCZYNKOWY I TYLKO JEGO. Hover i stan wciśnięty
+     zostają przy AKCJI, bo to są stany KONTROLKI — plakietka żadnego z nich nie
+     ma, więc rola z gałęzią stanów miałaby połowę tokenów bez konsumenta (ta
+     warstwa ma już trzynaście takich i osobną notę o tym, dlaczego to boli).
+     Kto będzie potrzebował innego stopnia niosącego tekst, bierze go z rampy
+     i mierzy; tabela niżej mówi, które stopnie w ogóle przechodzą.
+
+     ZBOCZE AKCJI JEST WYLICZONE, NIE PRZEPISANE, i NIE BIERZE STOPNIA
+     `--accent`. Tekstem na akcencie jest `--on-accent` (prawie biel), więc wiąże
+     go próg WCAG AA 4,5:1 — a `--accent` (fokus, aktywna nawigacja, kreska,
+     glif) tekstu nie niesie i tego progu nie dotyka. Dlatego te dwie rzeczy
+     rozjeżdżają się na stopniach rampy i to jest zamierzone. Zmierzone przeciw
+     `--on-accent` (`scripts/status-contrast.test.mjs`, część „tekst na
+     wypełnieniu"):
 
        --a-300  80%   1,88:1   PONIŻEJ
        --a-400  72%   2,57:1   PONIŻEJ   (do tego 0.031 poza gamutem sRGB)
        --a-500  64%   3,54:1   PONIŻEJ
-       --a-600  55%   5,19:1   AA        ← spoczynek
-       --a-700  46%   7,60:1   AA        ← hover
-       literał  38%  10,56:1   AA        ← pressed
+       --a-600  55%   5,19:1   AA        ← ROLA: spoczynek akcji ORAZ plakietka
+       --a-700  46%   7,60:1   AA        ← hover akcji
+       literał  38%  10,56:1   AA        ← stan wciśnięty akcji
 
      Próg przecina rampę przy ~58,3% jasności, więc PRZECHODZĄ TYLKO DWA
-     STOPNIE. Trzeci stan musi więc być literałem — i jest nim, zamiast nowego
+     STOPNIE — i dlatego rola ma dokładnie JEDEN stopień do wydania na rzecz
+     bez stanów: `--a-600`. Gdyby plakietka miała stać o stopień jaśniej „bo
+     prototyp", musiałaby zejść na `--a-500` i wróciłaby pod próg. Trzeci stan musi więc być literałem — i jest nim, zamiast nowego
      `--a-800`: dołożenie stopnia do rampy twierdziłoby, że v3 ma sześć stopni,
      a v3 ma pięć, i przemianowanie rampy jest zapisem w `.ui-craft/tokens.md`,
      nie w tym pliku. Literał mówi prawdę: „nasza wartość, zmierzona, spoza v3".
@@ -598,16 +670,20 @@
      wypełnieniu), a prototyp też nie rozdziela tu motywów — `.btn.primary` ma
      w `v3/app.css` jedną regułę na oba.
 
-     ZOSTAJE OTWARTE DLA FAZY 2 (nie ruszam `styles.css` w tym locie):
-     `.primary-button kbd` (`styles.css:624`) maluje się przez
-     `color-mix(in oklch, var(--action-primary-text) 62%, transparent)`. Na
-     dzisiejszym wypełnieniu dawało to 2,29:1; po tej poprawce daje 2,98:1 na
-     spoczynku, 3,93:1 na hoverze i 4,99:1 na pressed. Skrót klawiszowy na
-     przycisku głównym DALEJ NIE ZDAJE AA w dwóch stanach z trzech. */
-  --action-primary-bg: var(--a-600);
+     DŁUG ZAMKNIĘTY 2026-08-07, a nota, która go tu zapowiadała, ZNIKA razem
+     z nim: skrót klawiszowy na akcji głównej nie ma już własnego koloru
+     i dziedziczy pismo przycisku. Pomiar, który o tym rozstrzygnął, stoi
+     w JEDNYM miejscu — przy samej regule w `styles.css` — i nie jest tu
+     przepisywany drugi raz. Pilnuje go asercja
+     `scripts/consumer-contrast.test.mjs`, „SKRÓT NA AKCJI GŁÓWNEJ nie odzyskuje
+     własnego koloru": trzy wypełnienia akcji są mierzone jako reguły arkusza,
+     a skrót jest przy nich tak długo, jak długo nie deklaruje własnego pisma. */
+  --accent-legible-bg: var(--a-600);
+  --accent-legible-text: var(--text-on-action);
+  --action-primary-bg: var(--accent-legible-bg);
   --action-primary-hover: var(--a-700);
   --action-primary-pressed: oklch(38% 0.17 295);
-  --action-primary-text: var(--text-on-action);
+  --action-primary-text: var(--accent-legible-text);
   --action-secondary-bg: var(--surface-raised);
   --action-secondary-hover: var(--surface-hover);
   --action-secondary-border: var(--border-default);

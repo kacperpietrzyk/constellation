@@ -127,9 +127,12 @@
    żadnego wskaźnika, czyli regresję WCAG 2.4.7 w miejsce piętrzenia.
 
    `border-radius` z tej reguły ZNIKA. Przy swoistości 0,3,0 pobiłby
-   `var(--radius-md)` stanu zaznaczenia i wiersz zmieniałby promień 9 px → 6 px
-   w chwili złapania ogniska (zmierzone: bez tej deklaracji zaznaczony wiersz
-   trzyma 9 px w obu motywach). Skutek uboczny, nazwany: niezaznaczony
+   promień `--radius-md` stanu zaznaczenia i wiersz zmieniałby promień
+   9 px → 6 px w chwili złapania ogniska (zmierzone: bez tej deklaracji
+   zaznaczony wiersz trzyma 9 px w obu motywach). LICZBY W TYM AKAPICIE SĄ
+   HISTORYCZNE — zmierzono je, gdy `--radius-md` miał 0.5625rem; R3
+   z 2026-08-07 dał mu 0.75rem, więc dziś ten sam wiersz trzyma 12 px.
+   Rozumowanie się nie zmienia, sama liczba tak. Skutek uboczny, nazwany: niezaznaczony
    `.rowMain` nie ma własnego promienia, więc pierścień globalny rysuje mu się
    po kątach prostych — wcześniej kontur zaokrąglał go na 6 px. Nadanie
    `.rowMain` promienia spoczynkowego to osobna reguła i nie ten lot. */
