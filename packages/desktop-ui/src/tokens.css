@@ -277,9 +277,26 @@
      odkleja panel od tła bez pełnego obramowania. */
   --edge-top: oklch(100% 0 0 / 0.09);
 
-  /* AKCENT JAKO ROLA SEMANTYCZNA (`v3/tokens.css:150-156`). Używany na MAŁEJ
-     powierzchni i tylko do trzech rzeczy: co aktywne, co główne, gdzie jest
-     fokus. Zapisany zwykłymi literałami `oklch()`, a nie przez `color-mix()`,
+  /* AKCENT JAKO ROLA SEMANTYCZNA (`v3/tokens.css:150-156`). O TYM, ILE WOLNO GO
+     WYDAĆ, ROZSTRZYGA FORMA, A NIE POWIERZCHNIA — i to jest zmiana wobec tego,
+     co stało tu do 2026-08-07 („używany na MAŁEJ powierzchni i tylko do trzech
+     rzeczy: co aktywne, co główne, gdzie jest fokus"). Tamto zdanie było
+     starsze niż prototyp i sprzeczne z jego farbą; rozstrzygnięcie właściciela
+     („prototyp ważniejszy") uchyla je wprost, a `.ui-craft/tokens.md`, sekcja
+     „Accent rule", niesie zapis egzekwowalny.
+
+     TUSZ (pełna moc: `--accent`) idzie na znak, kreskę, glif, cienki pasek albo
+     jedyną akcję główną i NIE WYPEŁNIA wiersza, karty, kolumny ani planu.
+     LASERUNEK (`--accent-quiet`, `--accent-quieter`) może zabarwić cały obiekt,
+     ale nigdy planu — żadna rola `--surface-*` nie rozwiązuje się do akcentu.
+     Sama powłoka niesie po tej zmianie PIĘĆ nosicieli tuszu i wszystkie mieszczą
+     się w formie: kreska 2 px pod aktywną zakładką, kafel znaku marki, kafel
+     awatara przestrzeni, glif aktywnej pozycji nawigacji i plakietka Inbox.
+     Czego akcent dalej NIE robi: nie wchodzi na hover wiersza, karty ani
+     kolumny (tam chodzi neutralne `--surface-hover`), nie niesie walencji —
+     od tego są `--status-*` — i nie jest dekoracją.
+
+     Zapisany zwykłymi literałami `oklch()`, a nie przez `color-mix()`,
      bo DOKŁADNIE TAK stoi w prototypie (`v3/tokens.css:152-156`) — przepisanie
      tych sześciu wartości na mieszanie nie dałoby ani jednej z nich taniej,
      a wprowadziłoby krok, którego v3 nie robi.
@@ -456,15 +473,23 @@
      „są zestrojone dla podbarwień" został przy pierścieniu skreślony właśnie
      dlatego.
 
-     (3) STARSZE OD TEJ FAZY, zastane bez konsumenta — dwanaście:
+     (3) BEZ KONSUMENTA — dwanaście zastanych i jeden dołożony niżej:
 
        --neutral-100, --neutral-200, --neutral-500, --neutral-800  stopnie rampy
        --white-a02, --white-a20                                    stopnie alfy
-       --shell-chrome-bg, --shell-inspector-bg  powłoka bierze szkło wprost
+       --shell-inspector-bg                     powłoka bierze szkło wprost
        --context-seam                           szew materiału kontekstu
        --radius-2xl, --z-base                   skrajne stopnie skal
        --ease-in                                krzywa wejścia; używana jest
                                                 wyłącznie `--ease-in-out`
+
+     DOPISANY 2026-08-07 PRZEZ LOT POWŁOKI, i to jest ubytek, nie zastany stan:
+     `--edge-specular` był malowany DOKŁADNIE w jednym miejscu poza tą warstwą —
+     na obwódce doku przechwytywania pod kursorem — a pozycja 10 tego lotu
+     zamienia ją na `--accent-edge` za prototypem (`v3/app.css:815-816`). Token
+     zostaje zdefiniowany w obu motywach i bez ani jednego odwołania; kto go
+     kasuje albo daje mu konsumenta, ma tu przyczynę. Lista ma więc dziś
+     TRZYNAŚCIE nazw, nie dwanaście.
 
      `--neutral-500` DOŁĄCZYŁ DO TEJ LISTY W TYM LOCIE: był stopniem dwóch
      tokenów tekstu, które zeszły z rampy na literały wyliczone (patrz noty przy
@@ -509,8 +534,18 @@
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
   --grain-opacity: 0.035;
   --shell-window-bg: var(--surface-window);
-  --shell-chrome-bg: var(--surface-glass);
-  --shell-sidebar-bg: var(--surface-glass);
+  /* POWŁOKA SCHODZI ZE SZKŁA NA PLANY (Faza 3, lot 1, pozycja 1). Prototyp nie
+     stawia szyby ani pod lewą kolumną, ani pod pasmem tytułu: `v3/app.css:155-160`
+     daje bocznemu paskowi `--surface-sidebar`, a `v3/app.css:84-90` daje pasmu
+     `--surface-stage`, oba bez `backdrop-filter`. Ta aplikacja malowała OBA
+     z jednego tokenu szkła, więc plan czwarty (`--surface-sidebar`) i plan sceny
+     nie miały ani jednego konsumenta, a rozmycie liczyło się pod nieprzezroczystą
+     treścią za nimi. Rozdzielone na dwa tokeny, bo w motywie jasnym te plany mają
+     RÓŻNE wartości (95,4% kontra 93,4%) — jeden token dałby jeden kolor tam, gdzie
+     prototyp ma szew. Inspektor zostaje na szkle świadomie: jest nakładką nad
+     treścią, nie planem obok niej. */
+  --shell-chrome-bg: var(--surface-stage);
+  --shell-sidebar-bg: var(--surface-sidebar);
   --shell-inspector-bg: var(--surface-glass);
   --shell-border: var(--border-default);
   --panel-reading-bg: var(--surface-content);
@@ -653,13 +688,30 @@
   --overlay-shadow: var(--elevation-overlay);
   --control-focus-ring: var(--focus-ring);
 
+  /* DWA Z TRZECH WYMIARÓW POWŁOKI ZRÓWNANE Z PROTOTYPEM (`v3/tokens.css:106-107`):
+     pasmo tytułu i pasmo nagłówka schodzą z 2,875 i 2,55 rem na 2,5 rem.
+
+     SZEROKOŚĆ KOLUMNY ZOSTAJE NA 13,75 rem, wbrew `v3/tokens.css:103`, i to jest
+     pomiar, nie ostrożność. Podniesienie jej do 15 rem przechodzi przy 100 %
+     pisma i przy 320 px — tam `--sidebar-width` nie obowiązuje w ogóle, bo
+     `@media (max-width: 50rem)` przełącza siatkę powłoki na 4 rem, więc zdanie
+     z `verify-renderer-layout.mjs:942` („przy 320 sam sidebar ma 220") opisuje
+     stan, którego przy tej szerokości nie ma. ŁAMIE SIĘ GDZIE INDZIEJ: jednostki
+     w zapytaniu medialnym liczą się od korzenia 16 px, więc przy 200 % i 300 %
+     pisma szyna się NIE włącza, kolumna zabiera 240 px zamiast 220, a panelowi
+     pracy ubywa 20 px. Zmierzone jednym przelotem bramki: 21 przepełnień na
+     ośmiu ekranach, z czego pięć to wpisy rejestru długu, które urosły
+     (`projects:client` 194→234 px, `settings` 117→157 px, `organizations`
+     61→72 px, `people` 25→35 px, `renewals` 19→59 px). Żaden z tych ekranów nie
+     należy do tego lotu, a przepisanie cudzych progów po to, żeby zmieścić swój
+     token, jest odwrotnością tego, po co ten rejestr istnieje. */
   --sidebar-width: 13.75rem;
   --sidebar-rail: 3.25rem;
   --inspector-width: 20rem;
-  --titlebar-height: 2.875rem;
+  --titlebar-height: 2.5rem;
   /* Height of the tab/header band below the titlebar. The work-column tabbar
      and the inspector header share it so their bottom borders form one seam. */
-  --header-band-height: 2.55rem;
+  --header-band-height: 2.5rem;
   --row-height: 2.125rem;
 }
 

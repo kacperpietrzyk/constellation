@@ -828,6 +828,44 @@ kbd {
   isolation: isolate;
   background: var(--shell-window-bg);
 }
+/* MATERIAŁ, NIE TEKSTURA (`v3/app.css:79-82`). Bardzo drobne ziarno na ~3,5 %
+   powstrzymuje duże ciemne pola przed czytaniem się jak płaska czerń ekranu.
+   Token `--grain` stał w drzewie bez ani jednego konsumenta od Fazy 1; to jest
+   ten konsument.
+
+   `pointer-events: none` NIE JEST OZDOBNIKIEM: bez niego ta jedna warstwa
+   przykrywa całą powłokę i odbiera jej klikalność, a żadna dzisiejsza bramka
+   tego nie zobaczy — sonda klika przez `element.click()` w `page.evaluate`,
+   co pomija trafienie kursorem.
+
+   Z-INDEKS TO `--z-sticky`, A NIE 999 Z PROTOTYPU. 999 stoi ponad wszystkim;
+   w tej aplikacji nakładki jadą `--z-dropdown`/`--z-overlay`/`--z-toast`/
+   `--z-tooltip` (30/40/50/60), a `::after` jest ostatnim dzieckiem, więc przy
+   remisie wygrywałby z każdą z nich. 20 kładzie ziarno nad lewą kolumną
+   (`--z-raised`, 2) i nad płótnem — czyli nad polami, dla których powstało —
+   i pod każdym menu, dialogiem i dymkiem. */
+.desktop-shell::after {
+  content: "";
+  position: absolute;
+  z-index: var(--z-sticky);
+  inset: 0;
+  background-image: var(--grain);
+  opacity: var(--grain-opacity);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+/* DŁUG Z FAZY 1 DOMKNIĘTY W TYM SAMYM LOCIE, w którym ziarno dostaje
+   konsumenta (`tokens.css:488-494` zapisywało go jako otwarty): v3 zeruje
+   `--grain-opacity` RAZEM z `--glass-blur` przy ograniczonej przezroczystości
+   (`v3/tokens.css:231-233`). Bez tego Faza 3 dowozi ziarno bez wyjścia
+   awaryjnego, a `--glass-blur` zostaje jedynym tokenem materiału, którego to
+   ustawienie systemowe nie dotyka. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --grain-opacity: 0;
+    --glass-blur: 0px;
+  }
+}
 .desktop-shell.inspector-open {
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(
       --inspector-width
@@ -866,10 +904,11 @@ kbd {
   padding: calc(var(--titlebar-height) + var(--space-2)) var(--space-3)
     var(--space-3);
   border-right: 1px solid var(--shell-border);
+  /* Lewa kolumna jest PLANEM, nie szybą (`v3/app.css:155-160`). Stało tu
+     rozmycie tła, którego prototyp nie ma nigdzie w powłoce; pod nim leży
+     nieprzezroczyste okno, więc kosztowało warstwę kompozycji i nie pokazywało
+     niczego. Token wskazuje teraz `--surface-sidebar` (`tokens.css:512-523`). */
   background: var(--shell-sidebar-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturation));
 }
 
 .sidebar nav {
@@ -906,16 +945,35 @@ kbd {
   font-weight: 650;
   letter-spacing: var(--tracking-wide);
 }
+/* ZNAK MARKI JEST KAFLEM, NIE SZARYM GLIFEM (`v3/app.css:98-103`). Prototyp
+   maluje go gradientem akcentu i kładzie na nim glif w kolorze `--on-accent`;
+   ta aplikacja rysowała sam glif w `--text-secondary`. Kafel powstaje BEZ
+   dodatkowego węzła: gradient idzie na sam `<svg>`, a glif odsuwa od krawędzi
+   `padding` (pudełko jest `border-box`, więc 1,25 rem minus 2 × 0,1875 rem daje
+   0,875 rem rysunku — prototypowe 0,8125 rem z dokładnością do ćwierci piksela
+   przy korzeniu 16 px). Węzeł opakowujący kosztowałby JS na ścieżce gorącej,
+   której zapas w tej fali wynosi mniej niż 3 kB. */
 .brand-mark {
-  width: 1.4rem;
-  height: 1.4rem;
-  color: var(--text-secondary);
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0.1875rem;
+  border-radius: var(--radius-xs);
+  color: var(--on-accent);
+  background: linear-gradient(
+    150deg,
+    var(--a-400),
+    var(--a-600) 62%,
+    var(--a-700)
+  );
+  box-shadow:
+    0 0 0 1px var(--accent-edge),
+    0 2px 6px var(--accent-glow);
 }
 .workspace-switcher {
   width: 100%;
   min-height: 3.25rem;
   display: grid;
-  grid-template-columns: 1.9rem minmax(0, 1fr) 1rem;
+  grid-template-columns: 1.5rem minmax(0, 1fr) 1rem;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2);
@@ -929,16 +987,28 @@ kbd {
   border-color: var(--border-default);
   background: var(--surface-hover);
 }
+/* Ten sam kafel co przy znaku marki, o stopień większy (`v3/app.css:169-175`).
+   Obramowanie `--border-strong` znika: krawędź niesie teraz `--accent-edge`
+   w cieniu, tak jak w prototypie, a neutralna obwódka na akcencie czytała się
+   jak druga ramka. Litera schodzi na `--text-2xs`, bo na 1,5 rem kafla
+   `--text-sm` dotykała krawędzi. */
 .workspace-avatar {
   display: grid;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 1.5rem;
+  height: 1.5rem;
   place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: var(--surface-sunken);
-  font-size: var(--text-sm);
+  border-radius: var(--radius-xs);
+  color: var(--on-accent);
+  background: linear-gradient(
+    150deg,
+    var(--a-400),
+    var(--a-600) 62%,
+    var(--a-700)
+  );
+  box-shadow:
+    0 0 0 1px var(--accent-edge),
+    0 1px 4px var(--accent-glow);
+  font-size: var(--text-2xs);
   font-weight: 700;
 }
 .workspace-switcher > span:nth-child(2) {
@@ -988,17 +1058,23 @@ kbd {
   border-radius: var(--radius-sm);
   background: var(--input-bg);
   text-align: left;
-  opacity: 0.78;
+}
+.search-control:hover {
+  border-color: var(--accent-edge);
+  color: var(--text-tertiary);
 }
 .search-control span {
   flex: 1;
 }
-.search-control kbd {
-  padding: 0.1rem 0.3rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
+/* WYSZUKIWARKA NIE JEST WYGASZONA JAKO CAŁOŚĆ (`v3/app.css:183-194`). Stało tu
+   `opacity: 0.78` na całej kontrolce, więc przygaszone było WSZYSTKO naraz:
+   obwódka, ikona, etykieta i skrót — łącznie z pierścieniem ogniska, który przy
+   0,78 przestaje spełniać próg, na jaki go zestrojono. Ciszę niesie teraz kolor
+   tekstu, tak jak w prototypie, a skrót schodzi jeszcze stopień niżej. */
+.search-control .search-shortcut {
+  flex: none;
   color: var(--text-disabled);
-  background: var(--surface-raised);
+  font-size: var(--text-2xs);
 }
 .sidebar nav {
   margin-top: var(--space-5);
@@ -1017,7 +1093,10 @@ kbd {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-4);
+  /* `v3/app.css:210-216`: nagłówek modułu odsuwa się od tego, co nad nim,
+     o `--space-3`. Stało `--space-4` — o jeden przyrost skali za dużo, przez
+     co dwa moduły czytały się jak dwie osobne listy. */
+  margin-top: var(--space-3);
   padding: 0 var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -1062,9 +1141,16 @@ kbd {
 .nav-group-toggle[aria-expanded="false"] .nav-group-chevron {
   transform: rotate(-45deg);
 }
+/* GĘSTOŚĆ KOLUMNY Z PROTOTYPU (`v3/app.css:198-204`): wiersz 1,75 rem zamiast
+   2,125 rem. `min-height`, a nie `height`, dokładnie jak tam — przelot bramki
+   przy 200 % pisma musi móc rozepchnąć wiersz, a sztywna wysokość ucięłaby
+   etykietę zamiast urosnąć. UWAGA NA TOKEN: `--row-height` (2,125 rem) NIE jest
+   tokenem tego wiersza — v3 niesie obie liczby naraz (`v3/tokens.css:108`
+   dla wierszy tabeli, `v3/app.css:199` dla nawigacji), więc podpięcie tu tokenu
+   dałoby jedną wysokość dwóm różnym rzeczom. */
 .nav-item {
   width: 100%;
-  height: 2.125rem;
+  min-height: 1.75rem;
   display: grid;
   grid-template-columns: 1.1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -1115,6 +1201,14 @@ kbd {
   background: var(--nav-active-bg);
   box-shadow: var(--elevation-rest);
 }
+/* Ikona aktywnej pozycji bierze PEŁNY akcent (`v3/app.css:221`). Podbarwienie
+   pod wierszem mówi „ten wiersz", a tusz na glifie mówi „ta pozycja" — bez
+   niego cały sygnał niósł prostokąt o alfie 0,08 i pierwsze zadanie akcentu
+   („gdzie czytelnik jest") było w tej kolumnie ledwo widoczne. Reguły dla samego
+   glifu nie było tu w ogóle: dziedziczył `--nav-active-text`. */
+.nav-item.active > svg {
+  color: var(--accent);
+}
 .nav-item:disabled {
   color: var(--text-disabled);
   opacity: 0.58;
@@ -1147,15 +1241,58 @@ kbd {
   color: var(--text-quaternary);
 }
 /* Unread attention weighs more than an informational task count: a filled
-   pill distinguishes it by shape and background, never by a new hue. */
+   pill distinguishes it by shape and background.
+
+   PLAKIETKA BIERZE AKCENT (`v3/app.css:235-239`). Zdanie, które tu stało —
+   „nigdy nowym odcieniem" — było prawdziwe pod poprzednim brzmieniem kontraktu
+   i nie jest już wiążące: rozstrzygnięcie właściciela z 2026-08-07 („prototyp
+   ważniejszy") wprost odwraca tę pozycję. Nowego ODCIENIA i tak tu nie ma —
+   295 to ten sam akcent co wszędzie; zmienia się to, że plakietka mówi „coś tu
+   czeka" tuszem, a nie neutralnym zaznaczeniem, którego jest to jedyny
+   konsument w powłoce. Liczba oczekujących jest faktem zaksięgowanym, nie
+   walencją: nic tu nie jest dobre ani złe. */
 .nav-count--attention {
-  min-width: 1.15rem;
-  padding: 0.12rem 0.34rem;
+  min-width: 1.0625rem;
+  padding: 0 0.25rem;
   border-radius: var(--radius-full);
-  color: var(--text-secondary);
-  background: var(--surface-selected);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--on-accent);
+  background: var(--accent);
+  font-weight: 600;
   text-align: center;
+}
+/* DRUGI POZIOM LEWEJ KOLUMNY (`v3/app.css:240-260`). Pionowa włoskowata kreska
+   robi z wcięcia relację: bez niej wiersz potomny czyta się jak cel o mniejszej
+   czcionce. Kropka jest wygaszona, dopóki wiersz nie jest bieżący — wtedy bierze
+   akcent, bo „gdzie czytelnik jest" to pierwsze zadanie akcentu, a 0,3125 rem
+   tuszu mieści się w formie. */
+.nav-children {
+  position: relative;
+  margin-top: 2px;
+  padding-left: var(--space-3);
+}
+.nav-children::before {
+  content: "";
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0.6875rem;
+  width: 1px;
+  background: var(--border-subtle);
+}
+.nav-child {
+  min-height: 1.625rem;
+  grid-template-columns: 0.6875rem minmax(0, 1fr);
+  color: var(--text-tertiary);
+}
+.nav-child-dot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  justify-self: center;
+  border-radius: var(--radius-full);
+  background: var(--text-disabled);
+}
+.nav-child.active .nav-child-dot {
+  background: var(--accent);
 }
 .sidebar-spacer {
   flex: 1;
@@ -1229,10 +1366,11 @@ kbd {
   gap: var(--space-2);
   padding: var(--titlebar-height) var(--space-3) 0;
   border-bottom: 1px solid var(--shell-border);
-  background: var(--shell-sidebar-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturation));
+  /* To pasmo jest w prototypie pasmem tytułu (`v3/app.css:84-90`), więc bierze
+     plan sceny, a nie plan lewej kolumny — w motywie jasnym to dwie różne
+     jasności i szew między nimi jest zamierzony. Rozmycie znika z tego samego
+     powodu co przy `.sidebar`: prototyp nie stawia szkła w powłoce. */
+  background: var(--shell-chrome-bg);
 }
 .shell-history-controls {
   display: flex;
@@ -1358,10 +1496,27 @@ kbd {
   color: var(--text-secondary);
   background: var(--surface-hover);
 }
+/* AKTYWNA ZAKŁADKA MÓWI DWIE RZECZY NARAZ (`v3/app.css:117-124`): materiał
+   i miejsce. Materiał niesie górna krawędź — `--edge-top` jest jaśniejszą
+   kreską, która odkleja panel od tła bez pełnego obramowania, i do tego lotu
+   nie miała ani jednego konsumenta. Miejsce niesie kreska akcentu przy dolnej
+   krawędzi: „gdzie czytelnik jest" to pierwsze z pięciu zadań akcentu, a tusz
+   na 2 px mieści się w formie, która akcent ogranicza. Wcięcie 0,5 rem po obu
+   stronach jest z prototypu — kreska krótsza niż zakładka czyta się jako znak,
+   nie jako druga krawędź. */
 .shell-tab.active {
   color: var(--text-primary);
   border-color: var(--border-subtle);
   background: var(--surface-canvas);
+  box-shadow: inset 0 1px 0 var(--edge-top);
+}
+.shell-tab.active::after {
+  content: "";
+  position: absolute;
+  inset: auto 0.5rem 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
 }
 .shell-tab > [role="tab"] {
   min-width: 0;
@@ -1863,24 +2018,40 @@ kbd {
   min-width: 0;
   width: 100%;
   max-width: 32rem;
-  min-height: 3.15rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: 0.55rem 0.65rem 0.55rem 0.9rem;
+  gap: var(--space-2);
+  /* PIGUŁKA, NIE PROSTOKĄT (`v3/app.css:804-816`). Trzy zmiany, wszystkie
+     z jednej deklaracji prototypu: promień pełny zamiast `--radius-xl`, padding
+     0,4375 rem / 0,75 rem zamiast czterech różnych liczb, i BRAK `min-height` —
+     prototyp nie deklaruje wysokości wcale, a stojące tu 3,15 rem było jedynym
+     powodem, dla którego dok mierzył 50 px zamiast wysokości swojej treści.
+     `box-shadow` ZOSTAJE na `--capture-shadow`, i to nie jest przeoczenie:
+     `styles.css:608-633` remapuje ten token przy `:focus-visible` na
+     „pierścień, potem cień spoczynkowy", więc podmiana go na `--shadow-lg`
+     zabrałaby dokowi pierścień ogniska. */
+  padding: 0.4375rem 0.75rem;
   color: var(--text-tertiary);
   border: 1px solid var(--capture-border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-full);
   background: var(--capture-bg);
   box-shadow: var(--capture-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur))
     saturate(var(--glass-saturation));
 }
+/* Hover bierze krawędź akcentu i poświatę (`v3/app.css:815-816`) — dok to
+   jedyne wejście do przechwytywania z każdego ekranu, więc „da się to wcisnąć"
+   jest tu warte tuszu. Obiekt pod kursorem nie zmienia planu; zmienia go
+   krawędź rzeczy, którą da się wcisnąć. `--accent-glow` dostaje tu drugiego
+   konsumenta. */
 .capture-dock:hover {
   color: var(--text-primary);
-  border-color: var(--edge-specular);
+  border-color: var(--accent-edge);
+  box-shadow:
+    var(--capture-shadow),
+    0 0 24px var(--accent-glow);
 }
 .capture-dock-content {
   min-width: 0;
@@ -1894,12 +2065,13 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Ten sam zabieg co przy wyszukiwarce: skrót jest cichym napisem, nie rysunkiem
+   klawisza (`v3/app.css:819`). To także jedyny sposób, w jaki zdjęcie
+   `min-height` wyżej naprawdę obniża dok — pigułka klawisza była wyższa niż
+   padding, który ją otacza. */
 .capture-dock kbd {
-  padding: 0.28rem 0.42rem;
   color: var(--text-quaternary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
+  font-family: var(--font-mono);
 }
 
 .inspector {
@@ -3197,7 +3369,6 @@ kbd {
   .workspace-switcher > span:nth-child(2),
   .workspace-switcher > svg,
   .search-control span,
-  .search-control kbd,
   .nav-label,
   .nav-item > span,
   .nav-item small,
@@ -3208,6 +3379,14 @@ kbd {
      widoków — pozostaje jedna lista ikon z tooltipami. */
   .nav-item.nav-favorite,
   .nav-item.nav-recent {
+    display: none;
+  }
+  /* Drugi poziom też znika: wiersz potomny nie ma ikony, więc w szynie ikon
+     zostałby pustym kwadratem z niewidoczną etykietą. Reguła stoi TU, obok
+     pozostałych, mimo że renderer też go nie rysuje przy tej szerokości —
+     próg jest ten sam (50rem), a stan Reacta dojeżdża po zdarzeniu `change`,
+     nie w tej samej klatce co przeliczenie arkusza. */
+  .nav-children {
     display: none;
   }
   .workspace-switcher {
@@ -4569,10 +4748,26 @@ kbd {
   background: var(--input-bg);
   font: inherit;
 }
+/* SKRÓT ŚWIECIŁ W KAŻDYM WIERSZU (`v3/app.css:229-234`). Dziewięć klawiszy
+   w kolumnie czytało się jak dziewięć plakietek stanu; w prototypie skrót
+   pojawia się dopiero pod kursorem, na wierszu bieżącym i przy ognisku — bo
+   jest odpowiedzią na „jak tu wrócić", a nie stałą własnością pozycji.
+   `:focus-visible` jest DOŁOŻONE do pary z prototypu: pozycje nawigacji chodzą
+   strzałkami, więc bez tego czytelnik klawiatury nigdy by tego skrótu nie
+   zobaczył. Krycie, nie `display`, żeby wiersz nie zmieniał szerokości kolumn
+   pod kursorem; globalna reguła ruchu (`styles.css:3462-3471`) zeruje to
+   przejście przy `prefers-reduced-motion`, więc lokalny wyjątek byłby martwy. */
 .nav-item kbd {
   margin-left: auto;
   color: var(--text-disabled);
   font-size: 0.625rem;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.nav-item:hover kbd,
+.nav-item:focus-visible kbd,
+.nav-item[aria-current="page"] kbd {
+  opacity: 1;
 }
 
 .condition-banner {

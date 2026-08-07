@@ -1833,6 +1833,67 @@ export const RealApp = ({
   // istniał wyłącznie WEWNĄTRZ pętli po grupach, więc cel bez modułu
   // (`group: null` — pozycje dnia, Access, Settings) nie renderował się
   // w ogóle: był w rejestrze, miał skrót i trasę, a w sidebarze go nie było.
+  // DRUGI POZIOM LEWEJ KOLUMNY (`v3/app.css:240-260`). Wiersze potomne CELOWO
+  // nie niosą `data-surface`: sonda wierności buduje swój przelot
+  // z `.nav-item[data-surface]` i KLIKA każdy, więc potomek z tym atrybutem
+  // po cichu wydłużyłby jej spacer i zmienił to, co skanuje, bez ani jednej
+  // czerwonej asercji. Rozpoznaje je `data-nav-level="child"`.
+  //
+  // `tabIndex={-1}` jest tu regułą sidebara, nie wyjątkiem: pozycje nawigacji
+  // chodzą strzałkami (`navKeyDown` zbiera `.nav-item`), a przystankiem Tab
+  // jest wyłącznie ta aktywna. Potomek nie dokłada więc ani jednego przystanku
+  // — a sonda ogniska robi 14 Tabów od świeżej strony i liczy na kolejność.
+  const openProjectId = activeContext.projectId;
+  //
+  // ŹRÓDŁEM JEST `snapshot.projects`, czyli `project.list` — ten sam odczyt,
+  // który rysuje kolekcja po kliknięciu w cel (`ProjectsSurface`), a nie
+  // `work.overview.projects`. Nie jest to wybór estetyczny: pierwsza wersja
+  // czytała `work`, bramka pokazała ZERO wierszy potomnych, i dopiero pomiar
+  // fikstury powiedział dlaczego — `work.overview.projects` jest w niej pustą
+  // tablicą, a `project.list` niesie jeden projekt. Drugi poziom, który
+  // wymienia inne projekty niż ekran pod nim, byłby wadą, nie oszczędnością.
+  const projectNavChildren =
+    state.snapshot.projects.kind === "ready" &&
+    state.snapshot.projects.data.items.length > 0 ? (
+      <div className="nav-children" key="projects-children">
+        {state.snapshot.projects.data.items.map((project) => (
+          <button
+            key={project.id}
+            type="button"
+            data-nav-level="child"
+            className={`nav-item nav-child ${openProjectId === project.id ? "active" : ""}`}
+            tabIndex={-1}
+            aria-current={openProjectId === project.id ? "page" : undefined}
+            {...navHandlers(projectContext(project.id, project.title))}
+          >
+            <span className="nav-child-dot" aria-hidden="true" />
+            <span>{project.title}</span>
+          </button>
+        ))}
+      </div>
+    ) : null;
+  // Kiedy otwarty jest REKORD projektu, „bieżącą stroną" jest ten projekt,
+  // a nie kolekcja nad nim. Bez tego w jednej nawigacji stałyby dwa
+  // `aria-current="page"`, które przeczą sobie nawzajem. Przystanek Tab
+  // ZOSTAJE na wierszu celu — inaczej nawigacja nie miałaby ani jednego.
+  //
+  // WARUNEK MUSI BYĆ TEN SAM, CO WARUNEK ZASTĘPSTWA, i pierwsza wersja tego
+  // nie miała: zerowała bieżącą stronę BEZWARUNKOWO przy otwartym rekordzie,
+  // a wiersz potomny, który miał ją przejąć, rysuje się tylko poza trybem
+  // szyny i tylko gdy odczyt projektów jest gotowy i niepusty. W trybie szyny
+  // z otwartym rekordem nawigacja nie miała więc ANI JEDNEGO
+  // `aria-current="page"` — regresja dostępności wobec stanu sprzed tego lotu,
+  // zmierzona przy 800 px. Dwa warunki opisujące jedno zjawisko rozjeżdżają
+  // się przy pierwszej zmianie któregokolwiek; tu jest jeden.
+  const openProjectHasNavChild =
+    !railMode &&
+    surface === "projects" &&
+    openProjectId !== undefined &&
+    state.snapshot.projects.kind === "ready" &&
+    state.snapshot.projects.data.items.some(
+      (project) => project.id === openProjectId,
+    );
+  const currentNavId = openProjectHasNavChild ? undefined : surface;
   const navEntry = (item: (typeof navItems)[number]) => {
     const shortcutHint = surfaceShortcutHint(item);
     // DECYZJA #35, W JEDNEJ LINII: skrót przestaje istnieć WYŁĄCZNIE w tooltipie.
@@ -1855,10 +1916,17 @@ export const RealApp = ({
       <div className="nav-entry" key={item.id}>
         <button
           data-surface={item.id}
-          className={`nav-item ${surface === item.id ? "active" : ""}`}
+          // MALOWANIE IDZIE ZA `currentNavId`, PRZYSTANEK TAB ZA `surface`,
+          // i ten rozjazd jest zamierzony. Przy otwartym rekordzie projektu
+          // wiersz potomny przejmuje bieżącą stronę, więc rodzic przestaje
+          // wyglądać na aktywny — inaczej w jednej kolumnie stały DWA wiersze
+          // pomalowane akcentem, a skrót `⌘5` gasł na tym, który wyglądał na
+          // bieżący (zmierzone). Przystanek Tab zostaje na rodzicu, bo potomek
+          // ma `tabIndex={-1}` i nawigacja bez tego nie miałaby ani jednego.
+          className={`nav-item ${currentNavId === item.id ? "active" : ""}`}
           tabIndex={surface === item.id ? 0 : -1}
           aria-label={`${itemName}, ${shortcutName}`}
-          aria-current={surface === item.id ? "page" : undefined}
+          aria-current={currentNavId === item.id ? "page" : undefined}
           title={
             railMode
               ? undefined
@@ -3086,7 +3154,13 @@ export const RealApp = ({
             openContext(destinationContext("settings", "Settings"))
           }
         >
-          <span className="workspace-avatar">I</span>
+          {/* Kafel niósł WPISANĄ literę „I" — nie inicjał, nie skrót, literał,
+          i tak było w każdej przestrzeni od co najmniej trzech fal. Rozbicie
+          przez `[...]` zamiast `charAt(0)`, bo nazwa zaczynająca się emoji
+          rozpada się w połowie pary surogatów. */}
+          <span className="workspace-avatar">
+            {[...bootstrap.workspace.name.trim()][0]?.toUpperCase() ?? "·"}
+          </span>
           <span>
             <strong>{bootstrap.workspace.name}</strong>
             <small>
@@ -3118,7 +3192,12 @@ export const RealApp = ({
         >
           <Icon name="search" />
           <span>Search</span>
-          <kbd>{modifierLabel}K</kbd>
+          {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
+          w tym arkuszu obwódkę, tło i promień, czyli rysunek klawiatury —
+          a to jest jedna kontrolka, nie ściągawka. Znaczenie „to jest skrót"
+          zostaje w `aria-label` przycisku, gdzie i tak było jedynym miejscem
+          docierającym do czytnika ekranu. */}
+          <span className="search-shortcut">{modifierLabel}K</span>
         </button>
         <nav ref={navRef} aria-label="Main navigation" onKeyDown={navKeyDown}>
           {favorites.length > 0 && (
@@ -3129,9 +3208,12 @@ export const RealApp = ({
                 return item ? (
                   <button
                     key={`favorite:${item.id}`}
-                    className={`nav-item nav-favorite ${surface === item.id ? "active" : ""}`}
+                    // Malowanie i bieżąca strona z JEDNEGO źródła, tak samo jak
+                    // w `navEntry` — ulubiony skrót do Projektów rozjeżdżałby
+                    // się przy otwartym rekordzie dokładnie tak samo.
+                    className={`nav-item nav-favorite ${currentNavId === item.id ? "active" : ""}`}
                     tabIndex={-1}
-                    aria-current={surface === item.id ? "page" : undefined}
+                    aria-current={currentNavId === item.id ? "page" : undefined}
                     onFocus={() => preloadSurface(item.id)}
                     onMouseEnter={() => preloadSurface(item.id)}
                     {...navHandlers(destinationContext(item.id, item.label))}
@@ -3279,7 +3361,15 @@ export const RealApp = ({
                       aria-label={group}
                       hidden={!expanded}
                     >
-                      {groupItems.map((item) => navEntry(item))}
+                      {/* `flatMap`, żeby drugi poziom stanął POD swoim celem,
+                      a nie na końcu modułu: kolejność w rejestrze nie jest
+                      kontraktem i cel dołożony za Projektami rozsunąłby
+                      wiersze potomne od ich rodzica bez ani jednego błędu. */}
+                      {groupItems.flatMap((item) =>
+                        item.id === "projects" && !railMode
+                          ? [navEntry(item), projectNavChildren]
+                          : navEntry(item),
+                      )}
                     </div>
                   </div>
                 );

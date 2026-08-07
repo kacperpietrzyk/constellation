@@ -56,6 +56,11 @@ import {
   classifyHeightBoundScreen,
   classifyHeightBoundSweep,
 } from "./surface-height-bound.mjs";
+import {
+  VISUAL_LANGUAGE_EXPECTED,
+  VISUAL_LANGUAGE_NOT_COVERED,
+  VISUAL_LANGUAGE_PAIRS,
+} from "./visual-language-pairs.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // PORT JEST PARAMETREM, BO INACZEJ PRZYRZĄD NIE UMIE POWIEDZIEĆ, CZYJĄ
@@ -3027,6 +3032,602 @@ const visualFidelity = async (browser) => {
   return { failures, layoutProblems };
 };
 
+// ── P1: PARY „SELEKTOR PROTOTYPU → SELEKTOR APLIKACJI → WŁAŚCIWOŚĆ" ──────────
+//
+// MAPA JEST W `scripts/visual-language-pairs.mjs` I JEST DANYMI. Tutaj stoi
+// wyłącznie mechanika: rozwiązanie tokenów w tej samej stronie, odczyt
+// właściwości, osąd i trzy komunikaty. Rozdział jest po to, żeby dopisanie pary
+// przez lot 2-6 nie wymagało dotknięcia ani jednej linii kodu.
+//
+// DLACZEGO OSOBNY PRZELOT, A NIE KOLEJNA SEKCJA W `measureTheme`. Trzy powody,
+// wszystkie o przyrządzie:
+//   1. `measureTheme` kończy chodzenie po celach KLIKNIĘCIEM W USTAWIENIA,
+//      a wejście w ten tryb PODMIENIA LEWĄ KOLUMNĘ. Pary powłoki zmierzone po
+//      tamtej pętli mierzyłyby kolumnę trybu Ustawień, nie boczny pasek.
+//   2. Sekwencja czternastu Tabów zostawia `:focus-visible` na kontrolce
+//      i zmienia `opacity` oraz `box-shadow` — czyli dokładnie te właściwości,
+//      które czytają pary pozycji 3 i 6.
+//   3. Kolejność asercji w `measureTheme` jest sama w sobie asercją (komentarz
+//      przy pierścieniu ogniska). Czwarta troska przewleczona przez tamtą
+//      funkcję kosztowałaby tamtą własność.
+// Cena: jedno dodatkowe wczytanie strony na motyw.
+//
+// STEMPEL MOTYWU JEST POWTÓRZONY, NIE POŻYCZONY, i to nie jest kopia przez
+// niedopatrzenie: przelot, który nie dowodzi, że przełączenie zaszło, mierzy
+// jeden motyw dwa razy i wraca z podwojoną, zgodną odpowiedzią. Ten plik ma już
+// jeden opisany przypadek tego kłamstwa.
+const REM_TOLERANCE_PX = 0.5;
+const PSEUDO_ABSENT = "PSEUDO_ABSENT";
+
+const remOf = (observed, rootFontSizePx) => {
+  const px = Number.parseFloat(observed);
+  return Number.isFinite(px) ? px / rootFontSizePx : Number.NaN;
+};
+
+// Jedna zmierzona para → jeden z TRZECH stanów. `NOT_MEASURED` istnieje, bo
+// „selektor nie trafił w nic" i „trafił, wartość jest inna" są w świecie
+// dwustanowym nieodróżnialne — a pod statusem „pending" ten pierwszy byłby
+// wieczną, cichą zielenią.
+const judgeVisualPair = (pair, measured, rootFontSizePx, theme) => {
+  if (measured.state === "not-measured")
+    return { state: "NOT_MEASURED", reason: measured.reason };
+
+  const expect = pair.expect;
+  const observed = measured.observed;
+
+  // PSEUDOELEMENT, KTÓREGO NIE MA, JEST POMIAREM, NIE AWARIĄ. `content: none`
+  // znaczy, że warstwa nie została wygenerowana — a to jest dokładnie stan,
+  // który pozycje 3 i 8 opisują jako brakujący. Gdyby to szło do
+  // `NOT_MEASURED`, obie byłyby czerwone jako zepsuty przyrząd do chwili, w
+  // której lot je odda.
+  if (observed === PSEUDO_ABSENT)
+    return {
+      state: "DIFFERS",
+      observed: `the ${pair.read.pseudo} pseudo-element is not generated (content: none)`,
+      expected: `${pair.read.pseudo} generated and ${expect.kind === "accent" ? "painted with the accent" : `${pair.read.property} ${expect.kind} ${expect.value ?? ""}`}`,
+    };
+
+  if (expect.kind === "count") {
+    const wanted =
+      expect.equals === undefined
+        ? `at least ${expect.atLeast}`
+        : `exactly ${expect.equals}`;
+    const met =
+      expect.equals === undefined
+        ? measured.matches >= expect.atLeast
+        : measured.matches === expect.equals;
+    return {
+      state: met ? "MATCH" : "DIFFERS",
+      observed: `${measured.matches} element(s) match „${pair.subject.selector}"`,
+      expected: `${wanted} element(s)`,
+    };
+  }
+
+  if (expect.kind === "accentCount") {
+    // ZERO PODMIOTÓW TO NIE JEST „ZERO AKCENTÓW". Ta gałąź jest jedyną, która
+    // omija strażniki „selektor nie trafił w nic" i „nic nie jest narysowane"
+    // — bo liczy, a licznik jest dobrze określony na zerze. Bez tej linii
+    // literówka w selektorze dawała `0 of 0` czyli DIFFERS, czyli WIECZNE,
+    // CICHE zaliczenie pod statusem „pending": dokładnie ta awaria, dla której
+    // istnieją trzy stany zamiast dwóch.
+    if (measured.paints.length === 0)
+      return {
+        state: "NOT_MEASURED",
+        reason:
+          `„${pair.subject.selector}" produced NO rendered element to read paint from ` +
+          `(${measured.matches} element(s) matched the selector at all), so „0 accents" is ` +
+          "a fact about this probe, not about the paint.",
+      };
+    const verdicts = measured.paints.map((paint) =>
+      judgeAccent({
+        subject: pair.title,
+        where: theme,
+        signature: paint.signature,
+        paint: paint.value,
+      }),
+    );
+    const unreadable = verdicts.filter(
+      (verdict) => verdict.failure !== undefined,
+    );
+    const carrying = verdicts.filter((verdict) => verdict.accent === true);
+    // Nieczytelne malowanie podnosi awarię TYLKO wtedy, gdy bez niego liczba
+    // wychodzi zero — bo wtedy „zero akcentów" mogłoby być kłamstwem przyrządu,
+    // a nie faktem o farbie.
+    if (carrying.length === 0 && unreadable.length > 0)
+      return { state: "NOT_MEASURED", reason: unreadable[0].failure };
+    return {
+      state: carrying.length >= expect.atLeast ? "MATCH" : "DIFFERS",
+      observed:
+        `${carrying.length} of ${measured.paints.length} rendered element(s) under ` +
+        `„${pair.subject.selector}" resolve to the accent` +
+        (unreadable.length > 0
+          ? ` (${unreadable.length} unreadable paint(s))`
+          : ""),
+      expected: `at least ${expect.atLeast}`,
+    };
+  }
+
+  if (expect.kind === "accent") {
+    const judged = judgeAccent({
+      subject: pair.title,
+      where: theme,
+      signature: measured.signature,
+      paint: observed,
+    });
+    if (judged.failure !== undefined)
+      return { state: "NOT_MEASURED", reason: judged.failure };
+    const best = judged.carrying ?? judged.verdicts[0];
+    return {
+      state: judged.accent ? "MATCH" : "DIFFERS",
+      observed: `${observed} → ${describeOklch(best)}${judged.accent ? "" : ` — ${explainVerdicts(judged.verdicts)}`}`,
+      expected: `a colour within ${ACCENT.hueTolerance}° of hue ${ACCENT.hue} at chroma ≥ ${ACCENT.chromaFloor}`,
+    };
+  }
+
+  if (expect.kind === "rem") {
+    const wantedPx = expect.value * rootFontSizePx;
+    const seenPx = Number.parseFloat(observed);
+    if (!Number.isFinite(seenPx))
+      return {
+        state: "NOT_MEASURED",
+        reason:
+          `„${pair.read.property}" computed to „${observed}", which is not a length. A rem pair ` +
+          "cannot compare it against anything — this probe measured nothing.",
+      };
+    return {
+      state:
+        Math.abs(seenPx - wantedPx) <= REM_TOLERANCE_PX ? "MATCH" : "DIFFERS",
+      observed: `${observed} (${remOf(observed, rootFontSizePx).toFixed(4)}rem at a ${rootFontSizePx}px root)`,
+      expected: `${expect.value}rem = ${wantedPx.toFixed(1)}px (±${REM_TOLERANCE_PX}px)`,
+    };
+  }
+
+  if (expect.kind === "token") {
+    if (measured.expectedResolved === "" || measured.expectedResolved == null)
+      return {
+        state: "NOT_MEASURED",
+        reason:
+          `the expectation names var(${expect.token}), which resolved to nothing on this page. ` +
+          "A pair whose expected side is empty can never match and never says why — instrument " +
+          "failure, not a verdict.",
+      };
+    return {
+      state: observed === measured.expectedResolved ? "MATCH" : "DIFFERS",
+      observed,
+      expected: `var(${expect.token}) → ${measured.expectedResolved}`,
+    };
+  }
+
+  if (expect.kind === "text")
+    return {
+      state: observed === expect.notValue ? "DIFFERS" : "MATCH",
+      observed: `„${observed}"`,
+      expected: `any visible text other than „${expect.notValue}"`,
+    };
+
+  if (expect.kind === "contains")
+    return {
+      state: observed.includes(expect.value) ? "MATCH" : "DIFFERS",
+      observed,
+      expected: `a value containing „${expect.value}"`,
+    };
+
+  if (expect.kind === "not")
+    return {
+      state: observed === expect.value ? "DIFFERS" : "MATCH",
+      observed,
+      expected: `anything other than „${expect.value}"`,
+    };
+
+  if (expect.kind === "literal")
+    return {
+      state: observed === expect.value ? "MATCH" : "DIFFERS",
+      observed,
+      expected: `„${expect.value}"`,
+    };
+
+  return {
+    state: "NOT_MEASURED",
+    reason:
+      `the map declares expect.kind „${expect.kind}", which this runner does not implement. ` +
+      "A pair nobody can evaluate is not a pending pair — it is a hole in the instrument.",
+  };
+};
+
+// Księgowość mapy, sprawdzana BEZ przeglądarki: wpis nie może zniknąć po cichu,
+// a pozycja briefu nie może wypaść z OBU list naraz.
+const auditVisualLanguageMap = () => {
+  const failures = [];
+  const seen = new Set();
+  for (const pair of VISUAL_LANGUAGE_PAIRS) {
+    if (seen.has(pair.id))
+      failures.push(
+        `VISUAL_LANGUAGE_DUPLICATE_ID: two entries in the map carry id „${pair.id}". The report ` +
+          "would then name two different pairs identically and a reader could not tell which failed.",
+      );
+    seen.add(pair.id);
+  }
+  const enforced = VISUAL_LANGUAGE_PAIRS.filter(
+    (pair) => pair.status === "enforced",
+  );
+  const pending = VISUAL_LANGUAGE_PAIRS.filter((pair) =>
+    pair.status.startsWith("pending"),
+  );
+  if (enforced.length + pending.length !== VISUAL_LANGUAGE_PAIRS.length)
+    failures.push(
+      `VISUAL_LANGUAGE_UNKNOWN_STATUS: ${VISUAL_LANGUAGE_PAIRS.length - enforced.length - pending.length} ` +
+        'pair(s) carry a status that is neither „enforced" nor „pending: LOT N". Such a pair is ' +
+        "asserted in neither direction and is indistinguishable from an entry nobody measures.",
+    );
+  for (const [label, seenCount, wanted] of [
+    ["pairs", VISUAL_LANGUAGE_PAIRS.length, VISUAL_LANGUAGE_EXPECTED.pairs],
+    ["enforced pairs", enforced.length, VISUAL_LANGUAGE_EXPECTED.enforced],
+    ["pending pairs", pending.length, VISUAL_LANGUAGE_EXPECTED.pending],
+    [
+      "not-covered entries",
+      VISUAL_LANGUAGE_NOT_COVERED.length,
+      VISUAL_LANGUAGE_EXPECTED.notCovered,
+    ],
+  ])
+    if (seenCount !== wanted)
+      failures.push(
+        `VISUAL_LANGUAGE_COUNT_DRIFT: the map holds ${seenCount} ${label}, and ` +
+          `scripts/visual-language-pairs.mjs declares ${wanted}. Either an entry was added or ` +
+          "removed without saying so, or the declared number is stale. The count is written down " +
+          "precisely so an entry cannot disappear quietly.",
+      );
+  for (const [lot, expectation] of Object.entries(
+    VISUAL_LANGUAGE_EXPECTED.lots,
+  )) {
+    const positions = new Set(
+      VISUAL_LANGUAGE_PAIRS.filter((pair) => String(pair.lot) === lot).map(
+        (pair) => pair.position,
+      ),
+    );
+    if (positions.size !== expectation.positionsWithPairs)
+      failures.push(
+        `VISUAL_LANGUAGE_POSITION_DRIFT (lot ${lot}): the map covers ${positions.size} brief ` +
+          `position(s) with at least one pair, and declares ${expectation.positionsWithPairs}.`,
+      );
+    for (const position of expectation.positionsWithoutPairs)
+      if (positions.has(position))
+        failures.push(
+          `VISUAL_LANGUAGE_POSITION_CONTRADICTION (lot ${lot}): position ${position} is declared ` +
+            "as having no pair, and the map holds one for it. The not-covered list is a " +
+            "deliverable — it may not go stale while the map grows.",
+        );
+    if (
+      positions.size + expectation.positionsWithoutPairs.length !==
+      expectation.positionsInBrief
+    )
+      failures.push(
+        `VISUAL_LANGUAGE_POSITION_GAP (lot ${lot}): ${positions.size} position(s) carry pairs and ` +
+          `${expectation.positionsWithoutPairs.length} are declared uncovered, which does not add ` +
+          `up to the ${expectation.positionsInBrief} position(s) the brief lists. A position that ` +
+          "falls off BOTH lists is work nobody measures and nobody admits to skipping.",
+      );
+  }
+  return failures;
+};
+
+const visualLanguagePairs = async (browser) => {
+  const failures = auditVisualLanguageMap();
+  const verdicts = [];
+  const fingerprints = new Map();
+
+  for (const theme of THEME_ORDER) {
+    const report = (line) => console.log(`visual language\t${theme}\t${line}`);
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      colorScheme: theme,
+    });
+    page.on("pageerror", (error) =>
+      failures.push(`VISUAL_LANGUAGE_PAGE_ERROR (${theme}): ${String(error)}`),
+    );
+    await page.goto(HARNESS, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+
+    const collected = await page.evaluate(
+      async ({ pairs, notCovered, wantedTheme, pseudoAbsent }) => {
+        const frame = () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+        document.documentElement.dataset.theme = wantedTheme;
+        await frame();
+        const shell = window.getComputedStyle(document.body);
+        const fingerprint = `${shell.backgroundColor} on ${shell.color}`;
+
+        // Token rozwiązywany PRZEZ TĘ SAMĄ WŁAŚCIWOŚĆ, którą para czyta —
+        // inaczej obie strony porównania przechodziłyby przez inną
+        // normalizację przeglądarki i „oklch(…)" nigdy nie zrównałoby się
+        // z „rgb(…)". Sonda jest ukryta, ale NIE `display: none`: wartość
+        // użyta długości bierze się z układu.
+        const resolveAs = (property, value) => {
+          const probe = document.createElement("div");
+          probe.style.position = "absolute";
+          probe.style.left = "-9999px";
+          probe.style.top = "0";
+          probe.style.visibility = "hidden";
+          probe.style.pointerEvents = "none";
+          probe.style[property] = value;
+          document.body.append(probe);
+          const resolved = window.getComputedStyle(probe)[property];
+          probe.remove();
+          return resolved ?? "";
+        };
+        const rendered = (element) => {
+          const style = window.getComputedStyle(element);
+          if (style.display === "none") return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        };
+        const signature = (element) => {
+          const classes = [...element.classList]
+            .map((token) => {
+              const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+              return match === null ? token : `_${match[1]}`;
+            })
+            .join(".");
+          return classes === ""
+            ? element.tagName.toLowerCase()
+            : `${element.tagName.toLowerCase()}.${classes}`;
+        };
+        const paintOf = (element) => {
+          const style = window.getComputedStyle(element);
+          return `${style.backgroundColor} ${style.backgroundImage}`;
+        };
+        const readValue = (element, read) => {
+          if (read.pseudo !== undefined && read.pseudo !== null) {
+            const style = window.getComputedStyle(element, read.pseudo);
+            const content = style.content;
+            if (content === "none" || content === "normal" || content === "")
+              return pseudoAbsent;
+            return style[read.property] ?? "";
+          }
+          if (read.property === "paint") return paintOf(element);
+          if (read.property === "text")
+            return (element.textContent ?? "").trim();
+          if (read.property === "rect.left") {
+            const rect = element.getBoundingClientRect();
+            return `${Math.round(rect.left * 100) / 100}px`;
+          }
+          return window.getComputedStyle(element)[read.property] ?? "";
+        };
+
+        const measurements = [];
+        for (const pair of pairs) {
+          // PODMIOT TOKENOWY: para mierzy wartość tokenu, bo element, który go
+          // niesie, składa dziś DWA tokeny w jedną wysokość.
+          if (pair.subject.token !== undefined) {
+            const observed = resolveAs(
+              pair.read.property,
+              `var(${pair.subject.token})`,
+            );
+            measurements.push({
+              id: pair.id,
+              state: observed === "" ? "not-measured" : "measured",
+              reason:
+                observed === ""
+                  ? `var(${pair.subject.token}) resolved to nothing on this page — the token was ` +
+                    "renamed or never defined, so this pair measured NOTHING."
+                  : undefined,
+              matches: 1,
+              observed,
+              signature: `var(${pair.subject.token})`,
+            });
+            continue;
+          }
+          let found;
+          try {
+            found = [...document.querySelectorAll(pair.subject.selector)];
+          } catch (error) {
+            measurements.push({
+              id: pair.id,
+              state: "not-measured",
+              reason:
+                `the selector „${pair.subject.selector}" is not valid in this engine ` +
+                `(${String(error)}).`,
+            });
+            continue;
+          }
+          if (pair.expect.kind === "count") {
+            measurements.push({
+              id: pair.id,
+              state: "measured",
+              matches: found.length,
+            });
+            continue;
+          }
+          if (pair.expect.kind === "accentCount") {
+            measurements.push({
+              id: pair.id,
+              state: "measured",
+              matches: found.length,
+              paints: found.filter(rendered).map((element) => ({
+                signature: signature(element),
+                value: paintOf(element),
+              })),
+            });
+            continue;
+          }
+          if (found.length === 0) {
+            measurements.push({
+              id: pair.id,
+              state: "not-measured",
+              reason:
+                `„${pair.subject.selector}" matched NO element on the landing shell. This pair ` +
+                "measured nothing — the affordance moved and the map has to move with it. That " +
+                "is not the same as the property having the wrong value.",
+            });
+            continue;
+          }
+          const live = found.filter(rendered);
+          if (live.length === 0) {
+            measurements.push({
+              id: pair.id,
+              state: "not-measured",
+              reason:
+                `„${pair.subject.selector}" matched ${found.length} element(s), and NONE of them ` +
+                "is rendered (display: none or a zero-area box). A computed style read off an " +
+                "unrendered box describes nothing a person can see.",
+            });
+            continue;
+          }
+          const values = live.map((element) => readValue(element, pair.read));
+          const distinct = [...new Set(values)];
+          if (distinct.length > 1) {
+            measurements.push({
+              id: pair.id,
+              state: "not-measured",
+              reason:
+                `„${pair.subject.selector}" matched ${live.length} rendered element(s) computing ` +
+                `${distinct.length} DIFFERENT values for ${pair.read.property} ` +
+                `(${distinct.join(" | ")}). This pair cannot say which one it judged.`,
+            });
+            continue;
+          }
+          measurements.push({
+            id: pair.id,
+            state: "measured",
+            matches: live.length,
+            observed: distinct[0],
+            signature: signature(live[0]),
+            expectedResolved:
+              pair.expect.kind === "token"
+                ? resolveAs(pair.read.property, `var(${pair.expect.token})`)
+                : undefined,
+          });
+        }
+
+        // Selektory pozycji NIEOBJĘTYCH: nie asercja, tylko liczba w raporcie.
+        const probes = notCovered.map((entry) => ({
+          lot: entry.lot,
+          position: entry.position,
+          selector: entry.probe ?? null,
+          matched:
+            entry.probe === undefined || entry.probe === null
+              ? null
+              : document.querySelectorAll(entry.probe).length,
+        }));
+
+        return {
+          applied: document.documentElement.dataset.theme ?? "",
+          fingerprint,
+          measurements,
+          probes,
+          rootFontSizePx: Number.parseFloat(
+            window.getComputedStyle(document.documentElement).fontSize,
+          ),
+        };
+      },
+      {
+        pairs: VISUAL_LANGUAGE_PAIRS,
+        notCovered: VISUAL_LANGUAGE_NOT_COVERED,
+        wantedTheme: theme,
+        pseudoAbsent: PSEUDO_ABSENT,
+      },
+    );
+
+    if (collected.applied !== theme)
+      failures.push(
+        `VISUAL_LANGUAGE_THEME_NOT_STAMPED: this pass set data-theme="${theme}" and read back ` +
+          `„${collected.applied}". Every pair below would describe a theme this pass did not ` +
+          "choose. Instrument failure — nothing was measured.",
+      );
+    fingerprints.set(theme, collected.fingerprint);
+    report(
+      `theme stamped\tdata-theme=${collected.applied}\tbody paint ${collected.fingerprint}\t` +
+        `root font size ${collected.rootFontSizePx}px`,
+    );
+
+    const byId = new Map(
+      collected.measurements.map((entry) => [entry.id, entry]),
+    );
+    let matched = 0;
+    let differed = 0;
+    for (const pair of VISUAL_LANGUAGE_PAIRS) {
+      const measured = byId.get(pair.id);
+      if (measured === undefined) {
+        failures.push(
+          `VISUAL_LANGUAGE_NOT_MEASURED (${theme}) — ${pair.id} „${pair.title}": the in-page pass ` +
+            "returned no measurement for this pair at all. Instrument failure.",
+        );
+        continue;
+      }
+      const judged = judgeVisualPair(
+        pair,
+        measured,
+        collected.rootFontSizePx,
+        theme,
+      );
+      // PODMIOT WYPISANY TAK, JAK GO ZMIERZONO. Para o podmiocie tokenowym nie
+      // ma selektora, a wypisanie „undefined" w miejscu podmiotu robi z wiersza
+      // raportu zdanie o niczym — zmierzone na pierwszym przebiegu.
+      const subject = pair.subject.selector ?? `var(${pair.subject.token})`;
+      const cite =
+        `${pair.prototype.file}:${pair.prototype.lines} („${pair.prototype.value}") ` +
+        `↔ ${subject} [${pair.read.property ?? "count"}]`;
+      if (judged.state === "NOT_MEASURED") {
+        failures.push(
+          `VISUAL_LANGUAGE_NOT_MEASURED (${theme}) — ${pair.id} „${pair.title}" ` +
+            `[${pair.status}]: ${judged.reason} Pair: ${cite}. A pair that measures nothing is ` +
+            'indistinguishable from a pair that passes, which is exactly why "pending must not ' +
+            'match" is not enough on its own.',
+        );
+        report(`${pair.id}\tNOT_MEASURED\t${judged.reason}`);
+        continue;
+      }
+      report(
+        `${pair.id}\t${judged.state}\t${pair.status}\t${pair.title}\t` +
+          `observed: ${judged.observed}\texpected: ${judged.expected}\t${cite}`,
+      );
+      if (judged.state === "MATCH") matched += 1;
+      else differed += 1;
+      if (pair.status === "enforced" && judged.state !== "MATCH")
+        verdicts.push(
+          `${theme} theme — ${pair.id} „${pair.title}": ${subject} computes ` +
+            `${pair.read.property} = ${judged.observed}, and ${pair.prototype.file}:` +
+            `${pair.prototype.lines} says ${judged.expected}. Contract: ${pair.contract}.`,
+        );
+      if (pair.status.startsWith("pending") && judged.state === "MATCH")
+        failures.push(
+          `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES (${theme}) — ${pair.id} „${pair.title}" is ` +
+            `filed as „${pair.status}", and it MATCHES today: ${subject} computes ` +
+            `${pair.read.property} = ${judged.observed}, which is what ${pair.prototype.file}:` +
+            `${pair.prototype.lines} asks for. Exactly one of two things is true and both are ` +
+            `loud: the lot delivered this and the entry must flip to „enforced", or the ` +
+            "expectation is written so that it can never fail and the pair has been measuring " +
+            "nothing. Do not soften the expectation to keep it pending.",
+        );
+    }
+    for (const probe of collected.probes)
+      report(
+        `not covered\tL${probe.lot}-${String(probe.position).padStart(2, "0")}\t` +
+          `${probe.selector ?? "no probe selector"}\t` +
+          `${probe.matched === null ? "not counted" : `${probe.matched} element(s) on the landing shell`}`,
+      );
+    report(
+      `summary\t${VISUAL_LANGUAGE_PAIRS.length} pair(s)\t${matched} MATCH\t${differed} DIFFERS\t` +
+        `${VISUAL_LANGUAGE_PAIRS.length - matched - differed} NOT_MEASURED\t` +
+        `${VISUAL_LANGUAGE_NOT_COVERED.length} position(s)/aspect(s) declared NOT COVERED`,
+    );
+    await page.close();
+  }
+
+  if (new Set(fingerprints.values()).size < fingerprints.size)
+    failures.push(
+      "VISUAL_LANGUAGE_THEME_DID_NOT_SWITCH: the shell painted IDENTICALLY in every theme this " +
+        `pass walked (${[...fingerprints]
+          .map(([theme, print]) => `${theme}: ${print}`)
+          .join(
+            " | ",
+          )}). Both passes measured the same paint twice, so no pair below is a ` +
+        "statement about two themes. Instrument failure.",
+    );
+  return { failures, verdicts };
+};
+
 const browser = await openBrowser();
 const passes = [
   { width: 1024, fontSize: "200%", label: "text scaled to 200%" },
@@ -3125,6 +3726,36 @@ try {
       fidelity.failures.length + fidelity.layoutProblems.length === 0
         ? "the v3 visual language holds"
         : `${fidelity.failures.length} instrument failure(s), ${fidelity.layoutProblems.length} verdict(s)`
+    }`,
+  );
+  // ── P1: PARY JĘZYKA WIZUALNEGO ──────────────────────────────────────────
+  // OSOBNY PRZELOT, powody przy `visualLanguagePairs`. Obie listy egzekwowane
+  // bezwarunkowo, również w trybie raportu, z tego samego powodu co sonda
+  // wierności: `REPORT_ONLY` zdejmuje w tym pliku JEDNĄ, nazwaną rzecz —
+  // czy przepełnienie robi się błędem — a mapa par nie ma żadnego rejestru do
+  // odświeżenia.
+  const language = await visualLanguagePairs(browser);
+  for (const failure of language.failures) {
+    problems.push(`visual language — instrument: ${failure}`);
+  }
+  for (const verdict of language.verdicts) {
+    problems.push(`visual language — ${verdict}`);
+  }
+  // WIERSZ PODSUMOWANIA MÓWI, ILE PAR JEST W KTÓRYM STANIE, a nie „trzyma".
+  // Zieleń nad mapą, w której WSZYSTKIE pary są „pending", nie znaczy, że język
+  // wizualny jest przyjęty — znaczy, że każda nieoddana pozycja została
+  // zmierzona i NIE PASUJE. Zdanie „N pair(s) hold" czytałoby się dokładnie
+  // odwrotnie i było pierwszą wersją tej linii.
+  const enforcedPairs = VISUAL_LANGUAGE_PAIRS.filter(
+    (pair) => pair.status === "enforced",
+  ).length;
+  console.log(
+    `visual language: ${
+      language.failures.length + language.verdicts.length === 0
+        ? `${enforcedPairs} enforced pair(s) match and ` +
+          `${VISUAL_LANGUAGE_PAIRS.length - enforcedPairs} pending pair(s) still differ, in both ` +
+          `themes; ${VISUAL_LANGUAGE_NOT_COVERED.length} aspect(s) declared NOT COVERED`
+        : `${language.failures.length} instrument failure(s), ${language.verdicts.length} verdict(s)`
     }`,
   );
   // Wpis, którego nie dopasował ŻADEN przelot, opisuje element, którego nie ma
