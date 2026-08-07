@@ -158,23 +158,40 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     thread:
       "skalowanie interfejsu (R3-5, za falą E) — wyróżnienie brakującej danej",
   },
-  // Sufity zmierzone pod SAMĄ etykietą `renewals`, i to jest ślad po
-  // znalezisku tego lotu. Przed usunięciem `[data-renewal-row]` z selektora
-  // otwierającego rekord ta sama kwota meldowała się DRUGI RAZ pod
-  // `renewals:record` — etykietą przelotu, w którym bramka podwójnie klikała
-  // wiersz umowy i nic się nie otwierało. Ten przelot już nie zachodzi, więc
-  // wpis dopasowuje się wyłącznie prefiksem `renewals`; dopasowanie po
-  // prefiksie zostaje, bo to ono unieważnia potrzebę drugiego wpisu, gdyby
-  // ekran kiedyś dostał obiektyw.
-  {
-    surface: "renewals",
-    signature: "div._money",
-    ceilings: {
-      "text scaled to 200%": 19,
-      "a 320 px window": 54,
-    },
-    thread: "skalowanie interfejsu (R3-5, za falą E) — kwota na umowie",
-  },
+  // ── SPŁACONY I SKASOWANY: `renewals` / `div._money`, 2026-08-07 ────────────
+  // Stał tu wpis z sufitami 19 px (tekst 200%) i 54 px (okno 320 px) na kwotę
+  // przy umowie, z wątkiem „skalowanie interfejsu (R3-5, za falą E)". Przelot
+  // odbioru lotów 2-4 zgłosił go jako NIGDY NIETRAFIONY w żadnym przebiegu —
+  // czyli w tym rejestrze jako „albo naprawione i wpis ma zniknąć, albo bramka
+  // przestała widzieć ten ekran".
+  //
+  // ROZSTRZYGNIĘTE NA PIERWSZE, I TO DWUCZĘŚCIOWYM DOWODEM, a nie założeniem:
+  //   (1) EKRAN BYŁ ZAMIATANY — ten sam przebieg zgłosił NOWE przepełnienie na
+  //       `renewals` przy oknie 320 px (`div._viewbar`), więc powierzchnia
+  //       została odwiedzona i zmierzona przy obu istotnych szerokościach;
+  //   (2) WIERSZE SIĘ RYSOWAŁY — pary L3-04 i L3-05 policzyły żywe glify
+  //       wewnątrz wierszy odnowień na tym samym przelocie, więc podmiot nie
+  //       zniknął z ekranu.
+  // Skoro ekran jest zamiatany, a wiersze narysowane, to brak trafienia znaczy
+  // brak przepełnienia. Zapłacił je lot 3, pozycja 1: `flex-wrap: wrap` na obu
+  // pigułkach kwoty (`renewals.module.css`, `.outlookAssumed`/`.outlookReal`)
+  // zamienia min-content pudełka z SUMY dzieci na NAJSZERSZE dziecko.
+  //
+  // DOWÓD (1) JEST JUŻ NIEODTWARZALNY I DLATEGO STOI TU JEGO NASTĘPCA. Faza
+  // poprawek tego samego dnia skasowała `white-space: nowrap` z `.count`, więc
+  // przepełnienie `div._viewbar`, na które powołuje się punkt (1), NIE ZACHODZI
+  // od tamtej poprawki — kto uruchomi bramkę dziś, zobaczy czysty przebieg
+  // i może wziąć tamten dowód za zmyślony. Dowód zastępczy, zmierzony przy
+  // osadzie lotów 2-4: w przebiegu „a 320 px window" spis tytułów ekranu
+  // wymienia `renewals` wśród zmierzonych powierzchni, a przebieg kończy się
+  // „no overflow" — czyli ekran jest odwiedzany przy tej szerokości i jest
+  // czysty. To ta sama teza co (1), tylko na obserwacji, która się powtarza.
+  //
+  // CO TO KOSZTUJE, POWIEDZIANE WPROST: ten wpis był JEDYNYM sufitem nad tym
+  // pudełkiem. Po jego usunięciu nic nie pilnuje, żeby kolejna ikona w kwocie
+  // nie odtworzyła przepełnienia — złapie ją dopiero ogólny werdykt bramki,
+  // czyli od razu jako czerwień, a nie jako przekroczony sufit. To jest
+  // zamierzone: rejestr trzyma DŁUGI, a ten dług przestał istnieć.
   // PRZEKLUCZOWANY, NIE PRZEMIANOWANY. Ten wpis stał pod `access`
   // z sygnaturą `div.member-list`; treść wsiąkła w sekcję „Access and
   // connections" Ustawień, więc zmienił się I EKRAN, I SYGNATURA — arkusz

@@ -71,11 +71,18 @@ const CLOSE_OUTCOMES = [
 
 type CloseOutcome = (typeof CLOSE_OUTCOMES)[number][0];
 
-/** The mark that leads a row. Shape first: it reads the same with no colour. */
+/**
+ * The mark that leads a row. Shape first: it reads the same with no colour —
+ * and now it is DRAWN rather than typed, so the shape is the product's and not
+ * whichever glyph the reader's font happens to carry for `▲ ◷ ■`. The three
+ * names and the section each belongs to come from the prototype
+ * (`v3/screens/renewals.js:139`); the drawings come from the shell's
+ * consolidated set and this file adds none.
+ */
 const SECTION_MARKS = {
-  due: "▲",
-  watching: "◷",
-  closed: "■",
+  due: "warn",
+  watching: "clock",
+  closed: "check",
 } as const;
 
 type SectionKind = keyof typeof SECTION_MARKS;
@@ -164,7 +171,12 @@ const Outlook = ({
           }}
           type="button"
         >
+          {/* The exit says where it goes with a mark of the destination and an
+              arrow away from here, as the reference writes it
+              (`v3/screens/renewals.js:84-85`). */}
+          <Icon name="pipeline" />
           {outlook.basis === "offer" ? "from the offer" : "from the estimate"}
+          <Icon name="arrow" />
         </button>
       </span>
     </>
@@ -234,7 +246,7 @@ const RenewalRow = ({
       role="listitem"
     >
       <span aria-hidden="true" className={styles.mark}>
-        {SECTION_MARKS[section]}
+        <Icon name={SECTION_MARKS[section]} />
       </span>
       <div className={styles.main}>
         <div className={styles.top}>
@@ -280,9 +292,13 @@ const RenewalRow = ({
               className={`${styles.lead} ${lead.open ? styles.leadOpen : ""}`}
               data-renewal-lead={lead.open ? "open" : "waiting"}
             >
-              <span aria-hidden="true" className={styles.leadMark}>
-                {lead.open ? "▲" : "◷"}
-              </span>
+              {/* Drawn, not typed, for the same reason as the row mark, and
+                  picked the same way the prototype picks it
+                  (`v3/screens/renewals.js:59-61`): a clock while the window is
+                  still ahead, a warning once it has opened. The colour on
+                  `.leadOpen` reinforces what the glyph and the words already
+                  say. */}
+              <Icon name={lead.open ? "warn" : "clock"} />
               {lead.text}
             </span>
           )}
@@ -303,7 +319,7 @@ const RenewalRow = ({
             {followUp.kind === "none" ? (
               <>
                 <span className={styles.followNone} data-renewal-follow="none">
-                  <span aria-hidden="true">◇</span> nobody has started this
+                  <Icon name="flag" /> nobody has started this
                 </span>
                 <button
                   className={styles.action}
@@ -311,6 +327,11 @@ const RenewalRow = ({
                   onClick={() => onStart(reading)}
                   type="button"
                 >
+                  {/* `capture` IS the prototype's plus, to within a quarter of a
+                      unit — `components/Icon.tsx` says so where the set is
+                      declared, and a second entry for the same cross would be one
+                      drawing paid for twice on the hot path. */}
+                  <Icon name="capture" />
                   Start
                 </button>
               </>
@@ -319,8 +340,13 @@ const RenewalRow = ({
                 className={styles.followNone}
                 data-renewal-follow="detached"
               >
-                <span aria-hidden="true">◇</span> its follow-up task is not on
-                this page
+                {/* AN APP-ONLY STATE TAKING THE NEIGHBOURING GLYPH BY ANALOGY,
+                    said out loud because the reference does not draw it: a
+                    follow-up outside `task.list`'s page is, to this reader, the
+                    same family as one nobody started — "no follow-up you can
+                    see" — so it wears the same mark as the branch above rather
+                    than inventing a second one. */}
+                <Icon name="flag" /> its follow-up task is not on this page
               </span>
             ) : (
               <button
@@ -331,6 +357,10 @@ const RenewalRow = ({
                 }
                 type="button"
               >
+                {/* Opens with what it is and closes with where it goes, exactly
+                    as the reference builds this control
+                    (`v3/screens/renewals.js:100-104`). */}
+                <Icon name="list" />
                 <span className={styles.clip}>{followUp.task.title}</span>
                 <span className={styles.tag}>{followUp.task.status.label}</span>
                 {followUp.lateDays !== undefined && (
@@ -340,6 +370,7 @@ const RenewalRow = ({
                     {dayDistance(-followUp.lateDays, "lead")}
                   </span>
                 )}
+                <Icon name="arrow" />
               </button>
             )}
           </div>
@@ -351,7 +382,7 @@ const RenewalRow = ({
             data-renewal-amendment={amendment.opportunity.id}
             key={amendment.opportunity.id}
           >
-            <span aria-hidden="true">+</span>
+            <Icon name="check" />
             <span className={styles.clip}>{amendment.opportunity.title}</span>
             <span className={styles.when}>
               {formatDate(amendment.at, timeZone)}
@@ -366,7 +397,9 @@ const RenewalRow = ({
               }
               type="button"
             >
+              <Icon name="pipeline" />
               the opportunity
+              <Icon name="arrow" />
             </button>
           </div>
         ))}
@@ -398,6 +431,7 @@ const RenewalRow = ({
                 onClick={() => onAmend(reading)}
                 type="button"
               >
+                <Icon name="capture" />
                 Add to contract
               </button>
               {/* The rule stands AT the control it governs, which is the only
@@ -773,16 +807,34 @@ export const RenewalsSurface = ({
   return (
     <div className={`surface-scroll ${styles.renewals}`} data-renewals-surface>
       {header}
+      {/* POSITION 6 — THE SCREEN'S OWN ACTION IS PAINTED AS THE PRIMARY ONE.
+          This is ruling R2, taken once for five surfaces and not decided here:
+          the reference gives this control `.btn.primary`
+          (`v3/screens/renewals.js:217`, painted at `v3/app.css:321-332`), and
+          `.ui-craft/tokens.md` "Accent rule" job 2 licenses exactly one primary
+          action per view.
+
+          IT IS A TOGGLE, SO IT DEMOTES ITSELF. The counter-argument the ruling
+          weighed is real — with the create form open, "Open the amendment" and
+          the form's own submit are the primary things on this canvas, and two
+          filled accents in one view is the one thing the rule forbids by
+          counting. Painting the trigger primary only while it is CLOSED keeps
+          the promise of "one per view" true in both states. */}
       <div className={styles.crumbbar}>
         <button
           aria-expanded={creating}
-          className="secondary-button"
+          className={creating ? "secondary-button" : "primary-button"}
           onClick={() => setCreating((open) => !open)}
           type="button"
         >
           <Icon name="capture" />
           New renewal
         </button>
+      </div>
+      {/* POSITION 7 — the reading of the list stands in its own band, under the
+          row that acts on it (`v3/app.css:295-301`,
+          `v3/screens/renewals.js:218-221`). */}
+      <div className={styles.viewbar}>
         <span aria-live="polite" className={styles.count} role="status">
           {`${countLabel(sections.openCount, "contract")} open · ${sections.closed.length} closed this cycle`}
         </span>
@@ -1063,6 +1115,11 @@ export const RenewalsSurface = ({
             type="button"
           >
             {showClosed ? "Hide" : "Show"}
+            {/* The state the button announces is now also a state the button
+                SHOWS: the chevron turns on `aria-expanded="true"`
+                (`v3/screens/renewals.css:31-32`,
+                `v3/screens/renewals.js:237-238`). */}
+            <Icon name="chevron-down" />
           </button>
         </div>
         {showClosed &&

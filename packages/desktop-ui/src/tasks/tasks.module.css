@@ -8,10 +8,41 @@
   min-block-size: 0;
   /* Scaled text must not make the PAGE scroll sideways. Anything genuinely
      wider than the window — a board of columns, a table of eight — scrolls
-     inside its own container instead. */
+     inside its own container instead.
+
+     CLIP RATHER THAN HIDDEN, AND THE DIFFERENCE IS A WHOLE SCREEN. Reference:
+     `v3/app.css:655-658` — `.tabstrip { position: sticky; top: 0; z-index:
+     var(--z-sticky) }`. Contract: `.ui-craft/tokens.md`, "Shape, motion,
+     depth, and layering" (Z roles: base, raised, sticky, …). Application:
+     `record/record-tabs.module.css:41-65`, the record tab bar, which pins
+     against whichever ancestor is the scrollport.
+
+     `position: sticky` is silently inert under any ancestor whose overflow is
+     neither `visible` nor `clip`, and `hidden` on ONE axis computes the other
+     axis to `auto` — which made THIS box the scrollport for everything under
+     it. It never scrolls: its height is not constrained, and the pane above it
+     (`styles.css:1426-1435`, `.work-surface { overflow: auto }`) is what
+     actually moves. A task opened as a record renders inside this same wrapper
+     (`TasksSurface.tsx:381-383`), so on the task record alone the bar pinned
+     to a box that stands still. Measured 2026-08-07: `projects › record` held
+     the bar (195 of 194.6 px scrolled, the cursor landing on the strip);
+     `tasks › record` was asked for 408.1 px of scroll and moved 0. Same
+     declaration, different scrollport. `clip` clips exactly as `hidden` did
+     and creates no scroll container, so the guard above still holds and the
+     scrollport stays where the shell put it.
+
+     THE NAMED COST: `clip` also forbids scrolling this box programmatically,
+     which `hidden` allowed. Nothing scrolled it — it never had a constrained
+     height — and the two layouts that genuinely need a horizontal scroller
+     bring their own (`task-board.module.css:47`, `task-timeline.module.css:23`).
+
+     SECOND-ORDER EFFECT, NOT YET MEASURED: `task-list.module.css:18-20` pins
+     its group headings and they were inert for exactly this reason. They now
+     resolve against the surface scrollport and start pinning on the task LIST,
+     which is a different screen with no assertion reading it. */
   min-inline-size: 0;
   max-inline-size: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .viewbar {

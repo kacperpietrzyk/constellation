@@ -4070,77 +4070,42 @@ const routeLabel = (route) =>
 // Bez tej drugiej połowy lista gnije w ciszy — ta sama doktryna, co
 // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`.
 const STICKY_PENDING_SUBJECTS = [
-  {
-    id: "P7-01",
-    owner: "lot 4 #8",
-    title: "the record tab bar sticks to the top of the reading column",
-    // Deklaracja po OBU stronach: ekran rekordu stempluje `data-record-kind`,
-    // a pasek zakładek jest `role="tablist"` (RecordTabStrip.tsx). Nie klasa
-    // modułowa — powód przy `TITLE_SELECTOR`.
-    selector: '[data-record-kind] [role="tablist"]',
-    // TRASA WYBRANA POD DRUGĄ POŁOWĘ POZYCJI, NIE POD PIERWSZĄ. Zakładka
-    // Przeglądu rysuje pasek zakładek i NIC PRZYKLEJONEGO POD NIM — zmierzone:
-    // przy przystanku „projects › record" żywy skan nie znalazł ani jednego
-    // podmiotu przyklejonego. Nagłówki grup z `record-panels.module.css:36`
-    // rysuje WYŁĄCZNIE `RecordTasksPanel.tsx:212`, czyli zakładka Zadań.
-    // To tam pasek na --z-sticky (20) ma przechodzić NAD nimi (--z-raised, 2)
-    // i tam ta pozycja jest naprawdę groźna, więc tam stoi jej pomiar.
-    route: {
-      surface: "projects",
-      openRecord: "[data-project-row]",
-      recordTab: "tasks",
-    },
-    prototype:
-      "v3/app.css:655-658 (.tabstrip { position: sticky; top: 0; z-index: --z-sticky })",
-    app: "packages/desktop-ui/src/record/record-tabs.module.css:11-18",
-    // NAJGROŹNIEJSZA POZYCJA CAŁEJ FALI wg briefu Fazy 3, i powód jest tu
-    // dopisany, bo bez niego wpis czyta się jak drobiazg: `record-panels.module.css:36`
-    // JUŻ przykleja nagłówki grup na warstwie --z-raised (2), a pasek zakładek
-    // idzie na --z-sticky (20) i ma nad nimi PRZECHODZIĆ. Pasek, który się
-    // przykleja, ale maluje się POD nagłówkiem grupy, spełnia każdą asercję
-    // o `rect.top` — dlatego niżej stoi druga, o trafieniu kursorem.
-    // TA UWAGA MÓWI O MECHANIZMIE, NIE O POKRYCIU, i różnica jest zmierzona.
-    // `elementFromPoint` JEST w tym przyrządzie i zadziała — ale na tej
-    // fiksturze nie ma na czym: spis powszechny na tym przystanku pokazał
-    // ZERO narysowanych nagłówków grup (`RecordTasksPanel.tsx:212` jest
-    // jedynym miejscem, które je rysuje, a projekt harnessu nie ma ANI JEDNEGO
-    // zadania: `CollaborationHarness.tsx`, odczyt `project.operationalOverview`,
-    // `relatedTasks: []`). ADRES JEST WAŻNY: fikstura tej bramki to
-    // `CollaborationHarness.tsx` — `main.tsx:73-75` montuje go pod
-    // `?surface=collaboration` — a NIE `harness-snapshot.ts`, który zasila inne
-    // harnessy `?surface=`. Warunek wyjścia wskazujący nie ten plik kazałby
-    // lotowi 4 zasiać dane, po których nic by się nie zmieniło.
-    // Napisanie tu „asserted by elementFromPoint" byłoby powołaniem się na
-    // asercję, której nic nie dosięga.
-    note:
-      "must pass OVER the group heads already sticky at --z-raised (2) — " +
-      "record-panels.module.css:36. The z-order half WILL be asserted by elementFromPoint the " +
-      "moment the fixture draws task groups; measured 0 group heads on this stop today, so that " +
-      "half of the position is UNMEASURABLE on this fixture.",
-  },
-  {
-    id: "P7-02",
-    owner: "lot 2 #6",
-    title: "the pipeline column head sticks to the top of the board",
-    // Przedrostek z deklaracji, bo `_columnHead_` NIE JEST unikalne w
-    // dokumencie: w zbudowanym arkuszu stoją dwie różne klasy o tej nazwie
-    // (`_columnHead_1c08a_247` i `_columnHead_1epo7_70`) — policzone, nie
-    // przypuszczone.
-    selector: '[data-pipeline-column] [class*="_columnHead_"]',
-    route: { surface: "pipeline" },
-    prototype:
-      "v3/screens/pipeline.css:58-59 (.pp-head { position: sticky; top: 0; z-index: --z-raised })",
-    app: "packages/desktop-ui/src/pipeline/pipeline.module.css:247-254",
-    // Brief nazywa drugą połowę tej pozycji wprost: „osobno może przykleić się
-    // do ZŁEJ krawędzi i wyglądać gorzej niż dziś". Diagnoza przodków niżej
-    // mówi, do której krawędzi ten podmiot BY się przykleił, zanim ktokolwiek
-    // napisze deklarację — `pipeline.module.css:203-208` daje planszy
-    // `overflow-x: auto`, a pudełko, które przewija się poziomo, jest dla
-    // `top: 0` pudełkiem, które nie przewija się wcale.
-    note:
-      "the board scrolls HORIZONTALLY (pipeline.module.css:203-208); a top-sticky " +
-      "head inside a box that never scrolls vertically is silently inert",
-  },
+  // ── PUSTY, I TO JEST WERDYKT, NIE ZANIEDBANIE ─────────────────────────────
+  // ODBIÓR LOTÓW 2 I 4, 2026-08-07. Oba wpisy, które tu stały, wyleciały tego
+  // samego dnia i z tego samego powodu, który sam ten rejestr wypisuje wyżej:
+  // podmiot, który JUŻ się klei, jest sygnałem, że lot dowiózł, a wpis ma
+  // zniknąć. Przelot zgłosił dokładnie to, dwa razy:
+  //   P7-01 (lot 4 #8, pasek zakładek rekordu) — div._strip computes
+  //     position: sticky; na przystanku „projects › record" HELD, przewinięte
+  //     195 z 194,6 px, elementFromPoint trafia div._strip;
+  //   P7-02 (lot 2 #6, nagłówek kolumny lejka) — div._columnHead computes
+  //     position: sticky; NOT_EXERCISED, bo div._scroller poproszony o 49 px
+  //     przesunął się o 0 (to jest bezwładność, którą lot 2 opisał sam przy
+  //     regule, a nie wada pomiaru).
+  //
+  // CZEGO PO TYM USUNIĘCIU NIE MIERZY JUŻ NIC, wypisane, bo pusty rejestr jest
+  // najłatwiejszym miejscem, w którym wiedza znika po cichu:
+  //   1. PASEK ZAKŁADEK NA EKRANIE ZADANIA JEST BEZWŁADNY. Zmierzone w tym
+  //      samym przelocie i jest to najmocniejszy artefakt tej rundy: na
+  //      przystanku „tasks › record" pojemnikiem przewijania paska jest
+  //      div.surface-scroll._tasks i przelot poprosił go o 408,1 px, dostając 0;
+  //      na „projects › record" pojemnikiem jest div.work-surface.wave2-work
+  //      i pasek TRZYMA. To jest różnica POJEMNIKA (tasks/tasks.module.css
+  //      deklaruje overflow-x: hidden), nie różnica długości treści. Para
+  //      L4-08a czyta samą deklarację i na obu ekranach widzi to samo, więc
+  //      ona tego nie złapie. Wejście fazy poprawek.
+  //   2. PRZEJŚCIE PASKA NAD PRZYKLEJONYM NAGŁÓWKIEM GRUPY — nadal
+  //      niemierzalne z tego samego powodu, co przed lotem: spis powszechny na
+  //      każdym przystanku rekordu pokazał ZERO narysowanych nagłówków grup
+  //      (RecordTasksPanel rysuje je tylko przy zadaniach, a projekt harnessu
+  //      ich nie ma). Stan bez zmiany, nie regresja.
+  //   3. ZACHOWANIE NAGŁÓWKA KOLUMNY LEJKA — raportowane jako żywy podmiot
+  //      NOT_EXERCISED przy każdym przelocie i tam trzeba go szukać.
+  //
+  // KTO DOPISUJE TU KOLEJNY WPIS: to jest lista podmiotów, które MAJĄ się
+  // przykleić, a jeszcze się nie klejają. Pusta znaczy „nikt nie czeka", nie
+  // „przyklejenie jest zmierzone" — zasięg mierzy linia „sticky coverage"
+  // niżej, i ona mówi dziś 3 z 11 reguł osądzonych jednoznacznie.
 ];
 
 // Ile podmiotów przyklejenia ten przelot ma ZOBACZYĆ. Liczba stoi tu z tego
@@ -4163,7 +4128,52 @@ const STICKY_PENDING_SUBJECTS = [
 // LICZBA ZMIERZONA NA TYM DRZEWIE: 3 (nagłówek grupy notatek, nagłówek grupy
 // źródeł, nawigator Ustawień), wszystkie trzy HELD. Podłoga, nie równość: nowy
 // przyklejony nagłówek na dowolnym z tych ekranów ma tę bramkę wzmacniać.
-const STICKY_EXPECTED = { pending: 2, liveExercised: 3 };
+// ── PRZEPISANE PRZY ODBIORZE LOTÓW 2-4, 2026-08-07 ───────────────────────────
+// `pending` 2 → 0: oba wpisy rejestru wyleciały, powód i cena stoją w samym
+// rejestrze wyżej. Zero jest tu ASERCJĄ, nie brakiem liczby — dopisanie wpisu
+// bez podniesienia tej liczby dalej jest czerwienią.
+//
+// `liveExercised` 3 → 4, I TO JEST WZMOCNIENIE, O KTÓRE PROSI AKAPIT NIŻEJ.
+// Przelot odbioru osądził cztery żywe podmioty: nagłówek grupy notatek,
+// nagłówek grupy źródeł, nawigator Ustawień (te trzy stały w podłodze od
+// początku) ORAZ pasek zakładek rekordu na przystanku „projects › record",
+// nowy z lotu 4 i HELD z trafieniem kursorem.
+//
+// SPRAWDZONE, ŻE TA CZWÓRKA PRZEŻYWA USUNIĘCIE WPISÓW P7, a nie tylko że
+// wypadła z tego jednego przebiegu. Wpis P7-01 fundował przystanek
+// „projects › record › tab tasks" (`routedStops` dokłada przystanek dla
+// podmiotu przyklejenia bez pary) i ten przystanek znika razem z nim — ale
+// osądzony tam był `div._strip` jako NOT_EXERCISED, czyli zero werdyktów
+// zachowania. Wszystkie cztery HELD siedzą na przystankach, które fundują
+// PARY (projects › record, library › notes, library › sources, Ustawienia),
+// więc podłoga jest osiągalna bez rejestru P7.
+//
+// CZEGO TA LICZBA NADAL NIE LICZY, i to jest cała jej treść: `div._columnHead`
+// oraz `div._strip` na trzech pozostałych przystankach rekordu wracają
+// NOT_EXERCISED. Podmiot ZNALEZIONY, ale nieprzewinięty, nie liczy się do
+// podłogi i nie wolno go tu wliczyć — inaczej próg spełniałyby pomiary, z
+// których żaden niczego nie sprawdził.
+//
+// ── 4 → 5 PRZY OSADZIE LOTÓW 2-4, 2026-08-07 ────────────────────────────────
+// Akapit wyżej wyliczał CZTERY podmioty i po poprawce `scrollBoxOf` (patrz jej
+// komentarz — `clip` nie jest pojemnikiem przewijania) przestał być prawdziwy.
+// Piątym jest `div._strip` na przystanku „tasks › record", i to jest jedyny
+// zakomitowany dowód na poprawkę lotu 4 w `tasks/tasks.module.css`: zmierzone
+// HELD, przewinięte 408 z 408,1 px w `div.work-surface.wave2-work`,
+// `elementFromPoint` trafia `div._strip`. Przed poprawką przyrządu ten sam
+// podmiot wracał NOT_EXERCISED, bo przelot prosił o przewinięcie pudełko
+// z `overflow-x: clip`, które nigdy nie przewija.
+// Podniesienie podłogi jest tu ZAMKNIĘCIEM tej poprawki: gdyby ktoś przywrócił
+// `overflow-x: hidden`, podmiot wróciłby do NOT_EXERCISED, liczba spadłaby do 4
+// i bramka byłaby czerwona. Bez podniesienia poprawka dalej byłaby niemierzona.
+// Sprawdzone przełamaniem, nie rozumowaniem: 5 (baza) → 4 i wyjście 1 po
+// przywróceniu `hidden` → 5 po cofnięciu, z przebudową między krokami.
+// DRUGA DROGA DO CZERWIENI, żeby nikt nie zaczynał debugowania od CSS: ten
+// podmiot potrzebuje 368,1 px przewinięcia w zakresie 1134,4 px, więc KRÓTSZY
+// rekord zadania w harnessie zbija liczbę do 4 tak samo skutecznie jak zmiana
+// `overflow`. Czerwień na tej podłodze to pytanie „co się skróciło", nie tylko
+// „co się zmieniło w arkuszu".
+const STICKY_EXPECTED = { pending: 0, liveExercised: 5 };
 
 const STICKY_PROBE_PX = 40;
 
@@ -4645,12 +4655,28 @@ const measureStickyInPage = async ({ pending, probePx }) => {
   // Pojemnik przewijania: najbliższy przodek, którego `overflow` w osi Y NIE
   // jest `visible`. Sticky pozycjonuje się względem NIEGO, nawet jeśli ten
   // przodek nigdy nie przewija — i to jest dokładnie ta cicha awaria.
+  //
+  // `clip` NIE JEST POJEMNIKIEM PRZEWIJANIA, i ten wyjątek jest poprawką
+  // przyrządu z odbioru lotów 2-4 (2026-08-07), nie ostrożnością. CSS Overflow
+  // rozróżnia dwie rzeczy, które ten warunek wcześniej zlepiał: `hidden`,
+  // `scroll` i `auto` USTANAWIAJĄ pojemnik przewijania (a `hidden` na jednej
+  // osi wypycha drugą oś z `visible` na `auto`), natomiast `clip` obcina i NIE
+  // ustanawia go — więc `position: sticky` pod takim przodkiem pozycjonuje się
+  // względem pojemnika WYŻEJ. Warunek „cokolwiek innego niż visible" wskazywał
+  // na pudełko z `overflow-x: clip` jako na pojemnik, po czym prosił je
+  // o przewinięcie i dostawał zero — czyli produkował `NOT_EXERCISED`
+  // NIEODRÓŻNIALNE od prawdziwej bezwładności. Zmierzone na `tasks › record`:
+  // `div._strip` w `div.surface-scroll._tasks`, poproszone o 408,1 px,
+  // przesunięte o 0, przy sprawnie działającym przyklejeniu wyżej.
+  //
+  // Predykat jest w OBU osiach, bo `overflow-x: clip` z `overflow-y: hidden`
+  // dalej jest pojemnikiem przewijania — pomija się samo `clip`, nie pudełko.
+  const scrolls = (value) => value !== "visible" && value !== "clip";
   const scrollBoxOf = (element) => {
     let node = element.parentElement;
     while (node !== null && node !== document.body) {
       const style = window.getComputedStyle(node);
-      if (style.overflowY !== "visible" || style.overflowX !== "visible")
-        return node;
+      if (scrolls(style.overflowY) || scrolls(style.overflowX)) return node;
       node = node.parentElement;
     }
     return null;

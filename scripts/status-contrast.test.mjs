@@ -1494,3 +1494,206 @@ test("podpowiedź w polu jest mierzona TAM, GDZIE SIĘ MALUJE", () => {
     );
   }
 });
+
+// ─── CZĘŚĆ PIĄTA: AKCENT JAKO TUSZ PISMA (próg 4,5) ────────────────────────
+//
+// Skąd się wzięła. Loty 2–4 Fazy 3 postawiły akcent na PIŚMIE w pięciu nowych
+// miejscach (`.basisLink`, `.offerState[data-offer-state="submitted"]`,
+// `.eventAgent`, `.badgeMention`, `.markAgent`) i ani jedna para tokenów tego
+// nie czytała. Nie przez niedbałość, tylko przez KSZTAŁT pytań, które ten plik
+// zadaje: CZĘŚĆ DRUGA pyta o rodziny `--X-bg` + `--X-text` (akcent semantyczny
+// żadnej nie tworzy), a CZĘŚĆ CZWARTA pyta wyłącznie o prefiks `--text-*`
+// (akcent go nie ma). Rodzina `--accent-*` wpadała dokładnie MIĘDZY te dwa
+// pytania. Brakujący przyrząd, nie zły kod — i dokładnie ta sama luka, którą
+// CZĘŚĆ CZWARTA zamknęła dla `--text-*`.
+//
+// CZEGO TA CZĘŚĆ NIE MIERZY, POWIEDZIANE OD RAZU: mierzy TOKEN na GOŁYM,
+// KRYJĄCYM planie czytania. Konsument stojący na LASERUNKU nad planem (a tak
+// stoją trzy z tamtych pięciu reguł) jest mierzony w
+// `scripts/consumer-contrast.test.mjs`, który czyta arkusze powierzchni i zna
+// stos warstw pod regułą z nazwy (`INHERITED_SURFACES`). Ta część jest
+// PODŁOGĄ: jeżeli akcent nie zdaje na samym planie, nie zda nigdzie wyżej.
+//
+// Podział rodziny jest WYPROWADZONY Z KSZTAŁTU i musi się domykać, bo prefiks
+// `--accent-` niesie w tym arkuszu trzy różne rzeczy: tusz pisma, laserunek
+// z alfą (nie jest pismem — jest powierzchnią albo kreską) i człon rodziny
+// wypełnieniowej `--accent-legible-bg` / `--accent-legible-text`, którą mierzy
+// CZĘŚĆ DRUGA. Wrzucenie laserunku do pomiaru pisma liczyłoby kontrast koloru
+// z samym sobą po złożeniu; pominięcie go po cichu byłoby dziurą.
+const ACCENT_TOKEN = /^--accent(-[a-z0-9-]+)?$/;
+const accentTokenNames = [...declaredTokenNames]
+  .filter((name) => ACCENT_TOKEN.test(name))
+  .sort();
+
+// Człony rodzin, które CZĘŚĆ DRUGA już mierzy jako tło × tekst. Wyliczone
+// z `fillFamilies`, nie wpisane: przepięcie `--accent-legible-*` na inną
+// rodzinę przeniesie je tu samo.
+const accentBoundToAFill = [];
+const accentNotPaintForText = [];
+const accentReadingInks = [];
+const accentPartitionFailures = [];
+
+for (const name of accentTokenNames) {
+  const family = fillFamilies.find(
+    (candidate) =>
+      name === `${candidate}${BG_SUFFIX}` || name === `${candidate}-text`,
+  );
+  if (family !== undefined) {
+    accentBoundToAFill.push(name);
+    continue;
+  }
+  let color;
+  try {
+    color = colorOf(themeTokens("dark"), name, "dark");
+  } catch (cause) {
+    accentPartitionFailures.push(`${name} — ${cause.message}`);
+    continue;
+  }
+  // Alfa rozstrzyga rolę: token z alfą jest laserunkiem, kreską albo poświatą,
+  // a nie tuszem pisma. Krawędź `--accent-edge` ma własne pytanie (1.4.11)
+  // i własną sekcję wyżej; poświata nie jest krawędzią i nie jest pismem.
+  if (color.alpha !== 1) accentNotPaintForText.push(name);
+  else accentReadingInks.push(name);
+}
+
+const accentMeasurements = [];
+const accentUnmeasurable = [];
+
+for (const themeName of THEMES) {
+  const tokens = themeTokens(themeName);
+  for (const surfaceName of READING_SURFACES) {
+    let surface;
+    try {
+      surface = colorOf(tokens, surfaceName, themeName);
+      if (surface.alpha !== 1) {
+        throw new Error(
+          `${surfaceName} = „${surface.literal}" nie jest kryjące; ta część mierzy ` +
+            "WYŁĄCZNIE kryjące powierzchnie czytania.",
+        );
+      }
+    } catch (cause) {
+      accentUnmeasurable.push(
+        `${themeName}: ${surfaceName} — ${cause.message}`,
+      );
+      continue;
+    }
+    for (const inkName of accentReadingInks) {
+      try {
+        const ink = colorOf(tokens, inkName, themeName);
+        accentMeasurements.push({
+          theme: themeName,
+          inkToken: inkName,
+          surfaceToken: surfaceName,
+          ratio: contrastRatio(ink, surface),
+          inkLiteral: ink.literal,
+          surfaceLiteral: surface.literal,
+          blocks: [...ink.blocks, ...surface.blocks],
+        });
+      } catch (cause) {
+        accentUnmeasurable.push(
+          `${themeName}: ${inkName} × ${surfaceName} — ${cause.message}`,
+        );
+      }
+    }
+  }
+}
+
+test("wypisuje każdą parę akcent × powierzchnia czytania z prowieniencją", () => {
+  const lines = accentMeasurements.map(
+    (row) =>
+      `${row.theme.padEnd(5)} ${row.inkToken.padEnd(20)} na ${row.surfaceToken.padEnd(20)} ` +
+      `${format(row.ratio).padStart(6)}:1  ` +
+      `${row.ratio >= WCAG_AA_NORMAL_TEXT ? "AA     " : "PONIŻEJ"}  ` +
+      `${row.inkLiteral} na ${row.surfaceLiteral}  | ${provenance(row.blocks)}`,
+  );
+  console.log(
+    `\nAKCENT JAKO TUSZ PISMA, ${path.relative(repoRoot, tokensPath)} ` +
+      `(próg ${WCAG_AA_NORMAL_TEXT}:1, SC 1.4.3):\n` +
+      lines.join("\n") +
+      `\n\nMierzone tusze akcentu: ${accentReadingInks.join(", ")}` +
+      `\nZ alfą — laserunek, kreska, poświata; NIE pismo: ${accentNotPaintForText.join(", ")}` +
+      `\nCzłon rodziny wypełnieniowej (mierzy go CZĘŚĆ DRUGA): ${accentBoundToAFill.join(", ") || "brak"}` +
+      "\nKonsument stojący na LASERUNKU nad planem jest mierzony w " +
+      "`scripts/consumer-contrast.test.mjs` — ta część mierzy TOKEN na GOŁYM planie.\n",
+  );
+  assert.deepEqual(
+    accentUnmeasurable,
+    [],
+    "Pary akcent × powierzchnia, których nie umiem rozłożyć: " +
+      accentUnmeasurable.join(" | "),
+  );
+  assert.ok(
+    lines.length > 0,
+    "Nie ma czego wypisać — pomiar akcentu na powierzchniach czytania nie zebrał wiersza.",
+  );
+});
+
+test("podział tokenów --accent-* domyka się i nie gubi ani jednego", () => {
+  assert.deepEqual(
+    accentPartitionFailures,
+    [],
+    `Tokeny --accent-*, których nie umiem zaszufladkować: ${accentPartitionFailures.join(" | ")}`,
+  );
+  const buckets = [
+    ...accentBoundToAFill,
+    ...accentNotPaintForText,
+    ...accentReadingInks,
+  ].sort();
+  assert.deepEqual(
+    buckets,
+    accentTokenNames,
+    `Podział --accent-* się nie domyka. Rodzina wypełnieniowa: ` +
+      `[${accentBoundToAFill.join(", ")}]; z alfą: [${accentNotPaintForText.join(", ")}]; ` +
+      `tusz pisma: [${accentReadingInks.join(", ")}].`,
+  );
+  assert.equal(
+    new Set(buckets).size,
+    buckets.length,
+    "Ten sam token --accent-* trafił do dwóch wiader.",
+  );
+  // Podłogi NAZWANE, nie wyliczone z pętli mierzącej. `--accent` i
+  // `--accent-hover` to jedyne dwa kryjące tusze akcentu w tym arkuszu i to
+  // one malują pismo w pięciu regułach lotów 2–4; wypadnięcie któregokolwiek
+  // z pomiaru ma wywalić TĘ asercję, a nie zniknąć w liczbie.
+  for (const expected of ["--accent", "--accent-hover"]) {
+    assert.ok(
+      accentReadingInks.includes(expected),
+      `${expected} wypadł z pomiaru na powierzchniach czytania; mierzone: ` +
+        `[${accentReadingInks.join(", ")}].`,
+    );
+  }
+  assert.ok(
+    accentNotPaintForText.length >= 4,
+    `Wiadro laserunków ma ${accentNotPaintForText.length} tokenów zamiast co najmniej ` +
+      "czterech (quiet, quieter, edge, glow) — wykrywanie alfy przestało działać.",
+  );
+  const expectedRows =
+    THEMES.length * READING_SURFACES.length * accentReadingInks.length;
+  assert.ok(
+    expectedRows >= 12,
+    `Z arkusza wychodzi ${expectedRows} par akcent × powierzchnia × motyw — poniżej ` +
+      "dwunastu ta część nie pilnuje już tego, po co powstała.",
+  );
+  assert.equal(
+    accentMeasurements.length,
+    expectedRows,
+    `Zebrano ${accentMeasurements.length} pomiarów zamiast ${expectedRows}.`,
+  );
+});
+
+test("akcent zdaje AA jako tusz pisma na każdej kryjącej powierzchni czytania", () => {
+  const failures = accentMeasurements
+    .filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT)
+    .map(
+      (row) =>
+        `${row.theme}/${row.inkToken} na ${row.surfaceToken}: ${format(row.ratio)}:1 ` +
+        `(${row.inkLiteral} na ${row.surfaceLiteral})`,
+    );
+  assert.deepEqual(
+    failures,
+    [],
+    `Akcent poniżej ${WCAG_AA_NORMAL_TEXT}:1 jako pismo na powierzchni czytania: ` +
+      `${failures.join("; ")}. Progu nie wolno obniżyć — zmienia się WARTOŚĆ stopnia ` +
+      "akcentu albo powierzchni.",
+  );
+});

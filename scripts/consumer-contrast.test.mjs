@@ -652,6 +652,165 @@ const DECORATIVE_KEYS = new Set(
   ),
 );
 
+// ── STOS POWIERZCHNI ODZIEDZICZONY PO PRZODKU W DOM-IE ──────────────────────
+//
+// PO CO. Reguła, która deklaruje SAM KOLOR, wpada wyżej do `declaredColorOnly`
+// (dziś 799 reguł) i nie jest mierzona nigdzie. Dla większości z nich to jest
+// uczciwa odpowiedź: `baseSelectorOf` umie wywieść tło tylko z reguły BAZY
+// w tym samym pliku, a dziedziczenie po PRZODKU W DOM-ie nie jest z arkusza
+// rozstrzygalne. Ale „nie z arkusza" nie znaczy „nie da się" — plan powierzchni
+// jest w tej aplikacji deklarowany TOKENEM, a układ przodków stoi w JSX-ie,
+// który da się przeczytać i wypisać RĘKĄ. Ta tabela jest tym wypisem.
+//
+// Powstała dla PIĘCIU reguł akcentu dołożonych przez loty 2–4 Fazy 3
+// (`.basisLink`, `.offerState[data-offer-state="submitted"]`, `.eventAgent`,
+// `.badgeMention`, `.markAgent`). Każda z nich maluje pismo akcentem i ani
+// jedna nie była mierzona — ani tutaj (bo nie deklaruje tła), ani przez bramkę
+// tokenową (bo akcent nie tworzy rodziny `--X-bg`/`--X-text`).
+//
+// CZYM TA TABELA NIE JEST. Nie jest zwolnieniem i nie jest deklaracją wyniku.
+// Wnosi WYŁĄCZNIE odpowiedź na pytanie „na czym to stoi", a liczbę wylicza ta
+// sama matematyka, co dla każdego innego konsumenta. Cena tej wiedzy to
+// RĘCZNY WPIS, więc każdy wpis jest obudowany kontrolami, które go zabijają,
+// kiedy przestanie być prawdziwy (test „STOS NAZWANY ma pokrycie w kodzie"):
+//   1. reguła-cel ISTNIEJE w tym arkuszu i deklaruje `color`;
+//   2. reguła-cel NIE MALUJE własnego tła — inaczej wpis nadpisywałby prawdziwy
+//      pomiar swoim twierdzeniem, co jest najgorszym trybem awarii tej bramki;
+//   3. każda warstwa NAZWANA selektorem naprawdę deklaruje w tym arkuszu
+//      DOKŁADNIE tę wartość tła (nie „jakieś" — dokładnie tę);
+//   4. każda nazwa klasy z uzasadnienia stoi w podanym pliku JSX;
+//   5. wpis daje wiersze pomiaru w OBU motywach.
+// Czego kontrole NIE sprawdzają, powiedziane wprost: KOLEJNOŚCI ZAGNIEŻDŻENIA
+// w drzewie DOM. To jest twierdzenie o JSX-ie, nie o arkuszu, i zostaje prozą —
+// dokładnie jak „nazwa stoi obok" przy zwolnieniu dekoracyjnym wyżej.
+//
+// STOS, NIE JEDNA WARSTWA, i to jest cała lekcja tego lotu. Reszta tej bramki
+// składa tło z alfą na DWÓCH kryjących planach czytania i na tym kończy —
+// a `.basisLink` stoi na laserunku akcentu, NA podbarwieniu stanu wiersza,
+// NA kryjącym tle listy. Trzy warstwy. Dwuwarstwowy pomiar dawał 5,02:1
+// i tak właśnie ta reguła została opisana w arkuszu; trzywarstwowy daje
+// 4,18:1 i jest PONIŻEJ progu. Pomiar zatrzymany o jedną warstwę za wcześnie
+// nie jest ostrożny, tylko fałszywie spokojny.
+//
+// Warstwy idą OD DOŁU. `from` nazywa regułę z TEGO SAMEGO arkusza, która tę
+// warstwę deklaruje; `plane: true` znaczy „w tym arkuszu nie maluje jej nic,
+// więc pod spodem jest goły plan czytania" i rozwija się na KAŻDY z `BACKDROPS`,
+// czyli tak samo, jak ta bramka robi to od początku dla tła z alfą.
+const INHERITED_SURFACES = [
+  {
+    sheet: "renewals/renewals.module.css",
+    selector: ".basisLink",
+    source: "renewals/RenewalsSurface.tsx",
+    classNames: ["basisLink", "outlookReal", "row", "rowSelected", "list"],
+    reason:
+      "wyjście z wiersza odnowienia; oba jego miejsca stoją w `.row` na `.list`, " +
+      "a pierwsze dodatkowo pod laserunkiem `.outlookReal`",
+    stacks: [
+      {
+        label: "w plakietce, wiersz spokojny",
+        layers: [
+          { value: "var(--surface-content)", from: ".list" },
+          { value: "var(--accent-quieter)", from: ".outlookReal" },
+        ],
+      },
+      {
+        label: "w plakietce, wiersz pod kursorem",
+        layers: [
+          { value: "var(--surface-content)", from: ".list" },
+          { value: "var(--surface-hover)", from: ".row:hover" },
+          { value: "var(--accent-quieter)", from: ".outlookReal" },
+        ],
+      },
+      {
+        label: "w plakietce, wiersz bieżący",
+        layers: [
+          { value: "var(--surface-content)", from: ".list" },
+          { value: "var(--surface-selected)", from: ".rowSelected" },
+          { value: "var(--accent-quieter)", from: ".outlookReal" },
+        ],
+      },
+      {
+        label: "przy aneksie, wiersz spokojny",
+        layers: [{ value: "var(--surface-content)", from: ".list" }],
+      },
+      {
+        label: "przy aneksie, wiersz pod kursorem",
+        layers: [
+          { value: "var(--surface-content)", from: ".list" },
+          { value: "var(--surface-hover)", from: ".row:hover" },
+        ],
+      },
+      {
+        label: "przy aneksie, wiersz bieżący",
+        layers: [
+          { value: "var(--surface-content)", from: ".list" },
+          { value: "var(--surface-selected)", from: ".rowSelected" },
+        ],
+      },
+    ],
+  },
+  {
+    sheet: "opportunity/opportunity-record.module.css",
+    selector: '.offerState[data-offer-state="submitted"]',
+    source: "opportunity/OpportunityRecordScreen.tsx",
+    classNames: ["offerState"],
+    reason:
+      "stan oferty na ekranie rekordu szansy; `.offer` i `.offerHead` nie malują " +
+      "tła, a ten arkusz nie ma pod nimi ŻADNEJ reguły z tłem — karta leży na planie",
+    stacks: [{ label: "na planie ekranu", layers: [{ plane: true }] }],
+  },
+  {
+    sheet: "record/record-panels.module.css",
+    selector: ".eventAgent",
+    source: "record/RecordActivityPanel.tsx",
+    classNames: ["eventAgent"],
+    reason:
+      "plakietka agenta w strumieniu aktywności; nagłówek tego arkusza mówi wprost, " +
+      "że te trzy panele leżą bezpośrednio na płótnie, bez karty i bez tła panelu",
+    stacks: [{ label: "na planie ekranu", layers: [{ plane: true }] }],
+  },
+  {
+    sheet: "record/record-comments.module.css",
+    selector: ".badgeMention",
+    source: "record/RecordCommentsPanel.tsx",
+    classNames: ["badgeMention", "entry", "entryAgent"],
+    reason:
+      "plakietka wzmianki w stopce komentarza; stoi na karcie ludzkiej " +
+      "(`--surface-content`, kryjące) albo na karcie agenta (laserunek nad planem)",
+    stacks: [
+      {
+        label: "na karcie człowieka",
+        layers: [{ value: "var(--surface-content)", from: ".entry" }],
+      },
+      {
+        label: "na karcie agenta",
+        layers: [
+          { plane: true },
+          { value: "var(--accent-quieter)", from: ".entryAgent" },
+        ],
+      },
+    ],
+  },
+  {
+    sheet: "record/record-comments.module.css",
+    selector: ".markAgent",
+    source: "record/RecordCommentsPanel.tsx",
+    classNames: ["markAgent", "entryAgent"],
+    reason:
+      "znacznik agenta; sam odbiera sobie wypełnienie (`background: none`), więc " +
+      "widać przez niego kartę agenta — a ta nosi laserunek nad planem",
+    stacks: [
+      {
+        label: "na karcie agenta",
+        layers: [
+          { plane: true },
+          { value: "var(--accent-quieter)", from: ".entryAgent" },
+        ],
+      },
+    ],
+  },
+];
+
 // ── ZBIÓR KONSUMENTÓW ───────────────────────────────────────────────────────
 //
 // Zebrany RAZ, poza pętlą mierzącą, żeby liczby, którymi asertuję pokrycie,
@@ -686,12 +845,20 @@ for (const sheet of stylesheets) {
       .at(-1);
     rule.color = colorDeclaration?.[1];
     rule.background = backgroundDeclaration?.[1];
+    // `opacity` jest zbierane NIE PO TO, ŻEBY JE LICZYĆ, tylko żeby dało się
+    // je WYPISAĆ. Przezroczystość elementu blednie tekst RAZEM z jego tłem,
+    // więc kontrast pod nią jest inny niż zmierzony — a ta bramka jej nie
+    // modeluje. Lista jest niżej, pod „CZEGO TA BRAMKA NIE ZMIERZYŁA".
+    rule.opacity = declarations
+      .filter(([property]) => property === "opacity")
+      .at(-1)?.[1];
     allRules.push({
       sheet: sheet.name,
       where: `${sheet.name}:${rule.line}`,
       selector: rule.selector,
       color: rule.color,
       background: rule.background,
+      opacity: rule.opacity,
     });
     for (const selector of splitSelectorList(rule.selector)) {
       if (!byExactSelector.has(selector)) byExactSelector.set(selector, []);
@@ -772,8 +939,97 @@ for (const sheet of stylesheets) {
   }
 }
 
+// ── ROZWIĄZANIE TABELI STOSÓW, POZA PĘTLĄ MIERZĄCĄ ──────────────────────────
+//
+// Wpisy są zamieniane na CELE (reguła + rozwinięte stosy) TUTAJ, żeby liczba,
+// którą asertuję pokrycie, była policzona z TABELI, a nie z pętli, która mierzy.
+// Asercja wyprowadzona z tej samej pętli mówiłaby „zmierzyłem tyle, ile
+// zmierzyłem" — to jest w tym repo nazwana klasa wadliwego przyrządu.
+const inheritedTargets = [];
+const inheritedSetupFailures = [];
+
+for (const entry of INHERITED_SURFACES) {
+  const rule = allRules.find(
+    (candidate) =>
+      candidate.sheet === entry.sheet && candidate.selector === entry.selector,
+  );
+  if (rule === undefined) {
+    inheritedSetupFailures.push(
+      `${entry.sheet} ${entry.selector} — nie ma takiej reguły w tym arkuszu. ` +
+        "Wpis stracił podmiot: usuń go albo popraw selektor.",
+    );
+    continue;
+  }
+  if (rule.color === undefined) {
+    inheritedSetupFailures.push(
+      `${entry.sheet} ${entry.selector} — reguła nie deklaruje już koloru. ` +
+        "Wpis nazywa powierzchnię pod pismem, którego tam nie ma.",
+    );
+    continue;
+  }
+  if (
+    rule.background !== undefined &&
+    !NOT_PAINTED.has(rule.background.toLowerCase())
+  ) {
+    inheritedSetupFailures.push(
+      `${entry.sheet} ${entry.selector} — reguła MALUJE własne tło ` +
+        `(„${rule.background}"), więc jest mierzona bez tej tabeli. Ręczny wpis ` +
+        "nadpisywałby prawdziwy pomiar twierdzeniem i to jest najgorszy tryb " +
+        "awarii tej bramki.",
+    );
+    continue;
+  }
+  // Warstwa NAZWANA selektorem musi być w tym arkuszu naprawdę zadeklarowana,
+  // i to DOKŁADNIE tą wartością. „Jakieś tło" pozwoliłoby wpisowi przeżyć
+  // przemalowanie warstwy, czyli dokładnie tę zmianę, o którą tu chodzi.
+  let broken = false;
+  for (const stack of entry.stacks) {
+    for (const layer of stack.layers) {
+      if (layer.plane === true) continue;
+      const source = allRules.find(
+        (candidate) =>
+          candidate.sheet === entry.sheet && candidate.selector === layer.from,
+      );
+      if (source === undefined || source.background !== layer.value) {
+        inheritedSetupFailures.push(
+          `${entry.sheet} ${entry.selector} / ${stack.label}: warstwa „${layer.from}" ` +
+            `miała deklarować background: ${layer.value}, a deklaruje ` +
+            `„${source === undefined ? "reguły nie ma" : (source.background ?? "nic")}".`,
+        );
+        broken = true;
+      }
+    }
+  }
+  if (broken) continue;
+  // Stos z gołym planem na dnie rozwija się na KAŻDY plan czytania — tak samo,
+  // jak ta bramka robi to od początku dla tła z alfą, i z tego samego powodu:
+  // arkusz nie mówi, na którym planie leży ekran, więc mierzone są oba.
+  const expanded = [];
+  for (const stack of entry.stacks) {
+    const bottom = stack.layers[0];
+    if (bottom?.plane === true) {
+      for (const backdrop of BACKDROPS) {
+        expanded.push({
+          label: `${stack.label} (${backdrop})`,
+          layers: [
+            { value: `var(${backdrop})`, from: null },
+            ...stack.layers.slice(1),
+          ],
+        });
+      }
+    } else expanded.push(stack);
+  }
+  inheritedTargets.push({ ...entry, rule, expanded });
+}
+
+// Liczba wierszy WYLICZONA Z TABELI: motywy × rozwinięte stosy.
+const expectedInheritedRows =
+  THEMES.length *
+  inheritedTargets.reduce((sum, target) => sum + target.expanded.length, 0);
+
 // ── POMIAR ──────────────────────────────────────────────────────────────────
 const measurements = [];
+const inheritedUnmeasurable = [];
 const notPainted = [];
 const notStatic = [];
 const unsupportedShapes = [];
@@ -887,10 +1143,78 @@ for (const themeName of THEMES) {
       }
     }
   }
+
+  // ── STOSY NAZWANE ────────────────────────────────────────────────────────
+  // Ta sama matematyka, to samo wiadro `measurements` (więc te wiersze podlegają
+  // asercji „KAŻDY konsument zdaje AA" jak każdy inny) — różnica jest wyłącznie
+  // w tym, SKĄD wiadomo, na czym reguła stoi.
+  for (const target of inheritedTargets) {
+    const text = resolveValue(tokens, target.rule.color, themeName, false);
+    if (text.kind !== "color" || text.color.alpha !== 1) {
+      inheritedUnmeasurable.push(
+        `${themeName}: ${target.sheet} ${target.selector} — pisma ` +
+          `„${target.rule.color}" nie umiem rozłożyć na kryjący kolor (${text.kind}).`,
+      );
+      continue;
+    }
+    for (const stack of target.expanded) {
+      let surface = null;
+      let failed = false;
+      for (const layer of stack.layers) {
+        const resolved = resolveValue(tokens, layer.value, themeName, false);
+        if (resolved.kind !== "color") {
+          inheritedUnmeasurable.push(
+            `${themeName}: ${target.sheet} ${target.selector} / ${stack.label} — ` +
+              `warstwy „${layer.value}" nie umiem rozłożyć (${resolved.kind}).`,
+          );
+          failed = true;
+          break;
+        }
+        if (surface === null) {
+          if (resolved.color.alpha !== 1) {
+            inheritedUnmeasurable.push(
+              `${themeName}: ${target.sheet} ${target.selector} / ${stack.label} — ` +
+                `DNO stosu „${layer.value}" nie jest kryjące, więc nie ma na czym ` +
+                "składać reszty. Zgłoś to, nie zgaduj.",
+            );
+            failed = true;
+            break;
+          }
+          surface = resolved.color;
+        } else {
+          surface =
+            resolved.color.alpha === 1
+              ? resolved.color
+              : compositeOver(resolved.color, surface);
+        }
+      }
+      if (failed || surface === null) continue;
+      measurements.push({
+        theme: themeName,
+        sheet: target.sheet,
+        where: target.rule.where,
+        subject: target.selector,
+        selector: target.selector,
+        origin: `stos nazwany: ${stack.label}`,
+        ratio: contrastRatio(text.color, surface),
+        textValue: target.rule.color,
+        textLiteral: text.color.literal,
+        surfaceLabel: stack.layers.map((layer) => layer.value).join(" → "),
+        backgroundLiteral: stack.layers.at(-1).value,
+        gradientKey: undefined,
+        inherited: true,
+        exempt: INACTIVE_COMPONENT.test(target.selector),
+        decorative: false,
+      });
+    }
+  }
 }
 
 const format = (value) => value.toFixed(2);
 const sheetsWithMeasurement = new Set(measurements.map((row) => row.sheet));
+const inheritedMeasurements = measurements.filter(
+  (row) => row.inherited === true,
+);
 
 // Cztery arkusze, których brief Fazy 3 nazywa po imieniu jako zagrożone przez
 // tę właśnie dziurę (Renewals #1/#5, Library #5/#10, rekord #3, Pipeline #2/#3/#5).
@@ -1013,8 +1337,58 @@ test("CZEGO TA BRAMKA NIE ZMIERZYŁA — wypisane, nie przemilczane", () => {
       `\nNIE DA SIĘ USTALIĆ (inherit/currentColor): ${notStatic.length} deklaracji — ` +
       "reguła z takim TŁEM jest tak samo niezmierzona jak te wyżej." +
       `\nTEKST Z ALFĄ (gałąź niewykonywana): ${alphaText.length}.` +
-      `\nDEKLARUJĄ TYLKO TEKST, bez ustalonego tła: ${declaredColorOnly.length} reguł.\n`,
+      `\nDEKLARUJĄ TYLKO TEKST, bez ustalonego tła: ${declaredColorOnly.length} reguł ` +
+      `(z tego ${inheritedTargets.length} dostało STOS NAZWANY, patrz osobny test).\n`,
   );
+
+  // ── DWA MECHANIZMY, KTÓRYCH TA BRAMKA NIE MODELUJE ────────────────────────
+  //
+  // Wypisane, bo obie luki dotykają reguł, które WYGLĄDAJĄ na zmierzone —
+  // a to jest gorszy rodzaj dziury niż reguła jawnie nieobjęta.
+  //
+  // 1. PRZEZROCZYSTOŚĆ ELEMENTU (`opacity`). Blednie tekst RAZEM z jego tłem,
+  //    więc kontrast pod nią jest INNY niż zmierzony i zawsze NIŻSZY. Przykład
+  //    z tego drzewa, policzony ręcznie tą samą matematyką:
+  //    `record/record-comments.module.css` `.entryResolved` niesie
+  //    `opacity: 0.6`, więc pismo akcentu na rozstrzygniętym komentarzu wypada
+  //    ≈2,6:1 w ciemnym i ≈2,5:1 w jasnym zamiast ponad 5:1 z tabeli wyżej.
+  //    Modelowanie tego wymaga wiedzy, przez ILE przodków z alfą element
+  //    prześwituje — a to jest pytanie o DOM, nie o arkusz. Lista jest tu po to,
+  //    żeby dług był policzalny.
+  // 2. STOS GRUBSZY NIŻ DWIE WARSTWY. Poza tabelą `INHERITED_SURFACES` ta
+  //    bramka składa tło z alfą na planie czytania i na tym kończy. Reguła
+  //    stojąca na laserunku NA podbarwieniu stanu wiersza NA planie jest
+  //    mierzona o warstwę za płytko, czyli za korzystnie. To jest dokładnie
+  //    defekt, przez który powstała tabela: dwuwarstwowo 5,02:1, trójwarstwowo
+  //    4,18:1. Pozostałe reguły w takich miejscach NIE SĄ policzone.
+  const dimmed = allRules
+    .filter((rule) => rule.opacity !== undefined)
+    .filter((rule) => {
+      const value = Number.parseFloat(rule.opacity);
+      return Number.isFinite(value) && value < 1;
+    });
+  const byOpacity = new Map();
+  for (const rule of dimmed) {
+    if (!byOpacity.has(rule.opacity)) byOpacity.set(rule.opacity, []);
+    byOpacity.get(rule.opacity).push(`${rule.where} ${rule.selector}`);
+  }
+  console.log(
+    `\nNIEMODELOWANE — PRZEZROCZYSTOŚĆ ELEMENTU: ${dimmed.length} reguł ` +
+      "deklaruje `opacity` poniżej 1. Każda z nich blednie pismo RAZEM z tłem, " +
+      "więc realny kontrast pod nią jest NIŻSZY niż którakolwiek liczba wyżej:\n" +
+      [...byOpacity.entries()]
+        .sort((left, right) => Number(left[0]) - Number(right[0]))
+        .map(
+          ([value, where]) =>
+            `  opacity: ${value}\n    ${where.join("\n    ")}`,
+        )
+        .join("\n") +
+      "\n\nNIEMODELOWANE — STOS GRUBSZY NIŻ DWIE WARSTWY: poza tabelą " +
+      `INHERITED_SURFACES (${inheritedTargets.length} reguł) każde tło z alfą jest ` +
+      "składane WPROST na planie czytania, bez warstw pośrednich. Powód " +
+      "istnienia tabeli i miara jej niekompletności naraz.\n",
+  );
+
   assert.deepEqual(
     unresolvable,
     [],
@@ -1027,6 +1401,20 @@ test("CZEGO TA BRAMKA NIE ZMIERZYŁA — wypisane, nie przemilczane", () => {
       "przestało działać — w tym drzewie takie reguły NA PEWNO są " +
       "(`.badge_available` w `library/sources.module.css` jest w briefie nazwana " +
       "po imieniu).",
+  );
+  // Wykrywanie przezroczystości musi COŚ znajdować, inaczej lista „czego nie
+  // modeluję" byłaby pusta z powodu awarii, a nie z powodu braku długu —
+  // i wtedy cisza znowu udawałaby werdykt. `.entryResolved` jest nazwane
+  // z imienia, bo to o nie chodzi w akapicie wyżej.
+  assert.ok(
+    dimmed.some(
+      (rule) =>
+        rule.sheet === "record/record-comments.module.css" &&
+        rule.selector === ".entryResolved",
+    ),
+    "`.entryResolved` z `record/record-comments.module.css` wypadło z listy reguł " +
+      `przezroczystych (znalezionych: ${dimmed.length}). Albo reguła zniknęła, albo ` +
+      "wykrywanie `opacity` przestało działać — w drugim wypadku ta lista kłamie.",
   );
 });
 
@@ -1199,6 +1587,103 @@ test("KAŻDY konsument zdaje AA (WCAG 2.x SC 1.4.3, próg 4,5:1)", () => {
       `${failures.join("; ")}. Progu NIE WOLNO obniżyć — zmienia się wartość ` +
       "w regule albo wartość tokenu.",
   );
+});
+
+test("STOS NAZWANY jest ROZWIĄZANY, ZMIERZONY i ma pokrycie w kodzie", () => {
+  // Awaria wpisu NIE JEST tu ciszą. Każdy powód, dla którego wpis przestał być
+  // prawdziwy, ma własny komunikat — bo ręczna tabela bez takich kontroli jest
+  // dokładnie tym kłamiącym przyrządem, który ta fala tępi.
+  assert.deepEqual(
+    inheritedSetupFailures,
+    [],
+    "Wpisy INHERITED_SURFACES, które straciły pokrycie w arkuszu: " +
+      inheritedSetupFailures.join(" | "),
+  );
+  assert.deepEqual(
+    inheritedUnmeasurable,
+    [],
+    "Stosy nazwane, których nie umiem rozłożyć (nie zgaduję): " +
+      inheritedUnmeasurable.join(" | "),
+  );
+
+  const lines = inheritedMeasurements
+    .slice()
+    .sort((left, right) => left.ratio - right.ratio)
+    .map(
+      (row) =>
+        `  ${row.theme.padEnd(5)} ${format(row.ratio).padStart(6)}:1  ` +
+        `${row.ratio >= WCAG_AA_NORMAL_TEXT ? "AA     " : "PONIŻEJ"}  ` +
+        `${row.where.padEnd(46)} ${row.subject}\n` +
+        `        ${row.textValue} = ${row.textLiteral} na ${row.surfaceLabel}\n` +
+        `        [${row.origin}]`,
+    );
+  console.log(
+    `\nSTOSY NAZWANE — reguła deklaruje SAM KOLOR, a powierzchnię pod nią wnosi ` +
+      `tabela INHERITED_SURFACES (${inheritedTargets.length} reguł, ` +
+      `${inheritedMeasurements.length} wierszy, próg ${WCAG_AA_NORMAL_TEXT}:1):\n` +
+      lines.join("\n") +
+      "\n\nKażdy z tych wierszy byłby BEZ TABELI niezmierzony — reguła siedziałaby " +
+      "w wiadrze „deklarują tylko tekst” i nie pytałby o nią ŻADEN przyrząd.\n",
+  );
+
+  // RÓWNOŚĆ, nie podłoga, i wyliczona z TABELI — nie z pętli, która mierzy.
+  assert.ok(
+    expectedInheritedRows >= 20,
+    `Z tabeli wychodzi ${expectedInheritedRows} wierszy (motywy × rozwinięte stosy) — ` +
+      "poniżej dwudziestu przestaje ona pilnować tego, po co powstała.",
+  );
+  assert.equal(
+    inheritedMeasurements.length,
+    expectedInheritedRows,
+    `Stosy nazwane dały ${inheritedMeasurements.length} wierszy zamiast ` +
+      `${expectedInheritedRows} wyliczonych z tabeli. Wiersz, który nie powstał, ` +
+      "jest powierzchnią, której nikt nie zmierzył.",
+  );
+  for (const target of inheritedTargets) {
+    for (const themeName of THEMES) {
+      assert.ok(
+        inheritedMeasurements.some(
+          (row) => row.selector === target.selector && row.theme === themeName,
+        ),
+        `${target.sheet} ${target.selector} nie dał ANI JEDNEGO wiersza w motywie ` +
+          `„${themeName}".`,
+      );
+    }
+  }
+
+  // ZAMKNIĘTY ZBIÓR PODMIOTÓW. Wpis, który wyparuje z tabeli razem z regułą,
+  // zabrałby ze sobą pomiar i nikt by tego nie zobaczył — pięć reguł akcentu
+  // z lotów 2–4 jest tu wymienionych z nazwy, bo to o nie chodzi.
+  assert.deepEqual(
+    inheritedTargets
+      .map((target) => `${target.sheet} ${target.selector}`)
+      .sort(),
+    [
+      'opportunity/opportunity-record.module.css .offerState[data-offer-state="submitted"]',
+      "record/record-comments.module.css .badgeMention",
+      "record/record-comments.module.css .markAgent",
+      "record/record-panels.module.css .eventAgent",
+      "renewals/renewals.module.css .basisLink",
+    ],
+    "Zbiór reguł ze stosem nazwanym się zmienił. Każda z nich to miejsce, gdzie " +
+      "loty 2–4 postawiły akcent na piśmie i gdzie bez tabeli nie mierzy nic.",
+  );
+
+  // DOWÓD W KODZIE RENDERUJĄCYM. Sprawdzane jest to, co da się sprawdzić:
+  // że każda nazwa klasy z uzasadnienia naprawdę stoi w podanym pliku. Kolejność
+  // zagnieżdżenia w drzewie DOM zostaje prozą i jest tak nazwana nad tabelą.
+  const rendererRoot = path.join(repoRoot, "packages", "desktop-ui", "src");
+  for (const target of inheritedTargets) {
+    const source = readFileSync(path.join(rendererRoot, target.source), "utf8");
+    for (const className of target.classNames) {
+      assert.ok(
+        source.includes(`styles.${className}`),
+        `Klasa styles.${className} nie występuje już w ${target.source}, a wpis ` +
+          `dla ${target.selector} opiera na niej swoje twierdzenie o powierzchni ` +
+          `(${target.reason}).`,
+      );
+    }
+  }
 });
 
 test("ZWOLNIENIE DLA DEKORACJI ma pokrycie w kodzie, inaczej PADA", () => {

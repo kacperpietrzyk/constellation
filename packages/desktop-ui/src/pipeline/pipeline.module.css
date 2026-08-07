@@ -26,7 +26,31 @@
 
    There is no `container-type` in this file and its absence is the fix rather
    than an omission: a contained element's intrinsic width ignores its contents,
-   and under `margin-inline: auto` that resolves to zero. */
+   and under `margin-inline: auto` that resolves to zero.
+
+   ── THE VISUAL SOURCE OF THIS SHEET, 2026-08-07 ──────────────────────────────
+   Waves C to E cited the prototype's `*.js` eleven times and its stylesheets not
+   once, so this screen carried the right behaviour in somebody else's visual
+   language. Every rule touched in this pass is derived from
+   `docs/plans/2026-07-27-ui-ux-rebuild/v3/screens/pipeline.css` and
+   `v3/app.css`, at the line named beside it, and licensed by `.ui-craft/`
+   (`tokens.md`, sections "Form first — ink and wash" and "What the accent is
+   allowed to mean"). The accent appears here in exactly two jobs the contract
+   names: what is BOOKED rather than assumed (the offer badge and the stage
+   meter, job 4) and where a drag may be DROPPED (job 2). It appears nowhere
+   else, and hover still deepens only a control, never a card or a column.
+
+   THREE DIVERGENCES FROM THE REFERENCE, EACH DELIBERATE:
+
+     1. `.nextText` keeps a two-line clamp where `v3/screens/pipeline.css:202`
+        ellipsizes one line. This sheet already ruled that a truncated deal
+        sentence is indistinguishable from another deal's; the glyph is what
+        this pass adds, not the truncation.
+     2. `.columnHead` declares `position: sticky` and is INERT in this shell —
+        the reason is written at the rule itself.
+     3. Nothing here carries a `title=`, so the prototype's tooltips arrive as
+        visible text or as a help topic. That rule is stated in
+        `PipelineSurface.tsx` and is older than this pass. */
 
 .pipeline {
   display: flex;
@@ -43,6 +67,18 @@
   align-items: center;
   gap: var(--space-2);
   padding-inline: var(--space-4);
+}
+
+/* THE SCREEN'S ACTION STANDS AT THE END OF THE BAR, NOT AT ITS HEAD
+   (`v3/screens/pipeline.js:409-410`, drawn into the crumb bar behind
+   `v3/app.css:293` — `.crumbbar .spacer { flex: 1 }`). The auto margin does the
+   work of that spacer without adding a second child: the pair map reads
+   `[class*="_crumbbar_"] button` and says the row holds exactly one button, so
+   a spacer element that happened to be a button would turn a measurement into
+   "several different values". Which button it is — primary or secondary — is
+   decided in `PipelineSurface.tsx`, where the reason lives. */
+.createToggle {
+  margin-inline-start: auto;
 }
 
 .create {
@@ -77,20 +113,35 @@
   letter-spacing: normal;
 }
 
+/* A QUIET WORD, NOT A PERMANENTLY OUTLINED BUTTON (`v3/screens/pipeline.css:8-17`).
+   The border track stays — one pixel of transparent — so the control does not
+   move by a pixel when the outline lights up under the cursor.
+   THE OUTLINE THAT LIGHTS UP IS THE ACCENT ONE, and that is licensed rather
+   than borrowed: `.ui-craft/tokens.md`, prohibition 2, forbids hover from
+   introducing the accent to a row, a card or a column and carves out exactly
+   this case — "what may deepen to accent under the cursor is a control". */
 .stagesLink {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  padding: 0.125rem 0.5rem;
+  color: var(--text-quaternary);
+  padding: 0.125rem 0.375rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid transparent;
+  transition:
+    color var(--duration-instant) var(--ease-out),
+    border-color var(--duration-instant) var(--ease-out);
 }
 
 .stagesLink:hover {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
+  color: var(--accent);
+  border-color: var(--accent-edge);
+}
+
+.stagesLink svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
 }
 
 /* A word, a border and a background — three carriers, so the warning survives a
@@ -225,6 +276,25 @@
   border-radius: var(--radius-md);
   background: var(--surface-sunken);
   border: 1px solid var(--border-subtle);
+  /* `v3/screens/pipeline.css:31-34`. */
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+/* WHERE THE CARD WOULD LAND, and until this pass dragging changed nothing on
+   screen at all. `v3/screens/pipeline.css:55-56` lights the whole column body
+   through `:has()` for the same reason it is done here: the drop is routed on
+   the body that carries the zone, and the thing a reader needs to see is the
+   column. The paint is `v3/app.css:536` (`.col.drop-target`), and the contract
+   names this case explicitly as job 2 of the accent — "the target a drag may be
+   dropped on" (`.ui-craft/tokens.md`, "What the accent is allowed to mean").
+   THE FLAG IS AN ATTRIBUTE, NOT REACT STATE: `dragover` fires tens of times a
+   second and a state change would re-render the whole board on every one of
+   them. `PipelineSurface.tsx` sets it with a dragenter/dragleave counter. */
+.column:has([data-drop-target]) {
+  border-color: var(--accent-edge);
+  background: var(--accent-quieter);
 }
 
 /* Won and lost stand on the board — winning a deal is dragging a card — but
@@ -244,13 +314,43 @@
   font-size: var(--text-2xs);
 }
 
+/* THE HEAD IS DECLARED STICKY AND IS INERT IN THIS SHELL. Both halves are true
+   and neither is a mistake, so both are written down.
+   `v3/screens/pipeline.css:58-66` sticks the head to the top of the board's own
+   scroll port: in the prototype `.scroller` is `flex: 1; min-height: 0;
+   overflow: auto` inside a bounded column (`v3/app.css:303`, `:279`), so it has
+   a height of its own and really does scroll vertically.
+   This shell scrolls the WHOLE surface instead: `.work-surface`
+   (`styles.css:1426-1435`) is the vertical scroll port, and `.scroller` below
+   declares `overflow-x: auto` — which makes the used `overflow-y` `auto` too,
+   so `.scroller` becomes this head's nearest scroll port and never scrolls
+   vertically. A top-sticky element in a box whose scroll top is always zero
+   stays exactly where flow put it. It is therefore harmless in this layout and
+   correct in the prototype's; what it is NOT is visible proof, and this pass
+   could not look at it — the phase forbids driving the browser. P7
+   (`verify-renderer-layout.mjs`, `STICKY_PENDING_SUBJECTS`) is the instrument
+   that judges it, and it takes its subject from the resolved declaration, which
+   is why the declaration is here rather than deferred.
+   The background comes with it and is not decoration: a head that slides over
+   cards needs a plane of its own, and `v3/screens/pipeline.css:63` gives it the
+   canvas against the column's sunken plane. The archive columns keep none
+   (`v3/screens/pipeline.css:67`). */
 .columnHead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-raised);
   flex: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-2) 0.625rem 0.375rem;
+  background: var(--surface-canvas);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.columnQuiet .columnHead {
+  background: none;
 }
 
 .stage {
@@ -283,11 +383,22 @@
   overflow: hidden;
 }
 
+/* THE SHARE OF THE FUNNEL THIS STAGE ACTUALLY HOLDS, painted with the indigo
+   ramp (`v3/screens/pipeline.css:80-84`). The contract licenses it by name:
+   job 4 of the accent is "what is booked rather than assumed … the share of a
+   quantity actually committed", and it lists this very meter among its
+   examples (`.ui-craft/tokens.md`, "What the accent is allowed to mean"). It is
+   ink at 2 px against an empty neutral track, which is the form the same
+   document licenses — a bar, not a fill.
+   The empty track keeps `--border-default`, measured at 3.23:1 against the
+   ramp's dark end (brief, Lot 2 contrasts) — 0.23 over the 3:1 floor for a
+   non-text mark, so the first change to `--border-default` takes it. */
 .meterFill {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: var(--text-link);
+  background: linear-gradient(90deg, var(--a-600), var(--a-400));
+  transition: width var(--duration-slow) var(--ease-out);
 }
 
 .strayNote {
@@ -324,6 +435,11 @@
 
 /* ── The card ────────────────────────────────────────────────────────── */
 
+/* A CARD SITS ON THE COLUMN, IT IS NOT PAINTED INTO IT (`v3/screens/pipeline.css:98-108`).
+   The shadow tokens are taken directly rather than through `--elevation-rest`:
+   `--shadow-sm` and `--shadow-md` are the two-theme family Phase 1 delivered
+   with, in its own words, zero consumers outside `tokens.css` (debt item 5 of
+   the phase-3 brief), and this is the rule that gives them one. */
 .card {
   display: flex;
   flex-direction: column;
@@ -332,11 +448,31 @@
   border-radius: var(--radius-sm);
   background: var(--surface-content);
   border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
   cursor: grab;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 
+/* The card lifts; it does not change colour. Hover on a card stays neutral by
+   contract (`.ui-craft/tokens.md`, prohibition 2). */
 .card:hover {
   border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* THE CARD BEING CARRIED IS THE ONE THAT GOES QUIET (`v3/screens/pipeline.css:110`).
+   Without it the board answered a drag with nothing at all: the pointer had a
+   ghost, the screen had no state. `transform: none` because the lift belongs to
+   the cursor, and the cursor is elsewhere while a card is in the air. */
+.card[data-dragging] {
+  opacity: 0.3;
+  cursor: grabbing;
+  transform: none;
 }
 
 .cardSelected {
@@ -404,10 +540,27 @@
   overflow-wrap: anywhere;
 }
 
+/* "THIS FIGURE CAME FROM AN OFFER SOMEBODY ACTUALLY SENT" — the one fact on
+   this card that is booked rather than assumed, and the reference paints it with
+   the accent (`v3/screens/pipeline.css:138`, applied at
+   `v3/screens/pipeline.js:156` and `:207`). Job 4 in `.ui-craft/tokens.md`
+   ("What the accent is allowed to mean"), which cites this exact line against
+   its dashed neighbour `.basisDerived` below.
+   THE RECORD SCREEN PAINTS THE SAME FACT WITH `--status-success` AND THAT IS
+   NOT A DEFECT: the contract records it as a divergence inside the reference
+   and rules that each screen follows its own screen (`.ui-craft/tokens.md`,
+   "Divergences inside the reference"). Anyone harmonising the two here is
+   reopening a decision, not fixing an inconsistency.
+   MEASURED AFTER IT WAS WRITTEN, by the gate that reads consumers rather than
+   token pairs (`scripts/consumer-contrast.test.mjs`, run on this rule): 5.31
+   and 5.02 dark, 4.62 and 4.86 light, over the canvas and the content plane
+   respectively. The worst case is the light theme over the canvas at 4.62:1 —
+   AA with 0.12 to spare, which is the number to watch if the accent or that
+   plane ever moves. The brief quoted only the content-plane pair. */
 .basisOffer {
-  color: var(--text-link);
-  border-color: var(--border-strong);
-  background: var(--surface-selected);
+  color: var(--accent);
+  border-color: var(--accent-edge);
+  background: var(--accent-quieter);
 }
 
 /* THE DASHED EDGE IS THE GRAMMAR: this number stands on an assumption. The word
@@ -512,7 +665,15 @@
   overflow-wrap: anywhere;
 }
 
+/* THE GLYPH HAS A LANE OF ITS OWN (`v3/screens/pipeline.css:186-194`). `flex:
+   none` on the mark and `min-width: 0` on the prose are what keep a long
+   sentence from pushing the card wider than its column: a flex item's automatic
+   minimum size is its content, and this sheet's whole scaling argument stands on
+   nothing inside the board setting a width. */
 .waiting {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3125rem;
   font-size: var(--text-2xs);
   line-height: var(--leading-snug);
   color: var(--status-warning);
@@ -523,11 +684,45 @@
   overflow-wrap: anywhere;
 }
 
+.waiting svg {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: 0.0625rem;
+}
+
+.waitingText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "WHAT HAPPENS NEXT", with the arrow the reference gives it
+   (`v3/screens/pipeline.css:196-202`). THE CLAMP MOVED, IT DID NOT GO: the
+   prototype ellipsizes this to one line, this sheet keeps the two-line clamp it
+   already had, because a truncated sentence about a deal is the same defect as
+   a truncated title. Breaking `-webkit-box` off the flex parent onto the text
+   child is the whole reason `.nextText` exists — a `-webkit-box` that is also a
+   flex container clamps nothing. */
 .next {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3125rem;
   margin-top: 0.4375rem;
   font-size: var(--text-2xs);
   line-height: var(--leading-snug);
   color: var(--text-tertiary);
+}
+
+.next svg {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: 0.0625rem;
+  color: var(--text-disabled);
+}
+
+.nextText {
+  min-width: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -544,31 +739,65 @@
   margin-top: 0.4375rem;
 }
 
+/* TWO STATES, AND ONLY ONE OF THEM IS DRAWN AT ALL (`v3/screens/pipeline.js:326`
+   picks `tag ghost` for a deal that is moving and `tag error` for one that is
+   not). Quiet is a bare number: no box, no border, no inset — `v3/app.css:429`.
+   Standing still is a filled red badge with a clock — `v3/app.css:426` — and it
+   is the error family, not the warning one, because that is the family the
+   reference chose for this fact.
+   THE WORD STILL CARRIES IT. "· stale" stays in the text and the glyph is a
+   third channel, so nothing here rests on hue. Measured: `--status-error` on
+   `--status-error-bg` is 5.45:1 dark and 5.59:1 light (brief, Lot 2).
+   The border track is transparent rather than absent in the quiet state, so the
+   row does not move by a pixel when a deal goes stale. `white-space: nowrap`
+   from `v3/app.css:420` is deliberately NOT taken: this badge carries a word as
+   well as a number, and a badge that refuses to wrap is a badge that pushes the
+   card wider at 200% text. */
 .age {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
   font-size: var(--text-2xs);
   color: var(--text-quaternary);
   font-variant-numeric: tabular-nums;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
-  padding: 0.0625rem 0.375rem;
+  padding: 0.0625rem 0;
+}
+
+.age svg {
+  flex: none;
+  width: 0.6875rem;
+  height: 0.6875rem;
 }
 
 .ageStale {
-  color: var(--status-warning);
-  border-color: color-mix(in oklab, var(--status-warning) 40%, transparent);
+  color: var(--status-error);
+  border-color: color-mix(in oklab, var(--status-error) 34%, transparent);
+  background: var(--status-error-bg);
+  padding-inline: 0.375rem;
 }
 
+/* THE FOURTH PLANE GETS ITS FIRST CONSUMER HERE (`v3/app.css:431-436`).
+   `--surface-elevated` was added for this phase and had none, which is why the
+   note at `tokens.css:281-287` asks for a re-check of the two muted text steps
+   IF the phase gives the plane a different lightness. This rule does not: it
+   mounts the token as defined, so those measurements stand. */
 .avatar {
   margin-left: auto;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.375rem;
+  height: 1.375rem;
   border-radius: var(--radius-full);
-  background: var(--surface-hover);
-  color: var(--text-tertiary);
-  font-size: var(--text-2xs);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 /* ── Degradation ─────────────────────────────────────────────────────── */
@@ -597,4 +826,40 @@
   color: var(--text-tertiary);
   line-height: var(--leading-snug);
   overflow-wrap: anywhere;
+}
+
+/* This sheet held not one `transition` until this pass, so this block is new
+   material rather than a rule that was waiting — and it is deliberately down to
+   ONE declaration.
+
+   The obvious contents were measured to CHANGE NOTHING THAT CAN BE SEEN, which
+   is not the same as losing the cascade, and the difference is worth one
+   sentence because the wrong story is how the next reader learns a wrong rule.
+   `styles.css:3606-3615` clamps `transition-duration: 0.01ms !important` on
+   `*`, `*::before` and `*::after` under this query. A local `transition: none`
+   on `.card`, `.column`, `.meterFill` and `.stagesLink` does NOT lose to that:
+   the clamp is `!important` on the DURATION longhand only, while the shorthand
+   sets `transition-property: none`, which nothing overrides, so the local rule
+   wins on a different longhand and reaches the same screen — a transition of
+   0.01 ms and no transition are indistinguishable to an eye. Nothing here
+   declares a `transition-delay`, which the clamp would NOT have covered.
+
+   The precedent it cited (`tasks/task-table.module.css`,
+   `tasks/task-board.module.css`) is inert for the same reason on its
+   `transition: none` half. Its `animation: none` half is inert for a DIFFERENT
+   reason, and the clamp is not it — `animation-name` is not clamped, so a
+   0.01 ms animation still runs and still applies its end state. Those two
+   sheets declare no `@keyframes` and no `animation` outside those blocks:
+   there is simply no animation there to cancel. Four selectors with no effect,
+   yes — but by two mechanisms, not one.
+
+   What the global clamp does NOT do is remove travel, because shortening a
+   duration still moves the card. So the surviving rule is the lift. Travel is
+   the thing this setting asks for; a state that arrives instantly still
+   arrives. Colour, shadow and the meter's width still change — feedback
+   survives, movement does not. */
+@media (prefers-reduced-motion: reduce) {
+  .card:hover {
+    transform: none;
+  }
 }

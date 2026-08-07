@@ -275,7 +275,33 @@ const client = createScenarioClient({
       projects: [],
       areas: [],
       initiatives: [],
-      links: [],
+      // ONE DEPENDENCY EDGE, AND IT IS THE WHOLE SEED LOT 4 NEEDED. The task
+      // record's `.list` — the subject of lot 4 #10 — is mounted only inside a
+      // non-empty branch (`TaskRecordScreen.tsx`: subtasks, then dependencies);
+      // with no parent, no children and no links, the screen drew a `<p>` in
+      // both places and the container the position is about did not exist on
+      // any page any gate could open. `task-record.module.css` recorded that
+      // gap in prose ("zero `[data-record-row]`") and it stayed a gap.
+      //
+      // The target is deliberately a task that is NOT in this projection, and
+      // that is the cheaper of the two seeds rather than a shortcut: it draws
+      // the real degraded row ("A task outside this Space's work",
+      // `TaskRecordScreen.tsx`), which carries `data-record-row` exactly like
+      // the ordinary one, WITHOUT adding a second task to `work.overview` —
+      // which would also add a row to the Tasks collection and change a screen
+      // this lot never looked at.
+      links: [
+        {
+          id: StrategicRecordIdSchema.parse(
+            "00000000-0000-4000-8000-0000000000f6",
+          ),
+          linkType: "task_depends_on_task" as const,
+          sourceRecordId: taskId,
+          targetRecordId: "00000000-0000-4000-8000-0000000000f7",
+          state: "active" as const,
+          version: 1,
+        },
+      ],
       savedViews: [
         {
           id: StrategicRecordIdSchema.parse(

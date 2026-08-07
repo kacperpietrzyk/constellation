@@ -26,6 +26,20 @@
 /* The record names itself ONCE, and this is it. `overflow-wrap: anywhere`
    rather than an ellipsis: a deal title runs to 500 characters and a truncated
    one is indistinguishable from another deal at the same client. */
+/* Lot 4 #1, and this is the screen that was already AT the band: the size is
+   `--text-xl` here and was `--text-2xl` on the other two, which is why they
+   moved and this did not. What was missing is the tracking. Reference:
+   `v3/app.css:651` — `.rec-title { font-size: var(--text-xl); font-weight:
+   600; letter-spacing: -0.022em; line-height: var(--leading-tight) }`.
+   Contract: `.ui-craft/tokens.md`, "Type" — "headings use medium weight and
+   tight tracking". Application: this rule.
+
+   NAMED DIVERGENCE: the token is -0.035em, the reference asks for -0.022em.
+   The token is what the other two record titles already wear, and a fourth
+   literal tracking inside one family of screens buys a closer number at the
+   price of the family reading as one thing. The weight stays 620 — the
+   reference says 600, and the 580/590/620 convention is out of this lot's
+   scope. */
 .title {
   margin: 0;
   max-inline-size: var(--surface-read);
@@ -33,8 +47,10 @@
   color: var(--text-primary);
   font-size: var(--text-xl);
   font-weight: 620;
+  letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .head,
@@ -119,12 +135,17 @@
   min-inline-size: 0;
 }
 
+/* Lot 4 #6, tracking only. Reference: `v3/screens/record.css:89-92` —
+   `.rc-doc-h { … letter-spacing: 0.07em }`. Contract: `.ui-craft/tokens.md`,
+   "Type". A literal rather than `--tracking-wide` (0.025em, barely half),
+   because that token has consumers outside this family of screens and moving
+   it would move type this lot never looked at. */
 .docHeading {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   font-weight: 590;
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -249,12 +270,14 @@
   min-inline-size: 0;
 }
 
+/* Lot 4 #6 — see `.docHeading`; the reference's rail heading is
+   `v3/screens/record.css:103-106` and carries the same value. */
 .railHeading {
   margin: 0 0 var(--space-1);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   font-weight: 590;
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -264,17 +287,31 @@
   overflow-wrap: anywhere;
 }
 
+/* Lot 4 #7, this screen's half. Reference: `v3/screens/record.css:107-112` —
+   `.rc-rel { padding: 0.3125rem 0.375rem; margin-left: -0.375rem;
+   border-radius: var(--radius-xs) }`, and `:117` puts the label at
+   `--text-xs`/`--text-secondary`. Contract: `.ui-craft/tokens.md`, "Spacing
+   and density" — dense rows take the 4/8/12px increments. Application: this
+   rule.
+
+   The indent is what makes the rail a rail: the label lines up with the
+   heading above it and the padding exists only so the hover fill has
+   somewhere to be. It stays `display: block` rather than taking the project
+   sheet's three-track grid — this row carries no icon and no arrow, and
+   inventing tracks for cells that do not exist is how two sheets that look
+   the same start behaving differently. */
 .railRow {
   display: block;
   min-inline-size: 0;
-  padding: var(--space-2);
+  margin-inline-start: -0.375rem;
+  padding: 0.3125rem 0.375rem;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   text-align: start;
   overflow-wrap: anywhere;
 }
@@ -309,12 +346,31 @@
 
 /* ── OFFERS ─────────────────────────────────────────────────────────────── */
 
+/* ── OFFERS HANG UNDER THE DEAL, THEY ARE NOT EQUAL TO IT ──────────────────
+   Lot 4 #9. Reference: `v3/screens/record.css:343` — `.rc-offers { margin: 0
+   0 0 var(--space-5); border-left: 1px solid var(--border-subtle) }`, with
+   `.rc-offer` a plain padded row and no card of its own (`:344-348`).
+   Contract: `.ui-craft/tokens.md`, "Usage constraints" 2 — "reading panels
+   default to `panel-reading-*`; glass is not a universal card treatment", and
+   "Shape, motion, depth". Application: this rule and `.offer` below.
+
+   Each offer was a raised, bordered card the same weight as the record it
+   belongs to, so a deal with three offers read as four peers. The hairline
+   and the indent say the relationship the cards were hiding: these are
+   versions OF the thing above them.
+
+   `--space-3` and not the reference's `--space-5` for the indent. The rail
+   below this stacks at 62rem and the scaling gate measures this screen at
+   200% root font-size, where the reference's 20px indent is 40px taken off a
+   reading column that is already the narrow case. The hairline is what
+   carries the subordination; the size of the step is not the position. */
 .offers {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
   max-inline-size: var(--surface-read);
   min-inline-size: 0;
+  margin-inline-start: var(--space-3);
+  border-inline-start: 1px solid var(--border-subtle);
 }
 
 .offer {
@@ -322,17 +378,22 @@
   flex-direction: column;
   gap: var(--space-3);
   min-inline-size: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--border-subtle);
 }
 
-/* The leading offer is the current one, and order is the primary channel. The
-   border repeats it for a reader who arrived in the middle of the list; the
-   WORD "current version" beside the title is what carries it non-visually. */
+.offer:last-child {
+  border-block-end: 0;
+}
+
+/* The leading offer is the current one, and order is the primary channel. An
+   inked left edge repeats it for a reader who arrived in the middle of the
+   list — the card border that used to say this has gone with the card. The
+   WORD "current version" beside the title is what carries it non-visually,
+   and `--border-strong` rather than a status hue because being the current
+   version is not good news or bad news. */
 .offer[data-offer-lead="true"] {
-  border-color: var(--border-strong);
+  box-shadow: inset 2px 0 0 var(--border-strong);
 }
 
 .offerHead {
@@ -356,6 +417,48 @@
 .offerLead {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
+}
+
+/* ── WHERE THE OFFER STANDS ────────────────────────────────────────────────
+   Lot 4 #9, second half. Reference: `v3/screens/record.css:354-356` —
+   `.rc-offer-accepted { color: var(--status-success) }`,
+   `.rc-offer-submitted { color: var(--accent) }`, `.rc-offer-declined
+   { color: var(--text-disabled); text-decoration: line-through }`. Contract:
+   `.ui-craft/tokens.md`, "What the accent is allowed to mean", job 4 — "what
+   is booked rather than assumed … an offer actually out with the client",
+   which cites this exact line; and prohibition 3, which is why `submitted`
+   takes the accent and not a status hue: being out with the client is not
+   good news or bad news, it is a fact about where the paper is.
+
+   THIS IS DELIBERATELY DIFFERENT FROM THE PIPELINE BOARD, AND THE DIFFERENCE
+   IS RECORDED, NOT A DEFECT. `v3/screens/pipeline.css:138` paints "this
+   figure came from a sent offer" with the accent; `v3/screens/record.css:341`
+   paints the same fact with `--status-success`. `.ui-craft/tokens.md`,
+   "Divergences inside the reference", closes it: each screen follows its own
+   screen. The record lot takes what the record screen paints.
+
+   Two of the five states the projection carries (`query.ts:628` — draft,
+   ready, submitted, accepted, declined) are not named here: `draft` and
+   `ready` stay neutral on purpose. The reference paints three, and a colour
+   invented for a state it never painted is a fourth doctrine competing with
+   the paint. The word is on the row either way.
+
+   Selected by DECLARATION (`OpportunityRecordScreen.tsx:832` stamps
+   `data-offer-state`) and not by a class this sheet would have to be handed,
+   so nothing outside this file changes to carry the colour. */
+.offerState[data-offer-state="accepted"] {
+  color: var(--status-success);
+}
+
+.offerState[data-offer-state="submitted"] {
+  color: var(--accent);
+}
+
+/* Struck through as well as dimmed: a declined offer is the one state on this
+   list that must survive being read without colour. */
+.offerState[data-offer-state="declined"] {
+  color: var(--text-disabled);
+  text-decoration: line-through;
 }
 
 /* The waiting sentence REPLACES the sheet. It is a state of the work, not a
@@ -389,11 +492,15 @@
   min-inline-size: 0;
 }
 
+/* Lot 4 #6. A field key, not a heading, so it takes the reference's key
+   tracking rather than its heading tracking — `v3/screens/record.css:280-283`
+   (`.rc-fact-k`) and `:224-227` (`.rc-plan-k`) both carry 0.06em where the
+   headings carry 0.07em. A literal for the reason given at `.docHeading`. */
 .quoteRow dt {
   min-inline-size: 4rem;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -476,9 +583,13 @@
     gap: var(--space-6);
   }
 
+  /* Exactly the rail row's indent, never zero: the rows hang on a -0.375rem
+     margin (lot 4 #7), and with no padding to hang inside, a full-width
+     stacked rail would start outside its own content box. On a surface whose
+     child must never set its own width, 6px of that is 6px too many. */
   .rail {
     padding-block-start: var(--space-5);
-    padding-inline-start: 0;
+    padding-inline-start: 0.375rem;
     border-block-start: 1px solid var(--border-subtle);
     border-inline-start: 0;
   }

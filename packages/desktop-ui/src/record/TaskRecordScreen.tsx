@@ -502,17 +502,11 @@ export const TaskRecordScreen = ({
             {status?.label ?? "No status"}
             {task.completionState === "completed" && " · completed"}
           </span>
-          {/* Only the state that changes how the task must be read is said out
-              loud. "actionable" on every record is the default said twice. */}
-          {task.operationalState !== "actionable" && (
-            <span className={styles.why}>
-              {task.waitingOn === undefined
-                ? task.operationalState
-                : `${task.operationalState} on ${task.waitingOn.label}`}
-            </span>
-          )}
+          {/* Priority is a reading and stays in this line. The operational
+              state used to stand here beside it wearing the same class; it now
+              has a band of its own, under this row. */}
           {priority !== "normal" && (
-            <span className={styles.why}>
+            <span className={styles.priorityNote}>
               {PRIORITY_LABELS[priority] ?? priority} priority
             </span>
           )}
@@ -537,17 +531,67 @@ export const TaskRecordScreen = ({
             ))
           )}
         </div>
-        <p className={styles.plan}>
-          {planSentence(task, prose)}
-          <span aria-hidden="true" className={styles.sep}>
-            ·
+        {/* WHY THE TASK IS STANDING STILL, ON ITS OWN BAND. Lot 4 #2, and the
+            element moved out of the metadata line above rather than being
+            restyled in place: waiting and blocked are the only reason a task
+            is not moving, and beside the status and the project they read as
+            a fourth chip. `v3/screens/record.css:202-211` gives this its own
+            band for exactly that reason.
+
+            Only the state that changes how the task must be read is said out
+            loud. "actionable" on every record is the default said twice. */}
+        {task.operationalState !== "actionable" && (
+          <span
+            className={`${styles.why} ${
+              styles[`why_${task.operationalState}`] ?? ""
+            }`}
+          >
+            {task.waitingOn === undefined
+              ? task.operationalState
+              : `${task.operationalState} on ${task.waitingOn.label}`}
           </span>
-          {/* The word "overdue" is in the sentence itself, so the colour only
-              reinforces something already said. */}
-          <b className={due.startsWith("overdue") ? styles.dueLate : undefined}>
-            {due}
-          </b>
-        </p>
+        )}
+        {/* THE PLAN AND THE DEADLINE ARE TWO CELLS. Lot 4 #2. They were one
+            sentence joined by a middle dot, and they are two different facts:
+            `startAt` is this Space's own intent, `dueAt` is somebody else's
+            promise (`v3/screens/record.css:214-251`, and the reference's own
+            comment says it in those words).
+
+            THE CELL VALUES STAY `planSentence` AND `dueSentence`. The
+            reference splits each cell further into a date, a sub-line and an
+            authorship line; composing those here would mean deriving a
+            seventh date voice beside the closed vocabulary in
+            `tasks/task-view.ts`, which is this repository's named repeat
+            defect. What the position is about is the two cells and the
+            boundary between them. The reduction is deliberate. */}
+        <div className={styles.plan}>
+          <div className={styles.planCell}>
+            <span className={styles.planKey}>Plan</span>
+            <span
+              className={`${styles.planValue} ${
+                task.startAt === undefined ? styles.planUnset : ""
+              }`}
+            >
+              {planSentence(task, prose)}
+            </span>
+          </div>
+          <div className={`${styles.planCell} ${styles.planCellDue}`}>
+            <span className={styles.planKey}>Deadline</span>
+            {/* The word "overdue" is in the sentence itself, so the colour only
+                reinforces something already said. */}
+            <span
+              className={`${styles.planValue} ${
+                task.dueAt === undefined
+                  ? styles.planUnset
+                  : due.startsWith("overdue")
+                    ? styles.dueLate
+                    : ""
+              }`}
+            >
+              {due}
+            </span>
+          </div>
+        </div>
         {/* WHO planned it and WHEN. `plannedBy` carries a principal, a kind and
             an instant — there is no "why" on it, and none is invented here. */}
         {planned !== undefined && (

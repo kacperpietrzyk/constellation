@@ -36,10 +36,71 @@
   padding-inline: var(--space-4);
 }
 
+/* POSITION 7 — THE COUNT LEAVES THE BUTTON ROW.
+   Contract: `.ui-craft/tokens.md` "Component layer", the `shell-*` band family
+   ("window, chrome, sidebar, inspector"). Reference: the prototype stacks TWO
+   bands over the canvas — the crumb bar carrying the breadcrumb and the one
+   primary action (`v3/app.css:282-293`), and a SECOND band under it carrying
+   the count (`v3/app.css:295-301`, applied at `v3/screens/renewals.js:218-221`).
+   The application had both jobs in one row, so the counter read as a label ON
+   the button rather than as a reading of the list below it.
+
+   `min-height`, not `height`, exactly as the prototype: at 200% text the band
+   grows instead of clipping. The band spans the reading column on its own,
+   because `.surface-scroll > *` declares `inline-size: 100%` in `styles.css` —
+   this file's header paragraph about `fit-content` predates that fix.
+
+   THE RULE UNDER THIS BAND HAS 12 PX OF AIR BELOW IT, for the same reason the
+   section margin does: `.renewals` keeps its `gap`, so the bands cannot sit
+   flush the way the prototype stacks them. The border stays because it is what
+   makes this a band rather than a stray line of text; the air is a named cost,
+   not something to close by removing the border. */
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--header-band-height);
+  padding: 0.3125rem var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* No auto margin any more: the count is alone in its band and the prototype
+   starts it at the leading edge (`v3/app.css:301`), which also takes the ink
+   one step quieter than the crumb row it left.
+
+   THE ONE DECLARATION FROM THAT LINE THIS RULE DOES NOT TAKE IS
+   `white-space: nowrap`, and the reason is that here the count is ALONE in its
+   band. Everywhere the reference writes this band the count has company — a
+   layout switch on Projects, Tasks and CRM (`v3/screens/projects.js:344-351`,
+   `tasks.js:514-523`, `crm.js:372-384`), a Stages button and a warning tag on
+   Pipeline (`pipeline.js:411-417`), a spacer on Renewals itself
+   (`renewals.js:219-220`) — so refusing to break keeps the reading whole while
+   its neighbours crowd it. This band has one child and a longer string than the
+   reference's ("4 contracts open · 1 closed this cycle" against
+   `v3/screens/renewals.js:219`), so the refusal bought nothing and cost the
+   layout gate: `flex-wrap: wrap` above has nothing to wrap when its only child
+   cannot break, and at a 320 px window `div._viewbar` overflowed its own content
+   box by 4 px with `overflow-x: visible` — measured at the acceptance run of
+   lots 2-4 on 2026-08-07.
+
+   THIS LOT MADE THAT ATOM AND THIS LOT REMOVES IT, which is why it is NOT
+   registry material: the count that lived in the crumb row declared no wrapping
+   behaviour at all, so this is a regression a deleted declaration ends, and
+   `scripts/descendant-overflow.mjs` holds inherited debt with an owner instead.
+   The band's own padding cannot be what is left over: the gate reads
+   `scrollWidth - clientWidth` on the element itself
+   (`scripts/verify-renderer-layout.mjs:681`), and padding is inside
+   `clientWidth`. With breaking allowed the box's narrowest width is its longest
+   WORD, which is under the narrowest pass that gate runs.
+
+   NOT AN ACCESSIBILITY EXCEPTION, said plainly so nobody files it as one: the
+   200% text pass is clean at both widths, and 320 px is below the product's own
+   minimum window. It is a defect this lot introduced at a width the gate
+   measures. */
 .count {
-  margin-left: auto;
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--text-quaternary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -91,8 +152,25 @@
 
 /* ── The three sections ARE the ordering ─────────────────────────────── */
 
+/* POSITION 2 — A SECTION BOUNDARY HAS TO READ LOUDER THAN A ROW BOUNDARY.
+   Contract: `.ui-craft/tokens.md` "Spacing and density" — density is mixed by
+   content role rather than set globally. Reference: `v3/screens/renewals.css:11`
+   gives every section `margin-bottom: var(--space-8)` and `:14` gives the
+   heading `var(--space-3)` under it; the application ran one uniform 12 px for
+   both, so "Watching" started at the same distance from the list above it as
+   two rows of one list stand from each other.
+
+   THE GAP ON `.renewals` IS DELIBERATELY NOT TOUCHED, and the arithmetic that
+   costs is named rather than hidden: the same `gap: var(--space-3)` spaces the
+   crumb bar and both forms, so raising it would move three unrelated things.
+   The margin therefore ADDS to the gap and the real distance between sections
+   is 32 + 12 = 44 px, not the prototype's 32. That is forced by the constraint,
+   not chosen. The trailing margin under the last section is the prototype's own
+   shape (it gives every `.rn-sec` the same margin) and it sits above the
+   surface's own bottom padding. */
 .section {
   padding-inline: var(--space-4);
+  margin-bottom: var(--space-8);
 }
 
 .sectionHead {
@@ -100,15 +178,22 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
+/* POSITION 9, second half — the heading declares tracking (`v3/screens/renewals.css:17`).
+   `.ui-craft/tokens.md` "Type": headings use tight tracking. The value is small
+   on purpose and is the prototype's own: at 13 px it is 0.065 px, so it is a
+   declaration a reader feels in a line of words rather than a measurable step in
+   one letter — which is why the pair for it asks whether tracking is declared at
+   all and does not pin a pixel. */
 .sectionHead h2 {
   display: flex;
   align-items: center;
   gap: 0.4375rem;
   font-size: var(--text-sm);
   font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--text-primary);
 }
 
@@ -119,18 +204,43 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* POSITION 8 — "Show"/"Hide" DRAWS ITS OWN CHEVRON.
+   Contract: `.ui-craft/tokens.md` "Component layer" (a control's states are its
+   own, and `aria-expanded` is a state a sighted reader must also be able to
+   see). Reference: `v3/screens/renewals.css:31-32` gives the control a chevron
+   that TURNS on `aria-expanded="true"`, rendered at `v3/screens/renewals.js:237-238`.
+   The application stamped `aria-expanded` and painted nothing with it: the word
+   changed and the shape did not.
+
+   No local reduced-motion exception, and that is deliberate: `styles.css` clamps
+   `transition-duration` on `*` inside `@media (prefers-reduced-motion: reduce)`,
+   so a rule here would be dead code pretending to be a decision — this sheet's
+   neighbours already recorded that mistake once. */
 .more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   margin-left: auto;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
-  padding: 0.125rem 0.625rem;
+  padding: 0.125rem 0.5rem 0.125rem 0.625rem;
 }
 
 .more:hover {
   color: var(--text-primary);
   border-color: var(--border-strong);
+}
+
+.more svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.more[aria-expanded="true"] svg {
+  transform: rotate(180deg);
 }
 
 .list {
@@ -155,7 +265,14 @@
   grid-template-columns: 1.25rem minmax(0, 1fr);
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-3) var(--space-4);
+  /* POSITION 9, first half — the prototype's own padding
+     (`v3/screens/renewals.css:40`), under `.ui-craft/tokens.md` "Spacing and
+     density": a reading surface runs 16/20/24, a dense row runs 4/8/12, and this
+     row is the first kind. The application ran 12 px block-wise, i.e. the row was
+     8 px SHORTER than the reference, not taller — so the hint that this position
+     might push a control under a touch-target floor points the wrong way: every
+     hit area inside the row grows. */
+  padding: var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   cursor: default;
 }
@@ -192,13 +309,28 @@
   opacity: 1;
 }
 
+/* POSITION 3 — THE ROW MARK IS DRAWN, NOT TYPED.
+   Contract: `.ui-craft/tokens.md` "Type" reserves the type stack for words and
+   the icon set for marks; "Status and accessibility" requires colour to be
+   doubled by an icon, and a typed character is not one — it is a glyph the
+   reader's font may or may not carry, at whatever weight that font drew it.
+   Reference: `v3/screens/renewals.css:52-55` sizes an `svg` in this lane and
+   `v3/screens/renewals.js:139` picks it per section — `warn` for due, `check`
+   for closed, `clock` for watching. The application typed `▲ ◷ ■`.
+
+   The glyphs come from the consolidated set in `components/Icon.tsx`; this lot
+   adds none. Height is bounded by the declared size, so the mark cannot make the
+   row taller than the text beside it. */
 .mark {
   display: flex;
   justify-content: center;
   padding-top: 0.125rem;
-  font-size: var(--text-2xs);
-  line-height: 1.4;
   color: var(--text-quaternary);
+}
+
+.mark svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .row_due .mark {
@@ -354,9 +486,14 @@
   padding: 0.0625rem 0.5rem;
 }
 
-.leadMark {
-  font-size: var(--text-2xs);
-  line-height: 1;
+/* Same position 3, second site: the lead window's mark is drawn too
+   (`v3/screens/renewals.css:99`, chosen at `v3/screens/renewals.js:59-61` —
+   `clock` before the window opens, `warn` once it has). The `.leadMark` wrapper
+   that carried the typed character is gone; the glyph is a direct child, as in
+   the reference. */
+.lead svg {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 /* "The window is open" carries a MARK and WORDS; the colour only reinforces. */
@@ -396,9 +533,34 @@
 }
 
 /* The difference is in the SHAPE — a dashed edge against a solid one, `≈`
-   against an amount to the unit — not in two shades of one colour. */
+   against an amount to the unit — not in two shades of one colour.
+
+   BOTH PILLS WRAP, and that is a layout decision this lot had to make before it
+   could add glyphs at all. An `inline-flex` row that cannot wrap has a
+   min-content width equal to the SUM of its children, so every icon added inside
+   it widens the narrowest width `div._money` can ever reach — and that box
+   CARRIED a measured overflow ceiling in `scripts/descendant-overflow.mjs`
+   (19 px at 200% text, 54 px in a 320 px window). Wrapping makes the pill's
+   min-content the widest CHILD instead of the sum, which is the same remedy this
+   file's header describes for every other row line here.
+
+   THE BROWSER MEASUREMENT THIS LOT COULD NOT TAKE HAS BEEN TAKEN, and it went
+   further than the wrapping was meant to buy: the acceptance run of lots 2-4 hit
+   that ceiling in NO pass, so the entry was DELETED rather than lowered. That
+   "no hit" means "nothing overflows" and not "nothing was measured" on a
+   two-part proof written at the site of the deletion — the same run found a NEW
+   overflow on this screen, and pairs L3-04 and L3-05 counted live glyphs inside
+   these rows, so the screen was swept and the rows were drawn.
+
+   WHAT THE DELETION COSTS, because this rule is what caused it: that entry was
+   the ONLY ceiling over `div._money`. Nothing holds a number for this box now,
+   so the next glyph added inside a pill lands on the next run as a plain
+   violation rather than as an exceeded ceiling. `.current` beside the pills
+   still declares `white-space: nowrap` and is untouched here — if this box ever
+   overflows again, that is the first atom to look at. */
 .outlookAssumed {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4375rem;
   border: 1px dashed var(--border-default);
@@ -411,14 +573,43 @@
   font-weight: 500;
 }
 
+/* POSITION 1 — THE AMOUNT AT RENEWAL IS THE ONE ACCENT ON THIS CANVAS.
+   Contract: `.ui-craft/tokens.md` "Accent rule", job 4 — "What is booked rather
+   than assumed" — which cites THIS pair of rules by name,
+   `v3/screens/renewals.css:121-122` against `:119-120`, and requires the same
+   distinction to be carried without colour as well. Reference: those two lines.
+   The application painted the real deal with `--border-strong` on
+   `--surface-sunken`, i.e. with the neutral treatment its dashed sibling already
+   had, so the two shapes differed only in the dash.
+
+   WHY THE EDGE IS TAKEN HERE AND WAS REFUSED IN PHASE 1. `--accent-edge` was
+   measured then (1.75-1.86 across eight neighbourhoods) and rejected as the ONLY
+   carrier of a state under WCAG 1.4.11 — a 3:1 non-text rule. It is not the only
+   carrier here: the dashed edge against the solid one, `≈` against an amount to
+   the unit, and the words "uplift N%" against "from the offer" each say the same
+   thing on their own. The wash and the edge REINFORCE a distinction three other
+   channels already make, which is exactly the ink-and-wash pairing the accent
+   rule describes ("the wash says which object; the ink says the same thing on a
+   channel that survives a poor display").
+
+   `color` IS DECLARED HERE ON PURPOSE, and it is the same value the pill already
+   inherited from `.money`. `scripts/consumer-contrast.test.mjs` pairs a rule's
+   background with a colour from the SAME rule, or from a base selector whose
+   last compound is a class; `.outlookReal b` ends in a bare element, so its base
+   resolves to nothing and the wash would have gone onto that gate's
+   "background painted, ink unknown" list instead of being measured. Declared, it
+   is measured, and it clears: 5.21:1 and 5.51:1 dark, 5.81:1 and 5.52:1 light,
+   composited over both reading planes with the repo's own colour maths. */
 .outlookReal {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4375rem;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--accent-edge);
   border-radius: var(--radius-full);
   padding: 0.125rem 0.625rem;
-  background: var(--surface-sunken);
+  background: var(--accent-quieter);
+  color: var(--text-quaternary);
 }
 
 .outlookReal b {
@@ -431,13 +622,63 @@
   color: var(--text-quaternary);
 }
 
+/* The way out of this row to the deal behind the figure. Accent rule, job 2 —
+   "the links and exits out of the current object" — and the reference paints it
+   exactly so (`v3/screens/renewals.css:129-130`). It was `--text-link`, which
+   resolves to `--text-secondary`: an exit indistinguishable from the words
+   around it.
+
+   THE INK IS `--accent-hover` AND NOT `--accent`, AND THAT IS A NAMED
+   DIVERGENCE FROM THE REFERENCE. The accessibility threshold beats fidelity;
+   that is this phase's one standing exception, and `tokens.css` takes it the
+   same way at the primary action.
+
+   WHY, WITH THE STACK WRITTEN OUT. This link never stands on one surface. Both
+   of its sites live inside `.row`, which sits on `.list`
+   (`background: var(--surface-content)`, opaque) and paints a state wash of its
+   own — `--surface-hover` on hover, `--surface-selected` when current. At the
+   first site the pill above adds a THIRD layer, `--accent-quieter`. The earlier
+   note here measured two layers and stopped, which is how the failure hid:
+
+     ink              row state          measured (dark / light)
+     --accent         none               5.02 / 4.86   ← the number written here
+     --accent         hover              4.41 / 4.43   ← BELOW 4.5
+     --accent         current            4.18 / 4.20   ← BELOW 4.5
+     --accent-hover   current            5.76 / 6.14
+
+   `--accent-hover` clears every one of the six stacks with better than half a
+   point to spare in both themes. No lighter accent step works: `--a-300` and
+   `--a-400` are single values shared by both themes and collapse to 1.5:1 and
+   2.1:1 on the light plane.
+
+   WHAT THIS COSTS, SAID OUT LOUD: hover no longer changes the hue, because
+   resting and hover are now the same ink. The underline below is the hover
+   channel, and an underline is the stronger affordance of the two anyway. The
+   reference's `--accent` → `--accent-hover` ladder is not reproducible here at
+   AA, because the reference stacks TWO accent washes under this link
+   (`v3/screens/renewals.css:45` washes the current row with `--accent-quieter`
+   as well) and is further under the threshold than the application ever was.
+
+   Measured now by `scripts/consumer-contrast.test.mjs`, which learned this
+   sheet's stack by name (`INHERITED_SURFACES`) — the sentence that used to
+   stand here, "NO committed gate protects it", is what this pass removed. */
 .basisLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   font-size: var(--text-2xs);
-  color: var(--text-link);
+  color: var(--accent-hover);
 }
 
+/* Underline only. The colour above is already the deepest accent this theme
+   pair has; see the divergence note over `.basisLink`. */
 .basisLink:hover {
   text-decoration: underline;
+}
+
+.basisLink svg {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 /* ── 4. The follow-up ────────────────────────────────────────────────── */
@@ -468,6 +709,19 @@
   color: var(--text-primary);
   border-color: var(--border-strong);
   background: var(--surface-raised);
+}
+
+/* POSITION 4, at the follow-up: the reference opens this control with `list` and
+   closes it with `arrow` (`v3/screens/renewals.js:100-104`) and quietens both
+   (`v3/screens/renewals.css:141`). The glyphs keep their own colour so the
+   control's text can darken on hover without the marks shouting with it. The
+   global `svg` rule already gives every glyph `flex: 0 0 auto`, so nothing here
+   restates it. */
+.follow svg,
+.followNone svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  color: var(--text-quaternary);
 }
 
 /* Nobody having started this is a STATE, not an empty cell, so it has words. */
@@ -515,6 +769,25 @@
   color: var(--text-tertiary);
   border-left: 2px solid var(--border-default);
   padding-left: 0.5rem;
+}
+
+/* POSITION 5 — A MID-TERM CHANGE CARRIES ITS OWN MARK.
+   Contract: `.ui-craft/tokens.md` "Status and accessibility" — success, warning,
+   error and info ALWAYS pair colour with an icon or text; and the accent rule's
+   prohibition 3, which is why this mark is `--status-success` and not the accent:
+   something already sold inside a running term is a settled fact with valence,
+   which the accent may not carry. Reference: `v3/screens/renewals.css:170`,
+   rendered at `v3/screens/renewals.js:113`. The application drew the line with a
+   left rule and a typed `+`, so the only thing distinguishing an amendment from
+   any other row line was the rule at its edge.
+
+   The child combinator matters: the amendment line also holds an exit to the
+   deal, whose own glyphs are accent-coloured links and must not take the status
+   hue. */
+.amendment > svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--status-success);
 }
 
 .when {
@@ -574,14 +847,34 @@
   white-space: nowrap;
 }
 
+/* POSITION 4, at the row's own buttons: every one of them opens with a glyph in
+   the reference (`v3/screens/renewals.js:97` on "Start", `:175` on "Add to
+   contract", styled by `v3/screens/renewals.css:153-160`), under
+   `.ui-craft/tokens.md` "Component layer" — a control is a decided shape, and in
+   this language that shape leads with a mark.
+
+   THE PADDING STAYS SYMMETRIC and that is a recorded divergence. The reference
+   tightens the glyph side (`0.1875rem 0.625rem 0.1875rem 0.5rem`) because every
+   `.rn-act` it draws carries one; this screen also has "Close" and its three
+   outcome buttons, which carry none, and an asymmetric pill with nothing on its
+   short side reads as a mistake. Uniform padding costs 2 px beside the glyph and
+   keeps six buttons in one row looking like one family. */
 .action {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 0.25rem;
   font-size: var(--text-xs);
   color: var(--text-secondary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   padding: 0.1875rem 0.625rem;
   white-space: nowrap;
+}
+
+.action svg {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 .action:hover:not(:disabled) {

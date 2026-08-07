@@ -857,6 +857,32 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 // nie notatką. Kto dopisuje nowe `blind`, pisze w nim, CO trzeba zmienić, żeby
 // je skasować — pole bez tego zdania jest wyłącznikiem bramki, a nie faktem
 // o danych.
+//
+// ── ODBIÓR LOTÓW 2, 3 I 4, 2026-08-07 — 42 PARY IDĄ NA „enforced" ────────────
+// TO JEST ZAPISANY POWÓD DLA WSZYSTKICH CZTERDZIESTU DWÓCH FLIPÓW i stoi tu
+// RAZ, a nie czterdzieści dwa razy przy wpisach. Ten sam powód przepisany do
+// każdego wpisu byłby dokładnie tą klasą defektu, którą to repo nosi pod nazwą
+// „ten sam kształt przepisany w kilku schematach": czytelnik nie umiałby
+// odróżnić wpisu, który przemyślano, od wpisu, który skopiowano.
+//
+// DOWÓD, JEDEN PRZELOT, OBA MOTYWY: `node scripts/verify-renderer-layout.mjs`
+// na drzewie `e95732a` + robota trzech lotów, 11 przystanków × 2 motywy,
+// 39 244 ms. Przelot zgłosił 84 razy `ROUTED_PENDING_ALREADY_MATCHES` (42 pary
+// × 2 motywy) i ANI RAZU `DIFFERS`, `NOT_MEASURED` ani `ROUTE_FAILED`:
+//   lot 2 — 28 MATCH / 0 DIFFERS / 0 NOT_MEASURED / 0 BLIND / 0 ROUTE_FAILED
+//   lot 3 — 22 MATCH / 0 / 0 / 0 / 0
+//   lot 4 — 34 MATCH / 0 / 0 / 0 / 0
+// Każda z 42 pozycji została OSOBNO sprawdzona przeciw cytowanej linii `v3/*`
+// i przeciw regule w aplikacji — flip idzie za dostawą, nie za zieloną liczbą.
+// Ani jedno oczekiwanie nie zostało zaostrzone, bo ani jedno nie okazało się
+// napisane tak, że nie umie paść: sześć par rodzaju `not` (L2-02b, L2-04,
+// L2-11, L3-09b, L4-01c, L4-02b) czyta dziś wartość, którą v3 podaje w tej
+// samej linii, a nie wartość dowolnie różną od dzisiejszej.
+//
+// TRZY PARY, KTÓRYCH FLIP WYMAGAŁ OSĄDU, A NIE ODCZYTU — powód przy każdej
+// z nich niżej, bo tam jest jedyne miejsce, w którym się go szuka: L2-06
+// i L4-08a (mierzą DEKLARACJĘ, nie zachowanie) oraz L3-07 (liczba na
+// nieobecność).
 export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // ══ LOT 2 — PIPELINE ══════════════════════════════════════════════════════
   // Trasa całego lotu: klik `.nav-item[data-surface="pipeline"]`.
@@ -895,15 +921,17 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // (`crm-fixture.ts:17`), siedzi na KOSZCIE oferty (`:386` — `edrOffer.cost`
     // w EUR plus `rate`), czyli na INNYM POLU niż wartość karty; zdjęcie EUR
     // z `edrDeal.estimate` jej nie rusza.
-    blind:
-      "fixture: „[data-pipeline-meter]" +
-      "” nie rysuje się ANI RAZU, bo meterMax wraca 0, kiedy OTWARTE (nieterminalne) kolumny niosą " +
-      "więcej niż jedną walutę (pipeline-view.ts:419-432, PipelineSurface.tsx:412). " +
-      "WYJŚCIE JEST JEDNOLINIJKOWE i należy do LOTU 2: albo edrDeal.estimate na PLN (crm-fixture.ts:267), " +
-      "albo edrDeal.stage na terminalny — przewalutowanie „≈” nie znika w żadnym z tych wariantów, " +
-      "bo żyje na edrOffer.cost + rate (crm-fixture.ts:386). Cena wyboru: tablica traci wtedy sumę " +
-      "dwuwalutową w nagłówku, i to jest decyzja lotu 2, nie tej mapy",
-    status: "pending: LOT 2",
+    //
+    // ŚLEPOTA ZDJĘTA 2026-08-07, BO WARUNEK WYJŚCIA ZOSTAŁ SPEŁNIONY, a nie
+    // dlatego, że przestała przeszkadzać. Lot 2 wziął pierwszy z dwóch
+    // wariantów wypisanych wyżej — `edrDeal.estimate` z EUR na PLN — i zapłacił
+    // nazwaną cenę (nagłówek tablicy nie drukuje już sumy dwuwalutowej).
+    // `[data-pipeline-meter]` montuje się od tego commita, a obie pary tej
+    // pozycji wróciły z pomiarem, nie z BLIND. Pole `blind` zdjęte razem
+    // z warunkiem: wpis, który dalej tłumaczy, jak siebie odślepić, mierząc
+    // przy tym na zielono, jest tym samym nieaktualnym dokumentem, przeciwko
+    // któremu stoi cała ta faza.
+    status: "enforced",
   },
   {
     id: "L2-02b",
@@ -925,10 +953,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "transitionDuration" },
     expect: { kind: "not", value: "0s" },
-    blind:
-      "fixture: ten sam podmiot i ta sama przyczyna co L2-02a — meterMax = 0 przy dwóch walutach " +
-      "w otwartym lejku; ta sama jednolinijkowa poprawka fikstury odślepia OBIE pary naraz",
-    status: "pending: LOT 2",
+    // Ślepota zdjęta 2026-08-07 tą samą jedną linijką, co przy L2-02a
+    // (`edrDeal.estimate` na PLN) — powód i cena stoją tam.
+    status: "enforced",
   },
   {
     id: "L2-03",
@@ -955,7 +982,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "color" },
     expect: { kind: "accent" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-04",
@@ -978,7 +1005,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "boxShadow" },
     expect: { kind: "not", value: "none" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-05a",
@@ -1004,7 +1031,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     note:
       "MIERZALNA DZIŚ mimo briefu: „Osobno” mówi, że NIE ISTNIEJE stan SPOKOJNY (wszystko ma 420 d). " +
       "Stan nieświeży rysuje się na każdej karcie, więc ta para ma co czytać; nie ma go tylko wariant `ghost`.",
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-05b",
@@ -1026,7 +1053,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-06",
@@ -1052,8 +1079,19 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // przodkiem z `overflow` innym niż `visible` (P7), a w tej aplikacji pion
     // przewija `.work-surface`, nie `.scroller`. Zielona para tutaj NIE JEST
     // dowodem, że nagłówek został na ekranie — to jest dokładnie robota P7.
+    //
+    // FLIP NA „enforced" ZNACZY DOKŁADNIE TYLE, ILE TA PARA MIERZY, 2026-08-07.
+    // Żywy skan P7 zmierzył ten podmiot na przystanku `pipeline` i wrócił
+    // NOT_EXERCISED: pojemnikiem przewijania jest `div._scroller`, przelot
+    // poprosił go o 49 px i dostał 0 („needed 9, range 174.4"). Deklaracja jest
+    // dowieziona i jest DZIŚ BEZWŁADNA — dokładnie tak, jak lot 2 zapisał to
+    // w `pipeline.module.css` przy samej regule. Wpis P7-02, który tę
+    // bezwładność diagnozował, zniknął z rejestru w tym samym przebiegu (podmiot
+    // JUŻ się klei, więc rejestr „czeka na" go wyrzucał), a to znaczy, że
+    // ZACHOWANIA tego nagłówka nie asertuje dziś nic — jest tylko raportowane
+    // jako żywy podmiot NOT_EXERCISED.
     expect: { kind: "literal", value: "sticky" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-07a",
@@ -1078,7 +1116,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     note:
       "Brief §4 liczy tę pozycję do niewidzialnych dla CZŁOWIEKA (awatar rysuje się raz na tablicy). " +
       "Dla pary jeden narysowany węzeł WYSTARCZA — ślepota dotyczy odbioru okiem, nie pomiaru.",
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-07b",
@@ -1100,7 +1138,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "borderTopWidth" },
     expect: { kind: "literal", value: "1px" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-08",
@@ -1124,7 +1162,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-09a",
@@ -1146,7 +1184,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-09b",
@@ -1168,7 +1206,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-10",
@@ -1193,7 +1231,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // Przezroczystość, nie zerowa szerokość: v3 ZOSTAWIA tor obwódki, żeby
     // kontrolka nie skakała o piksel przy najechaniu.
     expect: { kind: "literal", value: "rgba(0, 0, 0, 0)" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
   {
     id: "L2-11",
@@ -1216,7 +1254,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "transitionDuration" },
     expect: { kind: "not", value: "0s" },
-    status: "pending: LOT 2",
+    status: "enforced",
   },
 
   // ══ LOT 3 — RENEWALS ══════════════════════════════════════════════════════
@@ -1242,7 +1280,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-01b",
@@ -1264,7 +1302,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "color" },
     expect: { kind: "accent" },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-02",
@@ -1286,7 +1324,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "marginBottom" },
     expect: { kind: "token", token: "--space-8" },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-03",
@@ -1308,7 +1346,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-04",
@@ -1331,7 +1369,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
     risk: "descendant-overflow.mjs:167-176 trzyma sufit 19 px / 54 px na `div._money` — brief nazywa poz. 4 jedyną pozycją tego lotu, którą złapie bramka. Ta para nie zwalnia z tamtego pomiaru.",
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-05",
@@ -1353,7 +1391,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-06",
@@ -1376,7 +1414,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-07",
@@ -1402,8 +1440,14 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:786-788",
     },
     read: { property: null },
+    // LICZBA ZERO SAMA NIE ODRÓŻNIA „licznik wyszedł" OD „cały rząd zniknął",
+    // i przy odbiorze 2026-08-07 to rozróżnienie zrobiła para sąsiednia, a nie
+    // ta: L3-06 czyta `[class*="_crumbbar_"] button` NA TYM SAMYM przystanku
+    // i wróciła MATCH z osądzonym malowaniem, czyli rząd stoi i ma w sobie
+    // przycisk. Dopiero te dwa odczyty razem znaczą „licznik go opuścił".
+    // Kto kiedyś usunie L3-06, zabiera tej parze jej jedyny kontrapunkt.
     expect: { kind: "count", equals: 0 },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-08",
@@ -1426,7 +1470,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-09a",
@@ -1448,7 +1492,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "paddingTop" },
     expect: { kind: "token", token: "--space-4" },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
   {
     id: "L3-09b",
@@ -1473,7 +1517,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "letterSpacing" },
     expect: { kind: "not", value: "normal" },
-    status: "pending: LOT 3",
+    status: "enforced",
   },
 
   // ══ LOT 4 — EKRANY REKORDU ════════════════════════════════════════════════
@@ -1500,7 +1544,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-xl" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-01b",
@@ -1522,7 +1566,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-xl" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-01c",
@@ -1550,7 +1594,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "letterSpacing" },
     expect: { kind: "not", value: "normal" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-02a",
@@ -1572,7 +1616,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "display" },
     expect: { kind: "literal", value: "grid" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-02b",
@@ -1596,7 +1640,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     read: { property: "backgroundColor" },
     expect: { kind: "not", value: "rgba(0, 0, 0, 0)" },
     risk: 'renderuje się WYŁĄCZNIE, gdy `operationalState !== "actionable"` (TaskRecordScreen.tsx:507); jeśli fikstura otwiera zadanie zwyczajne, para wróci NOT_MEASURED i to jest fakt o fiksturze, nie o selektorze',
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-03a",
@@ -1629,7 +1673,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "borderLeftColor" },
     expect: { kind: "accent" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-03b",
@@ -1656,7 +1700,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "color" },
     expect: { kind: "accent" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-04",
@@ -1683,7 +1727,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "borderTopWidth" },
     expect: { kind: "literal", value: "1px" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-05",
@@ -1706,7 +1750,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-lg" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-06",
@@ -1728,7 +1772,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-2xs" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-07",
@@ -1751,7 +1795,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "marginLeft" },
     expect: { kind: "rem", value: -0.375 },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-08a",
@@ -1776,8 +1820,21 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // TA PARA MIERZY DEKLARACJĘ. Brief nazywa poz. 8 najgroźniejszą pozycją całej
     // fali właśnie dlatego, że `sticky` milknie BEZ BŁĘDU pod przodkiem
     // z `overflow` — i tego ta para nie zobaczy. Dowód zachowania to P7.
+    //
+    // ZMIERZONE PRZY ODBIORZE, 2026-08-07, I ROZSTRZYGA TO SPRAWĘ NA KORZYŚĆ
+    // LOTU 4 — ale tylko na dwóch z trzech ekranów rekordu. Żywy skan P7:
+    //   projects › record — pojemnik `div.work-surface.wave2-work`, HELD,
+    //     przewinięte 195 z 194,6 px, `elementFromPoint` trafia `div._strip`;
+    //   tasks › record — pojemnikiem jest `div.surface-scroll._tasks`, przelot
+    //     poprosił o 408,1 px i dostał 0 → NOT_EXERCISED.
+    // To NIE jest różnica długości treści, tylko RÓŻNICA POJEMNIKA, i jest
+    // dokładnie tym, co lot 4 opisał z lektury `tasks/tasks.module.css`
+    // (`overflow-x: hidden`). Ta para trafia w oba ekrany i na obu widzi tę samą
+    // deklarację, więc jej zieleń nie mówi nic o ekranie zadania. Po usunięciu
+    // wpisu P7-01 (podmiot JUŻ się klei) nie zostaje w drzewie NIC, co tę
+    // bezwładność asertuje — jest wejściem fazy poprawek, nie długiem tej pary.
     expect: { kind: "literal", value: "sticky" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-08b",
@@ -1801,7 +1858,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "borderBottomColor" },
     expect: { kind: "accent" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-09",
@@ -1845,7 +1902,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "borderLeftWidth" },
     expect: { kind: "literal", value: "1px" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-10",
@@ -1898,15 +1955,14 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // wisi za to na DWÓCH montażach (`:647` podzadania, `:682` zależności), więc
     // po zasianiu para może zobaczyć dwa elementy — i to jest bezpieczne, bo obie
     // instancje niosą tę samą regułę, czyli tę samą wartość.
-    blind:
-      "fixture: „.list" +
-      "” montuje się TYLKO przy niepustym zbiorze (TaskRecordScreen.tsx:647 — podzadania, :682 — zależności), " +
-      "a jedyne zadanie harnessu przeglądarkowego nie ma ani rodzica, ani zależności " +
-      "(CollaborationHarness.tsx, odczyt „work.overview” — NIE harness-snapshot.ts, którego ta bramka nie montuje). " +
-      "WYJŚCIE NIE WYMAGA DRUGIEGO ZESTAWU DANYCH i należy do LOTU 4: wystarczy dopisać jednemu zadaniu " +
-      "podzadanie albo jedną krawędź zależności — wtedy pojemnik się rysuje, para przestaje być ślepa, " +
-      "i przy okazji domyka się zmierzony brak z task-record.module.css:302-310 („zero [data-record-row]”)",
-    status: "pending: LOT 4",
+    // ŚLEPOTA ZDJĘTA 2026-08-07, PO SPEŁNIENIU WARUNKU WYJŚCIA. Lot 4 dosiał
+    // dokładnie to, o co ten wpis prosił, i najtańszym z dwóch wariantów: JEDNĄ
+    // krawędź `task_depends_on_task` w `CollaborationHarness.tsx` (celowo do
+    // zadania spoza tej projekcji, więc rysuje się zdegradowany wiersz
+    // `data-record-row` i NIE przybywa wiersza w kolekcji Zadań). Pojemnik
+    // powstaje, para wróciła z pomiarem (1px, oba motywy), a razem z nią
+    // domknął się zmierzony brak „zero [data-record-row]" z `task-record.module.css`.
+    status: "enforced",
   },
   {
     id: "L4-11",
@@ -1957,7 +2013,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "height" },
     expect: { kind: "literal", value: "5px" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
   {
     id: "L4-12",
@@ -1979,7 +2035,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "maxWidth" },
     expect: { kind: "token", token: "--surface-read" },
-    status: "pending: LOT 4",
+    status: "enforced",
   },
 
   // ══ LOT 5 — LIBRARY ═══════════════════════════════════════════════════════
@@ -2560,11 +2616,20 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
 ];
 
 /**
- * KSIĘGOWOŚĆ MAPY TRASOWANEJ. Dziś NIC jej nie sprawdza — `verify-renderer-layout.mjs`
- * nie zna tych trzech eksportów. Liczby stoją tu, żeby P7 mogło włączyć nad nimi
- * dokładnie tę samą kontrolę, co `auditVisualLanguageMap` prowadzi nad mapą
- * Lotu 1: suma pozycji z parą i pozycji jawnie nieobjętych MUSI się zgadzać
- * z liczbą pozycji w briefie, inaczej pozycja wypada z OBU list naraz.
+ * KSIĘGOWOŚĆ MAPY TRASOWANEJ, EGZEKWOWANA. Kontrola, o którą ten blok prosił,
+ * już istnieje: `auditRoutedMap` w `verify-renderer-layout.mjs` czyta `pairs`,
+ * `notCovered`, `blind` i `lots`, i rzuca `ROUTED_COUNT_DRIFT`,
+ * `ROUTED_LOT_DRIFT`, `ROUTED_POSITION_DRIFT`, `ROUTED_POSITION_CONTRADICTION`
+ * i `ROUTED_POSITION_GAP`. Zdanie „dziś NIC jej nie sprawdza" stało tu jeszcze
+ * przy odbiorze lotów 2-4 i było nieprawdą o jeden lot nasady — przepisane
+ * 2026-08-07, w tym samym przebiegu, w którym `blind` zeszło z 5 na 2.
+ *
+ * Sens liczb się nie zmienia: suma pozycji z parą i pozycji jawnie nieobjętych
+ * MUSI się zgadzać z liczbą pozycji w briefie, inaczej pozycja wypada z OBU
+ * list naraz. `status` NIE JEST tu liczony i to jest świadome — mapa trasowana
+ * nie deklaruje podziału enforced/pending, bo lot oddaje CAŁE swoje pozycje
+ * naraz, a nie po kawałku (mapa Lotu 1 ma ten podział z odwrotnego powodu:
+ * dwie jej pozycje zostały świadomie nieoddane).
  */
 export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   pairs: 57,
@@ -2580,7 +2645,17 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // przestaje być sygnałem; zapisany warunek wyjścia zostaje. Sześć pozostałych
   // par z tej samej rundy zamknięto ODWROTNIE — fikstura zaczęła rysować ich
   // podmioty — i to jest różnica między „nie ma danych" a „nie ma stanu".
-  blind: 5,
+  //
+  // 5 → 2 PRZY ODBIORZE LOTÓW 2-4, 2026-08-07, I TO JEST SPŁATA, NIE
+  // ROZLUŹNIENIE. Trzy z pięciu ślepych par miały wpisany WARUNEK WYJŚCIA
+  // i wszystkie trzy zostały spełnione przez loty, do których ten warunek był
+  // adresowany: L2-02a i L2-02b (`edrDeal.estimate` z EUR na PLN, lot 2)
+  // oraz L4-10 (jedna krawędź `task_depends_on_task` w harnessie, lot 4).
+  // Wszystkie trzy wróciły z tego samego przelotu z POMIAREM, a nie z BLIND,
+  // więc pole `blind` zdjęto z każdej z nich razem z jej warunkiem. Zostają
+  // L5-03a i L5-03b — jedyne dwie, którym brakuje STANU EKRANU, a nie danych,
+  // i ich warunki wyjścia stoją nietknięte przy wpisach.
+  blind: 2,
   lots: {
     2: {
       // faza-3-build-brief.md:230-241

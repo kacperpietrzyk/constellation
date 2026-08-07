@@ -65,30 +65,60 @@
   padding-inline-start: var(--space-3);
 }
 
+/* EVERY comment is a card, not only the agent's. Lot 4 #4. Reference:
+   `v3/screens/record.css:368-371` — `.rc-comment { border: 1px solid
+   var(--border-subtle); border-radius: var(--radius-sm); background:
+   var(--surface-content) }`, declared on the base class and inherited by every
+   variant. Contract: `.ui-craft/tokens.md`, "Shape, motion, depth, and
+   layering" (radii: 6px compact) and "Semantic layer — Dark theme", where
+   content surfaces are the reading material. Before this the only bordered
+   comment on the panel was the agent's, so a human's comment read as the
+   absence of one. */
 .entry {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   min-inline-size: 0;
-  border-inline-start: 2px solid transparent;
+  border: 1px solid var(--border-subtle);
+  border-inline-start-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-content);
   padding: var(--space-2) var(--space-3);
 }
 
-/* Blue is this product's collaboration identity, and here it says "an agent
-   wrote this": a left border and a tint, carried by the word `agent` beside
-   the name so colour is never the only thing telling them apart. Humans stay
-   neutral — the difference has to be readable at a glance, not looked up.
+/* THE ACCENT IS THE COLLABORATION IDENTITY, and here it says "an agent wrote
+   this": an inked left rail plus a wash over the card, carried by the word
+   `agent` beside the name so colour is never the only thing telling them
+   apart. Humans stay neutral.
+
+   Lot 4 #3, and this comment replaces the one that said "blue is this
+   product's collaboration identity". That sentence was true of the old
+   contract and is now false: `.ui-craft/tokens.md`, "What the accent is
+   allowed to mean", job 3 reads "a human is neutral, an agent is accent, and
+   the accent is always doubled by a dashed edge so identity never rests on
+   hue alone", citing `v3/screens/record.css:375` — `.rc-comment-agent
+   { border-left: 2px solid var(--accent-edge); background:
+   var(--accent-quieter) }`, which is exactly this rule. The dashed half of the
+   doubling is worn by `.markAgent` below, where the reference puts it
+   (`v3/screens/record.css:389`); on the card itself the reference inks a
+   solid 2px rail, and the wash under it is the second channel.
+
    Padding is NOT touched here: an agent entry taller than a human one breaks
-   the rhythm of a thread that alternates between them. */
+   the rhythm of a thread that alternates between them. The border width is
+   declared on the base class for the same reason — 2px on one side either
+   way, so a card does not change size when its author does. */
 .entryAgent {
-  border-inline-start-color: var(--status-info);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--status-info-bg);
+  border-inline-start-color: var(--accent-edge);
+  background: var(--accent-quieter);
 }
 
-/* Settled, not gone. */
+/* Settled, not gone. The fill goes with the tint: a resolved agent comment
+   that keeps its wash is still shouting the thing that was settled
+   (`v3/screens/record.css:377` — `.rc-comment-resolved { opacity: 0.6;
+   background: none }`). */
 .entryResolved {
   opacity: 0.6;
+  background: none;
 }
 
 .head {
@@ -113,9 +143,18 @@
   line-height: 1;
 }
 
+/* THE DASHED EDGE. Lot 4 #3, the half of job 3 that survives without hue.
+   Reference: `v3/screens/record.css:389` — `.rc-comment-agent .rc-mark
+   { color: var(--accent); border-color: var(--accent-edge); border-style:
+   dashed; background: none }`. Contract: `.ui-craft/tokens.md`, job 3 — the
+   accent "is always doubled by a dashed edge". No fill: the card underneath
+   already carries the wash, and a second tint at this size closes the ring
+   into a dot. `box-sizing: border-box` is global (`styles.css:2`), so the
+   1px edge does not change the 1.25rem mark. */
 .markAgent {
-  background: var(--status-info-bg);
-  color: var(--status-info);
+  border: 1px dashed var(--accent-edge);
+  background: none;
+  color: var(--accent);
 }
 
 .author {
@@ -172,12 +211,18 @@
   font-size: var(--text-2xs);
 }
 
-/* The ONE accent-coloured thing in the panel, because it marks the one comment
-   that woke somebody. No fill behind it: on an agent's already-tinted entry a
-   second tint would make the badge disappear into it, and text plus the Inbox
-   glyph carry the statement on their own. */
+/* The mention badge, the one thing on this panel that leaves it — a mention is
+   the only thing here that reaches the Inbox. Reference:
+   `v3/screens/record.css:404-406` — "the mention is the only thing that goes
+   from here to the Inbox, so it is the only thing in the margin with a right
+   to the accent colour", `.rc-badge-mention { color: var(--accent) }`.
+   Contract: `.ui-craft/tokens.md`, job 2 — "where the reader can go … the
+   links and exits out of the current object". No fill behind it: on an
+   agent's already-washed entry a second tint would make the badge disappear
+   into it, and the text plus the Inbox glyph carry the statement on their
+   own. */
 .badgeMention {
-  color: var(--status-info);
+  color: var(--accent);
 }
 
 .glyph {
@@ -291,11 +336,27 @@
 /* The same colour the mention BADGE wears, because they mark the same thing at
    two moments: the chip says "this will wake them", the badge says "this one
    did". A second accent for one meaning is how two colours end up meaning
-   nothing. */
+   nothing. Moved onto `--accent` with the badge, lot 4 #3.
+
+   Ink on the edge, wash inside — the pairing `.ui-craft/tokens.md` describes
+   under "Form first — ink and wash": "where the reference washes an object it
+   also inks one edge of it". The wash is what makes the pressed state
+   survive a monochrome display, so the border is not doing the work alone. */
 .mentionChipOn {
-  border-color: var(--status-info);
-  color: var(--status-info);
+  border-color: var(--accent-edge);
+  background: var(--accent-quieter);
+  color: var(--accent);
   font-weight: 590;
+}
+
+/* The hover above is `.mentionChip:hover:not(:disabled)` — three simple
+   selectors against this rule's one, so without this the neutral hover fill
+   would erase the pressed wash the moment the cursor arrived, and a chip
+   would look OFF while it was on. Written out rather than reordered: the
+   cascade decides this by specificity, not by position, so moving the rules
+   around would not have fixed it. */
+.mentionChipOn:hover:not(:disabled) {
+  background: var(--accent-quieter);
 }
 
 .mentionKind {

@@ -32,6 +32,28 @@
 /* The heading sits OUTSIDE the group's listbox: a child of a listbox that is
    not an option has to be rescued with a presentational role, and not putting
    it there is one fewer thing to remember. */
+/* A LABEL ABOVE THE BOX, not the lid of it. Lot 4 #10 gave `.rows` its own
+   container, and the reference builds the same pair that way: the section
+   heading is bare (`v3/screens/record.css:138-139` — `.rc-sec-head h2`) and
+   the list under it is the bordered, rounded thing
+   (`v3/screens/record.css:142`). The heading's own bottom rule went with the
+   change; the container's top border now draws that line, and two of them a
+   pixel apart read as a mistake.
+
+   It stays STICKY, and THAT is the reason it can sit outside the box at all.
+   `--z-raised` (2) is deliberately below the tab bar's `--z-sticky` (20): the
+   bar passes over this, which is the z-order lot 4 #8 is measured against.
+
+   IT IS NOT OPAQUE, AND A SENTENCE HERE SAID IT WAS. `--surface-raised`
+   resolves to `--white-a055` in the dark theme — white at 5.5 % — and to white
+   at 76 % in the light one, so rows scrolling under this pinned strip stay
+   legible through it. The strip does pin: `record-tabs.module.css` measured
+   the scrollport for all three record screens on 2026-08-07, and this heading
+   is named there as the thing the tab bar has to pass over. So the
+   translucency is a live question about the paint, not a dead one — it is
+   recorded here rather than fixed, because moving this to an opaque plane is a
+   look decision for the owner, and the false claim was the part that had to go
+   today. */
 .groupHead {
   position: sticky;
   top: 0;
@@ -42,7 +64,6 @@
   min-inline-size: 0;
   padding: var(--space-2) var(--space-3);
   background: var(--surface-raised);
-  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
@@ -68,10 +89,37 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── THE LIST IS A CONTAINER ───────────────────────────────────────────────
+   Lot 4 #10. Reference: `v3/screens/record.css:142` — `.rc-list { border: 1px
+   solid var(--border-subtle); border-radius: var(--radius-md); overflow:
+   hidden }`. Contract: `.ui-craft/tokens.md`, "Shape, motion, depth, and
+   layering" (radii: 12px cards and controls). Application: this rule, and
+   `.docs` and `.stream` below, which are the same object on the other two
+   tabs — one boxed list beside two bare ones inside a single tab strip is the
+   drift this sheet's own header warns about.
+
+   `overflow: hidden` from the reference is DELIBERATELY NOT TAKEN, twice
+   over. The rows in this box are focusable and their focus ring is drawn as a
+   box-shadow OUTSIDE the border (`.row:focus-visible` below, straight from
+   the token contract), and a clipping parent cuts it off at the container
+   edge — the accessibility threshold beats fidelity, which is this phase's
+   one standing exception. That reason stands alone and is the whole of it.
+
+   A second reason was written here and was FALSE: that clipping would silence
+   the group heading's `position: sticky`. It cannot. The heading is this
+   box's SIBLING, not its descendant (`RecordTasksPanel.tsx` renders the
+   heading and the list as two children of the same group), and a clipping
+   ancestor only silences sticky for elements inside it. Recorded rather than
+   deleted because a plausible-sounding reason for a correct decision is how
+   the next reader learns the wrong rule. The corners are instead put on the
+   first and last row, which is what `overflow: hidden` was doing for the
+   reference. */
 .rows {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
 }
 
 /* Title takes the free space; everything after it has a ceiling, because a real
@@ -87,6 +135,20 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
   cursor: default;
+}
+
+/* The container's own corners, worn by the rows that touch them, because the
+   box does not clip. One pixel off the outer radius so the fill stops inside
+   the border rather than under it. */
+.row:first-child {
+  border-start-start-radius: calc(var(--radius-md) - 1px);
+  border-start-end-radius: calc(var(--radius-md) - 1px);
+}
+
+.row:last-child {
+  border-bottom: 0;
+  border-end-start-radius: calc(var(--radius-md) - 1px);
+  border-end-end-radius: calc(var(--radius-md) - 1px);
 }
 
 .row:hover {
@@ -183,6 +245,9 @@
 
 /* ── Documents ─────────────────────────────────────────────────────────── */
 
+/* The same container as `.rows`, for the same reason and with the same
+   refusal of `overflow: hidden` — `.doc` is a button and carries a focus ring
+   of its own. */
 .docs {
   display: flex;
   flex-direction: column;
@@ -190,6 +255,22 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Scoped through the `li`, NOT written as `.doc:first-child`. Every button
+   here is the only child of its own list item, so the bare pseudo-class would
+   match all of them and take the divider off every row. */
+.docs > li:first-child .doc {
+  border-start-start-radius: calc(var(--radius-md) - 1px);
+  border-start-end-radius: calc(var(--radius-md) - 1px);
+}
+
+.docs > li:last-child .doc {
+  border-bottom: 0;
+  border-end-start-radius: calc(var(--radius-md) - 1px);
+  border-end-end-radius: calc(var(--radius-md) - 1px);
 }
 
 /* A button, not a row: there is nothing to preview here, so one click goes to
@@ -263,6 +344,10 @@
 
 /* ── Activity ──────────────────────────────────────────────────────────── */
 
+/* The third list on this screen, boxed like the other two. Nothing in it is
+   focusable, so `overflow: hidden` would have been safe here — it is left off
+   anyway, because three lists that differ in how their corners are made is
+   three ways to be wrong the next time one of them grows a control. */
 .stream {
   display: flex;
   flex-direction: column;
@@ -270,6 +355,19 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.event:first-child {
+  border-start-start-radius: calc(var(--radius-md) - 1px);
+  border-start-end-radius: calc(var(--radius-md) - 1px);
+}
+
+.event:last-child {
+  border-bottom: 0;
+  border-end-start-radius: calc(var(--radius-md) - 1px);
+  border-end-end-radius: calc(var(--radius-md) - 1px);
 }
 
 .event {
@@ -303,13 +401,23 @@
 
 /* An agent is marked, never merely named: the difference between a change you
    made and one something made for you is the only question this stream is read
-   with. */
+   with.
+
+   THE MARK IS THE ACCENT AND A DASHED EDGE. Lot 4 #3. Reference:
+   `v3/screens/record.css:175` — `.rc-kind-agent { color: var(--accent);
+   border-color: var(--accent-edge); border-style: dashed }`, which is the same
+   pill in the same role. Contract: `.ui-craft/tokens.md`, "What the accent is
+   allowed to mean", job 3 — "a human is neutral, an agent is accent, and the
+   accent is always doubled by a dashed edge so identity never rests on hue
+   alone". The dash is the second channel and is not optional: it survives a
+   monochrome display, forced colours and a grayscale print, and the word
+   `agent` inside the pill is the third. */
 .eventAgent {
   margin-inline-start: var(--space-1);
   padding: 0 var(--space-2);
-  border: 1px solid var(--border-subtle);
+  border: 1px dashed var(--accent-edge);
   border-radius: var(--radius-full);
-  color: var(--status-info);
+  color: var(--accent);
   font-size: var(--text-2xs);
 }
 
