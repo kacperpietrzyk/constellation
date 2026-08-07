@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { FolderId } from "@constellation/contracts";
 
+import { Icon } from "../components/Icon.js";
 import { countLabel } from "../i18n.js";
 import {
   ALL_NOTES,
@@ -158,10 +159,16 @@ export const FolderTree = ({
   return (
     <div className={styles.treePanel}>
       <div className={styles.panelHead}>
-        <h2>Folders</h2>
+        <div className={styles.panelTitle}>
+          <h2>Folders</h2>
+        </div>
         {/* The number of FOLDERS, not of notes — the notes are counted beside
-            each name and again on the list's own header. */}
-        <span className="library-count">{folders.length}</span>
+            each name and again on the list's own header. The global class stays
+            so the shared rule keeps ONE owner; the module class beside it flattens
+            the pill for this screen only (see the sheet). */}
+        <span className={`library-count ${styles.headCount}`}>
+          {folders.length}
+        </span>
       </div>
       <div className={styles.treeScroll}>
         <div aria-label="Folders" className={styles.tree} role="tree">
@@ -226,7 +233,25 @@ export const FolderTree = ({
                 type="button"
               >
                 <span aria-hidden="true" className={styles.treeTwist}>
-                  {row.hasChildren ? (row.expanded ? "▾" : "▸") : ""}
+                  {row.hasChildren ? (
+                    <Icon
+                      name={row.expanded ? "chevron-down" : "chevron-right"}
+                    />
+                  ) : null}
+                </span>
+                {/* THE GLYPH SAYS WHAT KIND OF DESTINATION THIS IS, and the
+                    dashed one is a statement rather than a decoration: „All
+                    notes" and „Unfiled" are real targets that are not folders,
+                    and a reader who cannot see that goes looking for the folder
+                    to move something out of. `v3/screens/knowledge.css:55-63`
+                    makes exactly that distinction; `Icon.tsx` records why the
+                    dashed outline is not a warning triangle. Hidden from the
+                    accessible name, which already carries the path and the
+                    count. */}
+                <span aria-hidden="true" className={styles.treeGlyph}>
+                  <Icon
+                    name={row.kind === "folder" ? "folder" : "folder-loose"}
+                  />
                 </span>
                 <span className={styles.treeName}>{row.name}</span>
                 <span className={styles.treeCount}>{row.count}</span>

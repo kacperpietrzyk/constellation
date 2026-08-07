@@ -124,6 +124,23 @@ export const libraryFolderIds = {
   acceptance: folderId("04"),
   support: folderId("05"),
   policies: folderId("06"),
+  /**
+   * A TOP-LEVEL LEAF WITH NO NOTES, and the only reason it exists is that one
+   * state of this screen was unreachable without it.
+   *
+   * `.knowledge-welcome` is the `else` branch of the reading pane, and
+   * `NotesReading.tsx` never leaves it reachable by accident: when nothing is
+   * selected it opens the NEWEST note in view, so the branch needs an `inView`
+   * that is genuinely empty. Emptying the whole fixture would reach it and take
+   * the subject away from six other pairs measured at the same stop — two
+   * states of one screen that a single fixture cannot hold at once. An empty
+   * FOLDER holds both.
+   *
+   * TOP-LEVEL AND CHILDLESS, both load-bearing: `notesInSelection` takes the
+   * whole subtree (`folder-tree.ts`), so a folder with children is not empty
+   * for this purpose even when it holds no notes of its own.
+   */
+  archive: folderId("07"),
 } as const;
 
 export const libraryDocumentIds = {
@@ -304,6 +321,12 @@ const folderShapes: readonly FolderShape[] = [
     version: 1,
   },
   { id: libraryFolderIds.policies, name: "Polityki", version: 2 },
+  // No `parentFolderId` and no children, so it is a root leaf; no document
+  // below assigns itself here, so its note count is zero and stays zero — see
+  // the reasoning on `libraryFolderIds.archive`. Both counters are computed
+  // from the assignments, never written down, so this folder cannot drift into
+  // claiming notes it does not have.
+  { id: libraryFolderIds.archive, name: "Archiwum", version: 1 },
 ];
 
 /**

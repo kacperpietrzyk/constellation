@@ -596,10 +596,25 @@ button:disabled {
 
    CZEGO TO NIE OBEJMUJE — NAZWANE, BO ZMIERZONE: kontrolka, która maluje
    `box-shadow` wartością SPOZA tej rodziny, dalej wygrywa z pierścieniem.
-   Dziś jest taka jedna i jest nią `.knowledge-document-list li button.active`
-   (`styles.css`, kreska zaznaczenia `inset 2px 0`): przy ognisku nie rysuje
-   nic, co widać, i ten lot jej nie rusza, bo nie jest kontrolką z jego zakresu.
-   Kto ją zamyka, ma tu adres i pomiar.
+   Mechanizm został, przykład nie: kiedy to pisano, jedyną taką kontrolką była
+   `.knowledge-document-list li button.active` (kreska zaznaczenia `inset 2px 0`)
+   i akapit zostawiał ją następnemu lotowi z adresem i pomiarem.
+
+   ZAMKNIĘTE 2026-08-07 PRZEZ LOT 5 (pozycja 1), a razem z nią jej bliźniaczka
+   `.rowSelected` w `library/sources.module.css` (pozycja 9), której ten akapit
+   nie policzył — słowo „jedna" było prawdą o TYM arkuszu, nie o aplikacji, i to
+   jest lekcja z tego zdania. Obie kreski zniknęły, bo prototyp nie ma żadnej:
+   zaznaczenie niesie tam wypełnienie i lewą krawędź. Kanał `box-shadow` jest na
+   obu wolny, a pierścień na nich zmierzono prawdziwymi klawiszami w obu
+   motywach. Ten akapit zostaje, bo mechanizm dalej obowiązuje dla następnej
+   kontrolki, która sięgnie po literał spoza rodziny.
+
+   CZEGO NIE WIEM, ŻEBY NIE ZOSTAŁO PRZECZYTANE JAKO WIEM: „jedna" i „dziewięć"
+   powyżej to liczby z przelotu 644 przystanków z 2026-08-06 i NIKT go od tamtej
+   pory nie powtórzył. Literałów `box-shadow` spoza rodziny elewacji jest
+   w arkuszach więcej; tamten przelot orzekał, które z nich siedzą na czymś,
+   co bierze ognisko. Zamknięte są DWA policzone przez niego przypadki
+   Biblioteki, nie klasa.
 
    GDZIE TO MIESZKA: kopie spoczynkowe stoją w TYM pliku, a nie w warstwie
    tokenów, bo `tokens.css` był poza zakresem tego lotu. To jest miejsce
@@ -6424,6 +6439,22 @@ kbd {
    the only value that helps: a single word at 300% text is wider than the panel
    and carries no break opportunity, so `break-word` would still let the box ASK
    for the whole word and push the surface. Measured on the Library harness. */
+/* LOT 5 #4 — the weight, which neither of these two subjects declared. With no
+   heading reset in this package an <h1>/<h2> with no author weight computes the
+   user-agent 700, so the note editor's title was heavier than the screen title
+   above it while this rule looked complete. 600 is the reference's weight for
+   the title of the thing being read (`v3/screens/knowledge.css:243`,
+   `.kn-reader-title`).
+
+   `.knowledge-library` IS PAINTED HERE RATHER THAN DELETED, and that is a
+   correction to a measurement, not a preference. The debt registry in
+   `scripts/heading-typography.mjs` records this selector as having no consumer
+   and says „delete, do not paint" — true of the TSX, and the entry says it was
+   measured there. It is not true of the tree: `interaction-recovery-contract`
+   pins `.knowledge-library` and its sunken background by regular expression, so
+   deleting the block turns that test red. A grep restricted to the markup
+   cannot see a test that reads the STYLESHEET as a string. Both entries retire
+   together on this one line. */
 .knowledge-library h1,
 .knowledge-editor-header h2 {
   margin: var(--space-1) 0 0;
@@ -6431,6 +6462,7 @@ kbd {
   overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: var(--text-xl);
+  font-weight: 600;
   letter-spacing: -0.025em;
 }
 .library-count,
@@ -6523,12 +6555,18 @@ kbd {
 .library-section-heading {
   padding: var(--space-4) var(--space-5) var(--space-2);
 }
+/* LOT 5 #4 — three more heading subjects in one rule, none of which declared a
+   weight. Same reasoning and same value as the pair above; `.section-heading-row`
+   is live on the task attachments panel and in the note editor's revision list,
+   so this weight travels beyond the Library and is the shell's own 600 rather
+   than anything screen-specific. */
 .library-section-heading h2,
 .section-heading-row h3,
 .section-heading-row h4 {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+  font-weight: 600;
 }
 /* `.source-list` KEEPS ONLY ITS RESET, and the rest of what stood here is gone
    with the Sources screen that replaced it. Everything visual about a source
@@ -6546,21 +6584,75 @@ kbd {
   margin: 0;
   list-style: none;
 }
-.knowledge-document-list strong,
-.knowledge-document-list small {
+/* LOT 5 #2 — THE ROW'S SECOND LINE STOPS BEING ONE ELLIPSED STRING.
+   `strong` keeps the single-line ellipsis, which is what the reference gives a
+   note title (`v3/screens/knowledge.css:154-157`, `.kn-row-title`). `small`
+   becomes the reference's foot instead (`:162-164`, `.kn-row-foot`): a baseline
+   row whose CONTEXT truncates and whose DATE does not, because the date is the
+   part of that line a reader scans down the column and it was the part being
+   eaten. See the two child rules under the row itself.
+
+   THE HARD CONDITION FROM RECON DOES NOT BIND HERE, measured rather than
+   assumed. Recon warned that lifting `nowrap` would move `.named-version-list`
+   and `.source-list` too, because the three share a reset at the rule above.
+   They share the RESET — padding, margin, `list-style` — and nothing else: this
+   rule and every rule below it is scoped to `.knowledge-document-list` alone,
+   and that class has exactly one consumer in the renderer (`NotesReading.tsx`).
+   Nothing was narrowed, because there was nothing to narrow. */
+.knowledge-document-list strong {
   display: block;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.knowledge-document-list small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-top: var(--space-1);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+/* The truncating half. The ellipsis has to sit on the element that is the TEXT
+   BOX — a bare text node inside a flex container gets clipped, not ellipsed —
+   which is the same note the reference writes over its own row reference at
+   `v3/screens/knowledge.css:172-174`. */
+.knowledge-row-context {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.knowledge-document-list strong {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-.knowledge-document-list small {
-  margin-top: var(--space-1);
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
+/* Its own lane on the right: `margin-left: auto`, the quietest step of the text
+   ramp and the tabular figures are all `.kn-row-when`
+   (`v3/screens/knowledge.css:175-178`) — a column of dates that do not line up
+   is a column nobody can compare down. `--text-disabled` is the same step the
+   folder tree's counter takes, and for the reason written out there: this is a
+   number the eye scans past on its way to the title, and it is quiet so the
+   title is not.
+
+   WHERE THIS DIVERGES FROM THE REFERENCE, AND THE MEASUREMENT THAT FORCED IT.
+   The reference writes `flex: none` here, i.e. „the date never yields". Taken
+   literally this row overflowed its own box by 74 px at 300% text — measured by
+   the „Library at 300% text" pass on the first build of this position, not
+   predicted — because `flex: none` fixes the item at its max-content width
+   inside a `minmax(0, 19rem)` track that is 300 px narrower than the sentence.
+   `0 1 auto` with a zero minimum keeps the lane at every width where the lane
+   fits and lets the date wrap rather than push the panel where it does not, and
+   the wrap on the parent gives it its own line before it ever has to break
+   inside itself. The accessibility floor is not lowered to match a paint; the
+   paint is followed down to the width where following it would break the
+   screen, and the boundary is written here rather than left to be rediscovered. */
+.knowledge-row-when {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
 }
 .library-empty,
 .inline-empty,
@@ -6619,15 +6711,29 @@ kbd {
   background: var(--surface-selected);
   box-shadow: inset 0 -2px var(--text-primary);
 }
+/* LOT 5 #2 — A GRID, NOT A FLEX ROW WITH `space-between`. The reference lays a
+   note row out as stacked lines (`v3/screens/knowledge.css:138-143`,
+   `.kn-row`), and the difference is not stylistic: `space-between` on a row
+   whose only child is the text block does nothing at all, while the single
+   declared column below states that the row may be exactly as narrow as its
+   panel — which is the property this list has to hold in a `minmax(0, 19rem)`
+   track. The left border is the rail the selected state colours in; it is on
+   the base rule so selecting a row never changes the row's width.
+
+   THE VERTICAL RHYTHM comes from the reference too (`:139`): 0.1875rem between
+   the title and the foot, 0.5625rem of block padding. The row keeps its own
+   `--radius-md` corner rather than the reference's square edge, because in this
+   application the row sits inside a padded list rather than flush against a
+   panel wall. Divergence recorded, not corrected. */
 .knowledge-document-list li button {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: 0.1875rem;
+  padding: 0.5625rem var(--space-3);
   color: var(--text-secondary);
   border: 0;
+  border-left: 2px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   text-align: left;
@@ -6635,12 +6741,39 @@ kbd {
 .knowledge-document-list li button:hover {
   background: var(--surface-hover);
 }
+/* LOT 5 #1 — AND IT CLOSES THE WCAG 2.4.7 DEBT PHASE 2 RECORDED BY ADDRESS.
+   This rule used to carry `box-shadow: inset 2px 0 var(--text-primary)`. The
+   shell paints its focus ring with `box-shadow` as well, and a literal declared
+   on the control itself outranks the token the ring rides on — so the note
+   being read drew NOTHING when it took the focus, on a control that is a normal
+   Tab stop and therefore reachable by every keyboard reader. The elevation-copy
+   block near the top of this sheet names this exact selector as the one control
+   whose shadow escaped that mechanism, and left it here.
+
+   The fix is not a different shadow. The reference has none: it says which row
+   is open with a wash and a coloured left rail and nothing else
+   (`v3/screens/knowledge.css:145`, `:149`, over the transparent 2px border at
+   `:141`). Removing the literal frees the shadow channel, and the shell's own
+   rule paints the ring with no local declaration needed — measured on this
+   control, both themes, rather than inferred from the cascade.
+
+   The wash is licensed by job 1 of the accent rule („Where the reader is",
+   `.ui-craft/tokens.md`), which cites this reference line for row selection;
+   the rail is the ink that rule requires a wash to travel with, and it is also
+   the channel that survives a display with no colour. `--surface-selected`
+   itself is untouched and keeps its consumers on the other screens.
+
+   SPRAWDZONE PRZY ODBIORZE, BO NA BLIŹNIACZEJ LIŚCIE TO NIE WYSZŁO: reguła
+   `:hover` bezpośrednio wyżej i ta reguła ważą TYLE SAMO, a ta stoi niżej, więc
+   zaznaczony wiersz zostaje pod kursorem przy swoim wypełnieniu. Prototyp
+   rozstrzyga to tak samo i też kolejnością (`:144` przed `:145`). Ta sama
+   sprawa w `library/sources.module.css` była napisana jednoklasowo i tam hover
+   BIŁ zaznaczenie — poprawione tam, zmierzone, opisane przy tamtej regule.
+   Żadna bramka tego nie widzi: przelot czyta wiersz w spoczynku i nigdy nie
+   najeżdża myszą. */
 .knowledge-document-list li button.active {
-  background: var(--surface-selected);
-  box-shadow: inset 2px 0 var(--text-primary);
-}
-.knowledge-document-list li button > span {
-  min-width: 0;
+  background: var(--accent-quieter);
+  border-left-color: var(--accent);
 }
 .knowledge-document-list em {
   display: inline-grid;
@@ -7020,9 +7153,23 @@ kbd {
   margin: 0 auto;
   color: var(--text-primary);
 }
+/* LOT 5 #3 — THE HEADING `scripts/heading-typography.mjs` WAS BUILT FOR. It
+   declared a margin and a colour and NEITHER a size NOR a weight, so it drew at
+   the user-agent's 1.5em/700 — off the type ramp entirely, and scaling from a
+   base nobody on this screen set. It sat outside the fidelity probe's subject
+   (`#surface-title`, one heading per screen) for the whole of two waves, which
+   is why an instrument reading the SHEET had to exist before this line could be
+   trusted. Proportions from `v3/screens/knowledge.css:242-245`
+   (`.kn-reader-title`): this heading is the same object, the largest words on
+   an otherwise empty reading surface. */
 .knowledge-welcome h2 {
   margin: var(--space-5) 0 var(--space-2);
   color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+  letter-spacing: -0.018em;
+  text-wrap: balance;
 }
 .knowledge-welcome p {
   line-height: 1.6;

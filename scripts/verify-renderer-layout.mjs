@@ -4035,12 +4035,19 @@ const ROUTED_RECORD_KIND = {
 
 // Klucz przystanku — jedna postać dla map par i dla rejestru P7, żeby wpis
 // przyklejenia nie mógł wskazać na trasę, której nikt nie chodzi.
+// `treeKey` IS PART OF THE KEY, NOT A SILENT EXTRA CLICK. A stop is „the state
+// this pass measures in", and selecting a folder in the Notes tree produces a
+// genuinely different state of the same lens — an empty reading pane instead of
+// an open note. Left out of the key, that stop would collapse into
+// „library | notes | - | -" and the pair riding it would measure the OTHER
+// state's elements, which is the shape of a green pair that proves nothing.
 const routeKey = (route) =>
   route.settingsMode === true
     ? "settings"
     : [
         route.surface ?? "?",
         route.layout ?? "-",
+        route.treeKey ?? "-",
         route.openRecord ?? "-",
         route.recordTab ?? "-",
       ].join(" | ");
@@ -4051,6 +4058,7 @@ const routeLabel = (route) =>
     : [
         route.surface,
         route.layout === undefined ? null : `lens ${route.layout}`,
+        route.treeKey === undefined ? null : `tree node ${route.treeKey}`,
         route.openRecord === undefined
           ? null
           : `record via ${route.openRecord}`,
@@ -4533,6 +4541,51 @@ const walkRouteInPage = async ({ route, arrival, recordKind }) => {
           "opens on, under the name of one it never showed.",
       };
     steps.push(`lens ${route.layout} (aria-selected=true)`);
+  }
+
+  // ── WYBÓR WĘZŁA W DRZEWIE ────────────────────────────────────────────────
+  // Jeden ekran w tej aplikacji ma stan osiągalny WYŁĄCZNIE przez zaznaczenie
+  // czegoś w swojej własnej nawigacji wewnętrznej: powitanie w czytelni Notatek
+  // rysuje się tylko przy pustym widoku, a widok jest pusty tylko w pustym
+  // folderze (`NotesReading.tsx` otwiera najświeższą notatkę z zaznaczenia,
+  // więc „nic nie otwarte" nie jest stanem, do którego da się dojść inaczej).
+  //
+  // Ten krok NIE JEST uogólnieniem na dowolną nawigację wewnątrz ekranu — jest
+  // dokładnie tym jednym drzewem, i dlatego czyta `[data-tree-key]`, a nie
+  // wymyślony atrybut rodziny. Kiedy drugi ekran będzie tego potrzebował,
+  // uogólnienie ma powstać z DWÓCH przypadków, nie z jednego.
+  if (route.treeKey !== undefined) {
+    const node = document.querySelector(
+      `#main-content [data-tree-key="${route.treeKey}"]`,
+    );
+    if (!(node instanceof HTMLElement))
+      return {
+        ok: false,
+        steps,
+        step: `tree node ${route.treeKey}`,
+        reason:
+          `#main-content [data-tree-key="${route.treeKey}"] matched no element on ` +
+          `${route.surface} › ${route.layout}. Either the fixture stopped drawing that node or ` +
+          "the key changed; in both cases nothing below this step was measured in the state it " +
+          "names.",
+      };
+    node.click();
+    await settle(700);
+    const seated = document.querySelector(
+      `#main-content [data-tree-key="${route.treeKey}"]`,
+    );
+    const chosen = seated?.getAttribute("aria-selected") ?? null;
+    if (chosen !== "true")
+      return {
+        ok: false,
+        steps,
+        step: `tree node ${route.treeKey}`,
+        reason:
+          `the tree node „${route.treeKey}" was clicked and reads aria-selected="${chosen}". The ` +
+          "selection did not move, so this stop is still standing in whatever node the screen " +
+          "opened on.",
+      };
+    steps.push(`tree node ${route.treeKey} (aria-selected=true)`);
   }
 
   if (route.openRecord !== undefined) {

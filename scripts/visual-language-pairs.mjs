@@ -2043,8 +2043,71 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // „notes"). Pary źródeł dokładają klik `[data-layout="sources"]`
   // (`library/library-readings.ts:15-19` — słownik odczytów jest zamknięty
   // i przełącznik czyta z niego kolejność).
+  //
+  // ── ODBIÓR 2026-08-07: DZIESIĘĆ PAR PRZECHODZI NA „enforced" ──────────────
+  // Przelot zwrócił DOKŁADNIE dwadzieścia `ROUTED_PENDING_ALREADY_MATCHES`
+  // (dziesięć par × dwa motywy) i nic więcej: 0 DIFFERS, 0 NOT_MEASURED,
+  // 0 ROUTE_FAILED, pięć przelotów geometrii bez przepełnienia, loty 2-4 bez
+  // ruchu (28 / 22 / 34 MATCH). Przed przełączeniem sprawdzono to, czego
+  // krzyk sam z siebie NIE dowodzi — czy pary nie pasują przypadkiem:
+  //
+  //   • MAPA NIE ZOSTAŁA PRZESUNIĘTA POD KOD. `git diff 8860d06` na tym pliku
+  //     nie rusza ŻADNEGO `subject.selector`, `read.property` ani `expect` —
+  //     zmienia się wyłącznie trasa L5-03a, komentarze i licznik `blind`.
+  //     To samo sprawdzono na `heading-typography.mjs` (skasowane WPISY DŁUGU,
+  //     nietknięty skaner) i na `verify-renderer-layout.mjs` (dołożony krok
+  //     `treeKey`, wpisany do `routeKey`, więc przystanek się nie zlewa).
+  //   • L5-03a NIE PASUJE PRZEZ ZBIEG OKOLICZNOŚCI. `--text-xl` to 22 px, a
+  //     wada polegała na dziedziczonym `1.5em` — te dwie liczby potrafią się
+  //     zejść. Sprawdzone w ŹRÓDLE, nie w wartości wyliczonej:
+  //     `styles.css` deklaruje na `.knowledge-welcome h2` jawne
+  //     `font-size: var(--text-xl)` i `font-weight: 600`.
+  //   • POŁOWA WCAG POZYCJI 1 I 9 ZMIERZONA OSOBNO. Para czyta `boxShadow`
+  //     W SPOCZYNKU, więc dowodzi tylko, że kanał cienia jest wolny — nie że
+  //     pierścień się maluje. Zmierzone niezależnym przelotem PRAWDZIWYMI
+  //     klawiszami (`.focus()` ze skryptu nie uzbraja `:focus-visible`), oba
+  //     motywy, oba wiersze: spoczynek `none`, po ArrowDown `:focus-visible`
+  //     prawdziwe i pełny pierścień (1 px akcentu + 3 px poświaty + 14 px
+  //     rozmycia). Dług #3 Fazy 2 zamknięty NA POMIARZE.
+  //
+  // TRZY PARY ZOSTAŁY PRZY TYM ZAOSTRZONE, i wszystkie trzy razy jest to werdykt
+  // o przyrządzie, nie o locie — za każdym razem ta sama pomyłka: asercja
+  // mierzyła NIEOBECNOŚĆ starej wady, a nie OBECNOŚĆ dostawy.
+  //
+  //   • L5-02 nosiła tytuł o PASIE DATY i asertowała `display: grid`, czyli
+  //     obecność siatki nad wierszem, w którym data mogła dalej być sklejona
+  //     z kontekstem. Rozpad na L5-02a i L5-02b.
+  //   • L5-01 i L5-09 czytały wyłącznie `boxShadow: none` — zdanie prawdziwe
+  //     także o wierszu, z którego skasowano CAŁĄ regułę zaznaczenia. Dołożone
+  //     L5-01b i L5-09b czytają wypełnienie `--accent-quieter`; stare pary
+  //     zmieniły identyfikator na `a` i nic poza nim.
+  //
+  // Księgowość podniesiona w tych samych przebiegach (patrz
+  // `VISUAL_LANGUAGE_ROUTED_EXPECTED`): 57 → 58 → 60.
+  //
+  // CZEGO TE PARY DALEJ NIE PILNUJĄ, spisane, żeby cisza nie uchodziła za
+  // werdykt:
+  //   • SAMEGO MALOWANIA PIERŚCIENIA (patrz wyżej). L5-01a i L5-09a czytają
+  //     spoczynek, więc dowodzą, że kanał `box-shadow` jest wolny — nie że coś
+  //     się na nim rysuje. Mierzy to dziś wyłącznie przelot doraźny.
+  //   • ZAZNACZENIA POD KURSOREM. Wszystkie cztery pary pozycji 1 i 9 czytają
+  //     wiersz W SPOCZYNKU, a przelot nigdy nie najeżdża myszą. Odbiór zmierzył
+  //     w Chromium, że `.row:hover` w `sources.module.css` bił jednoklasowe
+  //     `.rowSelected` i przemalowywał zaznaczony wiersz na neutralnie —
+  //     poprawione tam na dwuklasowy selektor, ale ŻADNA bramka tego nie widzi.
+  //   • PRZESUNIĘCIA DATY DO PRAWEJ. L5-02b liczy ELEMENT, nie jego pas: kto
+  //     zostawi `<time>` i skasuje `margin-left: auto`, przejdzie na zielono.
+  //     Element jest liczony świadomie — wyliczony `margin-left: auto` na
+  //     elemencie flex wraca jako piksele, więc asercja literalna byłaby
+  //     zielona przypadkiem albo czerwona przy każdej zmianie szerokości.
+  //   • POZYCJI 11 I 12, które nie mają pary z założenia. Pozycja 11 ma CZTERY
+  //     miejsca wywołania (`LibraryShell.tsx`, `FolderTree.tsx`,
+  //     `NotesReading.tsx`, `SourcesReading.tsx`) i ŻADNEGO nie czyta dziś
+  //     przyrząd — ani ta mapa, ani skan arkuszowy. Poprzednia wersja tej noty
+  //     mówiła „PIĘĆ miejsc, dwa zmierzone w pikselach"; obie liczby były
+  //     nieprawdziwe i żadna nie miała artefaktu, do którego można wrócić.
   {
-    id: "L5-01",
+    id: "L5-01a",
     lot: 5,
     position: 1,
     kind: "restyle",
@@ -2065,30 +2128,115 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "boxShadow" },
     expect: { kind: "literal", value: "none" },
-    status: "pending: LOT 5",
+    // TA PARA CZYTA SPOCZYNEK, więc dowodzi POŁOWY pozycji: kanał `box-shadow`
+    // jest wolny. Druga połowa — że pierścień faktycznie się na nim maluje —
+    // została zmierzona przy odbiorze osobnym przelotem prawdziwych klawiszy
+    // i NIE MA dziś stałej bramki. Zapisane u góry sekcji jako reszta.
+    status: "enforced",
   },
   {
-    id: "L5-02",
+    // DOŁOŻONA PRZY ODBIORZE LOTU 5, 2026-08-07, I JEST TO TA SAMA KLASA
+    // ZAOSTRZENIA, CO L5-02b. `L5-01a` czyta „cienia NIE MA" — a to zdanie
+    // przechodzi na zielono również nad wierszem, z którego skasowano CAŁĄ
+    // regułę zaznaczenia. Bramka certyfikowała nieobecność starej wady i nie
+    // dotykała tego, co pozycja faktycznie dowiozła: wypełnienia akcentem.
+    // „Nieobecność defektu" i „obecność dostawy" to dwa różne pomiary i drugi
+    // z nich nie istniał.
+    //
+    // ZŁAMANA I PRZYWRÓCONA, ZANIM ZOSTAŁA ZAPISANA JAKO „enforced": obie nowe
+    // pary przestawiono na `var(--surface-selected)` (czyli na stan sprzed
+    // lotu) i przelot wrócił DIFFERS w obu motywach, kodem 1 —
+    // `oklch(1 0 0 / 0.075)` w ciemnym i `oklch(0.12 0.006 255 / 0.07)`
+    // w jasnym przeciwko oczekiwanemu akcentowi. Zielone dlatego, że mierzą,
+    // a nie dlatego, że nie umieją zaczerwienić się.
+    id: "L5-01b",
+    lot: 5,
+    position: 1,
+    kind: "restyle",
+    title:
+      "the selected note row is washed with the accent instead of a neutral fill",
+    contract:
+      '.ui-craft/tokens.md — „Accent rule", zadanie 1 („Where the reader is")',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "145",
+      value:
+        '`.kn-row[aria-selected="true"] { background: var(--accent-quieter) }`',
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-document-list li button.active",
+      why: "the same subject as L5-01a read on the other channel: the paint the position delivers, not the literal it removed. `--surface-selected` here would be the pre-lot state and would fail",
+      app: "packages/desktop-ui/src/styles.css (`.knowledge-document-list li button.active`)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--accent-quieter" },
+    // CZEGO I TA PARA NIE WIDZI: stanu POD KURSOREM. Przelot nie najeżdża myszą,
+    // więc reguła `:hover` bijąca zaznaczenie byłaby dla obu par niewidzialna —
+    // dokładnie to zdarzyło się na bliźniaczej liście Źródeł i zostało złapane
+    // pomiarem ręcznym, nie tutaj. Na tej liście `li button.active` i
+    // `li button:hover` ważą tyle samo, a `.active` stoi w arkuszu NIŻEJ, więc
+    // wygrywa — tak samo jak w prototypie (`:144` przed `:145`).
+    status: "enforced",
+  },
+  {
+    id: "L5-02a",
     lot: 5,
     position: 2,
     kind: "restyle",
-    title: "the note row is a grid with its own date lane",
+    title: "the note row is laid out as a grid",
     contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
     prototype: {
       file: "v3/screens/knowledge.css",
-      lines: "138-143, 175-178",
-      value:
-        "`.kn-row { display: grid }` + `.kn-row-when { margin-left: auto; flex: none }`",
+      lines: "138-143",
+      value: "`.kn-row { display: grid }`",
     },
     route: { surface: "library", layout: "notes" },
     subject: {
       selector: ".knowledge-document-list li button",
       why: "global class; the app lays the row out as a flex row with space-between, which is why the date is the thing that ellipses",
-      app: "packages/desktop-ui/src/styles.css:6547-6559",
+      app: "packages/desktop-ui/src/styles.css:6713-6725",
     },
     read: { property: "display" },
     expect: { kind: "literal", value: "grid" },
-    status: "pending: LOT 5",
+    status: "enforced",
+  },
+  {
+    // ZAOSTRZENIE PRZY ODBIORZE LOTU 5, 2026-08-07, I JEST TO WERDYKT
+    // O PRZYRZĄDZIE, NIE O LOCIE. Jedna para nosiła tytuł „a grid with its own
+    // DATE LANE" i asertowała wyłącznie `display: grid`. Te dwa zdania nie są
+    // tym samym zdaniem: pas daty jest CAŁYM defektem tej pozycji — data była
+    // tym, co wielokropek zjadał w kolumnie, którą czytelnik skanuje w dół —
+    // a `display: grid` przechodzi na zielono nad wierszem, w którym kontekst
+    // i data dalej są jednym sklejonym napisem. Bramka mierząca OBECNOŚĆ
+    // siatki nigdy nie zmierzy pasa daty, więc pas dostaje własną parę.
+    //
+    // LICZONA JEST OBECNOŚĆ ELEMENTU, nie jego `margin-left`. Wyliczony
+    // `margin-left: auto` na elemencie flex wraca jako liczba pikseli, a nie
+    // jako „auto", więc asercja literalna byłaby zielona przypadkiem albo
+    // czerwona przy każdej zmianie szerokości. Rozdzielenie daty na WŁASNY
+    // element z własną klasą jest tym, co regresja musiałaby cofnąć.
+    id: "L5-02b",
+    lot: 5,
+    position: 2,
+    kind: "prescribed",
+    title: "the date has its own lane instead of sharing the context string",
+    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "175-178",
+      value:
+        "`.kn-row-when { margin-left: auto; flex: none; font-variant-numeric: tabular-nums }` — osobny element, osobny pas",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-document-list li button time.knowledge-row-when",
+      why: "counted; `<time>` because the date is now the only content of its element, which is also the first point at which the machine-readable value has anywhere to live (NotesReading.tsx). Merging the date back into the context string — the defect this position names — removes this element and nothing else in the map would notice",
+      app: "packages/desktop-ui/src/styles.css:6635-6642, NotesReading.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
   },
   {
     id: "L5-03a",
@@ -2105,7 +2253,18 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-reader-title { font-size: var(--text-xl); font-weight: 600 }`",
     },
-    route: { surface: "library", layout: "notes" },
+    // TRASA MA TERAZ TRZECI KROK i to on zdejmuje z tej pary status BLIND.
+    // `treeKey` wskazuje na folder-liść NAJWYŻSZEGO poziomu bez notatek
+    // (`dev/library-fixture.ts`, `libraryFolderIds.archive`), bo tylko pusty
+    // widok wpuszcza ekran w gałąź `else` czytelni. Przystanek jest ODDZIELNY
+    // od „library | notes | - | - | -", więc sześć pozostałych par Notatek
+    // dalej mierzy swój własny stan — dwa stany jednego ekranu, każdy pod
+    // swoim adresem, zamiast jednej fikstury, która nie utrzyma obu naraz.
+    route: {
+      surface: "library",
+      layout: "notes",
+      treeKey: "00000000-0000-4000-8000-000000000507",
+    },
     subject: {
       selector: ".knowledge-welcome h2",
       why: "global class; the rule declares margin and colour and NO size, so the heading falls back to the user-agent 1.5em",
@@ -2120,20 +2279,26 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // otwiera się NAJŚWIEŻSZA notatka z widoku, a `.knowledge-welcome` jest
     // gałęzią `else` (`:571`), do której da się dojść tylko przez PUSTY
     // `inView`. Fikstura z notatkami nigdy tam nie trafi, a fikstura bez
-    // notatek zabiera podmiot L5-01, L5-02, L5-04, L5-05, L5-07 i L5-08 na tym
-    // samym przystanku. To nie jest brak danych, tylko dwa stany tego samego
+    // notatek zabiera podmiot L5-01a/b, L5-02a/b, L5-04, L5-05, L5-07 i L5-08
+    // na tym samym przystanku. To nie jest brak danych, tylko dwa stany tego samego
     // ekranu, których jedna fikstura nie trzyma naraz.
-    blind:
-      "fixture: „.knowledge-welcome" +
-      "” to gałąź pustego widoku, a `NotesReading.tsx:189-195` zawsze otwiera najświeższą notatkę " +
-      "z zaznaczonego węzła — pustego `inView` NIE DA SIĘ osiągnąć na fiksturze, która ma notatki, " +
-      "a te są podmiotem sześciu innych par na TYM SAMYM przystanku. " +
-      "WYJŚCIE JEST DWUCZĘŚCIOWE I ZMIERZONE, należy do LOTU 5: (1) folder-liść NAJWYŻSZEGO poziomu " +
-      "bez notatek w `library-fixture.ts:280` — `notesInSelection` bierze CAŁE poddrzewo " +
-      "(`folder-tree.ts:202-217`), więc folder z dziećmi nie wystarczy; (2) krok trasy klikający " +
-      '`[data-tree-key="<id>"]` (`FolderTree.tsx:189`) w `walkRouteInPage`, DOPISANY DO `routeKey` — ' +
-      "bez tego przystanek zleje się z „library | notes | - | -” i para dalej nie zmierzy nic",
-    status: "pending: LOT 5",
+    // WYMÓWKA FIKSTUROWA ZDJĘTA 2026-08-07 PRZEZ LOT 5 — obie jej części
+    // dowiezione dokładnie tak, jak je opisywała: (1) `libraryFolderIds.archive`
+    // w `dev/library-fixture.ts` jest folderem-liściem najwyższego poziomu bez
+    // notatek (`notesInSelection` bierze całe poddrzewo, więc folder z dziećmi
+    // nie wystarczyłby); (2) `walkRouteInPage` ma krok `treeKey`, a `routeKey`
+    // go NIESIE, więc ten przystanek nie zlewa się z przystankiem pozostałych
+    // par Notatek. Para mierzy dziś prawdziwy element — nie jest już pozycją
+    // bez dowodu.
+    //
+    // SPRAWDZONE W ŹRÓDLE PRZED PRZEŁĄCZENIEM, bo akurat ta para mogła pasować
+    // przypadkiem: `--text-xl` to 22 px, a wada polegała na dziedziczonym
+    // `1.5em`, które przy odpowiednim rodzicu daje te same 22 px. `styles.css`
+    // deklaruje dziś na `.knowledge-welcome h2` jawne `font-size: var(--text-xl)`
+    // — pomiar nie jest zbiegiem okoliczności. Wagę tej samej reguły trzyma
+    // osobno `scripts/heading-typography.mjs`, który nie ma już dla niej wpisu
+    // długu.
+    status: "enforced",
   },
   {
     id: "L5-03b",
@@ -2161,12 +2326,12 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // (`SourcesReading.tsx:325-327`), a `setSelectedSourceId` nigdy nie dostaje
     // `undefined` (`:329-331`, `:443`). Powitanie rysuje się WYŁĄCZNIE przy
     // zerowej liczbie źródeł w całej przestrzeni, a trzy inne pary na tym
-    // przystanku (L5-06, L5-09, L5-10) czytają wiersze źródeł.
+    // przystanku (L5-06, L5-09a/b, L5-10) czytają wiersze źródeł.
     blind:
       'fixture: „[class*="_welcome_"]' +
       "” w Źródłach rysuje się TYLKO przy `sources.length === 0` (SourcesReading.tsx:325-327, 455), " +
       "a odczyt nie ma ani filtra, ani sposobu odznaczenia — więc żaden krok trasy tam nie dojdzie. " +
-      "Pusta lista źródeł zabiera z kolei podmiot L5-06, L5-09 i L5-10 na TYM SAMYM przystanku. " +
+      "Pusta lista źródeł zabiera z kolei podmiot L5-06, L5-09a/b i L5-10 na TYM SAMYM przystanku. " +
       "WYJŚCIE JEST WYBOREM, nie linijką, i należy do LOTU 5: albo ekran dostaje afordancję " +
       "zamykającą czytelnię (wtedy wystarczy krok trasy, jak w L5-03a), albo przelot dostaje DRUGĄ " +
       "fiksturę pustej przestrzeni pod osobnym adresem harnessu — dziś `verify-renderer-layout.mjs` " +
@@ -2193,7 +2358,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "fontWeight" },
     expect: { kind: "literal", value: "600" },
-    status: "pending: LOT 5",
+    // JEDEN Z SIEDMIU NAGŁÓWKÓW tej pozycji — reszta nie ma tu pary i nie musi
+    // jej mieć: `scripts/heading-typography.mjs` skanuje WSZYSTKIE arkusze
+    // i po tym locie nie trzyma ani jednego wpisu długu z właścicielem
+    // „lot 5 #4" (79 zadeklarowanych, 22 znane, 0 niedopasowanych).
+    status: "enforced",
   },
   {
     id: "L5-05",
@@ -2216,7 +2385,14 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "backgroundColor" },
     expect: { kind: "token", token: "--accent-quieter" },
-    status: "pending: LOT 5",
+    // R1 ROZSTRZYGNIĘTY NA KORZYŚĆ PROTOTYPU I KONTRAKT JUŻ TO NIESIE:
+    // `.ui-craft/tokens.md`, „Accent rule", zadanie 1 („Where the reader is")
+    // wymienia zwykłe zaznaczenie wiersza i cytuje `v3/screens/knowledge.css:145`
+    // oraz `:46-49` imiennie. Zdanie briefu Fazy 3, że zaznaczenie wiersza
+    // zostaje neutralne, pochodzi z POPRZEDNIEJ wersji kontraktu i jest przez
+    // ten zapis uchylone. Wyliczone w obu motywach osobno (dark 0.64/0.2/295
+    // przy alfie 0,08, light 0.55/0.21/295 przy 0,07).
+    status: "enforced",
   },
   {
     id: "L5-06",
@@ -2238,7 +2414,17 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
-    status: "pending: LOT 5",
+    // TYTUŁ TEJ PARY MÓWI WIĘCEJ, NIŻ JEJ ASERCJA, i to jest zapisane, a nie
+    // naprawione. Para liczy `svg` — czyli KWADRAT z glifem, dokładnie to, co
+    // cytuje jej `prototype.value` (`.kn-ref-ico`). Rodzaju rekordu ten glif
+    // NIE NIESIE: lot świadomie dał jeden neutralny glif dla wszystkich
+    // rodzajów, bo mapa glif-na-rodzaj byłaby ręczną listą obok zamkniętego
+    // słownika, a brakujący wpis rysowałby pustkę zamiast błędu. Rodzaj niesie
+    // SŁOWO, i to słowo ma własny przyrząd, tylko w innym miejscu:
+    // `packages/desktop-ui/test/sources-screen.interaction.test.tsx` asertuje
+    // `[data-source-dependent-kind]` przeciwko `dependentKindLabel`. Pozycja
+    // jest więc zmierzona w całości — dwoma przyrządami, nie jednym.
+    status: "enforced",
   },
   {
     id: "L5-07",
@@ -2264,7 +2450,15 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       "JEŻDŻĄCY KCIUK NIE MA TU PARY, świadomie: brief zostawia lotowi decyzję „albo kciuk znika przy " +
       "zawinięciu, albo tor przestaje się zawijać”, a `.arrangement` ma `flex-wrap: wrap` postawiony " +
       "celowo pod 300% tekstu. Para na kciuka narzucałaby rozstrzygnięcie tej decyzji.",
-    status: "pending: LOT 5",
+    // DECYZJA ZAPADŁA I ZOSTAŁA ZMIERZONA PRZY ODBIORZE. Lot nie wziął żadnego
+    // z dwóch wyjść reconu, tylko trzecie — WCIŚNIĘTY PRZYCISK JEST KCIUKIEM
+    // (niesie `--surface-elevated`, `--shadow-sm` i `--edge-top`). W geometrii
+    // bramki (1092 px, 300% tekstu) tor faktycznie zawija się na DWA wiersze,
+    // zostając w panelu z 36 px zapasu — czyli kciuk pozycjonowany absolutnie
+    // stanąłby pod złym przyciskiem dokładnie tak, jak przewidywał recon.
+    // KOSZT NAZWANY: `--ease-spring` nie dostaje z tego lotu konsumenta
+    // (sprawdzone: zero trafień `var(--ease-spring)` poza `tokens.css`).
+    status: "enforced",
   },
   {
     id: "L5-08",
@@ -2287,10 +2481,16 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
     risk: 'czwarty tor w panelu `minmax(0, 13rem)` przy wcięciu `calc(… + depth * 0.6875rem)` to realne ryzyko przelewu przy 300% tekstu — ta pozycja MA własny przyrząd (descendant-overflow.mjs + przelot „Library at 300% text") i ta para go nie zastępuje',
-    status: "pending: LOT 5",
+    // RYZYKO POWYŻEJ ZMIERZONE PRZY ODBIORZE, NIE ODHACZONE. Węzeł ma dziś
+    // cztery tory (`14px 14px 216px 7px`), a przelot „Library at 300% text"
+    // wrócił bez przepełnienia; osobny pomiar w tej samej geometrii daje
+    // 24 px zapasu między najszerszym węzłem a ścianą panelu. Sam glif jest
+    // liczony w obu motywach (8 `svg` na 6 węzłach: folder na każdym, chevron
+    // na rozwijalnych).
+    status: "enforced",
   },
   {
-    id: "L5-09",
+    id: "L5-09a",
     lot: 5,
     position: 9,
     kind: "restyle",
@@ -2300,17 +2500,57 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "145-150",
-      value: "to samo, co L5-01 — zaznaczenie bez cienia",
+      value: "to samo, co L5-01a — zaznaczenie bez cienia",
     },
     route: { surface: "library", layout: "sources" },
     subject: {
       selector: '[role="option"][class*="_rowSelected_"]',
-      why: "CSS Module twin of L5-01, narrowed by role=option (SourcesReading.tsx:99) because EIGHT distinct _rowSelected_ classes exist across the built chunks; it is a Tab stop (hooks/useListNavigation.ts:54), so the erased focus ring is reachable",
+      why: "CSS Module twin of L5-01a, narrowed by role=option (SourcesReading.tsx:99) because EIGHT distinct _rowSelected_ classes exist across the built chunks; it is a Tab stop (hooks/useListNavigation.ts:54), so the erased focus ring is reachable",
       app: "packages/desktop-ui/src/library/sources.module.css:132-135",
     },
     read: { property: "boxShadow" },
     expect: { kind: "literal", value: "none" },
-    status: "pending: LOT 5",
+    // TA SAMA POŁÓWKA, CO W L5-01a: para czyta spoczynek. Że pierścień NAPRAWDĘ
+    // się maluje, zmierzono przy odbiorze osobno i prawdziwymi klawiszami —
+    // wiersz osiągnięty ArrowDownem ma `:focus-visible` i pełny pierścień
+    // w obu motywach, a jego `tabindex` jest w tej chwili „0", co potwierdza
+    // wprost tezę lotu: komponent przestawia roving stop ZANIM przeniesie
+    // ognisko, więc reguła powłoki go dosięga i lokalna reguła byłaby martwa.
+    status: "enforced",
+  },
+  {
+    // DOŁOŻONA PRZY ODBIORZE LOTU 5, 2026-08-07 — bliźniaczka L5-01b, i to na
+    // TEJ liście jej brak kosztował naprawdę. `L5-09a` czyta „cienia nie ma",
+    // co jest prawdą również o wierszu bez żadnego zaznaczenia; wypełnienia
+    // akcentem nie czytało nic. Odbiór zmierzył w Chromium, że jednoklasowe
+    // `.rowSelected` przegrywało z `.row:hover` i zaznaczony wiersz wracał pod
+    // kursorem do neutralnego tła — wada, którą arkusz naprawił dwuklasowym
+    // selektorem, a której TA para dalej nie widzi, bo przelot nie najeżdża
+    // myszą. Mierzy więc spoczynek, i to jest o jeden kanał więcej niż wcześniej,
+    // a nie komplet.
+    id: "L5-09b",
+    lot: 5,
+    position: 9,
+    kind: "restyle",
+    title:
+      "the selected source row is washed with the accent instead of a neutral fill",
+    contract:
+      '.ui-craft/tokens.md — „Accent rule", zadanie 1 („Where the reader is")',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "145",
+      value:
+        '`.kn-row[aria-selected="true"] { background: var(--accent-quieter) }`',
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[role="option"][class*="_rowSelected_"]',
+      why: "the same subject as L5-09a on the other channel; `--surface-selected` here would be the pre-lot state and would fail",
+      app: "packages/desktop-ui/src/library/sources.module.css (`.row.rowSelected`)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--accent-quieter" },
+    status: "enforced",
   },
   {
     id: "L5-10",
@@ -2335,7 +2575,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "color" },
     expect: { kind: "token", token: "--status-success" },
-    status: "pending: LOT 5",
+    // I PARA WESZŁA POD DRUGI PRZYRZĄD, o co ta pozycja chodziła: konsument
+    // deklaruje dziś obie połowy `--status-success` / `--status-success-bg`,
+    // więc `scripts/consumer-contrast.test.mjs` i `status-contrast.test.mjs`
+    // sądzą realny konsument, a nie samą parę tokenów. Oba przeszły.
+    status: "enforced",
   },
 
   // ══ LOT 6 — SETTINGS ══════════════════════════════════════════════════════
@@ -2632,7 +2876,21 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
  * dwie jej pozycje zostały świadomie nieoddane).
  */
 export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
-  pairs: 57,
+  // 57 → 58 PRZY ODBIORZE LOTU 5, 2026-08-07. Przyrost jest ZAOSTRZENIEM,
+  // nie nową pozycją: para na pozycji 2 Lotu 5 nosiła tytuł mówiący o pasie
+  // daty i asertowała wyłącznie `display: grid`, więc rozpadła się na L5-02a
+  // (siatka) i L5-02b (data ma własny element). Pozycja w briefie dalej jedna,
+  // więc `lots.5.positionsWithPairs` się NIE zmienia — rośnie tylko `pairs`
+  // tutaj i `lots.5.pairs` niżej, i muszą rosnąć razem, bo `auditRoutedMap`
+  // liczy jedno i drugie osobno.
+  //
+  // 58 → 60 W TYM SAMYM ODBIORZE, TĄ SAMĄ DROGĄ I Z TEGO SAMEGO POWODU. Pozycje
+  // 1 i 9 miały po JEDNEJ parze, i obie czytały `boxShadow: none` — zdanie
+  // prawdziwe także o wierszu, z którego skasowano całą regułę zaznaczenia.
+  // Bramka pilnowała nieobecności STAREJ WADY i nie dotykała dostawy. L5-01b
+  // i L5-09b czytają wypełnienie `--accent-quieter` na tych samych podmiotach.
+  // Znowu tylko `pairs` i `lots.5.pairs`; `positionsWithPairs` bez zmian.
+  pairs: 60,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -2655,7 +2913,23 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // więc pole `blind` zdjęto z każdej z nich razem z jej warunkiem. Zostają
   // L5-03a i L5-03b — jedyne dwie, którym brakuje STANU EKRANU, a nie danych,
   // i ich warunki wyjścia stoją nietknięte przy wpisach.
-  blind: 2,
+  //
+  // 2 → 1 PRZY ODBIORZE LOTU 5, 2026-08-07, TĄ SAMĄ DROGĄ. L5-03a miała warunek
+  // wyjścia dwuczęściowy i adresowany wprost do tego lotu; lot dowiózł obie
+  // części (pusty folder-liść w fiksturze, krok `treeKey` w `walkRouteInPage`
+  // niesiony przez `routeKey`) i para wróciła z POMIAREM. Pole `blind` zdjęte
+  // razem z warunkiem.
+  //
+  // ZOSTAJE L5-03b, I ZOSTAJE ŚWIADOMIE. Jej warunek wyjścia NIE JEST tą samą
+  // robotą: powitanie Źródeł rysuje się wyłącznie przy zerowej liczbie źródeł
+  // w całej przestrzeni, a odczyt nie ma ani filtra, ani odznaczenia — więc nie
+  // istnieje krok trasy, który by tam doszedł. Wyjściem jest albo nowa
+  // afordancja zamykająca czytelnię, albo DRUGA fikstura pod osobnym adresem
+  // harnessu; jedno i drugie to decyzja produktowa albo przebudowa przelotu, a
+  // nie pozycja ekranowa. Ta sama pozycja jest jednak ZMIERZONA po stronie
+  // arkusza przez `scripts/heading-typography.mjs`, więc „bez dowodu" dotyczy
+  // dziś wyłącznie pikseli, nie deklaracji.
+  blind: 1,
   lots: {
     2: {
       // faza-3-build-brief.md:230-241
@@ -2681,7 +2955,10 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
     5: {
       // faza-3-build-brief.md:333-346
       positionsInBrief: 12,
-      pairs: 11,
+      // 11 → 12 → 14: rozpad L5-02 na L5-02a/L5-02b oraz dołożenie L5-01b
+      // i L5-09b przy odbiorze — patrz noty przy `pairs` wyżej. Pozycje objęte
+      // parą się nie zmieniły.
+      pairs: 14,
       positionsWithPairs: 10, // 1-10
       positionsWithoutPairs: [11, 12],
     },

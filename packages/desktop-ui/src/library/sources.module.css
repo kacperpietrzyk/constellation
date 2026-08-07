@@ -52,15 +52,56 @@
   gap: var(--space-2);
 }
 
+/* LOT 5 #4 — the weight, missing here as on the other four Library headings.
+   600 from `v3/screens/knowledge.css:94`; without it this heading computed the
+   user-agent 700 and outweighed the screen title above it. */
 .listTitle h2 {
   margin: 0;
   color: var(--text-primary);
   font-size: var(--text-md);
+  font-weight: 600;
   letter-spacing: -0.015em;
 }
 
-.count {
+/* LOT 5 #11 — THE FOURTH COUNTER, and it is the one that nearly shipped as the
+   odd pill among three flat numbers. `.library-count` has FOUR consumers and
+   the brief names three: the Library target header (`LibraryShell.tsx`) and
+   both Notes panel heads (`FolderTree.tsx`, `NotesReading.tsx`) — and THIS,
+   which no address in the brief mentions. Nothing would have caught it — the
+   position is recorded in `scripts/visual-language-pairs.mjs` as covered by no
+   pair at all, because a pair could only name the global rule the lot may not
+   change or a module class that did not yet exist. Same narrowing as the other
+   three, and the two-class selector keeps the winner a question of specificity
+   rather than of the order two stylesheets are injected in.
+
+   THE NUMBER IS STATED WITH ITS SEARCH, because the first version of this
+   comment said „five consumers, not four" and then listed four — a count nobody
+   re-ran, in the same lot that spent position 10 deleting a comment nobody
+   re-ran. The search: the literal `library-count` over the renderer's own
+   sources and tests, in `.ts`, `.tsx` and `.mjs`, with built output excluded —
+   exactly four call sites. It would not return a consumer that reaches this
+   class through a class name assembled at runtime, and there is none today.
+
+   COLOUR IS THE ONE PROPERTY BELOW THAT IS NOT THE REFERENCE'S. `.kn-n`
+   (`v3/screens/knowledge.css:98-101`) gives the flat count `--text-disabled`;
+   all four of these keep the `--text-tertiary` they already had, one step
+   louder. Everything else — size, weight, tabular figures, no tracking, no
+   border, no pill box — is taken from that rule. Recorded rather than silently
+   diverged from, because a citation that covers a line the rule contradicts is
+   how a divergence stops being findable. */
+.listHead .count {
+  display: inline;
   flex: none;
+  min-width: 0;
+  min-height: 0;
+  padding-inline: 0;
+  color: var(--text-tertiary);
+  border: 0;
+  border-radius: 0;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 .groups {
@@ -121,6 +162,7 @@
   gap: var(--space-1);
   padding: var(--space-3);
   border-radius: var(--radius-md);
+  border-left: 2px solid transparent;
   cursor: default;
 }
 
@@ -128,10 +170,58 @@
   background: var(--surface-hover);
 }
 
-/* Wybrany wiersz niesie WYPEŁNIENIE i pasek, nie sam cieplejszy kolor. */
-.rowSelected {
-  background: var(--surface-selected);
-  box-shadow: inset 2px 0 var(--text-primary);
+/* NO LOCAL `:focus-visible` RULE, for the reason written out at the same place
+   in `notes.module.css`: the roving stop moves before the focus does
+   (`hooks/useListNavigation.ts`, `setFocusIndex` then `target.focus()`), so a
+   row reached by ArrowDown carries `tabindex="0"` by the time it is painted and
+   the shell's own ring rule reaches it. Measured on this list in both themes by
+   breaking a local rule out and re-running — not reasoned from the cascade,
+   which pointed the other way. */
+
+/* LOT 5 #9 — AND IT CLOSES A NAMED WCAG 2.4.7 DEBT, not just a paint mismatch.
+   The rule below used to carry `box-shadow: inset 2px 0 var(--text-primary)`.
+   That literal is outside the elevation family, and the shell's focus ring is
+   ALSO a `box-shadow` on the same element, so the selection stripe outranked it
+   and the selected row drew nothing at all when it took focus. Phase 2 recorded
+   the twin of this defect by address (`styles.css`, the elevation-copies block)
+   and left it for this lot.
+
+   The reference never had the stripe: selection there is a wash plus a coloured
+   left border and NO shadow (`v3/screens/knowledge.css:145`, `:149`, over the
+   transparent 2px border every row carries at `:141`). Taking its shape is what
+   frees the shadow channel for the ring. Wash and rail together also keep the
+   accessibility property the old comment claimed: which row is selected
+   survives a display with no colour, because the rail is a shape.
+
+   `--surface-selected` is NOT touched: it is the neutral selection of the whole
+   application and has consumers on four other screens. Only this selector moves
+   out of it, licensed by job 1 of the accent rule („Where the reader is",
+   `.ui-craft/tokens.md`), which names this exact reference line.
+
+   TWO CLASSES, AND THE SECOND ONE IS THE WHOLE POINT — ADDED AT ACCEPTANCE,
+   MEASURED FIRST. Written as a single class this rule weighed (0,1,0) against
+   the (0,2,0) of `.row:hover` four rules up, so a selected row REPAINTED ITSELF
+   NEUTRAL under the cursor: the wash this position exists to deliver was
+   visible everywhere except where the reader was pointing. Measured in Chromium
+   on the two rules alone — at rest the selection colour, on hover the hover
+   colour — not deduced. The reference does not have the defect, and not by
+   accident either: `v3/screens/knowledge.css:144` and `:145` weigh the same and
+   selection is written SECOND, so it wins there by order.
+
+   The stripe that used to sit here hid this for as long as it existed — a
+   `box-shadow` no hover rule touches kept saying „selected" while the
+   background was overruled, so removing the stripe is what made the shadowing
+   observable. The pair that guards this position reads the row AT REST and in
+   a walk that never hovers, so no gate in this repository can see it; that is
+   why the measurement is written down here instead of being left to one.
+
+   `.row.rowSelected` now weighs the same as `.row:hover` and is declared after
+   it, which is the reference's own tie-break rather than a specificity race
+   nobody can read later. Both classes are always on the element together
+   (`SourcesReading.tsx`), so nothing new has to be true for this to match. */
+.row.rowSelected {
+  background: var(--accent-quieter);
+  border-left-color: var(--accent);
 }
 
 .rowTop {
@@ -188,10 +278,22 @@
   white-space: nowrap;
 }
 
-/* Tło i ramka niosą TON, tekst zostaje na kolorze o pełnym kontraście. Odwrotna
-   kolejność — kolorowy tekst na tle okna — jest tym, na czym APCA pada przy
-   zielonym i czerwonym w trybie jasnym. */
+/* LOT 5 #10 — THE ONE BADGE THAT DECLARED HALF A PAIR WHILE ITS COMMENT CLAIMED
+   THE WHOLE ONE. The prose above this rule used to say the text „stays on a
+   full-contrast colour"; the rule declared a border and a background and NO
+   colour, so the text took whatever the row above it happened to inherit — and
+   the row's colour is not a decision anybody made about this badge. Its two
+   siblings both declare one, which is why this was invisible: the family looked
+   complete.
+
+   Nothing measured it either, and that is the general lesson rather than this
+   badge's own: the contrast gates read `tokens.css` and judge NAMED PAIRS OF
+   TOKENS, so a consumer using one half of a pair is exactly the shape they
+   cannot see. `--status-success` over `--status-success-bg` is now a pair with a
+   consumer, and `scripts/status-contrast.test.mjs` judges it.
+   `v3/screens/knowledge.css:444` (`.kn-avail--ok`) declares all three. */
 .badge_available {
+  color: var(--status-success);
   border-color: var(--status-success);
   background: var(--status-success-bg);
 }
@@ -217,10 +319,13 @@
   padding: var(--space-5) var(--space-6) var(--space-6);
 }
 
+/* LOT 5 #4 — weight from `v3/screens/knowledge.css:243` (`.kn-reader-title`),
+   which is the same object: the title of the thing being read. */
 .readerHead h3 {
   margin: var(--space-1) 0 var(--space-3);
   color: var(--text-primary);
   font-size: var(--text-xl);
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
@@ -322,6 +427,28 @@
   overflow-wrap: anywhere;
 }
 
+/* LOT 5 #6 — „WHAT RESTS ON THIS" STOPS BEING A LIST OF BARE TITLES. The
+   reference draws each dependent as a row with a bordered glyph square, the
+   record's KIND above its name, and an exit on the right
+   (`v3/screens/knowledge.css:401-427`, `.kn-ref-row` / `.kn-ref-ico` /
+   `.kn-ref-kind` / `.kn-ref-go`). Two of those three are taken here; the third
+   is deliberately not, and both decisions are worth the words:
+
+   THE KIND IS A WORD, NOT A GLYPH PER KIND. `RecordKindSchema` is a CLOSED
+   dictionary and `recordKindLabels` is derived from it by mapping, so the label
+   for a new kind exists the day the kind does. A per-kind icon map would be a
+   hand-written list standing beside that closed dictionary — the defect class
+   this repository has hit three times in one wave, and the one that is silent
+   because a missing entry looks like a blank rather than like an error. So the
+   square carries ONE neutral glyph for every kind and the WORD carries which
+   kind it is. That also happens to be the channel that survives a screen reader
+   and a monochrome display, which the glyph would not.
+
+   THERE IS NO EXIT ARROW. The reference's `.kn-ref-go` points somewhere; this
+   projection carries a `recordId` and a `recordKind` and this screen has no
+   navigation call to spend them on. An arrow with nowhere to go is a lying
+   affordance — it costs a click and returns nothing — so the row is drawn
+   without one until there is a destination. */
 .restsList {
   display: grid;
   gap: var(--space-1);
@@ -337,6 +464,46 @@
   min-width: 0;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+/* `minmax(0, 1fr)` on the text track, not `1fr`: a dependent's title is free
+   text and one unbreakable string in it would otherwise size the track by its
+   max-content width and push the whole reading pane — the family of defect this
+   sheet already carries four other declarations against. */
+.restsRow {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.restsIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+}
+
+.restsIcon svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+}
+
+.restsBody {
+  min-width: 0;
+}
+
+.restsKind {
+  display: block;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .restsMore {
@@ -387,9 +554,21 @@
   text-align: center;
 }
 
+/* LOT 5 #3 — the second of the two headings that declared NEITHER a size nor a
+   weight, which is the exact defect `scripts/heading-typography.mjs` was built
+   to find. With no author declaration and no heading reset in this package, it
+   drew at the user-agent's 1.17em/700 — a number nobody chose and one that
+   scales off the type ramp entirely. Proportions from
+   `v3/screens/knowledge.css:242-245` (`.kn-reader-title`), which is what this
+   heading is: the largest words on an otherwise empty reading surface. */
 .welcome h3 {
   margin: var(--space-5) 0 var(--space-2);
   color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+  letter-spacing: -0.018em;
+  text-wrap: balance;
 }
 
 /* Te same progi, co `.knowledge-layout`, bo to ta sama szczelina powłoki i dwa

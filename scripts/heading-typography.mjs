@@ -90,100 +90,30 @@ export const REQUIRED_HEADING_PROPERTIES = ["font-size", "font-weight"];
  * `scripts/descendant-overflow.mjs` requires.
  */
 export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
-  // ── Library, lot 5 #3: two headings with NEITHER declaration ──────────────
-  // The item this instrument was built for. `v3/screens/knowledge.css:242-245`
-  // gives the welcome heading a size and a weight; both of these give it
-  // neither, so both draw at the user-agent's `1.5em` / `bold`.
-  {
-    sheet: "styles.css",
-    selector: ".knowledge-welcome h2",
-    missing: ["font-size", "font-weight"],
-    owner: "lot 5 #3",
-    note: "Library welcome heading — brief cites styles.css:6753-6756, the rule is at :6948.",
-  },
-  {
-    sheet: "library/sources.module.css",
-    selector: ".welcome h3",
-    missing: ["font-size", "font-weight"],
-    owner: "lot 5 #3",
-    note: "Sources welcome heading — the brief's address (:390-393) still holds.",
-  },
-  // ── Library, lot 5 #4: panel and group headings with no weight ────────────
-  // The brief counts five and cites `notes.module.css:79-86`, `:200-215`,
-  // `sources.module.css:55-60`, `:220-228` and `styles.css:6157-6164`. The first
-  // four hold. The fifth address is STALE — `styles.css:6157-6164` is
-  // `.document-entity-reference` today — and the scan puts the Library's fifth,
-  // sixth and seventh weightless headings at `styles.css:6451-6457`, one rule
-  // carrying three subjects.
-  {
-    sheet: "library/notes.module.css",
-    selector: ".panelHead h2",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "Notes panel heading.",
-  },
-  {
-    sheet: "library/notes.module.css",
-    selector: ".groupHead",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "Notes group heading. A CLASS subject: `NotesReading.tsx:434` puts this class on an <h3>, while five other modules put a class of the same name on a <div>. Only this sheet is judged, and only because the JSX says so.",
-  },
-  {
-    sheet: "library/sources.module.css",
-    selector: ".listTitle h2",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "Sources list heading.",
-  },
-  {
-    sheet: "library/sources.module.css",
-    selector: ".readerHead h3",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "Sources reader heading.",
-  },
-  {
-    sheet: "styles.css",
-    selector: ".section-heading-row h3",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "styles.css:6451 — inside the Library's global block (:6128-6790), which is lot 5's file scope.",
-  },
-  {
-    sheet: "styles.css",
-    selector: ".section-heading-row h4",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "styles.css:6451 — same rule, second element.",
-  },
-  {
-    sheet: "styles.css",
-    selector: ".knowledge-editor-header h2",
-    missing: ["font-weight"],
-    owner: "lot 5 #4",
-    note: "styles.css:6352 — the note editor's own heading; sized at --text-xl, unweighted.",
-  },
-  // ── Library, lot 5 by file scope, NOT named by any of its twelve items ────
-  // Two of these have NO CONSUMER: grepping the whole renderer for
-  // `library-section-heading` and `knowledge-library` returns nothing outside
-  // the sheet itself. Lot 5 should DELETE them rather than paint them, and the
-  // note says so, because a registry that reads „fix this" over dead code sends
-  // the lot to the wrong work.
-  {
-    sheet: "styles.css",
-    selector: ".library-section-heading h2",
-    missing: ["font-weight"],
-    owner: "lot 5 — file scope",
-    note: "styles.css:6451. NO CONSUMER: `library-section-heading` appears nowhere outside this sheet (measured 2026-08-07). Delete, do not paint.",
-  },
-  {
-    sheet: "styles.css",
-    selector: ".knowledge-library h1",
-    missing: ["font-weight"],
-    owner: "lot 5 — file scope",
-    note: "styles.css:6352. NO CONSUMER: `knowledge-library` appears nowhere outside this sheet (measured 2026-08-07). Delete, do not paint.",
-  },
+  // ── Library, lot 5 #3 and #4: RETIRED 2026-08-07, eleven entries deleted ──
+  // Nine were named by the lot (two `#3` subjects declaring NEITHER property,
+  // seven `#4` subjects declaring no weight) and two more were carried here
+  // under „lot 5 — file scope". All eleven were paid, and the two file-scope
+  // ones were paid the OPPOSITE way to the way this registry told the lot to
+  // pay them — which is the part worth keeping:
+  //
+  //   `.library-section-heading h2` and `.knowledge-library h1` were recorded
+  //   here as having NO CONSUMER, with the instruction „delete, do not paint".
+  //   The measurement behind that instruction was a grep over the renderer's
+  //   MARKUP, and it was correct about the markup. It missed a consumer of a
+  //   different kind: `packages/desktop-ui/test/interaction-recovery-contract.test.ts`
+  //   asserts `.knowledge-library { … background: var(--surface-sunken) }` by
+  //   regular expression over the stylesheet SOURCE, so deleting the block
+  //   turns that test red. Both selectors also share their rule with a live
+  //   sibling (`.knowledge-editor-header h2`, `.section-heading-row h3`/`h4`),
+  //   so one declaration retires the live entry and the dead one together
+  //   whether or not anybody wants it to.
+  //
+  //   THE LESSON FOR THE NEXT ENTRY WRITTEN HERE: „no consumer" is a claim
+  //   about a search, and the search that produced it has to be stated. A rule
+  //   can be held in place by a test that reads the sheet as a string, by a
+  //   gate's registry, or by a selector in a script — none of which a grep for
+  //   `className` will ever return.
   {
     sheet: "styles.css",
     selector: ".document-canvas h1",

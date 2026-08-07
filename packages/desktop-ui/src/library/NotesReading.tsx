@@ -310,10 +310,23 @@ export const NotesReading = ({
 
       <section aria-label="Notes" className={styles.listPanel}>
         <div className={styles.panelHead}>
-          <h2>{structureReadable ? selectionLabel : "All notes"}</h2>
+          <div className={styles.panelTitle}>
+            {/* THE MICRO-LABEL SAYS WHAT THE PANEL IS; the line under it says
+                what is selected. The reference puts both in one uppercase
+                heading (`v3/screens/knowledge.css:92-97`) because there the
+                heading is the fixed word „NOTES" — here it is the reader's own
+                folder path, and upper-casing somebody's folder name is a claim
+                about their text this screen has no business making. */}
+            <p className={styles.panelEyebrow}>Notes</p>
+            <h2>{structureReadable ? selectionLabel : "All notes"}</h2>
+          </div>
           {/* The count of THIS list, which is why it agrees with the counter on
-              the tree node beside it: both include descendant folders. */}
-          <span className="library-count">{inView.length}</span>
+              the tree node beside it: both include descendant folders. The
+              global class keeps the shared rule's single owner; the module class
+              flattens the pill for this screen only. */}
+          <span className={`library-count ${styles.headCount}`}>
+            {inView.length}
+          </span>
         </div>
 
         <div className={styles.listTools}>
@@ -471,15 +484,15 @@ export const NotesReading = ({
                           }}
                           {...inspectorControls}
                         >
-                          <span>
-                            <strong>{note.title}</strong>
-                            <small>
-                              {/* THE SWITCHER'S WHOLE VISIBLE EFFECT ON A ROW:
-                                  under a record heading the row says WHERE it
-                                  lives, because the heading already says what
-                                  it is about; anywhere else it says what it is
-                                  about, because the heading already says where
-                                  it lives. */}
+                          <strong>{note.title}</strong>
+                          <small>
+                            {/* THE SWITCHER'S WHOLE VISIBLE EFFECT ON A ROW:
+                                under a record heading the row says WHERE it
+                                lives, because the heading already says what
+                                it is about; anywhere else it says what it is
+                                about, because the heading already says where
+                                it lives. */}
+                            <span className="knowledge-row-context">
                               {arrangement === "record"
                                 ? where
                                 : note.references.length === 0
@@ -489,13 +502,27 @@ export const NotesReading = ({
                                         ? ` +${note.references.length - 1}`
                                         : ""
                                     }`}
-                              {" · "}
+                            </span>
+                            {/* THE DATE GETS ITS OWN LANE, and the separator
+                                dot goes with the change rather than surviving
+                                it: „context · date" as one string meant the
+                                ellipsis ate the date first, on the column a
+                                reader scans DOWN. Two elements make the
+                                separation structural, so a long reference label
+                                can no longer reach it. `<time>` because the row
+                                now has an element that is only the timestamp,
+                                which is the first point at which the machine
+                                readable value has somewhere to live. */}
+                            <time
+                              className="knowledge-row-when"
+                              dateTime={note.updatedAt}
+                            >
                               {formatDate(
                                 note.updatedAt,
                                 snapshot.bootstrap.workspace.timezone,
                               )}
-                            </small>
-                          </span>
+                            </time>
+                          </small>
                         </button>
                         <InlinePopover
                           disabled={!client}

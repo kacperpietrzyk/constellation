@@ -12,6 +12,7 @@ import {
   type MutationFailure,
   type MutationResult,
 } from "../client/workflow.js";
+import { Icon } from "../components/Icon.js";
 import { InlinePopover } from "../components/InlinePopover.js";
 import { TopicHelp } from "../help/TopicHelp.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
@@ -25,6 +26,7 @@ import styles from "./sources.module.css";
 import {
   UNAVAILABLE_CONSEQUENCE,
   addedDay,
+  dependentKindLabel,
   emptyKindLine,
   firstSourceInRenderOrder,
   groupSourcesByKind,
@@ -207,7 +209,30 @@ const SourceReader = ({
           <ul className={styles.restsList}>
             {shown.map((reference) => (
               <li key={reference.recordId} data-source-dependent>
-                {reference.title}
+                <span className={styles.restsRow}>
+                  {/* ONE GLYPH FOR EVERY KIND, and the word beside it carries
+                      which kind this is. A glyph chosen per kind would be a
+                      hand-written map standing beside a closed dictionary
+                      (`RecordKindSchema`), and a kind missing from that map
+                      would draw a blank rather than fail — the silent shape of
+                      this defect class. The square is a marker that a record is
+                      here; the label is the fact. */}
+                  <span className={styles.restsIcon}>
+                    <Icon name="list" />
+                  </span>
+                  <span className={styles.restsBody}>
+                    {/* The kind word is worked out in `sources-view.ts`, like
+                        every other fact this screen states, so the test can
+                        meet the reading rather than a rendered string. */}
+                    <span
+                      className={styles.restsKind}
+                      data-source-dependent-kind
+                    >
+                      {dependentKindLabel(reference)}
+                    </span>
+                    <span data-source-dependent-title>{reference.title}</span>
+                  </span>
+                </span>
               </li>
             ))}
             {hidden > 0 && (
