@@ -80,6 +80,7 @@ export const crmRecordIds = {
   amendsLink: recordId("12"),
   stackFact: recordId("13"),
   pilotDecision: recordId("14"),
+  supportOffer: recordId("15"),
 } as const;
 
 const DAY_MS = 86_400_000;
@@ -245,8 +246,26 @@ export const crmRecords = (
       // deal looked worth before anybody wrote an offer.
       estimate: { amountMinor: 92_487_00, currency: "PLN" },
       stage: "negotiation",
-      // Well inside DEAL_STALE_DAYS, so the "not moving" warning is a state
-      // this fixture can reach without being permanently in it.
+      // THIS COMMENT USED TO SAY the deal sits "well inside DEAL_STALE_DAYS,
+      // so the 'not moving' warning is a state this fixture can reach without
+      // being permanently in it". IT WAS FALSE, and it was false about the
+      // wrong field: the card's age does NOT come from `stageEnteredAt` at all.
+      // `pipeline-view.ts:331` derives it from `createdAt`, every record here
+      // inherits `base.createdAt: at(-420)` (:172), and `DEAL_STALE_DAYS` is 45
+      // (`:71`) — so EVERY card on this board is stale, permanently, and no
+      // value written here changes that. `stageEnteredAt` is read by exactly
+      // one place, the "in this stage since …" line on the open deal
+      // (`PipelineSurface.tsx:905-907`).
+      //
+      // The value STAYS and the sentence goes. Two pairs of the visual-language
+      // map read the stale badge (L2-05a, L2-05b), so a fixture with no stale
+      // card would take their subject off the page — the fix here was the
+      // comment, not the date.
+      // THE OTHER BRANCH IS NOW DRAWN TOO, and it was not when this note was
+      // written: the segmentation deal below carries its own `createdAt` at
+      // −11 days, so the board shows one quiet badge beside four stale ones and
+      // the two forms can be told apart by eye. This record keeps −420 on
+      // purpose; both states need a card.
       stageEnteredAt: at(-12),
       nextAction:
         "Price the on-site retainer as a separate annex and send both versions to Agata before Thursday.",
@@ -262,9 +281,27 @@ export const crmRecords = (
       title: "Endpoint detection rollout across the Kraków and Ostrava sites",
       organizationId: crmRecordIds.northwind,
       personIds: [crmRecordIds.krol],
+      // The deal is owned, so the board draws an avatar on more than one card.
+      ownerPersonId: crmRecordIds.krol,
       need: "Replace the endpoint agent the plants inherited from the old outsourcing contract, which nobody administers and which stopped reporting in April.",
       qualification: EDR_QUALIFICATION,
-      estimate: { amountMinor: 17_294_00, currency: "EUR" },
+      // THE ESTIMATE IS IN ZŁOTY AND THE REASON IS THE STAGE METER, so it is
+      // written here rather than discovered again. `meterMax` (`pipeline-view.ts:419-432`)
+      // returns 0 whenever the OPEN — non-terminal — columns carry more than one
+      // currency, and `PipelineSurface.tsx` mounts no meter at all when it does.
+      // While this estimate was in euro the whole bar was unreachable: not
+      // wrongly drawn, NEVER DRAWN, on every pass of every gate, which is
+      // indistinguishable from a bar nobody built.
+      // WHAT IT COSTS, NAMED: the board no longer prints a two-currency sum in
+      // its heading, so that arm of `fmtTotals` is no longer exercised here.
+      // WHAT IT DOES NOT COST: the conversion this fixture is built to show
+      // still draws, because it lives on the OFFER's cost, not on the deal's
+      // estimate — `edrOffer.cost` in euro with its rate, below. The euro is
+      // still on this screen; it is on the row that has a rate beside it.
+      // The amount stands above the offer's cost converted at that rate
+      // (12 894 EUR × 4.318 ≈ 55 676 PLN), because an estimate under the cost
+      // would be a different fact about this deal than the one intended.
+      estimate: { amountMinor: 74_612_00, currency: "PLN" },
       stage: "proposal",
       stageEnteredAt: at(-6),
       nextAction: "Agree the start date against their current licence term.",
@@ -277,9 +314,19 @@ export const crmRecords = (
       ...base,
       id: crmRecordIds.segmentationDeal,
       kind: "opportunity",
+      // THE ONE DEAL THAT IS NOT STALE, and it is here that the fixture stops
+      // hiding half of a state. Every record inherits `base.createdAt` at −420
+      // days and the card derives its age from that field (`pipeline-view.ts:331`,
+      // `DEAL_STALE_DAYS` 45), so until this line EVERY card on the board was
+      // permanently stale and the badge's quiet form was drawn nowhere — a
+      // correct quiet state and a missing one looked identical.
+      // −11 days, far from the 45-day boundary in the way this file's header
+      // requires, so no morning moves this card between the two states.
+      createdAt: at(-11),
       title: "Network segmentation review for the distributed generation sites",
       organizationId: crmRecordIds.helio,
       personIds: [crmRecordIds.lewandowski],
+      ownerPersonId: crmRecordIds.lewandowski,
       need: "They have been told by their insurer that the generation sites and the office network must be separated, and nobody has told them what that costs.",
       qualification:
         "Nothing is qualified yet. There is a named problem, an insurer's deadline, and no confirmed budget holder.",
@@ -301,6 +348,7 @@ export const crmRecords = (
       title: "Support contract, next term — 24 months with the extended SLA",
       organizationId: crmRecordIds.northwind,
       personIds: [crmRecordIds.krol],
+      ownerPersonId: crmRecordIds.krol,
       need: "The running support agreement expires and the plants cannot be without cover for a day.",
       qualification:
         "Renewal rather than a new sale: the scope is the running one plus the extended SLA the last incident review asked for.",
@@ -309,7 +357,7 @@ export const crmRecords = (
       stageEnteredAt: at(-9),
       nextAction: "Confirm the extended SLA wording with legal.",
       evidenceSourceIds: [],
-      offerIds: [],
+      offerIds: [crmRecordIds.supportOffer],
       projectIds: [],
       state: "open",
     },
@@ -388,6 +436,27 @@ export const crmRecords = (
       price: { basis: "derived" },
       state: "ready",
       nextAction: "Send once the start date is agreed.",
+    },
+    {
+      ...base,
+      id: crmRecordIds.supportOffer,
+      kind: "offer",
+      title: "Support, next term — extended SLA hours",
+      opportunityId: crmRecordIds.supportRenewalDeal,
+      deliverableDocumentId: DocumentIdSchema.parse(
+        "00000000-0000-4000-8000-0000000000a4",
+      ),
+      ownerPrincipalId: principalId,
+      // NO COST AND NO PRICE, and that is the whole reason this record exists.
+      // Waiting for the distributor to quote is a STATE OF WORK the card draws
+      // as its own note (`PipelineSurface.tsx`, the `data-offer-waiting`
+      // branch), and the prototype puts exactly this note on a Discovery card
+      // (`shots/v5-pipeline.png`). Every other offer in this fixture carries a
+      // cost, so that branch had never been drawn once — the note, its dashed
+      // amber box and now its glyph were unreachable, which is indistinguishable
+      // from unbuilt. A zero here would say the term is worth nothing.
+      state: "draft",
+      nextAction: "waiting on the distributor's quote for the extra SLA hours",
     },
     {
       ...base,

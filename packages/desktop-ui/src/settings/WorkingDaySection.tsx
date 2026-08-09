@@ -43,6 +43,20 @@ const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const weekdayLabel = (weekday: number): string =>
   weekdayFormatter.format(new Date(Date.UTC(2024, 0, weekday)));
 
+/**
+ * Ile to jest — słowami, bez zaokrąglania. Minuty dzielą się na godziny bez
+ * reszty tylko czasem, więc reguła jest wypisana zamiast schowana: pełne
+ * godziny i reszta w minutach, a część, która wychodzi zerem, znika
+ * („8h", nie „8h 0m"; „45m", nie „0h 45m"). Nic się tu nie zaokrągla, więc
+ * zdanie nie może skłamać nawet o minutę.
+ */
+const durationLabel = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest}m`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+};
+
 /** Minutes from local midnight ↔ what `<input type="time">` reads and writes. */
 const toClock = (minutes: number): string =>
   `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
@@ -162,6 +176,34 @@ export const WorkingDaySection = ({
           );
         })}
       </fieldset>
+
+      {/* CO TA LICZBA ROBI, POLICZONE (`v3/screens/settings.css:206-218`).
+          Dwa pola godzinowe i siedem pól dnia mówiły dotąd, co się ustawia,
+          i nic o tym, ile z tego wychodzi.
+
+          CO TU ŚWIADOMIE NIE STOI: „3h left today…" ze zrzutu prototypu. To
+          jest fakt o DZISIEJSZYM dniu i o zegarze, a nie o ustawieniu — zdanie
+          na ekranie ustawień, które zmienia się bez niczyjej zmiany. Skutek
+          liczony tutaj zależy WYŁĄCZNIE od tego, co stoi w tych polach. */}
+      {valid && startMinute !== undefined && endMinute !== undefined ? (
+        <div className={styles.effect} data-working-day-effect="true">
+          <span className={styles.effectKey}>What this does</span>
+          <span className={styles.effectValue}>
+            <b>{durationLabel(endMinute - startMinute)}</b> a day ·{" "}
+            <b>
+              {durationLabel(
+                (endMinute - startMinute) * orderedWeekdays.length,
+              )}
+            </b>{" "}
+            a week across {orderedWeekdays.length}{" "}
+            {orderedWeekdays.length === 1 ? "day" : "days"}
+          </span>
+          <span className={styles.effectNote}>
+            This is the capacity Today counts down against, and the window
+            Calendar treats as working time.
+          </span>
+        </div>
+      ) : null}
 
       {valid ? null : (
         <p className={styles.invalid} role="status">

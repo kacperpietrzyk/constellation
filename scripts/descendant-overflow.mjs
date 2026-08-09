@@ -158,23 +158,40 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     thread:
       "skalowanie interfejsu (R3-5, za falą E) — wyróżnienie brakującej danej",
   },
-  // Sufity zmierzone pod SAMĄ etykietą `renewals`, i to jest ślad po
-  // znalezisku tego lotu. Przed usunięciem `[data-renewal-row]` z selektora
-  // otwierającego rekord ta sama kwota meldowała się DRUGI RAZ pod
-  // `renewals:record` — etykietą przelotu, w którym bramka podwójnie klikała
-  // wiersz umowy i nic się nie otwierało. Ten przelot już nie zachodzi, więc
-  // wpis dopasowuje się wyłącznie prefiksem `renewals`; dopasowanie po
-  // prefiksie zostaje, bo to ono unieważnia potrzebę drugiego wpisu, gdyby
-  // ekran kiedyś dostał obiektyw.
-  {
-    surface: "renewals",
-    signature: "div._money",
-    ceilings: {
-      "text scaled to 200%": 19,
-      "a 320 px window": 54,
-    },
-    thread: "skalowanie interfejsu (R3-5, za falą E) — kwota na umowie",
-  },
+  // ── SPŁACONY I SKASOWANY: `renewals` / `div._money`, 2026-08-07 ────────────
+  // Stał tu wpis z sufitami 19 px (tekst 200%) i 54 px (okno 320 px) na kwotę
+  // przy umowie, z wątkiem „skalowanie interfejsu (R3-5, za falą E)". Przelot
+  // odbioru lotów 2-4 zgłosił go jako NIGDY NIETRAFIONY w żadnym przebiegu —
+  // czyli w tym rejestrze jako „albo naprawione i wpis ma zniknąć, albo bramka
+  // przestała widzieć ten ekran".
+  //
+  // ROZSTRZYGNIĘTE NA PIERWSZE, I TO DWUCZĘŚCIOWYM DOWODEM, a nie założeniem:
+  //   (1) EKRAN BYŁ ZAMIATANY — ten sam przebieg zgłosił NOWE przepełnienie na
+  //       `renewals` przy oknie 320 px (`div._viewbar`), więc powierzchnia
+  //       została odwiedzona i zmierzona przy obu istotnych szerokościach;
+  //   (2) WIERSZE SIĘ RYSOWAŁY — pary L3-04 i L3-05 policzyły żywe glify
+  //       wewnątrz wierszy odnowień na tym samym przelocie, więc podmiot nie
+  //       zniknął z ekranu.
+  // Skoro ekran jest zamiatany, a wiersze narysowane, to brak trafienia znaczy
+  // brak przepełnienia. Zapłacił je lot 3, pozycja 1: `flex-wrap: wrap` na obu
+  // pigułkach kwoty (`renewals.module.css`, `.outlookAssumed`/`.outlookReal`)
+  // zamienia min-content pudełka z SUMY dzieci na NAJSZERSZE dziecko.
+  //
+  // DOWÓD (1) JEST JUŻ NIEODTWARZALNY I DLATEGO STOI TU JEGO NASTĘPCA. Faza
+  // poprawek tego samego dnia skasowała `white-space: nowrap` z `.count`, więc
+  // przepełnienie `div._viewbar`, na które powołuje się punkt (1), NIE ZACHODZI
+  // od tamtej poprawki — kto uruchomi bramkę dziś, zobaczy czysty przebieg
+  // i może wziąć tamten dowód za zmyślony. Dowód zastępczy, zmierzony przy
+  // osadzie lotów 2-4: w przebiegu „a 320 px window" spis tytułów ekranu
+  // wymienia `renewals` wśród zmierzonych powierzchni, a przebieg kończy się
+  // „no overflow" — czyli ekran jest odwiedzany przy tej szerokości i jest
+  // czysty. To ta sama teza co (1), tylko na obserwacji, która się powtarza.
+  //
+  // CO TO KOSZTUJE, POWIEDZIANE WPROST: ten wpis był JEDYNYM sufitem nad tym
+  // pudełkiem. Po jego usunięciu nic nie pilnuje, żeby kolejna ikona w kwocie
+  // nie odtworzyła przepełnienia — złapie ją dopiero ogólny werdykt bramki,
+  // czyli od razu jako czerwień, a nie jako przekroczony sufit. To jest
+  // zamierzone: rejestr trzyma DŁUGI, a ten dług przestał istnieć.
   // PRZEKLUCZOWANY, NIE PRZEMIANOWANY. Ten wpis stał pod `access`
   // z sygnaturą `div.member-list`; treść wsiąkła w sekcję „Access and
   // connections" Ustawień, więc zmienił się I EKRAN, I SYGNATURA — arkusz
@@ -302,6 +319,80 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
   // z nazwy, a nowa kontrola geometrii niżej w `verify-renderer-layout.mjs`
   // mierzy jego szerokość treści i pada, kiedy ta się zapada. Sama zieleń
   // bramki tego nie mówi: jest tak samo zgodna z „ekran zniknął".
+
+  // ── DWA WPISY, KTÓRYCH ŻADEN PRZELOT NIE MÓGŁ WCZEŚNIEJ ZOBACZYĆ ──────────
+  // Fikstura przeglądarkowa (`CollaborationHarness.tsx`) trzymała JEDNO zadanie
+  // w stanie `actionable` i NIE odpowiadała na `agent.access`. Oba te fakty są
+  // niewidzialne w raporcie: powierzchnie się rysowały, bramka była nad nimi
+  // zielona, a dwie komórki po prostu nie miały treści. Runda C4 zasiała stan
+  // `waiting` (bo bez niego para lotu 4 #2 nie miała czego mierzyć) i grant
+  // agenta (bo bez niego żaden komentarz nie jest komentarzem agenta) — i te
+  // dwa przepełnienia pojawiły się w tej samej chwili. To NIE jest regresja
+  // tamtych zmian: to jest geometria, która stała tam od zawsze i której żaden
+  // przelot nie dosięgnął. Ta sama klasa, co cztery wpisy CRM wyżej.
+  //
+  // POWÓD, ZMIERZONY: `.state` w wierszu listy zadań ma `white-space: nowrap`
+  // (`tasks/task-list.module.css:143-151`) i siedzi w torze siatki, który nie
+  // rośnie z tekstem. Dla zadania `actionable` komórka rysuje PUSTY NAPIS
+  // (`TaskListLayout.tsx:157-161` — nieobecność rysowana jako nic, świadomie),
+  // więc dopóki jedyne zadanie fikstury było actionable, wystawać nie miało co.
+  // Słowo „waiting" wystaje o 47 px przy tekście 200% i o 6 px w oknie 320 px;
+  // przy pełnym oknie NIE WYSTAJE i dlatego nie ma tu trzeciego sufitu.
+  {
+    surface: "tasks",
+    signature: "span._state",
+    ceilings: {
+      "text scaled to 200%": 47,
+      "a 320 px window": 6,
+    },
+    thread:
+      "skalowanie interfejsu (R3-5, za falą E) — komórka stanu w wierszu listy zadań",
+  },
+  // TEN WPIS JEST INNEGO RODZAJU NIŻ WSZYSTKIE POWYŻSZE I MÓWI TO WPROST:
+  // to nie jest dług układu, tylko OZDOBA MALOWANA POZA SWOIM PUDEŁKIEM.
+  // `.orbitMark::before` ma `inset: 0.42rem -0.18rem`
+  // (`settings/access-section.module.css:609-614`) — pierścień orbity jest
+  // CELOWO szerszy od okręgu, o 0,36 rem łącznie. Zgadza się co do piksela
+  // z pomiarem: 5 px przy korzeniu 16 px i 11 px przy 32 px. Znak jest
+  // `aria-hidden`, nie niesie treści i niczego nie przesuwa.
+  //
+  // DLATEGO NIE MA GO W ŻADNEJ Z POZOSTAŁYCH TRZECH SZUFLAD: `contained`
+  // wymagałoby `overflow-x: hidden`, czyli OBCIĘCIA pierścienia — to zmiana
+  // rysunku, nie pomiaru; `declared` wymagałoby `[data-scrolls-horizontally]`,
+  // czyli oświadczenia, że element się przewija, a on się nie przewija. Rejestr
+  // jest jedynym miejscem, w którym da się to zapisać ze zmierzonym sufitem,
+  // i jest to jedyny wpis, który przy PEŁNYM OKNIE też ma liczbę — bo ozdoba
+  // nie zależy od skali.
+  //
+  // WARUNEK WYJŚCIA (właściciel: lot 6): albo znak dostaje pudełko, które
+  // pierścień mieści (np. `padding-inline` równy odsadzce), albo ta bramka uczy
+  // się PIĄTEJ szuflady dla świadomego wycieku dekoracji. Do tego czasu wpis
+  // pilnuje, żeby wyciek nie urósł.
+  //
+  // LOT 6 OBEJRZAŁ I ZOSTAWIŁ — ŚWIADOMIE, z pomiarem, nie przez przeoczenie.
+  // Zmierzone w przeglądarce po całej robocie lotu: dwa wystąpienia znaku,
+  // wyciek 5 px i 2 px przy korzeniu 16 px, czyli DOKŁADNIE tyle co przed
+  // lotem — sufity zostają bez zmiany. Odrzucone zostały obie drogi wyjścia,
+  // każda z podanym powodem:
+  //   * `padding-inline: 0.18rem` na `.orbitMark` NIE jest zmianą pomiaru,
+  //     tylko RYSUNKU. Odsadzka `inset: … -0.18rem` liczy się od pudełka
+  //     wyściółki, więc przy `box-sizing: border-box` pierścień zwęża się
+  //     o 0,36 rem, a bez niego okrąg 2,25 rem rośnie o tyle samo. Jedno
+  //     i drugie zmienia znak, którego ten lot nie dotyka.
+  //   * piąta szuflada tej bramki to ROBOTA PRZYRZĄDOWA, a przyrządy tej fazy
+  //     są osobną pozycją (sekcja 4 briefu), nie pozycją ekranową lotu 6.
+  // Wpis zostaje więc tam, gdzie był, i dalej pilnuje, żeby wyciek nie urósł.
+  {
+    surface: "settings",
+    signature: "span._orbitMark",
+    ceilings: {
+      "text scaled to 200%": 11,
+      "a 320 px window": 5,
+      "a full-size window": 5,
+    },
+    thread:
+      "ozdoba malowana poza pudełkiem — pierścień orbity przy grancie agenta (lot 6)",
+  },
 ];
 
 /** Czy etykieta pomiaru należy do powierzchni z wpisu. */

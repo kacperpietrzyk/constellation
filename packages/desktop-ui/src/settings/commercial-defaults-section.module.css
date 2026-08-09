@@ -26,22 +26,166 @@
   list-style: none;
 }
 
+/* WIERSZ JEST TERAZ CAŁY PRZYCISKIEM, a jego wnętrze — dwoma torami:
+   numer pozycji i etykieta (`v3/screens/settings.css:113-128`, `#st-stages
+   .st-row` z torem `1.5rem`). Kolejność jest tu treścią, więc ma własny tor
+   i nie ucieka razem z etykietą przy zawinięciu.
+
+   `--row-height` (2,125 rem) jest DRUGIM konsumentem tego tokenu, jakiego ta
+   faza mu daje, i jest to ten sam rodzaj elementu, którego prototyp nim
+   pilnuje: wiersz listy (`v3/screens/settings.css:435-439`). `min-height`,
+   nie `height` — przy tekście 200% wiersz ma urosnąć.
+   KONTRAKT: `.ui-craft/tokens.md:85-92` („Spacing and density" — „Dense rows
+   use 4/8/12px increments … density is mixed intentionally by content role");
+   wiersz listy jest gęsty, a nie czytelniany, i dlatego bierze token gęstości
+   zamiast progu dotykowego.
+
+   ── CEL DOTYKOWY, NAZWANY, BO 34 PX TO NIE 44 PX ────────────────────────────
+   `--row-height` to 2,125 rem = 34 px przy korzeniu 16 px, a sąsiednie
+   kontrolki Ustawień — `.settings-help-entry` (`styles.css:8044`) i kontrolka
+   kategorii (`:8887`) — trzymają 2,75 rem = 44 px. Rozbieżność jest
+   ZAMIERZONA i oto jej pełny rachunek:
+
+     * SPEŁNIA WCAG 2.5.8 „Target Size (Minimum)", poziom AA: minimum to
+       24 × 24 px CSS. 34 px w pionie, cała szerokość kolumny w poziomie.
+     * NIE SPEŁNIA WCAG 2.5.5 „Target Size (Enhanced)", poziom AAA: tam progiem
+       jest 44 × 44 px. Ten ekran nie deklaruje AAA i żadna inna kontrolka na
+       nim go nie trzyma z tego powodu — 2,75 rem stoi tam, gdzie stoi, jako
+       próg AA plus zapas, nie jako AAA.
+     * JEST WZROSTEM, NIE OBNIŻENIEM. Kontrolki, które ten wiersz zastąpił,
+       miały `min-height: 1.8rem` = 28,8 px (`.stageActions button` niżej
+       w tym samym arkuszu, do dziś na pasku akcji). Cel urósł o 5,2 px.
+     * DLACZEGO WIERSZ BIERZE TOKEN GĘSTOŚCI, A NIE PRÓG 44 PX: bo wiersz listy
+       jest tym elementem, którym prototyp ten token wiąże, i tylko nim
+       (`v3/screens/settings.css:435-439`), a lista sześciu etapów po 44 px
+       byłaby o 60 px dłuższa od tej samej listy w prototypie. Gęstość jest
+       tu ROLĄ TREŚCI, dokładnie jak mówi kontrakt.
+
+   CO MUSIAŁOBY SIĘ ZMIENIĆ, ŻEBY TA DECYZJA PRZESTAŁA BYĆ DOBRA — i to jest
+   część warta więcej niż sama liczba: (1) ekran deklaruje AAA, wtedy 34 px
+   łamie 2.5.5 i wiersz musi urosnąć albo dostać osobny uchwyt 44 px;
+   (2) wiersz przestaje być JEDYNYM celem w swoim pasie — dołożenie w nim
+   drugiej kontrolki (kosza, uchwytu przeciągania) robi z 34 px wysokość
+   DZIELONĄ przez dwa cele i wtedy 2.5.8 przestaje być spełnione „z zapasem";
+   (3) `--row-height` zjeżdża poniżej 1,5 rem, bo wtedy sam token łamie próg AA
+   i przestaje być bezpieczny dla WSZYSTKICH swoich konsumentów naraz. */
 .stageList li {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+}
+
+.stageRow {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+  min-height: var(--row-height);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
+  text-align: left;
+}
+
+/* THE HOVER RULE MAY NOT REPAINT THE ROW THE READER IS ON, and the exclusion
+   is the whole of it. Written as `.stageRow:hover:not(:disabled)` this weighed
+   (0,3,0) against the (0,2,0) of the selection rule below, so a selected row
+   went neutral under the cursor — the third time this wave shipped that same
+   defect (source row, lot 5; folder tree, marked asleep at its rule).
+
+   WHY THE EXCLUSION AND NOT LOT 5's TIE-BREAK, decided on a measurement rather
+   than on taste. Lot 5 and the reference both resolve this by giving selection
+   the SAME weight as hover and declaring it SECOND (`v3/screens/settings.css:119`
+   and `:120` do exactly that). Reaching equal weight here means writing
+   `.stageRow[aria-pressed="true"]:not(:disabled)` — and every row carries
+   `disabled` while ANY stage command is in flight (`disabled={busy !== undefined}`),
+   so the selection wash would drop out for the length of every save. That is the
+   same defect wearing a different trigger. The rule the whole application now
+   follows is in `styles.css`, in the block headed „SELECTION VERSUS HOVER”:
+   bare hover ⇒
+   equal weight, selection second; guarded hover ⇒ the hover excludes the
+   selected state by name.
+
+   MEASURED IN CHROMIUM at 1440 px, light theme, real pointer, before the fix:
+   selected row at rest `oklch(1 0 0 / 0.76)`, hovered `oklch(0.12 0.006 255 / 0.045)`.
+   Both are the WRONG colour — see the note on the selection rule below.
+
+   ONE `:not()` WITH A LIST, not two chained: a list takes the weight of its
+   heaviest argument, so this rule keeps the (0,3,0) it already had instead of
+   climbing to (0,4,0) and beating rules it was never in a race with. Chaining
+   `:not()` broke exactly that in `styles.css` in this same edit, and it was
+   caught by a gate rather than by reading. */
+.stageRow:hover:not(:disabled, [aria-pressed="true"]) {
+  background: var(--surface-hover);
+}
+
+/* WYBRANY WIERSZ, oznaczony DWOMA rzeczami naraz — podbarwieniem całego
+   obiektu i tuszem na jednej jego krawędzi (`v3/screens/settings.css:120`;
+   `.ui-craft/tokens.md:250-262` — wash na całym obiekcie jest dozwolony, a
+   „wash rarely travels alone": tam, gdzie prototyp podbarwia obiekt, tuszuje
+   też jedną jego krawędź; `:268-276` licencjonuje ZAZNACZENIE wiersza jako
+   „gdzie czytelnik jest"). Wash mówi, który
+   wiersz; szyna mówi to samo kanałem, który przeżyje wydruk w skali szarości
+   i czytelnika nierozróżniającego barw.
+
+   NONE OF THE THREE DECLARATIONS BELOW REACHED THE SCREEN UNTIL THE ROW GOT
+   ITS `settings-row` CLASS, and that is a bigger fault than the hover one that
+   led to it. This section's root is `.settings-control`, so `styles.css`'s
+   `.settings-control button:not(.primary-button)` (0,2,1) matched the row and
+   beat this rule (0,2,0) on `background`, `border-color` AND `box-shadow` at
+   once. Measured before the fix: a SELECTED row resolved to
+   `background oklch(1 0 0 / 0.76)` (`--action-secondary-bg`), border
+   `oklch(0.12 0.006 255 / 0.13)` and a `box-shadow` of `--elevation-rest` — the
+   accent wash, the accent edge and the accent rail were all absent, at rest and
+   under the cursor alike. The selected stage was not marked at all. The row now
+   carries `settings-row`, which that rule excludes by name for exactly this
+   reason: a list row that happens to be a button is not a secondary action. */
+.stageRow[aria-pressed="true"] {
+  background: var(--accent-quieter);
+  border-color: var(--accent-edge);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.stageOrd {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .stageLabel {
   min-width: 0;
   display: grid;
   overflow-wrap: anywhere;
+}
+
+/* PASEK AKCJI NAD LISTĄ (`v3/screens/settings.css:162-175`;
+   `.ui-craft/tokens.md:85-92` — „density is mixed intentionally by content
+   role", a pasek sterujący jest gęsty, nie czytelniany). Zawija się,
+   bo przy oknie 320 px kolumna ma około 224 px i cztery kontrolki obok
+   licznika nie mieszczą się w żadnej szerokości, jaką ta kolumna ma. */
+.stageBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.stageBarText {
+  min-width: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  overflow-wrap: anywhere;
+}
+
+.stageBarText b {
+  margin-left: 0.375rem;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .stageLabel strong {
@@ -166,4 +310,49 @@
   font-size: var(--text-2xs);
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* SKUTEK LICZBY (`v3/screens/settings.css:206-218`, `.st-effect`;
+   KONTRAKT: `.ui-craft/tokens.md:193-194`, ograniczenie użycia 2 — „reading
+   panels default to `panel-reading-*`; glass is not a universal card
+   treatment" — więc to pudełko bierze płaską powierzchnię wklęsłą, nie szybę
+   i nie kartę uniesioną; oraz `:85-92`, bo jego rytm jest rytmem wiersza
+   gęstego). Trzy wiersze: co to jest, ile to jest, i jedno zdanie dlaczego.
+   Osobne pudełko,
+   a nie akapit — akapit pod nagłówkiem wyleciał z tego ekranu świadomie
+   (decyzja #21), a to jest to, co go zastępuje: liczba, nie proza. */
+.effect {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.effectKey {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.effectValue {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.effectValue b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.effectNote {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  max-width: var(--surface-read);
 }

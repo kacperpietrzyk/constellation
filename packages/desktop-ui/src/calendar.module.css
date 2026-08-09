@@ -105,8 +105,26 @@
   box-shadow: inset 0 0 0 2px var(--border-strong);
 }
 
+/* CEL UPUSZCZENIA NIE JEST OGNISKIEM I NIE DOSTAJE AKCENTU. Kontrakt
+   (`.ui-craft/tokens.md`, „Accent rule") wydaje akcent na TRZY rzeczy: co jest
+   aktywne, co jest główne i gdzie jest ognisko. Cel upuszczenia to czwarte
+   znaczenie, a czwarte znaczenie jest tam nazwane naruszeniem, nie rozszerzeniem.
+
+   Akcent stał tu od niedawna i nie z decyzji: poprzednia wartość była listą
+   cieni w slocie koloru, czyli deklaracją niepoprawną — Chromium wyliczał
+   `box-shadow: none`, więc obwódka celu upuszczenia NIE RYSOWAŁA SIĘ WCALE.
+   Przepięcie na kolor obudziło deklarację i przy okazji wprowadziło akcent
+   w miejsce, w którym go nigdy nie było.
+
+   `--text-primary` to najmocniejszy atrament motywu i ta sama rola, którą nosi
+   kreska zaznaczenia w tabeli zadań — neutralna, nie akcentowa. Policzone tą
+   samą matematyką co bramki kontrastu, na własnym tle celu upuszczenia:
+   15,523:1 w ciemnym i 17,636:1 w jasnym, przy progu nietekstowym 3. Dzień
+   „dzisiaj" niesie `--border-strong`, czyli obwódkę nieporównanie lżejszą, więc
+   obie dają się od siebie odróżnić, a kolor nie jest tu jedynym nośnikiem: cel
+   upuszczenia niesie też tło. */
 .dayDropping {
-  box-shadow: inset 0 0 0 2px var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--text-primary);
   background: var(--surface-selected);
 }
 
@@ -165,8 +183,16 @@
   background: var(--text-tertiary);
 }
 
+/* Wypełnienie miernika to DEKORACJA, a akcent użyty jako dekoracja jest
+   naruszeniem kontraktu (`.ui-craft/tokens.md`, „Accent rule"). Wraca więc
+   neutralny — `--text-primary`, czyli NAJMOCNIEJSZY ATRAMENT motywu, bo taką
+   rolę pełniła tu wartość sprzed Fazy 1 (`--neutral-100` w ciemnym,
+   `--neutral-900` w jasnym). To nie jest ta sama liczba: `--text-primary`
+   przeskoczyło w tym samym locie na `--neutral-50` za v3, więc na płótnie
+   znacznik idzie 16,98:1 → 19,05:1 w ciemnym i 19,05:1 → 19,50:1 w jasnym.
+   Jaśniej niż przed fazą, nie identycznie. */
 .meterReserved {
-  background: var(--action-primary-bg);
+  background: var(--text-primary);
 }
 
 .dayBody {
@@ -233,10 +259,17 @@
   border-color: var(--border-default);
 }
 
-.row:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
-}
+/* KADR FOKUSA WIERSZA JEST SKASOWANY, NIE PRZEPIĘTY. Globalna reguła
+   `tokens.css` maluje przy fokusie pełny pierścień (krawędź 1 px + halo 3 px +
+   miękki spadek 14 px), a własny kontur 2 px dokładał się do niego i dawał
+   gruby, piętrzony kadr systemowy — dokładnie to, czego zabrania ograniczenie
+   z 2026-07-12 (`.ui-craft/brief.md`, dalej w mocy).
+   Że pierścień naprawdę zostaje, wynika z tego, że `.row[aria-selected="true"]`
+   NIE deklaruje tu `box-shadow` (tylko tło i kolor obramowania), więc nie ma
+   czym przykryć reguły globalnej. Zmierzone na wierszu o tym samym kształcie
+   (`[role="option"]` na ekranie Zadań, motyw ciemny): pierścień stoi zarówno
+   przed zaznaczeniem, jak i po nim. Wiersz kalendarza sam nie dał się zmierzyć —
+   fikstura harnessu nie rysuje ANI JEDNEGO `[data-task-row]`. */
 
 .rowDragging {
   opacity: 0.5;

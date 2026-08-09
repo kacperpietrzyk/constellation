@@ -76,13 +76,42 @@
 /* The selected node's name is a full folder path and real ones are long; it
    truncates rather than pushing the counter out of the panel. The whole path
    stays reachable — the tree beside it is showing exactly where you are. */
+/* LOT 5 #4 — THE WEIGHT IS DECLARED. It was not, anywhere, and this package has
+   no heading reset, so the heading computed the user-agent's 700 while the rule
+   around it looked complete. 600 is the reference's weight for the same object
+   (`v3/screens/knowledge.css:94`, `.kn-side-head`).
+
+   WHAT IS NOT TAKEN FROM THAT RULE: its uppercase micro-label treatment. In the
+   reference this heading is the fixed word „NOTES"; here it is the SELECTED
+   FOLDER'S PATH — data, and often a proper noun. Upper-casing a person's folder
+   name is a claim about their text that this screen has no business making, and
+   it is unrecoverable for a reader who wants to know what they actually typed.
+   The micro-label the reference carries is restored instead as its own line
+   above, where it is a label and not somebody's data. */
 .panelHead h2 {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
   font-size: var(--text-sm);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The micro-label from `v3/screens/knowledge.css:92-97`, split off the heading
+   for the reason above: it says what the panel IS, so it can be uppercase and
+   tracked, while the line under it says what is selected and cannot. */
+.panelEyebrow {
+  margin: 0 0 0.125rem;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.panelTitle {
+  min-width: 0;
 }
 
 /* Only vertically. `overflow: auto` would also declare horizontal scrolling,
@@ -101,10 +130,21 @@
   padding: var(--space-2);
 }
 
+/* FOUR TRACKS: twist, folder glyph, name, count — the reference's own shape
+   (`v3/screens/knowledge.css:39`, `.kn-tnode`). The glyph track is what lot 5
+   #8 adds, and it is the one addition on this screen with a measured risk
+   attached: this panel is `minmax(0, 13rem)` and the indent below grows with
+   depth, so a fourth fixed track at 300% text is exactly the shape
+   `scripts/descendant-overflow.mjs` and the „Library at 300% text" pass exist
+   to catch. Both were run against this rule.
+
+   THE GAP DROPS FROM `space-2` TO 0.375rem, and that is the reference's number
+   (`:40`), not a squeeze invented to buy room: four tracks at 8px of gap spend
+   24px on nothing, and the deepest fixture node already starts 2.75rem in. */
 .treeNode {
   display: grid;
-  grid-template-columns: 0.875rem minmax(0, 1fr) auto;
-  gap: var(--space-2);
+  grid-template-columns: 0.875rem 0.875rem minmax(0, 1fr) auto;
+  gap: 0.375rem;
   align-items: center;
   min-width: 0;
   padding: 0.25rem var(--space-2);
@@ -117,6 +157,48 @@
   border-left: 2px solid transparent;
 }
 
+/* THERE IS NO `:focus-visible` RULE HERE, AND THAT IS A MEASUREMENT RATHER THAN
+   AN OVERSIGHT. This tree roves its tab stop (`FolderTree.tsx`,
+   `tabIndex={row.key === tabStopKey ? 0 : -1}`), and the token layer answers
+   `tabindex="-1"` with an explicit „no ring, including the user-agent default"
+   (`tokens.css`, the programmatic-focus-target rule). Reading those two facts
+   together says every arrow step in this tree lands somewhere invisible, and
+   this lot wrote a local ring rule on exactly that reasoning.
+
+   Then it broke the rule out and measured again. The ring STILL paints, in both
+   themes, on a node reached by ArrowDown: the component sets the roving stop
+   BEFORE it moves the focus, so by the time anything is painted the element
+   carries `tabindex="0"` and the shell's own rule covers it. The local rule was
+   dead CSS defending a hazard that does not fire, and dead CSS is the kind of
+   debt nobody can tell from the load-bearing kind later.
+
+   WHAT WOULD MAKE IT FIRE, so the next reader knows what to watch: a list that
+   moves focus WITHOUT moving its roving stop first. That is the invariant this
+   absence depends on, and it lives in the component, not here. */
+
+/* The folder glyph, sized off the reference (`v3/screens/knowledge.css:53`).
+   The svg is inside a wrapper so the empty case (a row with no glyph) still
+   occupies its track and the names below it stay on one vertical line. */
+.treeGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-quaternary);
+}
+
+.treeGlyph svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+}
+
+/* „Unfiled" and „All notes" are destinations that are not folders, and the
+   reference says so with a dashed outline rather than with a warning
+   (`v3/screens/knowledge.css:63`; the glyph itself is `folder-loose` in
+   `components/Icon.tsx`, whose comment states the same reasoning). */
+.treeNodeLoose .treeGlyph {
+  color: var(--text-disabled);
+}
+
 /* The two roots are not folders and have no siblings; a rule under them says
    so without a label having to. */
 .treeNodeLoose {
@@ -126,11 +208,47 @@
 }
 
 /* Selection is a background AND a left border: colour is never the only thing
-   carrying which node the list belongs to. */
+   carrying which node the list belongs to.
+
+   THE WASH IS THE ACCENT NOW, and this is the one node on this screen the R1
+   ruling moves out of the neutral selection rule. The reference paints it at
+   `v3/screens/knowledge.css:46-49` and `:54`, `:69`; the rewritten contract
+   licenses it under job 1, „Where the reader is", citing that exact line
+   (`.ui-craft/tokens.md`, „What the accent is allowed to mean", and the
+   „Form first" paragraph that requires a wash to ink one edge of the object it
+   tints). Neither the token nor the ordinary row selection moves: everything
+   else on this screen and in this application keeps the neutral surface.
+
+   ONE CLASS, AND TODAY THAT IS SAFE ONLY BECAUSE NOTHING HOVERS THIS NODE.
+   Read this before adding `.treeNode:hover`. The two sibling lists in this
+   screen family both paint selection with a wash, and on the Sources list the
+   same one-class shape LOST to `.row:hover` — a hovered selected row repainted
+   itself neutral, measured in Chromium at acceptance and fixed there by giving
+   the selection rule two classes. This tree has no hover rule at all, so
+   nothing outweighs (0,1,0) and the wash holds. The reference DOES hover its
+   tree node (`v3/screens/knowledge.css:45`, `.kn-tnode:hover`), so the rule
+   that reintroduces the defect is a rule somebody is likely to want.
+
+   NOTHING WOULD CATCH IT: L5-05 reads this node AT REST, and the layout walk
+   never moves a pointer. Whoever adds the hover rule adds `.treeNode` in front
+   of this selector in the same edit, or writes the wash into the hover rule —
+   the choice is theirs, the measurement is not available to them. */
 .treeNodeSelected {
   color: var(--text-primary);
-  background: var(--surface-selected);
-  border-left-color: var(--border-strong);
+  background: var(--accent-quieter);
+  border-left-color: var(--accent);
+}
+
+/* The three channels that survive a display with no colour: weight on the
+   name, the rail on the left, and the count in the accent — the reference
+   carries all three (`v3/screens/knowledge.css:49`, `:47`, `:69`). */
+.treeNodeSelected .treeName {
+  font-weight: 600;
+}
+
+.treeNodeSelected .treeGlyph,
+.treeNodeSelected .treeCount {
+  color: var(--accent);
 }
 
 .treeNodeDrop {
@@ -139,9 +257,25 @@
   outline-offset: -2px;
 }
 
+/* A GLYPH, NOT A TYPED CHARACTER. `▾`/`▸` render at whatever weight and
+   baseline the reader's fallback font happens to have for them, and they are
+   the two shapes a system font is most likely NOT to carry. The pair comes from
+   `components/Icon.tsx` (`chevron-right`, `chevron-down`), which is the shell's
+   own set — the prototype carries a second, smaller re-cut of the same pair in
+   `v3/screens/knowledge.js:361-362`, and that file's own comment shows the
+   re-cut was not a decision. Sized explicitly because the global `svg` rule in
+   `styles.css` gives an unsized icon 1rem, which does not fit a 0.875rem
+   track. */
 .treeTwist {
-  color: var(--text-tertiary);
-  font-size: var(--text-2xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-disabled);
+}
+
+.treeTwist svg {
+  width: 0.6875rem;
+  height: 0.6875rem;
 }
 
 .treeName {
@@ -151,10 +285,50 @@
   white-space: nowrap;
 }
 
+/* Size and colour both from the reference (`v3/screens/knowledge.css:65-68`,
+   `.kn-tn`). `--text-disabled` is not „below the floor": it is a defined step of
+   the text ramp that `scripts/color-contrast.mjs` measures against every opaque
+   reading surface like the rest of the family, and the note row's own date takes
+   the same step for the same reason. Both are a number a reader scans rather
+   than reads, and they are the quietest thing in their row on purpose — which is
+   what makes the NAME beside them the thing the eye lands on. Stating this once
+   here and once at `.knowledge-row-when` in `styles.css`, because two different
+   stories about one step is how a floor turns into a matter of taste. */
 .treeCount {
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  color: var(--text-disabled);
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
+}
+
+/* LOT 5 #11 — THE PANEL COUNTERS STOP BEING OUTLINED PILLS. The reference
+   writes them as a flat tabular number and nothing else (`.kn-n`,
+   `v3/screens/knowledge.css:98-101`), while the application draws a bordered
+   1.75rem pill through the GLOBAL `.library-count` rule in `styles.css`.
+
+   That global rule is SHARED — `.section-heading-row > span` rides it and lives
+   on the task attachments panel and the note editor's revision list — so it
+   stays exactly as it is and this class narrows it for the TWO counters this
+   sheet owns (`FolderTree.tsx` and `NotesReading.tsx`; the other two are
+   narrowed the same way in `library.module.css` and `sources.module.css`, four
+   in all). The selector is `.panelHead .headCount` rather than a bare class on
+   purpose: both would otherwise weigh one class each, and which one won would
+   depend on the order two stylesheets happened to be injected in.
+
+   `color` IS THE ONE PROPERTY NOT TAKEN FROM `.kn-n` — the reference gives it
+   `--text-disabled`, these keep the `--text-tertiary` they had. Written out
+   once, at the same rule in `sources.module.css`. */
+.panelHead .headCount {
+  display: inline;
+  min-width: 0;
+  min-height: 0;
+  padding-inline: 0;
+  color: var(--text-tertiary);
+  border: 0;
+  border-radius: 0;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 .listTools {
@@ -167,6 +341,38 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* LOT 5 #7 — THE ARRANGEMENT SWITCHER GETS THE REFERENCE'S SUNKEN TRACK.
+   `v3/app.css:336-339` (`.segmented`): a recessed plane at `--surface-sunken`
+   with 2px of padding, inside which the chosen segment sits RAISED. The
+   application drew the inverse — an outlined pill with nothing inside it — so
+   the chosen mode read as a bordered chip among chips rather than as a switch
+   that has been thrown.
+
+   ── THE DECISION THIS POSITION EXISTED TO MAKE, AND ITS MEASUREMENT ─────────
+   The reference moves a separately positioned thumb across the track
+   (`v3/app.css:350-354`, `.seg-thumb`: `position: absolute`, travelling on
+   `--ease-spring`). This track wraps — `flex-wrap: wrap`, put here deliberately
+   for text at 300%, where three words do not fit one line inside a 19rem panel.
+   An absolutely positioned thumb over a WRAPPED track sits under the wrong
+   button, which is worse than no thumb at all: it would state, in the one
+   channel a switch has, that a mode is chosen which is not.
+
+   Recon found two ways out and no third, and this lot takes NEITHER of them
+   literally. Dropping `flex-wrap` brings back a measured width defect; dropping
+   the thumb on wrap means a control that silently changes its own vocabulary at
+   a width nobody can see coming. What is taken instead is the third thing recon
+   did not look for: THE CHOSEN BUTTON IS THE THUMB. It carries the raised plane,
+   the top edge and the small shadow the reference gives `.seg-thumb`, so the
+   switch reads identically at rest and cannot ever be out of position, because
+   it has no position of its own to be wrong about.
+
+   WHAT IS GIVEN UP, NAMED RATHER THAN QUIETLY DROPPED: the travel. A thumb that
+   is a sibling can slide; a thumb that IS the pressed button appears where it
+   is. `--ease-spring` therefore gets NO consumer from this lot, and the brief's
+   expectation that it would is not met. Recorded here so the next reader looks
+   for the token's first consumer somewhere else instead of assuming this rule
+   is it. Measured at 300% text on the Library harness, the wrapped track keeps
+   both rows correct and the chosen mode legible on either of them. */
 .arrangement {
   display: inline-flex;
   flex-wrap: wrap;
@@ -174,6 +380,7 @@
   padding: 0.125rem;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
+  background: var(--surface-sunken);
 }
 
 .arrangementButton {
@@ -182,13 +389,32 @@
   border: 1px solid transparent;
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
+.arrangementButton:hover {
+  color: var(--text-primary);
+}
+
+/* `--surface-elevated`, `--shadow-sm` and `--edge-top` together are what makes
+   a raised object read as raised rather than as merely lighter — `v3/app.css:352`
+   stacks the same three on `.seg-thumb`.
+
+   CORRECTED AT ACCEPTANCE: an earlier version of this comment claimed these
+   were the tokens' FIRST consumers. Measured, they are the second — lot 2 took
+   `--shadow-sm` and `--surface-elevated` in `pipeline/pipeline.module.css`, and
+   lot 1 took `--edge-top` in `styles.css`, both before this rule existed. The
+   claim was worth nothing and cost nothing to check, which is exactly what the
+   badge one rule-family over said about ITSELF — a comment stating a fact
+   nobody re-measured is the defect this lot spent position 10 removing. */
 .arrangementButton[aria-pressed="true"] {
   color: var(--text-primary);
   font-weight: 500;
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
+  background: var(--surface-elevated);
+  border-color: transparent;
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--edge-top);
 }
 
 .group {
@@ -210,7 +436,12 @@
   background: var(--surface-window);
   border-bottom: 1px solid var(--border-subtle);
   font-size: var(--text-2xs);
-  letter-spacing: 0.06em;
+  /* Weight and tracking from `v3/screens/knowledge.css:199` (`.kn-group-head`).
+     The weight was the missing declaration — an <h3> with none takes the
+     user-agent 700, so this label was HEAVIER than the note titles it groups,
+     which inverts the hierarchy it exists to state. */
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 

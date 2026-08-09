@@ -534,6 +534,119 @@ button:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* ── JEDEN WŁAŚCICIEL PIERŚCIENIA OGNISKA ─────────────────────────────────────
+   Pierścień należy do reguły globalnej w `tokens.css`. Ta reguła stoi na
+   `:where(button, a, …):focus-visible`, czyli ma swoistość (0,1,0), i maluje
+   ognisko przez `box-shadow`. Kontrolka, która ma WŁASNY cień spoczynkowy,
+   deklaruje `box-shadow` selektorem klasowym — (0,1,0) albo (0,2,0) — i przy
+   ognisku po prostu ZASTĘPUJE pierścień swoim własnym cieniem. Wygląda wtedy
+   przy ognisku DOKŁADNIE tak samo jak w spoczynku.
+
+   ILE TEGO BYŁO — ZMIERZONE 2026-08-06 PRAWDZIWYM TABEM W CHROMIUM, na
+   dwunastu ekranach powłoki plus dwunastu przelotach po układach i trybach,
+   w obu motywach: 644 przystanki Tab, z czego 130 nie zmieniało przy ognisku
+   NICZEGO, co widać (ani cienia, ani rysującego konturu, ani tła). Po tej
+   poprawce zostają DWA i oba są tym samym miejscem w dwóch motywach.
+   Sygnatur z własnym cieniem spoczynkowym jest jedenaście, a niewidocznych przy
+   ognisku było DZIEWIĘĆ: `.nav-item.active`, `.capture-dock`,
+   `.secondary-button` w czterech wariantach (goły, `.compact`,
+   `.document-rename-trigger`, `.document-markdown-toggle`),
+   `.strategic-create-toggle`, goła sygnatura `button` w Ustawieniach (23
+   przystanki na motyw) oraz `.knowledge-document-list li button.active`. Recon
+   wymieniał trzy z nich — trzy wpisy naprawiłyby trzy, a czwarty przyszedłby
+   w kolejnym locie razem z ciszą bramki.
+
+   LEKARSTWO JEST NA ROLI CIENIA, NIE NA KONTROLCE. Ognisko nadpisuje SAM TOKEN
+   elewacji na czas ogniska, więc każda kontrolka — dzisiejsza i przyszła —
+   która maluje `box-shadow` rolą elewacji, dostaje pierścień ZŁOŻONY ze swoim
+   cieniem, nie zamiast niego. Pierścień idzie PIERWSZY, bo pierwsza warstwa
+   listy cieni maluje się na wierzchu.
+
+   DLACZEGO PARY `-resting`: podstawienie w custom property rozstrzyga się na
+   elemencie, NA KTÓRYM property zadeklarowano. `--elevation-rest` stoi w bloku
+   `:root`, więc jego wartość jest tam już rozwinięta i schodzi w dół jako
+   gotowy literał — a nadpisanie na ognisku musi mieć skąd wziąć wartość
+   spoczynkową, nie odwołując się do siebie. Kopia robiona raz na `:root` jest
+   tym źródłem i rozstrzyga się per motyw, bo motyw jasny remapuje te same
+   tokeny na tym samym elemencie.
+
+   SŁOWNIK JEST ZAMKNIĘTY I MA SZEŚĆ POZYCJI, nie trzy kontrolki w przebraniu:
+   trzy role elewacji plus trzy aliasy, które `tokens.css` rozwija w bloku
+   `:root` (a więc też z góry) i które mają własnych konsumentów w tym pliku.
+
+   ILE Z NICH JEST DZIŚ ĆWICZONYCH — DWIE, i to trzeba było powiedzieć, zanim
+   powie to adwersarz. Policzone po konsumentach: rolę cienia spoczynku niesie
+   kontrolka (nawigacja, akcja drugorzędna, przyciski Ustawień), alias doku
+   przechwytywania też. Pozostałe cztery mają dziś WYŁĄCZNIE konsumentów, którzy
+   nie są kontrolkami — jedenaście dialogów, menu i toastów pod aliasem nakładki
+   oraz jeden panel pod aliasem kontekstu — więc nadpisanie nigdy się dla nich
+   nie odpala. Stoją tu nie dlatego, że coś naprawiają, tylko dlatego, że
+   pierwsza kontrolka, która sięgnie po którąś z tych ról, ma dostać pierścień
+   bez czyjejkolwiek pamięci o tym pliku. Nadpisanie nieodpalone to ta sama
+   klasa ciszy, którą to repo zna z pustych fikstur: nie dowodzi niczego,
+   dopóki go coś nie dosięgnie.
+
+   NAKŁADKI SĄ BEZPIECZNE STRUKTURALNIE, nie przez szczęście: własność
+   niestandardowa dziedziczy W DÓŁ, a dialog jest PRZODKIEM kontrolki, nie jej
+   potomkiem. Sprawdzone też od drugiej strony — panel wyskakujący jest
+   portowany do `document.body`, więc nie jest potomkiem swojego wyzwalacza.
+   Zmierzone: na 644 przystankach ani jeden potomek kontrolki z ogniskiem nie
+   zmienił cienia.
+
+   CZEGO TO NIE OBEJMUJE — NAZWANE, BO ZMIERZONE: kontrolka, która maluje
+   `box-shadow` wartością SPOZA tej rodziny, dalej wygrywa z pierścieniem.
+   Mechanizm został, przykład nie: kiedy to pisano, jedyną taką kontrolką była
+   `.knowledge-document-list li button.active` (kreska zaznaczenia `inset 2px 0`)
+   i akapit zostawiał ją następnemu lotowi z adresem i pomiarem.
+
+   ZAMKNIĘTE 2026-08-07 PRZEZ LOT 5 (pozycja 1), a razem z nią jej bliźniaczka
+   `.rowSelected` w `library/sources.module.css` (pozycja 9), której ten akapit
+   nie policzył — słowo „jedna" było prawdą o TYM arkuszu, nie o aplikacji, i to
+   jest lekcja z tego zdania. Obie kreski zniknęły, bo prototyp nie ma żadnej:
+   zaznaczenie niesie tam wypełnienie i lewą krawędź. Kanał `box-shadow` jest na
+   obu wolny, a pierścień na nich zmierzono prawdziwymi klawiszami w obu
+   motywach. Ten akapit zostaje, bo mechanizm dalej obowiązuje dla następnej
+   kontrolki, która sięgnie po literał spoza rodziny.
+
+   CZEGO NIE WIEM, ŻEBY NIE ZOSTAŁO PRZECZYTANE JAKO WIEM: „jedna" i „dziewięć"
+   powyżej to liczby z przelotu 644 przystanków z 2026-08-06 i NIKT go od tamtej
+   pory nie powtórzył. Literałów `box-shadow` spoza rodziny elewacji jest
+   w arkuszach więcej; tamten przelot orzekał, które z nich siedzą na czymś,
+   co bierze ognisko. Zamknięte są DWA policzone przez niego przypadki
+   Biblioteki, nie klasa.
+
+   GDZIE TO MIESZKA: kopie spoczynkowe stoją w TYM pliku, a nie w warstwie
+   tokenów, bo `tokens.css` był poza zakresem tego lotu. To jest miejsce
+   tymczasowe, nie wybór architektoniczny — należą do warstwy, która definiuje
+   role cieni. */
+:root {
+  --elevation-rest-resting: var(--elevation-rest);
+  --elevation-raised-resting: var(--elevation-raised);
+  --elevation-overlay-resting: var(--elevation-overlay);
+  --capture-shadow-resting: var(--capture-shadow);
+  --overlay-shadow-resting: var(--overlay-shadow);
+  --context-shadow-resting: var(--context-shadow);
+}
+:where(
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  summary,
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  --elevation-rest: var(--control-focus-ring), var(--elevation-rest-resting);
+  --elevation-raised:
+    var(--control-focus-ring), var(--elevation-raised-resting);
+  --elevation-overlay:
+    var(--control-focus-ring), var(--elevation-overlay-resting);
+  --capture-shadow: var(--control-focus-ring), var(--capture-shadow-resting);
+  --overlay-shadow: var(--control-focus-ring), var(--overlay-shadow-resting);
+  --context-shadow: var(--control-focus-ring), var(--context-shadow-resting);
+}
+
 svg {
   width: 1rem;
   height: 1rem;
@@ -619,9 +732,28 @@ kbd {
   background: var(--action-primary-pressed);
   transform: translateY(1px);
 }
+/* SKRÓT NA AKCJI GŁÓWNEJ NIE MA JUŻ WŁASNEGO KOLORU — dziedziczy kolor pisma
+   przycisku. Wygaszanie go przezroczystością nie mieściło się w AA i nie da się
+   go zmieścić przy zachowaniu wygaszenia, które cokolwiek znaczy. Policzone tą
+   samą matematyką co bramki kontrastu (`scripts/color-contrast.mjs`), na trzech
+   wypełnieniach akcji głównej — identycznych w obu motywach:
+
+     udział pisma   spoczynek   hover    pressed
+       62 %  (było)   2,983      3,934    4,989   ← dwa stany z trzech NIE ZDAJĄ
+       85 %            4,222      5,963    8,039   ← spoczynek dalej nie zdaje
+       90 %            4,532      6,480    8,832   ← zdaje, zapas 0,032
+      100 %  (jest)    5,195      7,599   10,563   ← zdaje, zapas 0,695
+   Próg AA dla tekstu zwykłego to 4,5 i nie wolno go ruszyć.
+
+   90 % ZDAJE I ZOSTAŁO ODRZUCONE ŚWIADOMIE: zapas 0,032 to siedem promili progu,
+   a w tym drzewie nie ma ani jednej zakomitowanej asercji o tej wartości (bramki
+   kontrastu czytają `tokens.css`, a to jest `styles.css`), więc pierwsza zmiana
+   akcentu zabrałaby ten stan po cichu. Wygaszenie nie zniknęło, tylko przestało
+   być kolorem: reguła `kbd` wyżej daje skrótowi mniejszy stopień pisma
+   (`--text-2xs`) i grubość 600 przy 650 przycisku, czyli ten sam sygnał niesiony
+   kształtem, a nie kontrastem. */
 .primary-button kbd {
   margin-left: var(--space-2);
-  color: color-mix(in oklch, var(--action-primary-text) 62%, transparent);
 }
 .secondary-button {
   color: var(--action-secondary-text);
@@ -700,16 +832,60 @@ kbd {
   opacity: 0.38;
 }
 
+/* TWO ROWS, AND THE FIRST ONE IS THE TITLE BAND (`v3/app.css:84-90`: the
+   prototype's `.titlebar` is a sibling of `.body`, above it, spanning the
+   window). This grid had one row and the band was the work column's first
+   child, which is why the band started at the sidebar's right edge and the
+   strip over the sidebar was empty. The band now takes row 1 across every
+   column and the three panes take row 2. */
 .desktop-shell {
   position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
   isolation: isolate;
   background: var(--shell-window-bg);
+}
+/* MATERIAŁ, NIE TEKSTURA (`v3/app.css:79-82`). Bardzo drobne ziarno na ~3,5 %
+   powstrzymuje duże ciemne pola przed czytaniem się jak płaska czerń ekranu.
+   Token `--grain` stał w drzewie bez ani jednego konsumenta od Fazy 1; to jest
+   ten konsument.
+
+   `pointer-events: none` NIE JEST OZDOBNIKIEM: bez niego ta jedna warstwa
+   przykrywa całą powłokę i odbiera jej klikalność, a żadna dzisiejsza bramka
+   tego nie zobaczy — sonda klika przez `element.click()` w `page.evaluate`,
+   co pomija trafienie kursorem.
+
+   Z-INDEKS TO `--z-sticky`, A NIE 999 Z PROTOTYPU. 999 stoi ponad wszystkim;
+   w tej aplikacji nakładki jadą `--z-dropdown`/`--z-overlay`/`--z-toast`/
+   `--z-tooltip` (30/40/50/60), a `::after` jest ostatnim dzieckiem, więc przy
+   remisie wygrywałby z każdą z nich. 20 kładzie ziarno nad lewą kolumną
+   (`--z-raised`, 2) i nad płótnem — czyli nad polami, dla których powstało —
+   i pod każdym menu, dialogiem i dymkiem. */
+.desktop-shell::after {
+  content: "";
+  position: absolute;
+  z-index: var(--z-sticky);
+  inset: 0;
+  background-image: var(--grain);
+  opacity: var(--grain-opacity);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+/* DŁUG Z FAZY 1 DOMKNIĘTY W TYM SAMYM LOCIE, w którym ziarno dostaje
+   konsumenta (`tokens.css:488-494` zapisywało go jako otwarty): v3 zeruje
+   `--grain-opacity` RAZEM z `--glass-blur` przy ograniczonej przezroczystości
+   (`v3/tokens.css:231-233`). Bez tego Faza 3 dowozi ziarno bez wyjścia
+   awaryjnego, a `--glass-blur` zostaje jedynym tokenem materiału, którego to
+   ustawienie systemowe nie dotyka. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --grain-opacity: 0;
+    --glass-blur: 0px;
+  }
 }
 .desktop-shell.inspector-open {
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(
@@ -746,13 +922,16 @@ kbd {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: calc(var(--titlebar-height) + var(--space-2)) var(--space-3)
-    var(--space-3);
+  /* The top inset used to reserve `--titlebar-height` for a band that was drawn
+     over the sidebar. The band is above the sidebar now, so the reservation is
+     over — the column starts where the column starts. */
+  padding: var(--space-2) var(--space-3) var(--space-3);
   border-right: 1px solid var(--shell-border);
+  /* Lewa kolumna jest PLANEM, nie szybą (`v3/app.css:155-160`). Stało tu
+     rozmycie tła, którego prototyp nie ma nigdzie w powłoce; pod nim leży
+     nieprzezroczyste okno, więc kosztowało warstwę kompozycji i nie pokazywało
+     niczego. Token wskazuje teraz `--surface-sidebar` (`tokens.css:512-523`). */
   background: var(--shell-sidebar-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturation));
 }
 
 .sidebar nav {
@@ -767,17 +946,12 @@ kbd {
 .sidebar > .fixture-condition {
   flex: none;
 }
-.window-drag {
-  position: absolute;
-  inset: 0 0 auto;
-  height: var(--titlebar-height);
-  -webkit-app-region: drag;
-}
+/* The mark is a flex child of the band. `.window-drag` — a second absolutely
+   positioned box whose only job was to make the sidebar's top strip draggable —
+   is gone with it: the band is the drag region now, and it covers the whole
+   window width instead of the sidebar's. */
 .brand-row {
-  position: absolute;
-  top: 0;
-  left: 5.6rem;
-  height: var(--titlebar-height);
+  flex: none;
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -789,16 +963,48 @@ kbd {
   font-weight: 650;
   letter-spacing: var(--tracking-wide);
 }
+/* ZNAK MARKI JEST KAFLEM, NIE SZARYM GLIFEM (`v3/app.css:98-103`). Prototyp
+   maluje go gradientem akcentu i kładzie na nim glif w kolorze `--on-accent`;
+   ta aplikacja rysowała sam glif w `--text-secondary`. Kafel powstaje BEZ
+   dodatkowego węzła: gradient idzie na sam `<svg>`, a glif odsuwa od krawędzi
+   `padding` (pudełko jest `border-box`, więc 1,25 rem minus 2 × 0,1875 rem daje
+   0,875 rem rysunku — prototypowe 0,8125 rem z dokładnością do ćwierci piksela
+   przy korzeniu 16 px). Węzeł opakowujący kosztowałby JS na ścieżce gorącej,
+   której zapas w tej fali wynosi mniej niż 3 kB.
+
+   ZOSTAJE PRZY FARBIE PROTOTYPU, CHOĆ KAFEL PRZESTRZENI JĄ OPUŚCIŁ, i to jest
+   różnica z powodu, nie z niedopatrzenia. Ten glif nie jest tekstem: to
+   `<svg aria-hidden="true">` z kółkami i kreskami (`components/BrandMark.tsx`),
+   stojące obok wypisanej literami nazwy produktu (`.brand-row strong`). WCAG
+   2.x SC 1.4.3 wiąże tekst, więc tego kafla nie wiąże — najjaśniejszy stopień
+   jego gradientu liczy 2,57:1 przeciw `--on-accent` i jest to dług estetyczny,
+   nie dostępnościowy. Kafel przełącznika przestrzeni NIESIE PRAWDZIWĄ LITERĘ
+   i dlatego siedzi dwa stopnie niżej na rampie (nota przy `.workspace-avatar`).
+   NIE UJEDNOLICAJ tych dwóch wartości bez zmiany jednego z tych dwóch faktów.
+   Pilnuje tego `scripts/consumer-contrast.test.mjs`: rozkłada OBA kafle na
+   stopnie i mierzy każdy, a zwolnienie znaku marki jest wymienione z nazwy
+   razem ze swoim dowodem i pada, gdy `aria-hidden` przy tej klasie zniknie. */
 .brand-mark {
-  width: 1.4rem;
-  height: 1.4rem;
-  color: var(--text-secondary);
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0.1875rem;
+  border-radius: var(--radius-xs);
+  color: var(--on-accent);
+  background: linear-gradient(
+    150deg,
+    var(--a-400),
+    var(--a-600) 62%,
+    var(--a-700)
+  );
+  box-shadow:
+    0 0 0 1px var(--accent-edge),
+    0 2px 6px var(--accent-glow);
 }
 .workspace-switcher {
   width: 100%;
   min-height: 3.25rem;
   display: grid;
-  grid-template-columns: 1.9rem minmax(0, 1fr) 1rem;
+  grid-template-columns: 1.5rem minmax(0, 1fr) 1rem;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2);
@@ -812,16 +1018,76 @@ kbd {
   border-color: var(--border-default);
   background: var(--surface-hover);
 }
+/* Ten sam kafel co przy znaku marki, o stopień większy (`v3/app.css:169-175`).
+   Obramowanie `--border-strong` znika: krawędź niesie teraz `--accent-edge`
+   w cieniu, tak jak w prototypie, a neutralna obwódka na akcencie czytała się
+   jak druga ramka. Litera schodzi na `--text-2xs`, bo na 1,5 rem kafla
+   `--text-sm` dotykała krawędzi.
+
+   LITERA JEST PRAWDZIWA, WIĘC WIĄŻE JĄ PRÓG NAPISU. W kaflu stoi inicjał nazwy
+   przestrzeni (`RealApp.tsx`, przełącznik przestrzeni) — treść, nie ozdoba.
+   Pisze go `--on-accent` przy `--text-2xs` (0,6875 rem) i wadze 700, czyli
+   grubo poniżej 18,66 px, więc ulga WCAG dla tekstu POWIĘKSZONEGO nie
+   przysługuje i wiąże próg 4,5:1. Gradient nie ma przy tym jednej wartości:
+   KAŻDY jego stopień jest farbą, którą ta litera może przykryć, więc próg wiąże
+   każdy stopień z osobna, a nie ich średnią.
+
+   ODSTĘPSTWO OD v3, NAZWANE. Prototypowy kafel (`v3/app.css:169-175`, klasa
+   `.ws-mark`) idzie od `--a-400` przez `--a-600` na 62% do `--a-700` i pisze po
+   nim tym samym prawie białym tuszem. Zmierzone tą samą matematyką
+   (`scripts/color-contrast.mjs`); wynik jest identyczny w OBU motywach, bo ani
+   rampa akcentu, ani `--on-accent` nie różnią się między nimi:
+
+     stopień          v3 (`.ws-mark`)      tutaj
+     --a-400  72%     2,57:1  PONIŻEJ      —
+     --a-600  55%     5,19:1  AA           5,19:1  ← stopień górny, przez rolę
+     --a-700  46%     7,60:1  AA           7,60:1  ← stopień dolny, od 62% w dół
+
+   Górny stopień prototypu nie przechodzi i nie o włos: 2,57:1 przy progu 4,5:1,
+   do tego na kolorze wychodzącym 0,031 poza gamut sRGB (liczone po przycięciu,
+   bo tyle widać na ekranie). Zostaje WARTOŚĆ WYLICZONA, dokładnie jak przy
+   akcji głównej w `tokens.css`: progu nie wolno obniżyć, to zamieniłoby pomiar
+   z powrotem w deklarację.
+
+   FORMA ZOSTAJE, ZMIENIA SIĘ POŁOŻENIE NA RAMPIE — ten sam kąt 150°, ten sam
+   odcień 295, ten sam kształt kafla, ta sama krawędź i to samo halo. Próg
+   czytelności przecina rampę przy ~58,3% jasności, więc stopni niosących tekst
+   jest DOKŁADNIE DWA (tabela stopni akcentu w `tokens.css`) — i tyle ich tu
+   stoi. Punkt przegięcia 62% z prototypu zostaje jako pozycja stopnia dolnego:
+   gradient przebywa całą drogę na pierwszych 62% i dalej stoi, czyli zachowuje
+   prototypowe „szybko na górze, spokojnie na dole", tylko na dwóch farbach
+   zamiast trzech. TRZECIEJ FARBY NIE MA ŚWIADOMIE: cokolwiek ciemniejszego niż
+   `--a-700` musiałoby być literałem spoza rampy, a literał o wartości stanu
+   wciśniętego akcji byłby kopią wartości (w tym repo nazwana klasa defektu),
+   podczas gdy nowy stopień rampy twierdziłby, że v3 ma sześć stopni. Ma pięć.
+
+   GÓRNY STOPIEŃ BIERZE ROLĘ „AKCENT, KTÓRY NIESIE TEKST"
+   (`--accent-legible-bg`), a dolny jest zwykłym stopniem rampy — i ta różnica
+   pisowni jest ZAMIERZONA, nie do posprzątania. Rola nazywa NAJJAŚNIEJSZY
+   stopień akcentu, po którym wolno pisać; gradient wiąże dokładnie swój
+   najjaśniejszy stopień, więc tam właśnie ograniczenie jest deklarowane,
+   a wszystko poniżej jest czytelne z konstrukcji, bo idzie w ciemno tym samym
+   odcieniem. Kto przestroi rolę, przestroi ten kafel — i o to chodzi.
+   Odrzucone zostało wzięcie `--action-primary-bg`, choć wartość byłaby ta sama:
+   przełącznik przestrzeni JEST przyciskiem, ale ten kafel nie jest jego
+   wypełnieniem ani nie ma jego stanów, a pierwsze przestrojenie akcji
+   przesunęłoby go po cichu (ten sam wybór stoi przy roli w `tokens.css`). */
 .workspace-avatar {
   display: grid;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 1.5rem;
+  height: 1.5rem;
   place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: var(--surface-sunken);
-  font-size: var(--text-sm);
+  border-radius: var(--radius-xs);
+  color: var(--on-accent);
+  background: linear-gradient(
+    150deg,
+    var(--accent-legible-bg),
+    var(--a-700) 62%
+  );
+  box-shadow:
+    0 0 0 1px var(--accent-edge),
+    0 1px 4px var(--accent-glow);
+  font-size: var(--text-2xs);
   font-weight: 700;
 }
 .workspace-switcher > span:nth-child(2) {
@@ -871,17 +1137,23 @@ kbd {
   border-radius: var(--radius-sm);
   background: var(--input-bg);
   text-align: left;
-  opacity: 0.78;
+}
+.search-control:hover {
+  border-color: var(--accent-edge);
+  color: var(--text-tertiary);
 }
 .search-control span {
   flex: 1;
 }
-.search-control kbd {
-  padding: 0.1rem 0.3rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
+/* WYSZUKIWARKA NIE JEST WYGASZONA JAKO CAŁOŚĆ (`v3/app.css:183-194`). Stało tu
+   `opacity: 0.78` na całej kontrolce, więc przygaszone było WSZYSTKO naraz:
+   obwódka, ikona, etykieta i skrót — łącznie z pierścieniem ogniska, który przy
+   0,78 przestaje spełniać próg, na jaki go zestrojono. Ciszę niesie teraz kolor
+   tekstu, tak jak w prototypie, a skrót schodzi jeszcze stopień niżej. */
+.search-control .search-shortcut {
+  flex: none;
   color: var(--text-disabled);
-  background: var(--surface-raised);
+  font-size: var(--text-2xs);
 }
 .sidebar nav {
   margin-top: var(--space-5);
@@ -900,7 +1172,10 @@ kbd {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-4);
+  /* `v3/app.css:210-216`: nagłówek modułu odsuwa się od tego, co nad nim,
+     o `--space-3`. Stało `--space-4` — o jeden przyrost skali za dużo, przez
+     co dwa moduły czytały się jak dwie osobne listy. */
+  margin-top: var(--space-3);
   padding: 0 var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -945,9 +1220,16 @@ kbd {
 .nav-group-toggle[aria-expanded="false"] .nav-group-chevron {
   transform: rotate(-45deg);
 }
+/* GĘSTOŚĆ KOLUMNY Z PROTOTYPU (`v3/app.css:198-204`): wiersz 1,75 rem zamiast
+   2,125 rem. `min-height`, a nie `height`, dokładnie jak tam — przelot bramki
+   przy 200 % pisma musi móc rozepchnąć wiersz, a sztywna wysokość ucięłaby
+   etykietę zamiast urosnąć. UWAGA NA TOKEN: `--row-height` (2,125 rem) NIE jest
+   tokenem tego wiersza — v3 niesie obie liczby naraz (`v3/tokens.css:108`
+   dla wierszy tabeli, `v3/app.css:199` dla nawigacji), więc podpięcie tu tokenu
+   dałoby jedną wysokość dwóm różnym rzeczom. */
 .nav-item {
   width: 100%;
-  height: 2.125rem;
+  min-height: 1.75rem;
   display: grid;
   grid-template-columns: 1.1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -985,7 +1267,52 @@ kbd {
 .nav-favorite {
   margin-bottom: 0.12rem;
 }
-.nav-item:not(:disabled):hover {
+/* ── SELECTION VERSUS HOVER — THE RULE, WRITTEN ONCE, HERE ───────────────────
+   A HOVER RULE MAY NOT REPAINT THE THING THE READER IS ON. Three lots of this
+   wave shipped the opposite — the source row (lot 5, caught at review), the
+   funnel stage row (lot 6, caught at review) and this rule — and no gate in
+   this repository saw any of them, because until lot 6 no gate moved a pointer
+   at all. Two admissible resolutions, and which one applies is decided by the
+   HOVER rule, not by taste:
+
+     * the hover rule is BARE (`.row:hover`) → give selection the same weight
+       and declare it SECOND. This is what the reference does
+       (`v3/screens/settings.css:119` and `:120`, `v3/screens/knowledge.css:144`
+       and `:145` — equal weight, selection written after), what lot 5 did on
+       `.row.rowSelected`, and what seventeen healthy sites in this tree already
+       did BEFORE this pass — eighteen after it, because
+       `.compact-record-list > button.selected` joined them by being moved past
+       its hover rule. Nothing else has to change at those sites.
+     * the hover rule carries a GUARD the selection rule cannot honestly copy
+       (`:not(:disabled)` here, and again on the stage row) → equal weight is
+       only reachable by copying the guard, which would delete the selection
+       paint for every element that is momentarily disabled. So the hover rule
+       excludes the selected state BY NAME instead, and the result no longer
+       depends on source order at all.
+
+   THIS RULE TAKES THE SECOND BRANCH. `.nav-item.active` below weighs (0,2,0)
+   against the (0,3,0) this rule used to weigh, so the item saying „you are
+   here" repainted itself neutral under the cursor — measured in Chromium at
+   1440 px, light theme, real pointer: `--nav-active-bg` `oklch(0.55 0.21 295 / 0.07)`
+   at rest, `--surface-hover` `oklch(0.12 0.006 255 / 0.045)` hovered. The
+   accent glyph and the elevation survived, which is why it read as a subtle
+   wash going missing rather than as a broken screen.
+
+   TWO CARRIERS, BOTH NAMED, because excluding one would fix an instance and
+   leave its twin asleep: `.active` is the paint carrier on the surface list
+   (`RealApp.tsx:1872`, `:1934`, `:3225`) and `[aria-current]` covers both the
+   `"page"` that always travels with it and the `"location"` of the settings
+   mode column (`:1370`), which until now won only by source order.
+
+   `:active` (the next rule) is deliberately NOT narrowed: a press is a
+   momentary answer to the reader's own finger, not a claim about where they
+   are, and the reference presses its nav item the same way.
+
+   ONE `:not()` WITH A LIST, so the rule keeps the (0,3,0) it already had.
+   `:not(a):not(b):not(c)` would weigh (0,5,0) and start winning ties this rule
+   was never meant to enter — the same mistake, measured and undone, at
+   `.settings-control button:not(.primary-button, .settings-row)`. */
+.nav-item:not(:disabled, .active, [aria-current]):hover {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
@@ -997,6 +1324,14 @@ kbd {
   border-color: var(--nav-active-border);
   background: var(--nav-active-bg);
   box-shadow: var(--elevation-rest);
+}
+/* Ikona aktywnej pozycji bierze PEŁNY akcent (`v3/app.css:221`). Podbarwienie
+   pod wierszem mówi „ten wiersz", a tusz na glifie mówi „ta pozycja" — bez
+   niego cały sygnał niósł prostokąt o alfie 0,08 i pierwsze zadanie akcentu
+   („gdzie czytelnik jest") było w tej kolumnie ledwo widoczne. Reguły dla samego
+   glifu nie było tu w ogóle: dziedziczył `--nav-active-text`. */
+.nav-item.active > svg {
+  color: var(--accent);
 }
 .nav-item:disabled {
   color: var(--text-disabled);
@@ -1029,23 +1364,152 @@ kbd {
 .nav-item-meta .nav-palette-shortcut {
   color: var(--text-quaternary);
 }
+/* ── SETTINGS MODE COLUMN — the one settings navigator ───────────────────────
+   The reference gives this column its own item rule with its own track
+   (`v3/screens/settings.css:61-71`): a flex row where the label takes
+   `flex: 1; min-width: 0` and ellipsises. This column had NO rule of its own —
+   not one — so every entry inherited `.nav-item`'s three-track grid and, since
+   a section entry renders a SINGLE child, the label landed in the 1.1rem ICON
+   track. That is measured, not deduced: at 1440 px the button's resolved
+   `grid-template-columns` was `17.5938px 143.406px 0px`, the label span was
+   17.59 px wide, and „Data and privacy", „Access and connections" and „Setup
+   and app" were each 51 px tall — three lines in a seventeen-pixel column,
+   beside a „‹ Settings" back button that starts 25 px further right because it
+   renders TWO children and therefore does hit `.nav-item > span:nth-child(2)`.
+   The x-start difference and the wrap have the same single cause.
+
+   NO GATE SEES THIS AND THAT IS STRUCTURAL, not an oversight: the overflow
+   sweep picks its subject as a descendant of `#main-content[role="tabpanel"]`
+   (`scripts/verify-renderer-layout.mjs:783`), and the sidebar does not lie
+   inside it. This position is closed on a browser measurement recorded in the
+   lot report, not on an instrument. */
+.settings-mode-column {
+  display: grid;
+  gap: 0.12rem;
+}
+.settings-mode-column .nav-item {
+  grid-template-columns: minmax(0, 1fr);
+  /* `white-space` STOI NA WPISIE, nie tylko na jego dziecku, i to nie jest
+     kosmetyka selektora: „nie zawijaj" jest własnością wpisu, dziecko ją
+     dziedziczy, a pomiar pytający o wpis dostaje odpowiedź zamiast `normal`
+     odziedziczonego z powłoki. Deklaracja na samym dziecku wyglądała jak
+     lekarstwo i zostawiała wpis mówiący coś innego niż robi. */
+  white-space: nowrap;
+}
+.settings-mode-column .settings-mode-back {
+  grid-template-columns: 0.6rem minmax(0, 1fr);
+}
+/* Every child of an entry here is a label, so every child ellipsises — the
+   shared rule reaches only `nth-child(2)`, which is exactly the child a
+   section entry does not have. */
+.settings-mode-column .nav-item > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* WHERE THE READER IS, marked three ways at once because colour alone is not
+   a carrier (`v3/screens/settings.css:74-80`): the wash says which row, the
+   weight says it again in shape, and the inked rail says it a third time on a
+   channel that survives a grayscale print. The wash is the shell's own
+   `--nav-active-*` role rather than a raw accent tint — the component role
+   exists, so the new selector takes it (`.ui-craft/tokens.md:219-220`) — and
+   the rail is the reference's 2 px accent edge (`.ui-craft/tokens.md:239-241`,
+   ink confined to a rail). */
+.settings-mode-column .nav-item[aria-current="location"] {
+  color: var(--nav-active-text);
+  background: var(--nav-active-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+  font-weight: 600;
+}
+/* THE THREE RULES THAT USED TO STAND HERE MOVED, and the move is position 13's
+   split rather than a tidy-up: they were keyed on `@media (max-width: 50rem)`,
+   which is the window, and what they are really about is the RAIL. They now sit
+   beside the rest of the rail rules, keyed on `.desktop-shell.rail`, so the
+   column behaves the same way whether the window forced the rail or a person
+   asked for it. One trigger, one behaviour, one place to read it. */
 /* Unread attention weighs more than an informational task count: a filled
-   pill distinguishes it by shape and background, never by a new hue. */
+   pill distinguishes it by shape and background.
+
+   PLAKIETKA BIERZE AKCENT (`v3/app.css:235-239`). Zdanie, które tu stało —
+   „nigdy nowym odcieniem" — było prawdziwe pod poprzednim brzmieniem kontraktu
+   i nie jest już wiążące: rozstrzygnięcie właściciela z 2026-08-07 („prototyp
+   ważniejszy") wprost odwraca tę pozycję. Nowego ODCIENIA i tak tu nie ma —
+   295 to ten sam akcent co wszędzie; zmienia się to, że plakietka mówi „coś tu
+   czeka" tuszem, a nie neutralnym zaznaczeniem, którego jest to jedyny
+   konsument w powłoce. Liczba oczekujących jest faktem zaksięgowanym, nie
+   walencją: nic tu nie jest dobre ani złe.
+
+   BIERZE GO PRZEZ ROLĘ „AKCENT, KTÓRY NIESIE TEKST", A NIE PRZEZ `--accent`,
+   i to jest poprawka do pierwszego brzmienia tej reguły. `--accent` nie jest
+   wiązany progiem czytelności (maluje kreskę, glif, obwódkę), więc w motywie
+   CIEMNYM stoi o stopień jaśniej i liczba na plakietce dawała tam 3,54:1 przy
+   progu 4,5. Rola stoi na `--a-600` w obu motywach i daje 5,19:1 w obu.
+
+   ODSTĘPSTWO OD v3, NAZWANE: prototyp maluje tę plakietkę wprost swoim
+   `--accent` (`v3/app.css:235-239`), czyli w ciemnym stopniem `--a-500` — więc
+   plakietka prototypu liczy w ciemnym te same 3,54:1. W motywie jasnym nie ma
+   żadnej różnicy (tam `--accent` to już `--a-600`); w ciemnym plakietka jest
+   o jeden stopień ciemniejsza od prototypowej. To jest ten sam wyjątek, który
+   `tokens.css` zapisał przy akcji głównej: próg dostępności bije wierność,
+   a odstępstwo jest nazwane, nie przemilczane. */
 .nav-count--attention {
-  min-width: 1.15rem;
-  padding: 0.12rem 0.34rem;
+  min-width: 1.0625rem;
+  padding: 0 0.25rem;
   border-radius: var(--radius-full);
-  color: var(--text-secondary);
-  background: var(--surface-selected);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--accent-legible-text);
+  background: var(--accent-legible-bg);
+  font-weight: 600;
   text-align: center;
+}
+/* DRUGI POZIOM LEWEJ KOLUMNY (`v3/app.css:240-260`). Pionowa włoskowata kreska
+   robi z wcięcia relację: bez niej wiersz potomny czyta się jak cel o mniejszej
+   czcionce. Kropka jest wygaszona, dopóki wiersz nie jest bieżący — wtedy bierze
+   akcent, bo „gdzie czytelnik jest" to pierwsze zadanie akcentu, a 0,3125 rem
+   tuszu mieści się w formie. */
+.nav-children {
+  position: relative;
+  margin-top: 2px;
+  padding-left: var(--space-3);
+}
+.nav-children::before {
+  content: "";
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0.6875rem;
+  width: 1px;
+  background: var(--border-subtle);
+}
+.nav-child {
+  min-height: 1.625rem;
+  grid-template-columns: 0.6875rem minmax(0, 1fr);
+  color: var(--text-tertiary);
+}
+.nav-child-dot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  justify-self: center;
+  border-radius: var(--radius-full);
+  background: var(--text-disabled);
+}
+.nav-child.active .nav-child-dot {
+  background: var(--accent);
 }
 .sidebar-spacer {
   flex: 1;
 }
+/* FOUR TRACKS, BECAUSE THE FOOT NOW HOSTS TWO CONTROLS (`v3/app.js:662-664`
+   puts the collapse control and Settings side by side in the sidebar foot, and
+   this is that foot). Measured before the change: with two tracks and three
+   children the Settings button wrapped onto a second row and stretched to the
+   full 171 px of the label track — it was never given a box of its own, so it
+   read as a full-width strip under the identity rather than as a glyph beside
+   it. Both buttons now take the shared `.icon-button` box instead of a bespoke
+   one; the app already had that rule and the shell's history controls already
+   use it. */
 .preview-identity {
   display: grid;
-  grid-template-columns: 0.5rem minmax(0, 1fr);
+  grid-template-columns: 0.5rem minmax(0, 1fr) auto auto;
   gap: var(--space-2);
   align-items: start;
   margin: var(--space-3) var(--space-1) 0;
@@ -1087,7 +1551,8 @@ kbd {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Two rows, not three: the tab band left this column for the shell. */
+  grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   background:
     radial-gradient(ellipse at 50% 0%, var(--white-a055), transparent 68%) top /
@@ -1104,31 +1569,69 @@ kbd {
   background: var(--surface-canvas);
   scrollbar-color: var(--border-default) transparent;
 }
+/* THE BAND ITSELF (`v3/app.css:84-90`). Three things changed with the move and
+   each of them is the prototype's own arrangement rather than a taste call:
+
+   IT SPANS THE GRID. `1 / -1` covers two columns or three, so opening the
+   inspector does not shorten the band — the inspector opens UNDER it, which is
+   what `v3` does by putting `.titlebar` outside `.body` entirely.
+
+   IT IS ONE BAND TALL, NOT TWO. The old box was `--titlebar-height +
+   --header-band-height` with the upper half spent as `padding-top` — an empty
+   strip that existed only because the real title strip was somewhere else, over
+   the sidebar. The prototype's title bar is exactly `--titlebar-height`, and
+   `.shell-tab` is already cut for it: 2.25 rem of tab under 0.25 rem of top
+   padding is 2.5 rem, `v3/app.css:129`'s `calc(var(--titlebar-height) - 4px)`
+   to the pixel.
+
+   IT IS THE DRAG REGION. `.window-drag` used to be a separate box over the
+   sidebar's top strip. A band that spans the window can carry the region
+   itself — but only if everything interactive in it opts out, or the tabs stop
+   taking clicks and the tab strip stops scrolling under the pointer. The three
+   groups below opt out by name, which is why this is a list and not a `*`. */
 .shell-tabbar {
+  grid-column: 1 / -1;
   min-width: 0;
-  height: calc(var(--titlebar-height) + var(--header-band-height));
+  height: var(--titlebar-height);
   display: flex;
-  align-items: flex-end;
+  /* `stretch`, then each group picks its own alignment — the prototype's
+     arrangement (`v3/app.css:84-90` stretches, `:91` centres the groups, `:105`
+     bottoms the tab strip). One `flex-end` for the whole band would have put
+     the mark and the chrome glyphs on the bottom border with the tabs. */
+  align-items: stretch;
   gap: var(--space-2);
-  padding: var(--titlebar-height) var(--space-3) 0;
+  /* Left inset clears the macOS traffic lights, exactly the 5.6 rem the mark
+     used to be positioned at inside the sidebar. */
+  padding: 0 var(--space-3) 0 5.6rem;
   border-bottom: 1px solid var(--shell-border);
-  background: var(--shell-sidebar-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturation));
+  -webkit-app-region: drag;
+  /* To pasmo jest w prototypie pasmem tytułu (`v3/app.css:84-90`), więc bierze
+     plan sceny, a nie plan lewej kolumny — w motywie jasnym to dwie różne
+     jasności i szew między nimi jest zamierzony. Rozmycie znika z tego samego
+     powodu co przy `.sidebar`: prototyp nie stawia szkła w powłoce. */
+  background: var(--shell-chrome-bg);
 }
 .shell-history-controls {
   display: flex;
   flex: none;
+  align-items: center;
   gap: var(--space-1);
-  padding-bottom: var(--space-1);
+  -webkit-app-region: no-drag;
 }
-.shell-history-controls .icon-button {
-  width: 1.85rem;
-  height: 1.85rem;
+/* 1.75 rem, THE PROTOTYPE'S OWN `.icon-btn` (`v3/app.css:135-143`), replacing
+   the 1.85 rem this band invented. One declaration serves both ends of the band
+   because the prototype gives both ends the same button — a right-hand group
+   sized differently from the left would have been the position half-done. Above
+   the 24 px floor of WCAG 2.5.8 at 28 px, so the size is a fidelity choice with
+   room to spare, not a threshold traded away. */
+.shell-history-controls .icon-button,
+.shell-tab-actions .icon-button {
+  width: 1.75rem;
+  height: 1.75rem;
   color: var(--text-tertiary);
 }
-.shell-history-controls .icon-button:disabled {
+.shell-history-controls .icon-button:disabled,
+.shell-tab-actions .icon-button:disabled {
   color: var(--text-disabled);
   opacity: 0.45;
 }
@@ -1136,6 +1639,9 @@ kbd {
   min-width: 0;
   display: flex;
   flex: 1;
+  align-items: flex-end;
+  padding-top: 0.25rem;
+  -webkit-app-region: no-drag;
   gap: 1px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1158,32 +1664,20 @@ kbd {
     transparent
   );
 }
-.shell-detach {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
+/* The right-hand group mirrors the history group at the left end of the same
+   band, down to the button size — `v3/app.css:135-143` gives both ends the one
+   `.icon-btn`, and this application already had that rule under the name
+   `.icon-button`. Nine declarations of bespoke button paint went away with the
+   wide text button; nothing here restates them. */
+.shell-tab-actions {
+  display: flex;
   flex: none;
-  font: inherit;
-  font-size: var(--text-2xs);
-  margin-bottom: var(--space-1);
-  padding: 0.42rem 0.6rem;
+  align-items: center;
+  gap: var(--space-1);
+  -webkit-app-region: no-drag;
 }
 .shell-detach:not(:disabled) {
   cursor: pointer;
-}
-.shell-detach:not(:disabled):hover {
-  color: var(--text-secondary);
-  background: var(--surface-hover);
-}
-.shell-detach:not(:disabled):active {
-  background: var(--surface-pressed);
-}
-.shell-detach:disabled {
-  opacity: 0.4;
-}
-.shell-detach-short {
-  display: none;
 }
 .context-menu-layer {
   position: fixed;
@@ -1241,10 +1735,27 @@ kbd {
   color: var(--text-secondary);
   background: var(--surface-hover);
 }
+/* AKTYWNA ZAKŁADKA MÓWI DWIE RZECZY NARAZ (`v3/app.css:117-124`): materiał
+   i miejsce. Materiał niesie górna krawędź — `--edge-top` jest jaśniejszą
+   kreską, która odkleja panel od tła bez pełnego obramowania, i do tego lotu
+   nie miała ani jednego konsumenta. Miejsce niesie kreska akcentu przy dolnej
+   krawędzi: „gdzie czytelnik jest" to pierwsze z pięciu zadań akcentu, a tusz
+   na 2 px mieści się w formie, która akcent ogranicza. Wcięcie 0,5 rem po obu
+   stronach jest z prototypu — kreska krótsza niż zakładka czyta się jako znak,
+   nie jako druga krawędź. */
 .shell-tab.active {
   color: var(--text-primary);
   border-color: var(--border-subtle);
   background: var(--surface-canvas);
+  box-shadow: inset 0 1px 0 var(--edge-top);
+}
+.shell-tab.active::after {
+  content: "";
+  position: absolute;
+  inset: auto 0.5rem 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
 }
 .shell-tab > [role="tab"] {
   min-width: 0;
@@ -1292,13 +1803,26 @@ kbd {
 .shell-tab-close svg {
   width: 0.8rem;
 }
+/* PROPORCJE PASKA `crumbbar` Z PROTOTYPU (`v3/app.css:282-293`), NIE SAM PASEK.
+   Prototypowy `crumbbar` jest pasmem na całą szerokość płótna, z własną dolną
+   krawędzią; tutaj przejęte są WYŁĄCZNIE jego proporcje — wysokość pasma, skala
+   tytułu i akcja po prawej — a nagłówek zostaje w kolumnie czytelnej
+   (`--surface-measure`), którą ma cała powłoka. Pełne pasmo przesunęłoby
+   poziome wyrównanie względem treści na jedenastu powierzchniach i jest ZMIANĄ
+   WIĘKSZĄ, niż ten lot obejmuje.
+
+   `min-height`, a nie `height`, dokładnie jak w prototypie: przy skalowaniu
+   tekstu pasmo ma rosnąć, a nie przycinać. */
 .surface-header {
   max-width: var(--surface-measure, 58rem);
+  min-height: var(--header-band-height);
   margin: 0 auto var(--space-6);
   display: flex;
-  align-items: flex-start;
+  /* Było `flex-start` — akcja równała się do GÓRY nagłówka display, czyli do
+     niczego, co widać. W rzędzie o wysokości pasma równa się do rzędu tytułu. */
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-4);
   /* Przy skalowaniu tekstu do 200% nagłówek przestaje się mieścić w wierszu
      i wypycha powierzchnię poza jej własne pudełko — czyli robi poziomy pasek
      przewijania na ekranie, który go nie ma. Zawijanie nic nie zmienia, dopóki
@@ -1311,16 +1835,43 @@ kbd {
 }
 /* Historia wrzutek jest ODCZYTEM Biblioteki, a nie własnym celem, więc jej
    nagłówek zjeżdża na `h2` pod `h1` powłoki. Wygląd zostaje ten sam: poziom
-   nagłówka niesie hierarchię dokumentu, nie rozmiar liter. */
+   nagłówka niesie hierarchię dokumentu, nie rozmiar liter.
+
+   I TA ZASADA JEST TU TERAZ CAŁĄ POINTĄ. Tytuł jechał `--text-display`, czyli
+   30-42 px (zmierzone 31.68 px przy 1440 px) o wadze 590 — i POWTARZAŁ
+   etykietę aktywnej zakładki powłoki tuż nad sobą. Zmierzone na żywo, oba
+   motywy: jedenaście przystanków nawigacji, na których rysuje się
+   `.surface-header`, i na WSZYSTKICH JEDENASTU tekst `h1` jest identyczny
+   z etykietą aktywnej zakładki — Today, Calendar, Inbox, Tasks, Projects,
+   Pipeline, Organizations, People, Renewals, Settings, plus ekran startowy,
+   który pokazuje ten sam nagłówek co Today. Jedyny nagłówek, który NIE
+   dubluje, to odczyt Historii przechwyceń — `h2` „Capture history" pod
+   zakładką „Library".
+
+   Zdublowany KRZYK znika, `<h1>` ZOSTAJE i zostaje WIDOCZNY: element ukryty
+   albo `display: none` opróżniłby podmiot sondy wierności zamiast naprawić
+   ekran. Rozmiar i waga są z bieżącego okruszka prototypu (`v3/app.css:292`),
+   który tak samo stoi pod paskiem zakładek nazywającym ten sam ekran.
+   `-0.008em` jest literałem, bo żaden token trackingu nie niesie tej wartości
+   (`--tracking-tight` to -0.035em, `--tracking-wide` to 0.025em). */
 .surface-header h1,
 .surface-header h2 {
-  margin: 0.42rem 0 0.3rem;
-  font-size: var(--text-display);
-  font-weight: 590;
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tight);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: var(--leading-snug);
 }
-.surface-header p:last-child {
+/* `p:last-child` NIE WYSTARCZA i przez to opis bywał WIĘKSZY od tytułu.
+   W Ustawieniach po akapicie stoi jeszcze przycisk pomocy
+   (`SettingsSurface.tsx:951-960`), więc akapit nie jest ostatnim dzieckiem
+   i zostawał na 14 px w kolorze pisma podstawowego — obok tytułu 13 px.
+   Dopóki tytuł miał 30-42 px, odwrócenie było niewidoczne; skrócenie tytułu
+   w Fazie 2 je ujawniło. Reguła celuje więc w KAŻDY akapit nagłówka, a nie
+   w ostatnie dziecko: dziesięć ekranów, na których to działało, wygląda
+   tak samo, a dwa, na których nie działało, dołączają. */
+.surface-header p:not(.eyebrow),
+.meeting-hero > div:first-child > p:not(.eyebrow) {
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
@@ -1706,24 +2257,40 @@ kbd {
   min-width: 0;
   width: 100%;
   max-width: 32rem;
-  min-height: 3.15rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: 0.55rem 0.65rem 0.55rem 0.9rem;
+  gap: var(--space-2);
+  /* PIGUŁKA, NIE PROSTOKĄT (`v3/app.css:804-816`). Trzy zmiany, wszystkie
+     z jednej deklaracji prototypu: promień pełny zamiast `--radius-xl`, padding
+     0,4375 rem / 0,75 rem zamiast czterech różnych liczb, i BRAK `min-height` —
+     prototyp nie deklaruje wysokości wcale, a stojące tu 3,15 rem było jedynym
+     powodem, dla którego dok mierzył 50 px zamiast wysokości swojej treści.
+     `box-shadow` ZOSTAJE na `--capture-shadow`, i to nie jest przeoczenie:
+     `styles.css:608-633` remapuje ten token przy `:focus-visible` na
+     „pierścień, potem cień spoczynkowy", więc podmiana go na `--shadow-lg`
+     zabrałaby dokowi pierścień ogniska. */
+  padding: 0.4375rem 0.75rem;
   color: var(--text-tertiary);
   border: 1px solid var(--capture-border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-full);
   background: var(--capture-bg);
   box-shadow: var(--capture-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur))
     saturate(var(--glass-saturation));
 }
+/* Hover bierze krawędź akcentu i poświatę (`v3/app.css:815-816`) — dok to
+   jedyne wejście do przechwytywania z każdego ekranu, więc „da się to wcisnąć"
+   jest tu warte tuszu. Obiekt pod kursorem nie zmienia planu; zmienia go
+   krawędź rzeczy, którą da się wcisnąć. `--accent-glow` dostaje tu drugiego
+   konsumenta. */
 .capture-dock:hover {
   color: var(--text-primary);
-  border-color: var(--edge-specular);
+  border-color: var(--accent-edge);
+  box-shadow:
+    var(--capture-shadow),
+    0 0 24px var(--accent-glow);
 }
 .capture-dock-content {
   min-width: 0;
@@ -1737,12 +2304,13 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Ten sam zabieg co przy wyszukiwarce: skrót jest cichym napisem, nie rysunkiem
+   klawisza (`v3/app.css:819`). To także jedyny sposób, w jaki zdjęcie
+   `min-height` wyżej naprawdę obniża dok — pigułka klawisza była wyższa niż
+   padding, który ją otacza. */
 .capture-dock kbd {
-  padding: 0.28rem 0.42rem;
   color: var(--text-quaternary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
+  font-family: var(--font-mono);
 }
 
 .inspector {
@@ -1810,12 +2378,20 @@ kbd {
     display: none;
   }
 }
+/* THE SEAM THIS HEIGHT EXISTS FOR MOVED, so the height moved with it. The
+   inspector is a COLUMN of the shell grid, and until the title band became a
+   row of that grid the inspector started at the top of the window — so its
+   header had to be as tall as the work column's band (`--titlebar-height +
+   --header-band-height`) for the two bottom borders to line up. Both panes now
+   start below the band, so the seam is between this header and nothing at all:
+   the header is a header again, one band tall, and its content centres in it
+   instead of hanging from the bottom of a box twice its size. */
 .inspector-header {
-  height: calc(var(--titlebar-height) + var(--header-band-height));
+  height: var(--header-band-height);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-4) var(--space-3);
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 .inspector-header > div {
@@ -1832,12 +2408,12 @@ kbd {
   font-size: var(--text-2xs);
 }
 .inspector-body {
-  height: calc(100% - var(--titlebar-height) - var(--header-band-height));
+  height: calc(100% - var(--header-band-height));
   overflow-y: auto;
   padding: var(--space-5) var(--space-4) var(--space-8);
 }
 .surface-inspector-host {
-  height: calc(100% - var(--titlebar-height) - var(--header-band-height));
+  height: calc(100% - var(--header-band-height));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--border-default) transparent;
@@ -2121,12 +2697,27 @@ kbd {
   padding: 0;
   list-style: none;
 }
+/* PIERWSZY KONSUMENT `--row-height` W USTAWIENIACH (2,125 rem).
+   KONTRAKT: `.ui-craft/tokens.md:85-92` („Spacing and density" — gęstość jest
+   mieszana ŚWIADOMIE, wg roli treści, a nie jednym globalnym przełącznikiem;
+   wiersz listy jest gęsty). Token stał
+   w `tokens.css` od Fazy 1 bez ani jednego odwołania; prototyp wiąże go
+   z WIERSZEM LISTY i tylko z nim (`v3/screens/settings.css:435-439`,
+   `.st-skel-row { min-height: var(--row-height) }`), a to jest wiersz listy.
+   `min-height`, nie `height`, dokładnie jak tam: przy skalowaniu pisma wiersz
+   ma urosnąć, a nie uciąć etykietę.
+
+   CZEGO TEN TOKEN TU NIE ROBI: nie schodzi na `.settings-help-entry` ani na
+   picker. Tamte 2,75 rem to CEL DOTYKOWY, czyli próg dostępności, a nie
+   gęstość — podpięcie ich pod token o wartości 2,125 rem byłoby obniżeniem
+   progu przebranym za spójność. */
 .status-list li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-3);
+  min-height: var(--row-height);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -3026,67 +3617,140 @@ kbd {
   }
 }
 
+/* ── THE RAIL, SPLIT FROM THE NARROW WINDOW ──────────────────────────────────
+   Everything below used to live inside `@media (max-width: 50rem)`, which made
+   the window the ONLY thing that could collapse the left column. Position 13 of
+   this lot gives a person the same power, and the honest way to do that is to
+   SPLIT this block rather than copy it: a second set of rules hiding the same
+   children by the same class names is two owners for one behaviour, and they
+   drift the first time one of them is edited.
+
+   So the trigger moves into `railMode` (`RealApp.tsx`), which is `narrowRail ||
+   sidebarCollapsed`, and stamps `.rail` on the shell. The media query keeps ONLY
+   what is genuinely about a narrow WINDOW — the tab bar's own padding, the
+   history controls, the capture sheet's stacking — because those must not change
+   when someone on a 1440 px screen asks for more room.
+
+   WIDTH COMES FROM THE TOKEN NOW (`v3/app.css:152`: `.body.rail { --sidebar-width:
+   var(--sidebar-rail) }`). `--sidebar-rail` has stood in `tokens.css` since Phase 1
+   with no consumer at all; the hard-coded `4rem` here was the reason. One
+   declaration re-points the shell grid and every rule already written against
+   `var(--sidebar-width)` follows it.
+
+   THE SETTINGS NAVIGATOR IS THE SIDEBAR, and this was measured after being
+   guessed wrong. The first version of this split scoped the nav rules to
+   `.sidebar` on the reasoning that `.settings-mode-column` lives in the work
+   column and must not collapse when a person collapses the shell's left column.
+   It does not live there: `RealApp.tsx:3280` renders it INSIDE the same
+   `<aside class="sidebar">`, replacing the destination list while settings are
+   open. So the scope bought nothing — and it cost: the extra `.sidebar` lifted
+   these rules to (0,3,0), which then beat the (0,2,0) rule that stands the
+   section list down, and six glyphless 44 px squares appeared at 320 px where
+   the design has them stand down. Measured in Chromium at 320 px: six
+   `.settings-mode-section` computed `display: grid`, width 44 px, back label
+   hidden. The rules are therefore back on a bare `.nav-item`, and settings mode
+   gets its own three rail rules at the end of this block. */
+.desktop-shell.rail {
+  --sidebar-width: var(--sidebar-rail);
+}
+.desktop-shell.rail .sidebar {
+  padding-inline: 0.25rem;
+}
+/* `.brand-row strong` is NOT in this list any more, and the rule that used to
+   slide the mark to `left: 1.25rem` in the rail is gone with it: the mark left
+   the sidebar for the title band in position 11, so collapsing the column has
+   nothing to do with it. */
+.desktop-shell.rail .workspace-switcher > span:nth-child(2),
+.desktop-shell.rail .workspace-switcher > svg,
+.desktop-shell.rail .search-control span,
+.desktop-shell.rail .nav-label,
+.desktop-shell.rail .nav-item > span,
+.desktop-shell.rail .nav-item small,
+.desktop-shell.rail .preview-identity div {
+  display: none;
+}
+/* W trybie rail sekcje Ulubione i Ostatnie duplikowałyby ikony docelowych
+   widoków — pozostaje jedna lista ikon z tooltipami. */
+.desktop-shell.rail .nav-item.nav-favorite,
+.desktop-shell.rail .nav-item.nav-recent {
+  display: none;
+}
+/* Drugi poziom też znika: wiersz potomny nie ma ikony, więc w szynie ikon
+   zostałby pustym kwadratem z niewidoczną etykietą. Reguła stoi TU, obok
+   pozostałych, mimo że renderer też go nie rysuje w tym trybie — teraz oba
+   idą za tym samym `railMode`, więc arkusz i drzewo Reacta nie mogą już
+   rozjechać się o jedną klatkę, jak rozjeżdżały się pod zdarzeniem `change`. */
+.desktop-shell.rail .nav-children {
+  display: none;
+}
+.desktop-shell.rail .workspace-switcher {
+  grid-template-columns: 1fr;
+  padding: 0.5rem;
+}
+.desktop-shell.rail .workspace-avatar {
+  margin: auto;
+}
+.desktop-shell.rail .search-control,
+.desktop-shell.rail .nav-item {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-self: center;
+  align-self: center;
+  place-items: center;
+  padding: 0;
+}
+/* In the rail the foot has 44 px of usable width and two controls to place, so
+   they stack rather than sit side by side — measured, a row of dot + two 2rem
+   squares wants 87 px and overhung the column by 10 px on the right. */
+.desktop-shell.rail .preview-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+/* SETTINGS MODE IN THE RAIL, moved here from `@media (max-width: 50rem)` and
+   re-keyed on the rail rather than on the window — which is the same move the
+   whole block makes, applied to the one screen that swaps the sidebar's content
+   out. This column carries no glyphs, so the rules above turn all six section
+   entries into blank 2.75 rem squares. The section list stands down (the
+   surface's narrow-width category picker already carries reachability, and that
+   is what the packaged smoke exercises) while the way OUT keeps its chevron
+   and, through `aria-label`, its name.
+
+   ALL THREE RULES MUST OUTWEIGH THE RULES ABOVE, and that is why they carry the
+   shell prefix rather than the bare class they used to have: the general rail
+   rules now weigh (0,2,0) instead of the (0,1,0) they weighed inside the media
+   query, so the old (0,2,0) selectors would tie and lose on source order. */
+.desktop-shell.rail .settings-mode-section {
+  display: none;
+}
+.desktop-shell.rail .settings-mode-back {
+  grid-template-columns: 1fr;
+}
+.desktop-shell.rail .settings-mode-back > span[aria-hidden] {
+  display: block;
+}
+/* The chevron points the way OUT: left while the column is open (click to
+   collapse), right while it is a rail (click to expand). The name says the same
+   thing in words — the rotation is the redundant channel, not the only one. */
+.sidebar-collapse[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
 @media (max-width: 50rem) {
-  .desktop-shell {
-    grid-template-columns: 4rem minmax(0, 1fr);
-  }
-  .sidebar {
-    padding-inline: 0.25rem;
-  }
-  .brand-row {
-    left: 1.25rem;
-  }
-  .brand-row strong,
-  .workspace-switcher > span:nth-child(2),
-  .workspace-switcher > svg,
-  .search-control span,
-  .search-control kbd,
-  .nav-label,
-  .nav-item > span,
-  .nav-item small,
-  .preview-identity div {
-    display: none;
-  }
-  /* W trybie rail sekcje Ulubione i Ostatnie duplikowałyby ikony docelowych
-     widoków — pozostaje jedna lista ikon z tooltipami. */
-  .nav-item.nav-favorite,
-  .nav-item.nav-recent {
-    display: none;
-  }
-  .workspace-switcher {
-    grid-template-columns: 1fr;
-    padding: 0.5rem;
-  }
-  .workspace-avatar {
-    margin: auto;
-  }
-  .search-control,
-  .nav-item {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    display: grid;
-    grid-template-columns: 1fr;
-    justify-self: center;
-    align-self: center;
-    place-items: center;
-    padding: 0;
-  }
-  .preview-identity {
-    display: flex;
-    justify-content: center;
-  }
   .work-surface {
     padding-inline: var(--space-4);
   }
+  /* The left inset stays: the traffic lights are the same size at 320 px as at
+     1440. Only the right side gives its space back. */
   .shell-tabbar {
     margin-inline: 0;
-    padding-inline: var(--space-2);
+    padding-right: var(--space-2);
   }
   .shell-history-controls {
     display: none;
-  }
-  .work-surface::before {
-    left: 4rem;
   }
   .surface-header .secondary-button {
     width: 2.25rem;
@@ -3103,12 +3767,29 @@ kbd {
     grid-column: 2;
     justify-self: start;
   }
+  /* TWO DEAD DECLARATIONS FOUND BY THE SPLIT AND NOT CARRIED THROUGH IT, named
+     here so nobody restores them as "the rail offsets that went missing":
+     `.work-surface::before { left: 4rem }` styled a pseudo-element no rule in
+     this tree ever gives `content`, and `.capture-dock-layer { left: 4rem }`
+     set an inset on a statically positioned flex child. Both looked like they
+     tracked the sidebar width; neither ever moved a pixel. */
   .capture-dock-layer {
-    left: 4rem;
     padding-inline: 0.75rem;
   }
   .capture-dock {
     max-width: 28rem;
+    /* PRÓG DOTYKU WRACA — I TYLKO TUTAJ. Lot powłoki Fazy 3 zdjął z doku
+       `min-height: 3.15rem`, bo prototyp nie deklaruje wysokości wcale
+       (`:2264-2268`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
+       wysokość swojej treści, 33 px. Ale w wąskim oknie ta sama liczba jest
+       CELEM DOTYKU, a paczkowany smoke żąda tam 44 px na każdym z trzech
+       podmiotów (`run-packaged-alpha-smoke.mjs:921-924`).
+       Zmierzone na harnessie przy 320 px: dok 244×33 — jedyny podmiot pod
+       progiem; szukanie i pozycje nawigacji przechodzą.
+       2,75 rem to 44 px przy korzeniu 16 px i SKALUJE SIĘ z tekstem, więc
+       przy 200% próg rośnie razem z celem, zamiast zostać wpisaną liczbą.
+       Poza tym zapytaniem prototyp dalej rządzi wysokością. */
+    min-height: 2.75rem;
   }
   .capture-target {
     grid-template-columns: 1fr;
@@ -3122,14 +3803,9 @@ kbd {
   }
 }
 
-@media (max-width: 30rem) {
-  .shell-detach-long {
-    display: none;
-  }
-  .shell-detach-short {
-    display: inline;
-  }
-}
+/* The 30 rem block that stood here swapped „Separate window" for „Window" on
+   the wide text button. A 1.75 rem square needs no second wording, so the
+   breakpoint went with the button. */
 
 /* Tooltip trybu rail: etykieta i skrót pozycji sidebaru przy hover/fokusie.
    Element jest renderowany tylko w trybie rail i pozycjonowany fixed obok
@@ -3169,13 +3845,31 @@ kbd {
   font-size: var(--text-2xs);
 }
 
+/* TA LISTA MA NIEŚĆ WYŁĄCZNIE TO, CO NAPRAWDĘ JEST SZYBĄ, i to nie jest
+   porządkowanie — to poprawka defektu, który CI złapało, a macOS nie mógł.
+   `--surface-window` jest tu nieprzezroczystym ZASTĘPSTWEM dla rozmycia:
+   element bez rozmycia niczego nie zastępuje, tylko dostaje CUDZY kolor.
+   Faza 3 zdjęła szkło z lewej kolumny i z pasma zakładek („prototyp nie stawia
+   szkła w powłoce", `:930-933`, `:1611`), ale nie zdjęła ich stąd — więc każdy,
+   kto ma włączoną redukcję przezroczystości, dostawał pasek boczny w kolorze
+   okna zamiast w planie paska.
+
+   ZMIERZONE, nie wydedukowane: bezgłowy Chromium na Linuksie ma
+   `prefers-reduced-transparency: reduce` DOMYŚLNIE, macOS nie — więc para
+   L1-01b bramki układu wracała MATCH lokalnie (`oklch(0.062 …)`,
+   `--surface-sidebar`) i DIFFERS na CI (`oklch(0.084 …)`, `--surface-window`).
+   Ten sam kod, dwa wyniki, i to CI miało rację.
+
+   Które zostają: `.inspector`, `.capture-dock`, `.capture-dialog`,
+   `.context-menu` — każdy z nich deklaruje `backdrop-filter` we własnym bloku
+   (policzone grepem). Które wychodzą: `.sidebar`, `.shell-tabbar` i
+   `.concept-help-dialog` — ZERO deklaracji rozmycia i ani jednego wystąpienia
+   w regule grupowej, za to własne, różne tokeny tła (`--shell-sidebar-bg`,
+   `--shell-chrome-bg`, `--overlay-bg`), które ta reguła nadpisywała. */
 @media (prefers-reduced-transparency: reduce) {
-  .sidebar,
   .inspector,
-  .shell-tabbar,
   .capture-dock,
   .capture-dialog,
-  .concept-help-dialog,
   .context-menu {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -3241,12 +3935,23 @@ kbd {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
+/* TO JEST TYTUŁ EKRANU, tylko pod inną klasą — i pierwsza wersja tej noty
+   twierdziła coś przeciwnego („tytuł rekordu spotkania"), na tej podstawie
+   POWIĘKSZAJĄC go z 31,68 px do 36 px. Obala to `MeetingsSurface.tsx:729-733`:
+   ten `h1` niesie `id="surface-title"` i literał „Meetings", czyli dokładnie
+   etykietę aktywnej zakładki tuż nad sobą. Dubluje tak samo jak jedenaście
+   pozostałych i dostaje to samo lekarstwo co one.
+
+   Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
+   `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero` — dlatego zła
+   liczba przeszła. Podmiot sondy jest teraz wyprowadzony z `id="surface-title"`,
+   nie z klasy nagłówka; patrz `scripts/verify-renderer-layout.mjs`. */
 .meeting-hero h1 {
-  margin: var(--space-2) 0;
-  font-size: var(--text-display);
-  line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-tight);
-  font-weight: 500;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: var(--leading-snug);
 }
 .meeting-hero > div:first-child > p:last-child {
   max-width: 48rem;
@@ -4401,10 +5106,26 @@ kbd {
   background: var(--input-bg);
   font: inherit;
 }
+/* SKRÓT ŚWIECIŁ W KAŻDYM WIERSZU (`v3/app.css:229-234`). Dziewięć klawiszy
+   w kolumnie czytało się jak dziewięć plakietek stanu; w prototypie skrót
+   pojawia się dopiero pod kursorem, na wierszu bieżącym i przy ognisku — bo
+   jest odpowiedzią na „jak tu wrócić", a nie stałą własnością pozycji.
+   `:focus-visible` jest DOŁOŻONE do pary z prototypu: pozycje nawigacji chodzą
+   strzałkami, więc bez tego czytelnik klawiatury nigdy by tego skrótu nie
+   zobaczył. Krycie, nie `display`, żeby wiersz nie zmieniał szerokości kolumn
+   pod kursorem; globalna reguła ruchu (`styles.css:3462-3471`) zeruje to
+   przejście przy `prefers-reduced-motion`, więc lokalny wyjątek byłby martwy. */
 .nav-item kbd {
   margin-left: auto;
   color: var(--text-disabled);
   font-size: 0.625rem;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.nav-item:hover kbd,
+.nav-item:focus-visible kbd,
+.nav-item[aria-current="page"] kbd {
+  opacity: 1;
 }
 
 .condition-banner {
@@ -4500,13 +5221,6 @@ kbd {
 
 /* Cockpit focus rows lead with rank + operational-state glyph (the same
    shapes as WorkSurface), never a uniform check on open work. */
-.compact-record-list > button.selected {
-  background: var(--surface-selected);
-  box-shadow: inset 0.125rem 0 0 var(--text-secondary);
-}
-.compact-record-list > button:active {
-  background: var(--surface-pressed);
-}
 .compact-record-list > button,
 .compact-record-list > .compact-record {
   width: 100%;
@@ -4527,6 +5241,28 @@ kbd {
 }
 .compact-record-list > button:hover {
   background: var(--surface-hover);
+}
+/* MOVED HERE FROM ABOVE THE HOVER RULE, and the move IS the fix. Both weigh
+   (0,2,1), so the one written later wins — and the selected focus row used to
+   be written FIRST, which meant it took `--surface-hover` under the cursor and
+   lost `--surface-selected`. Bare hover rule, so this is the first branch of
+   the rule recorded in the block headed „SELECTION VERSUS HOVER”: equal weight,
+   selection second, the reference's own tie-break. The inset rail was never
+   overridden, which is why the row still said „selected" while its wash was
+   gone — the same masking that hid the sources row for a whole lot. */
+.compact-record-list > button.selected {
+  background: var(--surface-selected);
+  box-shadow: inset 0.125rem 0 0 var(--text-secondary);
+}
+/* AND `:active` MOVES WITH IT, WHICH IS THE HALF THE FIRST VERSION OF THIS
+   EDIT GOT WRONG. It weighs (0,2,1) too, so leaving it above the selection
+   rule would have made a selected row stop answering the finger that presses
+   it — the press feedback deleted by the fix for the cursor. The order that
+   holds all three is: hover, then selection, then press. That is the doctrine
+   written in the block headed „SELECTION VERSUS HOVER”, where `:active` outranks the
+   selection rule on specificity and so needs no move at all. */
+.compact-record-list > button:active {
+  background: var(--surface-pressed);
 }
 .compact-record-list > button > span:nth-child(2):not(.task-state-mark),
 .compact-record-list > .compact-record > span:nth-child(2) {
@@ -5986,6 +6722,22 @@ kbd {
    the only value that helps: a single word at 300% text is wider than the panel
    and carries no break opportunity, so `break-word` would still let the box ASK
    for the whole word and push the surface. Measured on the Library harness. */
+/* LOT 5 #4 — the weight, which neither of these two subjects declared. With no
+   heading reset in this package an <h1>/<h2> with no author weight computes the
+   user-agent 700, so the note editor's title was heavier than the screen title
+   above it while this rule looked complete. 600 is the reference's weight for
+   the title of the thing being read (`v3/screens/knowledge.css:243`,
+   `.kn-reader-title`).
+
+   `.knowledge-library` IS PAINTED HERE RATHER THAN DELETED, and that is a
+   correction to a measurement, not a preference. The debt registry in
+   `scripts/heading-typography.mjs` records this selector as having no consumer
+   and says „delete, do not paint" — true of the TSX, and the entry says it was
+   measured there. It is not true of the tree: `interaction-recovery-contract`
+   pins `.knowledge-library` and its sunken background by regular expression, so
+   deleting the block turns that test red. A grep restricted to the markup
+   cannot see a test that reads the STYLESHEET as a string. Both entries retire
+   together on this one line. */
 .knowledge-library h1,
 .knowledge-editor-header h2 {
   margin: var(--space-1) 0 0;
@@ -5993,6 +6745,7 @@ kbd {
   overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: var(--text-xl);
+  font-weight: 600;
   letter-spacing: -0.025em;
 }
 .library-count,
@@ -6085,12 +6838,18 @@ kbd {
 .library-section-heading {
   padding: var(--space-4) var(--space-5) var(--space-2);
 }
+/* LOT 5 #4 — three more heading subjects in one rule, none of which declared a
+   weight. Same reasoning and same value as the pair above; `.section-heading-row`
+   is live on the task attachments panel and in the note editor's revision list,
+   so this weight travels beyond the Library and is the shell's own 600 rather
+   than anything screen-specific. */
 .library-section-heading h2,
 .section-heading-row h3,
 .section-heading-row h4 {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+  font-weight: 600;
 }
 /* `.source-list` KEEPS ONLY ITS RESET, and the rest of what stood here is gone
    with the Sources screen that replaced it. Everything visual about a source
@@ -6108,21 +6867,75 @@ kbd {
   margin: 0;
   list-style: none;
 }
-.knowledge-document-list strong,
-.knowledge-document-list small {
+/* LOT 5 #2 — THE ROW'S SECOND LINE STOPS BEING ONE ELLIPSED STRING.
+   `strong` keeps the single-line ellipsis, which is what the reference gives a
+   note title (`v3/screens/knowledge.css:154-157`, `.kn-row-title`). `small`
+   becomes the reference's foot instead (`:162-164`, `.kn-row-foot`): a baseline
+   row whose CONTEXT truncates and whose DATE does not, because the date is the
+   part of that line a reader scans down the column and it was the part being
+   eaten. See the two child rules under the row itself.
+
+   THE HARD CONDITION FROM RECON DOES NOT BIND HERE, measured rather than
+   assumed. Recon warned that lifting `nowrap` would move `.named-version-list`
+   and `.source-list` too, because the three share a reset at the rule above.
+   They share the RESET — padding, margin, `list-style` — and nothing else: this
+   rule and every rule below it is scoped to `.knowledge-document-list` alone,
+   and that class has exactly one consumer in the renderer (`NotesReading.tsx`).
+   Nothing was narrowed, because there was nothing to narrow. */
+.knowledge-document-list strong {
   display: block;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.knowledge-document-list small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-top: var(--space-1);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+/* The truncating half. The ellipsis has to sit on the element that is the TEXT
+   BOX — a bare text node inside a flex container gets clipped, not ellipsed —
+   which is the same note the reference writes over its own row reference at
+   `v3/screens/knowledge.css:172-174`. */
+.knowledge-row-context {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.knowledge-document-list strong {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-.knowledge-document-list small {
-  margin-top: var(--space-1);
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
+/* Its own lane on the right: `margin-left: auto`, the quietest step of the text
+   ramp and the tabular figures are all `.kn-row-when`
+   (`v3/screens/knowledge.css:175-178`) — a column of dates that do not line up
+   is a column nobody can compare down. `--text-disabled` is the same step the
+   folder tree's counter takes, and for the reason written out there: this is a
+   number the eye scans past on its way to the title, and it is quiet so the
+   title is not.
+
+   WHERE THIS DIVERGES FROM THE REFERENCE, AND THE MEASUREMENT THAT FORCED IT.
+   The reference writes `flex: none` here, i.e. „the date never yields". Taken
+   literally this row overflowed its own box by 74 px at 300% text — measured by
+   the „Library at 300% text" pass on the first build of this position, not
+   predicted — because `flex: none` fixes the item at its max-content width
+   inside a `minmax(0, 19rem)` track that is 300 px narrower than the sentence.
+   `0 1 auto` with a zero minimum keeps the lane at every width where the lane
+   fits and lets the date wrap rather than push the panel where it does not, and
+   the wrap on the parent gives it its own line before it ever has to break
+   inside itself. The accessibility floor is not lowered to match a paint; the
+   paint is followed down to the width where following it would break the
+   screen, and the boundary is written here rather than left to be rediscovered. */
+.knowledge-row-when {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
 }
 .library-empty,
 .inline-empty,
@@ -6169,7 +6982,16 @@ kbd {
   background: var(--surface-raised);
   font-size: var(--text-2xs);
 }
-.role-options button:not(:disabled):hover {
+/* Guarded hover, so it excludes the pressed role by name — the second branch
+   of the rule recorded in the block headed „SELECTION VERSUS HOVER”. Before this, hover
+   weighed (0,3,1) against the pressed role's (0,2,1) and the chosen role took
+   `--surface-hover` in place of `--surface-selected` under the cursor. The
+   `inset 0 -2px` underline was never touched, so the state stayed legible and
+   only its fill went missing — the same masking that hid this class twice
+   before. Not reproduced in the browser: the harness workspace has no second
+   member, so this control never draws. Read off the two rules. The exclusion
+   joins the existing `:not()` as a LIST so the rule stays at (0,3,1). */
+.role-options button:not(:disabled, [aria-pressed="true"]):hover {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
@@ -6181,15 +7003,29 @@ kbd {
   background: var(--surface-selected);
   box-shadow: inset 0 -2px var(--text-primary);
 }
+/* LOT 5 #2 — A GRID, NOT A FLEX ROW WITH `space-between`. The reference lays a
+   note row out as stacked lines (`v3/screens/knowledge.css:138-143`,
+   `.kn-row`), and the difference is not stylistic: `space-between` on a row
+   whose only child is the text block does nothing at all, while the single
+   declared column below states that the row may be exactly as narrow as its
+   panel — which is the property this list has to hold in a `minmax(0, 19rem)`
+   track. The left border is the rail the selected state colours in; it is on
+   the base rule so selecting a row never changes the row's width.
+
+   THE VERTICAL RHYTHM comes from the reference too (`:139`): 0.1875rem between
+   the title and the foot, 0.5625rem of block padding. The row keeps its own
+   `--radius-md` corner rather than the reference's square edge, because in this
+   application the row sits inside a padded list rather than flush against a
+   panel wall. Divergence recorded, not corrected. */
 .knowledge-document-list li button {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: 0.1875rem;
+  padding: 0.5625rem var(--space-3);
   color: var(--text-secondary);
   border: 0;
+  border-left: 2px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   text-align: left;
@@ -6197,12 +7033,39 @@ kbd {
 .knowledge-document-list li button:hover {
   background: var(--surface-hover);
 }
+/* LOT 5 #1 — AND IT CLOSES THE WCAG 2.4.7 DEBT PHASE 2 RECORDED BY ADDRESS.
+   This rule used to carry `box-shadow: inset 2px 0 var(--text-primary)`. The
+   shell paints its focus ring with `box-shadow` as well, and a literal declared
+   on the control itself outranks the token the ring rides on — so the note
+   being read drew NOTHING when it took the focus, on a control that is a normal
+   Tab stop and therefore reachable by every keyboard reader. The elevation-copy
+   block near the top of this sheet names this exact selector as the one control
+   whose shadow escaped that mechanism, and left it here.
+
+   The fix is not a different shadow. The reference has none: it says which row
+   is open with a wash and a coloured left rail and nothing else
+   (`v3/screens/knowledge.css:145`, `:149`, over the transparent 2px border at
+   `:141`). Removing the literal frees the shadow channel, and the shell's own
+   rule paints the ring with no local declaration needed — measured on this
+   control, both themes, rather than inferred from the cascade.
+
+   The wash is licensed by job 1 of the accent rule („Where the reader is",
+   `.ui-craft/tokens.md`), which cites this reference line for row selection;
+   the rail is the ink that rule requires a wash to travel with, and it is also
+   the channel that survives a display with no colour. `--surface-selected`
+   itself is untouched and keeps its consumers on the other screens.
+
+   SPRAWDZONE PRZY ODBIORZE, BO NA BLIŹNIACZEJ LIŚCIE TO NIE WYSZŁO: reguła
+   `:hover` bezpośrednio wyżej i ta reguła ważą TYLE SAMO, a ta stoi niżej, więc
+   zaznaczony wiersz zostaje pod kursorem przy swoim wypełnieniu. Prototyp
+   rozstrzyga to tak samo i też kolejnością (`:144` przed `:145`). Ta sama
+   sprawa w `library/sources.module.css` była napisana jednoklasowo i tam hover
+   BIŁ zaznaczenie — poprawione tam, zmierzone, opisane przy tamtej regule.
+   Żadna bramka tego nie widzi: przelot czyta wiersz w spoczynku i nigdy nie
+   najeżdża myszą. */
 .knowledge-document-list li button.active {
-  background: var(--surface-selected);
-  box-shadow: inset 2px 0 var(--text-primary);
-}
-.knowledge-document-list li button > span {
-  min-width: 0;
+  background: var(--accent-quieter);
+  border-left-color: var(--accent);
 }
 .knowledge-document-list em {
   display: inline-grid;
@@ -6236,11 +7099,12 @@ kbd {
   min-width: 0;
   padding: clamp(var(--space-4), 3vw, var(--space-8));
   background: var(--surface-sunken);
-  /* Shell height minus titlebar, header band and the editor header keeps the
-     canvas full-height without a magic viewport constant. */
-  min-height: calc(
-    100dvh - var(--titlebar-height) - var(--header-band-height) - 5.5rem
-  );
+  /* Shell height minus the title band and the editor header keeps the canvas
+     full-height without a magic viewport constant. The `--header-band-height`
+     term went out with the work column's own band: subtracting a strip that is
+     no longer above this canvas made the plane 40 px shorter than the room it
+     actually has. */
+  min-height: calc(100dvh - var(--titlebar-height) - 5.5rem);
 }
 .knowledge-writing-plane > .document-canvas {
   display: block;
@@ -6582,9 +7446,23 @@ kbd {
   margin: 0 auto;
   color: var(--text-primary);
 }
+/* LOT 5 #3 — THE HEADING `scripts/heading-typography.mjs` WAS BUILT FOR. It
+   declared a margin and a colour and NEITHER a size NOR a weight, so it drew at
+   the user-agent's 1.5em/700 — off the type ramp entirely, and scaling from a
+   base nobody on this screen set. It sat outside the fidelity probe's subject
+   (`#surface-title`, one heading per screen) for the whole of two waves, which
+   is why an instrument reading the SHEET had to exist before this line could be
+   trusted. Proportions from `v3/screens/knowledge.css:242-245`
+   (`.kn-reader-title`): this heading is the same object, the largest words on
+   an otherwise empty reading surface. */
 .knowledge-welcome h2 {
   margin: var(--space-5) 0 var(--space-2);
   color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+  letter-spacing: -0.018em;
+  text-wrap: balance;
 }
 .knowledge-welcome p {
   line-height: 1.6;
@@ -7017,12 +7895,16 @@ kbd {
     flex-direction: column;
   }
 }
-@media (max-width: 30rem) {
-  .wave2-header h1,
-  .wave2-header h2 {
-    font-size: 1.75rem;
-  }
-}
+/* Tu stała korekta wąskiego okna: `font-size: 1.75rem` dla `.wave2-header h1,h2`.
+   Była SKURCZENIEM nagłówka display (30-42 px) do 28 px, żeby zmieścił się przy
+   ≤480 px. Po sprowadzeniu tytułu do proporcji okruszka (13 px) ta sama reguła
+   robi coś odwrotnego: POWIĘKSZA go 2,15×, czyli odtwarza nagłówek display
+   dokładnie tam, gdzie miejsca jest najmniej. Zmierzone przed skasowaniem:
+   28,00 px przy ≤480 px, przy suficie sondy 20,0 px, i 56,00 px przy 320 px
+   ze skalowaniem tekstu do 200%, gdzie sufit rośnie razem z korzeniem do
+   40,0 px — sufit jest w `rem`, więc jedna liczba nie opisuje obu geometrii.
+   Na `projects` i `settings`, w obu motywach.
+   Skasowana, bo korygowała rozmiar, którego już nie ma. */
 @media (prefers-reduced-transparency: reduce) {
   .search-backdrop,
   .undo-backdrop,
@@ -7245,16 +8127,39 @@ kbd {
 .settings-surface {
   --surface-measure: 74rem;
   container-type: inline-size;
-  /* Leave enough runway for the last navigator destinations to reach the
-     orientation line instead of competing at the bottom edge. */
+  /* Leave enough runway for the last section to reach the orientation line
+     instead of competing at the bottom edge. */
   padding-bottom: max(4rem, 55vh);
 }
 
+/* NAGŁÓWEK JAKO PASMO (`v3/screens/settings.css:84-94`). `.surface-header`
+   daje już rząd o wysokości pasma z akcją po prawej; tu zmienia się to, co
+   robi jego LEWA połowa — z kolumny czterech wierszy staje się rzędem na
+   wspólnej linii bazowej. Zmierzone przed zmianą przy 1440 px: 111,89 px
+   wysokości nagłówka na czterech wierszach. */
+.settings-header > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Podtytuł pasma: stopień i barwa z `v3/screens/settings.css:91-94`, razem
+   z jego jednolinijkowością — to jest zdanie o sekcji, nie akapit. */
+.settings-header p.settings-band-sub {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-layout {
-  align-items: start;
+  /* Jeden tor. Stały tu dwa — 11-13 rem pod drugi nawigator i reszta pod
+     treść — a nawigator jest teraz jeden i stoi w powłoce. */
   display: grid;
-  gap: var(--space-8);
-  grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr);
 }
 
 .settings-category-picker {
@@ -7278,72 +8183,10 @@ kbd {
   width: fit-content;
 }
 
-.settings-help-entry {
-  margin-top: var(--space-2);
-}
-
 .settings-help-entry:hover,
 .settings-context-help:hover {
   color: var(--text-primary);
   text-decoration-color: currentColor;
-}
-
-.settings-navigator {
-  position: sticky;
-  top: var(--space-5);
-}
-
-.settings-navigator > p {
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.06em;
-  margin: 0 0 var(--space-2);
-  text-transform: uppercase;
-}
-
-.settings-navigator ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.settings-navigator button {
-  align-items: start;
-  background: transparent;
-  border: 0;
-  border-inline-start: 1px solid var(--border-default);
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  font: inherit;
-  gap: 0.1875rem;
-  min-height: 3.25rem;
-  padding: var(--space-2) var(--space-3);
-  text-align: start;
-  width: 100%;
-}
-
-.settings-navigator button span {
-  font-size: var(--text-xs);
-  font-weight: 500;
-}
-
-.settings-navigator button small {
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.settings-navigator button[aria-current="location"] {
-  background: color-mix(in srgb, var(--surface-raised) 58%, transparent);
-  border-inline-start-color: var(--text-primary);
-  color: var(--text-primary);
-}
-
-.settings-navigator button[aria-current="location"] small {
-  color: var(--text-tertiary);
 }
 
 .settings-sections {
@@ -7360,12 +8203,23 @@ kbd {
   box-shadow: var(--elevation-rest);
 }
 
+/* JEDNA KOLUMNA, NIE DWIE. Stały tu dwa tory — proza w `1fr`, kontrolka
+   w torze do 21 rem — i przy 1440 px dawało to akapit wyjaśnienia szeroki na
+   482 px OBOK kontrolki szerokiej na 336 px, czyli wyjaśnienie było większym
+   obiektem niż rzecz, którą wyjaśniało. Prototyp nie ma tego układu w ogóle:
+   notka stoi PRZY kontrolce, ma jedną linijkę i miarę czytelną
+   (`v3/screens/settings.css:196-204`, `.st-field-n`).
+
+   RÓŻNICA WOBEC PROTOTYPU, ZAPISANA: v3 trzyma notkę POD kontrolką
+   (`:199-204` idzie po `.st-field-c`), a tu zostaje NAD nią. Przestawienie
+   kolejności to przepisanie źródła dwudziestu kilku sekcji, a kolejność
+   źródła jest jednocześnie kolejnością czytania dla czytnika ekranu:
+   nagłówek → wyjaśnienie → kontrolka. Zysk pozycji — wyjaśnienie przestaje
+   być kolumną i staje się linijką — jest ten sam. */
 .settings-category > section {
-  align-items: start;
   border-top: 1px solid var(--border-default);
   display: grid;
-  gap: var(--space-10);
-  grid-template-columns: minmax(0, 1fr) minmax(0, 21rem);
+  gap: var(--space-4);
   padding: var(--space-5);
 }
 
@@ -7383,6 +8237,10 @@ kbd {
   font-size: var(--text-xs);
   line-height: 1.5;
   margin: 0;
+  /* Miara czytelna, wprost z `v3/screens/settings.css:204`. Bez niej proza
+     rozciąga się na całą szerokość kategorii, czyli dokładnie tyle, ile
+     wcześniej dawał jej własny tor. */
+  max-width: var(--surface-read);
 }
 
 .settings-context-help {
@@ -7768,7 +8626,34 @@ kbd {
   color: var(--text-primary);
 }
 
-.settings-control button {
+/* `:not(.primary-button)` NIE JEST OZDOBĄ SELEKTORA — jest całą pozycją #4.
+   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:724-727`) ma 0,1,0,
+   więc bez zawężenia dopisanie klasy do przycisku zostawiłoby go dokładnie
+   w tym samym drugoplanowym wypełnieniu, a znacznik i tak czytałby się
+   poprawnie. To jest ta sama klasa awarii, którą lot 5 oddał na `:hover`
+   przy RÓWNEJ specyficzności — tu jest o stopień gorsza, bo nierówna.
+
+   `:not(.settings-row)` DOŁOŻONE PRZY ODBIORZE i jest drugą połową tego samego
+   zdania: „każdy przycisk w sekcji ustawień jest akcją drugoplanową" było
+   nieprawdą w dwie strony. Wiersz listy, który JEST przyciskiem, dostawał
+   wypełnienie akcji, promień akcji i cień akcji — przy 0,2,1 przeciwko 0,2,0
+   własnych reguł modułu — i zabierał zaznaczonemu wierszowi etapu jednocześnie
+   wash, krawędź i szynę akcentu (zmierzone w Chromium: zaznaczony wiersz
+   rysował się DOKŁADNIE jak niezaznaczony). Klasa nie niesie żadnej deklaracji
+   w tym arkuszu; jest nazwą wyjątku, tak samo jak `.primary-button` jest nazwą
+   akcji głównej. Konsument: `settings/CommercialDefaultsSection.tsx`.
+
+   JEDEN `:not()` Z LISTĄ, A NIE DWA `:not()` PO SOBIE — I TO NIE JEST STYL.
+   Łańcuch `:not(.primary-button):not(.settings-row)` waży 0,3,1, a to o stopień
+   WIĘCEJ niż 0,2,1 sprzed dopisku — i o stopień więcej niż
+   `.settings-control.support-report-action > button` (`:8593`), które waży
+   dokładnie 0,2,1 i wygrywało dotąd KOLEJNOŚCIĄ. Zmierzone, nie wydedukowane:
+   z łańcuchem sonda wierności zameldowała przycisk raportu wsparcia jako
+   `oklch(100% 0 0 / 0.76)` zamiast akcentu, w obu motywach. `:not(a, b)` bierze
+   swoistość NAJWIĘKSZEGO argumentu, czyli 0,1,0, więc reguła zostaje przy
+   0,2,1 i nie rusza tamtego remisu. Zawężanie selektora potrafi złamać rzecz,
+   której nie dotyka. */
+.settings-control button:not(.primary-button, .settings-row) {
   background: var(--action-secondary-bg);
   border: 1px solid var(--action-secondary-border);
   border-radius: var(--radius-sm);
@@ -7782,7 +8667,12 @@ kbd {
   white-space: nowrap;
 }
 
-.settings-control button:not(:disabled):hover {
+/* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,
+   czyli dokładnie tam, gdzie stała, więc remis z
+   `.settings-control.support-report-action > button:hover:not(:disabled)`
+   (`:8607`) dalej rozstrzyga kolejność, a nie ten dopisek. */
+.settings-control
+  button:not(.primary-button, .settings-row):not(:disabled):hover {
   background: var(--action-secondary-hover);
   border-color: var(--border-strong);
 }
@@ -8099,45 +8989,45 @@ kbd {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-@container (max-width: 58rem) {
-  .settings-layout {
-    display: block;
-  }
+/* PYTANIE ZMIENIŁO SIĘ DRUGI RAZ, WIĘC ZNOWU ZMIENIŁO SIĘ ZAPYTANIE. Kontrolka
+   natywna była najpierw zamiennikiem drugiego nawigatora i odpalała się od
+   szerokości SAMEJ POWIERZCHNI (58rem, zapytanie kontenerowe). Potem nawigator
+   został jeden, w powłoce, a powłoka zwijała kolumnę WYŁĄCZNIE pod
+   `@media (max-width: 50rem)` — więc kontrolka wzięła ten sam próg.
 
-  .settings-navigator {
-    display: none;
-  }
+   OD POZYCJI 13 SZEROKOŚĆ OKNA NIE JEST JUŻ JEDYNYM POWODEM ZWINIĘCIA: człowiek
+   może o nie poprosić na dowolnej szerokości. Zapytanie medialne przestało więc
+   opisywać stan, o który tu chodzi, i gdyby zostało, istniałaby szerokość —
+   1440 px ze zwiniętą kolumną — przy której spis sekcji stoi w szynie bez
+   glifów, a kontrolki natywnej nie ma. Zmierzone: sześć wpisów `display: grid`
+   szerokości 44 px, każdy bez widocznej etykiety, i ani jednej innej drogi do
+   kategorii. Warunek jest teraz TEN SAM CO WARUNEK ZWINIĘCIA, dosłownie ten sam
+   selektor, a nie ta sama liczba przepisana w dwóch miejscach — bo to była
+   liczba, która potrafiła się rozjechać, i właśnie się rozjechała. */
+.desktop-shell.rail .settings-category-picker {
+  align-items: stretch;
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
 
-  .settings-category-picker {
-    align-items: stretch;
-    display: grid;
-    gap: var(--space-2);
-    margin-bottom: var(--space-5);
-  }
+.desktop-shell.rail .settings-category-picker label {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
 
-  .settings-category-picker label {
-    color: var(--text-quaternary);
-    font-size: var(--text-2xs);
-  }
-
-  .settings-category-picker select {
-    background: var(--surface-content);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font: inherit;
-    min-height: 2.75rem;
-    padding: 0 var(--space-3);
-    width: 100%;
-  }
+.desktop-shell.rail .settings-category-picker select {
+  background: var(--surface-content);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  width: 100%;
 }
 
 @container (max-width: 47.5rem) {
-  .settings-category > section {
-    gap: var(--space-4);
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .settings-control {
     align-items: stretch;
     flex-direction: column;

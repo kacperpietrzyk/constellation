@@ -43,9 +43,6 @@ const stylesheets = readdirSync(styleRoot, {
   })
   .sort((left, right) => left.name.localeCompare(right.name));
 
-const tokenSource =
-  stylesheets.find((sheet) => sheet.name.endsWith("tokens.css"))?.css ?? "";
-
 const definitions = new Set<string>();
 const references = new Set<string>();
 for (const { css } of stylesheets) {
@@ -151,36 +148,22 @@ describe("css token lint", () => {
     );
   });
 
-  it("keeps light-theme semantic status text on the AA contrast mapping", () => {
-    // Zakotwiczone w SUMIE bloków motywu jasnego, nie w pierwszym z nich:
-    // wcześniej reorganizacja `tokens.css` albo rozbicie motywu na dwa bloki
-    // wywalało tę asercję przy IDENTYCZNYCH wartościach.
-    const lightThemeBlocks = [
-      ...tokenSource.matchAll(/\[data-theme="light"\][^{]*\{([\s\S]*?)\n\}/g),
-    ].map((match) => match[1] ?? "");
-    assert.ok(
-      lightThemeBlocks.length > 0,
-      "The light-theme token mapping must remain present.",
-    );
-    const lightTheme = lightThemeBlocks.join("\n");
-
-    const contrastSafeStatuses = [
-      ["success", "0.1", "150"],
-      ["warning", "0.1", "78"],
-      ["error", "0.14", "25"],
-      ["info", "0.075", "245"],
-    ] as const;
-
-    for (const [status, chroma, hue] of contrastSafeStatuses) {
-      assert.match(
-        lightTheme,
-        new RegExp(
-          `--status-${status}:\\s*oklch\\(52%\\s+${chroma}\\s+${hue}\\)`,
-        ),
-        `Light ${status} text must retain the measured 52% OKLCH mapping.`,
-      );
-    }
-  });
+  // 2026-08-06: stał tu test „keeps light-theme semantic status text on the AA
+  // contrast mapping", który PINOWAŁ literał `oklch(52% <chroma> <hue>)` dla
+  // czterech statusów motywu jasnego i powoływał się w komentarzu na „zmierzone
+  // co najmniej 4.98:1". W drzewie nie było wtedy ŻADNEGO narzędzia kontrastu —
+  // ta liczba została wpisana z zewnątrz i nikt jej tu nigdy nie policzył.
+  //
+  // Literał pilnował ZAPISU, nie WŁASNOŚCI: przechodził dla każdej wartości
+  // o tej samej nazwie i padał przy każdej zmianie, nie zadając pytania
+  // „czy to dalej jest czytelne". Reguła jest teraz MIERZONA
+  // w `scripts/status-contrast.test.mjs`, który czyta `tokens.css` z dysku,
+  // składa `--status-*-bg` (10% krycia) na płótnie motywu i liczy współczynnik
+  // WCAG dla obu motywów, z progiem 4.5:1 i wypisanymi liczbami. Pomiar nie
+  // gnije przy zmianie wartości i nie wymaga zaufania do liczby z zewnątrz.
+  //
+  // Reszta tego pliku zostaje: kontrola „każdy var(--…) ma definicję" jest
+  // siatką bezpieczeństwa przy przepinaniu warstwy tokenów.
 
   it("lets a compact density change spacing without hiding content or shrinking type", () => {
     // Wzięte z `interaction-recovery-contract.test.ts:765`, gdzie ta reguła była

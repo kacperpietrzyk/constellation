@@ -407,9 +407,17 @@ export const RealApp = ({
   const [narrowShell, setNarrowShell] = useState(
     () => window.matchMedia("(max-width: 75rem)").matches,
   );
-  const [railMode, setRailMode] = useState(
+  // TWO SOURCES FOR THE RAIL, ONE STATE (`v3/app.css:152`, `v3/app.js:662`).
+  // The window can force the rail, and now a person can ask for it — but every
+  // rail rule downstream (hidden labels, icon-width rows, the tooltip that
+  // replaces the labels) must keep exactly ONE owner, or the two triggers drift
+  // into two behaviours. `railMode` is that owner and nothing else reads the
+  // media query directly.
+  const [narrowRail, setNarrowRail] = useState(
     () => window.matchMedia("(max-width: 50rem)").matches,
   );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const railMode = narrowRail || sidebarCollapsed;
   const [focusedNavItemId, setFocusedNavItemId] = useState<SurfaceId>();
   const [railTip, setRailTip] = useState<{
     readonly label: string;
@@ -468,7 +476,7 @@ export const RealApp = ({
     const rail = window.matchMedia("(max-width: 50rem)");
     const update = () => {
       setNarrowShell(narrow.matches);
-      setRailMode(rail.matches);
+      setNarrowRail(rail.matches);
     };
     narrow.addEventListener("change", update);
     rail.addEventListener("change", update);
@@ -537,6 +545,14 @@ export const RealApp = ({
   // zapamiętujemy przy WEJŚCIU, bo po otwarciu Ustawień aktywnym kontekstem są
   // już one same i nie da się go odtworzyć.
   const [settingsReturn, setSettingsReturn] = useState<ShellContext>();
+  // WHICH SETTINGS SECTION THE READER IS LOOKING AT, held here because the
+  // section list is here. The surface owns the fact (its intersection observer
+  // decides which category is in view); the shell owns the only navigator that
+  // shows it, so the fact has to cross the boundary. One value, one setter —
+  // deliberately not six status strings: this state lives on the hot path and
+  // the wave's gzip headroom is measured in hundreds of bytes.
+  const [settingsCategory, setSettingsCategory] =
+    useState<SettingsCategoryId>();
   const openSettings = useCallback(() => {
     surfaceFocusPendingRef.current = true;
     setNavigation((current) => {
@@ -1833,6 +1849,67 @@ export const RealApp = ({
   // istniał wyłącznie WEWNĄTRZ pętli po grupach, więc cel bez modułu
   // (`group: null` — pozycje dnia, Access, Settings) nie renderował się
   // w ogóle: był w rejestrze, miał skrót i trasę, a w sidebarze go nie było.
+  // DRUGI POZIOM LEWEJ KOLUMNY (`v3/app.css:240-260`). Wiersze potomne CELOWO
+  // nie niosą `data-surface`: sonda wierności buduje swój przelot
+  // z `.nav-item[data-surface]` i KLIKA każdy, więc potomek z tym atrybutem
+  // po cichu wydłużyłby jej spacer i zmienił to, co skanuje, bez ani jednej
+  // czerwonej asercji. Rozpoznaje je `data-nav-level="child"`.
+  //
+  // `tabIndex={-1}` jest tu regułą sidebara, nie wyjątkiem: pozycje nawigacji
+  // chodzą strzałkami (`navKeyDown` zbiera `.nav-item`), a przystankiem Tab
+  // jest wyłącznie ta aktywna. Potomek nie dokłada więc ani jednego przystanku
+  // — a sonda ogniska robi 14 Tabów od świeżej strony i liczy na kolejność.
+  const openProjectId = activeContext.projectId;
+  //
+  // ŹRÓDŁEM JEST `snapshot.projects`, czyli `project.list` — ten sam odczyt,
+  // który rysuje kolekcja po kliknięciu w cel (`ProjectsSurface`), a nie
+  // `work.overview.projects`. Nie jest to wybór estetyczny: pierwsza wersja
+  // czytała `work`, bramka pokazała ZERO wierszy potomnych, i dopiero pomiar
+  // fikstury powiedział dlaczego — `work.overview.projects` jest w niej pustą
+  // tablicą, a `project.list` niesie jeden projekt. Drugi poziom, który
+  // wymienia inne projekty niż ekran pod nim, byłby wadą, nie oszczędnością.
+  const projectNavChildren =
+    state.snapshot.projects.kind === "ready" &&
+    state.snapshot.projects.data.items.length > 0 ? (
+      <div className="nav-children" key="projects-children">
+        {state.snapshot.projects.data.items.map((project) => (
+          <button
+            key={project.id}
+            type="button"
+            data-nav-level="child"
+            className={`nav-item nav-child ${openProjectId === project.id ? "active" : ""}`}
+            tabIndex={-1}
+            aria-current={openProjectId === project.id ? "page" : undefined}
+            {...navHandlers(projectContext(project.id, project.title))}
+          >
+            <span className="nav-child-dot" aria-hidden="true" />
+            <span>{project.title}</span>
+          </button>
+        ))}
+      </div>
+    ) : null;
+  // Kiedy otwarty jest REKORD projektu, „bieżącą stroną" jest ten projekt,
+  // a nie kolekcja nad nim. Bez tego w jednej nawigacji stałyby dwa
+  // `aria-current="page"`, które przeczą sobie nawzajem. Przystanek Tab
+  // ZOSTAJE na wierszu celu — inaczej nawigacja nie miałaby ani jednego.
+  //
+  // WARUNEK MUSI BYĆ TEN SAM, CO WARUNEK ZASTĘPSTWA, i pierwsza wersja tego
+  // nie miała: zerowała bieżącą stronę BEZWARUNKOWO przy otwartym rekordzie,
+  // a wiersz potomny, który miał ją przejąć, rysuje się tylko poza trybem
+  // szyny i tylko gdy odczyt projektów jest gotowy i niepusty. W trybie szyny
+  // z otwartym rekordem nawigacja nie miała więc ANI JEDNEGO
+  // `aria-current="page"` — regresja dostępności wobec stanu sprzed tego lotu,
+  // zmierzona przy 800 px. Dwa warunki opisujące jedno zjawisko rozjeżdżają
+  // się przy pierwszej zmianie któregokolwiek; tu jest jeden.
+  const openProjectHasNavChild =
+    !railMode &&
+    surface === "projects" &&
+    openProjectId !== undefined &&
+    state.snapshot.projects.kind === "ready" &&
+    state.snapshot.projects.data.items.some(
+      (project) => project.id === openProjectId,
+    );
+  const currentNavId = openProjectHasNavChild ? undefined : surface;
   const navEntry = (item: (typeof navItems)[number]) => {
     const shortcutHint = surfaceShortcutHint(item);
     // DECYZJA #35, W JEDNEJ LINII: skrót przestaje istnieć WYŁĄCZNIE w tooltipie.
@@ -1855,10 +1932,17 @@ export const RealApp = ({
       <div className="nav-entry" key={item.id}>
         <button
           data-surface={item.id}
-          className={`nav-item ${surface === item.id ? "active" : ""}`}
+          // MALOWANIE IDZIE ZA `currentNavId`, PRZYSTANEK TAB ZA `surface`,
+          // i ten rozjazd jest zamierzony. Przy otwartym rekordzie projektu
+          // wiersz potomny przejmuje bieżącą stronę, więc rodzic przestaje
+          // wyglądać na aktywny — inaczej w jednej kolumnie stały DWA wiersze
+          // pomalowane akcentem, a skrót `⌘5` gasł na tym, który wyglądał na
+          // bieżący (zmierzone). Przystanek Tab zostaje na rodzicu, bo potomek
+          // ma `tabIndex={-1}` i nawigacja bez tego nie miałaby ani jednego.
+          className={`nav-item ${currentNavId === item.id ? "active" : ""}`}
           tabIndex={surface === item.id ? 0 : -1}
           aria-label={`${itemName}, ${shortcutName}`}
-          aria-current={surface === item.id ? "page" : undefined}
+          aria-current={currentNavId === item.id ? "page" : undefined}
           title={
             railMode
               ? undefined
@@ -2354,6 +2438,9 @@ export const RealApp = ({
             onNavigate={(next, label) =>
               openContext(destinationContext(next, label))
             }
+            // The surface owns the fact of which section is in view; the
+            // shell's left column is the only navigator that shows it.
+            onCategoryChange={setSettingsCategory}
             // Kategoria ŻĄDANA przez kontekst zakładki — głęboki link. Podana
             // tylko wtedy, gdy naprawdę o nią proszono: bez tego pola ekran
             // wybiera kategorię własnym stanem, i to jest zachowanie, które
@@ -3046,7 +3133,7 @@ export const RealApp = ({
 
   return (
     <div
-      className={`desktop-shell wave2-shell${inspectorDetailOpen ? " inspector-open" : ""}${surface === "meetings" ? " meeting-context-shell" : ""}`}
+      className={`desktop-shell wave2-shell${railMode ? " rail" : ""}${inspectorDetailOpen ? " inspector-open" : ""}${surface === "meetings" ? " meeting-context-shell" : ""}`}
       style={{ ["--inspector-width" as string]: `${inspectorWidth}px` }}
     >
       <a
@@ -3059,12 +3146,156 @@ export const RealApp = ({
       >
         Skip to content
       </a>
-      <aside className="sidebar" aria-label="Workspace and navigation">
-        <div className="window-drag" />
+      {/* THE TITLE BAND SPANS THE WINDOW (`v3/app.css:84-90`, `:146-151`).
+          It used to be the first row of the WORK COLUMN, so its left edge sat
+          at the sidebar's width and the strip above the sidebar was a bare drag
+          region with the product mark absolutely positioned into it. The band
+          is now a row of the shell grid spanning every column, and the mark,
+          the history controls, the tabs and the chrome actions are all in it —
+          which is the arrangement the prototype has and the reason its tab
+          strip reads as part of the window rather than as part of one pane. */}
+      <div className="shell-tabbar" aria-label="Open contexts">
+        {/* The mark is a plain flex child now. It used to be positioned
+            absolutely into the sidebar's top strip, and `.window-drag` was a
+            second absolutely-positioned box covering the same strip so the
+            window could be dragged by it. The band itself is the drag region
+            today (`styles.css`), so both the extra node and the absolute
+            positioning are gone. */}
         <div className="brand-row">
           <BrandMark />
           <strong>Constellation</strong>
         </div>
+        <div className="shell-history-controls" aria-label="Context history">
+          <button
+            className="icon-button"
+            data-shell-history="back"
+            aria-label="Back, Alt+Left"
+            title="Back · Alt+←"
+            disabled={!canMoveShellHistory(navigation, -1)}
+            onClick={() =>
+              setNavigation((current) => moveShellHistory(current, -1))
+            }
+          >
+            <span aria-hidden="true">←</span>
+          </button>
+          <button
+            className="icon-button"
+            data-shell-history="forward"
+            aria-label="Forward, Alt+Right"
+            title="Forward · Alt+→"
+            disabled={!canMoveShellHistory(navigation, 1)}
+            onClick={() =>
+              setNavigation((current) => moveShellHistory(current, 1))
+            }
+          >
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <div
+          ref={tabRef}
+          className="shell-tabs"
+          role="tablist"
+          aria-label="Contexts"
+        >
+          {navigation.tabs.map((tab, index) => {
+            const active = tab.key === navigation.activeKey;
+            return (
+              <div
+                className={`shell-tab ${active ? "active" : ""}`}
+                role="presentation"
+                key={tab.key}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  id={`shell-tab-${index}`}
+                  aria-selected={active}
+                  aria-controls="main-content"
+                  tabIndex={active ? 0 : -1}
+                  data-shell-tab={tab.key}
+                  onKeyDown={(event) => tabKeyDown(event, tab.key)}
+                  onClick={() =>
+                    setNavigation((current) =>
+                      activateShellContext(current, tab.key),
+                    )
+                  }
+                >
+                  <span className="shell-tab-kind" aria-hidden="true" />
+                  <span>{tab.label}</span>
+                </button>
+                {navigation.tabs.length > 1 && (
+                  <button
+                    type="button"
+                    className="shell-tab-close"
+                    aria-label={`Close context ${tab.label}, ${modifierLabel}W`}
+                    title={`Close · ${modifierLabel}W`}
+                    onClick={() =>
+                      setNavigation((current) =>
+                        closeShellContext(current, tab.key),
+                      )
+                    }
+                  >
+                    <Icon name="close" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* THE RIGHT END OF THE TITLE BAND IS A GROUP OF GLYPHS
+            (`v3/app.css:135-143`, `v3/app.js:554-557`), not one wide bordered
+            word. The button that stood here spelled „Separate window" in a
+            2xs box with a border, shortened itself to „Window" below 30 rem
+            and still took more of the band than every tab it sat beside.
+
+            THE SECOND MEMBER IS NOT NEW FUNCTION, IT IS A MISSING DOOR. The
+            shortcuts overlay has existed since Wave B and could be reached by
+            ⌘/ ALONE — a feature whose only affordance is the shortcut it
+            documents. The prototype puts exactly this control in exactly this
+            group, so the door and the shape arrive together. */}
+        <div className="shell-tab-actions">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Keyboard shortcuts, ${modifierLabel}/`}
+            title={`Keyboard shortcuts · ${modifierLabel}/`}
+            onClick={() => setShortcutsOpen(true)}
+          >
+            <Icon name="fields" />
+          </button>
+          <button
+            type="button"
+            className="icon-button shell-detach"
+            aria-label={
+              detachedWindow
+                ? "Close the separate window"
+                : `Open ${activeContext.label} in a separate window`
+            }
+            title={detachedWindow ? "Attach back" : "Separate window"}
+            disabled={
+              !detachedWindow && client?.openDetachedSurface === undefined
+            }
+            onClick={() => {
+              if (detachedWindow) window.close();
+              else
+                void client?.openDetachedSurface?.(surface).catch(() =>
+                  setNotice({
+                    kind: "unavailable",
+                    message:
+                      "Could not open a separate window. This context stays here.",
+                  }),
+                );
+            }}
+          >
+            <Icon name="panel" />
+          </button>
+        </div>
+      </div>
+      <aside
+        className="sidebar"
+        id="workspace-sidebar"
+        aria-label="Workspace and navigation"
+      >
         <button
           type="button"
           className="workspace-switcher"
@@ -3086,7 +3317,13 @@ export const RealApp = ({
             openContext(destinationContext("settings", "Settings"))
           }
         >
-          <span className="workspace-avatar">I</span>
+          {/* Kafel niósł WPISANĄ literę „I" — nie inicjał, nie skrót, literał,
+          i tak było w każdej przestrzeni od co najmniej trzech fal. Rozbicie
+          przez `[...]` zamiast `charAt(0)`, bo nazwa zaczynająca się emoji
+          rozpada się w połowie pary surogatów. */}
+          <span className="workspace-avatar">
+            {[...bootstrap.workspace.name.trim()][0]?.toUpperCase() ?? "·"}
+          </span>
           <span>
             <strong>{bootstrap.workspace.name}</strong>
             <small>
@@ -3118,7 +3355,12 @@ export const RealApp = ({
         >
           <Icon name="search" />
           <span>Search</span>
-          <kbd>{modifierLabel}K</kbd>
+          {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
+          w tym arkuszu obwódkę, tło i promień, czyli rysunek klawiatury —
+          a to jest jedna kontrolka, nie ściągawka. Znaczenie „to jest skrót"
+          zostaje w `aria-label` przycisku, gdzie i tak było jedynym miejscem
+          docierającym do czytnika ekranu. */}
+          <span className="search-shortcut">{modifierLabel}K</span>
         </button>
         <nav ref={navRef} aria-label="Main navigation" onKeyDown={navKeyDown}>
           {favorites.length > 0 && (
@@ -3129,9 +3371,12 @@ export const RealApp = ({
                 return item ? (
                   <button
                     key={`favorite:${item.id}`}
-                    className={`nav-item nav-favorite ${surface === item.id ? "active" : ""}`}
+                    // Malowanie i bieżąca strona z JEDNEGO źródła, tak samo jak
+                    // w `navEntry` — ulubiony skrót do Projektów rozjeżdżałby
+                    // się przy otwartym rekordzie dokładnie tak samo.
+                    className={`nav-item nav-favorite ${currentNavId === item.id ? "active" : ""}`}
                     tabIndex={-1}
-                    aria-current={surface === item.id ? "page" : undefined}
+                    aria-current={currentNavId === item.id ? "page" : undefined}
                     onFocus={() => preloadSurface(item.id)}
                     onMouseEnter={() => preloadSurface(item.id)}
                     {...navHandlers(destinationContext(item.id, item.label))}
@@ -3181,6 +3426,13 @@ export const RealApp = ({
                 type="button"
                 className="nav-item settings-mode-back"
                 data-settings-back="true"
+                // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
+                // rule `.nav-item > span { display: none }` (styles.css:3599)
+                // takes BOTH children out of the accessibility tree, and the
+                // only way out of settings mode was left announcing itself as
+                // „‹". The label is now on the button, so it survives the
+                // width at which the text disappears.
+                aria-label="Leave settings"
                 onClick={leaveSettings}
               >
                 <span aria-hidden="true">‹</span>
@@ -3192,11 +3444,31 @@ export const RealApp = ({
                   type="button"
                   className="nav-item settings-mode-section"
                   data-settings-section={category.id}
-                  onClick={() =>
+                  // CO TA POZYCJA STEROWANIE — przeprowadzone razem ze
+                  // znacznikiem. Skasowany nawigator w treści ekranu niósł
+                  // `aria-controls`; ten niósł tylko atrybut danych, czyli
+                  // adres dla testu, a nie dla czytnika ekranu.
+                  aria-controls={settingsCategoryElementId(category.id)}
+                  // JEDEN NAWIGATOR USTAWIEŃ, I TO JEST TEN
+                  // (`v3/screens/settings.css:36-80`, `:76-80`). Do fali E
+                  // stały trzy: ta kolumna, drugi nawigator w treści ekranu
+                  // i natywna kontrolka wąskiego okna. Kolumna była jedyną,
+                  // która NIE mówiła, gdzie czytelnik jest — a jest jedyną,
+                  // która stoi tam, gdzie prototyp trzyma spis sekcji.
+                  aria-current={
+                    settingsCategory === category.id ? "location" : undefined
+                  }
+                  onClick={() => {
+                    // Stan ustawiony OD RAZU, a nie dopiero z obserwatora
+                    // przecięć na ekranie: ostatnia sekcja bywa krótsza niż
+                    // okno i przewinięcie do niej nie zawsze przesuwa próg,
+                    // więc znacznik zostawał na poprzedniej. Obserwator
+                    // poprawia tę wartość przy każdym dalszym przewinięciu.
+                    setSettingsCategory(category.id);
                     document
                       .getElementById(settingsCategoryElementId(category.id))
-                      ?.scrollIntoView({ block: "start", behavior: "auto" })
-                  }
+                      ?.scrollIntoView({ block: "start", behavior: "auto" });
+                  }}
                 >
                   <span>{category.label}</span>
                 </button>
@@ -3279,7 +3551,15 @@ export const RealApp = ({
                       aria-label={group}
                       hidden={!expanded}
                     >
-                      {groupItems.map((item) => navEntry(item))}
+                      {/* `flatMap`, żeby drugi poziom stanął POD swoim celem,
+                      a nie na końcu modułu: kolejność w rejestrze nie jest
+                      kontraktem i cel dołożony za Projektami rozsunąłby
+                      wiersze potomne od ich rodzica bez ani jednego błędu. */}
+                      {groupItems.flatMap((item) =>
+                        item.id === "projects" && !railMode
+                          ? [navEntry(item), projectNavChildren]
+                          : navEntry(item),
+                      )}
                     </div>
                   </div>
                 );
@@ -3327,12 +3607,45 @@ export const RealApp = ({
               · {build.version}
             </span>
           </div>
+          {/* THE COLLAPSE AFFORDANCE THE SHELL NEVER HAD (`v3/app.js:662`,
+              which puts it in the sidebar foot beside Settings — same place).
+              Until now the rail was a pure consequence of window width: a
+              person on a wide screen could not ask for the room, and a person
+              on a narrow one could not ask for the labels back.
+
+              NAME AND STATE, NOT JUST A GLYPH. `aria-expanded` says which way
+              the sidebar is, `aria-controls` says what it is about, and the
+              name changes with the state — a control whose only signal is a
+              rotating chevron says nothing to a screen reader. The labels this
+              collapses are NOT lost from the accessibility tree: every control
+              in the sidebar carries its own `aria-label` (`navEntry`, the
+              search control, the workspace switcher), so `display: none` on
+              the visible `<span>` removes paint, not names.
+
+              DISABLED WHEN THE WINDOW ALREADY FORCES THE RAIL, because at
+              ≤50rem there is no room to expand into and a button that flips a
+              state nothing can honour is a lie with a tooltip. */}
+          <button
+            type="button"
+            className="icon-button sidebar-collapse"
+            data-sidebar-collapse="true"
+            aria-controls="workspace-sidebar"
+            aria-expanded={!railMode}
+            aria-label={
+              railMode ? "Expand the sidebar" : "Collapse the sidebar"
+            }
+            title={railMode ? "Expand the sidebar" : "Collapse the sidebar"}
+            disabled={narrowRail}
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          >
+            <Icon name="chevron-right" />
+          </button>
           {/* Wejście w tryb Ustawień stoi PRZY tożsamości, bo to jest miejsce,
               w którym człowiek szuka „moich rzeczy" — a nie kolejna pozycja
               w rzędzie celów pracy. */}
           <button
             type="button"
-            className="settings-entry"
+            className="icon-button settings-entry"
             data-settings-entry="true"
             aria-label={`Open settings, ${modifierLabel},`}
             // Napis w dymku niósł `⌘` na sztywno, a skrót działa też pod
@@ -3356,115 +3669,6 @@ export const RealApp = ({
         data-surface={surface}
         aria-labelledby="surface-title"
       >
-        <div className="shell-tabbar" aria-label="Open contexts">
-          <div className="shell-history-controls" aria-label="Context history">
-            <button
-              className="icon-button"
-              data-shell-history="back"
-              aria-label="Back, Alt+Left"
-              title="Back · Alt+←"
-              disabled={!canMoveShellHistory(navigation, -1)}
-              onClick={() =>
-                setNavigation((current) => moveShellHistory(current, -1))
-              }
-            >
-              <span aria-hidden="true">←</span>
-            </button>
-            <button
-              className="icon-button"
-              data-shell-history="forward"
-              aria-label="Forward, Alt+Right"
-              title="Forward · Alt+→"
-              disabled={!canMoveShellHistory(navigation, 1)}
-              onClick={() =>
-                setNavigation((current) => moveShellHistory(current, 1))
-              }
-            >
-              <span aria-hidden="true">→</span>
-            </button>
-          </div>
-          <div
-            ref={tabRef}
-            className="shell-tabs"
-            role="tablist"
-            aria-label="Contexts"
-          >
-            {navigation.tabs.map((tab, index) => {
-              const active = tab.key === navigation.activeKey;
-              return (
-                <div
-                  className={`shell-tab ${active ? "active" : ""}`}
-                  role="presentation"
-                  key={tab.key}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    id={`shell-tab-${index}`}
-                    aria-selected={active}
-                    aria-controls="main-content"
-                    tabIndex={active ? 0 : -1}
-                    data-shell-tab={tab.key}
-                    onKeyDown={(event) => tabKeyDown(event, tab.key)}
-                    onClick={() =>
-                      setNavigation((current) =>
-                        activateShellContext(current, tab.key),
-                      )
-                    }
-                  >
-                    <span className="shell-tab-kind" aria-hidden="true" />
-                    <span>{tab.label}</span>
-                  </button>
-                  {navigation.tabs.length > 1 && (
-                    <button
-                      type="button"
-                      className="shell-tab-close"
-                      aria-label={`Close context ${tab.label}, ${modifierLabel}W`}
-                      title={`Close · ${modifierLabel}W`}
-                      onClick={() =>
-                        setNavigation((current) =>
-                          closeShellContext(current, tab.key),
-                        )
-                      }
-                    >
-                      <Icon name="close" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            className="shell-detach"
-            aria-label={
-              detachedWindow
-                ? "Close the separate window"
-                : `Open ${activeContext.label} in a separate window`
-            }
-            disabled={
-              !detachedWindow && client?.openDetachedSurface === undefined
-            }
-            onClick={() => {
-              if (detachedWindow) window.close();
-              else
-                void client?.openDetachedSurface?.(surface).catch(() =>
-                  setNotice({
-                    kind: "unavailable",
-                    message:
-                      "Could not open a separate window. This context stays here.",
-                  }),
-                );
-            }}
-          >
-            <span className="shell-detach-long">
-              {detachedWindow ? "Attach back" : "Separate window"}
-            </span>
-            <span className="shell-detach-short" aria-hidden="true">
-              {detachedWindow ? "Attach" : "Window"}
-            </span>
-          </button>
-        </div>
         <div
           className="work-surface wave2-work"
           id="main-content"

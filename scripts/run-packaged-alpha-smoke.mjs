@@ -884,9 +884,66 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         mobile: false,
       });
       try {
-        await client.evaluate(`new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve))
-        )`);
+        // CZEKANIE NA STAN USTALONY, NIE NA DWIE KLATKI — i to jest poprawka
+        // PRZYRZĄDU, opłacona trzema czerwonymi przebiegami CI.
+        //
+        // Dwie klatki po nałożeniu metryk urządzenia ta bramka mierzyła układ
+        // W TRAKCIE PRZELICZANIA i raportowała stan, który nie może istnieć.
+        // Zmierzone, wprost z jej własnej diagnostyki:
+        //
+        //   --sidebar-width       3.25rem      (szyna ZADZIAŁAŁA)
+        //   grid-template-columns 220px 100px  (tor trzyma szerokość SPRZED)
+        //
+        // Jedna powłoka, klasa "rail" na miejscu, token rozwiązany na 52 px,
+        // a użyta wartość toru to 220 px. Stan ustalony nie może nieść obu
+        // liczb naraz. Stąd brały się wszystkie trzy odmowy: dok o szerokości
+        // 26 px to dok w kolumnie pracy szerokiej na 100 px, a nie na 268.
+        // Pierwszy przebieg złapał moment jeszcze wcześniejszy — dok pod
+        // adresem x=475 przy oknie 320 px.
+        //
+        // Harness deweloperski NIGDY tego nie odtworzył, w żadnej kolejności
+        // (ładowanie od razu wąsko, zwężanie po ułożeniu, oba motywy), bo
+        // `setViewportSize` Playwrighta czeka na zastosowanie zmiany, a
+        // `Emulation.setDeviceMetricsOverride` przez CDP nie.
+        //
+        // WARUNEK JEST NA ZGODNOŚCI DWÓCH ODCZYTÓW, nie na czasie: tor siatki
+        // ma się zgadzać z rozwiązanym tokenem. Uśpienie na stałą liczbę
+        // milisekund przeszłoby tu tak samo i zgniło przy pierwszej wolniejszej
+        // maszynie — to jest ta sama rodzina co „asercja mierząca CZAS zamiast
+        // ZDARZENIA", którą to repozytorium już raz zapłaciło.
+        //
+        // NIEUSTALENIE SIĘ JEST AWARIĄ PRZYRZĄDU, nie werdyktem o układzie:
+        // rzuca własną nazwą, żeby czytający nie wziął jej za defekt ekranu.
+        const settled = await client.evaluate(`(async () => {
+          const frame = () => new Promise((r) => requestAnimationFrame(r));
+          const read = () => {
+            const shell = document.querySelector(".desktop-shell");
+            if (!shell) return null;
+            const style = getComputedStyle(shell);
+            const rail = style.getPropertyValue("--sidebar-width").trim();
+            const track = style.gridTemplateColumns.split(" ")[0];
+            const rem = Number.parseFloat(
+              getComputedStyle(document.documentElement).fontSize
+            );
+            const wanted = rail.endsWith("rem")
+              ? Number.parseFloat(rail) * rem
+              : Number.parseFloat(rail);
+            const used = Number.parseFloat(track);
+            return { rail, track, wanted, used, agrees: Math.abs(wanted - used) <= 1 };
+          };
+          for (let attempt = 0; attempt < 120; attempt += 1) {
+            await frame();
+            const state = read();
+            if (state === null) continue;
+            if (state.agrees) return { settled: true, attempts: attempt + 1, ...state };
+          }
+          return { settled: false, attempts: 120, ...(read() ?? {}) };
+        })()`);
+        if (settled.settled !== true) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SHELL_NOT_SETTLED:${JSON.stringify(settled)}`,
+          );
+        }
         const narrowShell = await client.evaluate(`(() => {
           const shell = document.querySelector(".desktop-shell");
           const work = document.querySelector('#main-content[role="tabpanel"]');
@@ -934,7 +991,116 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               .filter(({ width, height }) => width < 44 || height < 44),
             favoritesHidden: favorites.every(
               (element) => element.getClientRects().length === 0
-            )
+            ),
+            // DLACZEGO ODMOWA NIESIE POMIAR, A NIE SAMĄ LICZBĘ. Ta bramka
+            // zwróciła „dok ma 26 px szerokości" na paczce, a ten sam dok mierzy
+            // 244 px na harnessie deweloperskim — przy tej samej szerokości
+            // okna, tym samym arkuszu i tej samej kolejności (szeroko, potem
+            // wąsko). Różnicy nie da się odtworzyć poza paczką, a paczkowany
+            // smoke ODMAWIA uruchomienia lokalnie na macOS, żeby nie wywołać
+            // promptu Keychaina. Jedynym przyrządem jest więc CI, a przebieg CI
+            // oddający wyłącznie „26" nie mówi, czy zwęził się przycisk, czy
+            // jego pojemnik.
+            //
+            // Te pola są tu po to, żeby JEDEN czerwony przebieg wystarczył:
+            // szerokość pojemnika rozstrzyga między "width: 100% z czegoś
+            // wąskiego" a "coś nadpisało width", a display i szerokość etykiety
+            // mówią, czy treść w ogóle się rysuje.
+            //
+            // ŻADNYCH BACKTICKÓW W TYM KOMENTARZU — cały ten blok jest wnętrzem
+            // literału szablonowego przekazywanego do przeglądarki, więc jeden
+            // backtick w prozie zamyka string i plik przestaje się parsować.
+            // Złapane przez eslint przy pierwszej wersji tej diagnostyki.
+            dockDiagnostic: dock
+              ? (() => {
+                  const layer = dock.parentElement;
+                  const styleOf = (el) => {
+                    const s = getComputedStyle(el);
+                    return {
+                      display: s.display,
+                      width: s.width,
+                      maxWidth: s.maxWidth,
+                      flex: s.flex,
+                      overflow: s.overflow
+                    };
+                  };
+                  return {
+                    dock: styleOf(dock),
+                    layer: layer
+                      ? {
+                          ...styleOf(layer),
+                          rectWidth: layer.getBoundingClientRect().width
+                        }
+                      : null,
+                    main: (() => {
+                      const m = dock.closest("main");
+                      return m
+                        ? { ...styleOf(m), rectWidth: m.getBoundingClientRect().width }
+                        : null;
+                    })(),
+                    // CO ROZSTRZYGA MIĘDZY DEFEKTEM PRODUKTU A DEFEKTEM
+                    // PRZYRZĄDU, i dlaczego to jest JEDNO pytanie, nie dwa.
+                    // Poprzedni przebieg oddał main o szerokości 100 px przy
+                    // oknie 320 px. 220 + 100 = 320, a 220 to spoczynkowa
+                    // szerokość lewej kolumny — czyli szyna się NIE ZWINĘŁA
+                    // i kolumna zabrała pracy wszystko poza setką.
+                    // Na harnessie przy tej samej szerokości kolumna schodzi do
+                    // 52 px, a praca dostaje 268 — i schodzi tak samo, gdy
+                    // strona ładuje się od razu wąska, i gdy zwęża się po
+                    // ułożeniu. Zostaje więc pytanie, czy to paczka nie wchodzi
+                    // w szynę, czy nakładka metryk urządzenia nie doprowadza
+                    // do niej stanu, który zwykłe okno by dostało.
+                    // Klasa powłoki mówi to wprost: jest w niej "rail", albo
+                    // jej nie ma.
+                    shellClassName: (() => {
+                      const s = document.querySelector(".desktop-shell");
+                      return s ? s.className : null;
+                    })(),
+                    sidebarRectWidth: (() => {
+                      const s = document.querySelector(".sidebar");
+                      return s ? s.getBoundingClientRect().width : null;
+                    })(),
+                    // TRZECIE PYTANIE, I OSTATNIE, KTÓRE UMIEM ZADAĆ Z DALEKA.
+                    // Poprzedni przebieg wykluczył dwie hipotezy naraz: klasa
+                    // powłoki NIESIE "rail", a mimo to lewa kolumna mierzy
+                    // 220 px, czyli spoczynkowe 13.75rem. W zbudowanym arkuszu
+                    // (sprawdzone w dist) blok ":root,[data-theme=dark]" definiuje
+                    // oba tokeny, a reguła ".desktop-shell.rail" nadpisuje
+                    // szerokość PÓŹNIEJ, więc kaskada jest po stronie szyny.
+                    // Ten sam stan na harnessie, w tym samym motywie ciemnym,
+                    // oddaje 3.25rem i kolumnę 52 px.
+                    //
+                    // Zostaje jedno wyjaśnienie zgodne ze wszystkimi liczbami:
+                    // mierzone są DWIE RÓŻNE powłoki — klasa czytana z pierwszej
+                    // w dokumencie, a dok żyje w innej. Dlatego pytamy o token
+                    // rozwiązany na powłoce DOKU, nie na pierwszej znalezionej,
+                    // i o to, ile powłok w ogóle jest.
+                    shellCount: document.querySelectorAll(".desktop-shell").length,
+                    dockShellClassName: (() => {
+                      const s = dock.closest(".desktop-shell");
+                      return s ? s.className : null;
+                    })(),
+                    dockShellTokens: (() => {
+                      const s = dock.closest(".desktop-shell");
+                      if (!s) return null;
+                      const cs = getComputedStyle(s);
+                      return {
+                        sidebarWidth: cs.getPropertyValue("--sidebar-width").trim(),
+                        sidebarRail: cs.getPropertyValue("--sidebar-rail").trim(),
+                        gridTemplateColumns: cs.gridTemplateColumns
+                      };
+                    })(),
+                    labelDisplay: dockLabel ? getComputedStyle(dockLabel).display : null,
+                    labelRectWidth: dockLabel
+                      ? dockLabel.getBoundingClientRect().width
+                      : null,
+                    contentRectWidth: (() => {
+                      const c = document.querySelector(".capture-dock-content");
+                      return c ? c.getBoundingClientRect().width : null;
+                    })()
+                  };
+                })()
+              : null
           };
         })()`);
         if (
@@ -1145,24 +1311,52 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           await frame();
           const categories = [...document.querySelectorAll("[data-settings-category]")]
             .map((element) => element.dataset.settingsCategory);
-          const current = () => {
-            const marked = document.querySelector(
-              '.settings-navigator [aria-current="location"]'
-            );
-            return marked?.getAttribute("aria-controls") ?? null;
-          };
+          // BIEŻĄCA SEKCJA CZYTANA Z DEKLARACJI. Do lotu 6 stała jako
+          // aria-current na pozycji nawigatora rysowanego przez sam ekran;
+          // nawigator Ustawień jest teraz JEDEN i stoi w powłoce
+          // (.settings-mode-column), a przy 320 px powłoka zwija lewą kolumnę
+          // do szyny ikon i spis sekcji w niej nie stoi. Odczyt znacznika
+          // z nawigatora zwracałby więc null przy KAŻDEJ kategorii i cała
+          // ta kontrola raportowałaby, że nic nie jest osiągalne — mierząc
+          // szerokość okna zamiast osiągalności.
+          // (Komentarz bez apostrofów odwrotnych ŚWIADOMIE: cały ten blok
+          // jest literałem szablonowym, więc apostrof odwrotny zamknąłby go
+          // w połowie zdania.)
+          //
+          // KTÓRA GAŁĄŹ TU CHODZI, POWIEDZIANE WPROST, BO PRZY 320 PX CHODZI
+          // TYLKO JEDNA. Powłoka zwija lewą kolumnę pod
+          // @media (max-width: 50rem), a spis sekcji dostaje tam display: none
+          // — więc getClientRects() wpisu sekcji jest puste, visible(navButton)
+          // jest fałszem i gałąź nawigatora NIE WYKONUJE SIĘ ANI RAZU. Cała
+          // osiągalność mierzona w tym oknie jest osiągalnością przez
+          // kontrolkę natywną. Selektor .settings-mode-column
+          // [data-settings-section] jest tu pisany dla POPRAWNOŚCI drugiej
+          // gałęzi, a nie dlatego, że ten przelot ją sprawdza — kto go zmieni,
+          // nie dowie się tego stąd.
+          //
+          // I DRUGA RZECZ DLA TEGO, KTO KIEDYŚ URUCHOMI TO SZERZEJ: obie
+          // gałęzie pytają current(), czyli deklarację ekranu, ale ustawiają
+          // DWA RÓŻNE fakty. Kontrolka natywna woła navigateToCategory, które
+          // ustawia activeCategory synchronicznie i deklaracja zmienia się
+          // w tej samej klatce. Wpis kolumny ustawia settingsCategory
+          // W POWŁOCE i przewija; deklaracja idzie za obserwatorem przecięć,
+          // więc jedno await frame() może nie wystarczyć i gałąź nawigatora
+          // mierzyłaby czas obserwatora, a nie osiągalność.
+          const current = () =>
+            document
+              .querySelector("[data-settings-active-category]")
+              ?.getAttribute("data-settings-active-category") ?? null;
           const unreachable = [];
           for (const id of categories) {
-            const sectionId = "settings-category-" + id;
-            const navButton = [...document.querySelectorAll(
-              ".settings-navigator button[aria-controls]"
-            )].find((button) => button.getAttribute("aria-controls") === sectionId);
+            const navButton = document.querySelector(
+              '.settings-mode-column [data-settings-section="' + id + '"]'
+            );
             const picker = document.getElementById("settings-category-select");
             let reached = false;
             if (visible(navButton)) {
               navButton.click();
               await frame();
-              reached = current() === sectionId;
+              reached = current() === id;
             } else if (visible(picker)) {
               // Kontrolka natywna musi NAPRAWDĘ przestawiać bieżącą kategorię,
               // nie tylko zawierać opcję. Sama obecność wpisu w liście to nie
@@ -1170,7 +1364,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               picker.value = id;
               picker.dispatchEvent(new Event("change", { bubbles: true }));
               await frame();
-              reached = current() === sectionId;
+              reached = current() === id;
             }
             if (!reached) {
               unreachable.push({

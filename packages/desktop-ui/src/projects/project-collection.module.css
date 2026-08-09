@@ -49,10 +49,10 @@
   font-weight: 590;
 }
 
-.switch:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+/* Pierścienia nie deklaruje tu nic — należy do reguły globalnej w `tokens.css`.
+   Odrzucana deklaracja `outline` w kolorze pierścienia (lista cieni w slocie
+   koloru) stała tu do dziś; zmierzone Tabem w Chromium w obu motywach:
+   `outline-style: none` przy ognisku, a widoczny pierścień z reguły globalnej. */
 
 .count {
   margin-inline-start: auto;

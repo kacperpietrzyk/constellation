@@ -76,6 +76,24 @@ import styles from "./pipeline.module.css";
 
 const MOVE_HINT_KEY = "m";
 
+/**
+ * One frame later — and where there are no frames, now.
+ *
+ * A browser snapshots the drag image FROM THE SOURCE NODE once the `dragstart`
+ * handler has returned, so a card that goes translucent inside that handler
+ * hands the cursor a translucent ghost. The prototype does not hit this because
+ * it builds a ghost element of its own (`v3/app.js:2290-2297`); this screen uses
+ * the native one, so the dimming waits a frame.
+ *
+ * The fallback is not defensive dressing: the interaction tests drive `dragstart`
+ * through `dispatchEvent` in an environment with no compositor, and a deferral
+ * that never runs there would make the state untestable.
+ */
+const nextFrame = (run: () => void) => {
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+  else run();
+};
+
 const priceMinorFromMajor = (text: string): number | undefined => {
   const trimmed = text.trim().replace(/\s/gu, "");
   if (!/^\d+([.,]\d{1,2})?$/u.test(trimmed)) return undefined;
@@ -168,7 +186,13 @@ const OfferSheet = ({
       <div className={`${styles.offer} ${styles.offerWaiting}`}>
         {head}
         <p className={styles.waiting} data-offer-waiting>
-          {`No cost from distribution yet — ${reading.offer.nextAction}`}
+          {/* `v3/screens/pipeline.css:186-194` draws this note with a warning
+              mark in a lane of its own. The mark repeats what the amber and the
+              dashed edge already say; the sentence is what carries it. */}
+          <Icon name="warn" />
+          <span className={styles.waitingText}>
+            {`No cost from distribution yet — ${reading.offer.nextAction}`}
+          </span>
         </p>
       </div>
     );
@@ -274,6 +298,7 @@ const DealCard = ({
   onOpen,
   onMoveRequest,
   onDragStart,
+  onDragEnd,
 }: {
   readonly card: PipelineCard;
   readonly index: number;
@@ -286,6 +311,7 @@ const DealCard = ({
   readonly onOpen: (card: PipelineCard) => void;
   readonly onMoveRequest: (card: PipelineCard) => void;
   readonly onDragStart: (card: PipelineCard) => void;
+  readonly onDragEnd: () => void;
 }) => {
   const nav = itemProps(index);
   return (
@@ -298,7 +324,25 @@ const DealCard = ({
       draggable
       onClick={() => onSelect(card.opportunity.id)}
       onDoubleClick={() => onOpen(card)}
-      onDragStart={() => onDragStart(card)}
+      // THE STATE OF A DRAG LIVES ON THE DOM, NOT IN REACT. `dragover` fires
+      // tens of times a second while a card is over a column, and a state
+      // update on that signal would re-render every card on the board for every
+      // one of them. The card marks itself; the column below marks itself; the
+      // stylesheet reads both as attributes.
+      onDragEnd={(event: ReactDragEvent<HTMLElement>) => {
+        event.currentTarget.removeAttribute("data-dragging");
+        // A drag abandoned outside the board — Escape, or a drop on nothing —
+        // fires ONLY here. Without this the accent stayed on the last column
+        // the cursor crossed until somebody dropped something.
+        onDragEnd();
+      }}
+      onDragStart={(event: ReactDragEvent<HTMLElement>) => {
+        onDragStart(card);
+        const node = event.currentTarget;
+        nextFrame(() => {
+          node.setAttribute("data-dragging", "");
+        });
+      }}
       onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
         // `M` moves the deal, and it is handled here rather than in the shared
         // list hook because it is this screen's gesture. The same
@@ -353,12 +397,22 @@ const DealCard = ({
         markupPct={markupPct}
         timeZone={timeZone}
       />
-      <span className={styles.next}>{card.opportunity.nextAction}</span>
+      {/* The arrow says "this is what happens next" before the sentence does
+          (`v3/screens/pipeline.css:196-202`). It is `aria-hidden` inside `Icon`,
+          so nothing is added to the card's accessible name, which already
+          carries the next step in prose. */}
+      <span className={styles.next}>
+        <Icon name="arrow" />
+        <span className={styles.nextText}>{card.opportunity.nextAction}</span>
+      </span>
       <span className={styles.meta}>
-        {/* The word carries the warning, not the colour. */}
-        <span
-          className={`${styles.age} ${card.stale ? styles.ageStale : ""}`}
-        >{`${card.ageDays} d${card.stale ? " · stale" : ""}`}</span>
+        {/* Three channels, not one: the word "stale", the filled red badge and
+            the clock (`v3/screens/pipeline.js:326`). Remove the colour and the
+            sentence still says it. */}
+        <span className={`${styles.age} ${card.stale ? styles.ageStale : ""}`}>
+          {card.stale && <Icon name="clock" />}
+          {`${card.ageDays} d${card.stale ? " · stale" : ""}`}
+        </span>
         {card.owner !== undefined && <Initials name={card.owner.name} />}
       </span>
     </article>
@@ -378,7 +432,9 @@ const BoardColumn = ({
   onOpen,
   onMoveRequest,
   onDragStart,
+  onDragEnd,
   onDropInto,
+  onDropTarget,
 }: {
   readonly column: PipelineColumn;
   readonly meterMax: number;
@@ -392,7 +448,11 @@ const BoardColumn = ({
   readonly onOpen: (card: PipelineCard) => void;
   readonly onMoveRequest: (card: PipelineCard) => void;
   readonly onDragStart: (card: PipelineCard) => void;
+  readonly onDragEnd: () => void;
   readonly onDropInto: (stageId: string) => void;
+  /** Board-wide, because exactly one column can be the target at a time and the
+   *  board is the only place that knows which one it is. */
+  readonly onDropTarget: (node: HTMLElement | null) => void;
 }) => {
   const quiet = column.terminal || column.stray;
   const width =
@@ -430,6 +490,38 @@ const BoardColumn = ({
         // a stage that does not exist means nothing, so the gesture is refused
         // by the absence of the target rather than by a message after the drop.
         data-dropzone={column.stray ? undefined : column.id}
+        // WHERE THE CARD WOULD LAND. `dragenter` and `dragleave` also fire for
+        // every child crossed, so leaving is only believed when the cursor has
+        // gone somewhere this body does not contain — the standard reading of
+        // `relatedTarget`, and it self-heals after a cancelled drag in a way a
+        // depth counter does not.
+        onDragEnter={
+          column.stray
+            ? undefined
+            : (event: ReactDragEvent<HTMLElement>) =>
+                onDropTarget(event.currentTarget)
+        }
+        onDragLeave={
+          column.stray
+            ? undefined
+            : (event: ReactDragEvent<HTMLElement>) => {
+                // ORDER MATTERS AND IT IS NOT THE OBVIOUS ONE: crossing from one
+                // column to the next fires `dragenter` ON THE NEW TARGET BEFORE
+                // `dragleave` on the old one. A leave that cleared the board's
+                // mark unconditionally would therefore strip the column the
+                // cursor has just entered, and the highlight would never appear
+                // while moving between columns — `dragover` does not set it.
+                // So this only clears a mark that is still ITS OWN, and the mark
+                // itself is the record of whose it is.
+                if (!event.currentTarget.hasAttribute("data-drop-target"))
+                  return;
+                // And leaving for one's own child is not leaving.
+                const to = event.relatedTarget;
+                if (to instanceof Node && event.currentTarget.contains(to))
+                  return;
+                onDropTarget(null);
+              }
+        }
         onDragOver={
           column.stray
             ? undefined
@@ -440,6 +532,7 @@ const BoardColumn = ({
             ? undefined
             : (event: ReactDragEvent<HTMLElement>) => {
                 event.preventDefault();
+                onDropTarget(null);
                 onDropInto(column.id);
               }
         }
@@ -453,6 +546,7 @@ const BoardColumn = ({
             itemProps={itemProps}
             key={card.opportunity.id}
             markupPct={markupPct}
+            onDragEnd={onDragEnd}
             onDragStart={onDragStart}
             onMoveRequest={onMoveRequest}
             onOpen={onOpen}
@@ -522,6 +616,17 @@ export const PipelineSurface = ({
   const [moveFor, setMoveFor] = useState<string | undefined>(undefined);
   const dragged = useRef<string | undefined>(undefined);
   const moveRef = useRef<HTMLButtonElement | null>(null);
+  // The column body currently marked as the drop target, held as a node rather
+  // than an id because clearing it must not depend on that column still being
+  // rendered — a board reloads under a drag that changed a stage.
+  const dropTarget = useRef<HTMLElement | null>(null);
+
+  const markDropTarget = (node: HTMLElement | null) => {
+    if (dropTarget.current === node) return;
+    dropTarget.current?.removeAttribute("data-drop-target");
+    dropTarget.current = node;
+    node?.setAttribute("data-drop-target", "");
+  };
 
   const timeZone = snapshot.bootstrap.workspace.timezone;
   // The board's day counts are WORKSPACE calendar days, like every other
@@ -737,9 +842,22 @@ export const PipelineSurface = ({
     <div className={`surface-scroll ${styles.pipeline}`} data-pipeline-surface>
       {header}
       <div className={styles.crumbbar}>
+        {/* THE ACTION OF THE SCREEN, AT THE END OF THE BAR. The prototype draws
+            it as the primary action and pushes it right
+            (`v3/screens/pipeline.js:409-410` through `v3/app.css:293`,
+            `:321-332`); the contract calls the primary action one per view and
+            the largest solid-accent object a view may hold (`.ui-craft/tokens.md`,
+            "Usage constraints" 3). ONE PER VIEW IS THE WHOLE PROBLEM HERE, and
+            it is why this is a conditional rather than a class: the form's own
+            "Add opportunity" (below) is already primary, so a toggle that
+            stayed primary would put two of them on one screen the moment the
+            form opened. The toggle steps down to secondary while the form is
+            open, and what it means steps down with it — once the form is on
+            screen the thing to press is inside it, and this button only closes
+            it again. There is never a state with two. */}
         <button
           aria-expanded={creating}
-          className="secondary-button"
+          className={`${styles.createToggle} ${creating ? "secondary-button" : "primary-button"}`}
           onClick={() => setCreating((open) => !open)}
           type="button"
         >
@@ -1000,6 +1118,10 @@ export const PipelineSurface = ({
               key={column.id}
               markupPct={settings.markupPct}
               meterMax={board.meterMax}
+              onDragEnd={() => {
+                dragged.current = undefined;
+                markDropTarget(null);
+              }}
               onDragStart={(card) => {
                 dragged.current = card.opportunity.id;
               }}
@@ -1012,6 +1134,7 @@ export const PipelineSurface = ({
                 // that can be driven in a test is the gesture that ships.
                 if (card !== undefined) move(card, stageId);
               }}
+              onDropTarget={markDropTarget}
               onMoveRequest={(card) => {
                 setMoveFor(card.opportunity.id);
                 setMovePending(true);

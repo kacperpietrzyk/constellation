@@ -60,11 +60,14 @@
   padding-inline: var(--space-2);
 }
 
-.groupAdd:focus-visible,
-.row:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+/* Ognisko wiersza i przycisku grupy należy do reguły globalnej w `tokens.css`.
+   Stała tu reguła pisząca pierścień jako `outline` — niepoprawnie, bo pierścień
+   jest listą cieni. Zmierzone Tabem w Chromium (oba motywy): wiersz przy ognisku
+   miał `outline-style: none`, a pierścień malował się z reguły globalnej, przy
+   czym zapas do najbliższego przycinającego przodka wynosi 40 px w poziomie
+   i 260 px w pionie, więc pierścień mieści się w całości. W trybie wymuszonych
+   kolorów ta deklaracja znosiła podkładany kontur do zera — po jej usunięciu
+   wiersz dostaje tam kontur systemowy jak każda inna kontrolka. */
 
 /* Wiersz: tytuł bierze całą wolną przestrzeń, reszta kolumn ma stałą szerokość,
    bo inaczej realny tytuł na 100+ znaków wypycha plan i termin poza ekran.
@@ -114,10 +117,8 @@
   color: var(--status-success);
 }
 
-.check:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+/* Znacznik też nie ma własnego ogniska — ta sama odrzucona deklaracja, ten sam
+   właściciel. Zmierzone: przy ognisku maluje go reguła globalna. */
 
 .statusDot {
   inline-size: 0.5rem;

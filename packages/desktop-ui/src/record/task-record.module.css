@@ -30,11 +30,25 @@
      Record titles are somebody else's prose and run past a hundred characters,
      so this is the normal case rather than a defensive one. */
   overflow-wrap: anywhere;
+  /* Lot 4 #1. Reference: `v3/app.css:651-652` — `.rec-title { font-size:
+     var(--text-xl); letter-spacing: -0.022em; line-height:
+     var(--leading-tight); max-width: var(--surface-read); text-wrap: balance }`.
+     Contract: `.ui-craft/tokens.md`, "Type" — one scale, 11/12/13/14/16/18/22/28.
+     Application: this rule.
+
+     The three record screens carried three different title sizes: 28px here
+     and on the project, 22px on the opportunity. `--text-xl` is 22px and is
+     what the reference gives every record title, so it is the one this family
+     converges on rather than the largest of the three. The weight stays 580 —
+     the reference says 600, and this lot is forbidden to touch the 580/590/620
+     convention, so the divergence is recorded and not paid. */
+  max-inline-size: var(--surface-read);
   color: var(--text-primary);
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: 580;
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
+  text-wrap: balance;
 }
 
 /* Status, why it is held and where it belongs, on ONE line. Wrapping rather
@@ -84,7 +98,59 @@
   color: var(--status-success);
 }
 
+/* ── THE OPERATIONAL SIGNAL GETS A BAND ────────────────────────────────────
+   Lot 4 #2, first half. Reference: `v3/screens/record.css:202-211` —
+   `.rc-signal { display: flex; gap: 0.4375rem; font-size: var(--text-sm);
+   margin-top: var(--space-4); padding: 0.4375rem 0.75rem; border-radius:
+   var(--radius-sm) }`, with `.rc-signal-waiting` on `--status-warning-bg` and
+   `.rc-signal-blocked` on `--status-error-bg`. Contract:
+   `.ui-craft/tokens.md`, "Status and accessibility" — status "always pairs
+   colour with icon or text", and status colour is "sparse and redundant with
+   shape, icon, or label". Application: this rule.
+
+   Waiting and blocked are the only reason a task is standing still, and until
+   now they were a bare span lost in a line of metadata beside the status and
+   the project. The band is the whole position. The reference's own comment
+   puts it as "an operational state, not a status — so it gets its own band
+   and not a tag lost in a metadata line".
+
+   THE BASE RULE CARRIES A NEUTRAL FILL ON PURPOSE. This element renders for
+   ANY state that is not `actionable`, and the projection's vocabulary is not
+   closed by this sheet. A third value would otherwise get the box and no
+   fill, which is the one shape that reads as broken rather than as quiet.
+   Each status variant states its text colour in the same rule as its
+   background, never one without the other. */
 .why {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  margin: var(--space-2) 0 0;
+  padding: 0.4375rem var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.why_waiting {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+}
+
+.why_blocked {
+  background: var(--status-error-bg);
+  color: var(--status-error);
+}
+
+/* Priority is a READING, never a signal: it does not explain why the task is
+   standing still, so it keeps the quiet inline voice the operational state
+   has just left. It shared `.why` until this lot, which is why the band could
+   not be put there — a band saying "high priority" claims the task is held. */
+.priorityNote {
   overflow-wrap: anywhere;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -135,16 +201,73 @@ button.chip:hover {
   white-space: nowrap;
 }
 
+/* ── PLAN AND DEADLINE ARE TWO CELLS, NOT ONE SENTENCE ─────────────────────
+   Lot 4 #2, second half. Reference: `v3/screens/record.css:214-251` —
+   `.rc-plan { display: grid; grid-template-columns: 1fr 1fr; border: 1px
+   solid var(--border-subtle); border-radius: var(--radius-md); background:
+   var(--surface-raised) }` with `.rc-plan-cell-due { border-left: 1px solid
+   var(--border-subtle) }`, and `v3/screens/record.css:19-20` collapsing the
+   pair to one column with the boundary turned through ninety degrees.
+   Contract: `.ui-craft/tokens.md`, "Spacing and density" — reading surfaces
+   use the 16/20/24px steps, dense rows the 4/8/12px ones. Application: this
+   rule.
+
+   The reference's comment says why, and it is a fact about the data rather
+   than a preference about layout: "this is NOT one field 'when' — the left is
+   your own intent, the right is somebody else's promise". Here they were one
+   `<p>` joined by a middle dot, which is the shape that says they are two
+   halves of one thing.
+
+   `minmax(0, 1fr)` and never a bare `1fr`: a bare track is a floor as well as
+   a ceiling, so at 200% root font-size the cell's min-content would SET the
+   surface's width instead of taking one — the failure written out in full at
+   the head of `opportunity/opportunity-record.module.css`. */
 .plan {
-  overflow-wrap: anywhere;
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-inline-size: 0;
+  margin: var(--space-2) 0 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
 }
 
-.sep {
-  padding: 0 var(--space-2);
+.planCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  padding: var(--space-3) var(--space-4);
+}
+
+/* The boundary the position is about, and the only thing that makes the two
+   cells two. It turns with the grid on a narrow canvas — see the container
+   query at the end of this file. */
+.planCellDue {
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.planKey {
   color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  /* A literal, for the reason position 6 gives in full at `.docHeading`. */
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.planValue {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+/* An absence is stated, not left blank: "no deadline" is a fact about the
+   task and an empty cell is a question. */
+.planUnset {
+  color: var(--text-disabled);
 }
 
 .dueLate {
@@ -211,17 +334,38 @@ button.chip:hover {
   min-inline-size: 0;
 }
 
+/* ── MICRO-HEADINGS ────────────────────────────────────────────────────────
+   Lot 4 #6. Reference: `v3/screens/record.css:89-92` — `.rc-doc-h
+   { font-size: var(--text-2xs); font-weight: 500; color:
+   var(--text-quaternary); text-transform: uppercase; letter-spacing: 0.07em }`,
+   the same values at `:51-53` (`.rc-fit-h`) and `:103-106` (`.rc-rel-sec h3`).
+   Contract: `.ui-craft/tokens.md`, "Type" — one scale for the whole product.
+   Application: this rule and `.railHeading` below.
+
+   The task record was the only screen in this family running its
+   micro-headings a step larger and a shade louder than the project and the
+   opportunity ones — 12px tertiary against 11px quaternary. The size and the
+   colour come down to the family's; the weight goes to 590 because that is
+   what the other two sheets already declare, which is adopting the
+   application's convention rather than touching it.
+
+   THE TRACKING IS A LITERAL AND THAT IS DELIBERATE. `--tracking-wide` is
+   0.025em, the reference is 0.07em, and the token has consumers outside this
+   family of screens — moving it would move type this lot never looked at. The
+   value is written out here, in the four sheets of the record family, and the
+   token is left exactly as it is.
+
+   One word is the whole overflow at a narrow width: `Dependencies` is 97 px
+   and cannot break, in a pane that can be a hundred. Headings are single
+   words here, so they are exactly the case `min-inline-size: 0` cannot
+   help — the box was already allowed to shrink. */
 .docHeading {
-  /* One word is the whole overflow at a narrow width: `Dependencies` is 97 px
-     and cannot break, in a pane that can be a hundred. Headings are single
-     words here, so they are exactly the case `min-inline-size: 0` cannot
-     help — the box was already allowed to shrink. */
   overflow-wrap: anywhere;
   margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: 560;
-  letter-spacing: var(--tracking-wide);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -233,12 +377,24 @@ button.chip:hover {
    refuses to break sits outside its box no matter how many ancestors were told
    they may shrink — which is what the layout gate measured the first time it
    was allowed to open a task. */
+/* ── ONE READING MEASURE FOR THE WHOLE FAMILY ──────────────────────────────
+   Lot 4 #12. Reference: `v3/screens/record.css:93` — `.rc-prose { max-width:
+   var(--surface-read) }`, and `:362` gives the comments panel the same token.
+   Contract: `.ui-craft/tokens.md`, "Spacing and density". Application: this
+   rule, `.note` and `.nextStep` below.
+
+   Three blocks on this screen pinned `68ch` while the project record, the
+   opportunity record and the comments panel all used `--surface-read`. Two
+   measures inside one family of screens is a measure nobody chose: `ch`
+   follows the zero-width of whatever font resolves, the token does not, and
+   the difference showed up as a reading column that changed width when you
+   moved between tabs of the same record. */
 .prose {
   overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-inline-size: 68ch;
+  max-inline-size: var(--surface-read);
   color: var(--text-primary);
   font-size: var(--text-md);
   line-height: var(--leading-normal);
@@ -253,7 +409,7 @@ button.chip:hover {
 .note {
   overflow-wrap: anywhere;
   margin: 0;
-  max-inline-size: 68ch;
+  max-inline-size: var(--surface-read);
   color: var(--text-tertiary);
   font-size: var(--text-sm);
 }
@@ -261,18 +417,38 @@ button.chip:hover {
 .nextStep {
   overflow-wrap: anywhere;
   margin: 0;
-  max-inline-size: 68ch;
+  max-inline-size: var(--surface-read);
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
 
 /* ── ROWS — exits, not a collection worked inside ──────────────────────── */
 
+/* ── THE LIST IS A CONTAINER ───────────────────────────────────────────────
+   Lot 4 #10. Reference: `v3/screens/record.css:142-148` — `.rc-list { border:
+   1px solid var(--border-subtle); border-radius: var(--radius-md); overflow:
+   hidden }` with `.rc-row { border-bottom: 1px solid var(--border-subtle) }`
+   and no rule on the last one. Contract: `.ui-craft/tokens.md`, "Shape,
+   motion, depth, and layering" — 12px for cards and controls. Application:
+   this rule.
+
+   `overflow: hidden` from the reference is DELIBERATELY NOT TAKEN. These rows
+   are buttons and their focus ring is a box-shadow drawn OUTSIDE the border
+   (the rule lives in `tokens.css` and is named in the note further down this
+   file), so a clipping container would cut the ring off at its own edge for
+   the first and last row. The accessibility threshold beats fidelity — this
+   phase's one standing exception, and it is named rather than left to be
+   inferred. The corners are worn by the first and last row instead, which is
+   what the clip was doing for the reference.
+
+   Rows separated by a hairline rather than by a gap: inside a box, `gap`
+   reads as three boxes that happen to touch. */
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
   min-inline-size: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
 }
 
 .row {
@@ -280,14 +456,28 @@ button.chip:hover {
   gap: var(--space-2);
   align-items: baseline;
   inline-size: 100%;
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
   font-size: var(--text-sm);
   text-align: start;
+}
+
+/* One pixel off the outer radius, so a hover fill stops inside the border
+   rather than squaring the corner it sits under. */
+.row:first-child {
+  border-start-start-radius: calc(var(--radius-md) - 1px);
+  border-start-end-radius: calc(var(--radius-md) - 1px);
+}
+
+.row:last-child {
+  border-bottom: 0;
+  border-end-start-radius: calc(var(--radius-md) - 1px);
+  border-end-end-radius: calc(var(--radius-md) - 1px);
 }
 
 button.row {
@@ -299,10 +489,15 @@ button.row:hover {
   color: var(--text-primary);
 }
 
-button.row:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
+/* Ognisko wiersza-przycisku należy do reguły globalnej w `tokens.css`. Stała tu
+   ta sama odrzucana deklaracja co w pięciu innych arkuszach — pierścień pisany
+   jako `outline`, czyli lista cieni w slocie koloru. NAZWANE WPROST: tego
+   JEDNEGO z sześciu nie udało się zmierzyć na żywo, bo fikstura harnessu otwiera
+   ekran rekordu zadania BEZ ani jednego `[data-record-row]` (zmierzone: rodzaj
+   rekordu `task` otwarty, zero wierszy). Rozstrzygnięcie jest takie samo jak dla
+   pięciu zmierzonych, bo deklaracja jest ta sama co do znaku, a wybór między
+   „skasować" a „przepiąć na token koloru" wypadł na skasowanie w KAŻDYM
+   zmierzonym przypadku. */
 
 .rowMark {
   flex: 0 0 auto;
@@ -384,13 +579,14 @@ button.row:focus-visible {
   min-inline-size: 0;
 }
 
+/* Lot 4 #6, the rail's half — same values, same reason, see `.docHeading`. */
 .railHeading {
   overflow-wrap: anywhere;
   margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: 560;
-  letter-spacing: var(--tracking-wide);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -449,6 +645,27 @@ button.row:focus-visible {
   .rail {
     padding-inline-start: 0;
     padding-block-start: var(--space-4);
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border-subtle);
+  }
+}
+
+/* The plan pair collapses to one column, with its boundary turned through
+   ninety degrees — `v3/screens/record.css:19-20` does exactly this.
+
+   A SEPARATE BLOCK FROM THE ONE ABOVE, AND NOT FOR TIDINESS. The rules above
+   resolve against `.overview`, which declares its own containment; `.plan`
+   lives in the HEADER, above the tab strip, so its nearest container is
+   `.screen` (`record-screen.module.css`). Two subjects in one `@container`
+   block would read as one threshold and be two. The number is larger because
+   `.screen` measures the whole record including its padding, not the body's
+   own box. */
+@container (max-width: 58rem) {
+  .plan {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planCellDue {
     border-inline-start: 0;
     border-block-start: 1px solid var(--border-subtle);
   }

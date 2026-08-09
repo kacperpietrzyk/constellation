@@ -95,10 +95,50 @@
   cursor: default;
 }
 
-.rowMain:focus-visible {
-  outline: 2px solid var(--focus-ring);
+/* `--focus-ring` to LISTA CIENI, więc `outline: 2px solid var(--focus-ring)`
+   było deklaracją niepoprawną i przeglądarka odrzucała ją w całości (zmierzone
+   w Chromium: `outline-style: none`, `outline-width: 0px`). Kolor ogniska niesie
+   `--focus-ring-color`.
+
+   KONTUR RYSUJE SIĘ TYLKO TAM, GDZIE PIERŚCIEŃ GLOBALNY JEST PRZYKRYTY, czyli
+   na wierszu ZAZNACZONYM — i selektor mówi to wprost, zamiast zostawiać
+   szerszą regułę z notatką. Powód jest w kaskadzie: `.rowMain[aria-pressed=
+   "true"]` niżej (swoistość 0,2,0) deklaruje własny `box-shadow` i przykrywa
+   nim pierścień globalny (`:where(…):focus-visible`, swoistość 0,1,0)
+   w całości. Na wierszu NIEZAZNACZONYM nic pierścienia nie przykrywa, więc
+   kontur był tam DRUGĄ ramką na tej samej krawędzi — piętrzeniem, którego
+   zabrania ograniczenie z 2026-07-12 (`.ui-craft/brief.md`).
+
+   ZMIERZONE W CHROMIUM, prawdziwym Tabem, w obu motywach, cztery przypadki
+   razy przed/po (16 wierszy; `getComputedStyle` na elemencie, który NAPRAWDĘ
+   pasuje do `:focus-visible` — sprawdzone osobno). Motyw ciemny, skrótowo:
+
+     przed, niezaznaczony  kontur 2 px akcentu ORAZ pełny pierścień
+                           (biel 0,7 inset + akcent 1 px + halo + spadek)
+     przed, zaznaczony     kontur 2 px akcentu ORAZ
+                           `oklch(1 0 0 / 0.095) 0 0 0 1px inset` — i TYLKO to
+     po,    niezaznaczony  kontur `solid 2px rgba(0, 0, 0, 0)` (przezroczysty
+                           kontur reguły globalnej, potrzebny dla trybu
+                           `forced-colors`) ORAZ sam pierścień globalny
+     po,    zaznaczony     bez zmian — kontur 2 px akcentu ORAZ inset stanu
+
+   Czyli piętrzenie znika na wierszu niezaznaczonym i NIE POJAWIA SIĘ dziura:
+   skasowanie tej reguły w całości zostawiłoby zaznaczony wiersz z ogniskiem bez
+   żadnego wskaźnika, czyli regresję WCAG 2.4.7 w miejsce piętrzenia.
+
+   `border-radius` z tej reguły ZNIKA. Przy swoistości 0,3,0 pobiłby
+   promień `--radius-md` stanu zaznaczenia i wiersz zmieniałby promień
+   9 px → 6 px w chwili złapania ogniska (zmierzone: bez tej deklaracji
+   zaznaczony wiersz trzyma 9 px w obu motywach). LICZBY W TYM AKAPICIE SĄ
+   HISTORYCZNE — zmierzono je, gdy `--radius-md` miał 0.5625rem; R3
+   z 2026-08-07 dał mu 0.75rem, więc dziś ten sam wiersz trzyma 12 px.
+   Rozumowanie się nie zmienia, sama liczba tak. Skutek uboczny, nazwany: niezaznaczony
+   `.rowMain` nie ma własnego promienia, więc pierścień globalny rysuje mu się
+   po kątach prostych — wcześniej kontur zaokrąglał go na 6 px. Nadanie
+   `.rowMain` promienia spoczynkowego to osobna reguła i nie ten lot. */
+.rowMain[aria-pressed="true"]:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
 }
 
 .rowMain[aria-pressed="true"] {

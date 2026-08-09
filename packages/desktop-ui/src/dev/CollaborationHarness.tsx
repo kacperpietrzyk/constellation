@@ -6,6 +6,7 @@ import {
   AttentionSignalIdSchema,
   CommentIdSchema,
   FieldDefinitionIdSchema,
+  GrantIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
   ProjectTemplateIdSchema,
@@ -47,6 +48,13 @@ const statusId = TaskStatusIdSchema.parse(
 const ownerId = PrincipalIdSchema.parse("00000000-0000-4000-8000-000000000004");
 const memberId = PrincipalIdSchema.parse(
   "00000000-0000-4000-8000-000000000005",
+);
+// The agent is a PRINCIPAL like any other, and that is not a detail of naming:
+// a comment is attributed to an agent by matching this id against the grants in
+// `agent.access` (`record-actors.ts:93-111`), so the id has to be shared by the
+// grant and by the comment or the panel quietly draws a person.
+const agentPrincipalId = PrincipalIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000f2",
 );
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000006");
 // Jedno źródło tytułu zadania i identyfikatora projektu, bo od tego PR-a
@@ -189,6 +197,23 @@ const client = createScenarioClient({
             operationalSemantics: "actionable",
           },
           completionState: "open",
+          // THE WRITTEN CONTEXT, and the only projection that carries it. The
+          // record screen reads `description` off THIS capped list
+          // (`TaskRecordScreen.tsx:386` — `snapshot.tasks.find(...)`), never off
+          // `work.overview`, and it draws `.prose` only when the string is
+          // non-empty (`:585-599`). While this field was absent the screen drew
+          // the "No context saved yet" note instead, so the reading measure of
+          // the whole record family — the one thing lot 4 #12 is about — was
+          // never on the page for anything to measure.
+          //
+          // Several paragraphs, split by a blank line, because `paragraphsOf`
+          // splits on exactly that: a one-sentence description exercises
+          // neither the `gap` between paragraphs nor the `pre-wrap` rule that
+          // keeps an author's own single newlines.
+          description:
+            "The packaged build recovers a half-written capture on the next start, and we have never watched it do that from a cold machine — only from a session that still had the renderer warm.\n\nWhat needs confirming is the order: the recovery banner has to appear BEFORE the workspace finishes opening, otherwise the reader answers a question about a capture they cannot yet see. Ada saw the opposite order once on Windows and we have no recording of it.\n\nIf the order is wrong the fix is not in the banner, it is in when the startup notice is allowed to resolve.",
+          nextAction:
+            "Reproduce from a cold start on Windows and record the order the two notices appear in.",
           assignment: {
             id: TaskAssignmentIdSchema.parse(
               "00000000-0000-4000-8000-000000000008",
@@ -220,7 +245,17 @@ const client = createScenarioClient({
           id: taskId,
           title: taskTitle,
           statusId,
-          operationalState: "actionable",
+          // NOT "actionable", and the difference is a whole element. The record
+          // says the operational state out loud only when it is NOT the default
+          // (`TaskRecordScreen.tsx:507`) — an "actionable" task draws no
+          // `.why` span at all. A harness whose only task was actionable
+          // therefore held a screen on which lot 4 #2's subject did not exist,
+          // and the pair reading it was unfalsifiable rather than pending.
+          operationalState: "waiting",
+          waitingOn: {
+            kind: "person",
+            label: "Ada Nowak · Windows reproduction",
+          },
           completionState: "open",
           fields: {
             "00000000-0000-4000-8000-0000000000e1": {
@@ -240,7 +275,33 @@ const client = createScenarioClient({
       projects: [],
       areas: [],
       initiatives: [],
-      links: [],
+      // ONE DEPENDENCY EDGE, AND IT IS THE WHOLE SEED LOT 4 NEEDED. The task
+      // record's `.list` — the subject of lot 4 #10 — is mounted only inside a
+      // non-empty branch (`TaskRecordScreen.tsx`: subtasks, then dependencies);
+      // with no parent, no children and no links, the screen drew a `<p>` in
+      // both places and the container the position is about did not exist on
+      // any page any gate could open. `task-record.module.css` recorded that
+      // gap in prose ("zero `[data-record-row]`") and it stayed a gap.
+      //
+      // The target is deliberately a task that is NOT in this projection, and
+      // that is the cheaper of the two seeds rather than a shortcut: it draws
+      // the real degraded row ("A task outside this Space's work",
+      // `TaskRecordScreen.tsx`), which carries `data-record-row` exactly like
+      // the ordinary one, WITHOUT adding a second task to `work.overview` —
+      // which would also add a row to the Tasks collection and change a screen
+      // this lot never looked at.
+      links: [
+        {
+          id: StrategicRecordIdSchema.parse(
+            "00000000-0000-4000-8000-0000000000f6",
+          ),
+          linkType: "task_depends_on_task" as const,
+          sourceRecordId: taskId,
+          targetRecordId: "00000000-0000-4000-8000-0000000000f7",
+          state: "active" as const,
+          version: 1,
+        },
+      ],
       savedViews: [
         {
           id: StrategicRecordIdSchema.parse(
@@ -311,7 +372,26 @@ const client = createScenarioClient({
           updatedAt: "2026-07-31T11:05:00.000Z",
         },
       ],
-      relatedDecisions: [],
+      // ONE EXIT, and it is not decoration. `ProjectRecordOverview.tsx:570`
+      // leaves the whole Decisions section out when the collection is empty,
+      // and the Client section is not a way in either — it lists
+      // `clients.slice(1)`, so a single client draws ZERO rows by design. With
+      // all four collections empty this rail drew nothing but the version line,
+      // and `.railRow` — the subject of lot 4 #7 — did not exist on the page at
+      // all. `superseded` rather than `current` because that is the only state
+      // the row says out loud (`:580`), so the `meta` span draws too instead of
+      // being a branch nothing on this fixture reaches.
+      relatedDecisions: [
+        {
+          id: StrategicRecordIdSchema.parse(
+            "00000000-0000-4000-8000-0000000000f1",
+          ),
+          title: "Migrujemy notatki klienta z Obsidiana, nie z Confluence",
+          state: "superseded" as const,
+          version: 3,
+          updatedAt: "2026-07-28T09:20:00.000Z",
+        },
+      ],
       clientOrganizations: [],
       evidenceSources: [],
     }),
@@ -395,6 +475,52 @@ const client = createScenarioClient({
         },
       ],
     }),
+    // WITHOUT THIS QUERY THERE ARE NO AGENTS IN THIS WORKSPACE, and the shell
+    // says so silently: `buildActorResolver` reads its map out of
+    // `agentAccess.grants`, and an unavailable slice makes that map empty, so
+    // every comment resolves to a person. The whole agent treatment on a record
+    // — the spark, the accent mark, the "agent · preset" line — hangs off this
+    // one read.
+    "agent.access": result({
+      kind: "agent.access",
+      policyVersion: 4,
+      workspaceVersion: 4,
+      canManage: true,
+      grants: [
+        {
+          grantId: GrantIdSchema.parse("00000000-0000-4000-8000-0000000000f3"),
+          agentPrincipalId,
+          displayName: "Orbit Runner",
+          // A REAL preset value, because the panel prints it beside the name
+          // (`RecordCommentsPanel.tsx:177` — "agent · propose"). An invented
+          // string would fail the strict parse and take the slice, not just
+          // the word, off the screen.
+          preset: "propose",
+          capabilityScope: [
+            "task.comment",
+            "task.update",
+            "document.structuredRead",
+          ],
+          scopeStatus: "current",
+          missingFromPreset: [],
+          status: "active",
+          credentialVersion: 1,
+          version: 2,
+          membershipId: "00000000-0000-4000-8000-0000000000f4",
+          membershipVersion: 1,
+          spaces: [
+            {
+              spaceId,
+              spaceName: "Praca",
+              spaceGrantId: "00000000-0000-4000-8000-0000000000f5",
+              access: "comment",
+              version: 1,
+            },
+          ],
+          lastUsedAt: "2026-07-14T10:51:00.000Z",
+        },
+      ],
+    }),
     "comment.mentionCandidates": result({
       kind: "comment.mentionCandidates",
       spaceId,
@@ -428,13 +554,30 @@ const client = createScenarioClient({
           updatedAt: "2026-07-14T10:45:00.000Z",
           edited: true,
         },
+        // WRITTEN BY THE AGENT, and that is the whole point of this entry.
+        // `buildActorResolver` (`record-actors.ts:93-111`) calls a comment an
+        // agent's ONLY when its author principal is the `agentPrincipalId` of a
+        // grant in `agent.access` — the author's display name is never
+        // consulted. Until this harness answered that query, every comment in
+        // it resolved to a person, `.entryAgent` and `.markAgent` were declared
+        // in the sheet and drawn by nobody, and the two pairs reading them
+        // measured nothing while looking exactly like pairs that were waiting
+        // for a lot.
+        //
+        // The reply was flipped rather than a third thread added: one human
+        // root plus one agent reply is the shape the panel is built around, and
+        // the alternative changes the height of a panel that three geometry
+        // registries are pinned to.
         {
           id: CommentIdSchema.parse("00000000-0000-4000-8000-000000000013"),
           parentCommentId: rootCommentId,
           rootCommentId,
-          body: "Pakietowy dowód macOS i Windows jest dołączony.",
+          body: "Pakietowy dowód macOS i Windows jest dołączony — obie ścieżki odzyskania przeszły, log jest w załączniku do zadania.",
           attachments: [],
-          author: { principalId: ownerId, displayName: "Kacper" },
+          author: {
+            principalId: agentPrincipalId,
+            displayName: "Orbit Runner",
+          },
           mentionPrincipalIds: [],
           threadState: "open",
           version: 1,

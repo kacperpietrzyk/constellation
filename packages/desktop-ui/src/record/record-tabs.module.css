@@ -8,12 +8,65 @@
    the window cannot see, so such a rule fires at the wrong width. Nothing here
    needs one at all: the strip wraps rather than measuring itself. */
 
+/* ── THE BAR STAYS WHILE THE RECORD SCROLLS ────────────────────────────────
+   Lot 4 #8. Reference: `v3/app.css:655-658` — `.tabstrip { position: sticky;
+   top: 0; z-index: var(--z-sticky) }`. Contract: `.ui-craft/tokens.md`,
+   "Shape, motion, depth, and layering" (Z roles: base, raised, sticky, …).
+   Application: this rule.
+
+   `--z-sticky` (20) rather than `--z-raised` (2), and that is the whole
+   difference between this working and this looking like it works: the task
+   panel already pins its group headings at `--z-raised`
+   (`record-panels.module.css`, `.groupHead`), and this bar has to pass OVER
+   them. A bar that pins UNDER a group heading satisfies every assertion about
+   its own top edge and is invisible.
+
+   MEASURED, AND ON ONE OF THE THREE SCREENS THE DECLARATION WAS NOT ENOUGH.
+   `position: sticky` is silently inert under any ancestor whose overflow is
+   neither `visible` nor `clip`, and the three record screens do not share one
+   wrapper:
+     · project record  — `.surface-scroll .project-surface` (`styles.css:5057`,
+       containment only, no overflow) → the scrollport is `.work-surface`, and
+       the bar pins. Measured 2026-08-07: HELD, 195 of 194.6 px scrolled,
+       `document.elementFromPoint` landing on this strip.
+     · opportunity record — `.surface-scroll` + `pipeline.module.css`
+       `.pipeline` (no overflow) → same, and the bar pins.
+     · task record — `.surface-scroll` + `tasks/tasks.module.css`, which
+       declared `overflow-x: hidden`. One axis hidden while the other is
+       `visible` computes the visible axis to `auto`, so THAT box was the
+       scrollport — and it never scrolls, because `.work-surface` above it
+       does. Measured the same day: the container was asked for 408.1 px of
+       scroll and moved 0. Not a difference of content length, a difference of
+       SCROLLPORT — and this rule reads the same on both screens, so no
+       assertion about the declaration could have seen it.
+   The remedy landed where the declaration is, `tasks/tasks.module.css`
+   (`overflow-x: clip`, which clips the same and creates no scroll container);
+   that sheet carries the reasoning and the cost. What stays here is the
+   warning: any surface that wraps a record must not put a scroll container
+   between this bar and the pane the shell scrolls. */
 .strip {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-5);
   min-inline-size: 0;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  /* Pulled up over the flex gap and given it straight back as padding.
+     `.screen` separates its children by `--space-4`; a bar that pins without
+     this would pin with a transparent band above it and the record would
+     scroll through the hole. Nothing moves at rest — the tabs sit at the
+     block end of the box either way. */
+  margin-block-start: calc(var(--space-4) * -1);
+  padding-block-start: var(--space-4);
+  /* Opaque canvas rather than the reference's
+     `color-mix(…) + backdrop-filter: blur(12px)` (`v3/app.css:658`). NAMED
+     DIVERGENCE: `prefers-reduced-transparency` in this application does not
+     yet zero the blur token (`tokens.css`, the reduced-transparency blocks),
+     so a blurred bar would be one more piece of glass with no way out of it.
+     The colour is the plane the record is painted on. */
+  background: var(--surface-canvas);
   border-block-end: 1px solid var(--border-subtle);
 }
 
@@ -44,9 +97,18 @@
 }
 
 /* Three carriers at once — the rule under it, the weight, the colour — so the
-   open section is never told by colour alone. */
+   open section is never told by colour alone.
+
+   The rule takes the ACCENT. Lot 4 #8, second half. Reference:
+   `v3/app.css:666` — `.tabstrip button[aria-selected="true"]
+   { border-bottom-color: var(--accent) }`. Contract: `.ui-craft/tokens.md`,
+   "What the accent is allowed to mean", job 1 — "where the reader is … the
+   current destination, tab, saved view, folder or day", which cites
+   `v3/app.css:121-124` for exactly this shape. The label keeps
+   `--text-primary` and the weight, so the accent is the third carrier and
+   never the only one. */
 .tab[aria-selected="true"] {
-  border-block-end-color: var(--text-primary);
+  border-block-end-color: var(--accent);
   color: var(--text-primary);
   font-weight: 590;
 }

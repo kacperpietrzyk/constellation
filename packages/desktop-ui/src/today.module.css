@@ -98,8 +98,43 @@
   box-shadow: inset 0 0 0 1px var(--border-default);
 }
 
-.row:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--text-primary));
+/* Fallback `var(--focus-ring, var(--text-primary))` NIGDY nie działał: token
+   jest zdefiniowany, więc podstawienie brało listę cieni, a `outline` w całości
+   padał (zmierzone: `outline-style: none`). Slot koloru bierze
+   `--focus-ring-color`, bez fallbacku — token jest zadeklarowany RAZ, w bloku
+   `:root`, i rozwiązuje się w obu motywach, bo jest aliasem `--accent`, a blok
+   jasny remapuje `--accent` (ten sam zapis stoi przy tokenie w `tokens.css`).
+
+   KONTUR JEST ZAWĘŻONY DO STANU ZAZNACZENIA — z tego samego powodu, co
+   w `inbox.module.css`: `.row[aria-selected="true"]` cztery reguły wyżej
+   deklaruje `box-shadow` przy swoistości 0,2,0 i przykrywa nim globalny
+   pierścień `:where(…):focus-visible` (0,1,0), więc bez tej reguły zaznaczony
+   wiersz z ogniskiem zostałby bez żadnego wskaźnika. Na wierszu
+   NIEZAZNACZONYM nic pierścienia nie przykrywało, więc kontur był tam drugą
+   ramką na tej samej krawędzi.
+
+   Wiersz Dzisiaj to `<div role="option">` z wędrującym `tabindex` (0 na
+   przystanku, -1 na reszcie — `useListNavigation`), więc pierścień globalny
+   ŁAPIE GO tak samo jak przycisk Skrzynki: selektor `[tabindex]:not([tabindex=
+   "-1"])` dopasowuje przystanek, a element z ogniskiem NIM JEST.
+
+   ZMIERZONE W CHROMIUM na tym wierszu (nie przez podobieństwo do Skrzynki),
+   prawdziwym Tabem, w obu motywach, przed i po. Motyw ciemny, skrótowo:
+
+     przed, niezaznaczony  kontur 2 px akcentu ORAZ pełny pierścień globalny
+     przed, zaznaczony     kontur 2 px akcentu ORAZ
+                           `oklch(1 0 0 / 0.095) 0 0 0 1px inset` — i TYLKO to
+     po,    niezaznaczony  kontur `solid 2px rgba(0, 0, 0, 0)` (przezroczysty
+                           kontur reguły globalnej) ORAZ sam pierścień globalny
+     po,    zaznaczony     bez zmian
+
+   POMIAR SZEDŁ PRZEZ REPRODUKCJĘ KASKADY, NIE PRZEZ BRAMKĘ UKŁADU, i to jest
+   granica tego dowodu: fikstura harnessu nie rysuje ANI JEDNEGO
+   `[data-planned-row]` („Nothing is planned for today"), więc bramka układu nie
+   ma tu czego zmierzyć. Reprodukcja bierze TE SAME arkusze z dysku i to samo
+   Chromium, ale nie dowodzi niczego o reszcie ekranu. */
+.row[aria-selected="true"]:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
   outline-offset: -2px;
 }
 

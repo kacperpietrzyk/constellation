@@ -75,13 +75,17 @@
   font-size: var(--text-sm);
 }
 
-.choice input:focus-visible,
-.group select:focus-visible,
-.disclosure:focus-visible,
-.save:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+/* OGNISKO NIE MA TU WŁASNEJ REGUŁY — I TO JEST ROZSTRZYGNIĘCIE, NIE PRZEOCZENIE.
+   Stała tu reguła `outline` w kolorze pierścienia, a pierścień jest LISTĄ CIENI,
+   więc deklaracja była niepoprawna po podstawieniu. Zmierzone Tabem w Chromium
+   na tym formularzu (oba motywy): `.disclosure`, `.choice input` i `.save`
+   dostawały wtedy `outline-style: none` przy grubości 0 px, a jedyne, co ognisko
+   rysowało, brało się z globalnej reguły w `tokens.css`. Deklaracja nie dokładała
+   nic — a kosztowała: nadpisując globalny kontur, znosiła go do wartości
+   początkowej, więc w trybie wymuszonych kolorów (gdzie cienie znikają) kontrolka
+   zostawała BEZ ŻADNEGO wskaźnika ogniska. Zmierzone `forcedColors: active`:
+   kontrolka z tą deklaracją miała `outline: none 0px`, a sąsiednia bez niej
+   `solid 2px` w kolorze Highlight. */
 
 .group select {
   min-inline-size: 0;

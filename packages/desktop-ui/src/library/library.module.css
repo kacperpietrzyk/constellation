@@ -53,14 +53,49 @@
   overflow-wrap: anywhere;
 }
 
+/* Ten tytuł NIE MIAŁ ANI JEDNEJ deklaracji rozmiaru — ani tu, ani w żadnym
+   arkuszu — więc brał domyślne przeglądarkowe `2em`/`bold` liczone od
+   `--text-base`: zmierzone 28,0 px przy 1440 px, 56,0 px przy 200% tekstu
+   i 84,0 px przy 300%. Nie widział tego nikt, bo sonda wierności brała podmiot
+   po klasie `.surface-header`, a Biblioteka rysuje własny nagłówek; sonda
+   pisała wtedy „no title drawn on: library" i szła dalej. Po przepięciu
+   podmiotu na `id="surface-title"` i po dopięciu asercji do wąskich przelotów
+   wyszło to jako siedem werdyktów naraz.
+   Dostaje te same proporcje co jedenaście pozostałych tytułów ekranu
+   (`styles.css`, reguła `.surface-header h1, h2`), bo jest tym samym: powtarza
+   etykietę zakładki „Library" tuż nad sobą. */
 .header h1 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: var(--leading-snug);
   text-wrap: balance;
 }
 
-.count {
-  font-size: var(--text-xs);
+/* LOT 5 #11 — the target's own counter stops being an outlined pill, the same
+   way the other three do (two panel heads in `notes.module.css`, the Sources
+   list head in `sources.module.css` — four consumers in all). The reference
+   writes a count as a flat tabular number and nothing more
+   (`v3/screens/knowledge.css:98-101`, `.kn-n`); `color` is the one property not
+   taken from it, and the divergence is written out at the same rule in
+   `sources.module.css`. The GLOBAL `.library-count` rule in `styles.css` is
+   untouched: it is shared with `.section-heading-row > span`, which lives on two
+   surfaces outside this one, and the brief forbids moving it. `.header .count`
+   rather than a bare `.count` so the winner is decided by specificity and not by
+   the order two stylesheets happened to be injected in. */
+.header .count {
+  display: inline;
+  min-width: 0;
+  min-height: 0;
+  padding-inline: 0;
   color: var(--text-tertiary);
+  border: 0;
+  border-radius: 0;
+  font-size: var(--text-2xs);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 .viewbar {

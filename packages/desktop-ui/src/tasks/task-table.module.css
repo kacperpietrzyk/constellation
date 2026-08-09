@@ -108,14 +108,39 @@
   background: var(--surface-selected);
 }
 
+/* Kreska zaznaczenia jest NEUTRALNA, nie akcentowa: zaznaczony jest KAŻDY
+   zwykły wiersz, a akcent wolno wydać tylko na to, co aktywne, co główne
+   i gdzie jest fokus (`.ui-craft/tokens.md`, „Accent rule"). `--text-primary`
+   to najmocniejszy atrament motywu, czyli ta sama ROLA, którą pełniła tu
+   wartość sprzed Fazy 1 — ale nie ta sama liczba: token przeskoczył w tym
+   samym locie na `--neutral-50` za v3, więc kreska idzie na płótnie
+   16,98:1 → 19,05:1 w ciemnym i 19,05:1 → 19,50:1 w jasnym. */
 .row[aria-selected="true"] td:first-child {
-  box-shadow: inset 2px 0 0 var(--action-primary-bg);
+  box-shadow: inset 2px 0 0 var(--text-primary);
 }
 
+/* WIERSZ SIEDZI W PRZEWIJARCE, WIĘC ZEWNĘTRZNY PIERŚCIEŃ SIĘ NIE MIEŚCI — i to,
+   a nie gust, jest powodem, dla którego zostaje tu jedna deklaracja.
+   Zmierzone Tabem w Chromium (oba motywy): zapas między pudełkiem wiersza
+   a pudełkiem dopełnienia najbliższego przycinającego przodka (`.scroller`,
+   `overflow-x: auto`) wynosi 0 px z lewej i 0 px z prawej. Pierścień globalny
+   jest cieniem ZEWNĘTRZNYM (1 px krawędzi, 3 px halo), więc na obu bokach jest
+   przycinany do zera. Sam z siebie zostawia tu poziomą kreskę nad i pod
+   wierszem, a nie ramkę.
+
+   CO ZNIKA: `box-shadow: var(--focus-ring)` był CO DO ZNAKU tą samą wartością,
+   którą reguła globalna z `tokens.css` i tak tu podstawia — czyste dublowanie,
+   czyli piętrzenie zakazane kontraktem. Kontur 2 px w `--text-primary` był
+   drugim, białym kadrem obok fioletowego pierścienia; gruby, piętrzony kadr
+   systemowy jest wprost zakazany ograniczeniem z 2026-07-12 i dalej obowiązuje.
+
+   CO ZOSTAJE: jedna krispowa krawędź 1 px w kolorze ogniska, wsunięta do środka,
+   żeby przeżyła przycięcie. `--focus-ring-color` to ten sam akcent co krawędź
+   pierścienia, tylko jako KOLOR — pierścień jest listą cieni i w slocie koloru
+   byłby deklaracją niepoprawną. */
 .row:focus-visible {
-  outline: 2px solid var(--text-primary);
-  outline-offset: -2px;
-  box-shadow: var(--focus-ring);
+  outline: 1px solid var(--focus-ring-color);
+  outline-offset: -1px;
 }
 
 /* Long strings degrade by truncating; the whole string is in the row's
@@ -205,10 +230,15 @@
   border-radius: var(--radius-full);
 }
 
+/* Znacznik STANU planu jest neutralny: akcent nazywający stan byłby czwartym
+   znaczeniem obok „aktywne / główne / fokus", a kontrakt nazywa to naruszeniem,
+   nie rozszerzeniem (`.ui-craft/tokens.md`, „Accent rule"). Token i jego
+   przesunięcie względem stanu sprzed Fazy 1 — jak przy kresce zaznaczenia
+   wyżej. */
 .plan[data-plan-state="held"] .planMark {
   border-radius: var(--radius-xs);
-  border-color: var(--action-primary-bg);
-  background: var(--action-primary-bg);
+  border-color: var(--text-primary);
+  background: var(--text-primary);
 }
 
 /* ── Deadline ─────────────────────────────────────────────────────── */

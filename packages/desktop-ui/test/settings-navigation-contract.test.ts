@@ -23,6 +23,11 @@ const settings = readFileSync(
   "utf8",
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
+// POWŁOKA CZYTANA JAKO TEKST, bo jeden z nawigatorów Ustawień STOI W NIEJ:
+// wejście w tryb podmienia lewą kolumnę na spis sekcji, a znacznik „tu
+// jesteś" jest od lotu 6 właśnie tam. Asercja czytająca wyłącznie
+// `SettingsSurface.tsx` opisywałaby połowę ekranu.
+const shell = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
 
 const countOccurrences = (haystack: string, needle: RegExp): number =>
   haystack.match(needle)?.length ?? 0;
@@ -92,40 +97,92 @@ describe("enterprise settings navigation contract", () => {
     );
 
     // Status-bearing: every category id maps to a status string, and the
-    // navigator actually renders that string beside the category.
+    // screen renders the status of the category being looked at.
+    //
+    // PRZENIESIONE, NIE SKASOWANE — i to jest cała różnica, którą ta asercja
+    // ma nieść. Status stał dotąd jako `<small>` przy KAŻDEJ pozycji drugiego
+    // nawigatora; drugiego nawigatora nie ma (jest jeden, w powłoce), a status
+    // stoi tam, gdzie trzyma go prototyp: w paśmie nagłówka, jako podtytuł
+    // bieżącej sekcji (`v3/screens/settings.js:1005-1007` czyta `cur.sub()`).
+    // Asercja pilnuje tego samego, co pilnowała: że każda kategoria ma zdanie
+    // o sobie i że to zdanie jest RYSOWANE.
     assert.match(
       settings,
       /categoryStatus: Record<SettingsCategoryId, string>/,
     );
     assert.match(
       settings,
-      /<small>\{categoryStatus\[category\.id\]\}<\/small>/,
+      /<p className="settings-band-sub">\{categoryStatus\[activeCategory\]\}<\/p>/,
     );
 
-    // The navigator marks the category you are looking at as the current
-    // location. Anchored to the expression itself: an unrelated aria-current
-    // elsewhere in the file must not satisfy this.
-    assert.match(
-      settings,
-      /aria-current=\{\s*activeCategory === category\.id \? "location" : undefined,?\s*\}/,
-    );
+    // Bieżąca sekcja jest ZADEKLAROWANA na powierzchni, a nie odczytywana
+    // z nazwy klasy nawigatora — nawigator jest w powłoce, więc montaż samego
+    // ekranu nie ma go w drzewie w ogóle. Deklaracja jest jedynym nośnikiem tej
+    // odpowiedzi, który widzą naraz: ten test, test osiągalności i smoke
+    // spakowanej apki.
+    assert.match(settings, /data-settings-active-category=\{activeCategory\}/);
+    // I jest RAPORTOWANA na zewnątrz, bo rysuje ją powłoka.
+    assert.match(settings, /onCategoryChange\?\.\(activeCategory\)/);
   });
 
   it("keeps every category available through a native narrow-width control", () => {
     assert.match(settings, /<select\s+id="settings-category-select"/s);
     assert.match(settings, /settingsCategories\.map\(\(category\) =>/);
-    // Narrow width: the sticky sidebar disappears and the native select takes
-    // over, so no category becomes unreachable. Both rules must live inside
-    // the same container query — hence the [^@] bound between them.
+    // Zwinięta kolumna: spis sekcji nie ma glifów, więc w szynie stoi na
+    // baczność i nie da się w niego kliknąć — od tego momentu osiągalność
+    // niesie kontrolka natywna. WARUNEK MUSI BYĆ TEN SAM co warunek zwinięcia,
+    // bo inaczej istnieje stan, w którym żadna kategoria nie jest klikalna.
+    //
+    // ASERCJA PYTA O SELEKTOR, NIE O LICZBĘ, I TO JEST POPRAWKA, NIE
+    // PRZEPISANIE. Do pozycji 13 oba warunki brzmiały `@media (max-width:
+    // 50rem)` i ta asercja pilnowała, żeby to była TA SAMA liczba w dwóch
+    // miejscach. Zwinięcie ma od tej pozycji drugi powód — prośbę człowieka na
+    // dowolnej szerokości — i liczba natychmiast przestała opisywać jeden
+    // z nich. Dwie reguły na jednej klasie `.desktop-shell.rail` nie mogą się
+    // rozjechać tak, jak rozjechały się dwie kopie progu.
     assert.match(
       styles,
-      /@container \(max-width: 58rem\)[^@]*?\.settings-navigator\s*\{[^}]*display: none/s,
+      /\.desktop-shell\.rail \.settings-category-picker\s*\{[^}]*display: grid/s,
     );
     assert.match(
       styles,
-      /@container \(max-width: 58rem\)[^@]*?\.settings-category-picker\s*\{[^}]*display: grid/s,
+      /\.desktop-shell\.rail \.settings-mode-section\s*\{[^}]*display: none/s,
     );
-    assert.match(styles, /\.settings-navigator\s*\{[^}]*position: sticky/s);
+    // I zwinięcie dalej ma swój próg szerokości — tylko już nie w arkuszu:
+    // `railMode` w powłoce to „okno poniżej 50rem LUB prośba człowieka".
+    assert.match(shell, /window\.matchMedia\("\(max-width: 50rem\)"\)/);
+    assert.match(shell, /const railMode = narrowRail \|\| sidebarCollapsed;/);
+    // I nie ma już drugiego nawigatora w treści ekranu, którego ta kontrolka
+    // była zamiennikiem (`v3/screens/settings.css:36-80` — jeden spis sekcji,
+    // w lewej kolumnie).
+    assert.equal(countOccurrences(settings, /settings-navigator/g), 0);
+    assert.equal(countOccurrences(styles, /\.settings-navigator/g), 0);
+  });
+
+  it("marks the current section in the one navigator, which lives in the shell", () => {
+    // TA ASERCJA PRZEPROWADZIŁA SIĘ RAZEM ZE ZNACZNIKIEM. Stała nad
+    // `SettingsSurface.tsx` i pytała o `aria-current` przy pozycji nawigatora
+    // w treści ekranu. Kolumna trybu jest teraz jedynym nawigatorem Ustawień,
+    // więc pyta o nią — i czyta powłokę, bo tam ten nawigator stoi.
+    assert.match(
+      shell,
+      /aria-current=\{\s*settingsCategory === category\.id \? "location" : undefined,?\s*\}/,
+    );
+    // Wash + waga + szyna: trzy nośniki naraz, bo sam kolor nie jest nośnikiem
+    // znaczenia (`v3/screens/settings.css:74-80`).
+    assert.match(
+      styles,
+      /\.settings-mode-column \.nav-item\[aria-current="location"\]\s*\{[^}]*box-shadow: inset 2px 0 0 var\(--accent\)/s,
+    );
+    // Etykieta ma swój własny tor, a nie tor ikony: `.nav-item` jest siatką
+    // trzytorową, a pozycja sekcji renderuje JEDNO dziecko, więc bez tej
+    // reguły etykieta ląduje w torze 1,1 rem i zawija się na trzy linie.
+    // Zmierzone przed poprawką przy 1440 px: 17,59 px szerokości, 51 px
+    // wysokości na trzech z sześciu pozycji.
+    assert.match(
+      styles,
+      /\.settings-mode-column \.nav-item\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/s,
+    );
   });
 
   it("offers one global and three contextual routes into the concept help", () => {

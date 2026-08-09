@@ -4,7 +4,7 @@ import {
 } from "@constellation/contracts";
 
 import type { KnowledgeSourceRecord } from "../client/workflow.js";
-import { countLabel, formatDate, plural } from "../i18n.js";
+import { countLabel, formatDate, plural, recordKindLabels } from "../i18n.js";
 
 /* THE READING BEHIND THE SOURCES SCREEN — every fact it shows, worked out once
  * and away from the DOM, so the assertions can meet the reading rather than a
@@ -116,6 +116,32 @@ export const restsOnSentence = (count: number): string =>
   count === 0
     ? "nothing rests on it yet"
     : `${countLabel(count, "record")} ${plural(count, "rests", "rest")} on it`;
+
+/**
+ * WHAT KIND OF RECORD RESTS ON THIS SOURCE, as a word a person reads.
+ *
+ * It lives here rather than inline in the row for the reason the whole file
+ * exists: an assertion can then meet the READING instead of a rendered string,
+ * and the fixture's narrower inferred type cannot force a cast in the test.
+ *
+ * `recordType` FIRST, and that is the interesting half. For a strategic record
+ * the kind somebody recognises is its type — a decision, a fact — while
+ * `recordKind` says only „strategicRecord", which is a contract word and not an
+ * English one. Both values are looked up in `recordKindLabels`, which is MAPPED
+ * over `humanRecordKindRegistry` rather than transcribed from it, so a kind
+ * added to the registry arrives here with its label and no edit.
+ *
+ * THE FALLBACK IS A WORD, NEVER THE IDENTIFIER, and it is reachable: the two
+ * vocabularies genuinely differ (`RecordKindSchema` carries `knowledgeSource`
+ * and `folder`, which the product registry deliberately does not). Printing the
+ * raw member would leak a contract token onto a reading surface; printing
+ * „Record" says exactly as much as is actually known.
+ */
+export const dependentKindLabel = (reference: {
+  readonly recordKind: string;
+  readonly recordType?: string | undefined;
+}): string =>
+  recordKindLabels[reference.recordType ?? reference.recordKind] ?? "Record";
 
 /**
  * THE ROW'S ACCESSIBLE NAME. Every fact the row carries visually is in it, in

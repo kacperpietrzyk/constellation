@@ -21,14 +21,27 @@
 
 /* The record names itself once, at level one. Everything else on the screen
    is a section of it. */
+/* Lot 4 #1. Reference: `v3/app.css:651-652` — `.rec-title { font-size:
+   var(--text-xl); letter-spacing: -0.022em; line-height: var(--leading-tight);
+   max-width: var(--surface-read); text-wrap: balance }`. Contract:
+   `.ui-craft/tokens.md`, "Type" — one scale for the whole product.
+   Application: this rule.
+
+   28px here, 28px on the task, 22px on the opportunity: three record screens
+   carrying three title sizes, none of them the reference's. `--text-xl` is
+   22px and is what the reference gives every record title. The weight stays
+   580 — the reference says 600 and this lot may not touch the 580/590/620
+   convention, so that difference is recorded rather than paid. */
 .title {
   margin: 0;
+  max-inline-size: var(--surface-read);
   min-inline-size: 0;
   color: var(--text-primary);
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: 580;
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
+  text-wrap: balance;
 }
 
 /* Health and the deadline sit on ONE line: what is happening, then with whom
@@ -189,15 +202,37 @@ button.chip:hover {
   background: var(--surface-raised);
 }
 
+/* Lot 4 #6. Reference: `v3/screens/record.css:51-53` — `.rc-fit-h
+   { font-size: var(--text-2xs); font-weight: 500; color:
+   var(--text-quaternary); text-transform: uppercase; letter-spacing: 0.07em }`.
+   Contract: `.ui-craft/tokens.md`, "Type". Application: this rule,
+   `.docHeading` and `.railHeading` below.
+
+   ONLY THE TRACKING MOVES HERE, AND IT MOVES AS A LITERAL. `--tracking-wide`
+   is 0.025em against the reference's 0.07em — barely half — but that token has
+   consumers well outside this family of screens, so changing it would change
+   type this lot never looked at. The value is written out in the four sheets
+   of the record family and the token is left alone. */
 .fitHeading {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   font-weight: 590;
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
+/* Lot 4 #5. Reference: `v3/screens/record.css:55-62` — `.rc-fit-line
+   { font-size: var(--text-base) }` with `.rc-fit-line b { font-size:
+   var(--text-lg) }`. Contract: `.ui-craft/tokens.md`, "Type" — headings use
+   medium weight and tight tracking, body regular. Application: this rule and
+   `.fitCount, .fitStrong` below.
+
+   The two decision numbers on this screen were the same size as the words
+   around them, so the one band that exists to be read at a glance had to be
+   read as a sentence. The step is what the position is: the line drops one
+   step and the numbers take one, so the difference is two steps of the scale
+   rather than a bold that is the same height as its own caption. */
 .fitLine {
   display: flex;
   flex-wrap: wrap;
@@ -206,16 +241,19 @@ button.chip:hover {
   margin: 0;
   min-inline-size: 0;
   color: var(--text-secondary);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
 }
 
-/* Both emphasised parts of the line share one weight, and neither takes it
-   from a `b` element rule: an element rule outranks a class, so a tone set by
-   class would lose its colour to it without anything looking wrong. */
+/* Both emphasised parts of the line share one weight AND one size, and neither
+   takes either from a `b` element rule: an element rule outranks a class, so a
+   tone set by class would lose its colour to it without anything looking
+   wrong. Both live inside `.fitLine` (`ProjectRecordOverview.tsx:433-447`), so
+   the step is against the line they sit in. */
 .fitCount,
 .fitStrong {
   color: var(--text-primary);
+  font-size: var(--text-lg);
   font-weight: 590;
 }
 
@@ -227,13 +265,27 @@ button.chip:hover {
 /* A bar of COMPOSITION, not of progress: on real work almost nothing is
    closed, so a percentage says nothing and where the work stands says
    everything. */
+/* Lot 4 #11. Reference: `v3/screens/projects.css:25-28` — `.pj-bar { display:
+   flex; width: 100%; height: 5px; border-radius: 3px; background:
+   var(--border-subtle) }`. Contract: `.ui-craft/tokens.md`, "Spacing and
+   density" — dense rows use the 4/8/12px increments. Application: this rule.
+
+   PIXELS, NOT REM, AND THE REFERENCE WRITES THEM AS PIXELS TOO. A hairline
+   meter is a rule about the ink and not about the type: at 200% root font-size
+   a `rem` bar would be 10px of solid colour running the width of the record,
+   which is a different object. The corner is 3px against a 5px bar — a slight
+   rounding, not a pill; the full radius made a 8px bar read as a capsule and
+   hid where each segment ended.
+
+   The track is `--border-subtle` rather than `--surface-sunken`, so an empty
+   bar reads as a line and not as a trough. */
 .bar {
   display: flex;
   min-inline-size: 0;
-  block-size: 0.5rem;
+  block-size: 5px;
   overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--surface-sunken);
+  border-radius: 3px;
+  background: var(--border-subtle);
 }
 
 .bar_done {
@@ -311,12 +363,14 @@ button.chip:hover {
   min-inline-size: 0;
 }
 
+/* Lot 4 #6, tracking only — see `.fitHeading` for the reference and the
+   reason the token is not the thing that moves. */
 .docHeading {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   font-weight: 590;
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -401,28 +455,48 @@ button.chip:hover {
   min-inline-size: 0;
 }
 
+/* Lot 4 #6, tracking only — see `.fitHeading`. The reference's own rail
+   heading is `v3/screens/record.css:103-106` and carries the same 0.07em. */
 .railHeading {
   margin: 0 0 var(--space-1);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   font-weight: 590;
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-/* Icon, content, arrow. The same geometry whether the row is a button or a
+/* ── THE RAIL IS QUIETER THAN THE EXITS IT IS MADE OF ──────────────────────
+   Lot 4 #7. Reference: `v3/screens/record.css:107-124` — `.rc-rel { display:
+   grid; grid-template-columns: 0.875rem minmax(0, 1fr) auto; gap: 0.5rem;
+   padding: 0.3125rem 0.375rem; margin-left: -0.375rem; border-radius:
+   var(--radius-xs) }`, with `.rc-rel-t` at `--text-xs`/`--text-secondary` and
+   its icon at 0.875rem. Contract: `.ui-craft/tokens.md`, "Spacing and
+   density" — "dense rows use 4/8/12px increments", which a rail of exits is.
+   Application: this rule.
+
+   THE NEGATIVE INDENT IS THE POSITION. Without it the rows are inset from
+   everything above them by their own padding, so a rail of thirteen exits
+   reads as a column that has been pushed sideways; with it the label lines up
+   with the heading over it and the padding exists only to give the hover fill
+   somewhere to be. The row was also LOUDER than the reading it sits beside —
+   `--text-sm` in `--text-primary` — which made a list of doors compete with
+   the document they lead away from.
+
+   Icon, content, arrow. The same geometry whether the row is a button or a
    flat row, so a row with nowhere to go does not read as broken — it reads as
    a fact that happens not to be a door. */
 .railRow {
   display: grid;
-  grid-template-columns: 1rem minmax(0, 1fr) 0.75rem;
+  grid-template-columns: 0.875rem minmax(0, 1fr) 0.75rem;
   align-items: center;
   gap: var(--space-2);
   inline-size: 100%;
   min-inline-size: 0;
-  padding: var(--space-2);
+  margin-inline-start: -0.375rem;
+  padding: 0.3125rem 0.375rem;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
@@ -438,8 +512,8 @@ button.railRow:hover {
 }
 
 .railRow svg {
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
   color: var(--text-quaternary);
 }
 
@@ -450,12 +524,19 @@ button.railRow:hover {
   min-inline-size: 0;
 }
 
+/* Secondary at rest and primary under the cursor, which is the reference's
+   own pair (`v3/screens/record.css:117`, `:120`): a rail of exits should be
+   read as a list and only sharpen at the one you are about to take. */
 .railLabel {
   overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+button.railRow:hover .railLabel {
+  color: var(--text-primary);
 }
 
 .railMeta {
@@ -483,11 +564,14 @@ button.railRow:focus-visible .railArrow {
 /* The single explicit negative on the rail: a project delivered to nobody is
    itself a fact about the project, unlike the five absences that are simply
    left out. */
+/* The same indent and padding as a row, so the one explicit negative on the
+   rail lines up with the exits around it rather than sitting 6px in from
+   them. */
 .railNone {
-  margin: 0;
-  padding: var(--space-2);
+  margin: 0 0 0 -0.375rem;
+  padding: 0.3125rem 0.375rem;
   color: var(--text-disabled);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 /* The one authoring block on a rail of exits — attaching and detaching the
@@ -570,9 +654,17 @@ button.railRow:focus-visible .railArrow {
     gap: var(--space-6);
   }
 
+  /* NOT `padding-inline-start: 0`, and the difference is 6px of overflow.
+     The rail's rows hang on a -0.375rem indent (lot 4 #7); with no padding to
+     hang inside, the whole rail would start outside its own content box on
+     the one geometry — a full-width stacked column — where there is nothing
+     to the left of it to absorb that. The reference collapses this rail to
+     zero padding (`v3/screens/record.css:18`) and can afford to; this
+     application is measured for a surface whose child must never set its own
+     width. Exactly the indent, and no more. */
   .rail {
     padding-block-start: var(--space-5);
-    padding-inline-start: 0;
+    padding-inline-start: 0.375rem;
     border-block-start: 1px solid var(--border-subtle);
     border-inline-start: 0;
   }

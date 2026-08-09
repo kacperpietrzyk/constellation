@@ -22,6 +22,7 @@ import {
 import { SourcesReading } from "../src/library/SourcesReading.js";
 import {
   UNAVAILABLE_CONSEQUENCE,
+  dependentKindLabel,
   emptyKindLine,
   sourceKindRenderOrder,
 } from "../src/library/sources-view.js";
@@ -309,12 +310,38 @@ test("what rests on a source is read from the source's end, and named", () => {
   act(() => row.click());
 
   const dependents = [
-    ...container.querySelectorAll("[data-source-dependent]"),
+    ...container.querySelectorAll("[data-source-dependent-title]"),
   ].map((node) => (node.textContent ?? "").trim());
   assert.deepEqual(
     dependents,
     rested.referencedBy.map((reference) => reference.title),
     "the records resting on this source are not the ones the projection named",
+  );
+
+  // AND NAMED BY KIND, which is the half of this test's own title that nothing
+  // checked until lot 5 built the kind onto the row. The expectation comes from
+  // `dependentKindLabel`, the same reading the row renders, so this asserts the
+  // ROW AGREES WITH THE READING rather than restating the label table — a test
+  // carrying its own copy of the labels would be exactly the hand-written list
+  // beside a closed dictionary that the screen refuses to keep.
+  const kinds = [
+    ...container.querySelectorAll("[data-source-dependent-kind]"),
+  ].map((node) => (node.textContent ?? "").trim());
+  assert.deepEqual(
+    kinds,
+    rested.referencedBy.map((reference) => dependentKindLabel(reference)),
+    "a line under 'what rests on this' does not say what kind of record it is",
+  );
+  // And the reading itself is a WORD, never a contract identifier: the two
+  // vocabularies genuinely differ, so the fallback is reachable and a raw
+  // member leaking onto the screen has to fail here rather than be read.
+  assert.ok(
+    kinds.every((kind) => kind.length > 0),
+    "a kind label rendered empty, so the row states a record with no kind",
+  );
+  assert.ok(
+    kinds.every((kind) => /^[A-Z]/u.test(kind)),
+    "a kind label is not a display label — a raw contract member reached the screen",
   );
 
   // A source nothing rests on says so, rather than drawing an empty list.

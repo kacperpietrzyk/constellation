@@ -208,27 +208,35 @@ test("renaming a stage keeps its id, because deals are standing on it", async ()
   ].sort((left, right) => left.order - right.order)[0];
   assert.ok(target, "the fixture carries no funnel to rename");
 
+  // DROGA DO ZMIANY NAZWY MA TERAZ DWA KROKI, I TO JEST POZYCJA #6, NIE
+  // REGRESJA: kontrolki zeszły z wierszy do JEDNEGO paska akcji nad listą
+  // (`v3/screens/settings.css:162-175`), więc najpierw wybiera się etap,
+  // a potem działa na wybranym. Sześć etapów niosło razem 24 przyciski;
+  // niesie cztery, i wszystkie mówią, na czym działają.
   const row = commercial().querySelector<HTMLElement>(
-    `[data-stage="${target.id}"]`,
+    `[data-stage="${target.id}"] button`,
   );
-  assert.ok(row, "the first configured stage is not drawn");
+  assert.ok(row, "the first configured stage is not drawn as a selectable row");
   await act(async () => {
-    buttonNamed(row, "Rename").click();
+    row.click();
+  });
+  assert.equal(
+    row.getAttribute("aria-pressed"),
+    "true",
+    "clicking a stage row must select it — the action bar acts on the selection",
+  );
+  await act(async () => {
+    buttonNamed(commercial(), "Rename").click();
   });
   const input = commercial().querySelector<HTMLInputElement>(
-    `[data-stage="${target.id}"] input`,
+    `input[aria-label="New label for ${target.label}"]`,
   );
-  assert.ok(input, "the rename control did not open on the row");
+  assert.ok(input, "the rename control did not open on the selected stage");
   await act(async () => {
     typeInto(input, "First contact");
   });
   await act(async () => {
-    buttonNamed(
-      commercial().querySelector<HTMLElement>(
-        `[data-stage="${target.id}"]`,
-      ) as HTMLElement,
-      "Save",
-    ).click();
+    buttonNamed(commercial(), "Save").click();
   });
 
   const command = WorkspaceSetCommercialDefaultsCommandSchema.parse(
@@ -377,5 +385,118 @@ test("a working day that ends before it starts is never sent", async () => {
     sent.filter((one) => one.commandName === "workspace.setWorkingDay").length,
     0,
     "the screen sent a day the schema refuses",
+  );
+});
+
+/* ── POZYCJA #6 LOTU 6: SKUTEK LICZBY MUSI BYĆ POLICZONY, A NIE OBECNY ───────
+ *
+ * Mapa par nazwała tę pułapkę ZANIM pozycja powstała: „para na obecność
+ * pudełka przeszłaby na zielono nad pudełkiem z KŁAMIĄCĄ liczbą — czyli
+ * mierzyłaby OBECNOŚĆ cechy zamiast jej JAKOŚCI"
+ * (`scripts/visual-language-pairs.mjs`, wpis L6-07). Reguła zaokrąglania jest
+ * zapisana w komentarzu przy kodzie, a KOMENTARZ NIE PADA — więc pada to.
+ *
+ * Obie asercje niżej sprawdzają OBIE połowy tej reguły: liczbę, która się nie
+ * dzieli („24.8"), i liczbę, która się dzieli, gdzie końcowe zero MA zniknąć
+ * („20", nie „20.0"). Jedna bez drugiej przepuszcza pół wzoru.
+ */
+test("the markup says what it does, and the margin is the share of the price", async () => {
+  await mountSettings();
+  const markupField = [
+    ...commercial().querySelectorAll<HTMLInputElement>('input[type="number"]'),
+  ][0];
+  assert.ok(markupField, "the markup is not a field on this screen");
+
+  const effect = (): string => {
+    const box = commercial().querySelector<HTMLElement>("[data-markup-effect]");
+    assert.ok(box, "the markup states no computed effect");
+    return (box.textContent ?? "").replace(/\s+/gu, " ");
+  };
+
+  // 33% narzutu to 33/133 = 24,812…% marży. Ucięcie do „24" albo „25" jest
+  // kłamstwem w jedną stronę; osiemnaście cyfr jest nieczytelne.
+  await act(async () => {
+    typeInto(markupField, "33");
+  });
+  assert.match(effect(), /\b133\b/u, "a cost of 100 must be offered at 133");
+  assert.match(
+    effect(),
+    /24\.8%/u,
+    `33% markup is a 24.8% margin: ${effect()}`,
+  );
+
+  // 25% narzutu to dokładnie 20% marży — i „20.0%" byłoby precyzją, której
+  // ta liczba nie ma.
+  await act(async () => {
+    typeInto(markupField, "25");
+  });
+  assert.match(effect(), /\b20%/u, `25% markup is a 20% margin: ${effect()}`);
+  assert.doesNotMatch(
+    effect(),
+    /20\.0%/u,
+    "a whole percentage must not claim a decimal it does not have",
+  );
+});
+
+test("the working day says how much day that is, in hours and in a week", async () => {
+  await mountSettings();
+  const day = container.querySelector<HTMLElement>("[data-working-day]");
+  assert.ok(day, "the working-day control is not mounted");
+  const [startField, endField] = [
+    ...day.querySelectorAll<HTMLInputElement>('input[type="time"]'),
+  ];
+  assert.ok(startField && endField);
+
+  const effect = (): string => {
+    const box = day.querySelector<HTMLElement>("[data-working-day-effect]");
+    assert.ok(box, "the working day states no computed effect");
+    return (box.textContent ?? "").replace(/\s+/gu, " ");
+  };
+
+  // Dzień, który NIE dzieli się na pełne godziny: reszta zostaje w minutach
+  // po obu stronach — dniowej i tygodniowej — i nic się nie zaokrągla.
+  await act(async () => {
+    typeInto(startField, "09:00");
+  });
+  await act(async () => {
+    typeInto(endField, "17:30");
+  });
+  // ASERCJE CELUJĄ W „<ile> a day" / „<ile> a week", NIE w samą liczbę.
+  // `textContent` skleja sąsiednie węzły bez spacji („does8h"), więc granica
+  // słowa przed cyfrą NIE ISTNIEJE i `\b8h\b` przechodziła tylko wtedy, gdy
+  // po liczbie stała reszta minutowa — czyli w połowie przypadków, których
+  // ten test pilnuje. Zmierzone, nie przewidziane.
+  const uneven = effect();
+  assert.match(
+    uneven,
+    /8h 30m a day/u,
+    `an 09:00–17:30 day is 8h 30m: ${uneven}`,
+  );
+  const workedDays = [
+    ...day.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+  ].filter((box) => box.checked).length;
+  assert.ok(workedDays > 0, "the fixture works no days at all");
+  const weekMinutes = 510 * workedDays;
+  assert.match(
+    uneven,
+    new RegExp(
+      `${Math.floor(weekMinutes / 60)}h ${weekMinutes % 60}m a week`,
+      "u",
+    ),
+    `${workedDays} days of 8h 30m is ${weekMinutes} minutes: ${uneven}`,
+  );
+
+  // Dzień, który dzieli się bez reszty: „8h", nie „8h 0m". To jest druga
+  // połowa tej samej reguły i bez niej gałąź `rest === 0` nie jest przebiegana.
+  await act(async () => {
+    typeInto(endField, "17:00");
+  });
+  const even = effect();
+  assert.match(even, /8h a day/u, `an 09:00–17:00 day is 8h: ${even}`);
+  assert.doesNotMatch(even, /8h 0m/u, "a whole hour must not carry 0m");
+  assert.match(
+    even,
+    new RegExp(`${(480 * workedDays) / 60}h a week`, "u"),
+    `${workedDays} whole-hour days must total whole hours: ${even}`,
   );
 });

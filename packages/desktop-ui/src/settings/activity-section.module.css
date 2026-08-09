@@ -97,9 +97,39 @@
   color: var(--text-quaternary);
 }
 
+/* TU BYŁA REGUŁA `:focus-within`, KTÓREJ OBIE DEKLARACJE BYŁY MARTWE, a trzecia
+   linia niżej dobijała to, co po nich zostawało.
+
+   Zmierzone w Chromium na obu motywach (pole wyszukiwania zdarzeń nie powstaje
+   w fikstrze harnessu — nie ma tam ani jednego zdarzenia — więc etykieta została
+   zmontowana w żywej stronie z klasą wziętą z ZAŁADOWANEGO arkusza):
+     * `border-color` w kolorze pierścienia — pierścień jest LISTĄ CIENI, więc po
+       podstawieniu deklaracja jest niepoprawna i własność spada do wartości
+       początkowej, czyli `currentColor`. Zmierzone: krawędź szła z koloru pola
+       na `--text-quaternary`, a nie na kolor ogniska. Zmiana widoczna, ale
+       przypadkowa i w złym kolorze.
+     * halo `color-mix(…)` z tej samej listy cieni w slocie koloru — cała funkcja
+       niepoprawna, cała deklaracja odrzucona. Zmierzone: `box-shadow: none`
+       zarówno w spoczynku, jak i przy ognisku. Halo NIGDY nie narysowało piksela.
+     * `box-shadow: none` na polu wejściowym wygrywało z regułą globalną
+       z `tokens.css` swoistością (0,1,1) do (0,1,0). Zmierzone: pole przy
+       ognisku miało `box-shadow: none` i przezroczysty kontur — pierścień nie
+       rysował się w ogóle.
+   PIERWSZA POPRAWKA ZDJĘŁA RESET Z POLA i na tym poprzestała — pole dostawało
+   wtedy pierścień z reguły globalnej. Ognisko było widoczne, ale NA ZŁYM
+   ELEMENCIE, i skompilowany test `interaction-recovery-contract` poszedł na
+   czerwono, słusznie: `.search` jest kontrolką ZŁOŻONĄ (ikona plus pole
+   w jednym pudełku z krawędzią), a pierścień na gołym polu obrysowuje wnętrze
+   zamiast widocznej kontrolki. Ten sam kontrakt trzyma `styles.css:2692-2698`
+   dla `.task-search-control`, `.task-create-title` i `.capture-file`.
+   Właściwa poprawka jest więc dwuczęściowa: reguła `:focus-within` opakowania
+   dostaje deklaracje, które NAPRAWDĘ się rysują (pierścień jako lista cieni
+   tam, gdzie oczekiwana jest lista cieni; kolor krawędzi z tokenu KOLORU),
+   a pole zachowuje reset, żeby nie rysować drugiego pierścienia w środku
+   pierwszego. */
 .search:focus-within {
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--focus-ring) 24%, transparent);
+  border-color: var(--focus-ring-color);
+  box-shadow: var(--focus-ring);
 }
 
 .search input {
@@ -108,6 +138,10 @@
   height: 100%;
   padding: 0;
   border: 0;
+  /* Pierścień należy do opakowania `.search`, nie tutaj. Bez tego resetu reguła
+     globalna z `tokens.css` narysowałaby drugi pierścień wokół samego pola,
+     w środku pierwszego. `outline` NIE jest zerowany — tryb wymuszonych
+     kolorów musi móc narysować swój własny. */
   box-shadow: none;
   background: transparent;
   color: var(--input-text);
