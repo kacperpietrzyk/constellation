@@ -1003,6 +1003,36 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                       const s = document.querySelector(".sidebar");
                       return s ? s.getBoundingClientRect().width : null;
                     })(),
+                    // TRZECIE PYTANIE, I OSTATNIE, KTÓRE UMIEM ZADAĆ Z DALEKA.
+                    // Poprzedni przebieg wykluczył dwie hipotezy naraz: klasa
+                    // powłoki NIESIE "rail", a mimo to lewa kolumna mierzy
+                    // 220 px, czyli spoczynkowe 13.75rem. W zbudowanym arkuszu
+                    // (sprawdzone w dist) blok ":root,[data-theme=dark]" definiuje
+                    // oba tokeny, a reguła ".desktop-shell.rail" nadpisuje
+                    // szerokość PÓŹNIEJ, więc kaskada jest po stronie szyny.
+                    // Ten sam stan na harnessie, w tym samym motywie ciemnym,
+                    // oddaje 3.25rem i kolumnę 52 px.
+                    //
+                    // Zostaje jedno wyjaśnienie zgodne ze wszystkimi liczbami:
+                    // mierzone są DWIE RÓŻNE powłoki — klasa czytana z pierwszej
+                    // w dokumencie, a dok żyje w innej. Dlatego pytamy o token
+                    // rozwiązany na powłoce DOKU, nie na pierwszej znalezionej,
+                    // i o to, ile powłok w ogóle jest.
+                    shellCount: document.querySelectorAll(".desktop-shell").length,
+                    dockShellClassName: (() => {
+                      const s = dock.closest(".desktop-shell");
+                      return s ? s.className : null;
+                    })(),
+                    dockShellTokens: (() => {
+                      const s = dock.closest(".desktop-shell");
+                      if (!s) return null;
+                      const cs = getComputedStyle(s);
+                      return {
+                        sidebarWidth: cs.getPropertyValue("--sidebar-width").trim(),
+                        sidebarRail: cs.getPropertyValue("--sidebar-rail").trim(),
+                        gridTemplateColumns: cs.gridTemplateColumns
+                      };
+                    })(),
                     labelDisplay: dockLabel ? getComputedStyle(dockLabel).display : null,
                     labelRectWidth: dockLabel
                       ? dockLabel.getBoundingClientRect().width
