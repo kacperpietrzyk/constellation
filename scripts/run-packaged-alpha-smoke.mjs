@@ -884,9 +884,66 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         mobile: false,
       });
       try {
-        await client.evaluate(`new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve))
-        )`);
+        // CZEKANIE NA STAN USTALONY, NIE NA DWIE KLATKI — i to jest poprawka
+        // PRZYRZĄDU, opłacona trzema czerwonymi przebiegami CI.
+        //
+        // Dwie klatki po nałożeniu metryk urządzenia ta bramka mierzyła układ
+        // W TRAKCIE PRZELICZANIA i raportowała stan, który nie może istnieć.
+        // Zmierzone, wprost z jej własnej diagnostyki:
+        //
+        //   --sidebar-width       3.25rem      (szyna ZADZIAŁAŁA)
+        //   grid-template-columns 220px 100px  (tor trzyma szerokość SPRZED)
+        //
+        // Jedna powłoka, klasa "rail" na miejscu, token rozwiązany na 52 px,
+        // a użyta wartość toru to 220 px. Stan ustalony nie może nieść obu
+        // liczb naraz. Stąd brały się wszystkie trzy odmowy: dok o szerokości
+        // 26 px to dok w kolumnie pracy szerokiej na 100 px, a nie na 268.
+        // Pierwszy przebieg złapał moment jeszcze wcześniejszy — dok pod
+        // adresem x=475 przy oknie 320 px.
+        //
+        // Harness deweloperski NIGDY tego nie odtworzył, w żadnej kolejności
+        // (ładowanie od razu wąsko, zwężanie po ułożeniu, oba motywy), bo
+        // `setViewportSize` Playwrighta czeka na zastosowanie zmiany, a
+        // `Emulation.setDeviceMetricsOverride` przez CDP nie.
+        //
+        // WARUNEK JEST NA ZGODNOŚCI DWÓCH ODCZYTÓW, nie na czasie: tor siatki
+        // ma się zgadzać z rozwiązanym tokenem. Uśpienie na stałą liczbę
+        // milisekund przeszłoby tu tak samo i zgniło przy pierwszej wolniejszej
+        // maszynie — to jest ta sama rodzina co „asercja mierząca CZAS zamiast
+        // ZDARZENIA", którą to repozytorium już raz zapłaciło.
+        //
+        // NIEUSTALENIE SIĘ JEST AWARIĄ PRZYRZĄDU, nie werdyktem o układzie:
+        // rzuca własną nazwą, żeby czytający nie wziął jej za defekt ekranu.
+        const settled = await client.evaluate(`(async () => {
+          const frame = () => new Promise((r) => requestAnimationFrame(r));
+          const read = () => {
+            const shell = document.querySelector(".desktop-shell");
+            if (!shell) return null;
+            const style = getComputedStyle(shell);
+            const rail = style.getPropertyValue("--sidebar-width").trim();
+            const track = style.gridTemplateColumns.split(" ")[0];
+            const rem = Number.parseFloat(
+              getComputedStyle(document.documentElement).fontSize
+            );
+            const wanted = rail.endsWith("rem")
+              ? Number.parseFloat(rail) * rem
+              : Number.parseFloat(rail);
+            const used = Number.parseFloat(track);
+            return { rail, track, wanted, used, agrees: Math.abs(wanted - used) <= 1 };
+          };
+          for (let attempt = 0; attempt < 120; attempt += 1) {
+            await frame();
+            const state = read();
+            if (state === null) continue;
+            if (state.agrees) return { settled: true, attempts: attempt + 1, ...state };
+          }
+          return { settled: false, attempts: 120, ...(read() ?? {}) };
+        })()`);
+        if (settled.settled !== true) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SHELL_NOT_SETTLED:${JSON.stringify(settled)}`,
+          );
+        }
         const narrowShell = await client.evaluate(`(() => {
           const shell = document.querySelector(".desktop-shell");
           const work = document.querySelector('#main-content[role="tabpanel"]');
