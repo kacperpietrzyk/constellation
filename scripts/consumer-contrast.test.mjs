@@ -163,7 +163,19 @@ const stylesheets = readdirSync(styleRoot, {
   .map((entry) => {
     const absolute = path.join(entry.parentPath ?? styleRoot, entry.name);
     return {
-      name: path.relative(styleRoot, absolute),
+      // UKOŚNIK JEST WYMUSZONY, I TO NIE JEST KOSMETYKA. `path.relative`
+      // oddaje separator SYSTEMU, więc na Windowsie ta sama reguła nazywa się
+      // `record\record-comments.module.css`, a każda asercja pinująca nazwę
+      // arkusza — łącznie ze zbiorem zwolnień poniżej progu, który jest
+      // DECYZJĄ CZŁOWIEKA o czytelności — porównuje wtedy dwa różne napisy
+      // i pada. Zmierzone na CI: `Check (windows-latest)` czerwony na
+      // „zbiór zwolnionych wierszy się zmienił", przy identycznym kodzie
+      // i zielonym macOS.
+      //
+      // Nazwa arkusza jest tu IDENTYFIKATOREM w rejestrze, nie ścieżką do
+      // otwarcia, więc normalizacja niczego nie psuje: nikt nie podaje jej
+      // z powrotem do systemu plików.
+      name: path.relative(styleRoot, absolute).split(path.sep).join("/"),
       css: readFileSync(absolute, "utf8"),
     };
   })

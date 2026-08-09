@@ -3778,6 +3778,18 @@ kbd {
   }
   .capture-dock {
     max-width: 28rem;
+    /* PRÓG DOTYKU WRACA — I TYLKO TUTAJ. Lot powłoki Fazy 3 zdjął z doku
+       `min-height: 3.15rem`, bo prototyp nie deklaruje wysokości wcale
+       (`:2264-2268`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
+       wysokość swojej treści, 33 px. Ale w wąskim oknie ta sama liczba jest
+       CELEM DOTYKU, a paczkowany smoke żąda tam 44 px na każdym z trzech
+       podmiotów (`run-packaged-alpha-smoke.mjs:921-924`).
+       Zmierzone na harnessie przy 320 px: dok 244×33 — jedyny podmiot pod
+       progiem; szukanie i pozycje nawigacji przechodzą.
+       2,75 rem to 44 px przy korzeniu 16 px i SKALUJE SIĘ z tekstem, więc
+       przy 200% próg rośnie razem z celem, zamiast zostać wpisaną liczbą.
+       Poza tym zapytaniem prototyp dalej rządzi wysokością. */
+    min-height: 2.75rem;
   }
   .capture-target {
     grid-template-columns: 1fr;
@@ -3833,13 +3845,31 @@ kbd {
   font-size: var(--text-2xs);
 }
 
+/* TA LISTA MA NIEŚĆ WYŁĄCZNIE TO, CO NAPRAWDĘ JEST SZYBĄ, i to nie jest
+   porządkowanie — to poprawka defektu, który CI złapało, a macOS nie mógł.
+   `--surface-window` jest tu nieprzezroczystym ZASTĘPSTWEM dla rozmycia:
+   element bez rozmycia niczego nie zastępuje, tylko dostaje CUDZY kolor.
+   Faza 3 zdjęła szkło z lewej kolumny i z pasma zakładek („prototyp nie stawia
+   szkła w powłoce", `:930-933`, `:1611`), ale nie zdjęła ich stąd — więc każdy,
+   kto ma włączoną redukcję przezroczystości, dostawał pasek boczny w kolorze
+   okna zamiast w planie paska.
+
+   ZMIERZONE, nie wydedukowane: bezgłowy Chromium na Linuksie ma
+   `prefers-reduced-transparency: reduce` DOMYŚLNIE, macOS nie — więc para
+   L1-01b bramki układu wracała MATCH lokalnie (`oklch(0.062 …)`,
+   `--surface-sidebar`) i DIFFERS na CI (`oklch(0.084 …)`, `--surface-window`).
+   Ten sam kod, dwa wyniki, i to CI miało rację.
+
+   Które zostają: `.inspector`, `.capture-dock`, `.capture-dialog`,
+   `.context-menu` — każdy z nich deklaruje `backdrop-filter` we własnym bloku
+   (policzone grepem). Które wychodzą: `.sidebar`, `.shell-tabbar` i
+   `.concept-help-dialog` — ZERO deklaracji rozmycia i ani jednego wystąpienia
+   w regule grupowej, za to własne, różne tokeny tła (`--shell-sidebar-bg`,
+   `--shell-chrome-bg`, `--overlay-bg`), które ta reguła nadpisywała. */
 @media (prefers-reduced-transparency: reduce) {
-  .sidebar,
   .inspector,
-  .shell-tabbar,
   .capture-dock,
   .capture-dialog,
-  .concept-help-dialog,
   .context-menu {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
