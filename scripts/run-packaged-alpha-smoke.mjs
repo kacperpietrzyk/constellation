@@ -934,7 +934,64 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               .filter(({ width, height }) => width < 44 || height < 44),
             favoritesHidden: favorites.every(
               (element) => element.getClientRects().length === 0
-            )
+            ),
+            // DLACZEGO ODMOWA NIESIE POMIAR, A NIE SAMĄ LICZBĘ. Ta bramka
+            // zwróciła „dok ma 26 px szerokości" na paczce, a ten sam dok mierzy
+            // 244 px na harnessie deweloperskim — przy tej samej szerokości
+            // okna, tym samym arkuszu i tej samej kolejności (szeroko, potem
+            // wąsko). Różnicy nie da się odtworzyć poza paczką, a paczkowany
+            // smoke ODMAWIA uruchomienia lokalnie na macOS, żeby nie wywołać
+            // promptu Keychaina. Jedynym przyrządem jest więc CI, a przebieg CI
+            // oddający wyłącznie „26" nie mówi, czy zwęził się przycisk, czy
+            // jego pojemnik.
+            //
+            // Te pola są tu po to, żeby JEDEN czerwony przebieg wystarczył:
+            // szerokość pojemnika rozstrzyga między "width: 100% z czegoś
+            // wąskiego" a "coś nadpisało width", a display i szerokość etykiety
+            // mówią, czy treść w ogóle się rysuje.
+            //
+            // ŻADNYCH BACKTICKÓW W TYM KOMENTARZU — cały ten blok jest wnętrzem
+            // literału szablonowego przekazywanego do przeglądarki, więc jeden
+            // backtick w prozie zamyka string i plik przestaje się parsować.
+            // Złapane przez eslint przy pierwszej wersji tej diagnostyki.
+            dockDiagnostic: dock
+              ? (() => {
+                  const layer = dock.parentElement;
+                  const styleOf = (el) => {
+                    const s = getComputedStyle(el);
+                    return {
+                      display: s.display,
+                      width: s.width,
+                      maxWidth: s.maxWidth,
+                      flex: s.flex,
+                      overflow: s.overflow
+                    };
+                  };
+                  return {
+                    dock: styleOf(dock),
+                    layer: layer
+                      ? {
+                          ...styleOf(layer),
+                          rectWidth: layer.getBoundingClientRect().width
+                        }
+                      : null,
+                    main: (() => {
+                      const m = dock.closest("main");
+                      return m
+                        ? { ...styleOf(m), rectWidth: m.getBoundingClientRect().width }
+                        : null;
+                    })(),
+                    labelDisplay: dockLabel ? getComputedStyle(dockLabel).display : null,
+                    labelRectWidth: dockLabel
+                      ? dockLabel.getBoundingClientRect().width
+                      : null,
+                    contentRectWidth: (() => {
+                      const c = document.querySelector(".capture-dock-content");
+                      return c ? c.getBoundingClientRect().width : null;
+                    })()
+                  };
+                })()
+              : null
           };
         })()`);
         if (
