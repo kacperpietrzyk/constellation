@@ -981,6 +981,28 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                         ? { ...styleOf(m), rectWidth: m.getBoundingClientRect().width }
                         : null;
                     })(),
+                    // CO ROZSTRZYGA MIĘDZY DEFEKTEM PRODUKTU A DEFEKTEM
+                    // PRZYRZĄDU, i dlaczego to jest JEDNO pytanie, nie dwa.
+                    // Poprzedni przebieg oddał main o szerokości 100 px przy
+                    // oknie 320 px. 220 + 100 = 320, a 220 to spoczynkowa
+                    // szerokość lewej kolumny — czyli szyna się NIE ZWINĘŁA
+                    // i kolumna zabrała pracy wszystko poza setką.
+                    // Na harnessie przy tej samej szerokości kolumna schodzi do
+                    // 52 px, a praca dostaje 268 — i schodzi tak samo, gdy
+                    // strona ładuje się od razu wąska, i gdy zwęża się po
+                    // ułożeniu. Zostaje więc pytanie, czy to paczka nie wchodzi
+                    // w szynę, czy nakładka metryk urządzenia nie doprowadza
+                    // do niej stanu, który zwykłe okno by dostało.
+                    // Klasa powłoki mówi to wprost: jest w niej "rail", albo
+                    // jej nie ma.
+                    shellClassName: (() => {
+                      const s = document.querySelector(".desktop-shell");
+                      return s ? s.className : null;
+                    })(),
+                    sidebarRectWidth: (() => {
+                      const s = document.querySelector(".sidebar");
+                      return s ? s.getBoundingClientRect().width : null;
+                    })(),
                     labelDisplay: dockLabel ? getComputedStyle(dockLabel).display : null,
                     labelRectWidth: dockLabel
                       ? dockLabel.getBoundingClientRect().width
