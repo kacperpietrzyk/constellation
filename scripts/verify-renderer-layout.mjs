@@ -5372,6 +5372,28 @@ const SELECTION_UNDER_CURSOR_SUBJECTS = [
       "here" +
       '" went to `--surface-hover` whenever the pointer crossed it',
   },
+  {
+    // CZWARTY NOŚNIK STANU „TU JESTEŚ" W TEJ KOLUMNIE, dopisany razem z nim.
+    // Obie pary lotu C1 czytają SPOCZYNEK — dokładnie ta pułapka, którą nazywa
+    // nota P8-02 wyżej. Zachowanie jest dziś poprawne, bo `[data-nav-open]`
+    // trafił do listy wykluczeń reguły hovera, ale wykluczenie po NAZWIE jest
+    // rzeczą, którą następny lot skasuje przy pierwszym porządkowaniu tego
+    // selektora — i żadna para tego nie zobaczy.
+    id: "P8-04",
+    title:
+      "the destination above an open project record keeps its wash under the cursor",
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    arm: null,
+    selector: ".nav-item[data-nav-open]",
+    read: ["backgroundColor", "color"],
+    restIs: { property: "backgroundColor", token: "--nav-active-bg" },
+    app: "packages/desktop-ui/src/styles.css (.nav-item[data-nav-open])",
+    why:
+      "the carrier is new and its exclusion from the hover rule is by name, not by structure: " +
+      "`.nav-item:not(:disabled, .active, [aria-current], [data-nav-open]):hover` weighs (0,3,0) " +
+      "and would outweigh the (0,2,0) paint rule the moment the name is dropped — the same " +
+      "defect that was live on `.nav-item.active` for a whole wave",
+  },
 ];
 
 // PODŁOGA, NIE SUMA: podmiot, który przestaje się rysować, ma zaczerwienić tę
@@ -5379,8 +5401,8 @@ const SELECTION_UNDER_CURSOR_SUBJECTS = [
 // `STICKY_EXPECTED.liveExercised`, i z tego samego powodu — bramka mierząca
 // OBECNOŚĆ nigdy nie mierzy JAKOŚCI, a bramka, której podmioty wyparowały,
 // mierzy zero i wygląda identycznie jak bramka, która przeszła.
-// 3 podmioty × 2 motywy = 6.
-const SELECTION_UNDER_CURSOR_EXPECTED = { judged: 6 };
+// 4 podmioty × 2 motywy = 8.
+const SELECTION_UNDER_CURSOR_EXPECTED = { judged: 8 };
 
 // ── ILE REGUŁ PRZYKLEJENIA ISTNIEJE, A ILE TEN SPACER OSĄDZIŁ ────────────────
 // Bez tej liczby raport P7 czyta się jako „przyklejenie jest zmierzone", a mówi

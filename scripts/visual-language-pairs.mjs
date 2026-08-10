@@ -752,7 +752,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 1,
     title: "the current destination is marked with a rail, not a frame",
     contract:
-      '.ui-craft/tokens.md:254-262 (Form first — "ink is confined to … a 2–2.5 px rail (v3/app.css:485-487, :222-226)") oraz :274-279 („where the reference washes an object it also inks one edge of it")',
+      '.ui-craft/tokens.md:271-279, sekcja „Form first — ink and wash" („Ink is confined to … a 2–2.5 px rail (v3/app.css:485-487, :222-226)") oraz :291-296, „Wash rarely travels alone" („where the reference washes an object it also inks one edge of it")',
     prototype: {
       file: "v3/app.css",
       lines: "222-226",
@@ -771,12 +771,39 @@ export const VISUAL_LANGUAGE_PAIRS = [
     status: "enforced",
   },
   {
+    // FORMA TUSZU, NIE TYLKO JEGO KOLOR. Pierwsza wersja tego lotu miała na
+    // szynę JEDNĄ asercję — kolor `::before` — a oddawała geometrię przepisaną
+    // z prototypu co do liczby. Zamiana 2,5 px na 12 px zrobiłaby z szyny pasek
+    // wypełniający wiersz, czyli dokładnie to, czego zabrania kontrakt („Ink
+    // may not fill a row"), i wróciłaby ZIELONA. Kontrakt podaje formę liczbą,
+    // więc para też podaje ją liczbą.
+    id: "C1-01c",
+    lot: "C1",
+    position: 1,
+    title: "and the ink stays a rail: 2.5 px, not a bar filling the row",
+    contract:
+      '.ui-craft/tokens.md:271-279, sekcja „Form first — ink and wash" („Ink is confined to a mark, a rail … a 2–2.5 px rail (v3/app.css:485-487, :222-226)"; „Ink may not fill a row, a card, a column, a panel, or a plane")',
+    prototype: {
+      file: "v3/app.css",
+      lines: "222-226",
+      value: "`width: 2.5px` — ta sama liczba, którą kontrakt podaje jako sufit",
+    },
+    subject: {
+      selector: '.nav-item[aria-current="page"]',
+      why: "same generated layer as C1-01a; the colour pair says the ink is the accent, this one says the ink is a rail — a rule that keeps the accent and widens the layer passes the first and fails this one",
+      app: "packages/desktop-ui/src/styles.css (.nav-item.active::before)",
+    },
+    read: { pseudo: "::before", property: "width" },
+    expect: { kind: "literal", value: "2.5px" },
+    status: "enforced",
+  },
+  {
     id: "C1-01b",
     lot: "C1",
     position: 1,
     title: "and it stops framing the row with a full accent border",
     contract:
-      ".ui-craft/tokens.md:262-266 (Ink may not fill a row … a one-pixel accent edge around a PANEL is the named exception, and a navigation row is not one)",
+      '.ui-craft/tokens.md:279-283, sekcja „Form first — ink and wash" (Ink may not fill a row … a one-pixel accent edge around a PANEL is the named exception, and a navigation row is not one)',
     prototype: {
       file: "v3/app.css",
       lines: "218-220",
@@ -821,6 +848,37 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
     greenWrong:
       "Hover doku może zostać neutralny albo dostać dowolny inny kolor.",
   },
+  {
+    lot: "C1",
+    position: 1,
+    title:
+      "the rail is VISIBLE — that it stands at the column's edge and is not clipped to zero pixels",
+    prototype:
+      "v3/app.css:222-226 (`.nav-item[aria-current=\"page\"]::before { left: -0.5rem }` — szyna wychodzi POZA pudełko wiersza, a rysuje się, bo `.nav` prototypu nie ma wcięcia)",
+    app: "packages/desktop-ui/src/styles.css (.sidebar nav — `margin-left: calc(-1 * var(--nav-gutter))` z dopełnieniem tej samej wartości)",
+    // PODMIOTEM SONDY JEST GOSPODARZ, NIE PSEUDOELEMENT: `querySelectorAll` nie
+    // umie dopasować `::before`, więc selektor z pseudoelementem wróciłby „0
+    // elementów na powłoce lądowania" i czytałby się jako „tego tu nie ma".
+    // Sonda liczy wiersze, których ta luka dotyczy.
+    probe: '.nav-item[aria-current="page"]',
+    why:
+      "TRZY PARY TEJ POZYCJI (C1-01a farba, C1-01c szerokość, C1-02 farba rodzica) CZYTAJĄ " +
+      "`getComputedStyle(element, \"::before\")`, a styl WYLICZONY nie wie o przycięciu. " +
+      "`.sidebar nav` niesie `overflow-y: auto`, więc przeglądarka wylicza `overflow-x` też na " +
+      "`auto` i element przycina po obu osiach na swoim pudełku dopełnienia; szyna stoi POZA " +
+      "lewą krawędzią wiersza, więc bez ujemnego marginesu listy leży poza obszarem przycięcia. " +
+      "Skasowanie tego marginesu zostawia `::before` wygenerowany, `left` wyliczone na -13px " +
+      "i `backgroundColor` na akcencie — WSZYSTKIE TRZY PARY WRACAJĄ ZIELONE nad kolumną bez " +
+      "ani jednego piksela tuszu. Zmierzone, nie przypuszczone. Domknięcie wymaga odczytu " +
+      "prostokąta granicznego, a `getBoundingClientRect` NIE MA formy dla pseudoelementu — " +
+      "czyli nowej warstwy w runnerze (zastępczy element mierzalny albo zrzut piksela), " +
+      "a to jest lot, nie poprawka. Z tego samego powodu NIE MA złamania na ten margines: " +
+      "wróciłoby ZIELONE i byłoby złamaniem udającym uzbrojenie.",
+    greenWrong:
+      "Szyna może być przycięta do zera pikseli na każdym ekranie naraz — wiersz bieżący " +
+      "zostaje wtedy z samym podbarwieniem 0,08 alfy, czyli w stanie połowicznym, który lot C1 " +
+      "istnieje, żeby zamknąć. Zielone C1-01a NIE JEST dowodem, że szynę widać.",
+  },
 ];
 
 /**
@@ -850,12 +908,18 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
  * glif, nie wiersz — więc przemalowanie ramki na szynę przechodziło tu do tej
  * pory bez śladu. Ani jedno `expect` z Lotu 1 nie zostało tknięte, a `pending`
  * zostaje przy 1 (L1-15a).
+ *
+ * 29 → 30 I 1 → 2 PRZY NAPRAWIE LOTU C1, tego samego dnia, po przeglądzie.
+ * Para C1-01c pinuje SZEROKOŚĆ szyny, bo trzy pary czytające farbę nie mówiły
+ * nic o formie tuszu, a kontrakt podaje formę liczbą. Wpis w `NOT_COVERED`
+ * nazywa to, czego ŻADNA z tych par nie widzi: szynę przyciętą do zera pikseli.
+ * Obie zmiany są dopisaniem asercji i deklaracji, nie poluzowaniem żadnej.
  */
 export const VISUAL_LANGUAGE_EXPECTED = {
-  pairs: 29,
-  enforced: 28,
+  pairs: 30,
+  enforced: 29,
   pending: 1,
-  notCovered: 1,
+  notCovered: 2,
   lots: {
     C1: {
       // Rejestr Fazy 4 (`faza-4-porownanie-ekranow.md`) jest briefem tej fazy.
@@ -2984,7 +3048,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the destination above an open project record is marked too",
     contract:
-      '.ui-craft/tokens.md:286-294 (What the accent is allowed to mean — "Where the reader is: the current destination, tab, saved view, folder or day")',
+      '.ui-craft/tokens.md:298-311, sekcja „What the accent is allowed to mean" („1. Where the reader is. The current destination, tab, saved view, folder or day")',
     prototype: {
       file: "v3/app.js",
       lines: "573",

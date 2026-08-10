@@ -931,7 +931,10 @@ kbd {
      aktywnej pozycji dosięga lewej krawędzi kolumny. Wpisane osobno rozjadą się
      przy pierwszej zmianie gęstości i szyna zniknie w obcięciu — bez ani jednej
      czerwonej asercji, bo `::before` dalej się GENERUJE i dalej rozwiązuje się
-     do akcentu. Tryb szyny ikon nadpisuje tę jedną liczbę (`:3656`). */
+     do akcentu. Tryb szyny ikon nadpisuje tę jedną liczbę (reguła
+     `.desktop-shell.rail .sidebar`). ODESŁANIE SELEKTOREM, NIE NUMEREM: numery
+     w tym pliku przesuwa każdy lot fali, a przeglądowi lotu C1 cztery takie
+     odesłania wskazały już na cudzy kod. */
   --nav-gutter: var(--space-3);
   padding: var(--space-2) var(--nav-gutter) var(--space-3);
   border-right: 1px solid var(--shell-border);
@@ -1167,7 +1170,8 @@ kbd {
   margin-top: var(--space-5);
   /* LISTA SIĘGA DO KRAWĘDZI KOLUMNY, ŻEBY SZYNA MIAŁA GDZIE STANĄĆ, i to jest
      warunek KONIECZNY, nie kosmetyka. `.sidebar nav` niesie `overflow-y: auto`
-     (`:937-942`), a przeglądarka wylicza wtedy `overflow-x` na `auto` — czyli
+     (pierwsza reguła `.sidebar nav`), a przeglądarka wylicza wtedy `overflow-x`
+     na `auto` — czyli
      ten element PRZYCINA po obu osiach na swoim pudełku dopełnienia. Szyna
      `.nav-item.active::before` stoi przy lewej krawędzi PASKA, więc bez tej
      pary deklaracji leżałaby poza obszarem przycięcia i nie narysowałaby się
@@ -1256,7 +1260,8 @@ kbd {
   min-height: 1.75rem;
   /* BLOK ODNIESIENIA DLA SZYNY (`v3/app.css:213` — prototyp deklaruje to samo
      w tej samej regule). Bez tego `::before` niżej zaczepiłby się o najbliższy
-     pozycjonowany przodek, czyli o `.sidebar` (`:920`), i jedna szyna stanęłaby
+     pozycjonowany przodek, czyli o `.sidebar` (jej deklaracja `position:
+     relative`), i jedna szyna stanęłaby
      przy górnej krawędzi całej kolumny zamiast przy swoim wierszu. Para
      czytająca FARBĘ tego pseudoelementu byłaby przy tym ZIELONA. */
   position: relative;
@@ -1363,8 +1368,9 @@ kbd {
    daje podbarwienie `--accent-quieter`, tekst pierwszorzędny i wagę 500,
    a `:222-226` dokłada 2,5-pikselową szynę tuszu przy LEWEJ krawędzi kolumny,
    z poświatą `--accent-glow`. Kontrakt mówi to samo dwa razy i obie razy
-   z cytatem w tę stronę: `.ui-craft/tokens.md:254-262` („ink is confined to
-   … a 2–2.5 px rail (`v3/app.css:485-487`, `:222-226`)") i `:274-279` („where
+   z cytatem w tę stronę: `.ui-craft/tokens.md:271-279`, sekcja „Form first —
+   ink and wash" („Ink is confined to … a 2–2.5 px rail (`v3/app.css:485-487`,
+   `:222-226`)") i `:291-296`, sekcja „Wash rarely travels alone" („where
    the reference washes an object it also inks one edge of it … the wash says
    which object; the ink says the same thing on a channel that survives
    a grayscale print").
@@ -1382,12 +1388,32 @@ kbd {
    farby jest osobna deklaracja `data-nav-open`, dopisana w tym locie.
 
    DLACZEGO ATRYBUT, A NIE `:has(+ .nav-children .nav-child.active)`. Selektor
-   `:has()` liczyłby (0,5,0) i wygrywałby z regułą wciśnięcia
-   (`.nav-item:not(:disabled):active`, (0,3,0)) — czyli ten JEDEN wiersz
-   przestałby odpowiadać na palec czytelnika, wbrew rozstrzygnięciu zapisanemu
-   dwadzieścia linii wyżej. Atrybut waży tyle co `.active`, więc rodzic
-   dziedziczy WSZYSTKIE zastane remisy tej kolumny bez zmiany którejkolwiek
-   reguły poza dopisaniem nazwy do listy wykluczeń hovera. */
+   `.nav-item:has(+ .nav-children .nav-child.active)` liczyłby (0,4,0) — waga
+   `:has()` to waga jego NAJCIĘŻSZEGO argumentu, a argument ma trzy klasy —
+   i wygrywałby z regułą wciśnięcia (`.nav-item:not(:disabled):active`,
+   (0,3,0)), czyli ten JEDEN wiersz przestałby odpowiadać na palec czytelnika,
+   wbrew rozstrzygnięciu zapisanemu dwadzieścia linii wyżej. To NIE jest ta
+   sama liczba, co (0,5,0) w nocie o hoverze wyżej: tam `:has()` siedzi
+   WEWNĄTRZ `:not()` w regule, która niesie jeszcze `:hover`, więc suma jest
+   o stopień wyższa. Atrybut waży tyle co `.active`.
+
+   CO DOKŁADNIE RODZIC DZIEDZICZY — LISTĄ, NIE SŁOWEM „WSZYSTKO". Pierwsza
+   wersja tej noty mówiła „wszystkie zastane remisy tej kolumny bez zmiany
+   którejkolwiek reguły poza listą wykluczeń hovera" i to było fałszywe:
+   nośnik trafił do trzech z pięciu żywych reguł kluczowanych stanem bieżącym
+   i do żadnej reguły trybu wymuszonych kolorów. Reguły są dziś wypisane
+   z nazwy, bo lista obok zamkniętego słownika gnije po cichu:
+
+     `.nav-item.active` (podbarwienie, tekst, waga)          — ma nośnik
+     `.nav-item.active::before` (szyna)                      — ma nośnik
+     `.nav-item.active > svg` (glif)                         — ma nośnik
+     `.nav-item:not(…):hover` (wykluczenie hovera)           — ma nośnik
+     `.nav-item[aria-current="page"] kbd` (skrót)            — DOPISANY
+     `@media (forced-colors: active) .nav-item.active`       — DOPISANY
+
+   `.settings-mode-column .nav-item[aria-current="location"]` NIE dostaje
+   nośnika i to jest rozstrzygnięcie, nie przeoczenie: `data-nav-open` rodzi
+   się wyłącznie z otwartego rekordu projektu, a ta kolumna nie ma rekordów. */
 .nav-item.active,
 .nav-item[data-nav-open] {
   color: var(--nav-active-text);
@@ -1396,7 +1422,7 @@ kbd {
 }
 /* SZYNA. Geometria jest przepisana z prototypu co do liczby (`v3/app.css:222-226`),
    z JEDNĄ poprawką na różnicę pudełek: tam `.nav-item` nie ma obramowania,
-   tutaj niesie `border: 1px solid transparent` (`:1238`, po to, żeby stan
+   tutaj niesie `border: 1px solid transparent` (reguła `.nav-item`, po to, żeby stan
    aktywny nie ruszał układu), a `left` odmierza się od pudełka DOPEŁNIENIA,
    czyli od krawędzi wewnątrz tego obramowania. Stąd `- 1px`: bez niego szyna
    stanęłaby o piksel w prawo od krawędzi kolumny. */
@@ -1591,7 +1617,7 @@ kbd {
    i przeciął pion `.nav-children::before` na pół; tak odmierzona zakrywa
    dokładnie ten pion na wysokości swojego wiersza, czyli mówi „ta gałąź" tam,
    gdzie gałąź jest rysowana. Krótsza o 0,125 rem, bo wiersz potomny jest
-   niższy (`:1483-1487`). `- 1px` z tego samego powodu, co wyżej. */
+   niższy (reguła `.nav-child`). `- 1px` z tego samego powodu, co wyżej. */
 .nav-child.active::before {
   left: calc(-0.0625rem - 1px);
   height: 0.875rem;
@@ -2384,8 +2410,8 @@ kbd {
 /* Hover bierze krawędź akcentu i poświatę (`v3/app.css:815-816`) — dok to
    jedyne wejście do przechwytywania z każdego ekranu, więc „da się to wcisnąć"
    jest tu warte tuszu. Obiekt pod kursorem nie zmienia planu; zmienia go
-   krawędź rzeczy, którą da się wcisnąć. `--accent-glow` dostaje tu drugiego
-   konsumenta. */
+   krawędź rzeczy, którą da się wcisnąć. `--accent-glow` dostaje tu TRZECIEGO
+   konsumenta — stało „drugiego", policzone bez `.workspace-switcher`. */
 .capture-dock:hover {
   color: var(--text-primary);
   border-color: var(--accent-edge);
@@ -4010,7 +4036,12 @@ kbd {
   .task-row.selected {
     outline: 1px solid Highlight;
   }
+  /* `[data-nav-open]` DOŁĄCZA TU, i to jest jedyny sygnał, jaki temu wierszowi
+     w tym trybie zostaje: system nadpisuje i podbarwienie (`--nav-active-bg`),
+     i wypełnienie szyny (`background: var(--accent)`), więc bez tej nazwy cel
+     nadrzędny otwartego rekordu nie mówiłby w wymuszonych kolorach NICZEGO. */
   .nav-item.active,
+  .nav-item[data-nav-open],
   .capture-kind button[aria-pressed="true"] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
@@ -5228,9 +5259,15 @@ kbd {
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-out);
 }
+/* `[data-nav-open]` DOŁĄCZA TU, bo prototyp paruje skrót ze stanem bieżącym,
+   nie z deklaracją: `v3/app.css:233` odsłania `.kbd` przy `:hover` I przy
+   `[aria-current="page"]`, czyli na KAŻDYM wierszu oznaczonym jako bieżący.
+   Cel nadrzędny otwartego rekordu jest takim wierszem — nie bierze tylko
+   `aria-current`, i to rozstrzygnięcie dotyczy czytnika ekranu, nie skrótu. */
 .nav-item:hover kbd,
 .nav-item:focus-visible kbd,
-.nav-item[aria-current="page"] kbd {
+.nav-item[aria-current="page"] kbd,
+.nav-item[data-nav-open] kbd {
   opacity: 1;
 }
 

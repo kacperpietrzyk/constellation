@@ -1910,6 +1910,18 @@ export const RealApp = ({
       (project) => project.id === openProjectId,
     );
   const currentNavId = openProjectHasNavChild ? undefined : surface;
+  // DRUGI NOŚNIK STANU „TU JESTEŚ" MA JEDNO ŹRÓDŁO, TAK SAMO JAK PIERWSZY.
+  // Pierwsza wersja tego lotu wpisywała warunek `data-nav-open` WPROST
+  // w `navEntry`, więc wiersz grupy dostawał podbarwienie, szynę i akcentowany
+  // glif, a ulubiony skrót do tego samego celu jeden blok wyżej nie dostawał
+  // niczego — czyli dokładnie ten nieoznaczony wiersz bieżący, który ten lot
+  // istnieje, żeby zamknąć, odtworzony o sekcję wyżej. Oba nośniki czytają
+  // teraz tę samą nazwę. UWAGA DLA NASTĘPNEGO: harness bramki układu NIE
+  // zasiewa `constellation.favorites`, więc pas ulubionych nie rysuje się tam
+  // ani razu i tej połowy poprawki NIE MIERZY ani jedna para.
+  const navOpenId: SurfaceId | undefined = openProjectHasNavChild
+    ? "projects"
+    : undefined;
   const navEntry = (item: (typeof navItems)[number]) => {
     const shortcutHint = surfaceShortcutHint(item);
     // DECYZJA #35, W JEDNEJ LINII: skrót przestaje istnieć WYŁĄCZNIE w tooltipie.
@@ -1942,9 +1954,7 @@ export const RealApp = ({
           // własny nośnik: `styles.css` maluje `[data-nav-open]` dokładnie tak
           // jak `.active`, z tą samą wagą, więc rodzic dziedziczy wszystkie
           // remisy tej kolumny (hover, wciśnięcie) bez własnych wyjątków.
-          data-nav-open={
-            openProjectHasNavChild && item.id === "projects" ? "" : undefined
-          }
+          data-nav-open={navOpenId === item.id ? "" : undefined}
           // MALOWANIE IDZIE ZA `currentNavId`, PRZYSTANEK TAB ZA `surface`,
           // i ten rozjazd jest zamierzony. Przy otwartym rekordzie projektu
           // wiersz potomny przejmuje bieżącą stronę, więc rodzic przestaje
@@ -3386,8 +3396,11 @@ export const RealApp = ({
                     key={`favorite:${item.id}`}
                     // Malowanie i bieżąca strona z JEDNEGO źródła, tak samo jak
                     // w `navEntry` — ulubiony skrót do Projektów rozjeżdżałby
-                    // się przy otwartym rekordzie dokładnie tak samo.
+                    // się przy otwartym rekordzie dokładnie tak samo. Dotyczy
+                    // to OBU nośników: `data-nav-open` czyta tu tę samą nazwę,
+                    // co wiersz grupy.
                     className={`nav-item nav-favorite ${currentNavId === item.id ? "active" : ""}`}
+                    data-nav-open={navOpenId === item.id ? "" : undefined}
                     tabIndex={-1}
                     aria-current={currentNavId === item.id ? "page" : undefined}
                     onFocus={() => preloadSurface(item.id)}

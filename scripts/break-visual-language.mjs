@@ -322,9 +322,18 @@ const outcome = runBreakTests({
       // czyli obie połowy jednej reguły powłokowej, każda zmierzona tam, gdzie
       // się rysuje. Fragmenty niżej pinują obie, bo sam kod wyjścia nie
       // odróżnia ich ani od siebie, ani od czerwieni pozostałych przelotów.
+      //
+      // TRZECIĄ PARĄ JEST C1-01c (szerokość szyny), dopisana przy naprawie lotu.
+      // Nie jest tu z uprzejmości: `readValue` sprawdza `content` PRZED odczytem
+      // właściwości, więc na `content: none` KAŻDY odczyt tego pseudoelementu
+      // wraca `PSEUDO_ABSENT` — także pomiar geometryczny. `expectRedContains`
+      // jest ZAWIERANIEM, więc pominięcie C1-01c zostawiłoby to złamanie
+      // ZIELONE mimo trzeciej padającej pary, a fragment przestałby opisywać
+      // zasięg, który naprawdę ma.
       name: "stop generating the navigation rail: the row the reader is on says so with a wash alone, and both the shell pass and the routed pass lose the ink",
       expectRedContains: [
         "C1-01a",
+        "C1-01c",
         "C1-02",
         "the ::before pseudo-element is not generated (content: none)",
       ],
@@ -340,6 +349,44 @@ const outcome = runBreakTests({
 .nav-item[data-nav-open]::before {
   position: absolute;`,
           "the navigation rail's generating declaration",
+        ),
+    },
+    {
+      // ZŁAMANIE SIÓDME — DLA PARY, KTÓRA NIOSŁA NAGŁÓWEK LOTU (Faza C, lot C1).
+      //
+      // Szóste złamanie celuje w `content`, więc czerwień przypisuje się do
+      // C1-01a i C1-02 — obu par czytających FARBĘ szyny. C1-01b („przestaje
+      // ramkować wiersz") nie miała ani jednego dowodu, że umie się zaczerwienić
+      // na złamanym kodzie, a to jest dokładnie ta pozycja, którą lot ogłasza
+      // w swoim tytule. Złamanie PRZYWRACA wadę, którą lot usunął: obwódkę
+      // akcentu po całym obwodzie wiersza.
+      //
+      // DLACZEGO TO IDZIE NA CZERWONO: baza `.nav-item` niesie
+      // `border: 1px solid transparent` (żeby stan aktywny nie ruszał układu),
+      // więc przywrócony `border-color` rozwiązuje się do akcentu i rozmija
+      // z literałem `rgba(0, 0, 0, 0)`, którego żąda C1-01b.
+      //
+      // CZEGO TU NIE MA I DLACZEGO: NIE MA złamania na
+      // `margin-left: calc(-1 * var(--nav-gutter))` w `.sidebar nav`, choć to
+      // jedyny mechanizm decydujący o tym, czy szynę WIDAĆ. Wróciłoby ZIELONE:
+      // wszystkie trzy pary czytają `getComputedStyle`, a styl wyliczony nie
+      // wie o przycięciu. Złamanie, o którym z góry wiadomo, że jest zielone,
+      // to uzbrojenie udawane — pozycja stoi zamiast tego wypisana
+      // w `VISUAL_LANGUAGE_NOT_COVERED`.
+      name: "put the accent frame back around the current navigation row: the rail stops being the only ink and the row is outlined again",
+      expectRedContains: ["C1-01b"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.nav-item.active,
+.nav-item[data-nav-open] {
+  color: var(--nav-active-text);`,
+          `.nav-item.active,
+.nav-item[data-nav-open] {
+  border-color: var(--nav-active-border);
+  color: var(--nav-active-text);`,
+          "the current navigation row's paint rule",
         ),
     },
   ],
