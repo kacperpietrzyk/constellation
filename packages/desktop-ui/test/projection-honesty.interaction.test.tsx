@@ -269,3 +269,59 @@ test("a deal opened as a record reports an unreadable slice, not a missing scree
   ].find((button) => /try again/iu.test(button.textContent ?? ""));
   assert.ok(retry, "the record slot offers no way back");
 });
+
+// CZWARTY: ZDANIE, KTÓRE NAZYWA PRZYCZYNĘ, JAKIEJ KOD NIE ZNA. Biblioteka
+// mówiła „Content is not available in this scope" nad KAŻDĄ awarią odczytu
+// notatek — a `optionalProjection` łapie odmowę autoryzacji, odrzucenie
+// kontraktu i milczący most jednakowo. Czytelnik odesłany do sprawdzania
+// przynależności do Space'u szuka wtedy usterki, której tam nie ma.
+test("the Library prints the reason it was given, not a cause it invented", async () => {
+  const { NotesReading } = await import("../src/library/NotesReading.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(NotesReading, {
+        client: undefined,
+        snapshot: {
+          ...workHarnessSnapshot,
+          documents: {
+            kind: "unavailable",
+            message:
+              "document.list was refused: authorization.denied. This view's data is unavailable right now. Try again.",
+            diagnosticCode: "authorization.denied",
+          },
+        },
+        inspectorHost: null,
+        onInspectorOpen: () => undefined,
+        onEntityActivate: () => undefined,
+        onReload: async () => undefined,
+        onFailure: () => undefined,
+      }),
+    );
+  });
+
+  const message = container.querySelector<HTMLElement>(
+    "[data-notes-unavailable]",
+  );
+  assert.ok(message, "the Library drew no reason at all for an unread slice");
+  const stated = message.textContent ?? "";
+  assert.match(
+    stated,
+    /document\.list/u,
+    "the Library does not say which read failed",
+  );
+  assert.match(
+    stated,
+    /authorization\.denied/u,
+    "the Library does not carry the refusal it was handed",
+  );
+  assert.equal(
+    /in this scope/u.test(stated),
+    false,
+    "the Library still names SCOPE as the cause — a claim `optionalProjection` cannot support, since it catches every failure alike",
+  );
+});
