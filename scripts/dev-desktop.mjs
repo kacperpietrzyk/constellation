@@ -4,7 +4,9 @@ import path from "node:path";
 
 import {
   RENDERER_DIST,
+  WITHOUT_PRE_WATCH_STAMP,
   bundleVerdict,
+  createRestartLedger,
   readBundleStamp,
   startAfterRebuiltBundle,
   subscribeToBundle,
@@ -111,11 +113,12 @@ const entry = path.join(
 );
 
 let electron;
-// Set by the watcher below to mean "the current Electron process is being
-// killed on purpose, start a fresh one once it's gone" — read by the single
-// exit listener attached in startElectron, never by a listener attached
-// per-restart, so at most one listener ever observes a given exit.
-let restartRequested = false;
+// "The current Electron process is being killed on purpose, start a fresh one
+// once it's gone" — written by the watcher below, consumed by the single exit
+// listener attached in startElectron, never by a listener attached per-restart,
+// so at most one listener ever observes a given exit. Why a ledger rather than
+// a bare flag: see createRestartLedger.
+const restarts = createRestartLedger();
 const startElectron = () => {
   electron = spawn(electronBinary, [entry], {
     cwd: repositoryRoot,
@@ -124,14 +127,47 @@ const startElectron = () => {
   });
   electron.once("exit", (code) => {
     if (stopping) return;
-    if (restartRequested) {
-      restartRequested = false;
-      startElectron();
+    if (restarts.claim()) {
+      // RESTART IDZIE PRZEZ TĘ SAMĄ BRAMĘ CO PIERWSZY START. Bez tego okno
+      // pustego `dist/` zamykało się wyłącznie dla pierwszego startu: jedna
+      // edycja paczki współdzielonej (`@constellation/contracts` jest
+      // zależnością i renderera, i procesu głównego) rusza OBA watchery, więc
+      // restart trafiał dokładnie w te 106 ms, w których vite opróżnił `dist/`,
+      // a `loadFile` oddawało ERR_FILE_NOT_FOUND — i wtedy wychodził cały
+      // proces, nie samo okno.
+      void startWhenBundleIsWhole(WITHOUT_PRE_WATCH_STAMP)
+        .catch(reportGateFailure)
+        .finally(() => restarts.settle());
       return;
     }
     stop();
     process.exitCode = code ?? 0;
   });
+};
+
+// Brama w JEDNYM miejscu, wołana z obu ścieżek startu. Baseline jest jedyną
+// różnicą między nimi i jest opisany przy `WITHOUT_PRE_WATCH_STAMP`.
+const startWhenBundleIsWhole = (baseline) =>
+  startAfterRebuiltBundle({
+    wait: () =>
+      waitForRebuiltBundle({
+        probe: () => bundleVerdict(baseline, readBundleStamp(rendererDist)),
+        subscribe: (notify) => subscribeToBundle(rendererDist, notify),
+        abandoned: () => stopping,
+        report: (reason, waited) =>
+          console.error(
+            `Still waiting ${waited / 1000}s for the renderer bundle: ${reason}`,
+          ),
+      }),
+    start: startElectron,
+    abandoned: () => stopping,
+  });
+
+const reportGateFailure = (error) => {
+  console.error(error.message);
+  stop();
+  process.exitCode = 1;
+  return { started: false };
 };
 
 let pending;
@@ -152,26 +188,8 @@ process.once("SIGTERM", stop);
 // budowy, który każdą bramę „czy plik jest" spełnia. Zmierzone: trzy starty
 // z rzędu padały na `ERR_FILE_NOT_FOUND (-6)`. Warunki i pomiar:
 // `scripts/dev-renderer-gate.mjs`.
-const started = await startAfterRebuiltBundle({
-  wait: () =>
-    waitForRebuiltBundle({
-      probe: () =>
-        bundleVerdict(bundleBeforeWatch, readBundleStamp(rendererDist)),
-      subscribe: (notify) => subscribeToBundle(rendererDist, notify),
-      abandoned: () => stopping,
-      report: (reason, waited) =>
-        console.error(
-          `Still waiting ${waited / 1000}s for the renderer bundle: ${reason}`,
-        ),
-    }),
-  start: startElectron,
-  abandoned: () => stopping,
-}).catch((error) => {
-  console.error(error.message);
-  stop();
-  process.exitCode = 1;
-  return { started: false };
-});
+const started =
+  await startWhenBundleIsWhole(bundleBeforeWatch).catch(reportGateFailure);
 // Electron nie wstał — albo brama padła, albo ktoś nacisnął Ctrl-C w trakcie
 // czekania. W obu wypadkach nie ma czego pilnować, a założenie watchera
 // procesu głównego trzymałoby przy życiu pętlę bez okna.
@@ -181,15 +199,16 @@ if (!started.started) process.exit(process.exitCode ?? 0);
 // output needs the window torn down and rebuilt. Measured: an idle
 // `tsc -b --watch` emits nothing here over 15 seconds, so this does not storm.
 //
-// A second rebuild landing while a restart is already in flight collapses
-// into it: requestRestart only ever sets a flag and re-signals whatever
-// `electron` currently points at, and the one exit listener that matters is
-// the single one startElectron attached when that process was spawned — so a
+// A second rebuild landing while a restart is already in flight collapses into
+// it: requestRestart only ever records in the ledger and re-signals whatever
+// `electron` currently points at, and the one exit listener that matters is the
+// single one startElectron attached when that process was spawned — so a
 // repeated debounce firing can re-send SIGTERM but can never attach a second
-// listener to the same exit.
+// listener to the same exit. Once the ledger has handed the restart out, a
+// further request is refused rather than recorded, because the spawn it would
+// be asking for has not happened yet and will carry the same rebuilt output.
 const requestRestart = () => {
-  restartRequested = true;
-  electron?.kill("SIGTERM");
+  if (restarts.request()) electron?.kill("SIGTERM");
 };
 mainWatcher = watch(
   path.join(repositoryRoot, "packages", "desktop-main", "dist", "src"),

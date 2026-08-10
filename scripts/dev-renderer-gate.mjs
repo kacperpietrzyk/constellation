@@ -64,6 +64,29 @@ export const referencedAssets = (html) => [
   ),
 ];
 
+/**
+ * Stempel, którego NIE MA — dla ścieżki, gdzie porównywać nie ma z czym.
+ *
+ * Restart Electrona po przebudowie procesu głównego wchodzi w to samo okno
+ * pustego `dist/`, ale nie wolno mu żądać ŚWIEŻOŚCI: zmiana wyłącznie w
+ * procesie głównym nigdy nie przepisuje renderera, więc brama pytająca „czy
+ * `index.html` jest nowszy" czekałaby na przepisanie, które nie nastąpi, i
+ * padła dopiero na suficie czasu. Z tym stemplem zostają dwa warunki, które
+ * na tej ścieżce mają sens: `index.html` MA BYĆ na dysku i MA BYĆ kompletny.
+ *
+ * CZEGO TO NIE POKRYWA, powiedziane wprost: przebudowy renderera, która
+ * jeszcze się nie zaczęła. Przez ~463 ms po zapisie leży tam kompletny bundle
+ * z poprzedniej budowy, ten warunek go przepuszcza, a watcher kasuje go zaraz
+ * potem. Zamknięcie tego okna wymagałoby warunku CZASOWEGO („dist nie ruszał
+ * się od N ms"), czyli dokładnie tego, czego ten moduł nie robi.
+ */
+export const WITHOUT_PRE_WATCH_STAMP = Object.freeze({
+  present: false,
+  mtimeMs: 0,
+  size: 0,
+  missingAssets: [],
+});
+
 /** Stan `dist/` w jednej chwili. Nieobecny `index.html` ma `present: false`. */
 export const readBundleStamp = (distDirectory) => {
   const index = path.join(distDirectory, "index.html");
@@ -246,4 +269,44 @@ export const startAfterRebuiltBundle = async ({
     };
   start();
   return { started: true, reason: verdict.reason };
+};
+
+/**
+ * Księga restartów: kto zapisuje żądanie restartu i kto je ZUŻYWA.
+ *
+ * Wydzielona, bo defekt, którego pilnuje, jest w tym drzewie roboczym
+ * nieobserwowalny — wymaga Electrona, watchera i dwóch przebudów w jednym
+ * oknie. Dopóki restart był gołym `startElectron()`, okno między zabiciem
+ * procesu a spawnem trwało milisekundy i nic się w nim nie mieściło. Odkąd
+ * restart czeka na bramę, to okno trwa tyle, co przebudowa renderera — a
+ * żądanie zapisane w środku dotyczy PROCESU, KTÓRY JUŻ NIE ŻYJE, więc nikt
+ * go nie zużyje. Zostaje flaga, którą pierwsze PRAWDZIWE wyjście następnego
+ * okna odczyta jako „to był restart" i po cichu wstanie zamiast zwinąć pętlę.
+ *
+ * Dlatego żądanie przybyłe w trakcie restartu jest ODRZUCANE, a nie kolejkowane:
+ * spawn czyta `dev-main.js` z dysku dopiero po bramie, więc restart, który
+ * jeszcze nie wystartował, i tak poniesie to, co watcher zdążył wypisać.
+ */
+export const createRestartLedger = () => {
+  let requested = false;
+  let inFlight = false;
+  return {
+    /** Zapisz żądanie. Oddaje `false`, kiedy nie ma czego zapisywać. */
+    request: () => {
+      if (inFlight) return false;
+      requested = true;
+      return true;
+    },
+    /** Zużyj żądanie. Oddaje `true` najwyżej raz na każde zapisane żądanie. */
+    claim: () => {
+      if (!requested) return false;
+      requested = false;
+      inFlight = true;
+      return true;
+    },
+    /** Restart się rozstrzygnął — wstał albo padł. Znów wolno żądać. */
+    settle: () => {
+      inFlight = false;
+    },
+  };
 };

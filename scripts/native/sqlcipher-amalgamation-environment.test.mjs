@@ -26,8 +26,27 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const script = path.join(here, "generate-sqlcipher-amalgamation.sh");
 
+// `test:scripts` jest krokiem suite'u `check`, a CI wykonuje `npm run check`
+// TAKŻE na `windows-latest`. Wszystko w tym pliku woła binarki POSIX po
+// ścieżkach absolutnych — tam `/bin/bash` rozwija się do `C:\bin\bash`, spawn
+// kończy się ENOENT, `status` jest `null`, a każda asercja porównująca go z 0
+// pada. Bramka jest w opcji `skip`, a nie gołym `return`, bo licznik
+// `skipped` ma powiedzieć prawdę: test, który NICZEGO nie sprawdził, nie może
+// stać w kolumnie „pass".
+const posixOnly =
+  process.platform === "win32" &&
+  "the stub PATH, /bin/bash and /usr/bin/which are POSIX-only";
+
+/**
+ * Skrypt widoczny w stubie, kiedy nie chodzi o jego treść, tylko o obecność.
+ *
+ * Sonda pyta `command -v`, więc pusty plik wykonywalny wystarcza — a to zdejmuje
+ * z testu zależność od tego, czy dany host w ogóle NIESIE dane narzędzie.
+ */
+const STUB_TOOL = "#!/bin/sh\nexit 0\n";
+
 /** Katalog `PATH`, w którym widać wyłącznie wymienione narzędzia. */
-const stubPath = (tools) => {
+const stubPath = (tools, stubs = {}) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sqlcipher-probe-"));
   for (const tool of tools) {
     const real = spawnSync("/usr/bin/which", [tool], { encoding: "utf8" });
@@ -38,11 +57,13 @@ const stubPath = (tools) => {
     );
     fs.symlinkSync(real.stdout.trim(), path.join(directory, tool));
   }
+  for (const [tool, body] of Object.entries(stubs))
+    fs.writeFileSync(path.join(directory, tool), body, { mode: 0o755 });
   return directory;
 };
 
-const runWithOnly = (tools) => {
-  const directory = stubPath(tools);
+const runWithOnly = (tools, stubs = {}) => {
+  const directory = stubPath(tools, stubs);
   try {
     return spawnSync("/bin/bash", [script, path.join(directory, "out")], {
       encoding: "utf8",
@@ -54,43 +75,93 @@ const runWithOnly = (tools) => {
   }
 };
 
-test("the script parses", () => {
+/** Tcl jest sprawdzany przed sumą SHA-256, więc bez niego nie widać reszty. */
+const withTcl = { tclsh: STUB_TOOL };
+
+test("the script parses", { skip: posixOnly }, () => {
   const parsed = spawnSync("/bin/bash", ["-n", script], { encoding: "utf8" });
   assert.equal(parsed.status, 0, parsed.stderr);
 });
 
-test("a host without any SHA-256 tool is told so before anything is cloned", () => {
-  const run = runWithOnly(["git", "make"]);
-  // Kod 2 jest kodem sondy. Kod 127 znaczyłby, że skrypt przeszedł do
-  // `mktemp` — czyli że sonda przestała stać przed pracą.
-  assert.equal(run.status, 2, `stderr: ${run.stderr}`);
-  assert.match(run.stderr, /missing a SHA-256 tool \(sha256sum or shasum\)/u);
-  assert.equal(run.stderr.includes("Cloning into"), false);
-});
+test(
+  "a host without any SHA-256 tool is told so before anything is cloned",
+  { skip: posixOnly },
+  () => {
+    const run = runWithOnly(["git", "make"], withTcl);
+    // Kod 2 jest kodem sondy. Kod 127 znaczyłby, że skrypt przeszedł do
+    // `mktemp` — czyli że sonda przestała stać przed pracą.
+    assert.equal(run.status, 2, `stderr: ${run.stderr}`);
+    assert.match(run.stderr, /missing a SHA-256 tool \(sha256sum or shasum\)/u);
+    assert.equal(run.stderr.includes("Cloning into"), false);
+  },
+);
 
-test("a host without OpenSSL headers is told exactly what to install", () => {
-  // Bez `pkg-config` i bez `brew`, a `/usr/include/openssl/evp.h` na macOS-ie
-  // nie istnieje — czyli dokładnie ten stan, w którym stare `LDFLAGS=-lcrypto`
-  // oddawało błąd linkera z wnętrza `configure`.
-  if (fs.existsSync("/usr/include/openssl/evp.h")) return;
-  const run = runWithOnly(["git", "make", "shasum"]);
-  assert.equal(run.status, 2, `stderr: ${run.stderr}`);
-  assert.match(
-    run.stderr,
-    /missing the OpenSSL development headers and library/u,
-  );
-  assert.match(run.stderr, /brew install openssl@3 pkg-config/u);
-  assert.match(run.stderr, /apt-get install libssl-dev pkg-config/u);
-  assert.equal(run.stderr.includes("Cloning into"), false);
-});
+test(
+  "a host without Tcl is told so before anything is cloned",
+  { skip: posixOnly },
+  () => {
+    // `make sqlite3.c` w SQLCipherze nie stoi na samym `make`: oba workflowy
+    // instalują `tcl-dev` w tej samej linii `apt-get`, z której bierze się
+    // `libssl-dev`. Sonda pokrywała jedną połowę tej linii i nie pokrywała
+    // drugiej — brak Tcl wychodził dopiero z wnętrza `make`, po klonie z sieci.
+    //
+    // Ten test nie zależy od tego, co host ma: sonda Tcl stoi przed sumą
+    // SHA-256 i przed OpenSSL-em, więc odpowiedź jest ta sama na macOS-ie
+    // i na Linuksie z systemowymi nagłówkami.
+    const run = runWithOnly(["git", "make"]);
+    assert.equal(run.status, 2, `stderr: ${run.stderr}`);
+    assert.match(run.stderr, /missing tclsh/u);
+    assert.equal(run.stderr.includes("Cloning into"), false);
+  },
+);
 
-test("shellcheck, when the host has it, has nothing to say", () => {
-  const available = spawnSync("/usr/bin/which", ["shellcheck"], {
-    encoding: "utf8",
-  });
-  if (available.status !== 0) return;
-  const linted = spawnSync(available.stdout.trim(), [script], {
-    encoding: "utf8",
-  });
-  assert.equal(linted.status, 0, linted.stdout);
-});
+test(
+  "a host without OpenSSL headers is told exactly what to install",
+  {
+    // Bez `pkg-config` i bez `brew`, a `/usr/include/openssl/evp.h` na
+    // macOS-ie nie istnieje — czyli dokładnie ten stan, w którym stare
+    // `LDFLAGS=-lcrypto` oddawało błąd linkera z wnętrza `configure`.
+    //
+    // Host z systemowymi nagłówkami (Linux) tej odmowy NIE DA SIĘ tu wywołać:
+    // ścieżka jest absolutna, a stub `PATH` jej nie dosięga. Pominięcie jest
+    // nazwane, żeby zielony `test:scripts` na Linuksie nie czytał się jako
+    // dowód, że odmowa OpenSSL działa — ona jest tam po prostu niemierzona.
+    skip:
+      posixOnly ||
+      (fs.existsSync("/usr/include/openssl/evp.h") &&
+        "this host has system OpenSSL headers, so the refusal is unreachable"),
+  },
+  () => {
+    const run = runWithOnly(["git", "make", "shasum"], withTcl);
+    assert.equal(run.status, 2, `stderr: ${run.stderr}`);
+    assert.match(
+      run.stderr,
+      /missing the OpenSSL development headers and library/u,
+    );
+    assert.match(run.stderr, /brew install openssl@3 pkg-config/u);
+    assert.match(run.stderr, /apt-get install libssl-dev pkg-config/u);
+    assert.equal(run.stderr.includes("Cloning into"), false);
+  },
+);
+
+// Liczone RAZ, przy wczytaniu pliku, bo `skip` rozstrzyga się w chwili
+// definicji testu. Krótkie spięcie na `posixOnly` jest konieczne: bez niego ta
+// linia wołałaby POSIX-ową ścieżkę absolutną na Windowsie.
+const shellcheck = posixOnly
+  ? { status: 1, stdout: "" }
+  : spawnSync("/usr/bin/which", ["shellcheck"], { encoding: "utf8" });
+
+test(
+  "shellcheck, when the host has it, has nothing to say",
+  {
+    skip:
+      posixOnly ||
+      (shellcheck.status !== 0 && "this host has no shellcheck installed"),
+  },
+  () => {
+    const linted = spawnSync(shellcheck.stdout.trim(), [script], {
+      encoding: "utf8",
+    });
+    assert.equal(linted.status, 0, linted.stdout);
+  },
+);

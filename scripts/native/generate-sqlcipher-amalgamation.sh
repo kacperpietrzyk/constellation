@@ -6,8 +6,9 @@ set -euo pipefail
 # linkera i GNU-owy `sha256sum`. Oba padają na czystym macOS-ie, więc pętla
 # deweloperska musiała trzymać prywatną kopię tego pliku poza repozytorium.
 #
-# Dwie rzeczy naprawione i JEDNA zasada: wszystko, czego skrypt potrzebuje,
-# jest sprawdzane ZANIM zacznie się `git clone`. Sonda po klonowaniu każe
+# Trzy rzeczy naprawione i JEDNA zasada: wszystko, czego skrypt potrzebuje,
+# jest sprawdzane ZANIM zacznie się `git clone` — łącznie z `tclsh`, bez
+# którego `make sqlite3.c` padał dopiero po klonie. Sonda po klonowaniu każe
 # czekać minutę na sieć po to, żeby usłyszeć „nie mam sha256sum" — a taka
 # kolejność jest też jedynym powodem, dla którego ten skrypt daje się w ogóle
 # przetestować bez sieci.
@@ -21,9 +22,14 @@ missing_tool() {
   exit 2
 }
 
-for tool in git make; do
+# `tclsh` stoi w tej pętli razem z `git` i `make`, bo `make sqlite3.c` w
+# SQLCipherze nie stoi na samym `make`: oba workflowy instalują `tcl-dev` w tej
+# samej linii `apt-get`, z której bierze się sprawdzany niżej `libssl-dev`.
+# Sonda pokrywała jedną połowę tej linii i nie pokrywała drugiej — brak Tcl
+# wychodził dopiero z wnętrza `make`, czyli po klonie z sieci.
+for tool in git make tclsh; do
   command -v "$tool" >/dev/null 2>&1 ||
-    missing_tool "$tool" "Install the platform build tools (on macOS: xcode-select --install)."
+    missing_tool "$tool" "Install the platform build tools (on macOS: xcode-select --install, which carries all three). On Debian/Ubuntu: apt-get install build-essential tcl-dev."
 done
 
 # macOS nie ma `sha256sum`; ma `shasum -a 256`. Oba wypisują sumę jako pierwsze

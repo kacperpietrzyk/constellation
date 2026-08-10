@@ -8,20 +8,29 @@
 //   • „sprawdź, czy `index.html` istnieje" — pada test o bundlu sprzed
 //     watchera, bo w chwili startu plik ISTNIEJE i jest kompletny.
 // Oba złamania są uruchamiane przez `scripts/break-dev-tooling.mjs`.
+//
+// Testy nad modułem mierzą go z wstrzykniętymi atrapami, więc SAME W SOBIE nie
+// widzą, czy pętla dev przez tę bramę przechodzi. Dlatego na końcu pliku stoi
+// test czytający `scripts/dev-desktop.mjs` — plik, w którym defekt mieszkał.
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
+  WITHOUT_PRE_WATCH_STAMP,
   bundleVerdict,
+  createRestartLedger,
   readBundleStamp,
   referencedAssets,
   startAfterRebuiltBundle,
   waitForRebuiltBundle,
 } from "./dev-renderer-gate.mjs";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const INDEX = [
   '<!doctype html><html><head><link rel="icon" href="./favicon.svg" />',
@@ -269,4 +278,111 @@ test("waiting is not silent: the current reason is reported while it lasts", asy
   assert.deepEqual(reported[0], ["index.html is not on disk", 5]);
   // Czas rośnie, więc czytelnik widzi, JAK DŁUGO to trwa, a nie tylko że trwa.
   assert.equal(reported.at(-1)[1] > reported[0][1], true);
+});
+
+test("the restart baseline refuses an emptied dist without demanding a rewrite", () => {
+  // Zmiana WYŁĄCZNIE w procesie głównym nie przepisuje renderera. Brama
+  // restartu żądająca ŚWIEŻOŚCI czekałaby więc na przepisanie, którego nie
+  // będzie, aż do sufitu czasu — nad pętlą, która ma tylko wymienić okno.
+  const whole = writeDist({ complete: true });
+  try {
+    const ready = bundleVerdict(
+      WITHOUT_PRE_WATCH_STAMP,
+      readBundleStamp(whole),
+    );
+    assert.equal(ready.ready, true, ready.reason);
+
+    fs.rmSync(path.join(whole, "index.html"));
+    const emptied = bundleVerdict(
+      WITHOUT_PRE_WATCH_STAMP,
+      readBundleStamp(whole),
+    );
+    assert.equal(emptied.ready, false);
+    assert.match(emptied.reason, /not on disk/u);
+  } finally {
+    fs.rmSync(whole, { recursive: true, force: true });
+  }
+
+  const partial = writeDist({ complete: false });
+  try {
+    const verdict = bundleVerdict(
+      WITHOUT_PRE_WATCH_STAMP,
+      readBundleStamp(partial),
+    );
+    assert.equal(verdict.ready, false);
+    assert.match(verdict.reason, /assets\/react-BhjfaixL\.js/u);
+  } finally {
+    fs.rmSync(partial, { recursive: true, force: true });
+  }
+});
+
+test("a restart request arriving mid-restart is refused, not left behind", () => {
+  const ledger = createRestartLedger();
+  assert.equal(ledger.request(), true);
+  assert.equal(ledger.claim(), true);
+
+  // Watcher procesu głównego odpalił drugi raz, kiedy brama restartu jeszcze
+  // czeka na renderer. Zapisane żądanie dotyczyłoby procesu, który JUŻ NIE
+  // ŻYJE, więc nikt by go nie zużył.
+  assert.equal(ledger.request(), false);
+  // I to jest cała zawartość defektu: pierwsze PRAWDZIWE wyjście następnego
+  // okna przeczytałoby taką flagę jako „to był restart" i wstało po cichu
+  // zamiast zwinąć pętlę dev.
+  assert.equal(ledger.claim(), false);
+
+  ledger.settle();
+  assert.equal(ledger.request(), true);
+  assert.equal(ledger.claim(), true);
+});
+
+test("an exit nobody asked for is never claimed as a restart", () => {
+  assert.equal(createRestartLedger().claim(), false);
+});
+
+test("the dev loop starts Electron only through the gate, on BOTH paths", () => {
+  // TEN TEST CZYTA PLIK, W KTÓRYM DEFEKT MIESZKAŁ. Cała reszta tego pliku
+  // mierzy moduł bramy z wstrzykniętymi atrapami, więc jest ślepa na to, czy
+  // pętla dev przez tę bramę w ogóle przechodzi: implementacja, która kasuje
+  // wywołanie bramy i wpisuje w to miejsce `startElectron();`, przechodziła
+  // KOMPLET pozostałych asercji. To jest znana tu klasa „zdolność, której nic
+  // nie montuje".
+  const source = fs.readFileSync(path.join(here, "dev-desktop.mjs"), "utf8");
+
+  // Żadnego gołego wywołania: `startElectron` wolno wyłącznie ODDAĆ bramie.
+  assert.equal(
+    /(?<![\w.])startElectron\s*\(/u.test(source),
+    false,
+    "scripts/dev-desktop.mjs calls startElectron directly somewhere, which is the pre-fix logic itself",
+  );
+  assert.match(source, /start: startElectron,/u);
+
+  // Dwie ścieżki startu, obie przez tę samą bramę: pierwszy start i restart
+  // po przebudowie procesu głównego.
+  assert.equal(
+    [...source.matchAll(/startWhenBundleIsWhole\(/gu)].length,
+    2,
+    "scripts/dev-desktop.mjs no longer has exactly two gated start paths",
+  );
+  assert.match(source, /startWhenBundleIsWhole\(bundleBeforeWatch\)/u);
+
+  const restartBranch = /if \(restarts\.claim\(\)\) \{([\s\S]*?)\n {4}\}/u.exec(
+    source,
+  );
+  assert.notEqual(
+    restartBranch,
+    null,
+    "scripts/dev-desktop.mjs no longer has a restart branch in the exit listener",
+  );
+  assert.match(
+    restartBranch[1],
+    /startWhenBundleIsWhole\(WITHOUT_PRE_WATCH_STAMP\)/u,
+  );
+
+  // Żądanie restartu przechodzi przez księgę, a nie przez gołą flagę — inaczej
+  // wraca wyciek, który przy bramie trwającej sekundy jest osiągalny.
+  const requestBody = /const requestRestart = \(\) => \{([\s\S]*?)\n\};/u.exec(
+    source,
+  );
+  assert.notEqual(requestBody, null);
+  assert.match(requestBody[1], /restarts\.request\(\)/u);
 });

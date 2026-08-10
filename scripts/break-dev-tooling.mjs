@@ -76,6 +76,21 @@ fi`,
         ),
     },
     {
+      // DEFEKT 3, trzecie założenie: `tclsh` na hoście. Oddane oznacza, że
+      // brak Tcl wychodzi dopiero z wnętrza `make sqlite3.c` — po klonie
+      // z sieci, czyli po minucie czekania na coś, co dało się powiedzieć od
+      // razu. Oba workflowy instalują `tcl-dev` obok `libssl-dev`.
+      name: "assume tclsh exists: a host without Tcl learns it from inside make, after the clone",
+      file: "scripts/native/generate-sqlcipher-amalgamation.sh",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "for tool in git make tclsh; do",
+          "for tool in git make; do",
+          "the Tcl probe",
+        ),
+    },
+    {
       // DEFEKT 3, drugie założenie: `-lcrypto` na domyślnej ścieżce linkera.
       // Oddane oznacza, że host bez nagłówków OpenSSL-a dowiaduje się o tym
       // dopiero z wnętrza `configure`, po klonie z sieci.
@@ -266,6 +281,64 @@ fi`,
           `  start();
   const verdict = await wait();`,
           "the start-after-wait order",
+        ),
+    },
+    {
+      // DEFEKT 4, PIERWSZY START W PLIKU, W KTÓRYM DEFEKT MIESZKAŁ. Złamanie
+      // wyżej („start Electron before the wait") edytuje moduł bramy, więc
+      // dowodzi rzeczy o module — a nie tego, że pętla dev przez bramę
+      // przechodzi. TO złamanie jest logiką sprzed naprawy w czystej postaci:
+      // `startElectron();` dokładnie w tym wierszu, w którym stało.
+      name: "start Electron straight from the dev loop, bypassing the gate entirely",
+      file: "scripts/dev-desktop.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `const started =
+  await startWhenBundleIsWhole(bundleBeforeWatch).catch(reportGateFailure);`,
+          `startElectron();
+const started = { started: true };`,
+          "the gated first start",
+        ),
+    },
+    {
+      // DEFEKT 4, RESTART: ta sama pętla, druga ścieżka. Restart po
+      // przebudowie procesu głównego omijał bramę w całości i wchodził w to
+      // samo okno pustego `dist/` — a `loadFile` odrzucone tam wywala CAŁĄ
+      // pętlę dev, nie samo okno.
+      name: "restart Electron without the gate, into the window where vite has emptied dist",
+      file: "scripts/dev-desktop.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `      void startWhenBundleIsWhole(WITHOUT_PRE_WATCH_STAMP)
+        .catch(reportGateFailure)
+        .finally(() => restarts.settle());`,
+          "      startElectron();",
+          "the gated restart",
+        ),
+    },
+    {
+      // DEFEKT 4, KSIĘGOWOŚĆ RESTARTU: żądanie przybyłe w trakcie restartu
+      // zapisane zamiast odrzuconego. Dotyczy PROCESU, KTÓRY JUŻ NIE ŻYJE,
+      // więc nikt go nie zużyje — a pierwsze prawdziwe wyjście następnego okna
+      // przeczyta je jako restart i wstanie po cichu zamiast zwinąć pętlę.
+      // Osiągalne dopiero odkąd restart czeka na bramę, czyli od tej naprawy.
+      name: "record a restart request mid-restart: the next genuine crash silently respawns",
+      file: "scripts/dev-renderer-gate.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    request: () => {
+      if (inFlight) return false;
+      requested = true;
+      return true;
+    },`,
+          `    request: () => {
+      requested = true;
+      return true;
+    },`,
+          "the in-flight refusal in the restart ledger",
         ),
     },
     {
