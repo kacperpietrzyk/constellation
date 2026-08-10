@@ -245,9 +245,9 @@ const outcome = runBreakTests({
       // ZŁAMANIE PIĄTE — DLA POZYCJI AKCJI W PAŚMIE TYTUŁU (Faza B, lot B2).
       //
       // TEN SAM PROBLEM CO PRZY ZŁAMANIU CZWARTYM I TA SAMA ODPOWIEDŹ. Przyrząd
-      // B2 jest na dzisiejszym drzewie CZERWONY: dziewięć ekranów stawia akcję
+      // B2 jest na dzisiejszym drzewie CZERWONY: osiem ekranów stawia akcję
       // główną poza rzędem tytułu. Baza nie może więc być zielona „bo nic nie
-      // znaleziono" — jest zielona, bo te dziewięć stoi WYPISANYCH
+      // znaleziono" — jest zielona, bo te osiem stoi WYPISANYCH
       // w `TITLE_BAND_ROWS` (`scripts/title-band-action.mjs`) z adresem
       // w prototypie, i tylko się drukuje. Kod wyjścia bramki zależy od tego,
       // czy przyrząd znalazł coś, czego kanoniczna lista NIE PRZEWIDUJE.

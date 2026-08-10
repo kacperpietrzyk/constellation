@@ -4646,11 +4646,33 @@ const measureTitleBandActionInPage = async ({
     const classes = [...element.classList].map(normaliseClass).join(".");
     return classes === "" ? tag : `${tag}.${classes}`;
   };
+  // WIDOCZNOŚĆ MIERZONA TAK SAMO JAK W RESZCIE TEGO PLIKU, i to jest poprawka,
+  // nie ozdoba. „Szerokość i wysokość > 0" przepuszcza element 1×1 przycięty
+  // `clip: rect(0,0,0,0)` — a dokładnie tak wygląda `#surface-title` w stanie
+  // ładowania Spotkań (`MeetingsSurface.tsx:484` + `.sr-only`,
+  // `styles.css:661-668`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
+  // całego werdyktu: środek w rogu kadru, tolerancja pół piksela. Dziś ratuje
+  // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
+  // więc pada głośno jako `TITLE_BAND_NOT_MEASURED`) — czyli przypadek, nie
+  // reguła. Kryterium jest teraz to samo co przy `parkedOutOfFrame`
+  // (`:2944-2954`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
+  // kadrem znaczą „niewidoczne", a „poniżej zgięcia" NIE — tamto jest zwykłym
+  // układem, to jest ukryciem.
   const rendered = (element) => {
     const style = window.getComputedStyle(element);
-    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.opacity === "0"
+    )
+      return false;
     const rect = element.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    if (rect.width * rect.height <= 4) return false;
+    return !(
+      rect.bottom <= 0 ||
+      rect.right <= 0 ||
+      rect.left >= window.innerWidth
+    );
   };
   const round = (value) => Math.round(value * 10) / 10;
   const box = (element) => {
@@ -4695,14 +4717,23 @@ const measureTitleBandActionInPage = async ({
     // w skrócie: rząd chromu jest rzędem, obszar treści jest wysoki, a bez tej
     // granicy pierwsza sekcja treści Dziś i Skrzynki wchodziłaby do pomiaru
     // razem z przyciskami swoich wierszy.
+    //
+    // SUFIT JEST WYPISYWANY W RAPORCIE, bo jest wysokością PASMA, a pasma
+    // rekordu bywają siedem razy wyższe od rzędu chromu (285,1 px). Sufit,
+    // którego nie widać w wyjściu, nie daje się sprawdzić przy odbiorze.
+    const ceiling = bandBox.height;
     const neighbourhood = [{ offset: 0, node: band, box: bandBox }];
+    const dropped = [];
     const siblings = [...(band.parentElement?.children ?? [])];
     const index = siblings.indexOf(band);
     for (const offset of [-1, 1]) {
       const node = siblings[index + offset];
       if (!(node instanceof HTMLElement) || !rendered(node)) continue;
       const nodeBox = box(node);
-      if (nodeBox.height > bandBox.height) continue;
+      if (nodeBox.height > ceiling) {
+        dropped.push({ offset, node, box: nodeBox });
+        continue;
+      }
       neighbourhood.push({ offset, node, box: nodeBox });
     }
 
@@ -4728,22 +4759,22 @@ const measureTitleBandActionInPage = async ({
         ...titleBox,
       },
       band: { signature: signature(band), ...bandBox },
+      ceiling,
       neighbourhood: neighbourhood.map((entry) => ({
         offset: entry.offset,
         signature: signature(entry.node),
         height: entry.box.height,
       })),
-      // ILE RODZEŃSTWA W OGÓLE ODRZUCIŁA GRANICA WYSOKOŚCI. Bez tej liczby
-      // „brak akcji" nad ekranem, którego sąsiad właśnie urósł ponad pasmo,
-      // czyta się identycznie jak brak akcji nad ekranem, który jej nie ma.
-      neighboursDropped: [-1, 1].filter((offset) => {
-        const node = siblings[index + offset];
-        return (
-          node instanceof HTMLElement &&
-          rendered(node) &&
-          box(node).height > bandBox.height
-        );
-      }).length,
+      // KTÓRE RODZEŃSTWO ODRZUCIŁA GRANICA WYSOKOŚCI, z nazwą i wysokością.
+      // Bez tego „brak akcji" nad ekranem, którego sąsiad właśnie urósł ponad
+      // pasmo, czyta się identycznie jak brak akcji nad ekranem, który jej nie
+      // ma — a sama LICZBA odrzuconych rzędów nie mówi, czy odrzucono pasek
+      // widoku, czy całą kolumnę treści.
+      dropped: dropped.map((entry) => ({
+        offset: entry.offset,
+        signature: signature(entry.node),
+        height: entry.box.height,
+      })),
       actions,
     };
   };
@@ -4870,6 +4901,11 @@ const titleBandActionCensus = async (browser) => {
   const judged = [];
   let divergent = 0;
   let held = 0;
+  // TRZECI LICZNIK, ZAMIAST DOLICZANIA GO DO ZGODNYCH. Ekran, którego prototyp
+  // NIE MA (rekord szansy), nie ma się z czym zgadzać — wliczony do „agree with
+  // the prototype" zawyżałby pokrycie o podmiot, o którym ten przyrząd świadomie
+  // nie ma zdania.
+  let notComparable = 0;
 
   report(
     `walked\t${collected.declared.length} declared destination(s)\t` +
@@ -4920,20 +4956,43 @@ const titleBandActionCensus = async (browser) => {
     // identycznie jak nad ekranem, który akcji nie ma — a to są dwie różne
     // rzeczy i dwie różne roboty. Wiersz niesie więc PRZESZUKANY obszar
     // z wysokościami i liczbę rzędów, które granica wysokości odrzuciła.
+    //
+    // PUDEŁKA IDĄ DO RAPORTU SUROWE, i to jest wymóg prowieniencji, nie ozdoba:
+    // fikstury testu jednostkowego mają być ODCZYTANE z tego wyjścia, a raport,
+    // który drukuje sam dryf, pozwala odtworzyć pudełko WSTECZ — z dowolną
+    // wysokością, byle środek się zgadzał. Tak właśnie do tego pliku trafiła
+    // fikstura Projektów o wysokości, której ta aplikacja nigdy nie narysowała.
+    //
+    // `x` JEST DRUKOWANY, CHOĆ WERDYKT GO NIE CZYTA — to zadeklarowana ślepa
+    // plama miary (patrz nagłówek `title-band-action.mjs`). Bez tych dwóch liczb
+    // „akcja przy prawym końcu pasma" i „akcja tuż za tytułem" mają w raporcie
+    // identyczny zapis.
+    const span = (item) =>
+      `y ${item.top}–${item.bottom} h=${item.height} x ${item.left}–${item.right}`;
+    // PRZESZUKANY OBSZAR DRUKUJE SIĘ ZAWSZE, nie tylko nad ekranem bez akcji.
+    // Sufit widoczny wyłącznie w wierszach „nic nie znalazłem" nie daje się
+    // sprawdzić tam, gdzie właśnie zdecydował — a to wiersze rekordu, w których
+    // wynosi 285,1 px. Ta sama linia jest jedynym miejscem, z którego da się
+    // odczytać wysokości rzędów cytowane w tabeli nagłówka `title-band-action.mjs`.
+    const searched =
+      `[searched, ceiling h≤${entry.ceiling}: ` +
+      entry.neighbourhood
+        .map((near) => `${near.signature} h=${near.height}`)
+        .join(", ") +
+      "]" +
+      (entry.dropped.length > 0
+        ? ` (taller than the ceiling, left out: ${entry.dropped
+            .map((near) => `${near.signature} h=${near.height}`)
+            .join(", ")})`
+        : "");
     const where =
       decision.judged.length === 0
-        ? "no action-class button in the title row's neighbourhood [searched: " +
-          entry.neighbourhood
-            .map((near) => `${near.signature} h=${near.height}`)
-            .join(", ") +
-          "]" +
-          (entry.neighboursDropped > 0
-            ? ` (${entry.neighboursDropped} adjacent row(s) taller than the band were left out)`
-            : "")
-        : decision.judged
+        ? `no action-class button in the title row's neighbourhood ${searched}`
+        : `${searched} ` +
+          decision.judged
             .map(
               (action) =>
-                `${action.signature} „${action.sample}" ${action.where} ` +
+                `${action.signature} „${action.sample}" ${action.where} ${span(action)} ` +
                 `drift ${action.drift}px vs tolerance ${action.tolerance}px → ${action.state}`,
             )
             .join(" | ");
@@ -4941,26 +5000,48 @@ const titleBandActionCensus = async (browser) => {
       `${entry.id}\t${decision.state}\t` +
       `${row === undefined ? "UNDECLARED" : `prototype ${row.prototype}, table says ${row.today}`}\t` +
       `band ${entry.band.signature} h=${entry.band.height}\t` +
-      `title „${entry.title.sample}" h=${entry.title.height}\t${where}`;
+      `title „${entry.title.sample}" ${span(entry.title)}\t${where}`;
     report(line);
 
     if (row === undefined) continue;
-    if (titleBandVerdictThrows({ predicted, armed: TITLE_BAND_ACTION_ARMED })) {
+
+    // KSIĘGOWOŚĆ NAJPIERW, WERDYKT POTEM, i to nie jest kolejność estetyczna:
+    // gałąź werdyktu kończy się `continue`, więc licząc po niej dostalibyśmy po
+    // uzbrojeniu podsumowanie „0 ekranów stawia akcję poza rzędem tytułu" obok
+    // ośmiu padających werdyktów — raport wewnętrznie sprzeczny, czyli ta sama
+    // klasa, którą ten przelot ma zamykać.
+    const divergentRow = isTitleBandDivergence(row);
+    if (divergentRow) divergent += 1;
+    else if (row.prototype === "no-screen") notComparable += 1;
+    else held += 1;
+
+    if (
+      titleBandVerdictThrows({
+        predicted,
+        divergent: divergentRow,
+        armed: TITLE_BAND_ACTION_ARMED,
+      })
+    ) {
+      // KTÓRY WARUNEK PADŁ, TAKIE ZDANIE. „Ktoś przesunął akcję i nie zapisał"
+      // jest fałszem, kiedy pada uzbrojony ROZJAZD: tam nic nie dryfowało,
+      // tylko pozycja przestała być długiem i zaczęła być wymaganiem.
       verdicts.push(
-        `${entry.id}: this pass measured ${decision.state} and the canonical screen list says ` +
-          `${row.today} (prototype: ${row.prototype} — ${row.cite}). Either the primary action ` +
-          "moved and nobody wrote it down, or lot C2 delivered the fix and left the row behind. " +
-          `Measured: ${where}. App: ${row.app}.`,
+        predicted
+          ? `${entry.id}: the title-band position is ENFORCED and this screen keeps its primary ` +
+              `action outside the title row (measured ${decision.state}). The prototype puts one ` +
+              `in the band — ${row.cite}. Measured: ${where}. App: ${row.app}.`
+          : `${entry.id}: this pass measured ${decision.state} and the canonical screen list says ` +
+              `${row.today} (prototype: ${row.prototype} — ${row.cite}). Either the primary action ` +
+              "moved and nobody wrote it down, or lot C2 delivered the fix and left the row behind. " +
+              `Measured: ${where}. App: ${row.app}.`,
       );
       continue;
     }
-    if (isTitleBandDivergence(row)) {
-      divergent += 1;
+    if (divergentRow)
       reported.push(
         `${entry.id}\t${decision.state}\tprototype puts an action in this band — ${row.cite}\t` +
           `${where}`,
       );
-    } else held += 1;
   }
 
   failures.push(
@@ -4981,6 +5062,7 @@ const titleBandActionCensus = async (browser) => {
     judged: judged.length,
     divergent,
     held,
+    notComparable,
     elapsedMs: Date.now() - started,
   };
 };
@@ -6794,7 +6876,8 @@ try {
       `${TITLE_BAND_ACTION_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
       `${titleBand.judged} of ${TITLE_BAND_ROWS.length} declared screen(s) judged\t` +
       `${titleBand.divergent} screen(s) place the primary action outside the title row, ` +
-      `${titleBand.held} agree with the prototype\t` +
+      `${titleBand.held} agree with the prototype, ` +
+      `${titleBand.notComparable} have no prototype counterpart\t` +
       `${TITLE_BAND_DIVERGENCES.length} divergence(s) on the canonical list\t` +
       `${titleBand.verdicts.length} verdict(s) thrown, ${titleBand.reported.length} reported\t` +
       `${titleBand.elapsedMs} ms wall clock`,

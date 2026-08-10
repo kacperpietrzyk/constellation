@@ -3,8 +3,10 @@
 //
 // PO CO TO ISTNIEJE, i to jest jedyny akapit, który trzeba przeczytać. Dziewięć
 // z 71 potwierdzonych rozjazdów z prototypem to jedno zdanie: akcja główna stoi
-// WIERSZ NIŻEJ niż tytuł, zamiast po prawej stronie tego samego pasma. Dziś
-// mierzy się jej FARBĘ — pary L2-08 i L3-06 wracają ZIELONE, bo przycisk
+// WIERSZ NIŻEJ niż tytuł, zamiast po prawej stronie tego samego pasma. Ten
+// przelot dochodzi do tej samej przyczyny WŁASNYM pomiarem i liczy pod nią
+// OSIEM podmiotów — rachunek co do wiersza stoi przy `TITLE_BAND_DIVERGENCES`.
+// Dziś mierzy się jej FARBĘ — pary L2-08 i L3-06 wracają ZIELONE, bo przycisk
 // naprawdę jest fioletowy — i nikt nie mierzy jej MIEJSCA. To jest ta sama
 // klasa co przy locie B1: bramka jest zielona na 122 parach, bo PARA MIERZY
 // WYŁĄCZNIE TO, CO KTOŚ UMIAŁ ZAPISAĆ SELEKTOREM, a „pion tej rzeczy względem
@@ -81,6 +83,19 @@
 // nic do powiedzenia. Wypełnienie niosą `--action-primary-bg` i
 // `--action-secondary-bg` (`styles.css:726`, `:761`) — i to są dwie klasy niżej.
 //
+// TEN SAM PREDYKAT MUSI STAĆ PO STRONIE PROTOTYPU, i to jest wada, która ten
+// przyrząd już raz miała: kolumna `today` liczyła wyłącznie przyciski
+// z WYPEŁNIENIEM, a kolumna `prototype` — KAŻDY `<button>` w drugim argumencie
+// crumbbara. Na ośmiu wierszach nie widać różnicy, bo prototyp stawia tam
+// `primary` albo `bordered` (oba mają tło). Na dziewiątym widać: pasmo rekordu
+// zadania niesie WYŁĄCZNIE `.btn.quiet` i `.icon-btn`, czyli po prototypowej
+// stronie dokładnie to, czym po naszej jest `.ghost-button` — kontrolkę bez tła.
+// Wiersz oceniony niesymetrycznie był rozjazdem NIESPEŁNIALNYM: wierna poprawka
+// (przezroczysty „Subscribe") zostawiłaby go czerwonym, a poprawka zielona
+// musiałaby wstawić wypełnienie tam, gdzie prototyp go NIE MA, czyli wyprodukować
+// nowy rozjazd na żądanie przyrządu. Modyfikatory prototypu niosące tło stoją
+// niżej jako `PROTOTYPE_FILLED_MODIFIERS` i mają test symetrii.
+//
 // ── GDZIE SIĘ SZUKA, CZYLI JEDYNA NIEOCZYWISTA CZĘŚĆ TEGO PRZYRZĄDU ─────────
 //
 // Akcja przesunięta poza pasmo leży w rzędzie SĄSIADUJĄCYM z pasmem: na
@@ -110,8 +125,33 @@
 // chromu WYŻSZEGO od pasma (dziś taki jest pasek widoku Zadań, 96,6 px)
 // zostałaby przeoczona. Reguła myli się WIĘC W STRONĘ „brak akcji" — a „brak
 // akcji" jest w tabeli niżej znaleziskiem wszędzie tam, gdzie prototyp akcję
-// ma, czyli myli się w stronę CZERWIENI, nie ciszy. To jest jedyny kierunek
-// pomyłki, na jaki przyrząd może sobie pozwolić.
+// ma, czyli myli się w stronę CZERWIENI, nie ciszy.
+//
+// DRUGA STRONA TEJ GRANICY, i ta myli się w stronę PRZECIWNĄ, więc też musi tu
+// stać: sufitem jest wysokość PASMA, a pasma rekordu są wysokie (zmierzone
+// 285,1 px na rekordzie zadania). Nad takim pasmem sufit przepuściłby rząd
+// treści, a przycisk wiersza zgłosiłby się jako akcja ekranu. Dziś nie ma to
+// wystawy: ±1 rodzeństwa pasm rekordu to `.crumbs` 23 px i `._strip` 48 px, oba
+// są chromem — ale zabezpieczeniem jest wtedy KSZTAŁT CUDZEGO DRZEWA, nie reguła
+// tego przyrządu, więc przelot DRUKUJE sufit i wysokości rzędów, które odpadły.
+// Bez tego „sufit wynosił 285,1" jest niewidoczne przy odbiorze.
+//
+// SUFIT WYPROWADZONY Z RZĘDU TYTUŁU (zamiast z pasma) został ODRZUCONY POMIAREM,
+// a nie gustem: `.crumbs` ekranu rekordu ma 36 px przy tytule 24,6 px, więc
+// zabrałby JEDYNY wiersz `ABOVE_BAND`, czyli trzeci kształt rozjazdu w całości;
+// `.crumbbar` czterech ekranów CRM ma 36 px przy tytule 16,9 px, więc nie
+// przeszedłby nawet przy sufcie dwukrotnym i zabrałby cztery rozjazdy naraz.
+// Granica, która kasuje pięć z ośmiu znalezisk, nie jest ostrożniejsza — jest
+// ślepsza.
+//
+// TRZECIA ŚLEPA PLAMA, i domknięcie listy: MIARA JEST WYŁĄCZNIE PIONOWA. Prototyp
+// odpycha akcję do PRAWEGO końca pasma (`.crumbbar .spacer { flex: 1 }`,
+// `v3/app.css:293`), a ten werdykt nie odróżni tego od przycisku wciśniętego tuż
+// za tytułem. Druga miara (porównanie krawędzi, tak samo bezpikselowa) należy do
+// lotu, który akcje PRZENOSI — dokładanie jej tutaj zmieniłoby zbiór rozjazdów
+// w locie, który ma tylko stawiać przyrządy. Do tego czasu przelot drukuje
+// `x` obu pudełek, żeby przy odbiorze Fazy C dało się to sprawdzić z raportu,
+// a nie ze zrzutu.
 //
 // Sam pomiar wymaga przeglądarki, więc siedzi jako przelot
 // `titleBandActionCensus` w `verify-renderer-layout.mjs`. Sama REGUŁA jest
@@ -135,16 +175,38 @@
 export const TITLE_BAND_ACTION_CLASSES = ["primary-button", "secondary-button"];
 
 /**
+ * Modyfikatory PROTOTYPU, które malują tło — czyli druga połowa tego samego
+ * predykatu, po drugiej stronie porównania.
+ *
+ * `.btn.primary` (`v3/app.css:321-332`, gradient akcentu) i `.btn.bordered`
+ * (`:319`, `background: var(--surface-raised)`) są jedynymi, które tło niosą.
+ * Baza `.btn` (`:306-314`) nie ma ANI JEDNEJ deklaracji `background`,
+ * `.btn.quiet` (`:318`) zmienia wyłącznie kolor, a `.icon-btn` (`:135-139`)
+ * dostaje tło dopiero na `:hover`/`:active`/`[aria-pressed]`.
+ *
+ * Stoi tu jako zbiór, a nie w prozie, bo test symetrii żąda, żeby cytat KAŻDEGO
+ * wiersza `prototype: "action"` nazywał jeden z tych dwóch modyfikatorów —
+ * inaczej ta sama asymetria wróci przy pierwszym nowym wierszu.
+ */
+export const PROTOTYPE_FILLED_MODIFIERS = ["primary", "bordered"];
+
+/**
  * Status pozycji. Zapisany TUTAJ, a nie w prozie planu, bo od niego zależy, czy
  * przelot rzuca, czy raportuje — i bo prozy nikt nie kompiluje.
  *
- * WARUNEK PRZEŁĄCZENIA NA „enforced": Faza C, lot C2 przenosi akcję główną do
- * pasma tytułu na czterech ekranach CRM, daje slot akcji `LibraryShell`
- * i `.meeting-hero`, i zdejmuje rząd akcji sprzed tytułu na ekranie rekordu —
- * po czym W KAŻDYM wierszu tabeli niżej `today` równa się `prototype`. Dopiero
- * wtedy zdanie „akcja główna stoi w rzędzie tytułu" jest o tej aplikacji PRAWDĄ
- * i wolno je egzekwować. Przełączenie wcześniej zrobiłoby z bramki układu
- * czerwień do końca fali, czyli przyrząd, który nie pilnuje niczego innego.
+ * WARUNEK PRZEŁĄCZENIA NA „enforced", zapisany tak, żeby dało się go
+ * ROZSTRZYGNĄĆ, a nie ocenić: Faza C, lot C2 przenosi akcję główną do pasma
+ * tytułu na czterech ekranach CRM i na Zadaniach, daje slot akcji `LibraryShell`
+ * i `.meeting-hero`, i zdejmuje rząd akcji sprzed tytułu na ekranie rekordu
+ * projektu — po czym KAŻDY wiersz `prototype: "action"` ma `today: "IN_BAND"`,
+ * czyli `TITLE_BAND_DIVERGENCES` jest PUSTE. Dopiero wtedy zdanie „akcja główna
+ * stoi w rzędzie tytułu" jest o tej aplikacji PRAWDĄ i wolno je egzekwować.
+ * Przełączenie wcześniej zrobiłoby z bramki układu czerwień do końca fali, czyli
+ * przyrząd, który nie pilnuje niczego innego.
+ *
+ * Rekord zadania NIE JEST na tej liście i to nie jest przeoczenie: prototyp
+ * stawia tam wyłącznie kontrolki bez tła, więc nasze puste pasmo jest z nim
+ * ZGODNE — patrz predykat symetrii w nagłówku.
  */
 export const TITLE_BAND_ACTION_STATUS = "pending: FAZA C, lot C2";
 
@@ -263,9 +325,13 @@ export const classifyTitleBandAction = ({ title, actions }) => {
  *
  *   `prototype` — CO ROBI PROTOTYP. Fakt o cudzym źródle, z adresem. „action"
  *                 znaczy: wywołanie `crumbbar(crumbs, actions)` ma DRUGI
- *                 argument i jest w nim `<button>`. „no-action" znaczy: drugiego
- *                 argumentu nie ma albo nie ma w nim przycisku. To jest
- *                 rozstrzygalne czytaniem, nie oglądaniem zrzutu.
+ *                 argument i stoi w nim przycisk NIOSĄCY TŁO, czyli `.btn`
+ *                 z modyfikatorem z `PROTOTYPE_FILLED_MODIFIERS`. „no-action"
+ *                 znaczy: drugiego argumentu nie ma, nie ma w nim przycisku
+ *                 ALBO są w nim wyłącznie kontrolki przezroczyste — `.btn.quiet`
+ *                 i `.icon-btn` są prototypowym odpowiednikiem naszego
+ *                 `.ghost-button` i po obu stronach porównania znaczą to samo.
+ *                 To jest rozstrzygalne czytaniem, nie oglądaniem zrzutu.
  *   `today`     — CO ROBI TA APLIKACJA DZIŚ. Fakt o naszym drzewie, ODCZYTANY
  *                 Z PRZELOTU (`dowody/b2-czerwien.txt`), nie z lektury kodu.
  *
@@ -332,7 +398,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/tasks.js:507-513 — btn("New task", { cls: "primary", icon: "plus", act: "new-task" })',
     today: "NO_ACTION",
     app: "tasks/TasksSurface.tsx:460-464 — pasmo z samym <h1>; tworzenie idzie przez addToGroup (:353-355), nie przez akcję",
-    // DZIESIĄTY ROZJAZD, KTÓREGO REJESTR NIE MA. Rejestr liczy dziewięć wpisów
+    // JEDYNY PODMIOT, KTÓREGO REJESTR NIE MA. Rejestr liczy dziewięć wpisów
     // przyczyny C2 i Zadań wśród nich nie ma; ten przelot mierzy, że prototyp
     // stawia w paśmie Zadań „+ New task", a nasze pasmo Zadań nie niesie ani
     // jednej akcji. Zgłoszone tu, a nie dopisane do rejestru, bo rejestr jest
@@ -397,10 +463,17 @@ export const TITLE_BAND_ROWS = [
   },
   {
     id: "tasks/record:task",
-    prototype: "action",
-    cite: 'v3/screens/record.js:556-561 — btn("Subscribe", { cls: "quiet" }) + <button class="icon-btn"> jako drugi argument crumbbara',
+    prototype: "no-action",
+    cite: 'v3/screens/record.js:556-561 — drugim argumentem crumbbara są btn("Subscribe", { cls: "quiet" }) i <button class="icon-btn">, czyli DWIE kontrolki bez tła (app.css:306-314 baza bez `background`, :318 quiet zmienia sam kolor, :135-139 icon-btn dostaje tło dopiero na hover) — żadnego modyfikatora z PROTOTYPE_FILLED_MODIFIERS',
     today: "NO_ACTION",
     app: "record/TaskRecordScreen.tsx:475-480 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko ProjectRecordScreen (:208)",
+    // WIERSZ, KTÓRY BYŁ ROZJAZDEM PRZEZ NIESYMETRYCZNY PREDYKAT, i dlatego stoi
+    // tu z uzasadnieniem, a nie po cichu jako MATCH. Póki kolumna `prototype`
+    // liczyła KAŻDY przycisk, a `today` tylko te z wypełnieniem, ten ekran był
+    // dziewiątym znaleziskiem — NIESPEŁNIALNYM w stronę prototypu (patrz
+    // nagłówek). Symetrycznie oceniony jest zgodny: prototyp nie stawia tu akcji
+    // z wypełnieniem i my też nie. Pomiar się NIE ZMNIEJSZYŁ — ekran nadal jest
+    // odwiedzany, mierzony i drukowany, tylko wraca jako MATCH.
   },
   {
     id: "pipeline/record:opportunity",
@@ -437,13 +510,22 @@ export const TITLE_BAND_DIVERGENCES = TITLE_BAND_ROWS.filter(
  * przebieg: albo ktoś przesunął akcję i nikt tego nie zapisał (regresja), albo
  * lot C2 dowiózł poprawkę i nie skasował wpisu (tabela zaczyna kłamać).
  *
+ * `armed` DOKŁADA ROZJAZDY, NIE ZASTĘPUJE REGUŁY, i to jest poprawka wady, którą
+ * ten przyrząd nosił: `armed || !predicted` jest prawdziwe dla KAŻDEGO wiersza,
+ * więc w chwili przełączenia na „enforced" padłyby również ekrany zmierzone
+ * dokładnie tak, jak tabela przewiduje — bramka czerwona na zawsze, niezależnie
+ * od zgodności z prototypem, i werdykt o treści wewnętrznie sprzecznej („ten
+ * przelot zmierzył NO_ACTION, a lista mówi NO_ACTION"). Zasięg jest teraz taki
+ * sam jak w B1, gdzie zdrowe kontrolki wypadają z osądu WCZEŚNIEJ: pada dryf
+ * od tabeli (zawsze) oraz rozjazd z prototypem (dopiero po uzbrojeniu).
+ *
  * I TO JEST TO, CO MIERZY BREAK-TEST. Baza nie może być „zielona, bo nic nie
- * znaleziono" — ten przyrząd znajduje dziś dziewięć rozjazdów i ma je
- * znajdować. Break-test nie mierzy więc, czy przyrząd coś znalazł; mierzy, czy
- * znajduje coś, czego tabela NIE PRZEWIDUJE.
+ * znaleziono" — ten przyrząd znajduje dziś osiem rozjazdów i ma je znajdować.
+ * Break-test nie mierzy więc, czy przyrząd coś znalazł; mierzy, czy znajduje
+ * coś, czego tabela NIE PRZEWIDUJE.
  */
-export const titleBandVerdictThrows = ({ predicted, armed }) =>
-  armed || !predicted;
+export const titleBandVerdictThrows = ({ predicted, divergent, armed }) =>
+  !predicted || (armed && divergent);
 
 /**
  * Werdykt o CAŁYM przelocie, nie o jednym ekranie.
