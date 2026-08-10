@@ -362,9 +362,24 @@ export const TasksSurface = ({
             Tasks
           </h1>
         </header>
-        <p className={styles.unavailable}>
-          Tasks are unavailable while the work plane cannot be read.
+        {/* The slice's OWN reason, not a sentence about the work plane in
+            general. `optionalProjection` names the query and the cause
+            (`client/workflow.ts` — refusal code, contract issue, or the bridge
+            failing), and that naming is the only diagnosis this build offers:
+            `⌘⌥I` does not open DevTools here. A fixed sentence in its place
+            throws away the whole of it. */}
+        <p className={styles.unavailable} data-tasks-unavailable>
+          {work.message}
         </p>
+        {onReload !== undefined && (
+          <button
+            className="secondary-button"
+            onClick={() => void onReload()}
+            type="button"
+          >
+            Try again
+          </button>
+        )}
       </div>
     );
 

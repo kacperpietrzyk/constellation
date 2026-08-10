@@ -212,6 +212,38 @@ export interface RelationshipIndex {
   readonly projectsByOrganization: ReadonlyMap<string, string[]>;
 }
 
+/**
+ * Whether a record in the projection still counts. ABSENT MEANS ACTIVE, and
+ * that is not a defensive default — it is the reading every other layer of this
+ * product already uses, restated here once instead of at each call site.
+ *
+ * `recordState` is written by ONE transition, `setStrategicRecordState`
+ * (`domain/src/strategic-depth.ts:801-810`), reached only by removing a record.
+ * Creation never stamps it: `base()` (`strategic-depth.ts:27-35`) sets id,
+ * workspaceId, spaceId, createdBy, version, createdAt and updatedAt, and
+ * nothing else — so a record that was never removed carries no `recordState`
+ * AT ALL, and `relationship.workspace` hands it over verbatim
+ * (`application/src/wave2.ts:2105-2112` returns `{ ...record }`).
+ *
+ * The two layers that already read it agree, and this is the third:
+ *   - domain: `strategicRecordState` — `record.recordState ?? "active"`
+ *     (`strategic-depth.ts:812-814`), and `recordIsActive` beside it;
+ *   - store: `json_extract(payload_json, '$.recordState') IS NOT 'removed'`
+ *     (`local-store/src/sqlite-application-store.ts:2364-2371`), with the same
+ *     sentence written above it.
+ *
+ * Reading it as `!== "active"` instead — which is what stood here — throws away
+ * EVERY record the product has ever created, because the key those records
+ * would need is a key removal alone writes. It is the repository's named
+ * `restated-shape-drift` class: a closed dictionary re-spelled by hand, silent
+ * in the schema (`contracts/src/query.ts:533` marks the field `.optional()`),
+ * silent in the compiler, and silent in the fixtures — `dev/crm-fixture.ts:171`
+ * stamps `recordState: "active"` on all 21 records, so no gate could see it.
+ */
+export const recordIsLive = (record: {
+  readonly recordState?: "active" | "removed" | undefined;
+}): boolean => (record.recordState ?? "active") === "active";
+
 const push = <T>(map: Map<string, T[]>, key: string, value: T): void => {
   const bucket = map.get(key);
   if (bucket === undefined) map.set(key, [value]);
@@ -236,8 +268,8 @@ export const indexRelationships = (
   for (const record of records) {
     // A removed record is still in the projection: `recordState` is what says
     // whether it counts, and reading past it is how a deleted client keeps
-    // appearing in a total.
-    if (record.recordState !== "active") continue;
+    // appearing in a total. Absent means active — see `recordIsLive`.
+    if (!recordIsLive(record)) continue;
     switch (record.kind) {
       case "organization":
         organizations.push(record);

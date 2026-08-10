@@ -434,9 +434,22 @@ export const NotesReading = ({
 
         <div className={styles.listScroll}>
           {snapshot.documents.kind === "unavailable" ? (
-            <p className="inline-error">
-              Content is not available in this scope.
-            </p>
+            <div className="inline-error" role="status">
+              {/* "Not available in this scope" NAMED A CAUSE THE CODE CANNOT
+                  KNOW. `optionalProjection` catches authorization refusals,
+                  contract rejections and a bridge that never answered all
+                  alike; a reader told "scope" would go and check their Space
+                  membership for a failure that had nothing to do with it. The
+                  slice's own message says which of the four it was. */}
+              <p data-notes-unavailable>{snapshot.documents.message}</p>
+              <button
+                className="secondary-button"
+                onClick={() => void onReload()}
+                type="button"
+              >
+                Try again
+              </button>
+            </div>
           ) : groups.length === 0 ? (
             <div className="library-empty">
               <p>Nothing here yet. Drag a note onto a folder to file it.</p>

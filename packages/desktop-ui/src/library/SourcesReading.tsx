@@ -428,7 +428,16 @@ export const SourcesReading = ({
 
         {snapshot.knowledge.kind === "unavailable" ? (
           <div className="inline-error" role="status">
-            Source metadata is unavailable right now.
+            {/* The slice's own reason and a way back, in place of a sentence
+                that said only what the empty list already showed. */}
+            <p data-sources-unavailable>{snapshot.knowledge.message}</p>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
           </div>
         ) : (
           <div
