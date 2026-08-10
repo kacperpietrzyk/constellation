@@ -176,6 +176,61 @@ const outcome = runBreakTests({
           "the surface header's title size",
         ),
     },
+    {
+      // ZŁAMANIE CZWARTE — DLA SPISU FARBY KONTROLEK (Faza B, lot B1).
+      //
+      // NAJPIERW PROBLEM, BO JEST NIEOCZYWISTY I ŁATWO GO ROZWIĄZAĆ NIEUCZCIWIE.
+      // Break-test stoi na trzech liczbach „baza ZIELONA → złamanie CZERWONE →
+      // przywrócenie ZIELONE", a przyrząd, którego to złamanie dotyczy, jest na
+      // dzisiejszym drzewie CZERWONY: znajduje CZTERNAŚCIE kształtów kontrolek
+      // na PIĘCIU ekranach, które malują się farbą systemową. Baza nie może
+      // więc być zielona „bo nic nie znaleziono".
+      //
+      // ROZWIĄZANIE NIE JEST OBEJŚCIEM, TYLKO REGUŁĄ TEGO REPOZYTORIUM: pozycja
+      // NIEODDANA raportuje, rzuca dopiero to, co ODDANE i ZEPSUTE. Te
+      // czternaście kształtów stoi WYPISANYCH w `KNOWN_CONTROL_PAINT`
+      // (`scripts/control-paint.mjs`) razem z miejscem, w którym reguła milczy
+      // o tle — i tylko się DRUKUJE. Kod wyjścia bramki nie zależy od tego, ile
+      // przyrząd dziś znalazł; zależy od tego, czy znalazł coś, czego rejestr
+      // nie zna. Baza jest zielona nad przyrządem, który w tym samym przebiegu
+      // wypisuje czternaście znalezisk, i to jest ZAMIERZONE.
+      //
+      // DLATEGO ZŁAMANIE CELUJE W KONTROLKĘ, KTÓRA TŁO DZIŚ MA. `.secondary-button`
+      // bierze `--action-secondary-bg` (`styles.css:761`) i rysuje się
+      // w spoczynku na Projektach, Organizacjach, Ludziach i w Bibliotece.
+      // Zdjęcie jednej deklaracji sprawia, że reset `button` przestaje mieć
+      // cokolwiek pod sobą i przeglądarka maluje te przyciski `ButtonFace` —
+      // czyli powstaje podpis SPOZA rejestru. Bramka idzie z 0 na 1 z DWÓCH
+      // niezależnych powodów naraz, i to jest treść tego złamania:
+      //
+      //   * werdykt nad kontrolką spoza rejestru (regresja oddanej roboty);
+      //   * `CONTROL_PAINT_WITNESS_FLAGGED` — `.secondary-button` jest jedną
+      //     z trzech KONTROLI DODATNICH przyrządu, czyli świadkiem na to, że
+      //     ten spis w ogóle umie zwrócić „w palecie". Świadek, który nagle
+      //     staje się znaleziskiem, jest albo regresją, albo fałszywym
+      //     trafieniem przyrządu — i jedno, i drugie musi zatrzymać przebieg.
+      //
+      // WYBRANA JEST KONTROLKA, KTÓREJ NIE MIERZY ŻADNA PARA ANI SONDA
+      // WIERNOŚCI (`grep "selector:.*secondary-button" scripts/visual-language-pairs.mjs`
+      // → zero trafień), żeby czerwień dało się PRZYPISAĆ. Złamanie
+      // `.primary-button` byłoby wygodniejsze i bezwartościowe: para Ustawień
+      // liczy na nim akcent, więc przebieg czerwieniałby również bez spisu
+      // i nie dowodziłby o nim niczego.
+      name: "take the token background off .secondary-button: controls that HAVE a background fall to the engine default and the census sees a shape its registry does not know",
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.secondary-button {
+  color: var(--action-secondary-text);
+  border: 1px solid var(--action-secondary-border);
+  background: var(--action-secondary-bg);`,
+          `.secondary-button {
+  color: var(--action-secondary-text);
+  border: 1px solid var(--action-secondary-border);`,
+          "the secondary action's resting fill",
+        ),
+    },
   ],
 });
 

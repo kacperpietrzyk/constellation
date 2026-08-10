@@ -37,6 +37,17 @@ import { fileURLToPath } from "node:url";
 
 import { parseColor, srgbToOklch } from "./color-contrast.mjs";
 import {
+  CONTROL_PAINT_ARMED,
+  CONTROL_PAINT_STATUS,
+  CONTROL_PAINT_TAGS,
+  KNOWN_CONTROL_PAINT,
+  classifyControlPaint,
+  classifyControlPaintCensus,
+  classifyControlPaintWitnesses,
+  controlPaintVerdictThrows,
+  unmetControlPaintEntries,
+} from "./control-paint.mjs";
+import {
   HORIZONTAL_SCROLL_ATTRIBUTE,
   KNOWN_DESCENDANT_OVERFLOWS,
   classifyDescendantOverflow,
@@ -4018,6 +4029,380 @@ const visualLanguagePairs = async (browser) => {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// B1 — SPIS POWSZECHNY FARBY KONTROLEK
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Reguła, paleta i cała arytmetyka werdyktu siedzą w `scripts/control-paint.mjs`
+// — tutaj jest wyłącznie to, czego bez przeglądarki zrobić się nie da: spacer
+// po celach i odczyt wyliczonej farby. Powód podziału i powód istnienia obu
+// części stoi w nagłówku tamtego pliku i nie jest tu powtarzany.
+//
+// OSOBNY PRZELOT, NIE DOPISEK DO `sweep`. Farba wymaga DWÓCH MOTYWÓW, a
+// przeloty geometrii chodzą po jednym; wpięcie spisu w `sweep` znaczyłoby albo
+// pięć przelotów × dwa motywy (pięciokrotny koszt za zero pomiaru — barwa nie
+// zmienia się od szerokości okna), albo spis mierzący jeden motyw i milczący
+// o drugim.
+//
+// LISTA CELÓW POCHODZI Z ŻYWEGO DOM-u, tą samą drogą co w `sweep`
+// (`.nav-item[data-surface]` + `[data-settings-entry]`), a NIE z mapy tras
+// `ROUTED_ARRIVAL`. To jest różnica, która rozstrzyga o zasięgu tego przyrządu:
+// mapa tras nie ma dziś ani jednego przystanku na Organizacjach i na Ludziach,
+// a tam siedzą CZTERY z dziesięciu znanych miejsc. Spis widzi je w dniu,
+// w którym są pozycją nawigacji.
+const measureControlPaintInPage = async ({
+  tags,
+  wantedTheme,
+  settingsSurface,
+}) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  const settle = async (ms) => {
+    await frame();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await frame();
+  };
+  document.documentElement.dataset.theme = wantedTheme;
+  await settle(200);
+
+  // Sonda rozwiązuje TĘ SAMĄ właściwość, którą czyta podmiot — inaczej obie
+  // strony porównania przeszłyby przez inną normalizację przeglądarki
+  // i „oklch(…)" nigdy nie zrównałoby się z „rgb(…)". Kopia idiomu
+  // z `measureVisualLanguageInPage`; nie da się jej zaimportować, bo Playwright
+  // serializuje ŹRÓDŁO tej funkcji, nie jej domknięcie.
+  const resolveBackground = (value) => {
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.left = "-9999px";
+    probe.style.top = "0";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    probe.style.backgroundColor = value;
+    document.body.append(probe);
+    const resolved = window.getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return resolved ?? "";
+  };
+
+  // PALETA BIERZE SIĘ Z ŻYWEGO KORZENIA, nie z arkusza. `scripts/css-tokens.mjs`
+  // umie to samo po stronie budowania, ale ŚWIADOMIE nie obsługuje
+  // `var(--x, zapas)` — a arkusze powierzchni zapasów używają. Enumeracja
+  // wyliczonego stylu widzi to, co przeglądarka NAPRAWDĘ rozwiązała.
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const names = [];
+  for (let index = 0; index < rootStyle.length; index += 1) {
+    const name = rootStyle.item(index);
+    if (name.startsWith("--")) names.push(name);
+  }
+  // Wartość, którą przeglądarka daje TŁU, którego nikt nie ustawił. Token
+  // niebędący kolorem (`--space-3: 0.75rem`) jest przy `background-color`
+  // nieprawidłowy w czasie wyliczania i spada dokładnie tutaj — więc to jest
+  // filtr „to nie jest kolor", a nie wpisana lista nazw tokenów.
+  const unset = resolveBackground("var(--constellation-no-such-token)");
+  const palette = [];
+  for (const name of names) {
+    const resolved = resolveBackground(`var(${name})`);
+    if (resolved === "" || resolved === unset) continue;
+    if (palette.includes(resolved)) continue;
+    palette.push(resolved);
+  }
+
+  // Farba, którą TA przeglądarka daje GOŁEJ kontrolce tego rodzaju w TYM
+  // motywie. Nie wchodzi do werdyktu — rozdziela dwie klasy znaleziska
+  // w raporcie i jest jedynym powodem, dla którego ten przyrząd umie napisać
+  // „no rule of this stylesheet set it" zamiast „nie znam tej wartości".
+  const uaPaints = {};
+  for (const tag of tags) {
+    const probe = document.createElement(tag);
+    probe.style.position = "absolute";
+    probe.style.left = "-9999px";
+    probe.style.top = "0";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    document.body.append(probe);
+    uaPaints[tag] = window.getComputedStyle(probe).backgroundColor ?? "";
+    probe.remove();
+  }
+
+  const normaliseClass = (token) => {
+    const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+    return match === null ? token : `_${match[1]}`;
+  };
+  const signature = (element) => {
+    const tag = element.tagName.toLowerCase();
+    const classes = [...element.classList].map(normaliseClass).join(".");
+    return classes === "" ? `${tag}[no class]` : `${tag}.${classes}`;
+  };
+  const rendered = (element) => {
+    const style = window.getComputedStyle(element);
+    if (style.display === "none") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const groups = new Map();
+  const examined = {};
+  const collect = (root, surface, exclude) => {
+    const found = [...(root?.querySelectorAll(tags.join(", ")) ?? [])].filter(
+      (element) =>
+        (exclude === undefined || !exclude.contains(element)) &&
+        rendered(element),
+    );
+    examined[surface] = (examined[surface] ?? 0) + found.length;
+    for (const element of found) {
+      const style = window.getComputedStyle(element);
+      const key = [
+        surface,
+        signature(element),
+        style.backgroundColor,
+        style.backgroundImage,
+      ].join("\t");
+      const seen = groups.get(key);
+      if (seen === undefined)
+        groups.set(key, {
+          surface,
+          signature: signature(element),
+          tag: element.tagName.toLowerCase(),
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+          count: 1,
+          // CZYM TO JEST DLA CZŁOWIEKA. Napis wystarcza na przycisku, ale
+          // kontrolka BEZ KLASY i bez napisu — a takich jest w tym drzewie sto
+          // pięć — zostawiłaby w rejestrze wpis „input[no class]" i nikogo,
+          // kto by wiedział, o które pole chodzi. Atrybuty tożsamości są
+          // zapasem, nie ozdobą.
+          sample:
+            (element.textContent ?? "").trim().slice(0, 28) ||
+            [
+              element.getAttribute("type"),
+              element.getAttribute("id"),
+              element.getAttribute("name"),
+              element.getAttribute("placeholder"),
+              element.getAttribute("aria-label"),
+            ]
+              .filter((value) => value !== null && value !== "")
+              .join(" ")
+              .slice(0, 48),
+        });
+      else seen.count += 1;
+    }
+  };
+
+  // POWŁOKA OSOBNO, RAZ. Pasek boczny, tabbar i dok przechwytywania rysują się
+  // na KAŻDYM celu; policzone pod każdym z nich zrobiłyby z rejestru dwanaście
+  // kopii jednego długu i pierwsza poprawka zostawiłaby jedenaście martwych
+  // wpisów.
+  const work = () => document.querySelector('#main-content[role="tabpanel"]');
+  collect(document.body, "shell", work() ?? undefined);
+
+  const all = [...document.querySelectorAll(".nav-item[data-surface]")].map(
+    (item) => item.dataset.surface,
+  );
+  if (
+    document.querySelector("[data-settings-entry]") !== null &&
+    !all.includes(settingsSurface)
+  )
+    all.push(settingsSurface);
+
+  for (const id of all) {
+    // Ustawienia są TRYBEM: wejście w nie podmienia lewą kolumnę, więc pozycja
+    // następnego celu nie ma czego kliknąć. Ta sama poprawka co w `sweep`.
+    const back = document.querySelector("[data-settings-back]");
+    if (back instanceof HTMLElement) {
+      back.click();
+      await settle(400);
+    }
+    const target =
+      id === settingsSurface
+        ? (document.querySelector("[data-settings-entry]") ??
+          document.querySelector(`.nav-item[data-surface="${id}"]`))
+        : document.querySelector(`.nav-item[data-surface="${id}"]`);
+    if (!(target instanceof HTMLElement)) {
+      examined[id] = examined[id] ?? 0;
+      continue;
+    }
+    target.click();
+    await settle(700);
+    collect(work(), id);
+    // Cel niesie kilka SOCZEWEK nad tymi samymi rekordami, a kontrolka
+    // wybranej soczewki maluje się inaczej niż niewybranej — czyli dokładnie
+    // ta para, o którą tu chodzi. Spis po samej soczewce domyślnej meldowałby
+    // przejście nad farbą, której nikt nie obejrzał.
+    const lenses = [...(work()?.querySelectorAll("[data-layout]") ?? [])];
+    for (const lens of lenses) {
+      if (!(lens instanceof HTMLElement)) continue;
+      lens.click();
+      await settle(600);
+      collect(work(), id);
+    }
+    const first = lenses[0];
+    if (lenses.length > 0 && first instanceof HTMLElement) {
+      first.click();
+      await settle(500);
+    }
+  }
+
+  return {
+    applied: document.documentElement.dataset.theme ?? "",
+    palette,
+    // ILE WŁASNOŚCI W OGÓLE ENUMEROWANO, a nie ile ich zostało po deduplikacji.
+    // Pierwsza wersja tej linii drukowała „55 wartości z 55 własności", bo obie
+    // liczby były tą samą liczbą — para, która nie umie się rozjechać, nie
+    // niesie żadnej informacji i wygląda przy tym na potwierdzenie.
+    customProperties: names.length,
+    uaPaints,
+    groups: [...groups.values()],
+    examined,
+  };
+};
+
+const controlPaintCensus = async (browser) => {
+  const failures = [];
+  const verdicts = [];
+  const reported = [];
+  const met = new Set();
+  const palettesByTheme = {};
+  const uaPaints = {};
+  // Ile kontrolek spis obejrzał na każdym celu, ZSUMOWANE PO MOTYWACH. Cel,
+  // który wyszedł na zero w OBU, jest ekranem, o którym ten przebieg nie mówi
+  // nic — i to jest awaria przyrządu, nie cisza.
+  const examined = {};
+  // Podpis → stany, w jakich go osądzono, i ile elementów zliczono. To jest
+  // materiał dla KONTROLI DODATNICH: bez niego przyrząd wie tylko o tym, co
+  // zaczerwienił, czyli nie umie udowodnić, że potrafi cokolwiek przepuścić.
+  const observed = {};
+  const started = Date.now();
+  let judged = 0;
+  let flagged = 0;
+  let flaggedElements = 0;
+
+  for (const theme of THEME_ORDER) {
+    const report = (line) => console.log(`control paint\t${theme}\t${line}`);
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      colorScheme: theme,
+    });
+    page.on("pageerror", (error) =>
+      failures.push(`CONTROL_PAINT_PAGE_ERROR (${theme}): ${String(error)}`),
+    );
+    await page.goto(HARNESS, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+
+    const collected = await page.evaluate(measureControlPaintInPage, {
+      tags: CONTROL_PAINT_TAGS,
+      wantedTheme: theme,
+      settingsSurface: SETTINGS_SURFACE,
+    });
+    if (collected.applied !== theme)
+      failures.push(
+        `CONTROL_PAINT_THEME_NOT_STAMPED: this pass set data-theme="${theme}" and read back ` +
+          `„${collected.applied}". Instrument failure — nothing below describes the theme this ` +
+          "pass chose.",
+      );
+    palettesByTheme[theme] = collected.palette;
+    for (const [tag, paint] of Object.entries(collected.uaPaints))
+      uaPaints[`${theme}/${tag}`] = paint;
+
+    // WARTOŚĆ SONDY DRUKOWANA W OBU MOTYWACH, i to nie jest ozdoba: bez niej
+    // pierwsza czerwień na CI (inny system, inny `ButtonFace`) byłaby
+    // nieodróżnialna od awarii przyrządu.
+    report(
+      `theme stamped\tdata-theme=${collected.applied}\t` +
+        `${collected.palette.length} distinct token colour(s) out of ` +
+        `${collected.customProperties} custom propert(ies) on the root\t` +
+        `bare-control paint ${Object.entries(collected.uaPaints)
+          .map(([tag, paint]) => `<${tag}> ${paint}`)
+          .join(", ")}`,
+    );
+
+    const states = {};
+    for (const group of collected.groups) {
+      const decision = classifyControlPaint({
+        group,
+        palette: collected.palette,
+        uaPaint: collected.uaPaints[group.tag],
+      });
+      judged += 1;
+      states[decision.state] = (states[decision.state] ?? 0) + 1;
+      const witness = (observed[group.signature] ??= {
+        states: [],
+        count: 0,
+      });
+      if (!witness.states.includes(decision.state))
+        witness.states.push(decision.state);
+      witness.count += group.count;
+      if (decision.state === "UNREADABLE") {
+        failures.push(
+          `CONTROL_PAINT_UNREADABLE (${theme}): ${decision.reason}`,
+        );
+        continue;
+      }
+      if (decision.state !== "UA_DEFAULT" && decision.state !== "OFF_PALETTE")
+        continue;
+      flagged += 1;
+      flaggedElements += group.count;
+      const key = `${group.surface}\t${group.signature}`;
+      const registered = KNOWN_CONTROL_PAINT.some(
+        (entry) =>
+          entry.surface === group.surface &&
+          entry.signature === group.signature,
+      );
+      if (registered) met.add(key);
+      const line =
+        `${group.surface}\t${decision.state}\t${group.signature}\t` +
+        `${group.count} element(s)\t${group.backgroundColor}\t` +
+        `„${group.sample}"`;
+      report(line);
+      if (controlPaintVerdictThrows({ registered, armed: CONTROL_PAINT_ARMED }))
+        verdicts.push(`${theme} theme — ${decision.reason}`);
+      else reported.push(`${theme} theme — ${line}`);
+    }
+    // HISTOGRAM STANÓW, i to jest zdanie, którego nie da się przeczytać
+    // odwrotnie. „Zero znalezisk" nad przyrządem, który osądził zero grup,
+    // wygląda identycznie jak sukces — a rozkład, w którym są kontrolki
+    // legalne, jest jedynym dowodem, że osąd w ogóle się odbył.
+    report(
+      `summary\t${collected.groups.length} control group(s) judged\t` +
+        `${Object.values(collected.examined).reduce((sum, n) => sum + n, 0)} rendered control(s)\t` +
+        `across ${Object.keys(collected.examined).length} destination(s)\t` +
+        `${Object.entries(states)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([state, count]) => `${state} ${count}`)
+          .join(", ")}`,
+    );
+    for (const [surface, count] of Object.entries(collected.examined)) {
+      report(`examined\t${surface}\t${count} rendered control(s)`);
+      examined[surface] = (examined[surface] ?? 0) + count;
+    }
+    await page.close();
+  }
+
+  failures.push(
+    ...classifyControlPaintCensus({ examined, uaPaints, palettesByTheme }),
+  );
+  const witnesses = classifyControlPaintWitnesses({ observed });
+  failures.push(...witnesses.failures);
+  for (const line of witnesses.lines) console.log(`control paint\t${line}`);
+  for (const entry of unmetControlPaintEntries(met))
+    failures.push(
+      `CONTROL_PAINT_REGISTRY_UNMET — ${entry.surface}: ${entry.signature} was never met in ` +
+        `either theme (${entry.why}). Either the lot that fixed it left the entry behind, or ` +
+        "this census stopped seeing that screen.",
+    );
+
+  return {
+    failures,
+    verdicts,
+    reported,
+    judged,
+    flagged,
+    flaggedElements,
+    elapsedMs: Date.now() - started,
+  };
+};
+
+// ════════════════════════════════════════════════════════════════════════════
 // PRZELOT TRAS — PARY LOTÓW 2-6 I PRZYRZĄD P7 (POZYCJA PO PRZEWINIĘCIU)
 // ════════════════════════════════════════════════════════════════════════════
 //
@@ -5776,6 +6161,35 @@ try {
           `themes; ${VISUAL_LANGUAGE_NOT_COVERED.length} aspect(s) declared NOT COVERED`
         : `${language.failures.length} instrument failure(s), ${language.verdicts.length} verdict(s)`
     }`,
+  );
+  // ── B1: SPIS POWSZECHNY FARBY KONTROLEK ─────────────────────────────────
+  // TRYB RAPORTUJĄCY, i to jest odpowiedź na jedyne trudne pytanie tego
+  // przyrządu: jest CZERWONY na dzisiejszym drzewie i CI ma być zielone. Reguła
+  // tego repozytorium rozstrzyga to bez kompromisu — pozycja NIEODDANA
+  // raportuje, rzuca dopiero to, co ODDANE i ZEPSUTE. Znany dług Fazy C stoi
+  // wypisany w `KNOWN_CONTROL_PAINT` i tylko się drukuje; kontrolka SPOZA tego
+  // rejestru jest regresją i pada zawsze. Awarie przyrządu padają bezwarunkowo,
+  // tak samo jak w sondzie wierności i w mapie par, i z tego samego powodu:
+  // `REPORT_ONLY` ma w tym pliku JEDEN nazwany zakres — rejestr przepełnień —
+  // a ten spis ma własny.
+  const controlPaint = await controlPaintCensus(browser);
+  for (const failure of controlPaint.failures) {
+    problems.push(`control paint — instrument: ${failure}`);
+  }
+  for (const verdict of controlPaint.verdicts) {
+    problems.push(`control paint — ${verdict}`);
+  }
+  for (const line of controlPaint.reported)
+    console.log(`control paint\treported\t${line}`);
+  console.log(
+    `control paint: ${CONTROL_PAINT_STATUS} — ` +
+      `${CONTROL_PAINT_ARMED ? "ENFORCED (a verdict fails this run)" : "PENDING (known debt is reported, a control OUTSIDE the registry still fails)"}\t` +
+      `${controlPaint.judged} control group(s) judged in ${THEME_ORDER.length} theme(s)\t` +
+      `${controlPaint.flagged} group(s) / ${controlPaint.flaggedElements} rendered element(s) ` +
+      `paint a background this stylesheet did not set\t` +
+      `${KNOWN_CONTROL_PAINT.length} registry entr(ies)\t` +
+      `${controlPaint.verdicts.length} verdict(s) thrown, ${controlPaint.reported.length} reported\t` +
+      `${controlPaint.elapsedMs} ms wall clock`,
   );
   // ── P7 + PARY LOTÓW 2-6: PRZELOT TRAS ───────────────────────────────────
   // OSOBNY PRZELOT OD `visualLanguagePairs`, i to nie jest podział estetyczny:
