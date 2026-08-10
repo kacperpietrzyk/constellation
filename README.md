@@ -363,13 +363,25 @@ fails:
 )
 ```
 
-To launch the interactive in-memory preview, install the pinned Electron binary
-and start the desktop development surface:
+To launch the interactive in-memory preview, install the pinned Electron binary,
+rebuild the native encrypted-database driver, and start the desktop development
+surface:
 
 ```sh
 npm install
+npm run setup:native
 npm run dev:desktop
 ```
+
+`npm run setup:native` builds the pinned SQLCipher source and rebuilds
+`better-sqlite3` against it for the Electron ABI. It is required on macOS and
+Windows, it needs network access and the platform build tools, and it must be
+run again after every `npm install`, because installing dependencies replaces
+the module with a build that has neither SQLCipher nor the Electron ABI. It is
+deliberately not a `postinstall` hook: the documented install path above is
+`npm ci --ignore-scripts`, where such a hook would never run, and the release
+workflows invoke the same two scripts explicitly. `npm run dev:desktop` refuses
+with this command in its message when the driver is missing.
 
 Use the Quick Capture button or `Command/Ctrl+Shift+K`. The preview is
 development infrastructure, not a durable local Alpha. Text becomes a Task;

@@ -52,6 +52,7 @@ const outcome = runBreakTests({
   build: { command: "npm", args: ["run", "build"] },
   verify: nodeTest(
     "scripts/native/sqlcipher-amalgamation-environment.test.mjs",
+    "scripts/setup-native.test.mjs",
   ),
   breaks: [
     {
@@ -94,6 +95,89 @@ fi`,
   CRYPTO_LDFLAGS="-lcrypto"
 fi`,
           "the OpenSSL probe",
+        ),
+    },
+    {
+      // DEFEKT 1: sonda uznaje ISTNIENIE binarki za gotowość. To jest dokładnie
+      // ten stan, w którym pętla dev nie wstaje: `npm install` bez
+      // `--ignore-scripts` zostawia `better_sqlite3.node` zbudowany przeciw ABI
+      // Node'a i bez SQLCiphera. Sonda mierząca obecność nigdy nie mierzy
+      // pochodzenia.
+      name: "accept any better_sqlite3.node: a binding built without SQLCipher passes for ready",
+      file: "scripts/setup-native.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  if (!exists(path.join(root, NATIVE_SQLCIPHER_MARKER)))
+    return {
+      ready: false,
+      reason: \`\${NATIVE_BINDING} exists but \${NATIVE_SQLCIPHER_MARKER} does not, so the binding was built without the pinned SQLCipher source.\`,
+    };
+`,
+          "",
+          "the SQLCipher provenance check",
+        ),
+    },
+    {
+      // DEFEKT 1, wersja Electrona: skrypt natywny buduje przeciw nagłówkom
+      // wpisanym u siebie, a pakiet niesie binarkę z `fetch-electron.mjs`.
+      // Rozjazd nie pada na budowie — pada dopiero przy starcie aplikacji,
+      // i to jest ten sam pusty modal, od którego zaczęła się ta fala.
+      name: "let the native scripts target another Electron than the package ships",
+      file: "scripts/native/build-sqlcipher-macos.sh",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          'ELECTRON_VERSION="43.1.0"',
+          'ELECTRON_VERSION="43.2.0"',
+          "the Electron target of the macOS native build",
+        ),
+    },
+    {
+      // DEFEKT 1, druga połowa: kolejność kroków. `build-sqlcipher-macos.sh`
+      // otwiera się od `test -f "$AMALGAMATION_DIR/sqlite3.c"`, więc plan
+      // odwrócony pada — ale pada dopiero po wykonaniu, na maszynie z siecią
+      // i autotoolsami. Asercja ma to złapać wszędzie.
+      name: "swap the two native steps: the build runs before the source it reads exists",
+      file: "scripts/setup-native.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  if (platform === "darwin")
+    return [
+      {
+        label: "generate the pinned SQLCipher amalgamation",
+        command: "bash",
+        args: [generate, amalgamationDirectory],
+      },
+      {
+        label: "rebuild better-sqlite3 against it for the Electron ABI",
+        command: "bash",
+        args: [
+          path.join(root, "scripts", "native", "build-sqlcipher-macos.sh"),
+          amalgamationDirectory,
+          root,
+        ],
+      },
+    ];`,
+          `  if (platform === "darwin")
+    return [
+      {
+        label: "rebuild better-sqlite3 against it for the Electron ABI",
+        command: "bash",
+        args: [
+          path.join(root, "scripts", "native", "build-sqlcipher-macos.sh"),
+          amalgamationDirectory,
+          root,
+        ],
+      },
+      {
+        label: "generate the pinned SQLCipher amalgamation",
+        command: "bash",
+        args: [generate, amalgamationDirectory],
+      },
+    ];`,
+          "the macOS step order",
         ),
     },
   ],

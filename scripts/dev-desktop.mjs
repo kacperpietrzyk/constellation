@@ -3,6 +3,7 @@ import { existsSync, watch } from "node:fs";
 import path from "node:path";
 
 import { devStateRoot } from "./dev-state.mjs";
+import { NATIVE_SETUP_REMEDY, nativeDriverState } from "./setup-native.mjs";
 
 const RESTART_DEBOUNCE_MS = 300;
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
@@ -12,6 +13,19 @@ if (
   !existsSync(path.join(stateRoot, "local-alpha-workspace", "key-wrapper.json"))
 ) {
   console.error("No development snapshot yet. Run: npm run dev:snapshot");
+  process.exit(1);
+}
+
+// Sprawdzane TUTAJ, a nie zostawione Electronowi: bez tego kroku pętla dev
+// pada dopiero przy otwieraniu workspace'u, modalnym oknem bez ani jednej
+// szczegółowej informacji. Krok istniał wyłącznie w CI, więc znika po każdym
+// `npm install` — a wtedy jedyne, co widać, to nieudany start.
+const driver = nativeDriverState(repositoryRoot);
+if (!driver.ready) {
+  console.error(
+    `The desktop development loop needs a native driver, but ${driver.reason}`,
+  );
+  console.error(NATIVE_SETUP_REMEDY);
   process.exit(1);
 }
 
