@@ -241,6 +241,61 @@ const outcome = runBreakTests({
           "the secondary action's resting fill",
         ),
     },
+    {
+      // ZŁAMANIE PIĄTE — DLA POZYCJI AKCJI W PAŚMIE TYTUŁU (Faza B, lot B2).
+      //
+      // TEN SAM PROBLEM CO PRZY ZŁAMANIU CZWARTYM I TA SAMA ODPOWIEDŹ. Przyrząd
+      // B2 jest na dzisiejszym drzewie CZERWONY: dziewięć ekranów stawia akcję
+      // główną poza rzędem tytułu. Baza nie może więc być zielona „bo nic nie
+      // znaleziono" — jest zielona, bo te dziewięć stoi WYPISANYCH
+      // w `TITLE_BAND_ROWS` (`scripts/title-band-action.mjs`) z adresem
+      // w prototypie, i tylko się drukuje. Kod wyjścia bramki zależy od tego,
+      // czy przyrząd znalazł coś, czego kanoniczna lista NIE PRZEWIDUJE.
+      //
+      // DLATEGO ZŁAMANIE CELUJE W JEDYNY EKRAN, KTÓRY DZIŚ TRZYMA AKCJĘ
+      // W PAŚMIE. Projekty są w tej tabeli jedynym wierszem `IN_BAND`
+      // (`Wave2Surfaces.tsx:53-73` renderuje `{action}` jako drugie dziecko
+      // pasma, `:789` wkłada tam „New project"). Zdjęcie `display: flex`
+      // z `.surface-header` rozkłada pasmo na blok, czyli przenosi akcję pod
+      // tytuł — dokładnie ten rozjazd, którego ten przyrząd szuka, tyle że
+      // wprowadzony tam, gdzie go dziś NIE MA.
+      //
+      // CZERWIEŃ JEST NADOKREŚLONA I TO JEST ZAMIERZONE — pada z DWÓCH
+      // niezależnych powodów i oba są treścią tego przyrządu:
+      //
+      //   * werdykt nad ekranem, który rozjechał się z kanoniczną listą
+      //     (Projekty zmierzone jako BELOW_BAND wobec deklarowanego IN_BAND);
+      //   * `TITLE_BAND_NEVER_IN_BAND` — Projekty są JEDYNYM świadkiem na to,
+      //     że ten przyrząd umie zwrócić cokolwiek poza znaleziskiem, więc
+      //     przebieg, w którym przestały nim być, jest przebiegiem sondy, która
+      //     umie wyłącznie czerwienieć.
+      //
+      // Fragmenty niżej pinują OBIE ścieżki, bo sam kod wyjścia nie odróżnia
+      // ich od siebie ani od czerwieni któregokolwiek z pozostałych przelotów
+      // tej bramki — a `display: block` na paśmie rusza również geometrię,
+      // którą mierzą przeloty sprzed tej fazy.
+      name: "lay the surface header out as a block: the one screen that keeps its primary action in the title row drops it a line, and the title-band pass loses its only witness",
+      expectRedContains: [
+        "projects: this pass measured BELOW_BAND and the canonical screen list says IN_BAND",
+        "TITLE_BAND_NEVER_IN_BAND",
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.surface-header {
+  max-width: var(--surface-measure, 58rem);
+  min-height: var(--header-band-height);
+  margin: 0 auto var(--space-6);
+  display: flex;`,
+          `.surface-header {
+  max-width: var(--surface-measure, 58rem);
+  min-height: var(--header-band-height);
+  margin: 0 auto var(--space-6);
+  display: block;`,
+          "the surface header's row layout",
+        ),
+    },
   ],
 });
 

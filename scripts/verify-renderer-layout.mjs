@@ -71,6 +71,22 @@ import {
   classifyHeightBoundSweep,
 } from "./surface-height-bound.mjs";
 import {
+  TITLE_BAND_ACTION_ARMED,
+  TITLE_BAND_ACTION_CLASSES,
+  TITLE_BAND_ACTION_STATUS,
+  TITLE_BAND_DIVERGENCES,
+  TITLE_BAND_ROWS,
+  // Ten sam wzorzec co w spisie farby, i JEST TO OSOBNY EKSPORT, nie wspólny
+  // import: dwa przyrządy dzielące jedną stałą przez trzeci plik dostają
+  // krawędź, której żaden z nich nie potrzebuje, a pierwsza rozbieżność
+  // w normalizacji klasy byłaby wtedy rozbieżnością MIĘDZY przyrządami.
+  CSS_MODULE_HASH_PATTERN as TITLE_BAND_HASH_PATTERN,
+  classifyTitleBandAction,
+  classifyTitleBandCensus,
+  isTitleBandDivergence,
+  titleBandVerdictThrows,
+} from "./title-band-action.mjs";
+import {
   RECORD_TITLE_BAND_OWNER,
   VISUAL_LANGUAGE_EXPECTED,
   VISUAL_LANGUAGE_NOT_COVERED,
@@ -4574,6 +4590,402 @@ const controlPaintCensus = async (browser) => {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// POZYCJA AKCJI GŁÓWNEJ W PAŚMIE TYTUŁU — FAZA B, LOT B2
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Cała reguła, tabela ekranów i powód każdej decyzji stoją w
+// `scripts/title-band-action.mjs`. Tutaj jest WYŁĄCZNIE to, co wymaga
+// przeglądarki: spacer po celach, otwarcie rekordów i odczyt czterech liczb
+// z każdego pudełka.
+//
+// JEDEN MOTYW, i to jest wybór, nie oszczędność: `getBoundingClientRect()` nie
+// jest funkcją farby, więc drugi motyw dałby dwa razy te same liczby i drugi
+// raz ten sam czas bramki. Ten sam argument, który w `routedVisualLanguage`
+// każe mierzyć przyklejenie raz, a pary dwa razy.
+//
+// JEDNA SZEROKOŚĆ — 1440×900, jak pary i jak spis farby. Przy 320 px i przy
+// 200% tekstu akcja LEGALNIE stoi wiersz niżej: `.surface-header` ma
+// `flex-wrap: wrap` postawione świadomie (`styles.css:1826-1831`), więc
+// asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
+// przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
+// „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
+// przyklejenia (`:4949`).
+
+const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
+
+// Rekordy otwierają się wyłącznie w oknie, którego system nie odmówi
+// (`BrowserWindow` ma `minWidth: 760`), a ten przelot chodzi po 1440 — więc
+// próg jest tu spełniony z zapasem i stoi wypisany tylko po to, żeby zmiana
+// szerokości tego przelotu nie zabrała trzech ekranów po cichu.
+const TITLE_BAND_RECORD_MIN_WIDTH = 760;
+
+const measureTitleBandActionInPage = async ({
+  actionClasses,
+  settingsSurface,
+  classHashPattern,
+  arrivalTimeoutMs,
+  recordMinWidth,
+}) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  const settle = async (ms) => {
+    await frame();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await frame();
+  };
+
+  const classHash = new RegExp(classHashPattern, "u");
+  const normaliseClass = (token) => {
+    const match = classHash.exec(token);
+    return match === null ? token : `_${match[1]}`;
+  };
+  const signature = (element) => {
+    const tag = element.tagName.toLowerCase();
+    const classes = [...element.classList].map(normaliseClass).join(".");
+    return classes === "" ? tag : `${tag}.${classes}`;
+  };
+  const rendered = (element) => {
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const round = (value) => Math.round(value * 10) / 10;
+  const box = (element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: round(rect.top),
+      bottom: round(rect.bottom),
+      left: round(rect.left),
+      right: round(rect.right),
+      height: round(rect.height),
+    };
+  };
+  const isAction = (element) =>
+    actionClasses.some((name) => element.classList.contains(name));
+
+  const work = () => document.querySelector('#main-content[role="tabpanel"]');
+
+  // JEDEN EKRAN → JEDEN WIERSZ. Wszystko, czego reguła potrzebuje, i ani jednej
+  // rzeczy więcej: cztery liczby o tytule, cztery o każdej akcji, oraz to, co
+  // pozwala odróżnić „ekran bez akcji" od „pasma, którego nie było".
+  const snap = (id) => {
+    const titles = [...document.querySelectorAll("#surface-title")].filter(
+      (element) => rendered(element),
+    );
+    const title = titles[0];
+    const band = title?.closest("header") ?? null;
+    if (titles.length !== 1 || band === null)
+      return {
+        id,
+        titles: titles.length,
+        title: null,
+        band: null,
+        neighbourhood: [],
+        actions: [],
+      };
+    const bandBox = box(band);
+    const titleBox = box(title);
+
+    // OBSZAR TYTUŁU: pasmo plus rodzeństwo BEZPOŚREDNIE, ale wyłącznie takie,
+    // które NIE JEST WYŻSZE od samego pasma. Powód, liczby i zadeklarowana
+    // ślepa plama tej granicy stoją w nagłówku `title-band-action.mjs`;
+    // w skrócie: rząd chromu jest rzędem, obszar treści jest wysoki, a bez tej
+    // granicy pierwsza sekcja treści Dziś i Skrzynki wchodziłaby do pomiaru
+    // razem z przyciskami swoich wierszy.
+    const neighbourhood = [{ offset: 0, node: band, box: bandBox }];
+    const siblings = [...(band.parentElement?.children ?? [])];
+    const index = siblings.indexOf(band);
+    for (const offset of [-1, 1]) {
+      const node = siblings[index + offset];
+      if (!(node instanceof HTMLElement) || !rendered(node)) continue;
+      const nodeBox = box(node);
+      if (nodeBox.height > bandBox.height) continue;
+      neighbourhood.push({ offset, node, box: nodeBox });
+    }
+
+    const actions = [];
+    for (const entry of neighbourhood)
+      for (const element of entry.node.querySelectorAll("button")) {
+        if (!isAction(element) || !rendered(element)) continue;
+        actions.push({
+          where:
+            entry.offset === 0 ? "band" : entry.offset < 0 ? "before" : "after",
+          signature: signature(element),
+          sample: (element.textContent ?? "").trim().slice(0, 32),
+          ...box(element),
+        });
+      }
+
+    return {
+      id,
+      titles: titles.length,
+      title: {
+        signature: signature(title),
+        sample: (title.textContent ?? "").trim().slice(0, 32),
+        ...titleBox,
+      },
+      band: { signature: signature(band), ...bandBox },
+      neighbourhood: neighbourhood.map((entry) => ({
+        offset: entry.offset,
+        signature: signature(entry.node),
+        height: entry.box.height,
+      })),
+      // ILE RODZEŃSTWA W OGÓLE ODRZUCIŁA GRANICA WYSOKOŚCI. Bez tej liczby
+      // „brak akcji" nad ekranem, którego sąsiad właśnie urósł ponad pasmo,
+      // czyta się identycznie jak brak akcji nad ekranem, który jej nie ma.
+      neighboursDropped: [-1, 1].filter((offset) => {
+        const node = siblings[index + offset];
+        return (
+          node instanceof HTMLElement &&
+          rendered(node) &&
+          box(node).height > bandBox.height
+        );
+      }).length,
+      actions,
+    };
+  };
+
+  const navIds = [...document.querySelectorAll(".nav-item[data-surface]")].map(
+    (item) => item.dataset.surface,
+  );
+  const all = [];
+  for (const id of navIds) if (!all.includes(id)) all.push(id);
+  const settingsEntry =
+    document.querySelector("[data-settings-entry]") !== null;
+  if (settingsEntry && !all.includes(settingsSurface))
+    all.push(settingsSurface);
+
+  const arrivals = [];
+  // CZEKANIE NA ZDARZENIE, NIE NA CZAS — ta sama umowa co w spisie farby:
+  // twarda asercja po stałym `settle` zamienia drgnięcie maszyny w czerwoną
+  // bramkę, a ten strażnik ma wołać dopiero wtedy, gdy powłoka NAPRAWDĘ nie
+  // dojechała.
+  const arrived = async (id) => {
+    const surfaceOf = () =>
+      document
+        .querySelector("main[data-surface]")
+        ?.getAttribute("data-surface") ?? "";
+    const deadline = Date.now() + arrivalTimeoutMs;
+    while (Date.now() < deadline) {
+      if (surfaceOf() === id) return id;
+      await settle(100);
+    }
+    return surfaceOf();
+  };
+
+  const measured = [];
+  for (const id of all) {
+    // Ustawienia są TRYBEM: wejście w nie podmienia lewą kolumnę, więc pozycja
+    // następnego celu nie ma czego kliknąć. Ta sama poprawka co w `sweep`.
+    const back = document.querySelector("[data-settings-back]");
+    if (back instanceof HTMLElement) {
+      back.click();
+      await settle(400);
+    }
+    const target =
+      id === settingsSurface
+        ? (document.querySelector("[data-settings-entry]") ??
+          document.querySelector(`.nav-item[data-surface="${id}"]`))
+        : document.querySelector(`.nav-item[data-surface="${id}"]`);
+    if (!(target instanceof HTMLElement)) {
+      arrivals.push({ id, seen: null });
+      continue;
+    }
+    target.click();
+    arrivals.push({ id, seen: await arrived(id) });
+    // PRZYBYCIE TO NIE JEST NARYSOWANIE. Stempel `data-surface` przestawia się
+    // natychmiast, a zawartość celu dojeżdża później — zmierzone na spisie
+    // farby, gdzie zbieranie zaraz po przybyciu dawało ZERO kontrolek na
+    // czterech ekranach naraz.
+    await settle(700);
+    measured.push(snap(id));
+
+    // EKRAN REKORDU JEST OSOBNYM PASMEM, nie zakładką tego samego. Trzeci
+    // kształt rozjazdu — akcje NAD tytułem — żyje wyłącznie tutaj, więc
+    // przelot, który rekordów nie otwiera, nie ma o nim nic do powiedzenia.
+    //
+    // ZAKŁADEK SIĘ NIE OBCHODZI, i to jest pomiar, nie skrót: `.crumbs`
+    // z `.actions` renderuje `ProjectRecordScreen` POZA panelem zakładki
+    // (`:300-306` wobec `:308`), więc każda zakładka pokazuje TE SAME
+    // elementy w tych samych miejscach. Rejestr rozjazdów liczy je dwa razy,
+    // bo porównywał dwa zrzuty; ten przelot liczy je RAZ, bo mierzy elementy.
+    const row =
+      window.innerWidth >= recordMinWidth
+        ? work()?.querySelector(
+            "[data-project-row], [data-task-row], [data-pipeline-card]",
+          )
+        : null;
+    if (row instanceof HTMLElement) {
+      row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      await settle(900);
+      const kind =
+        work()
+          ?.querySelector("[data-record-kind]")
+          ?.getAttribute("data-record-kind") ?? "";
+      if (kind !== "") measured.push(snap(`${id}/record:${kind}`));
+    }
+  }
+
+  return {
+    declared: all,
+    settingsEntry,
+    arrivals,
+    measured,
+    rootFontSizePx: Number.parseFloat(
+      window.getComputedStyle(document.documentElement).fontSize,
+    ),
+  };
+};
+
+const titleBandActionCensus = async (browser) => {
+  const failures = [];
+  const verdicts = [];
+  const reported = [];
+  const started = Date.now();
+  const report = (line) => console.log(`title band\t${line}`);
+
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    colorScheme: THEME_ORDER[0],
+  });
+  page.on("pageerror", (error) =>
+    failures.push(`TITLE_BAND_PAGE_ERROR: ${String(error)}`),
+  );
+  await page.goto(HARNESS, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+
+  const collected = await page.evaluate(measureTitleBandActionInPage, {
+    actionClasses: TITLE_BAND_ACTION_CLASSES,
+    settingsSurface: SETTINGS_SURFACE,
+    classHashPattern: TITLE_BAND_HASH_PATTERN,
+    arrivalTimeoutMs: TITLE_BAND_ARRIVAL_TIMEOUT_MS,
+    recordMinWidth: TITLE_BAND_RECORD_MIN_WIDTH,
+  });
+  await page.close();
+
+  const byId = new Map(TITLE_BAND_ROWS.map((row) => [row.id, row]));
+  const judged = [];
+  let divergent = 0;
+  let held = 0;
+
+  report(
+    `walked\t${collected.declared.length} declared destination(s)\t` +
+      `${collected.arrivals.filter((arrival) => arrival.seen === arrival.id).length} of ` +
+      `${collected.arrivals.length} arrival(s) confirmed\t` +
+      `settings entry ${collected.settingsEntry ? "found" : "MISSING"}\t` +
+      `root font size ${collected.rootFontSizePx}px`,
+  );
+
+  for (const entry of collected.measured) {
+    // Pasmo NIEROZSTRZYGNIĘTE jest awarią przyrządu i wchodzi do księgowości
+    // przez `classifyTitleBandCensus` — tutaj nie wolno go osądzić, bo werdykt
+    // bez tytułu byłby zgadywaniem wpisanym w raport.
+    //
+    // `band` IDZIE DALEJ NIETKNIĘTE, i to nie jest przepisywanie pola. Bez
+    // niego księgowość widziałaby wyłącznie `titles`, więc ekran z JEDNYM
+    // `#surface-title` bez przodka `<header>` — tytuł jest, pasma nie ma —
+    // trafiałby tu jako `NOT_MEASURED` i NIE ZAPALAŁ ani jednej awarii niżej,
+    // bo `entry.band` byłoby `undefined`, a nie `null`. Cichy `NOT_MEASURED`
+    // jest dokładnie tym, przed czym stoi punkt o niezmierzonym ekranie.
+    if (entry.titles !== 1 || entry.band === null) {
+      judged.push({
+        id: entry.id,
+        state: "NOT_MEASURED",
+        titles: entry.titles,
+        band: entry.band,
+      });
+      report(
+        `${entry.id}\tNOT_MEASURED\t„#surface-title" matched ${entry.titles} element(s), ` +
+          `band ${entry.band === null ? "has no ancestor <header>" : "unresolved"}`,
+      );
+      continue;
+    }
+    const decision = classifyTitleBandAction({
+      title: entry.title,
+      actions: entry.actions,
+    });
+    judged.push({
+      id: entry.id,
+      state: decision.state,
+      titles: entry.titles,
+      band: entry.band,
+    });
+    const row = byId.get(entry.id);
+    const predicted = row !== undefined && row.today === decision.state;
+    // „BRAK AKCJI" MUSI POWIEDZIEĆ, GDZIE SZUKANO. Samo zdanie „nie znalazłem"
+    // nad ekranem, którego sąsiad właśnie urósł ponad pasmo, czyta się
+    // identycznie jak nad ekranem, który akcji nie ma — a to są dwie różne
+    // rzeczy i dwie różne roboty. Wiersz niesie więc PRZESZUKANY obszar
+    // z wysokościami i liczbę rzędów, które granica wysokości odrzuciła.
+    const where =
+      decision.judged.length === 0
+        ? "no action-class button in the title row's neighbourhood [searched: " +
+          entry.neighbourhood
+            .map((near) => `${near.signature} h=${near.height}`)
+            .join(", ") +
+          "]" +
+          (entry.neighboursDropped > 0
+            ? ` (${entry.neighboursDropped} adjacent row(s) taller than the band were left out)`
+            : "")
+        : decision.judged
+            .map(
+              (action) =>
+                `${action.signature} „${action.sample}" ${action.where} ` +
+                `drift ${action.drift}px vs tolerance ${action.tolerance}px → ${action.state}`,
+            )
+            .join(" | ");
+    const line =
+      `${entry.id}\t${decision.state}\t` +
+      `${row === undefined ? "UNDECLARED" : `prototype ${row.prototype}, table says ${row.today}`}\t` +
+      `band ${entry.band.signature} h=${entry.band.height}\t` +
+      `title „${entry.title.sample}" h=${entry.title.height}\t${where}`;
+    report(line);
+
+    if (row === undefined) continue;
+    if (titleBandVerdictThrows({ predicted, armed: TITLE_BAND_ACTION_ARMED })) {
+      verdicts.push(
+        `${entry.id}: this pass measured ${decision.state} and the canonical screen list says ` +
+          `${row.today} (prototype: ${row.prototype} — ${row.cite}). Either the primary action ` +
+          "moved and nobody wrote it down, or lot C2 delivered the fix and left the row behind. " +
+          `Measured: ${where}. App: ${row.app}.`,
+      );
+      continue;
+    }
+    if (isTitleBandDivergence(row)) {
+      divergent += 1;
+      reported.push(
+        `${entry.id}\t${decision.state}\tprototype puts an action in this band — ${row.cite}\t` +
+          `${where}`,
+      );
+    } else held += 1;
+  }
+
+  failures.push(
+    ...classifyTitleBandCensus({
+      walk: {
+        declared: collected.declared,
+        settingsEntry: collected.settingsEntry,
+        arrivals: collected.arrivals,
+      },
+      measured: judged,
+    }),
+  );
+
+  return {
+    failures,
+    verdicts,
+    reported,
+    judged: judged.length,
+    divergent,
+    held,
+    elapsedMs: Date.now() - started,
+  };
+};
+
+// ════════════════════════════════════════════════════════════════════════════
 // PRZELOT TRAS — PARY LOTÓW 2-6 I PRZYRZĄD P7 (POZYCJA PO PRZEWINIĘCIU)
 // ════════════════════════════════════════════════════════════════════════════
 //
@@ -6361,6 +6773,31 @@ try {
       `${KNOWN_CONTROL_PAINT.length} registry entr(ies)\t` +
       `${controlPaint.verdicts.length} verdict(s) thrown, ${controlPaint.reported.length} reported\t` +
       `${controlPaint.elapsedMs} ms wall clock`,
+  );
+  // ── POZYCJA AKCJI GŁÓWNEJ W PAŚMIE TYTUŁU (FAZA B, LOT B2) ───────────────
+  // Ta sama umowa co wyżej, i z tego samego powodu: ekran zmierzony ZGODNIE
+  // z kanoniczną listą jest opisem znanego długu Fazy C i tylko się drukuje;
+  // ekran, który się od niej ROZJECHAŁ, pada zawsze. Awarie przyrządu —
+  // pasmo, którego nie było, cel, na który spacer nie dojechał, wiersz listy,
+  // którego nikt nie dotknął — padają bezwarunkowo.
+  const titleBand = await titleBandActionCensus(browser);
+  for (const failure of titleBand.failures) {
+    problems.push(`title band — instrument: ${failure}`);
+  }
+  for (const verdict of titleBand.verdicts) {
+    problems.push(`title band — ${verdict}`);
+  }
+  for (const line of titleBand.reported)
+    console.log(`title band\treported\t${line}`);
+  console.log(
+    `title band: ${TITLE_BAND_ACTION_STATUS} — ` +
+      `${TITLE_BAND_ACTION_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
+      `${titleBand.judged} of ${TITLE_BAND_ROWS.length} declared screen(s) judged\t` +
+      `${titleBand.divergent} screen(s) place the primary action outside the title row, ` +
+      `${titleBand.held} agree with the prototype\t` +
+      `${TITLE_BAND_DIVERGENCES.length} divergence(s) on the canonical list\t` +
+      `${titleBand.verdicts.length} verdict(s) thrown, ${titleBand.reported.length} reported\t` +
+      `${titleBand.elapsedMs} ms wall clock`,
   );
   // ── P7 + PARY LOTÓW 2-6: PRZELOT TRAS ───────────────────────────────────
   // OSOBNY PRZELOT OD `visualLanguagePairs`, i to nie jest podział estetyczny:
