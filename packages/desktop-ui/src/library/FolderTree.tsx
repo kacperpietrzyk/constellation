@@ -52,6 +52,7 @@ export const FolderTree = ({
   onSelect,
   onToggle,
   onDropNote,
+  notesReadable = true,
 }: {
   readonly folders: readonly FolderSummary[];
   readonly notes: readonly NoteSummary[];
@@ -61,8 +62,11 @@ export const FolderTree = ({
   readonly onToggle: (folderId: FolderId, open: boolean) => void;
   /** `null` is Unfiled — a destination, never an absence. */
   readonly onDropNote: (folderId: FolderId | null) => void;
+  /** False when `notes` is what a refused `document.list` degraded to, so the
+   *  two rows counted from it withdraw their number instead of printing zero. */
+  readonly notesReadable?: boolean;
 }) => {
-  const rows = visibleTreeRows(folders, notes, expanded);
+  const rows = visibleTreeRows(folders, notes, expanded, notesReadable);
   const [focusKey, setFocusKey] = useState<TreeSelection>(selection);
   const [dropTarget, setDropTarget] = useState<TreeSelection | undefined>();
   const nodes = useRef(new Map<string, HTMLButtonElement>());
@@ -183,7 +187,11 @@ export const FolderTree = ({
                 // says an explanation that lives in a tooltip does not exist
                 // for a keyboard, for touch, or for anybody not hovering. The
                 // accessible name is where the address belongs.
-                aria-label={`${row.path}, ${countLabel(row.count, "note")}`}
+                aria-label={`${row.path}, ${
+                  row.count === undefined
+                    ? "note count unavailable, the note list could not be read"
+                    : countLabel(row.count, "note")
+                }`}
                 aria-level={row.level}
                 aria-posinset={index + 1}
                 aria-selected={selected}
@@ -254,7 +262,13 @@ export const FolderTree = ({
                   />
                 </span>
                 <span className={styles.treeName}>{row.name}</span>
-                <span className={styles.treeCount}>{row.count}</span>
+                {/* AN EM DASH IS NOT A ZERO. The two rows counted from
+                    `document.list` withdraw their number when that read failed,
+                    rather than printing a zero the reader would take for an
+                    answer — the folder rows beside them still carry theirs. */}
+                <span className={styles.treeCount}>
+                  {row.count === undefined ? "—" : row.count}
+                </span>
               </button>
             );
           })}

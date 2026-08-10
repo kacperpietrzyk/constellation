@@ -16,7 +16,7 @@
 // jeżeli asercja nie zaczerwieni się na nim, to znaczy, że nowy test jest
 // kolejnym przyrządem mierzącym fiksturę zamiast produktu.
 //
-// SIEDEM ZŁAMAŃ:
+// DZIEWIĘĆ ZŁAMAŃ:
 //
 //   • ODDAJ ODCZYT „BRAK = NIEAKTYWNY" → wiersze i licznik mają paść. To jest
 //     Znalezisko 0 Fazy 4 odtworzone w harnessie.
@@ -29,6 +29,12 @@
 //   • ZDEJMIJ `.message` Z BIBLIOTEKI, ZADAŃ i ŹRÓDEŁ → trzy panele wracają do
 //     stałych zdań. Notatki są najgorszym z trójki, bo ich zdanie NAZYWAŁO
 //     przyczynę, jakiej kod nie zna („not available in this scope").
+//   • PRZYWRÓĆ TO SAMO ZDANIE NA PANELU FOLDERÓW → panel obok listy notatek,
+//     który przeżył pierwsze przejście, bo asercja czytała `textContent`
+//     JEDNEGO elementu i nie widziała sąsiada w tym samym kontenerze.
+//   • SPŁASZCZ NIECZYTELNĄ PŁASZCZYZNĘ PRACY W PUSTĄ LISTĘ → wiersz osoby znów
+//     twierdzi, że nie czekasz na nikogo, bo odczyt padł. Jeden operator, zero
+//     protestu kompilatora.
 //   • ZWIŃ ODMOWĘ DUPLIKATU TERMINU z powrotem w zamiatanie preconditionów →
 //     ponowny przebieg importera znów staje się nieodróżnialny od zepsutej
 //     komendy. To jedyne złamanie mierzone KONFORMANSEM (`test:core`), bo
@@ -143,6 +149,38 @@ const outcome = runBreakTests({
           "              <p data-notes-unavailable>{snapshot.documents.message}</p>",
           "              <p data-notes-unavailable>Content is not available in this scope.</p>",
           "the notes unavailable message",
+        ),
+    },
+    {
+      // DRUGI PANEL TEGO SAMEGO EKRANU, i ten, który przeżył pierwsze przejście.
+      // Zdanie o „scope" zniknęło z listy notatek, a stało dalej nad drzewem
+      // folderów — czyli asercja czytająca `textContent` JEDNEGO elementu była
+      // zielona nad frazą narysowaną w tym samym kontenerze, w tej samej chwili.
+      // Dlatego to złamanie MUSI tu być: bez niego twierdzenie „Biblioteka nie
+      // nazywa przyczyny" jest twierdzeniem o nieobecności, którego nikt nie
+      // sprawdził na tym panelu.
+      name: "claim a cause the code cannot know in the Folders panel: 'Folders are not available in this scope'",
+      file: "packages/desktop-ui/src/library/NotesReading.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "            <p data-folders-unavailable>{snapshot.knowledge.message}</p>",
+          "            <p data-folders-unavailable>Folders are not available in this scope.</p>",
+          "the folders unavailable message",
+        ),
+    },
+    {
+      // ZNALEZISKO O DRUGIEJ PROJEKCJI EKRANU LUDZI. Spłaszczenie do `[]` jest
+      // JEDNYM operatorem i kompiluje się bez słowa protestu — a wiersz zaczyna
+      // twierdzić, że nie czekasz na nikogo, bo odczyt padł.
+      name: "flatten the unread work plane back to an empty list: a person row claims nobody is waited on",
+      file: "packages/desktop-ui/src/people/people-view.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "): readonly WaitingOnPerson[] | undefined =>\n  tasks\n    ?.filter(",
+          "): readonly WaitingOnPerson[] | undefined =>\n  (tasks ?? [])\n    .filter(",
+          "the waiting-on reading",
         ),
     },
     {

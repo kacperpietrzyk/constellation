@@ -216,10 +216,19 @@ test("a deal opened as a record reports an unreadable slice, not a missing scree
   ];
   const client = createScenarioClient({ queries: withoutRelationships });
   const snapshot = await loadDesktopSnapshot(client);
+  if (snapshot.relationships.kind !== "unavailable")
+    assert.fail(
+      "the fixture handed the surface a readable slice, so this test measures nothing",
+    );
+  // THE CODE, HELD BY AN ASSERTION — which is the whole justification the
+  // `DataSlice` docblock gives for setting `diagnosticCode` on every failure.
+  // Written and never read, it is indistinguishable from a field nobody needs.
+  // The scenario client answers an unstubbed query with `query.not_available`
+  // (`scenario-client.ts:247`), and that is the code the slice must carry.
   assert.equal(
-    snapshot.relationships.kind,
-    "unavailable",
-    "the fixture handed the surface a readable slice, so this test measures nothing",
+    snapshot.relationships.diagnosticCode,
+    "query.not_available",
+    "the unavailable slice dropped the kernel's own code, leaving only prose for anything downstream to match on",
   );
 
   root = createRoot(container);
@@ -294,6 +303,16 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
               "document.list was refused: authorization.denied. This view's data is unavailable right now. Try again.",
             diagnosticCode: "authorization.denied",
           },
+          // BOTH of the screen's reads, because the Library has TWO panels that
+          // print an unavailable slice and the fixed sentence naming a cause
+          // survived in the OTHER one for a whole lot: an assertion reading a
+          // single element's `textContent` cannot see its neighbour.
+          knowledge: {
+            kind: "unavailable",
+            message:
+              "knowledge.list was refused: query.not_available. This view's data is unavailable right now. Try again.",
+            diagnosticCode: "query.not_available",
+          },
         },
         inspectorHost: null,
         onInspectorOpen: () => undefined,
@@ -319,10 +338,127 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
     /authorization\.denied/u,
     "the Library does not carry the refusal it was handed",
   );
+  // THE WHOLE SCREEN, not this one element. Scoped to `[data-notes-unavailable]`
+  // this assertion was green while the Folders panel eight lines up printed
+  // "Folders are not available in this scope." in the same container, in the
+  // same render — a green claim about the absence of something present beside
+  // it, which is this repository's most repeated failure mode.
   assert.equal(
-    /in this scope/u.test(stated),
+    /in this scope/u.test(container.textContent ?? ""),
     false,
-    "the Library still names SCOPE as the cause — a claim `optionalProjection` cannot support, since it catches every failure alike",
+    "the Library still names SCOPE as the cause somewhere on the screen — a claim `optionalProjection` cannot support, since it catches every failure alike",
+  );
+
+  const folders = container.querySelector<HTMLElement>(
+    "[data-folders-unavailable]",
+  );
+  assert.ok(
+    folders,
+    "the Folders panel drew no reason at all for an unreadable knowledge read",
+  );
+  assert.match(
+    folders.textContent ?? "",
+    /knowledge\.list/u,
+    "the Folders panel does not say which read failed",
+  );
+  assert.match(
+    folders.textContent ?? "",
+    /query\.not_available/u,
+    "the Folders panel does not carry the refusal it was handed",
+  );
+  // A WAY BACK IN EACH PANEL, asserted panel by panel. Counting buttons over
+  // the whole container would be a claim about a total, and a total is exactly
+  // what a third panel appearing elsewhere on the screen would satisfy without
+  // either of these two carrying one.
+  for (const [stated, what] of [
+    [folders, "Folders"],
+    [message, "Notes"],
+  ] as const) {
+    const panel = stated.closest(".inline-error");
+    assert.ok(panel, `${what} prints its reason outside any panel`);
+    const retry = [...panel.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => /try again/iu.test(button.textContent ?? ""),
+    );
+    assert.ok(retry, `${what} states a reason and offers no way back from it`);
+  }
+});
+
+// SIÓDMY: DRUGA POŁOWA TEGO SAMEGO EKRANU. `document.list` pada, `knowledge.list`
+// przechodzi — panel listy mówi prawdę, a liczniki nad nim i obok niego dalej
+// drukują zero z odczytu, którego nie było. Ten stan nie był mierzony NIGDZIE.
+test("with the note list unread, the Library withdraws its counts instead of printing zero", async () => {
+  const { NotesReading } = await import("../src/library/NotesReading.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+  const { libraryFolders } = await import("../src/dev/library-fixture.js");
+
+  const folders = libraryFolders();
+  const populated = folders.find((folder) => folder.noteCount > 0);
+  assert.ok(
+    populated,
+    "the folder fixture carries no folder with notes in it, so the contradiction this test measures cannot appear",
+  );
+
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(NotesReading, {
+        client: undefined,
+        snapshot: {
+          ...workHarnessSnapshot,
+          documents: {
+            kind: "unavailable",
+            message:
+              "document.list was refused: authorization.denied. This view's data is unavailable right now. Try again.",
+            diagnosticCode: "authorization.denied",
+          },
+          knowledge: {
+            kind: "ready",
+            data: {
+              kind: "knowledge.list",
+              spaceId: workHarnessSnapshot.bootstrap.spaces[0]!.id,
+              sources: [],
+              folders,
+              documents: [],
+            },
+          },
+        },
+        inspectorHost: null,
+        onInspectorOpen: () => undefined,
+        onEntityActivate: () => undefined,
+        onReload: async () => undefined,
+        onFailure: () => undefined,
+      }),
+    );
+  });
+
+  const all = container.querySelector<HTMLElement>(
+    '[data-tree-key="all-notes"]',
+  );
+  assert.ok(all, "the tree drew no All notes row");
+  assert.equal(
+    /\b0 notes\b/u.test(all.getAttribute("aria-label") ?? ""),
+    false,
+    "All notes counts zero from a note list that was never read, over folder rows declaring their own notes",
+  );
+  const count = container.querySelector<HTMLElement>("[data-notes-count]");
+  assert.ok(count, "the note list prints no count at all");
+  assert.equal(
+    count.textContent,
+    "—",
+    "the list header prints a number derived from a refused read",
+  );
+  // The folder rows keep THEIR number: it comes from the read that succeeded,
+  // and withdrawing it would be the same defect pointed the other way.
+  const folderRow = container.querySelector<HTMLElement>(
+    `[data-tree-key="${populated.id}"]`,
+  );
+  assert.ok(folderRow, "the tree drew no row for a folder that has notes");
+  assert.match(
+    folderRow.getAttribute("aria-label") ?? "",
+    new RegExp(`\\b${populated.noteCount} notes?\\b`, "u"),
+    "a folder row dropped the count `knowledge.list` actually returned",
   );
 });
 
@@ -411,5 +547,61 @@ test("Sources prints the reason its metadata could not be read", async () => {
     message.textContent ?? "",
     /knowledge\.list/u,
     "Sources does not say which read failed",
+  );
+  // THE COUNTER ABOVE THE MESSAGE, which the first version of this test never
+  // looked at: the panel said "we could not ask" while the pill over it printed
+  // `0` from the same unread projection. The Organizations assertion above has
+  // held its counter from the start; this one did not, on the same screenful.
+  const count = container.querySelector<HTMLElement>("[data-sources-count]");
+  assert.ok(count, "Sources prints no count at all");
+  assert.equal(
+    count.textContent,
+    "—",
+    "the source counter answers with a number taken from a read that was refused",
+  );
+});
+
+// ÓSMY: DRUGA PROJEKCJA EKRANU LUDZI. Ludzie przychodzą z
+// `relationship.workspace`, a to, na co się czeka — z płaszczyzny pracy. Kiedy
+// padała ta druga, wiersz cicho wpadał w gałąź „brak oczekiwania" i rysował
+// nazwę organizacji: zielony sygnał „nie czekasz na nikogo" wyprodukowany przez
+// awarię odczytu.
+test("People says the work plane could not be read instead of implying nobody is waited on", async () => {
+  await openSurface("people", "[data-people-surface]", {
+    ...populatedShellQueries,
+    "work.overview": refusedResponse("authorization.denied"),
+  });
+
+  const rows = container.querySelectorAll<HTMLElement>("[data-person-row]");
+  assert.ok(
+    rows.length > 0,
+    "no person row drew at all, so this test measures nothing about what a row claims",
+  );
+
+  const message = container.querySelector<HTMLElement>(
+    "[data-people-work-unavailable]",
+  );
+  assert.ok(
+    message,
+    "People drew every row and said nothing about the plane it could not read",
+  );
+  assert.match(
+    message.textContent ?? "",
+    /work\.overview/u,
+    "the message does not say which read failed",
+  );
+
+  const unknown = container.querySelectorAll("[data-person-waiting-unknown]");
+  assert.equal(
+    unknown.length,
+    rows.length,
+    "a person row still fills the waiting slot as though the work plane had been read and held nothing",
+  );
+  const named = [...rows].find((row) =>
+    /could not be read/u.test(row.getAttribute("aria-label") ?? ""),
+  );
+  assert.ok(
+    named,
+    "the accessible name omits waiting entirely, which reads as a person nobody is waiting on",
   );
 });

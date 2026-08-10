@@ -113,11 +113,18 @@ export type ManagedAttachment =
  * One slice of a snapshot: the data, or the reason it is not there.
  *
  * `message` is written for the READER and always names the query and the cause
- * — see `projectionFailureMessage`. `diagnosticCode` is the same fact in a form
- * an assertion can hold, which is why it is set on every failure rather than
- * left to whoever remembers: a field nothing ever writes is indistinguishable
- * from a field nothing needs, and this one was declared and never written for
- * four releases.
+ * — the four arms of `queryProjection` below compose it (`contract_rejected`,
+ * a refused outcome, a projection of the wrong kind, and a bridge that threw),
+ * each through `ProjectionUnavailable`, which carries the pair.
+ *
+ * `diagnosticCode` is the same fact in a form an assertion can hold, which is
+ * why every failure on this path sets it rather than leaving it to whoever
+ * remembers: a field nothing ever writes is indistinguishable from a field
+ * nothing needs, and this one was declared and never written for four releases.
+ * `projection-honesty.interaction.test.tsx` holds it on a slice, which is what
+ * keeps that sentence true; a name in these comments that resolves to nothing
+ * in the repository is how the previous version of this docblock sent a reader
+ * looking for a `projectionFailureMessage` that has never existed.
  */
 export type DataSlice<T> =
   | { readonly kind: "ready"; readonly data: T }
@@ -568,11 +575,19 @@ export const loadDesktopSnapshot = async (
           })),
         },
       };
-    } catch {
+    } catch (error) {
+      // THE CAUGHT ERROR USED TO BE DROPPED and replaced by a sentence naming
+      // one cause — "the gateway is not responding" — over a `try` that also
+      // covers the whole mapping below it. A plain `TypeError` in that mapping
+      // reported to the reader as a Hub that was down, which is the same defect
+      // the panels above this were fixed for: a fixed sentence claiming to know
+      // which failure happened.
       agentAccess = {
         kind: "unavailable",
-        message:
-          "The remote MCP gateway is not responding. Agent access returns once the Hub is back.",
+        message: `agent.remote_grants could not be read: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        diagnosticCode: "agent.remote_grants_failed",
       };
     }
   }

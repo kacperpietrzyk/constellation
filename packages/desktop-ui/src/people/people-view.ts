@@ -68,19 +68,24 @@ export interface PersonReading {
   readonly lastMetAt: string | undefined;
   /**
    * What is being waited on from this person, with the task as the evidence.
-   * EMPTY when the work plane could not be read — the screen then says nothing
-   * about waiting rather than drawing a chip with no task behind it.
+   *
+   * `undefined` when the work plane COULD NOT BE READ, which is a different
+   * fact from an empty list and has to stay different all the way to the row.
+   * Flattened to `[]` it read as "you are waiting on nobody" — a green
+   * all-clear produced by a failure, the one thing a screen may never do with
+   * an unavailable slice (`StrategicDepthSurface.tsx:541-544` is the same
+   * repair, written down when `readTasks` did this).
    */
-  readonly waiting: readonly WaitingOnPerson[];
+  readonly waiting: readonly WaitingOnPerson[] | undefined;
   readonly accessibleName: string;
 }
 
 const waitingTasksFor = (
   person: PersonRecord,
   tasks: readonly WorkTask[] | undefined,
-): readonly WaitingOnPerson[] =>
-  (tasks ?? [])
-    .filter(
+): readonly WaitingOnPerson[] | undefined =>
+  tasks
+    ?.filter(
       (task) =>
         task.completionState === "open" &&
         task.waitingOn?.kind === "person" &&
@@ -115,8 +120,14 @@ const personAccessibleName = (
     parts.push(`${countLabel(reading.deals.length, "open deal")} on them`);
   if (reading.meetings.length > 0)
     parts.push(countLabel(reading.meetings.length, "meeting"));
-  for (const wait of reading.waiting)
-    parts.push(`you are waiting on them for: ${wait.title}`);
+  // SILENCE HERE WAS A CLAIM. With the work plane unreadable this name simply
+  // omitted every waiting clause, and a name that omits them is the name of a
+  // person nobody is waiting on. The row says so out loud instead.
+  if (reading.waiting === undefined)
+    parts.push("whether you are waiting on them could not be read");
+  else
+    for (const wait of reading.waiting)
+      parts.push(`you are waiting on them for: ${wait.title}`);
   parts.push(
     reading.lastMetAt === undefined
       ? "never met"

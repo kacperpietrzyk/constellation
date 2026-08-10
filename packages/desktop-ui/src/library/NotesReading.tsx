@@ -283,7 +283,7 @@ export const NotesReading = ({
 
   return (
     <div className={styles.notes} data-notes-screen="">
-      {structureReadable ? (
+      {snapshot.knowledge.kind === "ready" ? (
         <FolderTree
           expanded={expanded}
           folders={folders}
@@ -293,6 +293,7 @@ export const NotesReading = ({
             dragged.current = undefined;
             if (noteId !== undefined) moveNote(noteId, folderId);
           }}
+          notesReadable={snapshot.documents.kind === "ready"}
           onSelect={setSelection}
           onToggle={toggleFolder}
           selection={selection}
@@ -302,9 +303,24 @@ export const NotesReading = ({
           <div className={styles.panelHead}>
             <h2>Folders</h2>
           </div>
-          <p className="inline-error">
-            Folders are not available in this scope.
-          </p>
+          {/* THE SECOND HALF OF THE SAME DEFECT, and the one that survived the
+              first pass: "Folders are not available in this scope" NAMED A
+              CAUSE THE CODE CANNOT KNOW. When `knowledge.list` is refused and
+              `document.list` is not, this panel is the ONLY sentence on the
+              screen — the note list beside it draws normally — so the reader
+              was sent to check their Space membership for a failure that had
+              nothing to do with it, and the slice's own message, which names
+              the query and the refusal code, went in the bin. */}
+          <div className="inline-error" role="status">
+            <p data-folders-unavailable>{snapshot.knowledge.message}</p>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </div>
         </div>
       )}
 
@@ -323,9 +339,15 @@ export const NotesReading = ({
           {/* The count of THIS list, which is why it agrees with the counter on
               the tree node beside it: both include descendant folders. The
               global class keeps the shared rule's single owner; the module class
-              flattens the pill for this screen only. */}
-          <span className={`library-count ${styles.headCount}`}>
-            {inView.length}
+              flattens the pill for this screen only. WITHDRAWN, not zeroed,
+              when `document.list` failed: the panel below already says the read
+              could not be made, and a `0` over that sentence is the screen
+              answering a question it just admitted it could not ask. */}
+          <span
+            className={`library-count ${styles.headCount}`}
+            data-notes-count
+          >
+            {snapshot.documents.kind === "ready" ? inView.length : "—"}
           </span>
         </div>
 
