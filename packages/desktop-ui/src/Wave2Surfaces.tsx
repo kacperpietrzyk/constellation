@@ -28,6 +28,7 @@ import {
 } from "./client/workflow.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
+import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
 import type { WorkContextKind } from "./record-narrative.js";
 import type { SettingsCategoryId } from "./settings-categories.js";
@@ -50,6 +51,13 @@ const ProjectContextPanel = lazy(async () => ({
 
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
 
+/* PASMO JEST WSPÓLNE OD LOTU C2 — ten komponent zostaje jako WARIANT z nadpisem
+   i opisem, ale samo pasmo, `id="surface-title"` i slot akcji przychodzą
+   z `SurfaceTitleBand`. Przed C2 to była jedyna kopia z zamontowanym slotem
+   akcji i jedyny ekran, którego akcja stała W paśmie; kiedy slot dostało pięć
+   dalszych ekranów, druga kopia tej samej struktury byłaby dokładnie tym, co ten
+   lot likwidował gdzie indziej. Kształt DOM-u się nie zmienia: nadpis i opis są
+   tu zawsze, więc grupa tekstu dalej jedzie w `<div>`. */
 const SurfaceHeader = ({
   kicker,
   title,
@@ -61,16 +69,13 @@ const SurfaceHeader = ({
   readonly description: string;
   readonly action?: React.ReactNode;
 }) => (
-  <header className="surface-header wave2-header">
-    <div>
-      <p className="eyebrow">{kicker}</p>
-      <h1 id="surface-title" tabIndex={-1}>
-        {title}
-      </h1>
-      <p>{description}</p>
-    </div>
-    {action}
-  </header>
+  <SurfaceTitleBand
+    action={action}
+    className="wave2-header"
+    description={description}
+    kicker={kicker}
+    title={title}
+  />
 );
 
 export const TasksSurface = ({

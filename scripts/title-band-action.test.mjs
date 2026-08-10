@@ -625,7 +625,14 @@ test("the action classes are the two that carry a fill, and ghost is not one", (
 
 test("pending reports what the list predicts and throws on anything else", () => {
   assert.equal(TITLE_BAND_ACTION_ARMED, false);
-  assert.equal(TITLE_BAND_ACTION_STATUS, "pending: FAZA C, lot C2");
+  // STATUS NAZYWA TO, CO ZOSTAŁO, A NIE LOT, KTÓRY JUŻ POSZEDŁ. Do lotu C2
+  // brzmiał „pending: FAZA C, lot C2" i było to zdanie prawdziwe dopóty, dopóki
+  // C2 nie wszedł; po wejściu bramka drukowałaby w każdym przebiegu obietnicę
+  // lotu, który się skończył, nad jedynym ekranem, którego NIE zamknął.
+  assert.equal(
+    TITLE_BAND_ACTION_STATUS,
+    "pending: pasmo akcji Spotkań (.meeting-hero)",
+  );
   assert.equal(
     titleBandVerdictThrows({ predicted: true, divergent: true, armed: false }),
     false,

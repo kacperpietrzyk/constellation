@@ -332,6 +332,13 @@ const outcome = runBreakTests({
       // `TITLE_BAND_NEVER_FLUSH_END` NIE JEST TU OCZEKIWANY i to jest ten sam
       // powód co przy złamaniu wyżej: Biblioteka składa własny nagłówek, który
       // ta edycja pomija, więc świadek osi poziomej zostaje.
+      //
+      // KOTWICA IDZIE OD SELEKTORA, A NIE OD SAMYCH TRZECH DEKLARACJI, i to jest
+      // poprawka po pierwszym przebiegu tego złamania: `align-items: center;
+      // justify-content: space-between; gap: …` stoi w `styles.css` STO
+      // SZEŚĆDZIESIĄT razy, więc `replaceOnce` padł na własnym strażniku
+      // wielokrotnego trafienia — dokładnie tak, jak miał: edycja, która nie
+      // wie, gdzie ląduje, opisuje inne złamanie niż jej nazwa.
       name: "take space-between off the surface header: the primary action stops standing at the band's end and stands right behind the title instead",
       expectRedContains: [
         "organizations: this pass measured IN_BAND/INSET_FROM_END",
@@ -341,11 +348,17 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
-          `  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);`,
-          `  align-items: center;
-  gap: var(--space-4);`,
+          `.surface-header {
+  max-width: var(--surface-measure, 58rem);
+  min-height: var(--header-band-height);
+  margin: 0 auto var(--space-6);
+  display: flex;`,
+          `.surface-header {
+  max-width: var(--surface-measure, 58rem);
+  min-height: var(--header-band-height);
+  margin: 0 auto var(--space-6);
+  justify-content: flex-start;
+  display: flex;`,
           "the surface header's end alignment",
         ),
     },

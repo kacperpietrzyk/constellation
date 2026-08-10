@@ -6,16 +6,24 @@ import type { ReactNode } from "react";
    Prototyp składa nagłówek KAŻDEGO ekranu jedną funkcją: `crumbbar(crumbs,
    actions)` (`v3/app.js:677-683`) rysuje pasmo z okruszkiem, rozpychaczem
    `<span class="spacer">` i drugim argumentem — akcją — na końcu. Ta aplikacja
-   miała zamiast tego SZEŚĆ przepisanych ręcznie `<header className=
-   "surface-header">` z gołym `<h1>` w środku, a akcję trzymała rząd niżej,
-   w osobnym `.crumbbar` każdego ekranu. Reguła `justify-content: space-between`
-   stała w `styles.css` przy `.surface-header` i była MARTWA, bo pasmo miało
-   jedno dziecko.
+   pisała zamiast tego `<header className="surface-header">` ręcznie na każdym
+   ekranie, a jedyną kopią z zamontowanym slotem akcji był `SurfaceHeader`
+   w `Wave2Surfaces.tsx`. Pięć pozostałych — Zadania, Lejek, Odnowienia,
+   Organizacje, Ludzie — miało w paśmie GOŁY `<h1>` i trzymało akcję rząd niżej,
+   we własnym `.crumbbar`. Reguła `justify-content: space-between` stała przy
+   `.surface-header` w `styles.css` i była MARTWA, bo pasmo miało jedno dziecko.
 
    „Ręczna lista obok zamkniętego słownika" jest w tym repozytorium nazwaną
-   klasą defektu i to jest jej wariant o układzie: sześć kopii tego samego
-   pasma to sześć miejsc, w których następna zmiana pasma może się nie odbyć.
-   Slot akcji stoi więc TU, raz.
+   klasą defektu i to jest jej wariant o układzie. Slot akcji stoi więc TU, raz,
+   i przechodzą przez niego wszystkie sześć — pięć wprost, a Projekty przez
+   `Wave2Surfaces.SurfaceHeader`, który od lotu C2 do tego komponentu deleguje.
+
+   CZTERY EKRANY DALEJ PISZĄ TO PASMO RĘCZNIE i to jest zakres, nie przeoczenie:
+   Dziś, Kalendarz, Skrzynka i odczyt Historii przechwyceń. Żaden z nich nie ma
+   akcji w paśmie ANI u nas, ANI w prototypie (spis pasma tytułu mierzy je jako
+   `NO_ACTION` po obu stronach), więc przepisanie ich nie zmieniłoby ani jednego
+   pomiaru — a lot, który rusza cudze drzewo bez pomiaru, który to widzi, jest
+   w tym repozytorium osobną klasą kłopotu. Idą do lotu, który da im akcję.
 
    KONTRAKT: `.ui-craft/tokens.md`, „Accent rule" §2 („Where the reader can go")
    i „Usage constraints" 3 nazywają PASEK AKCJI EKRANU (`crumbbar`) jednym

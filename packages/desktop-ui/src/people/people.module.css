@@ -14,13 +14,26 @@
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
-/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2. Prototyp nie układa nad płótnem pasma
-   tytułu I osobnego paska akcji: `crumbbar(crumbs, actions)`
-   (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu i akcję,
-   a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) odpycha akcję
-   do jego prawego końca. Akcja tego ekranu stoi teraz w `SurfaceTitleBand`,
-   a reguła, która trzymała ją rzędem niżej, nie ma już konsumenta i została
-   skasowana zamiast osierocona. */
+/* WRAPPING IS NOT DECORATION ON THIS SURFACE, it is what keeps it inside
+   itself, and it binds every bar below. `.surface-scroll > *` centres every
+   child with `margin-inline: auto` (`styles.css`), so a child is sized
+   `fit-content` — and `fit-content` is clamped BELOW by min-content. A
+   non-wrapping flex row's min-content is the sum of its children, so at 200%
+   text such a bar stops fitting the surface's content box and the surface
+   overflows itself, with no single descendant overflowing anything. A wrapping
+   row's min-content is its widest single child instead, which is a number that
+   stays inside.
+
+   PAS AKCJI, PRZY KTÓRYM TO NAJPIERW STAŁO, ZNIKNĄŁ WRAZ Z LOTEM C2 — ale
+   uzasadnienie zostaje, bo wiąże `.create` i `.filter` tak samo. Prototyp nie
+   układa nad płótnem pasma tytułu I osobnego paska akcji: `crumbbar(crumbs,
+   actions)` (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu
+   i akcję, a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`)
+   odpycha ją do prawego końca. Akcja tego ekranu stoi teraz
+   w `SurfaceTitleBand`, którego pasmo zawija z tego samego powodu
+   (`styles.css`, `.surface-header { flex-wrap: wrap }`), a reguła, która
+   trzymała ją rzędem niżej, nie ma już konsumenta i została skasowana zamiast
+   osierocona. */
 
 .create {
   display: flex;

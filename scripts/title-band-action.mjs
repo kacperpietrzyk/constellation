@@ -277,7 +277,8 @@ export const PROTOTYPE_FILLED_MODIFIERS = ["primary", "bordered"];
  * stawia tam wyłącznie kontrolki bez tła, więc nasze puste pasmo jest z nim
  * ZGODNE — patrz predykat symetrii w nagłówku.
  */
-export const TITLE_BAND_ACTION_STATUS = "pending: FAZA C, lot C2";
+export const TITLE_BAND_ACTION_STATUS =
+  "pending: pasmo akcji Spotkań (.meeting-hero)";
 
 /**
  * Czy ten przelot EGZEKWUJE werdykty tabeli.
