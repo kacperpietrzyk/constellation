@@ -2,6 +2,14 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, watch } from "node:fs";
 import path from "node:path";
 
+import {
+  RENDERER_DIST,
+  bundleVerdict,
+  readBundleStamp,
+  startAfterRebuiltBundle,
+  subscribeToBundle,
+  waitForRebuiltBundle,
+} from "./dev-renderer-gate.mjs";
 import { devStateRoot } from "./dev-state.mjs";
 import { NATIVE_SETUP_REMEDY, nativeDriverState } from "./setup-native.mjs";
 
@@ -34,6 +42,13 @@ const build = spawnSync("npm", ["run", "build"], {
   stdio: "inherit",
 });
 if (build.status !== 0) process.exit(build.status ?? 1);
+
+// Stempel zdjęty TUTAJ: po pełnej budowie, a przed uruchomieniem watchera
+// renderera. To jest jedyna chwila, w której da się zapisać „tak wygląda
+// bundle, którego watcher jeszcze nie dotknął" — a bez tego zapisu brama
+// niżej byłaby spełniona przez bundle, który za moment zniknie.
+const rendererDist = path.join(repositoryRoot, RENDERER_DIST);
+const bundleBeforeWatch = readBundleStamp(rendererDist);
 
 // Set once teardown has started, so a child that dies as a *consequence* of
 // stop() (killed on purpose) does not report itself as an unexpected failure
@@ -131,7 +146,36 @@ const stop = () => {
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);
 
-startElectron();
+// ELECTRON STARTUJE PO ZDARZENIU, NIE PO CZASIE. `desktop-ui build --watch`
+// opróżnia `dist/` i buduje od nowa, więc przez ~100 ms `index.html` nie
+// istnieje — a przez ~460 ms przed tym leży tam KOMPLETNY bundle z poprzedniej
+// budowy, który każdą bramę „czy plik jest" spełnia. Zmierzone: trzy starty
+// z rzędu padały na `ERR_FILE_NOT_FOUND (-6)`. Warunki i pomiar:
+// `scripts/dev-renderer-gate.mjs`.
+const started = await startAfterRebuiltBundle({
+  wait: () =>
+    waitForRebuiltBundle({
+      probe: () =>
+        bundleVerdict(bundleBeforeWatch, readBundleStamp(rendererDist)),
+      subscribe: (notify) => subscribeToBundle(rendererDist, notify),
+      abandoned: () => stopping,
+      report: (reason, waited) =>
+        console.error(
+          `Still waiting ${waited / 1000}s for the renderer bundle: ${reason}`,
+        ),
+    }),
+  start: startElectron,
+  abandoned: () => stopping,
+}).catch((error) => {
+  console.error(error.message);
+  stop();
+  process.exitCode = 1;
+  return { started: false };
+});
+// Electron nie wstał — albo brama padła, albo ktoś nacisnął Ctrl-C w trakcie
+// czekania. W obu wypadkach nie ma czego pilnować, a założenie watchera
+// procesu głównego trzymałoby przy życiu pętlę bez okna.
+if (!started.started) process.exit(process.exitCode ?? 0);
 
 // A renderer change is picked up by dev-main's own watcher; only main-process
 // output needs the window torn down and rebuilt. Measured: an idle

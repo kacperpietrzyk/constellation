@@ -53,6 +53,7 @@ const outcome = runBreakTests({
   verify: nodeTest(
     "scripts/native/sqlcipher-amalgamation-environment.test.mjs",
     "scripts/setup-native.test.mjs",
+    "scripts/dev-renderer-gate.test.mjs",
   ),
   breaks: [
     {
@@ -178,6 +179,93 @@ fi`,
       },
     ];`,
           "the macOS step order",
+        ),
+    },
+    {
+      // DEFEKT 4, pierwsza połowa: oddaj bramie warunek świeżości i zostaw samo
+      // „czy plik jest kompletny". ZMIERZONE: przez 463 ms po starcie watchera
+      // ten warunek jest SPEŁNIONY przez bundle z poprzedniej budowy — czyli
+      // złamana brama przepuszcza dokładnie w tej chwili, w której Electron
+      // startował przedtem.
+      name: "let the pre-watch bundle satisfy the gate: the existence-only check is the defect wearing a gate",
+      file: "scripts/dev-renderer-gate.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  if (
+    baseline.present &&
+    current.mtimeMs === baseline.mtimeMs &&
+    current.size === baseline.size
+  )
+    return {
+      ready: false,
+      reason:
+        "index.html is still the one the pre-watch build left behind, so the " +
+        "watcher has not rewritten it yet and is about to delete it",
+    };
+`,
+          "",
+          "the freshness clause",
+        ),
+    },
+    {
+      // DEFEKT 4, druga połowa: przepuść bundle zapisany w połowie. `index.html`
+      // istnieje i jest świeży, ale `assets/*` jeszcze się nie zapisały —
+      // Electron dostaje pustą stronę zamiast ERR_FILE_NOT_FOUND, czyli awarię
+      // trudniejszą do rozpoznania niż ta pierwotna.
+      name: "accept a half-written bundle: index.html is fresh but the chunks it names are not there yet",
+      file: "scripts/dev-renderer-gate.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  if (current.missingAssets.length > 0)
+    return {
+      ready: false,
+      reason: \`index.html references \${current.missingAssets.length} file(s) the watcher has not written yet, starting with \${current.missingAssets[0]}\`,
+    };
+`,
+          "",
+          "the completeness clause",
+        ),
+    },
+    {
+      // DEFEKT 4, cisza: brama, która nie zna rozbieranej pętli. Zmierzona
+      // ścieżka — watcher renderera pada przy starcie, `dev-desktop.mjs`
+      // wypisuje „Tearing down the dev loop" i woła `stop()`, a brama milczy
+      // jeszcze przez cały sufit czasu nad pętlą, której już nie ma.
+      name: "let the gate ignore a torn-down loop: sixty seconds of silence after an explicit teardown",
+      file: "scripts/dev-renderer-gate.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `      if (abandoned()) {
+        finish(
+          reject,
+          new Error(
+            "The dev loop was torn down while the renderer bundle was still " +
+              \`building (\${last.reason}), so Electron was never started.\`,
+          ),
+        );
+        return;
+      }
+`,
+          "",
+          "the abandonment check inside the wait",
+        ),
+    },
+    {
+      // DEFEKT 4, trzecia połowa — KOLEJNOŚĆ, czyli logika sprzed naprawy
+      // w czystej postaci: uruchom Electrona, a dopiero potem czekaj na
+      // renderer. Dokładnie to robił `dev-desktop.mjs`.
+      name: "start Electron before the wait, exactly as the old loop did",
+      file: "scripts/dev-renderer-gate.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  const verdict = await wait();`,
+          `  start();
+  const verdict = await wait();`,
+          "the start-after-wait order",
         ),
     },
   ],
