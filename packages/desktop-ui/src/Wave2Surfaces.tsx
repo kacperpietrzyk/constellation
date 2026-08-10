@@ -28,7 +28,6 @@ import {
 } from "./client/workflow.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
-import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
 import type { WorkContextKind } from "./record-narrative.js";
 import type { SettingsCategoryId } from "./settings-categories.js";
@@ -51,13 +50,25 @@ const ProjectContextPanel = lazy(async () => ({
 
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
 
-/* PASMO JEST WSPÓLNE OD LOTU C2 — ten komponent zostaje jako WARIANT z nadpisem
-   i opisem, ale samo pasmo, `id="surface-title"` i slot akcji przychodzą
-   z `SurfaceTitleBand`. Przed C2 to była jedyna kopia z zamontowanym slotem
-   akcji i jedyny ekran, którego akcja stała W paśmie; kiedy slot dostało pięć
-   dalszych ekranów, druga kopia tej samej struktury byłaby dokładnie tym, co ten
-   lot likwidował gdzie indziej. Kształt DOM-u się nie zmienia: nadpis i opis są
-   tu zawsze, więc grupa tekstu dalej jedzie w `<div>`. */
+/* TEN WARIANT NIE DELEGUJE DO `SurfaceTitleBand`, I TO JEST POMIAR, NIE
+   PRZEOCZENIE. Lot C2 raz go przepiął i cofnął po CZERWIENI bramki typografii
+   nagłówków (`scripts/heading-typography.mjs`): ta bramka czyta LITERALNE
+   `className="a b"` i z nich wylicza, które klasy jadą ZAWSZE razem — właśnie
+   po to, żeby `.surface-header h1` (rozmiar i waga) pokrywało
+   `.wave2-header h1`, które własnych deklaracji nie ma. Komponent, który skleja
+   nazwę klasy w czasie działania (`surface-header ${modyfikator}`), nie zostawia
+   w źródle ani jednego takiego literału, więc para `wave2-header` ↔
+   `surface-header` z tej mapy WYPADA i bramka zażądała rozmiaru i wagi dwa razy,
+   osobno dla `.wave2-header h1` i `h2`. Nota przy `coOccurringClasses` opisuje
+   dokładnie ten mechanizm — „jeśli jedno wywołanie napisze `wave2-header` bez
+   `surface-header`, para wypada".
+
+   Alternatywy odrzucone: przekazywanie CAŁEJ listy klas z wołającego robi
+   z `className` pułapkę (wołający, który zapomni `surface-header`, kompiluje się
+   i gubi całe pasmo), a dopisanie `font-size`/`font-weight` do
+   `.wave2-header h1, h2` byłoby KOPIĄ WARTOŚCI z `.surface-header h1` — w tym
+   repozytorium nazwaną klasą defektu. Wariant z nadpisem i opisem zostaje więc
+   napisany wprost, a wspólny slot akcji obsługuje sześć pozostałych ekranów. */
 const SurfaceHeader = ({
   kicker,
   title,
@@ -69,13 +80,16 @@ const SurfaceHeader = ({
   readonly description: string;
   readonly action?: React.ReactNode;
 }) => (
-  <SurfaceTitleBand
-    action={action}
-    className="wave2-header"
-    description={description}
-    kicker={kicker}
-    title={title}
-  />
+  <header className="surface-header wave2-header">
+    <div>
+      <p className="eyebrow">{kicker}</p>
+      <h1 id="surface-title" tabIndex={-1}>
+        {title}
+      </h1>
+      <p>{description}</p>
+    </div>
+    {action}
+  </header>
 );
 
 export const TasksSurface = ({
