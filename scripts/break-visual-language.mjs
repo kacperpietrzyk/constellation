@@ -333,12 +333,26 @@ const outcome = runBreakTests({
       // powód co przy złamaniu wyżej: Biblioteka składa własny nagłówek, który
       // ta edycja pomija, więc świadek osi poziomej zostaje.
       //
-      // KOTWICA IDZIE OD SELEKTORA, A NIE OD SAMYCH TRZECH DEKLARACJI, i to jest
-      // poprawka po pierwszym przebiegu tego złamania: `align-items: center;
-      // justify-content: space-between; gap: …` stoi w `styles.css` STO
-      // SZEŚĆDZIESIĄT razy, więc `replaceOnce` padł na własnym strażniku
-      // wielokrotnego trafienia — dokładnie tak, jak miał: edycja, która nie
-      // wie, gdzie ląduje, opisuje inne złamanie niż jej nazwa.
+      // KOTWICA MA DWIE HISTORIE I OBIE SĄ TREŚCIĄ, bo obie są klasami defektu
+      // tego harnessu:
+      //
+      //   1. `align-items: center; justify-content: space-between; gap: …` stoi
+      //      w `styles.css` STO SZEŚĆDZIESIĄT razy, więc pierwszy przebieg padł
+      //      na strażniku wielokrotnego trafienia w `replaceOnce` — dokładnie
+      //      tak, jak miał: edycja, która nie wie, gdzie ląduje, opisuje inne
+      //      złamanie niż jej nazwa. To jest awaria GŁOŚNA i tania.
+      //   2. Poprawka po niej kotwiczyła od selektora i WSTAWIAŁA
+      //      `justify-content: flex-start` przed `display: flex` — a reguła
+      //      trzy wiersze niżej dalej deklarowała `space-between`. W CSS wygrywa
+      //      deklaracja PÓŹNIEJSZA, więc złamanie było no-opem dla kaskady
+      //      i wróciło ZIELONE: „baseline GREEN → break GREEN → restore GREEN".
+      //      To jest awaria CICHA i jest dokładnie tą, którą ten plik istnieje,
+      //      żeby łapać: strażnik `replaceOnce` pilnuje, gdzie ląduje TEKST,
+      //      i nie ma zdania o tym, co robi z nim KASKADA.
+      //
+      // Kotwicą jest więc SAMA DEKLARACJA razem z komentarzem nad nią (napis
+      // unikalny w całym arkuszu), a edycja PODMIENIA wartość zamiast dokładać
+      // drugą.
       name: "take space-between off the surface header: the primary action stops standing at the band's end and stands right behind the title instead",
       expectRedContains: [
         "organizations: this pass measured IN_BAND/INSET_FROM_END",
@@ -348,17 +362,12 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
-          `.surface-header {
-  max-width: var(--surface-measure, 58rem);
-  min-height: var(--header-band-height);
-  margin: 0 auto var(--space-6);
-  display: flex;`,
-          `.surface-header {
-  max-width: var(--surface-measure, 58rem);
-  min-height: var(--header-band-height);
-  margin: 0 auto var(--space-6);
-  justify-content: flex-start;
-  display: flex;`,
+          `     niczego, co widać. W rzędzie o wysokości pasma równa się do rzędu tytułu. */
+  align-items: center;
+  justify-content: space-between;`,
+          `     niczego, co widać. W rzędzie o wysokości pasma równa się do rzędu tytułu. */
+  align-items: center;
+  justify-content: flex-start;`,
           "the surface header's end alignment",
         ),
     },
