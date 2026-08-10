@@ -325,3 +325,91 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
     "the Library still names SCOPE as the cause — a claim `optionalProjection` cannot support, since it catches every failure alike",
   );
 });
+
+// PIĄTY I SZÓSTY: POZOSTAŁE DWIE TRZECIE KLASY „STAŁE ZDANIE". Zadania i
+// Źródła oddawały `.message` do kosza dokładnie tak samo jak notatki; bez tych
+// dwóch asercji nowe haki byłyby zdolnością, której nic nie mierzy — kompilacja
+// pliku nie jest dowodem, że panel się rysuje.
+test("Tasks prints the reason the work plane could not be read, and a way back", async () => {
+  const { TasksSurface } = await import("../src/tasks/TasksSurface.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(TasksSurface, {
+        snapshot: {
+          ...workHarnessSnapshot,
+          work: {
+            kind: "unavailable",
+            message:
+              "work.overview was refused: authorization.denied. This view's data is unavailable right now. Try again.",
+            diagnosticCode: "authorization.denied",
+          },
+        },
+        selectedTaskId: undefined,
+        onOpenTask: () => undefined,
+        onSelectTask: () => undefined,
+        onCreateTask: async () => true,
+        onSetStatus: () => undefined,
+        onSetCompleted: () => undefined,
+        onPlanOnDay: () => undefined,
+        onOpenCalendar: () => undefined,
+        onReload: async () => undefined,
+      }),
+    );
+  });
+
+  const message = container.querySelector<HTMLElement>(
+    "[data-tasks-unavailable]",
+  );
+  assert.ok(message, "Tasks drew no reason at all for an unread work plane");
+  assert.match(
+    message.textContent ?? "",
+    /work\.overview/u,
+    "Tasks does not say which read failed",
+  );
+  const retry = [
+    ...container.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((button) => /try again/iu.test(button.textContent ?? ""));
+  assert.ok(retry, "Tasks offers no way back from an unread work plane");
+});
+
+test("Sources prints the reason its metadata could not be read", async () => {
+  const { SourcesReading } = await import("../src/library/SourcesReading.js");
+  const { workHarnessSnapshot } =
+    await import("../src/dev/harness-snapshot.js");
+
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(SourcesReading, {
+        client: undefined,
+        snapshot: {
+          ...workHarnessSnapshot,
+          knowledge: {
+            kind: "unavailable",
+            message:
+              "knowledge.list was refused: query.not_available. This view's data is unavailable right now. Try again.",
+            diagnosticCode: "query.not_available",
+          },
+        },
+        onReload: async () => undefined,
+        onFailure: () => undefined,
+      }),
+    );
+  });
+
+  const message = container.querySelector<HTMLElement>(
+    "[data-sources-unavailable]",
+  );
+  assert.ok(message, "Sources drew no reason at all for unread metadata");
+  assert.match(
+    message.textContent ?? "",
+    /knowledge\.list/u,
+    "Sources does not say which read failed",
+  );
+});

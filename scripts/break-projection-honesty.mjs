@@ -16,7 +16,7 @@
 // jeżeli asercja nie zaczerwieni się na nim, to znaczy, że nowy test jest
 // kolejnym przyrządem mierzącym fiksturę zamiast produktu.
 //
-// CZTERY ZŁAMANIA:
+// SIEDEM ZŁAMAŃ:
 //
 //   • ODDAJ ODCZYT „BRAK = NIEAKTYWNY" → wiersze i licznik mają paść. To jest
 //     Znalezisko 0 Fazy 4 odtworzone w harnessie.
@@ -26,8 +26,14 @@
 //     zapytania i kodzie odmowy. Dowód, że nowe twierdzenie jest NOWE.
 //   • ODDAJ KOLEJNOŚĆ RETURNÓW W LEJKU → slot rekordu znowu wyprzedza strażnika
 //     dostępności i nieczytelna projekcja melduje się jako brakujący ekran.
-//   • ZDEJMIJ `.message` Z BIBLIOTEKI → notatki wracają do zdania, które NAZYWA
-//     PRZYCZYNĘ, jakiej kod nie zna („not available in this scope").
+//   • ZDEJMIJ `.message` Z BIBLIOTEKI, ZADAŃ i ŹRÓDEŁ → trzy panele wracają do
+//     stałych zdań. Notatki są najgorszym z trójki, bo ich zdanie NAZYWAŁO
+//     przyczynę, jakiej kod nie zna („not available in this scope").
+//   • ZWIŃ ODMOWĘ DUPLIKATU TERMINU z powrotem w zamiatanie preconditionów →
+//     ponowny przebieg importera znów staje się nieodróżnialny od zepsutej
+//     komendy. To jedyne złamanie mierzone KONFORMANSEM (`test:core`), bo
+//     zmiana siedzi w kernelu, a nie w rendererze — dlatego niesie własne
+//     `verify`.
 //
 // Pętla jest ta z `break-test.mjs` (#211) i NIE JEST pisana tutaj od nowa:
 // `tsc -b` wewnątrz obiegu jest konieczne i NIEWYSTARCZAJĄCE, a przywrócenie
@@ -138,6 +144,46 @@ const outcome = runBreakTests({
           "              <p data-notes-unavailable>Content is not available in this scope.</p>",
           "the notes unavailable message",
         ),
+    },
+    {
+      // Pozostała trzecia część klasy „stałe zdanie". Panel Zadań RYSUJE SIĘ
+      // dalej — pada wyłącznie twierdzenie, że niesie powód, jaki dostał.
+      name: "put the fixed sentence back on Tasks: the panel still draws, only the reason is gone",
+      file: "packages/desktop-ui/src/tasks/TasksSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "          {work.message}",
+          "          Tasks are unavailable while the work plane cannot be read.",
+          "the tasks unavailable message",
+        ),
+    },
+    {
+      name: "put the fixed sentence back on Sources: the reason it was handed goes in the bin",
+      file: "packages/desktop-ui/src/library/SourcesReading.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "            <p data-sources-unavailable>{snapshot.knowledge.message}</p>",
+          "            <p data-sources-unavailable>Source metadata is unavailable right now.</p>",
+          "the sources unavailable message",
+        ),
+    },
+    {
+      // ZNALEZISKO 3, mierzone SWOIM sprawdzeniem: odmowa duplikatu terminu
+      // siedzi w kernelu, a nie w rendererze, więc pilnuje jej konformans, nie
+      // `test:interaction`. Bez tego złamania nowa asercja konformansu jest
+      // twierdzeniem o nieobecności, którego nikt nie sprawdził.
+      name: "fold the duplicate cycleKey back into the precondition sweep: the importer's re-run becomes indistinguishable from a broken command",
+      file: "packages/application/src/wave2.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '      if (duplicateCycle !== undefined)\n        return outcome(command, occurredAt, {\n          outcome: "conflict",\n          diagnosticCode: "record.already_exists",\n          currentVersions: { [duplicateCycle.id]: duplicateCycle.version },\n        });',
+          "      if (duplicateCycle !== undefined)\n        return precondition(command, occurredAt);",
+          "the duplicate cycle refusal",
+        ),
+      verify: { command: "npm", args: ["run", "test:core"] },
     },
   ],
 });
