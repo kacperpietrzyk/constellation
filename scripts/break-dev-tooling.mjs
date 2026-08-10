@@ -268,6 +268,45 @@ fi`,
           "the start-after-wait order",
         ),
     },
+    {
+      // DEFEKT 2: oddaj przyczynę z komunikatu i zostaw samo uspokojenie.
+      // Tak wyglądał modal zmierzony DWA RAZY na realnych danych: „The local
+      // workspace was not opened" i ani jednego szczegółu.
+      //
+      // Plik jest w TypeScripcie, więc obieg przechodzi przez `tsc -b`,
+      // a harness żąda dowodu przebudowy — inaczej weryfikacja czytałaby
+      // `dist` sprzed złamania.
+      name: "swallow the cause again: the modal says only that the workspace was not opened",
+      file: "packages/desktop-main/src/startup-failure.ts",
+      verify: nodeTest(
+        "packages/desktop-main/dist/test/startup-failure.test.js",
+      ),
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "return { code, guidance, cause, detail: `${guidance}\\n\\nCause: ${cause}` };",
+          "return { code, guidance, cause, detail: guidance };",
+          "the cause in the dialog detail",
+        ),
+    },
+    {
+      // DEFEKT 2, sedno: postaw przyczynę z powrotem za zmienną, która
+      // JEDNOCZEŚNIE przestawia korzeń workspace'u. Diagnostyka zmieniająca
+      // mierzoną rzecz nie jest diagnostyką — a złamanie pokazuje, że asercja
+      // pilnuje właśnie tego, a nie tylko obecności napisu.
+      name: "gate the cause on the smoke-root variable: asking why startup failed changes what startup does",
+      file: "packages/desktop-main/src/startup-failure.ts",
+      verify: nodeTest(
+        "packages/desktop-main/dist/test/startup-failure.test.js",
+      ),
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "return { code, guidance, cause, detail: `${guidance}\\n\\nCause: ${cause}` };",
+          'return {\n    code,\n    guidance,\n    cause,\n    detail:\n      process.env["CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT"] === undefined\n        ? guidance\n        : `${guidance}\\n\\nCause: ${cause}`,\n  };',
+          "the unconditional cause",
+        ),
+    },
   ],
 });
 

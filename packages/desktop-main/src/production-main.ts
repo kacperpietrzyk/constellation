@@ -72,7 +72,6 @@ import {
   type QueryProjection,
   type SpaceId,
 } from "@constellation/contracts";
-import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
 import {
   ATTACHMENT_RESPONSE_HEADERS,
@@ -113,7 +112,6 @@ import {
   parseHubWorkspaceProjection,
 } from "./coordinated-sync-engine.js";
 import {
-  DurableWorkspaceOpenError,
   createDurableKernelService,
   type DurableBootstrapProjection,
   type DurableKernelService,
@@ -131,14 +129,12 @@ import type { PreparedLocalMcpCredential } from "./local-mcp-credential-custody.
 import { RemoteMcpCredentialCustody } from "./remote-mcp-credential-custody.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
+import { startupFailureCopy } from "./startup-failure.js";
 import {
   allowsAudioMediaCheck,
   allowsAudioMediaRequest,
 } from "./media-permission.js";
-import {
-  WorkspaceKeyCustodyError,
-  type AsyncSafeStorage,
-} from "./workspace-key-custody.js";
+import type { AsyncSafeStorage } from "./workspace-key-custody.js";
 import {
   createWorkspaceRecoveryService,
   type WorkspaceRecoveryService,
@@ -3321,60 +3317,21 @@ const startProductionDesktop = async (): Promise<void> => {
   });
 };
 
-const startupFailureCopy = (
-  error: unknown,
-): { readonly code: string; readonly detail: string } => {
-  if (error instanceof WorkspaceKeyCustodyError) {
-    if (error.code === "encryption_unavailable") {
-      return {
-        code: "secure-storage-unavailable",
-        detail:
-          "Secure operating-system key storage is unavailable. Unlock your sign-in keychain or credential store, then start Constellation again.",
-      };
-    }
-    return {
-      code: "protected-key-unavailable",
-      detail:
-        "The protected workspace key could not be opened safely. Constellation did not modify the workspace. Restore the key wrapper and database from the same backup before trying again.",
-    };
-  }
-  if (error instanceof DurableWorkspaceOpenError) {
-    return {
-      code: "workspace-open-blocked",
-      detail:
-        error.code === "database_without_key"
-          ? "The encrypted database is present but its protected key wrapper is missing. Constellation did not modify the database. Restore both files from the same backup before trying again."
-          : "The local workspace could not be opened safely. Constellation did not continue with a partial workspace. Restore a known-good workspace backup before trying again.",
-    };
-  }
-  if (error instanceof EncryptedStoreCapabilityError) {
-    return {
-      code: "encrypted-store-unavailable",
-      detail:
-        "The encrypted database component did not pass its startup safety checks. Reinstall this Constellation build; your existing workspace was not intentionally changed.",
-    };
-  }
-  return {
-    code: "desktop-startup-failed",
-    detail:
-      "Constellation could not start the local workspace safely. Your workspace was not intentionally changed. Open the data folder for recovery or try reinstalling this build.",
-  };
-};
-
 const reportStartupFailure = async (error: unknown): Promise<void> => {
   workspaceRecovery?.close();
   workspaceRecovery = undefined;
   dataHomeProvider = undefined;
   const failure = startupFailureCopy(error);
+  // Both lines are unconditional. The cause used to appear only when
+  // CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT was set, and that variable also
+  // reroutes the workspace, so the only way to ask why startup failed was to
+  // change what startup did. Measured twice on real data: a modal reading
+  // "The local workspace was not opened" with no detail at all, and three
+  // restarts spent adding a temporary console.error to production code.
   console.error(`Constellation startup stopped safely (${failure.code}).`);
-  if (process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT !== undefined) {
-    console.error(
-      `Packaged smoke startup diagnostic: ${
-        error instanceof Error
-          ? `${error.name}: ${error.message}`
-          : typeof error
-      }`,
-    );
+  console.error(`Constellation startup cause: ${failure.cause}`);
+  if (error instanceof Error && error.stack !== undefined) {
+    console.error(error.stack);
   }
   try {
     const result = await dialog.showMessageBox({
