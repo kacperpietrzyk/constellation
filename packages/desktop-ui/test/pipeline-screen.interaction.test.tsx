@@ -1034,8 +1034,11 @@ test("the Pipeline sheet keeps the declarations that hold a scrolling board insi
   );
   // 3. Every bar ABOVE the board wraps. A non-wrapping flex row's min-content is
   //    the sum of its children, and at 200% text that sum stops fitting.
+  // `.crumbbar` ZNIKNĄŁ Z TEGO SELEKTORA W LOCIE C2 razem z samym rzędem: akcja
+  // Lejka stoi teraz w paśmie tytułu, a blok, który wymieniał obie klasy, został
+  // przepisany na jedną, żeby nie zostawić w nim martwej nazwy.
   for (const bar of [
-    ".crumbbar,\n.viewbar",
+    ".viewbar",
     ".create",
     ".dealPanel",
     ".moveGroup,\n.priceControls",

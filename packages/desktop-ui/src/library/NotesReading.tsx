@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { DocumentId, FolderId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -79,6 +80,7 @@ export const NotesReading = ({
   client,
   snapshot,
   activeDocumentId,
+  actionHost,
   inspectorHost,
   onInspectorOpen,
   onEntityActivate,
@@ -89,6 +91,10 @@ export const NotesReading = ({
   readonly snapshot: DesktopSnapshot;
   readonly activeDocumentId?: DocumentId | undefined;
   readonly inspectorHost: HTMLElement | null;
+  /** Węzeł w paśmie tytułu powłoki, do którego ten odczyt wstrzykuje SWOJĄ
+   *  akcję główną. `null`, dopóki powłoka go nie zamontuje — patrz nota przy
+   *  portalu niżej. Ten sam kształt co `inspectorHost` obok. */
+  readonly actionHost: HTMLElement | null;
   readonly onInspectorOpen: () => void;
   readonly onEntityActivate: (target: {
     readonly targetKind: DocumentEntityTargetKind;
@@ -361,76 +367,96 @@ export const NotesReading = ({
         {/* ITS OWN NAMED REGION, and it keeps the name the shipped screen had.
             The create path is discoverable by its accessible name rather than
             by where it happens to sit, which is what makes it findable when
-            the panels collapse and the toolbar wraps. */}
-        <div
-          className="knowledge-create-bar"
-          aria-label="Create in the library"
-        >
-          <InlinePopover
-            disabled={!client || creating}
-            label="New content"
-            onOpenChange={setOpenCreate}
-            open={openCreate}
-            panelLabel="Create content in the library"
-          >
-            <form
-              className="new-knowledge-form knowledge-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!client || !newTitle.trim() || creating) return;
-                setCreating(true);
-                void createDocument(
-                  client,
-                  snapshot,
-                  newTitle,
-                  newRole,
-                  selection === ALL_NOTES || selection === UNFILED
-                    ? undefined
-                    : selection,
-                ).then(async (result) => {
-                  setCreating(false);
-                  if (result.kind !== "success") return onFailure(result);
-                  setSelectedId(result.data);
-                  setNewTitle("");
-                  setOpenCreate(false);
-                  await onReload();
-                });
-              }}
-            >
-              <label htmlFor="knowledge-title">New content</label>
-              <input
-                id="knowledge-title"
-                maxLength={500}
-                name="knowledgeTitle"
-                onChange={(event) => setNewTitle(event.target.value)}
-                placeholder="Note or deliverable title"
-                required
-                value={newTitle}
-              />
-              <div
-                aria-label="Content kind"
-                className="role-options"
-                role="group"
+            the panels collapse and the toolbar wraps.
+
+            FAZA C, LOT C2 — REGION PRZENIÓSŁ SIĘ DO PASMA TYTUŁU, przez portal,
+            i to jest zmiana MIEJSCA, nie nazwy: `aria-label` zostaje ten sam,
+            zostaje ten sam wyzwalacz, ten sam dymek i ten sam formularz.
+            Prototyp stawia tę akcję jako drugi argument crumbbara
+            (`v3/screens/knowledge.js:802-804`, `btn("New note", { cls:
+            "primary", icon: "plus" })`, malowane `v3/app.css:321-332`),
+            a rejestr notuje o tym ekranie, że nie ma na nim ANI JEDNEJ
+            powierzchni wypełnionej akcentem, bo tworzenie stało bladą pigułką
+            w środkowej kolumnie. Etykieta idzie za prototypem („New note"
+            zamiast „New content"): pasmo mówi, co powstanie, a dymek dalej
+            pozwala wybrać rolę.
+
+            HOST MOŻE BYĆ `null` — powłoka montuje węzeł celu w tym samym
+            przebiegu, w którym renderuje ten odczyt, więc pierwsze przejście
+            nie ma jeszcze dokąd wstrzykiwać. Wtedy nie rysuje się NIC, a nie
+            rysuje się kopia w starym miejscu: dwa wyzwalacze o tej samej
+            nazwie to dwie akcje główne na jednym ekranie. */}
+        {actionHost !== null &&
+          createPortal(
+            <div aria-label="Create in the library">
+              <InlinePopover
+                disabled={!client || creating}
+                label="New note"
+                onOpenChange={setOpenCreate}
+                open={openCreate}
+                panelLabel="Create content in the library"
+                triggerClassName="primary-button"
               >
-                {(Object.keys(roleCopy) as (keyof typeof roleCopy)[]).map(
-                  (role) => (
-                    <button
-                      aria-pressed={newRole === role}
-                      key={role}
-                      onClick={() => setNewRole(role)}
-                      type="button"
-                    >
-                      {roleCopy[role]}
-                    </button>
-                  ),
-                )}
-              </div>
-              <button className="primary-button" disabled={creating}>
-                Create {roleAccusativeCopy[newRole]}
-              </button>
-            </form>
-          </InlinePopover>
-        </div>
+                <form
+                  className="new-knowledge-form knowledge-create-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!client || !newTitle.trim() || creating) return;
+                    setCreating(true);
+                    void createDocument(
+                      client,
+                      snapshot,
+                      newTitle,
+                      newRole,
+                      selection === ALL_NOTES || selection === UNFILED
+                        ? undefined
+                        : selection,
+                    ).then(async (result) => {
+                      setCreating(false);
+                      if (result.kind !== "success") return onFailure(result);
+                      setSelectedId(result.data);
+                      setNewTitle("");
+                      setOpenCreate(false);
+                      await onReload();
+                    });
+                  }}
+                >
+                  <label htmlFor="knowledge-title">New content</label>
+                  <input
+                    id="knowledge-title"
+                    maxLength={500}
+                    name="knowledgeTitle"
+                    onChange={(event) => setNewTitle(event.target.value)}
+                    placeholder="Note or deliverable title"
+                    required
+                    value={newTitle}
+                  />
+                  <div
+                    aria-label="Content kind"
+                    className="role-options"
+                    role="group"
+                  >
+                    {(Object.keys(roleCopy) as (keyof typeof roleCopy)[]).map(
+                      (role) => (
+                        <button
+                          aria-pressed={newRole === role}
+                          key={role}
+                          onClick={() => setNewRole(role)}
+                          type="button"
+                        >
+                          {roleCopy[role]}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                  <button className="primary-button" disabled={creating}>
+                    Create {roleAccusativeCopy[newRole]}
+                  </button>
+                </form>
+              </InlinePopover>
+            </div>,
+            actionHost,
+          )}
 
         <div className={styles.listScroll}>
           {snapshot.documents.kind === "unavailable" ? (

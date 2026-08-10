@@ -28,9 +28,12 @@
 //
 //   LAYOUT_PORT=5291 node scripts/break-visual-language.mjs
 //
-// TRZY ZŁAMANIA, TRZY RÓŻNE POWODY CZERWIENI — i to jest cała treść tego pliku.
-// Jedno złamanie dowodzi tylko tego, że sonda umie paść; trzy dowodzą, że pada
-// na TYM, co deklaruje, a nie na czymkolwiek.
+// KAŻDE ZŁAMANIE MA WŁASNY POWÓD CZERWIENI — i to jest cała treść tego pliku.
+// Jedno złamanie dowodzi tylko tego, że sonda umie paść; kilka, celujących
+// w RÓŻNE reguły, dowodzi, że pada na TYM, co deklaruje, a nie na czymkolwiek.
+// Lot C2 dołożył ósme, dla POZIOMEJ osi pasma tytułu: pasmo ma już złamanie
+// psujące PION (rozłożenie go na blok), a wada, przeciw której powstała druga
+// oś, jest inna — akcja stoi w rzędzie tytułu, ale przy jego LEWEJ krawędzi.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -260,24 +263,28 @@ const outcome = runBreakTests({
       // tytuł — dokładnie ten rozjazd, którego ten przyrząd szuka, tyle że
       // wprowadzony tam, gdzie go dziś NIE MA.
       //
-      // CZERWIEŃ JEST NADOKREŚLONA I TO JEST ZAMIERZONE — pada z DWÓCH
-      // niezależnych powodów i oba są treścią tego przyrządu:
+      // CZERWIENIĄ JEST WERDYKT NAD EKRANEM, KTÓRY ROZJECHAŁ SIĘ Z KANONICZNĄ
+      // LISTĄ: Projekty zmierzone jako BELOW_BAND wobec deklarowanego IN_BAND.
       //
-      //   * werdykt nad ekranem, który rozjechał się z kanoniczną listą
-      //     (Projekty zmierzone jako BELOW_BAND wobec deklarowanego IN_BAND);
-      //   * `TITLE_BAND_NEVER_IN_BAND` — Projekty są JEDYNYM świadkiem na to,
-      //     że ten przyrząd umie zwrócić cokolwiek poza znaleziskiem, więc
-      //     przebieg, w którym przestały nim być, jest przebiegiem sondy, która
-      //     umie wyłącznie czerwienieć.
+      // `TITLE_BAND_NEVER_IN_BAND` ZSZEDŁ Z TEJ LISTY W LOCIE C2 i to jest
+      // zapisane tutaj, a nie przemilczane. Do C2 Projekty były JEDYNYM
+      // ekranem trzymającym akcję w paśmie, więc to złamanie zabierało
+      // przyrządowi ostatniego świadka i strażnik padał razem z werdyktem.
+      // Lot C2 dał pasmo akcji także Zadaniom, Lejkowi, Odnowieniom,
+      // Organizacjom, Ludziom i Bibliotece — a Biblioteka składa własny
+      // nagłówek (`library.module.css .header`), którego ta edycja NIE dotyka.
+      // Świadek zostaje więc nawet przy rozłożonym `.surface-header`, strażnik
+      // milczy i fragment po nim byłby dziś asercją na zdarzenie, które nie
+      // zachodzi — czyli break-testem, który przeszedł z niewłaściwego powodu.
       //
-      // Fragmenty niżej pinują OBIE ścieżki, bo sam kod wyjścia nie odróżnia
-      // ich od siebie ani od czerwieni któregokolwiek z pozostałych przelotów
-      // tej bramki — a `display: block` na paśmie rusza również geometrię,
-      // którą mierzą przeloty sprzed tej fazy.
-      name: "lay the surface header out as a block: the one screen that keeps its primary action in the title row drops it a line, and the title-band pass loses its only witness",
+      // FRAGMENT JEST PREFIKSEM WERDYKTU, BEZ CZĘŚCI POZIOMEJ: wiersz raportu
+      // niesie od lotu C2 OBIE osie (`BELOW_BAND/INSET_FROM_END`), a ten
+      // break-test odpowiada za oś PIONOWĄ. Wpisanie tu pełnej pary związałoby
+      // go z werdyktem drugiego przyrządu.
+      name: "lay the surface header out as a block: the screens that keep their primary action in the title row drop it a line",
       expectRedContains: [
-        "projects: this pass measured BELOW_BAND and the canonical screen list says IN_BAND",
-        "TITLE_BAND_NEVER_IN_BAND",
+        "projects: this pass measured BELOW_BAND",
+        "organizations: this pass measured BELOW_BAND",
       ],
       file: "packages/desktop-ui/src/styles.css",
       edit: (text) =>
@@ -294,6 +301,52 @@ const outcome = runBreakTests({
   margin: 0 auto var(--space-6);
   display: block;`,
           "the surface header's row layout",
+        ),
+    },
+    {
+      // ZŁAMANIE DLA OSI POZIOMEJ PASMA TYTUŁU (Faza C, lot C2).
+      //
+      // PO CO OSOBNE ZŁAMANIE, SKORO PASMO MA JUŻ JEDNO. Tamto rozkłada pasmo
+      // na blok, czyli psuje PION — akcja spada wiersz niżej. Oś pozioma
+      // powstała przeciw zupełnie innej wadzie: akcji, która JEST w rzędzie
+      // tytułu, ale stoi tuż za tytułem zamiast u prawego końca pasma. Raport
+      // Fazy B nazywał tę ślepotę wprost („NIE MIERZĘ POZIOMU, TYLKO PION"),
+      // a rejestr rozjazdów żąda przy Odnowieniach i przy Organizacjach akcji
+      // DOSUNIĘTEJ DO PRAWEJ. Bez tego złamania nowa oś jest regułą, o której
+      // wiadomo wyłącznie, że jest zielona.
+      //
+      // EDYCJA ZDEJMUJE DOKŁADNIE JEDNĄ DEKLARACJĘ — `justify-content:
+      // space-between` z `.surface-header`. To jest ta sama reguła, która
+      // w prototypie nazywa się `.crumbbar .spacer { flex: 1 }`
+      // (`v3/app.css:293`) i która do lotu C2 stała w tym arkuszu MARTWA, bo
+      // pasmo miało jedno dziecko. Bez niej pasmo zostaje rzędem
+      // (`display: flex`, `align-items: center`), więc PION się nie rusza —
+      // i to jest cała wartość tego złamania: czerwień przychodzi WYŁĄCZNIE
+      // z osi poziomej, a werdykt czyta się `IN_BAND/INSET_FROM_END`.
+      //
+      // DWA EKRANY W ASERCJI, NIE JEDEN: fragment na pojedynczym ekranie
+      // przeszedłby również wtedy, gdyby edycja trafiła w coś, co dotyka tylko
+      // jego. Oba wymienione niżej rysują `.surface-header`, więc oba muszą
+      // paść razem.
+      //
+      // `TITLE_BAND_NEVER_FLUSH_END` NIE JEST TU OCZEKIWANY i to jest ten sam
+      // powód co przy złamaniu wyżej: Biblioteka składa własny nagłówek, który
+      // ta edycja pomija, więc świadek osi poziomej zostaje.
+      name: "take space-between off the surface header: the primary action stops standing at the band's end and stands right behind the title instead",
+      expectRedContains: [
+        "organizations: this pass measured IN_BAND/INSET_FROM_END",
+        "renewals: this pass measured IN_BAND/INSET_FROM_END",
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);`,
+          `  align-items: center;
+  gap: var(--space-4);`,
+          "the surface header's end alignment",
         ),
     },
     {

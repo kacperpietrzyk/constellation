@@ -400,6 +400,28 @@
   transform: translateY(-0.2em) rotate(45deg);
 }
 
+/* WYZWALACZ, KTÓRY JEST AKCJĄ GŁÓWNĄ SWOJEGO POJEMNIKA (Faza C, lot C2).
+   `.inline-popover-trigger` maluje obwódkową pigułkę z szewronem, i to jest
+   właściwy wygląd dla dymka otwieranego z treści. Kiedy ten sam dymek jest
+   AKCJĄ GŁÓWNĄ pasma — dziś: „New note" i „Add a source" w paśmie Biblioteki,
+   gdzie prototyp maluje `.btn.primary` (`v3/screens/knowledge.js:802-804`
+   i `:967-968` przez `v3/app.css:321-332`) — o wyglądzie decyduje rola, nie
+   mechanizm. Selektor jest DWUKLASOWY, żeby wygrać niezależnie od kolejności
+   wstrzyknięcia arkuszy, a nie przez to, że akurat stoi niżej.
+
+   Rejestr notował oba te ekrany jako „ekran bez ANI JEDNEJ powierzchni
+   wypełnionej akcentem", a akcję tworzenia jako „bladą obwódkową pigułkę
+   › New content" — pigułkę składały dokładnie te dwie deklaracje: obwódka wyżej
+   i szewron w `::before`. Znika obwódka i szewron; ikona akcji jest wtedy tą
+   samą ikoną, którą niosą akcje główne pozostałych ekranów. */
+.inline-popover-trigger.primary-button {
+  border-color: transparent;
+}
+
+.inline-popover-trigger.primary-button::before {
+  content: none;
+}
+
 .inline-popover {
   position: fixed;
   z-index: var(--z-dropdown);
@@ -721,12 +743,42 @@ kbd {
     transform var(--duration-instant),
     border-color var(--duration-fast);
 }
+/* MATERIAŁ AKCJI GŁÓWNEJ (Faza C, lot C2, pozycja C4 rejestru o kształcie
+   przycisku). Prototyp daje jej TRZY warstwy cienia obok wypełnienia
+   (`v3/app.css:326-330`): jasną kreskę `inset 0 1px 0` pod górną krawędzią,
+   płytki cień pod spodem i pierścień `0 0 0 1px var(--accent-edge)`. Rejestr
+   potwierdził brak wszystkich trzech PIONOWĄ SONDĄ w wyściółce przycisku, poza
+   tuszem napisu: „app, x=2455: od góry do dołu jednolite rgb(127,75,220) — zero
+   różnicy, żadnej jasnej kreski wewnętrznej, żadnego pierścienia. Prototyp,
+   x=2590: […] nad gradientem siedzi jasna kreska rgb(193,167,255)". Kontrakt:
+   `.ui-craft/tokens.md`, „Component layer" — `action-primary-*` to jedna
+   akcja wypełniona akcentem.
+
+   SAM GRADIENT ZOSTAJE ODRZUCONY I TO JEST ODMOWA NA POMIARZE, nie przeoczenie
+   tego lotu. Prototyp maluje wypełnienie `linear-gradient(180deg, var(--a-400),
+   var(--a-500) 55%, var(--a-600))`, a `scripts/consumer-contrast.test.mjs`
+   ROZKŁADA gradienty na stopnie i mierzy KAŻDY z nich: górny stopień daje
+   2,57:1 przeciw `--on-accent` przy progu AA 4,5, środkowy 3,54:1. Pełne
+   uzasadnienie, z tabelą całej rampy, stoi przy `--action-primary-bg`
+   w `tokens.css` i jest starsze niż ten lot. Cienie tekstu nie dotykają, więc
+   wchodzą; wypełnienie zostaje wyliczone.
+
+   HOVER PODNOSI KRESKĘ I ZAMIENIA CIEŃ NA POŚWIATĘ, tak jak prototyp
+   (`v3/app.css:333-337`) — pierścień zostaje ten sam. */
 .primary-button {
   color: var(--action-primary-text);
   background: var(--action-primary-bg);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 0.24),
+    0 1px 2px oklch(0% 0 0 / 0.28),
+    0 0 0 1px var(--accent-edge);
 }
 .primary-button:not(:disabled):hover {
   background: var(--action-primary-hover);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 0.3),
+    0 2px 10px var(--accent-glow),
+    0 0 0 1px var(--accent-edge);
 }
 .primary-button:not(:disabled):active {
   background: var(--action-primary-pressed);
@@ -769,6 +821,12 @@ kbd {
   background: var(--surface-pressed);
   border-color: var(--border-strong);
 }
+/* `.compact` NALEŻY DO OBU AKCJI, NIE DO SEKUNDARNEJ. Selektor wymieniał samą
+   `.secondary-button`, więc `primary-button compact` — wołane od 2026-08 przez
+   `ReleaseContinuity.tsx:132`, a od lotu C2 także przez pas akcji rekordu
+   projektu — rysowało się w pełnej wysokości OBOK sąsiadów o 2 rem. Wariant
+   rozmiaru jest właściwością kontrolki, a nie jednej z jej farb. */
+.primary-button.compact,
 .secondary-button.compact {
   min-height: 2rem;
   padding-inline: var(--space-3);

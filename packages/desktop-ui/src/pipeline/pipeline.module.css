@@ -15,7 +15,7 @@
    instead of taking one and the surface overflows itself with no descendant
    overflowing anything. Three rules follow, and none of them is decoration:
 
-     1. every bar above the board wraps (`.crumbbar`, `.viewbar`, `.create`,
+     1. every bar above the board wraps (`.viewbar`, `.create`,
         `.dealPanel`, `.moveGroup`, `.priceControls`);
      2. the board — which really is a non-wrapping row, because a kanban board
         that wraps is not a board — is held by `.scroller`, whose `overflow-x`
@@ -60,25 +60,24 @@
 
 /* ── Chrome above the board ──────────────────────────────────────────── */
 
-.crumbbar,
+/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2, a `.viewbar` zostaje. Selektor wymieniał
+   obie klasy w jednym bloku, więc skasowanie samego `.crumbbar` zostawiłoby
+   w nim martwą nazwę — dlatego blok jest przepisany na jedną klasę, a nie
+   okrojony z jednego wiersza.
+
+   Prototyp nie układa nad płótnem pasma tytułu I osobnego paska akcji:
+   `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) jest JEDNYM pasmem, które
+   niesie nazwę ekranu i akcję, a rozpychacz `.crumbbar .spacer { flex: 1 }`
+   (`v3/app.css:293`) odpycha ją do prawego końca. Akcja Lejka stoi teraz
+   w `SurfaceTitleBand`, gdzie tę samą robotę robi `justify-content:
+   space-between` pasma — czyli reguła, która w `styles.css` stała martwa,
+   odkąd pasmo miało jedno dziecko. */
 .viewbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding-inline: var(--space-4);
-}
-
-/* THE SCREEN'S ACTION STANDS AT THE END OF THE BAR, NOT AT ITS HEAD
-   (`v3/screens/pipeline.js:409-410`, drawn into the crumb bar behind
-   `v3/app.css:293` — `.crumbbar .spacer { flex: 1 }`). The auto margin does the
-   work of that spacer without adding a second child: the pair map reads
-   `[class*="_crumbbar_"] button` and says the row holds exactly one button, so
-   a spacer element that happened to be a button would turn a measurement into
-   "several different values". Which button it is — primary or secondary — is
-   decided in `PipelineSurface.tsx`, where the reason lives. */
-.createToggle {
-  margin-inline-start: auto;
 }
 
 .create {

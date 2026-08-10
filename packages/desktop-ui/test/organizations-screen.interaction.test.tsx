@@ -1112,7 +1112,12 @@ test("the Organizations sheet keeps the declarations that stop the surface sizin
   );
   // 4. Every bar wraps. A non-wrapping flex row's min-content is the sum of its
   //    children, which is a number nothing can shrink.
-  for (const bar of [".crumbbar", ".viewbar", ".filter"]) {
+  // `.crumbbar` ZSZEDŁ Z TEJ LISTY W LOCIE C2, bo zszedł z ekranu: akcja
+  // przeniosła się do pasma tytułu, a pusty rząd został skasowany. Pasmo, które
+  // ją teraz niesie, deklaruje `flex-wrap: wrap` w `styles.css` przy
+  // `.surface-header`, z tego samego powodu i z własnym uzasadnieniem — nie
+  // w tym arkuszu, więc nie w tej pętli.
+  for (const bar of [".viewbar", ".filter"]) {
     assert.match(
       declarationsOf(bar),
       /flex-wrap: wrap/u,

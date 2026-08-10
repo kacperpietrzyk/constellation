@@ -14,21 +14,13 @@
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
-/* WRAPPING IS NOT DECORATION HERE, it is what keeps the surface inside itself.
-   `.surface-scroll > *` centres every child with `margin-inline: auto`
-   (`styles.css:4404-4407`), so a child is sized `fit-content` — and
-   `fit-content` is clamped BELOW by min-content. A non-wrapping flex row's
-   min-content is the sum of its children, so at 200% text this bar stops being
-   able to fit the surface's content box and the surface overflows itself, with
-   no single descendant overflowing anything. A wrapping row's min-content is
-   its widest single child instead, which is a number that stays inside. */
-.crumbbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-4);
-}
+/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2. Prototyp nie układa nad płótnem pasma
+   tytułu I osobnego paska akcji: `crumbbar(crumbs, actions)`
+   (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu i akcję,
+   a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) odpycha akcję
+   do jego prawego końca. Akcja tego ekranu stoi teraz w `SurfaceTitleBand`,
+   a reguła, która trzymała ją rzędem niżej, nie ma już konsumenta i została
+   skasowana zamiast osierocona. */
 
 .create {
   display: flex;

@@ -48,18 +48,22 @@ import { assertNoNode } from "./dom-assert.js";
  */
 
 let container: HTMLElement;
+let bandHost: HTMLElement;
 let root: Root;
 
 beforeEach(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.append(container);
+  bandHost = document.createElement("div");
+  document.body.append(bandHost);
   root = createRoot(container);
 });
 
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  bandHost.remove();
 });
 
 type Source = ReturnType<typeof librarySources>[number];
@@ -85,6 +89,11 @@ const render = (
   act(() => {
     root.render(
       createElement(SourcesReading, {
+        // Pasmo tytułu Biblioteki jest celem PORTALU, więc odczyt pozbawiony
+        // celu nie rysuje swojej akcji tworzenia w ogóle. Fikstura daje tu
+        // prawdziwy węzeł, żeby ta ścieżka została w teście osiągalna — cel
+        // `null` przechodziłby tak samo i po cichu zabierał ją z pomiaru.
+        actionHost: bandHost,
         client,
         snapshot: snapshotWith(sources),
         onReload: async () => undefined,

@@ -83,6 +83,7 @@ import {
   CSS_MODULE_HASH_PATTERN as TITLE_BAND_HASH_PATTERN,
   classifyTitleBandAction,
   classifyTitleBandCensus,
+  classifyTitleBandInline,
   isTitleBandDivergence,
   titleBandVerdictThrows,
 } from "./title-band-action.mjs";
@@ -4598,6 +4599,11 @@ const controlPaintCensus = async (browser) => {
 // przeglądarki: spacer po celach, otwarcie rekordów i odczyt czterech liczb
 // z każdego pudełka.
 //
+// OSIE SĄ DWIE OD LOTU C2: pion (środek akcji względem rzędu tytułu) i poziom
+// (prawa krawędź akcji względem końca TREŚCI pasma). Przeglądarkowa część
+// drugiej osi to dwa dodatkowe odczyty z `getComputedStyle` pasma — wyściółka
+// i `column-gap` — i ani jednej dodatkowej wizyty.
+//
 // JEDEN MOTYW, i to jest wybór, nie oszczędność: `getBoundingClientRect()` nie
 // jest funkcją farby, więc drugi motyw dałby dwa razy te same liczby i drugi
 // raz ten sam czas bramki. Ten sam argument, który w `routedVisualLanguage`
@@ -4711,6 +4717,27 @@ const measureTitleBandActionInPage = async ({
     const bandBox = box(band);
     const titleBox = box(title);
 
+    // KONIEC PASMA JEST KRAWĘDZIĄ TREŚCI, NIE KRAWĘDZIĄ RAMKI, i ta różnica jest
+    // całą poprawnością osi poziomej: `justify-content: flex-end` stawia ostatnie
+    // dziecko przy krawędzi PUDEŁKA TREŚCI, więc pasmo z wyściółką dawałoby
+    // przy odczycie `rect.right` stały, fałszywy odstęp równy tej wyściółce —
+    // czyli rozjazd nad ekranem, którego nikt nie zepsuł. Biblioteka ma
+    // `padding-inline: var(--space-6)` (`library.module.css`), więc ten przypadek
+    // jest dziś na wystawie, a nie hipotetyczny.
+    //
+    // TOLERANCJĄ JEST `column-gap` TEGO pasma — jedyna poziomia odległość, którą
+    // pasmo samo o sobie deklaruje. `normal` (czyli brak deklaracji) rozwiązuje
+    // się do NaN i reguła w `title-band-action.mjs` czyta to jako zero.
+    const bandStyle = window.getComputedStyle(band);
+    const bandEdge = (name) => Number.parseFloat(bandStyle[name]) || 0;
+    const bandInline = {
+      contentRight: round(
+        bandBox.right - bandEdge("paddingRight") - bandEdge("borderRightWidth"),
+      ),
+      columnGap: Number.parseFloat(bandStyle.columnGap),
+      paddingRight: round(bandEdge("paddingRight")),
+    };
+
     // OBSZAR TYTUŁU: pasmo plus rodzeństwo BEZPOŚREDNIE, ale wyłącznie takie,
     // które NIE JEST WYŻSZE od samego pasma. Powód, liczby i zadeklarowana
     // ślepa plama tej granicy stoją w nagłówku `title-band-action.mjs`;
@@ -4758,7 +4785,7 @@ const measureTitleBandActionInPage = async ({
         sample: (title.textContent ?? "").trim().slice(0, 32),
         ...titleBox,
       },
-      band: { signature: signature(band), ...bandBox },
+      band: { signature: signature(band), ...bandBox, ...bandInline },
       ceiling,
       neighbourhood: neighbourhood.map((entry) => ({
         offset: entry.offset,
@@ -4906,6 +4933,12 @@ const titleBandActionCensus = async (browser) => {
   // the prototype" zawyżałby pokrycie o podmiot, o którym ten przyrząd świadomie
   // nie ma zdania.
   let notComparable = 0;
+  // DWA LICZNIKI POD JEDNYM ROZJAZDEM, bo „osiem ekranów stawia akcję poza
+  // rzędem" po dołożeniu drugiej osi przestało być jednym zdaniem. Ekran może
+  // być rozjazdem przez pion, przez poziom albo przez oba — a podsumowanie,
+  // które nie mówi który, każe odbierającemu wrócić do wierszy.
+  let displacedRow = 0;
+  let displacedInline = 0;
 
   report(
     `walked\t${collected.declared.length} declared destination(s)\t` +
@@ -4930,6 +4963,7 @@ const titleBandActionCensus = async (browser) => {
       judged.push({
         id: entry.id,
         state: "NOT_MEASURED",
+        inlineState: "NOT_MEASURED",
         titles: entry.titles,
         band: entry.band,
       });
@@ -4943,14 +4977,34 @@ const titleBandActionCensus = async (browser) => {
       title: entry.title,
       actions: entry.actions,
     });
+    // OŚ POZIOMA OSĄDZA TEN SAM ZBIÓR AKCJI, co pionowa, i to jest wymóg: dwie
+    // osie nad dwoma różnymi zbiorami dawałyby dwa zdania o dwóch różnych
+    // rzeczach pod jedną nazwą ekranu.
+    const inline = classifyTitleBandInline({
+      band: entry.band,
+      actions: entry.actions,
+    });
+    const inlineById = new Map(
+      inline.judged.map((action) => [
+        `${action.signature}|${action.left}|${action.top}`,
+        action,
+      ]),
+    );
     judged.push({
       id: entry.id,
       state: decision.state,
+      inlineState: inline.inlineState,
       titles: entry.titles,
       band: entry.band,
     });
     const row = byId.get(entry.id);
-    const predicted = row !== undefined && row.today === decision.state;
+    // PRZEWIDZIANY ZNACZY PRZEWIDZIANY NA OBU OSIACH. Koniunkcja, nie sama
+    // kolumna pionowa: akcja przesunięta w POZIOMIE i nigdzie nie zapisana
+    // przechodziłaby inaczej po cichu, czyli druga oś nie pilnowałaby niczego.
+    const predicted =
+      row !== undefined &&
+      row.today === decision.state &&
+      row.todayInline === inline.inlineState;
     // „BRAK AKCJI" MUSI POWIEDZIEĆ, GDZIE SZUKANO. Samo zdanie „nie znalazłem"
     // nad ekranem, którego sąsiad właśnie urósł ponad pasmo, czyta się
     // identycznie jak nad ekranem, który akcji nie ma — a to są dwie różne
@@ -4990,16 +5044,33 @@ const titleBandActionCensus = async (browser) => {
         ? `no action-class button in the title row's neighbourhood ${searched}`
         : `${searched} ` +
           decision.judged
-            .map(
-              (action) =>
+            .map((action) => {
+              // JEDNO PUDEŁKO, DWA WERDYKTY, JEDNA LINIA. Rozdzielenie osi na
+              // dwie linie raportu zmusiłoby czytającego do sparowania ich po
+              // nazwie przycisku — a na ekranie rekordu projektu przyciski są
+              // dwa i stoją w tym samym rzędzie.
+              const across = inlineById.get(
+                `${action.signature}|${action.left}|${action.top}`,
+              );
+              return (
                 `${action.signature} „${action.sample}" ${action.where} ${span(action)} ` +
-                `drift ${action.drift}px vs tolerance ${action.tolerance}px → ${action.state}`,
-            )
+                `drift ${action.drift}px vs tolerance ${action.tolerance}px → ${action.state}` +
+                (across === undefined
+                  ? ""
+                  : ` | end gap ${across.endGap}px vs tolerance ${across.inlineTolerance}px → ` +
+                    `${across.inlineState}`)
+              );
+            })
             .join(" | ");
     const line =
-      `${entry.id}\t${decision.state}\t` +
-      `${row === undefined ? "UNDECLARED" : `prototype ${row.prototype}, table says ${row.today}`}\t` +
-      `band ${entry.band.signature} h=${entry.band.height}\t` +
+      `${entry.id}\t${decision.state}/${inline.inlineState}\t` +
+      `${row === undefined ? "UNDECLARED" : `prototype ${row.prototype}, table says ${row.today}/${row.todayInline}`}\t` +
+      // KONIEC TREŚCI PASMA I JEGO ODSTĘP DRUKUJĄ SIĘ ZAWSZE, z tego samego
+      // powodu, z którego drukuje się sufit sąsiedztwa: bez nich „end gap
+      // 954,6" nie daje się sprawdzić przy odbiorze, bo nie widać, od czego
+      // liczony, ani ile wynosiła wyściółka, którą odjęto.
+      `band ${entry.band.signature} h=${entry.band.height} content ends x=${entry.band.contentRight} ` +
+      `(right x=${entry.band.right} − padding ${entry.band.paddingRight}) column-gap ${entry.band.columnGap}\t` +
       `title „${entry.title.sample}" ${span(entry.title)}\t${where}`;
     report(line);
 
@@ -5011,8 +5082,15 @@ const titleBandActionCensus = async (browser) => {
     // ośmiu padających werdyktów — raport wewnętrznie sprzeczny, czyli ta sama
     // klasa, którą ten przelot ma zamykać.
     const divergentRow = isTitleBandDivergence(row);
-    if (divergentRow) divergent += 1;
-    else if (row.prototype === "no-screen") notComparable += 1;
+    if (divergentRow) {
+      divergent += 1;
+      // PORÓWNANIE Z KOLUMNAMI PROTOTYPU, NIE ZE STAŁYMI: prototyp stawia akcję
+      // w rzędzie tytułu na powierzchniach i RZĄD WYŻEJ na ekranach rekordu
+      // (`title-band-action.mjs`, nota przy `prototypeRow`). Literał liczyłby
+      // rekord jako przesunięty nad ekranem, który prototyp odtwarza wiernie.
+      if (row.today !== row.prototypeRow) displacedRow += 1;
+      if (row.todayInline !== row.prototypeInline) displacedInline += 1;
+    } else if (row.prototype === "no-screen") notComparable += 1;
     else held += 1;
 
     if (
@@ -5027,20 +5105,22 @@ const titleBandActionCensus = async (browser) => {
       // tylko pozycja przestała być długiem i zaczęła być wymaganiem.
       verdicts.push(
         predicted
-          ? `${entry.id}: the title-band position is ENFORCED and this screen keeps its primary ` +
-              `action outside the title row (measured ${decision.state}). The prototype puts one ` +
-              `in the band — ${row.cite}. Measured: ${where}. App: ${row.app}.`
-          : `${entry.id}: this pass measured ${decision.state} and the canonical screen list says ` +
-              `${row.today} (prototype: ${row.prototype} — ${row.cite}). Either the primary action ` +
-              "moved and nobody wrote it down, or lot C2 delivered the fix and left the row behind. " +
+          ? `${entry.id}: the title-band position is ENFORCED and this screen does not put its ` +
+              `primary action in the title row AND at the band's end (measured ` +
+              `${decision.state}/${inline.inlineState}). The prototype puts one there — ` +
+              `${row.cite}. Measured: ${where}. App: ${row.app}.`
+          : `${entry.id}: this pass measured ${decision.state}/${inline.inlineState} and the ` +
+              `canonical screen list says ${row.today}/${row.todayInline} (prototype: ` +
+              `${row.prototype} — ${row.cite}). Either the primary action moved and nobody wrote ` +
+              "it down, or lot C2 delivered the fix and left the row behind. " +
               `Measured: ${where}. App: ${row.app}.`,
       );
       continue;
     }
     if (divergentRow)
       reported.push(
-        `${entry.id}\t${decision.state}\tprototype puts an action in this band — ${row.cite}\t` +
-          `${where}`,
+        `${entry.id}\t${decision.state}/${inline.inlineState}\tprototype puts an action in this ` +
+          `band, at its end — ${row.cite}\t${where}`,
       );
   }
 
@@ -5061,6 +5141,8 @@ const titleBandActionCensus = async (browser) => {
     reported,
     judged: judged.length,
     divergent,
+    displacedRow,
+    displacedInline,
     held,
     notComparable,
     elapsedMs: Date.now() - started,
@@ -6897,7 +6979,8 @@ try {
     `title band: ${TITLE_BAND_ACTION_STATUS} — ` +
       `${TITLE_BAND_ACTION_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
       `${titleBand.judged} of ${TITLE_BAND_ROWS.length} declared screen(s) judged\t` +
-      `${titleBand.divergent} screen(s) place the primary action outside the title row, ` +
+      `${titleBand.divergent} screen(s) place the primary action outside the title row or away ` +
+      `from the band's end (${titleBand.displacedRow} vertical, ${titleBand.displacedInline} horizontal), ` +
       `${titleBand.held} agree with the prototype, ` +
       `${titleBand.notComparable} have no prototype counterpart\t` +
       `${TITLE_BAND_DIVERGENCES.length} divergence(s) on the canonical list\t` +

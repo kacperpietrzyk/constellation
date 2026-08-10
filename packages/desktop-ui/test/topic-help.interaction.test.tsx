@@ -417,6 +417,11 @@ test("Sources carries the two Knowledge topics, and nothing hides in a title", a
   await act(async () => {
     root.render(
       createElement(SourcesReading, {
+        // Ten test pyta o pomoc kontekstową, nie o akcję tworzenia, i celowo
+        // nie daje jej celu: portal bez celu nie rysuje NICZEGO, więc „żaden
+        // wyzwalacz nie chowa się w tytule" zostaje zdaniem o tym, co ten test
+        // naprawdę renderuje.
+        actionHost: null,
         client: undefined,
         snapshot: {
           ...workHarnessSnapshot,
@@ -557,6 +562,12 @@ test("the Notes reading carries the arrangement topic, and no path hides in a ti
   await act(async () => {
     root.render(
       createElement(NotesReading, {
+        // `as never` NIŻEJ KASUJE KOMPILATOR JAKO STRAŻNIKA TEGO OBIEKTU, więc
+        // brakujący `actionHost` nie wyszedł tu z `tsc`, tylko z `createPortal`
+        // wołanego z cudzym `undefined`. Ta ścieżka pyta o pomoc kontekstową,
+        // nie o akcję tworzenia — `null` znaczy „ten odczyt nie ma dziś gdzie
+        // wstrzyknąć akcji", i wtedy nie rysuje jej wcale.
+        actionHost: null,
         client: undefined,
         snapshot,
         inspectorHost: null,

@@ -20,12 +20,15 @@ import {
   TITLE_BAND_ACTION_CLASSES,
   TITLE_BAND_ACTION_STATUS,
   TITLE_BAND_DIVERGENCES,
+  TITLE_BAND_INLINE_STATES,
   TITLE_BAND_ROWS,
   TITLE_BAND_STATES,
   CSS_MODULE_HASH_PATTERN,
   classifyTitleBandAction,
   classifyTitleBandCensus,
+  classifyTitleBandInline,
   isTitleBandDivergence,
+  judgeActionAgainstBandEnd,
   judgeActionAgainstTitleRow,
   titleBandVerdictThrows,
 } from "./title-band-action.mjs";
@@ -53,6 +56,24 @@ const PIPELINE_ACTION = { top: 140, bottom: 176, height: 36 };
 // w `.crumbs` 86–118 (h 32) — rząd WYŻEJ.
 const RECORD_TITLE = { top: 136, bottom: 160.6, height: 24.6 };
 const RECORD_ACTION = { top: 86, bottom: 118, height: 32 };
+
+// FIKSTURY OSI POZIOMEJ, tak samo ODCZYTANE, nie wpisane — z przelotu
+// `LAYOUT_PORT=5311 npm run test:renderer-layout` z 2026-08-10, wyjście verbatim
+// w `dowody/c2-czerwien-poziom.txt`. Raport drukuje przy każdym paśmie
+// `content ends x=… (right x=… − padding …) column-gap …`, i to jest jedyne
+// miejsce, z którego te trzy liczby dają się przepisać.
+//
+// Projekty: pasmo bez wyściółki kończy się na 1400, `column-gap` 16, akcja
+// „New project" x 1265–1400 — odstęp 0. To jest świadek osi poziomej.
+const PROJECTS_BAND = { contentRight: 1400, columnGap: 16 };
+const PROJECTS_ACTION_X = { right: 1400 };
+// Organizacje: to samo pasmo, ale akcja siedzi w `.crumbbar` przy LEWEJ
+// krawędzi, x 276–445,4 — odstęp 954,6 przy tolerancji 16.
+const ORGANIZATIONS_ACTION_X = { right: 445.4 };
+// Biblioteka: JEDYNE pasmo z wyściółką (`padding-inline: var(--space-6)`),
+// prawa krawędź 1440, wyściółka 24, więc treść kończy się na 1416. Bez odjęcia
+// wyściółki każda akcja tego ekranu miałaby stały, fałszywy odstęp 24.
+const LIBRARY_BAND = { contentRight: 1416, columnGap: 16 };
 
 test("an action centred on the title row is IN_BAND", () => {
   const judged = judgeActionAgainstTitleRow({
@@ -133,6 +154,133 @@ test("the tolerance is exactly half the taller box, inclusive", () => {
   );
 });
 
+// ── OŚ POZIOMA ──────────────────────────────────────────────────────────────
+
+test("an action flush with the band's content end is FLUSH_END", () => {
+  const judged = judgeActionAgainstBandEnd({
+    band: PROJECTS_BAND,
+    action: PROJECTS_ACTION_X,
+  });
+  assert.equal(judged.inlineState, "FLUSH_END");
+  assert.equal(judged.endGap, 0);
+  // TOLERANCJA JEST ZAPISANA, i to jest ta sama poprawka, którą oś pionowa
+  // dostała po przeglądzie: bez tej asercji jedyne miejsce z zapisanym progiem
+  // byłoby prozą, a proza nie pada.
+  assert.equal(judged.inlineTolerance, 16);
+});
+
+test("an action at the band's start is INSET_FROM_END, not merely 'present'", () => {
+  const judged = judgeActionAgainstBandEnd({
+    band: PROJECTS_BAND,
+    action: ORGANIZATIONS_ACTION_X,
+  });
+  assert.equal(judged.inlineState, "INSET_FROM_END");
+  assert.equal(judged.endGap, 954.6);
+});
+
+// KRAWĘDŹ TREŚCI, NIE KRAWĘDŹ RAMKI. Biblioteka jest jedynym pasmem
+// z wyściółką, więc jest jedynym miejscem, gdzie ta różnica jest widoczna —
+// i dokładnie dlatego musi mieć test. Akcja dosunięta do końca TREŚCI kończy
+// się na 1416, a nie na 1440; reguła czytająca `rect.right` czerwieniłaby ją
+// odstępem równym wyściółce, czyli nad ekranem, którego nikt nie zepsuł.
+test("a padded band is measured to its content edge, not its border edge", () => {
+  assert.equal(
+    judgeActionAgainstBandEnd({
+      band: LIBRARY_BAND,
+      action: { right: 1416 },
+    }).inlineState,
+    "FLUSH_END",
+  );
+  assert.equal(
+    judgeActionAgainstBandEnd({
+      band: LIBRARY_BAND,
+      action: { right: 1440 },
+    }).endGap,
+    -24,
+  );
+});
+
+// TA SAMA UMOWA CO W PIONIE: ten sam układ przy 200% tekstu ma dać ten sam
+// werdykt, bo tolerancją jest `column-gap` pasma, który jest w `rem`.
+test("the inline verdict is scale-free: the same layout at 200% judges identically", () => {
+  assert.equal(
+    judgeActionAgainstBandEnd({
+      band: { contentRight: 2800, columnGap: 32 },
+      action: { right: 2800 },
+    }).inlineState,
+    "FLUSH_END",
+  );
+  assert.equal(
+    judgeActionAgainstBandEnd({
+      band: { contentRight: 2800, columnGap: 32 },
+      action: { right: 890.8 },
+    }).inlineState,
+    "INSET_FROM_END",
+  );
+});
+
+// Granica po OBU stronach, tak samo jak przy tolerancji pionowej — inaczej „≤"
+// kontra „<" przechodzi niezauważone. Lejek stoi dziś DOKŁADNIE na niej
+// (odstęp 16 przy tolerancji 16), więc ta asercja nie jest hipotetyczna.
+test("the inline tolerance is the band's own column gap, inclusive", () => {
+  const band = { contentRight: 1400, columnGap: 16 };
+  assert.equal(
+    judgeActionAgainstBandEnd({ band, action: { right: 1384 } }).inlineState,
+    "FLUSH_END",
+  );
+  assert.equal(
+    judgeActionAgainstBandEnd({ band, action: { right: 1383.9 } }).inlineState,
+    "INSET_FROM_END",
+  );
+});
+
+// `column-gap: normal` rozwiązuje się do NaN, a NaN w porównaniu jest cichym
+// „nie" — bez tej gałęzi pasmo bez zadeklarowanego odstępu wracałoby
+// INSET_FROM_END nawet dla akcji stojącej dokładnie na krawędzi.
+test("a band that declares no column gap gets a tolerance of zero, not NaN", () => {
+  const band = { contentRight: 1400, columnGap: Number.NaN };
+  const flush = judgeActionAgainstBandEnd({ band, action: { right: 1400 } });
+  assert.equal(flush.inlineTolerance, 0);
+  assert.equal(flush.inlineState, "FLUSH_END");
+  assert.equal(
+    judgeActionAgainstBandEnd({ band, action: { right: 1399.9 } }).inlineState,
+    "INSET_FROM_END",
+  );
+});
+
+test("one action at the band's end wins over any number of actions away from it", () => {
+  const decision = classifyTitleBandInline({
+    band: PROJECTS_BAND,
+    actions: [ORGANIZATIONS_ACTION_X, PROJECTS_ACTION_X],
+  });
+  assert.equal(decision.inlineState, "FLUSH_END");
+  assert.equal(decision.judged.length, 2);
+});
+
+test("a screen with no action has no inline verdict either, only NO_ACTION", () => {
+  assert.deepEqual(
+    classifyTitleBandInline({ band: PROJECTS_BAND, actions: [] }),
+    {
+      inlineState: "NO_ACTION",
+      judged: [],
+    },
+  );
+});
+
+test("a pass with no FLUSH_END anywhere is a broken horizontal rule, not a finding", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) =>
+      entry.inlineState === "FLUSH_END"
+        ? { ...entry, inlineState: "INSET_FROM_END" }
+        : entry,
+    ),
+    rows,
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /^TITLE_BAND_NEVER_FLUSH_END:/u);
+});
+
 test("a screen with no action-class button is NO_ACTION, not a displaced one", () => {
   const decision = classifyTitleBandAction({
     title: PIPELINE_TITLE,
@@ -174,36 +322,143 @@ test("actions on both sides of the title are SPLIT_BAND, not rounded to one", ()
 });
 
 test("every state a row declares is a state the rule can produce", () => {
-  for (const row of TITLE_BAND_ROWS)
+  for (const row of TITLE_BAND_ROWS) {
     assert.ok(
       TITLE_BAND_STATES.includes(row.today),
       `${row.id} declares today="${row.today}", which is not a state this rule returns`,
     );
+    // TE SAME TRZY ASERCJE NAD TRZEMA NOWYMI KOLUMNAMI, bo kolumna, której nikt
+    // nie waliduje, jest napisem — a literówka w napisie deklaracji jest cichym
+    // zezwoleniem na wszystko (ta sama nota stoi przy `TITLE_BAND_STATES`).
+    assert.ok(
+      TITLE_BAND_STATES.includes(row.prototypeRow),
+      `${row.id} declares prototypeRow="${row.prototypeRow}", which is not a state this rule returns`,
+    );
+    assert.ok(
+      TITLE_BAND_INLINE_STATES.includes(row.todayInline),
+      `${row.id} declares todayInline="${row.todayInline}", which is not a state the inline rule returns`,
+    );
+    assert.ok(
+      TITLE_BAND_INLINE_STATES.includes(row.prototypeInline),
+      `${row.id} declares prototypeInline="${row.prototypeInline}", which is not a state the inline rule returns`,
+    );
+    // OŚ POZIOMA NIE MOŻE MÓWIĆ O EKRANIE BEZ AKCJI CZEGOŚ INNEGO NIŻ PION.
+    // Bez tego wiersz „NO_ACTION w pionie, FLUSH_END w poziomie" kompiluje się
+    // i opisuje ekran, którego nie ma.
+    assert.equal(
+      row.today === "NO_ACTION",
+      row.todayInline === "NO_ACTION",
+      `${row.id} says today="${row.today}" and todayInline="${row.todayInline}" — a screen ` +
+        "either has an action on both axes or on neither",
+    );
+  }
 });
 
 // LICZBA JEST ZAPISANA PRECYZYJNIE, żeby wiersz nie mógł zniknąć po cichu —
 // ta sama umowa co `VISUAL_LANGUAGE_COUNT_DRIFT`. Jej uzasadnieniem jest
 // WYLICZENIE PODMIOTÓW, a nie zgodność sumy z rejestrem: rejestr rozjazdów
 // (`faza-4-porownanie-ekranow.md`) liczy pod przyczyną C2 dziewięć wpisów, ten
-// przelot dochodzi do ośmiu i różnica rozkłada się na trzy udowodnione ruchy —
+// przelot dochodzi do SIEDMIU i różnica rozkłada się na cztery udowodnione
+// ruchy —
 //
 //   −1  Notatki i Źródła to JEDEN wiersz `library`: rejestr porównywał dwa
 //       zrzuty, a pasmo jest jedno (`LibraryShell.tsx:80-90`);
 //   −1  rekord projektu i jego zakładka komentarzy to JEDEN wiersz
 //       `projects/record:project`: `.crumbs` z `.actions` renderuje się POZA
 //       panelem zakładki (`ProjectRecordScreen.tsx:300-306` wobec `:308`);
+//   −1  i TEN JEDEN wiersz NIE JEST rozjazdem POŁOŻENIA, co wyszło dopiero
+//       w locie C2: prototyp stawia akcję rekordu w crumbbarze, a tytuł rekordu
+//       W NASTĘPNYM PAŚMIE (`v3/screens/record.js:428-432` skleja `crumbbar(…)`
+//       z `rcShell(`<h1 class="rec-title">…`)`), czyli robi DOKŁADNIE to samo,
+//       co nasz `.crumbs` nad `header._header`. Rejestr mówi o tym ekranie to
+//       samo — „w pasie akcji NAD TYTUŁEM nie ma ani jednej powierzchni
+//       akcentowej" — i plan liczy go pod przyczyną C4 (farba), nie C2
+//       (położenie). Wiersz zostaje MIERZONY, DRUKOWANY i osądzany na obu
+//       osiach; zmienia się to, z czym się go porównuje, a nie to, czy się go
+//       porównuje;
 //   +1  `tasks` jest podmiotem, którego rejestr pod tą przyczyną NIE MA —
 //       prototyp stawia w paśmie Zadań „+ New task", nasze pasmo nie niesie ani
 //       jednej akcji.
 //
-// 9 − 2 + 1 = 8. Rekord zadania NIE jest tu czwartym ruchem: symetrycznie
+// 9 − 3 + 1 = 7. Rekord zadania NIE jest tu piątym ruchem: symetrycznie
 // oceniony jest MATCH-em, nie rozjazdem (patrz predykat w nagłówku modułu).
-test("the canonical screen list holds fifteen screens and eight divergences", () => {
+//
+// Z TYCH SIEDMIU LOT C2 ZAMKNĄŁ SZEŚĆ, więc asercja niżej pilnuje tego, co
+// ZOSTAŁO, a nie tej siódemki. Zostały Spotkania, i to jest jedyna pozycja
+// tego lotu oddana jako NIEZROBIONA: `.meeting-hero` to siatka
+// JEDNOKOLUMNOWA, czyli pasmo bez prawego końca, a zbudowanie go jest
+// przebudową większą niż lot, który przenosi akcje.
+test("the canonical screen list holds fifteen screens, and Meetings is the last divergence", () => {
   assert.equal(TITLE_BAND_ROWS.length, 15);
-  assert.equal(TITLE_BAND_DIVERGENCES.length, 8);
+  // SIEDEM ZNALEZIONYCH, SZEŚĆ ZAMKNIĘTYCH W LOCIE C2, JEDNO ZOSTAŁO. Liczba
+  // niżej jest tym, co ZOSTAJE, a nie tym, co przelot kiedyś naliczył —
+  // wyliczenie siedmiu podmiotów stoi w komentarzu wyżej i jest historią tego
+  // pomiaru, nie stanem produktu.
   assert.deepEqual(
     TITLE_BAND_DIVERGENCES.map((row) => row.id),
+    ["meetings"],
+  );
+  // I TO JEST WARUNEK UZBROJENIA, ZAPISANY JAKO ASERCJA, A NIE JAKO PROZA.
+  // Spotkania rysują `.meeting-hero` — siatkę JEDNOKOLUMNOWĄ, która nie ma
+  // prawego końca pasma — więc dopóki ten nagłówek nie zostanie przebudowany,
+  // `TITLE_BAND_ACTION_STATUS` musi zostać na „pending". Uzbrojenie przy
+  // niepustej liście robi z bramki układu czerwień do końca fali.
+  assert.equal(TITLE_BAND_ACTION_ARMED, false);
+});
+
+// SZEŚĆ EKRANÓW ODDANYCH PRZEZ LOT C2, WYPISANYCH Z NAZWY. Bez tej asercji
+// „lista rozjazdów jest prawie pusta" dałoby się osiągnąć też przez zepsucie
+// kolumny `prototypeRow` — a to jest ta sama sztuczka co skreślenie wiersza.
+// Tu każdy z sześciu musi mieć zmierzone `IN_BAND` I `FLUSH_END` naprzeciw
+// prototypowego `IN_BAND`/`FLUSH_END`.
+test("the six screens lot C2 delivered stand in their title band, at its end", () => {
+  const delivered = [
+    "tasks",
+    "pipeline",
+    "renewals",
+    "organizations",
+    "people",
+    "library",
+  ];
+  for (const id of delivered) {
+    const row = TITLE_BAND_ROWS.find((candidate) => candidate.id === id);
+    assert.equal(row.prototype, "action", id);
+    assert.equal(row.prototypeRow, "IN_BAND", id);
+    assert.equal(row.prototypeInline, "FLUSH_END", id);
+    assert.equal(row.today, "IN_BAND", id);
+    assert.equal(row.todayInline, "FLUSH_END", id);
+    assert.equal(isTitleBandDivergence(row), false, id);
+  }
+});
+
+// PRZYRZĄD, KTÓRY PORÓWNUJE Z LITERAŁEM, NIE PORÓWNUJE Z PROTOTYPEM, i ten test
+// jest jedynym miejscem, w którym ta różnica jest asertowana. Ekran rekordu
+// projektu ma dziś `today: "ABOVE_BAND"` — gdyby predykat wrócił do wpisanego
+// „IN_BAND", ten wiersz stałby się rozjazdem NIESPEŁNIALNYM: poprawka wierna
+// prototypowi zostawiłaby go czerwonym, a poprawka zielona musiałaby przenieść
+// akcję tam, gdzie prototyp jej NIE MA.
+test("the record screen is judged against the prototype's own row, not a literal", () => {
+  const record = TITLE_BAND_ROWS.find(
+    (row) => row.id === "projects/record:project",
+  );
+  assert.equal(record.prototype, "action");
+  assert.equal(record.prototypeRow, "ABOVE_BAND");
+  assert.equal(record.today, "ABOVE_BAND");
+  assert.equal(isTitleBandDivergence(record), false);
+  assert.equal(
+    isTitleBandDivergence({ ...record, today: "IN_BAND" }),
+    true,
+    "moving this action into the title row would DIVERGE from the prototype, " +
+      "which puts it a row above — the predicate has to say so",
+  );
+  // A powierzchnie dalej porównują się z rzędem tytułu, więc korekta rekordu
+  // nie zdjęła nikomu innemu wymagania.
+  assert.deepEqual(
+    TITLE_BAND_ROWS.filter((row) => row.prototypeRow === "IN_BAND").map(
+      (row) => row.id,
+    ),
     [
+      "projects",
       "tasks",
       "pipeline",
       "renewals",
@@ -211,7 +466,6 @@ test("the canonical screen list holds fifteen screens and eight divergences", ()
       "people",
       "meetings",
       "library",
-      "projects/record:project",
     ],
   );
 });
@@ -427,9 +681,14 @@ const walk = {
   ],
 };
 const measured = [
-  { id: "today", state: "NO_ACTION", titles: 1 },
-  { id: "projects", state: "IN_BAND", titles: 1 },
-  { id: "pipeline", state: "BELOW_BAND", titles: 1 },
+  { id: "today", state: "NO_ACTION", inlineState: "NO_ACTION", titles: 1 },
+  { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
+  {
+    id: "pipeline",
+    state: "BELOW_BAND",
+    inlineState: "INSET_FROM_END",
+    titles: 1,
+  },
 ];
 const rows = TITLE_BAND_ROWS.filter((row) =>
   ["today", "projects", "pipeline"].includes(row.id),
@@ -444,7 +703,7 @@ test("a screen with no resolvable title band is NOT_MEASURED, never NO_ACTION", 
     walk,
     measured: [
       { id: "today", state: "NOT_MEASURED", titles: 0 },
-      { id: "projects", state: "IN_BAND", titles: 1 },
+      { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
       { id: "pipeline", state: "BELOW_BAND", titles: 1 },
     ],
     rows,
@@ -465,7 +724,7 @@ test("a title with no ancestor header is a failure, not a silent NOT_MEASURED", 
     walk,
     measured: [
       { id: "today", state: "NOT_MEASURED", titles: 1, band: null },
-      { id: "projects", state: "IN_BAND", titles: 1 },
+      { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
       { id: "pipeline", state: "BELOW_BAND", titles: 1 },
     ],
     rows,
@@ -480,7 +739,7 @@ test("two title ids on one screen is an instrument failure, not a richer measure
     walk,
     measured: [
       { id: "today", state: "NOT_MEASURED", titles: 2 },
-      { id: "projects", state: "IN_BAND", titles: 1 },
+      { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
       { id: "pipeline", state: "BELOW_BAND", titles: 1 },
     ],
     rows,

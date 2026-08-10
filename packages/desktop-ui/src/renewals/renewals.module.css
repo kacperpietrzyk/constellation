@@ -28,13 +28,13 @@
 
 /* ── Chrome above the sections ───────────────────────────────────────── */
 
-.crumbbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-4);
-}
+/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2. Prototyp nie układa nad płótnem pasma
+   tytułu I osobnego paska akcji: `crumbbar(crumbs, actions)`
+   (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu i akcję,
+   a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) odpycha akcję
+   do jego prawego końca. Akcja tego ekranu stoi teraz w `SurfaceTitleBand`,
+   a reguła, która trzymała ją rzędem niżej, nie ma już konsumenta i została
+   skasowana zamiast osierocona. */
 
 /* POSITION 7 — THE COUNT LEAVES THE BUTTON ROW.
    Contract: `.ui-craft/tokens.md` "Component layer", the `shell-*` band family

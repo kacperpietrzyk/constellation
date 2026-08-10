@@ -26,16 +26,13 @@
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
-/* WRAPS. A non-wrapping flex row's min-content is the sum of its children;
-   a wrapping row's is its widest single child, which is a number that stays
-   inside the surface at any text size. */
-.crumbbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-4);
-}
+/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2. Prototyp nie układa nad płótnem pasma
+   tytułu I osobnego paska akcji: `crumbbar(crumbs, actions)`
+   (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu i akcję,
+   a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) odpycha akcję
+   do jego prawego końca. Akcja tego ekranu stoi teraz w `SurfaceTitleBand`,
+   a reguła, która trzymała ją rzędem niżej, nie ma już konsumenta i została
+   skasowana zamiast osierocona. */
 
 .create {
   display: flex;

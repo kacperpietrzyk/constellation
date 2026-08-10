@@ -4,14 +4,20 @@
 // PO CO TO ISTNIEJE, i to jest jedyny akapit, który trzeba przeczytać. Dziewięć
 // z 71 potwierdzonych rozjazdów z prototypem to jedno zdanie: akcja główna stoi
 // WIERSZ NIŻEJ niż tytuł, zamiast po prawej stronie tego samego pasma. Ten
-// przelot dochodzi do tej samej przyczyny WŁASNYM pomiarem i liczy pod nią
-// OSIEM podmiotów — rachunek co do wiersza stoi przy `TITLE_BAND_DIVERGENCES`.
-// Dziś mierzy się jej FARBĘ — pary L2-08 i L3-06 wracają ZIELONE, bo przycisk
-// naprawdę jest fioletowy — i nikt nie mierzy jej MIEJSCA. To jest ta sama
-// klasa co przy locie B1: bramka jest zielona na 122 parach, bo PARA MIERZY
+// przelot doszedł do tej samej przyczyny WŁASNYM pomiarem i naliczył pod nią
+// SIEDEM podmiotów — rachunek co do wiersza stoi przy teście listy kanonicznej.
+// Lot C2 zamknął z nich SZEŚĆ; zostają Spotkania, i to jest cała dzisiejsza
+// zawartość `TITLE_BAND_DIVERGENCES`.
+// Pary mierzą jej FARBĘ — L2-08 i L3-06 wracają ZIELONE, bo przycisk naprawdę
+// jest fioletowy — i ani jedna nie mierzy jej MIEJSCA. To jest ta sama klasa co
+// przy locie B1: bramka jest zielona na stu z górą parach, bo PARA MIERZY
 // WYŁĄCZNIE TO, CO KTOŚ UMIAŁ ZAPISAĆ SELEKTOREM, a „pion tej rzeczy względem
 // tamtej" nie jest właściwością jednego elementu i żadna para nie umie o to
 // zapytać.
+//
+// OSIE SĄ DWIE OD LOTU C2 — PION I POZIOM — i miara pozioma stoi niżej pod
+// nagłówkiem o końcu pasma. Do C2 mierzył się sam pion, co pozwalało wstawić
+// akcję do pasma przy LEWEJ krawędzi i przejść na zielono.
 //
 // CO TU JEST WZORCEM. Prototyp składa nagłówek KAŻDEGO ekranu jedną funkcją:
 // `crumbbar(crumbs, actions)` (`v3/app.js:677-679`) rysuje pasmo
@@ -66,12 +72,18 @@
 //
 // ── KTÓRY PRZYCISK JEST AKCJĄ ───────────────────────────────────────────────
 //
-// NIE `.primary-button`. Lejek i Odnowienia PRZEŁĄCZAJĄ klasę akcji zależnie od
-// stanu formularza (`PipelineSurface.tsx:860`, `RenewalsSurface.tsx:826`:
-// `creating ? "secondary-button" : "primary-button"`), a Organizacje i Ludzie
-// mają `secondary-button` BEZWARUNKOWO. Przyrząd kluczowany na jednej z tych
-// klas gubiłby podmiot na czterech ekranach i przechodził po cichu — więc
-// klasą akcji jest ZBIÓR, poniżej.
+// NIE `.primary-button`. Cztery ekrany CRM PRZEŁĄCZAJĄ klasę akcji zależnie od
+// stanu formularza — `creating ? "secondary-button" : "primary-button"` — bo
+// otwarty formularz ma własną akcję główną, a kontrakt zabrania dwóch wypełnień
+// akcentu w jednym pojemniku (`.ui-craft/tokens.md`, „Usage constraints" 3).
+// Przyrząd kluczowany na jednej z tych klas gubiłby podmiot na czterech
+// ekranach w połowie ich stanów i przechodził po cichu — więc klasą akcji jest
+// ZBIÓR, poniżej.
+//
+// (Do lotu C2 Organizacje i Ludzie miały `secondary-button` BEZWARUNKOWO, czyli
+// nie miały akcentu w żadnym stanie; to była druga połowa ich wpisu w rejestrze
+// i lot C2 ją zamknął. Zbiór był wtedy potrzebny z tego samego powodu i jest
+// potrzebny dalej.)
 //
 // `.ghost-button` do tego zbioru NIE NALEŻY, i to jest pomiar, nie gust. Jest
 // świadomie przezroczysty (`styles.css:787`) — to odpowiednik prototypowego
@@ -111,15 +123,18 @@
 // jest rzędem; obszar treści jest wysoki. Zmierzone na dzisiejszym drzewie,
 // wszystkie liczby z jednego przelotu 1440×900:
 //
-//     Lejek        pasmo 40    ← `.crumbbar` 36     WCHODZI  (akcja, wiersz niżej)
-//     Odnowienia   pasmo 40    ← `.crumbbar` 36     WCHODZI
-//     Organizacje  pasmo 40    ← `.crumbbar` 36     WCHODZI
-//     Ludzie       pasmo 40    ← `.crumbbar` 36     WCHODZI
 //     rekord proj. pasmo 58,6  ← `.crumbs`   36     WCHODZI  (akcje, rząd wyżej)
 //     Dziś         pasmo 40    ← `section`   64     ODPADA   (to jest treść)
 //     Skrzynka     pasmo 40    ← `section`  106,9   ODPADA   (to jest treść)
 //     Zadania      pasmo 40    ← `.viewbar`  96,6   ODPADA
 //     Spotkania    pasmo 70,6  ← `.lanes`   624,4   ODPADA
+//
+// CZTERY DALSZE WIERSZE TEJ TABELI ZNIKNĘŁY WRAZ Z LOTEM C2, i to jest jedyny
+// powód, dla którego ta granica ma dziś mniej roboty: Lejek, Odnowienia,
+// Organizacje i Ludzie miały akcję w `.crumbbar` (36 px pod pasmem 40 px),
+// a lot C2 przeniósł ją DO pasma i skasował te rzędy. Granica sąsiedztwa
+// zostaje, bo zostaje jedyny wiersz `ABOVE_BAND` — i bo ekran, który ją znowu
+// wyprowadzi poza pasmo, ma zostać ZNALEZIONY, a nie zgłoszony jako „bez akcji".
 //
 // ŚLEPA PLAMA TEJ GRANICY, wypisana, bo jest realna: akcja włożona do rzędu
 // chromu WYŻSZEGO od pasma (dziś taki jest pasek widoku Zadań, 96,6 px)
@@ -144,14 +159,57 @@
 // Granica, która kasuje pięć z ośmiu znalezisk, nie jest ostrożniejsza — jest
 // ślepsza.
 //
-// TRZECIA ŚLEPA PLAMA, i domknięcie listy: MIARA JEST WYŁĄCZNIE PIONOWA. Prototyp
-// odpycha akcję do PRAWEGO końca pasma (`.crumbbar .spacer { flex: 1 }`,
-// `v3/app.css:293`), a ten werdykt nie odróżni tego od przycisku wciśniętego tuż
-// za tytułem. Druga miara (porównanie krawędzi, tak samo bezpikselowa) należy do
-// lotu, który akcje PRZENOSI — dokładanie jej tutaj zmieniłoby zbiór rozjazdów
-// w locie, który ma tylko stawiać przyrządy. Do tego czasu przelot drukuje
-// `x` obu pudełek, żeby przy odbiorze Fazy C dało się to sprawdzić z raportu,
-// a nie ze zrzutu.
+// TRZECIA MIARA BYŁA DO LOTU C2 ŚLEPĄ PLAMĄ, I JUŻ NIĄ NIE JEST. Do 2026-08-10
+// ten przyrząd mierzył WYŁĄCZNIE PION i stała tu nota: „prototyp odpycha akcję do
+// PRAWEGO końca pasma (`.crumbbar .spacer { flex: 1 }`, `v3/app.css:293`), a ten
+// werdykt nie odróżni tego od przycisku wciśniętego tuż za tytułem". Lot C2 akcje
+// PRZENOSI, więc bez tej miary mógłby wstawić je do pasma przy LEWEJ krawędzi
+// i przejść na zielono — a rejestr rozjazdów mówi przy Odnowieniach
+// (`faza-4-porownanie-ekranow.md`, wpis o „New renewal") i przy Organizacjach
+// (wpis o „New organization"), że akcja ma być DOSUNIĘTA DO PRAWEJ. Miara stoi
+// więc niżej jako `judgeActionAgainstBandEnd` i jest OSOBNĄ OSIĄ, a nie nowym
+// stanem osi pionowej: piętnaście kolumn `today` to piętnaście przewidywań, które
+// już raz zostały zmierzone, a wciągnięcie poziomu do tego samego enuma
+// przepisałoby je wszystkie i zabrało zdanie „pion się trzyma, poziom się ruszył".
+//
+// MIARĄ POZIOMU JEST KONIEC PASMA, ODCZYTANY, NIE WPISANY:
+//
+//     koniec_treści(pasmo) − prawa(akcja) ≤ odstęp_kolumnowy(pasmo)
+//
+// gdzie `koniec_treści` to prawa krawędź pasma MINUS jego własna wyściółka
+// i ramka, a tolerancją jest `column-gap` TEGO pasma — czyli najmniejszy odstęp
+// poziomy, jaki to pasmo samo deklaruje między swoimi dziećmi. Obie liczby są
+// odczytane w tym samym przelocie z `getComputedStyle`, więc rosną razem z rem
+// i reguła znaczy to samo przy 100%, 200% i 300%. NIE MA TU ANI JEDNEJ LICZBY
+// PIKSELI, tak samo jak w mierze pionowej.
+//
+// ZAPAS JEST DUŻY I ZMIERZONY, żeby nikt nie musiał wierzyć w finezję tolerancji.
+// Liczby są ODCZYTANE Z PRZELOTU (`dowody/c2-czerwien-poziom.txt`, drzewo PRZED
+// poprawką tego lotu), nie wyliczone z głowy — dokładnie z tego powodu, z którego
+// fikstury testu jednostkowego niżej mają być przepisane z wyjścia:
+//
+//     Projekty      akcja u końca pasma       odstęp   0,0 px   przy tol. 16
+//     Lejek         `margin-inline-start:auto` odstęp  16,0 px   przy tol. 16
+//     Organizacje   akcja przy LEWEJ krawędzi  odstęp 954,6 px   przy tol. 16
+//     Ludzie        akcja przy LEWEJ krawędzi  odstęp 990,1 px   przy tol. 16
+//     Odnowienia    akcja przy LEWEJ krawędzi  odstęp 986,2 px   przy tol. 16
+//
+// Przyrząd nie stoi na wartości tolerancji: trzy rozjazdy leżą sześćdziesiąt razy
+// dalej niż próg.
+//
+// PRZYPADEK BRZEGOWY, WYPISANY, BO JEST DZIŚ NA WYSTAWIE: Lejek ma akcję
+// w `.crumbbar` z `margin-inline-start: auto` (`pipeline.module.css:72-81`), więc
+// jej prawa krawędź stoi o WYŚCIÓŁKĘ crumbbara (`var(--space-4)`, 16 px) przed
+// końcem pasma — DOKŁADNIE na tolerancji, czyli `FLUSH_END` przez `≤`. To jest
+// odczyt prawdziwy (ta akcja naprawdę jest dosunięta do prawej), ale stoi na
+// granicy: crumbbar z wyściółką szerszą niż odstęp pasma wróciłby jako rozjazd
+// poziomy nad ekranem, którego nikt nie zepsuł. Lot C2 wyjmuje tę akcję
+// z crumbbara do pasma i po nim zapas wynosi całe 16 px — dopóki tam stała,
+// ta liczba należała do raportu, a nie do niczyjej głowy.
+//
+// MIARY POZIOMEJ NIE MA DLA EKRANU BEZ AKCJI, i to nie jest luka: `NO_ACTION`
+// jest tą samą odpowiedzią na obu osiach, a wymyślanie dla niej trzeciego stanu
+// poziomego robiłoby z jednego faktu dwa.
 //
 // Sam pomiar wymaga przeglądarki, więc siedzi jako przelot
 // `titleBandActionCensus` w `verify-renderer-layout.mjs`. Sama REGUŁA jest
@@ -195,14 +253,25 @@ export const PROTOTYPE_FILLED_MODIFIERS = ["primary", "bordered"];
  * przelot rzuca, czy raportuje — i bo prozy nikt nie kompiluje.
  *
  * WARUNEK PRZEŁĄCZENIA NA „enforced", zapisany tak, żeby dało się go
- * ROZSTRZYGNĄĆ, a nie ocenić: Faza C, lot C2 przenosi akcję główną do pasma
- * tytułu na czterech ekranach CRM i na Zadaniach, daje slot akcji `LibraryShell`
- * i `.meeting-hero`, i zdejmuje rząd akcji sprzed tytułu na ekranie rekordu
- * projektu — po czym KAŻDY wiersz `prototype: "action"` ma `today: "IN_BAND"`,
- * czyli `TITLE_BAND_DIVERGENCES` jest PUSTE. Dopiero wtedy zdanie „akcja główna
- * stoi w rzędzie tytułu" jest o tej aplikacji PRAWDĄ i wolno je egzekwować.
- * Przełączenie wcześniej zrobiłoby z bramki układu czerwień do końca fali, czyli
- * przyrząd, który nie pilnuje niczego innego.
+ * ROZSTRZYGNĄĆ, a nie ocenić: KAŻDY wiersz `prototype: "action"` ma zmierzone
+ * `today` równe swojemu `prototypeRow` ORAZ `todayInline` równe swojemu
+ * `prototypeInline`, czyli `TITLE_BAND_DIVERGENCES` jest PUSTE. Warunek jest
+ * zapisany KOLUMNAMI, a nie napisem „IN_BAND": prototyp stawia akcję w rzędzie
+ * tytułu na powierzchniach i RZĄD WYŻEJ na ekranach rekordu, więc „każdy wiersz
+ * IN_BAND" byłoby warunkiem, którego wierna aplikacja NIE MOŻE spełnić.
+ *
+ * CO ZOSTAŁO PO LOCIE C2, wypisane, bo od tego zależy, kiedy wolno uzbroić:
+ * SPOTKANIA. `.meeting-hero` to siatka JEDNOKOLUMNOWA (`styles.css`, reguła
+ * `.meeting-hero`) — nie ma prawego końca pasma, więc nie ma dokąd wstawić
+ * akcji bez przebudowy tego nagłówka, a przebudowa jest większa niż lot C2
+ * i została ODDANA JAKO NIEZROBIONA, nie przemilczana. Lot C2 zamknął pozostałe
+ * siedem: Zadania, Lejek, Odnowienia, Organizacje, Ludzie (akcja do pasma,
+ * u jego końca), Bibliotekę (slot akcji w `LibraryShell`, licznik do paska
+ * widoku) i rekord projektu (ten stał poza rzędem ZGODNIE z prototypem —
+ * rozjazdem była FARBA).
+ *
+ * Przełączenie przed domknięciem Spotkań zrobiłoby z bramki układu czerwień do
+ * końca fali, czyli przyrząd, który nie pilnuje niczego innego.
  *
  * Rekord zadania NIE JEST na tej liście i to nie jest przeoczenie: prototyp
  * stawia tam wyłącznie kontrolki bez tła, więc nasze puste pasmo jest z nim
@@ -246,6 +315,24 @@ export const TITLE_BAND_STATES = [
   "BELOW_BAND",
   "ABOVE_BAND",
   "SPLIT_BAND",
+  "NO_ACTION",
+];
+
+/**
+ * Stany OSI POZIOMEJ, i to jest osobny słownik, a nie trzy nowe napisy w tamtym.
+ *
+ * Powód stoi w nagłówku: pion i poziom są dwoma niezależnymi faktami o tej samej
+ * akcji, a zlanie ich w jeden enum zabrałoby zdanie „pion się trzyma, poziom się
+ * ruszył" — czyli dokładnie ten werdykt, którego lot C2 potrzebuje, kiedy
+ * przeniesie przycisk do pasma i zostawi go przy lewej krawędzi.
+ *
+ * `NO_ACTION` powtarza się w obu słownikach ŚWIADOMIE: ekran bez akcji ma na obie
+ * osie tę samą odpowiedź i wymyślanie dla niego czwartego napisu robiłoby
+ * z jednego faktu dwa.
+ */
+export const TITLE_BAND_INLINE_STATES = [
+  "FLUSH_END",
+  "INSET_FROM_END",
   "NO_ACTION",
 ];
 
@@ -309,6 +396,60 @@ export const classifyTitleBandAction = ({ title, actions }) => {
 };
 
 /**
+ * Werdykt POZIOMY o JEDNEJ akcji względem KOŃCA JEDNEGO pasma.
+ *
+ * `band` niesie DWIE odczytane liczby i ani jednej wpisanej: `contentRight` to
+ * prawa krawędź pudełka TREŚCI pasma (krawędź ramki minus wyściółka i obramowanie
+ * — czyli miejsce, w którym `justify-content: flex-end` postawiłoby ostatnie
+ * dziecko), a `columnGap` to `column-gap` tego pasma rozwiązany do pikseli.
+ *
+ * TOLERANCJĄ JEST ODSTĘP KOLUMNOWY PASMA, i to jest wybór o pomiarze: to jedyna
+ * poziomia odległość, którą to pasmo samo o sobie deklaruje, więc rośnie razem
+ * z rem i nie jest niczyim gustem. Pasmo bez zadeklarowanego odstępu
+ * (`column-gap: normal`) dostaje tolerancję ZERO — i tak ma być: nie deklaruje
+ * żadnego luzu, więc żadnego nie dostaje.
+ *
+ * Świadomie nie przyjmuje elementu DOM, dokładnie z tego samego powodu co
+ * `judgeActionAgainstTitleRow`: dzięki temu jedyna arytmetyka tej osi ma test
+ * jednostkowy chodzący bez przeglądarki, na trzech systemach.
+ */
+export const judgeActionAgainstBandEnd = ({ band, action }) => {
+  const tolerance = Number.isFinite(band.columnGap) ? band.columnGap : 0;
+  const endGap = band.contentRight - action.right;
+  return {
+    // ODSTĘP UJEMNY TEŻ JEST `FLUSH_END`, i to nie jest przeoczenie: akcja
+    // wystająca poza koniec pasma jest wadą PRZEPEŁNIENIA, którą mierzy
+    // `descendant-overflow.mjs`, a nie akcją stojącą przy złej krawędzi. Ten
+    // przyrząd pyta wyłącznie „czy stoi u końca", i wystająca stoi.
+    inlineState: endGap <= tolerance ? "FLUSH_END" : "INSET_FROM_END",
+    endGap: Math.round(endGap * 10) / 10,
+    inlineTolerance: Math.round(tolerance * 10) / 10,
+  };
+};
+
+/**
+ * Werdykt POZIOMY o CAŁYM ekranie.
+ *
+ * Złożenie jest to samo co w pionie i z tego samego powodu — „którakolwiek u
+ * końca wygrywa". Pytanie brzmi „czy koniec pasma NIESIE akcję", więc ekran,
+ * który ma jedną akcję u końca i drugą gdzie indziej, odpowiada TAK. Projekty są
+ * dokładnie tym przypadkiem po stronie pionu i będą nim po stronie poziomu.
+ */
+export const classifyTitleBandInline = ({ band, actions }) => {
+  if (actions.length === 0) return { inlineState: "NO_ACTION", judged: [] };
+  const judged = actions.map((action) => ({
+    ...action,
+    ...judgeActionAgainstBandEnd({ band, action }),
+  }));
+  return {
+    inlineState: judged.some((entry) => entry.inlineState === "FLUSH_END")
+      ? "FLUSH_END"
+      : "INSET_FROM_END",
+    judged,
+  };
+};
+
+/**
  * KANONICZNA LISTA EKRANÓW, i to jest najważniejsza rzecz w tym pliku.
  *
  * Po co lista, skoro cele bierze się z żywego DOM-u (i bierze się, patrz
@@ -332,8 +473,40 @@ export const classifyTitleBandAction = ({ title, actions }) => {
  *                 i `.icon-btn` są prototypowym odpowiednikiem naszego
  *                 `.ghost-button` i po obu stronach porównania znaczą to samo.
  *                 To jest rozstrzygalne czytaniem, nie oglądaniem zrzutu.
- *   `today`     — CO ROBI TA APLIKACJA DZIŚ. Fakt o naszym drzewie, ODCZYTANY
- *                 Z PRZELOTU (`dowody/b2-czerwien.txt`), nie z lektury kodu.
+ *   `prototypeRow` / `prototypeInline` — GDZIE prototyp ją stawia, na obu
+ *                 osiach, i to są kolumny, których BRAK zrobił z tego przyrządu
+ *                 przyrząd niesymetryczny po raz drugi. Do 2026-08-10 predykat
+ *                 miał tu wpisane literały „IN_BAND" i „FLUSH_END", czyli
+ *                 twierdził, że prototyp stawia akcję w rzędzie tytułu na KAŻDYM
+ *                 ekranie. Na EKRANACH POWIERZCHNI to prawda i to jest cała
+ *                 przyczyna C2: prototyp nie rysuje tam `<h1>` w ogóle, tytułem
+ *                 jest `<span class="cur">` W crumbbarze, więc tytuł i akcja
+ *                 dzielą JEDNO pasmo. Na EKRANACH REKORDU to FAŁSZ: crumbbar
+ *                 niesie ŚLAD i akcję, a tytuł jest osobnym `<h1 class="rec-title">`
+ *                 w NASTĘPNYM paśmie — `v3/screens/record.js:428-432` to
+ *                 dosłownie `crumbbar(ślad, btn("New task", { cls: "primary" }))
+ *                 + rcShell(`<h1 class="rec-title">…`)`, czyli sklejenie DWÓCH
+ *                 rodzeństw. Nasz `.crumbs` z `.actions` nad `header._header`
+ *                 jest tym samym kształtem, więc `ABOVE_BAND` na rekordzie
+ *                 projektu jest ZGODNOŚCIĄ, nie rozjazdem. Rejestr mówi o tym
+ *                 ekranie to samo i tylko to: wpis „W pasie akcji NAD TYTUŁEM
+ *                 nie ma ANI JEDNEJ powierzchni akcentowej" nazywa położenie
+ *                 pasa normalnym i skarży się wyłącznie na FARBĘ — i dlatego
+ *                 plan liczy ten ekran pod przyczyną C4, a nie C2.
+ *   `today`     — CO ROBI TA APLIKACJA DZIŚ W PIONIE. Fakt o naszym drzewie,
+ *                 ODCZYTANY Z PRZELOTU (`dowody/b2-czerwien.txt`), nie z lektury
+ *                 kodu.
+ *   `todayInline` — CO ROBI TA APLIKACJA DZIŚ W POZIOMIE, tak samo odczytane
+ *                 (`dowody/c2-czerwien-poziom.txt`). Kolumna dołożona w locie C2,
+ *                 zanim ten lot ruszył jeden bajt farby — bo bez niej lot mógłby
+ *                 przenieść akcję do pasma, zostawić ją przy LEWEJ krawędzi
+ *                 i przejść na zielono.
+ *
+ * OSIE SĄ DWIE I NIE WOLNO ICH SUMOWAĆ. Ekran jest rozjazdem, jeżeli rozjeżdża
+ * się KTÓRAKOLWIEK — a przewidywanie, od którego pada werdykt dryfu, jest
+ * KONIUNKCJĄ obu kolumn. Gdyby `predicted` czytało samą kolumnę pionową, akcja
+ * przesunięta w poziomie i nigdzie nie zapisana przechodziłaby po cichu, czyli
+ * druga oś nie pilnowałaby niczego.
  *
  * ZNALEZISKIEM JEST ROZJAZD TYCH DWÓCH KOLUMN, a nie sama wartość którejkolwiek.
  * Dlatego Dziś, Skrzynka, Kalendarz i Ustawienia — ekrany bez akcji w paśmie
@@ -350,27 +523,38 @@ export const TITLE_BAND_ROWS = [
   {
     id: "today",
     prototype: "no-action",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
     cite: 'v3/app.js:762-763 — crumbbar(„Today”, `<span class="when">`): drugi argument nie niesie przycisku',
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "RealApp Today — .surface-header z <h1> i <p> pojemności (Wave2Surfaces.tsx:209-248)",
   },
   {
     id: "calendar",
     prototype: "no-action",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
     cite: 'v3/screens/calendar.js:202 — crumbbar(„Calendar”, `<span class="when">`)',
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "CalendarSurface.tsx:640-670 — w paśmie trzy ghost-button nawigacji tygodnia, żadnej akcji z wypełnieniem",
   },
   {
     id: "inbox",
     prototype: "no-action",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
     cite: 'v3/screens/inbox.js:287-288 — crumbbar(„Inbox”, `<span class="when">`)',
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "Wave2Surfaces.tsx:283-303 — drugie dziecko pasma to licznik, nie akcja",
   },
   {
     id: "settings",
     prototype: "no-action",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
     // JEDYNY WIERSZ, KTÓREGO PROTOTYP NIE SKŁADA CRUMBBAREM, więc jedyny,
     // przy którym cytat trzeba było sprawdzić dwa razy: `app.js:1516` woła
     // `crumbbar("Settings")` bez drugiego argumentu, ale ta kopia jest
@@ -380,13 +564,17 @@ export const TITLE_BAND_ROWS = [
     // i ani jednego przycisku.
     cite: 'v3/screens/settings.js:1003-1006 — `.st-panel-head` to `<h2 id="st-title">` i `.st-panel-sub`, bez slotu akcji; tryb nie woła crumbbara w ogóle',
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "SettingsSurface.tsx:990-1007 — w paśmie `settings-help-entry`, klasa spoza zbioru akcji",
   },
   {
     id: "projects",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/projects.js:343 — btn("New project", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
+    todayInline: "FLUSH_END",
     app: "Wave2Surfaces.tsx:53-73 (SurfaceHeader renderuje {action}) + :789 secondary-button „New project”",
     // JEDYNY DZIŚ WIERSZ „IN_BAND", czyli JEDYNY dowód, że ten przyrząd umie
     // zwrócić cokolwiek poza znaleziskiem. Strażnik `TITLE_BAND_NEVER_IN_BAND`
@@ -395,9 +583,12 @@ export const TITLE_BAND_ROWS = [
   {
     id: "tasks",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/tasks.js:507-513 — btn("New task", { cls: "primary", icon: "plus", act: "new-task" })',
-    today: "NO_ACTION",
-    app: "tasks/TasksSurface.tsx:460-464 — pasmo z samym <h1>; tworzenie idzie przez addToGroup (:353-355), nie przez akcję",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app: "tasks/TasksSurface.tsx:460-495 — SurfaceTitleBand z akcją „New task” (primary-button) wpiętą w onCreateTask; addToGroup (:353-355) zostaje jako tworzenie W GRUPIE",
     // JEDYNY PODMIOT, KTÓREGO REJESTR NIE MA. Rejestr liczy dziewięć wpisów
     // przyczyny C2 i Zadań wśród nich nie ma; ten przelot mierzy, że prototyp
     // stawia w paśmie Zadań „+ New task", a nasze pasmo Zadań nie niesie ani
@@ -408,44 +599,62 @@ export const TITLE_BAND_ROWS = [
   {
     id: "pipeline",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/pipeline.js:409-410 — btn("New opportunity", { cls: "primary", icon: "plus" })',
-    today: "BELOW_BAND",
-    app: "pipeline/PipelineSurface.tsx:780-784 (pasmo, JEDNO dziecko) vs :844-868 (.crumbbar wiersz niżej)",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app: "pipeline/PipelineSurface.tsx:840-872 — akcja w paśmie; .crumbbar skasowany razem ze swoją regułą w pipeline.module.css",
   },
   {
     id: "renewals",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/renewals.js:217 — btn("New renewal", { cls: "primary", icon: "plus" })',
-    today: "BELOW_BAND",
-    app: "renewals/RenewalsSurface.tsx:735-739 vs :823-833 (.crumbbar wiersz niżej)",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app: "renewals/RenewalsSurface.tsx:806-835 — akcja w paśmie; licznik zostaje w swoim viewbarze z lotu 3",
   },
   {
     id: "organizations",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/crm.js:371 — btn("New organization", { cls: "primary", icon: "plus" })',
-    today: "BELOW_BAND",
-    app: "StrategicDepthSurface.tsx:687-691 vs :726-736 (.crumbbar wiersz niżej, bez margin-inline-start: auto)",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app: "StrategicDepthSurface.tsx:687-720 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
   },
   {
     id: "people",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/crm.js:540 — btn("New person", { cls: "primary", icon: "plus" })',
-    today: "BELOW_BAND",
-    app: "people/PeopleSurface.tsx:484-488 vs :517-527 (.crumbbar wiersz niżej)",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app: "people/PeopleSurface.tsx:484-517 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
   },
   {
     id: "meetings",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: 'v3/screens/meetings.js:431-433 — btn("Import from Jamie", { cls: "bordered", icon: "arrow" })',
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "MeetingsSurface.tsx:729-739 — .meeting-hero to siatka JEDNOKOLUMNOWA (styles.css:3933-3937), prawy koniec pasma nie istnieje",
   },
   {
     id: "library",
     prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
     cite: "v3/screens/knowledge.js:802-804 („New note”, primary) i :967-968 („Add a source”, primary)",
-    today: "NO_ACTION",
-    app: "library/LibraryShell.tsx:81-91 — pasmo ma DWOJE dzieci, ale prawy koniec trzyma LICZNIK; tworzenie stoi w kolumnie listy (NotesReading.tsx:364-371)",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app: "library/LibraryShell.tsx:79-125 — slot akcji w paśmie, licznik zszedł do paska widoku; NotesReading i SourcesReading wstrzykują swoją akcję portalem",
     // JEDEN WIERSZ NA DWA WPISY REJESTRU, i to jest świadome. Rejestr filuje
     // Notatki i Źródła osobno, bo porównywał ZRZUTY dwóch ekranów. Pasmo jest
     // JEDNO — ten sam `LibraryShell` nad każdym z trzech odczytów, z tym samym
@@ -455,17 +664,35 @@ export const TITLE_BAND_ROWS = [
   {
     id: "projects/record:project",
     prototype: "action",
-    cite: 'v3/screens/record.js:429-431 — btn("New task", { cls: "primary", icon: "plus", act: "new-task" }) W PAŚMIE',
+    prototypeRow: "ABOVE_BAND",
+    prototypeInline: "FLUSH_END",
+    cite: 'v3/screens/record.js:428-432 — `crumbbar(ślad, btn("New task", { cls: "primary", icon: "plus", act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)`: filled action w crumbbarze, tytuł rekordu w NASTĘPNYM paśmie — dwa rodzeństwa sklejone `+`, więc prototyp stawia tu akcję RZĄD WYŻEJ niż tytuł',
     today: "ABOVE_BAND",
-    app: "record/ProjectRecordScreen.tsx:300-306 — .crumbs z .actions renderowane PRZED nagłówkiem (:308); record-screen.module.css:62-68",
-    // TRZECI KSZTAŁT ROZJAZDU: nie „wiersz niżej", tylko RZĄD WYŻEJ. Przyrząd
+    todayInline: "FLUSH_END",
+    app: "record/ProjectRecordScreen.tsx:300-336 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), record-screen.module.css:62-68",
+    // TRZECI KSZTAŁT POŁOŻENIA: nie „wiersz niżej", tylko RZĄD WYŻEJ. Przyrząd
     // szukający akcji wyłącznie POD pasmem przegapiłby ten ekran w całości.
+    //
+    // I TO JEST DZIŚ ZGODNOŚĆ, NIE ROZJAZD, a wiersz stoi z uzasadnieniem, bo do
+    // lotu C2 był liczony jako ósmy rozjazd C2. Prototyp robi tu DOKŁADNIE to
+    // samo co my — `crumbbar(ślad, akcja)` sklejony z `rcShell(<h1 class=
+    // "rec-title">)` — więc `prototypeRow` to `ABOVE_BAND`, a nie `IN_BAND`.
+    // Rozjazd tego ekranu jest o FARBIE (rejestr: „w pasie akcji nad tytułem
+    // nie ma ani jednej powierzchni akcentowej", przyczyna C4) i lot C2 zamyka
+    // go, dokładając do tego pasa `primary-button` „New task" — tę samą akcję,
+    // którą cytuje prototyp, wpiętą w istniejące `onNewTask`
+    // (`ProjectRecordScreen.tsx:195`), dziś osiągalne wyłącznie ze stanu pustego
+    // panelu zadań. POKRYCIE SIĘ NIE ZMNIEJSZA: ekran jest dalej odwiedzany,
+    // mierzony, drukowany i osądzany na obu osiach — wraca tylko jako MATCH.
   },
   {
     id: "tasks/record:task",
     prototype: "no-action",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
     cite: 'v3/screens/record.js:556-561 — drugim argumentem crumbbara są btn("Subscribe", { cls: "quiet" }) i <button class="icon-btn">, czyli DWIE kontrolki bez tła (app.css:306-314 baza bez `background`, :318 quiet zmienia sam kolor, :135-139 icon-btn dostaje tło dopiero na hover) — żadnego modyfikatora z PROTOTYPE_FILLED_MODIFIERS',
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "record/TaskRecordScreen.tsx:475-480 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko ProjectRecordScreen (:208)",
     // WIERSZ, KTÓRY BYŁ ROZJAZDEM PRZEZ NIESYMETRYCZNY PREDYKAT, i dlatego stoi
     // tu z uzasadnieniem, a nie po cichu jako MATCH. Póki kolumna `prototype`
@@ -478,8 +705,11 @@ export const TITLE_BAND_ROWS = [
   {
     id: "pipeline/record:opportunity",
     prototype: "no-screen",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
     cite: "v3: `grep -n crumbbar screens/record.js app.js` daje ekrany rekordu projektu (:429), zadania (:556) i organizacji (:773) — szansy NIE MA",
     today: "NO_ACTION",
+    todayInline: "NO_ACTION",
     app: "opportunity/OpportunityRecordScreen.tsx:482-487 — .crumbs z samym przyciskiem powrotu",
     // ZADEKLAROWANA ŚLEPA PLAMA. Wiersz jest mierzony i drukowany, ale nie może
     // być znaleziskiem: nie ma prototypu, od którego miałby się rozjechać.
@@ -491,10 +721,29 @@ export const TITLE_BAND_ROWS = [
 /**
  * Czy TEN wiersz jest dziś rozjazdem z prototypem.
  *
+ * ROZJAZD NA KTÓREJKOLWIEK OSI JEST ROZJAZDEM, i to jest cała treść dołożenia
+ * drugiej miary: prototyp stawia akcję w rzędzie tytułu ORAZ u prawego końca
+ * pasma (`v3/app.js:677-679` przez `v3/app.css:293`), więc ekran, który spełnia
+ * jedno i nie spełnia drugiego, prototypu NIE odtwarza. Alternatywa —
+ * koniunkcja — dawałaby zielone Organizacje z przyciskiem w paśmie przy lewej
+ * krawędzi, czyli dokładnie ten wynik, przed którym ta oś powstała.
+ *
+ * PORÓWNANIE IDZIE Z KOLUMNAMI PROTOTYPU, A NIE ZE STAŁYMI „IN_BAND"/„FLUSH_END",
+ * i to jest druga naprawa niesymetrycznego predykatu w tym pliku — pierwsza była
+ * o FARBIE (`.btn.quiet` nie jest akcją), ta jest o MIEJSCU. Wpisany literał
+ * twierdził, że prototyp stawia akcję w rzędzie tytułu na KAŻDYM ekranie, a na
+ * ekranach REKORDU stawia ją rząd wyżej — patrz `prototypeRow` przy wierszu
+ * rekordu projektu. Wiersz oceniony literałem był rozjazdem NIESPEŁNIALNYM
+ * dokładnie tak samo jak tamten: poprawka wierna prototypowi (akcja zostaje nad
+ * tytułem) zostawiłaby go czerwonym, a poprawka zielona musiałaby przenieść
+ * akcję TAM, GDZIE PROTOTYP JEJ NIE MA.
+ *
  * `no-screen` nie jest rozjazdem — patrz komentarz przy wierszu szansy.
  */
 export const isTitleBandDivergence = (row) =>
-  row.prototype === "action" ? row.today !== "IN_BAND" : false;
+  row.prototype === "action"
+    ? row.today !== row.prototypeRow || row.todayInline !== row.prototypeInline
+    : false;
 
 export const TITLE_BAND_DIVERGENCES = TITLE_BAND_ROWS.filter(
   isTitleBandDivergence,
@@ -549,7 +798,9 @@ export const titleBandVerdictThrows = ({ predicted, divergent, armed }) =>
  *   * wiersz tabeli, którego przelot nie dotknął, i ekran zmierzony, którego
  *     tabela nie zna;
  *   * ANI JEDEN wiersz `IN_BAND` w całym przebiegu — przyrząd, o którym wiadomo
- *     wyłącznie, że umie czerwienieć, jest nieodróżnialny od zepsutego.
+ *     wyłącznie, że umie czerwienieć, jest nieodróżnialny od zepsutego;
+ *   * ANI JEDEN wiersz `FLUSH_END` — to samo zdanie o drugiej osi, dołożone
+ *     razem z nią w locie C2.
  */
 export const classifyTitleBandCensus = ({
   walk,
@@ -646,6 +897,20 @@ export const classifyTitleBandCensus = ({
         "finding, and a probe that can only go red is indistinguishable from a broken one. " +
         "Projects is today's witness (its band carries „New project”); if it stopped being one, " +
         "either delivered work regressed or the subject rule stopped matching.",
+    );
+  // TEN SAM STRAŻNIK NA DRUGIEJ OSI, i to nie jest symetria dla symetrii. Oś
+  // pozioma powstała w locie, który akcje PRZENOSI, więc jest najmłodszą regułą
+  // w tym pliku i jedyną, której nikt jeszcze nie widział zielonej na całej fali.
+  // Reguła mierząca koniec pasma, która pomyliłaby stronę albo czytała krawędź
+  // RAMKI zamiast krawędzi TREŚCI, wracałaby czerwona wszędzie — a „wszędzie
+  // czerwono" jest w tym repozytorium nieodróżnialne od „przyrząd nie działa".
+  if (!measured.some((entry) => entry.inlineState === "FLUSH_END"))
+    failures.push(
+      "TITLE_BAND_NEVER_FLUSH_END: not one screen in this whole pass came back with an action at " +
+        "the END of its title band. The horizontal axis then has NO evidence that it can return " +
+        "anything but a finding. Projects is today's witness on this axis too (its „New project” " +
+        "ends exactly where the band's content box ends); if it stopped being one, either the " +
+        "band stopped pushing its action to the end or this rule is reading the wrong edge.",
     );
 
   return failures;

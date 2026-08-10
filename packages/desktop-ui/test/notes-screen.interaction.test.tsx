@@ -262,11 +262,14 @@ const recordingClient = (
   }) as unknown as ConstellationRendererClient;
 
 let container: HTMLElement;
+let bandHost: HTMLElement;
 let root: Root;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
+  bandHost = document.createElement("div");
+  document.body.append(bandHost);
   root = createRoot(container);
   globalThis.localStorage?.clear();
 });
@@ -274,6 +277,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  bandHost.remove();
 });
 
 const render = (
@@ -283,6 +287,11 @@ const render = (
   act(() => {
     root.render(
       createElement(NotesReading, {
+        // Pasmo tytułu Biblioteki jest celem PORTALU, więc odczyt pozbawiony
+        // celu nie rysuje swojej akcji tworzenia w ogóle. Fikstura daje tu
+        // prawdziwy węzeł, żeby ta ścieżka została w teście osiągalna — cel
+        // `null` przechodziłby tak samo i po cichu zabierał ją z pomiaru.
+        actionHost: bandHost,
         client,
         snapshot,
         inspectorHost: null,

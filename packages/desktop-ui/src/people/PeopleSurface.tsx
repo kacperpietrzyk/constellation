@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -19,6 +19,7 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
   type ListNavigationItemProps,
@@ -480,18 +481,41 @@ export const PeopleSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        People
-      </h1>
-    </header>
+  /* AKCJA GŁÓWNA WRACA DO PASMA TYTUŁU I NIESIE AKCENT (Faza C, lot C2).
+     Prototyp: `v3/screens/crm.js:540` — `btn("New person", { cls: "primary",
+     icon: "plus" })` jako drugi argument `crumbbar(crumbs, actions)`
+     (`v3/app.js:677-683`), dosunięty do prawego końca pasma rozpychaczem
+     `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) i wypełniony gradientem
+     akcentu (`v3/app.css:321-332`). Kontrakt: `.ui-craft/tokens.md`, „Usage
+     constraints" 3.
+
+     ZMIERZONE PRZED POPRAWKĄ (`dowody/c2-czerwien-poziom.txt`): pion 74,1 px
+     poniżej rzędu tytułu przy tolerancji 18, poziom 990,1 px od końca pasma
+     przy tolerancji 16 — czyli akcja stała przy LEWEJ krawędzi rzędu niżej.
+
+     Klasa jest warunkowa z tego samego powodu co na Organizacjach, Lejku
+     i Odnowieniach: otwarty formularz ma własną akcję główną, a dwa wypełnienia
+     akcentu w jednym widoku są tym jedynym, czego „Usage constraints" 3
+     zabrania licząc. */
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="People" />
+  );
+  const bandAction = (
+    <button
+      aria-expanded={creating}
+      className={creating ? "secondary-button" : "primary-button"}
+      onClick={() => setCreating((open) => !open)}
+      type="button"
+    >
+      <Icon name="capture" />
+      New person
+    </button>
   );
 
   if (!relationships.available)
     return (
       <div className={`surface-scroll ${styles.people}`} data-people-surface>
-        {header}
+        {header()}
         <section className={styles.emptyState} role="status">
           <div>
             <h2>People are unavailable</h2>
@@ -513,18 +537,7 @@ export const PeopleSurface = ({
 
   return (
     <div className={`surface-scroll ${styles.people}`} data-people-surface>
-      {header}
-      <div className={styles.crumbbar}>
-        <button
-          aria-expanded={creating}
-          className="secondary-button"
-          onClick={() => setCreating((open) => !open)}
-          type="button"
-        >
-          <Icon name="capture" />
-          New person
-        </button>
-      </div>
+      {header(bandAction)}
       {creating && (
         <form
           aria-label="New person"

@@ -4,6 +4,7 @@ import type { ProjectId, StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import { NarrativeText } from "./components/RecordNarrative.js";
+import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
@@ -683,12 +684,40 @@ export const StrategicDepthSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        Organizations
-      </h1>
-    </header>
+  /* AKCJA GŁÓWNA WRACA DO PASMA TYTUŁU I NIESIE AKCENT (Faza C, lot C2).
+     Prototyp: `v3/screens/crm.js:371` — `btn("New organization", { cls:
+     "primary", icon: "plus" })` jako drugi argument `crumbbar(crumbs, actions)`
+     (`v3/app.js:677-683`), odepchnięty do prawego końca pasma rozpychaczem
+     `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) i wypełniony gradientem
+     akcentu (`v3/app.css:321-332`). Kontrakt: `.ui-craft/tokens.md`, „Usage
+     constraints" 3 — pasek akcji ekranu to jeden z pojemników, którym wolno
+     nieść JEDNĄ akcję z wypełnieniem akcentu.
+
+     PRZED TYM LOTEM ta akcja stała rząd niżej, we WŁASNYM `.crumbbar`, przy
+     LEWEJ krawędzi i bez grama akcentu — zmierzone: pion 74,1 px poniżej rzędu
+     tytułu przy tolerancji 18, poziom 954,6 px od końca pasma przy tolerancji
+     16 (`dowody/c2-czerwien-poziom.txt`).
+
+     KLASA JEST WARUNKOWA, i to nie jest ostrożność — to ta sama reguła, którą
+     Lejek i Odnowienia nosiły od swoich lotów: formularz tworzenia ma WŁASNĄ
+     akcję główną („Add organization"), więc bezwarunkowy `primary-button`
+     dawałby dwa wypełnienia akcentu w jednym widoku w chwili otwarcia
+     formularza. Przełącznik schodzi wtedy na `secondary-button` i schodzi
+     z nim jego znaczenie: kiedy formularz jest na ekranie, rzeczą do naciśnięcia
+     jest to, co w środku, a ten przycisk już tylko go zamyka. */
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="Organizations" />
+  );
+  const bandAction = (
+    <button
+      aria-expanded={creating}
+      className={creating ? "secondary-button" : "primary-button"}
+      onClick={() => setCreating((open) => !open)}
+      type="button"
+    >
+      <Icon name="capture" />
+      New organization
+    </button>
   );
 
   // The slice's OWN message, and a way to try again. Never an empty list: an
@@ -700,7 +729,7 @@ export const StrategicDepthSurface = ({
         className={`surface-scroll ${organizationStyles.organizations}`}
         data-organizations-surface
       >
-        {header}
+        {header()}
         <section className={organizationStyles.emptyState} role="status">
           <div>
             <h2>Organizations are unavailable</h2>
@@ -722,18 +751,7 @@ export const StrategicDepthSurface = ({
       className={`surface-scroll ${organizationStyles.organizations}`}
       data-organizations-surface
     >
-      {header}
-      <div className={organizationStyles.crumbbar}>
-        <button
-          aria-expanded={creating}
-          className="secondary-button"
-          onClick={() => setCreating((open) => !open)}
-          type="button"
-        >
-          <Icon name="capture" />
-          New organization
-        </button>
-      </div>
+      {header(bandAction)}
       {creating && (
         <form
           aria-label="New organization"

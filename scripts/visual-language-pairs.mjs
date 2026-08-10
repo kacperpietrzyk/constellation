@@ -786,7 +786,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     prototype: {
       file: "v3/app.css",
       lines: "222-226",
-      value: "`width: 2.5px` — ta sama liczba, którą kontrakt podaje jako sufit",
+      value:
+        "`width: 2.5px` — ta sama liczba, którą kontrakt podaje jako sufit",
     },
     subject: {
       selector: '.nav-item[aria-current="page"]',
@@ -854,7 +855,7 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
     title:
       "the rail is VISIBLE — that it stands at the column's edge and is not clipped to zero pixels",
     prototype:
-      "v3/app.css:222-226 (`.nav-item[aria-current=\"page\"]::before { left: -0.5rem }` — szyna wychodzi POZA pudełko wiersza, a rysuje się, bo `.nav` prototypu nie ma wcięcia)",
+      'v3/app.css:222-226 (`.nav-item[aria-current="page"]::before { left: -0.5rem }` — szyna wychodzi POZA pudełko wiersza, a rysuje się, bo `.nav` prototypu nie ma wcięcia)',
     app: "packages/desktop-ui/src/styles.css (.sidebar nav — `margin-left: calc(-1 * var(--nav-gutter))` z dopełnieniem tej samej wartości)",
     // PODMIOTEM SONDY JEST GOSPODARZ, NIE PSEUDOELEMENT: `querySelectorAll` nie
     // umie dopasować `::before`, więc selektor z pseudoelementem wróciłby „0
@@ -863,7 +864,7 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
     probe: '.nav-item[aria-current="page"]',
     why:
       "TRZY PARY TEJ POZYCJI (C1-01a farba, C1-01c szerokość, C1-02 farba rodzica) CZYTAJĄ " +
-      "`getComputedStyle(element, \"::before\")`, a styl WYLICZONY nie wie o przycięciu. " +
+      '`getComputedStyle(element, "::before")`, a styl WYLICZONY nie wie o przycięciu. ' +
       "`.sidebar nav` niesie `overflow-y: auto`, więc przeglądarka wylicza `overflow-x` też na " +
       "`auto` i element przycina po obu osiach na swoim pudełku dopełnienia; szyna stoi POZA " +
       "lewą krawędzią wiersza, więc bez ujemnego marginesu listy leży poza obszarem przycięcia. " +
@@ -1023,7 +1024,7 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 // modułu jest unikalna w SWOIM arkuszu, nie w dokumencie, a przelot pyta cały
 // dokument. Zliczenie nazw w `packages/desktop-ui/dist/assets/*.css` dało:
 // `_row_` — 20 różnych klas, `_count_` — 16, `_rowSelected_` — 8, `_mark_` — 6,
-// `_section_` — 5, `_bar_` — 5, `_why_` — 6, `_action_` — 4, `_crumbbar_` — 4,
+// `_section_` — 5, `_bar_` — 5, `_why_` — 6, `_action_` — 4,
 // `_avatar_` — 6. Dlatego każdy podmiot modułowy o nazwie ogólnej ma tu
 // PRZEDROSTEK Z DEKLARACJI (`[data-pipeline-surface]`, `[data-pipeline-card]`,
 // `[data-pipeline-column]`, `[data-renewals-surface]`, `[data-renewal-row]`,
@@ -1360,9 +1361,16 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "pipeline" },
     subject: {
-      selector: '[data-pipeline-surface] [class*="_crumbbar_"] button',
-      why: "R2 — one ruling for five surfaces; the row holds exactly one button, which today is `secondary-button`",
-      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:739-749",
+      // PODMIOT PRZEPIĘTY W LOCIE C2, i to jest przepięcie WYMUSZONE, nie
+      // kosmetyczne: ten lot przeniósł akcję Lejka z `.crumbbar` do pasma
+      // tytułu, a rząd, który po niej został, był pusty i został skasowany.
+      // Selektor zostawiony na `_crumbbar_` wróciłby jako ROUTED_NOT_MEASURED,
+      // co czyta się jak zepsuty przyrząd, a nie jak dowieziona poprawka.
+      // Podmiotem jest ten SAM przycisk w tym samym stanie — zmieniło się
+      // wyłącznie pasmo, w którym stoi.
+      selector: "[data-pipeline-surface] .surface-header button",
+      why: "R2 — one ruling for five surfaces; the title band holds exactly one button, which at rest is `primary-button`",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:840-872",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -1612,9 +1620,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "renewals" },
     subject: {
-      selector: '[data-renewals-surface] [class*="_crumbbar_"] button',
-      why: "R2, the same ruling as L2-08; on this screen the crumb bar holds exactly one button",
-      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:777-785",
+      // PRZEPIĘTE W LOCIE C2 razem z L2-08 i z tego samego powodu: `.crumbbar`
+      // tego ekranu przestał istnieć, kiedy akcja weszła do pasma tytułu.
+      selector: "[data-renewals-surface] .surface-header button",
+      why: "R2, the same ruling as L2-08; on this screen the title band holds exactly one button",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:806-835",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -1638,18 +1648,28 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // LICZBA NA NIEOBECNOŚĆ, nie selektor na nowy węzeł: mapa nie wie, jak lot
       // nazwie własne pasmo, i nie ma prawa mu tego narzucać. Wie natomiast, co
       // ma z tego rzędu ZNIKNĄĆ.
-      selector:
-        '[data-renewals-surface] [class*="_crumbbar_"] [class*="_count_"]',
-      why: "counted at zero: the position is that the counter must leave the button row, and any selector for the NEW band would prescribe markup the lot chooses",
+      // PRZEPIĘTE W LOCIE C2 NA PASMO TYTUŁU, i to nie jest to samo, co
+      // zostawienie go na `_crumbbar_`. Rząd, o którym ta para mówiła „licznik
+      // ma z niego wyjść", ZNIKNĄŁ — akcja przeniosła się do pasma tytułu.
+      // Selektor pod nieistniejącym rodzicem liczyłby zero ZAWSZE i przestałby
+      // cokolwiek pilnować, a nota niżej opisuje dokładnie ten mechanizm.
+      // Pytanie zostaje to samo, o rząd, w którym akcja stoi DZIŚ.
+      selector: '[data-renewals-surface] .surface-header [class*="_count_"]',
+      why: "counted at zero: the position is that the counter must leave the row the screen's action stands in, and any selector for the NEW band would prescribe markup the lot chooses",
       app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:786-788",
     },
     read: { property: null },
     // LICZBA ZERO SAMA NIE ODRÓŻNIA „licznik wyszedł" OD „cały rząd zniknął",
     // i przy odbiorze 2026-08-07 to rozróżnienie zrobiła para sąsiednia, a nie
-    // ta: L3-06 czyta `[class*="_crumbbar_"] button` NA TYM SAMYM przystanku
-    // i wróciła MATCH z osądzonym malowaniem, czyli rząd stoi i ma w sobie
+    // ta: L3-06 czyta `.surface-header button` NA TYM SAMYM przystanku
+    // i wraca MATCH z osądzonym malowaniem, czyli rząd stoi i ma w sobie
     // przycisk. Dopiero te dwa odczyty razem znaczą „licznik go opuścił".
     // Kto kiedyś usunie L3-06, zabiera tej parze jej jedyny kontrapunkt.
+    //
+    // I DOKŁADNIE TO WYDARZYŁO SIĘ W LOCIE C2, tylko o rząd wyżej: rzędem,
+    // z którego licznik miał wyjść, był wtedy `.crumbbar`, a lot C2 skasował
+    // go w całości. Obie pary przeszły więc na pasmo tytułu RAZEM — gdyby
+    // przeszła sama L3-07, jej zero opisywałoby nieistniejącego rodzica.
     expect: { kind: "count", equals: 0 },
     status: "enforced",
   },

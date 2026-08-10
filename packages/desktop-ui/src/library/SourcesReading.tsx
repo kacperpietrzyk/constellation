@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { KNOWLEDGE_SOURCE_AVAILABILITY } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -322,11 +323,16 @@ const SourceReader = ({
 };
 
 export const SourcesReading = ({
+  actionHost,
   client,
   snapshot,
   onReload,
   onFailure,
 }: {
+  /** Węzeł w paśmie tytułu powłoki, do którego ten odczyt wstrzykuje swoją
+   *  akcję główną — ten sam kształt co `inspectorHost` w odczycie Notatek.
+   *  `null`, dopóki powłoka go nie zamontuje. */
+  readonly actionHost: HTMLElement | null;
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly onReload: () => Promise<void>;
@@ -369,62 +375,76 @@ export const SourcesReading = ({
           </span>
         </header>
 
-        <div
-          className="knowledge-create-bar"
-          aria-label="Create in the library"
-        >
-          <InlinePopover
-            label="Add source"
-            panelLabel="Add a source to the library"
-            open={openCreate}
-            onOpenChange={setOpenCreate}
-            disabled={!client || creating}
-          >
-            <form
-              className="quick-source-form knowledge-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!client || !sourceTitle.trim() || creating) return;
-                setCreating(true);
-                void createKnowledgeSource(client, snapshot, {
-                  title: sourceTitle,
-                  ...(sourceUrl.trim() === ""
-                    ? {}
-                    : { canonicalUrl: sourceUrl }),
-                }).then(async (result) => {
-                  setCreating(false);
-                  if (result.kind !== "success") return onFailure(result);
-                  setSourceTitle("");
-                  setSourceUrl("");
-                  setOpenCreate(false);
-                  await onReload();
-                });
-              }}
-            >
-              <label htmlFor="knowledge-source-title">Save a source</label>
-              <input
-                id="knowledge-source-title"
-                name="sourceTitle"
-                required
-                value={sourceTitle}
-                onChange={(event) => setSourceTitle(event.target.value)}
-                placeholder="What is worth keeping?"
-                maxLength={500}
-              />
-              <input
-                name="sourceUrl"
-                type="url"
-                aria-label="Source URL"
-                value={sourceUrl}
-                onChange={(event) => setSourceUrl(event.target.value)}
-                placeholder="https://… (optional)"
-              />
-              <button className="primary-button" disabled={creating}>
-                Save source
-              </button>
-            </form>
-          </InlinePopover>
-        </div>
+        {/* FAZA C, LOT C2 — AKCJA TWORZENIA IDZIE DO PASMA TYTUŁU POWŁOKI, przez
+            portal, i to jest ta sama JEDNA poprawka, co na Notatkach: pasmo
+            `LibraryShell` jest wspólne dla obu odczytów. Prototyp:
+            `v3/screens/knowledge.js:967-968` — `btn("Add a source", { cls:
+            "primary", icon: "plus" })` jako drugi argument crumbbara
+            (`v3/app.js:677-683`), malowane `v3/app.css:321-332`; rejestr notuje
+            o tym ekranie „ani jednej powierzchni wypełnionej akcentem",
+            a o samej akcji „blada obwódkowa pigułka schowana w kolumnie listy".
+            Etykieta idzie za prototypem: „Add a source", nie „Add source".
+
+            Nazwa dostępnego regionu zostaje ta sama, żeby ścieżka tworzenia
+            dalej dawała się znaleźć po nazwie, a nie po miejscu. */}
+        {actionHost !== null &&
+          createPortal(
+            <div aria-label="Create in the library">
+              <InlinePopover
+                label="Add a source"
+                panelLabel="Add a source to the library"
+                open={openCreate}
+                onOpenChange={setOpenCreate}
+                disabled={!client || creating}
+                triggerClassName="primary-button"
+              >
+                <form
+                  className="quick-source-form knowledge-create-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!client || !sourceTitle.trim() || creating) return;
+                    setCreating(true);
+                    void createKnowledgeSource(client, snapshot, {
+                      title: sourceTitle,
+                      ...(sourceUrl.trim() === ""
+                        ? {}
+                        : { canonicalUrl: sourceUrl }),
+                    }).then(async (result) => {
+                      setCreating(false);
+                      if (result.kind !== "success") return onFailure(result);
+                      setSourceTitle("");
+                      setSourceUrl("");
+                      setOpenCreate(false);
+                      await onReload();
+                    });
+                  }}
+                >
+                  <label htmlFor="knowledge-source-title">Save a source</label>
+                  <input
+                    id="knowledge-source-title"
+                    name="sourceTitle"
+                    required
+                    value={sourceTitle}
+                    onChange={(event) => setSourceTitle(event.target.value)}
+                    placeholder="What is worth keeping?"
+                    maxLength={500}
+                  />
+                  <input
+                    name="sourceUrl"
+                    type="url"
+                    aria-label="Source URL"
+                    value={sourceUrl}
+                    onChange={(event) => setSourceUrl(event.target.value)}
+                    placeholder="https://… (optional)"
+                  />
+                  <button className="primary-button" disabled={creating}>
+                    Save source
+                  </button>
+                </form>
+              </InlinePopover>
+            </div>,
+            actionHost,
+          )}
 
         {snapshot.knowledge.kind === "unavailable" ? (
           <div className="inline-error" role="status">

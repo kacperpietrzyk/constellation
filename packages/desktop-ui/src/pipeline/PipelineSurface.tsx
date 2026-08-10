@@ -38,6 +38,7 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
   type ListNavigationItemProps,
@@ -776,12 +777,8 @@ export const PipelineSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        Pipeline
-      </h1>
-    </header>
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="Pipeline" />
   );
 
   if (activeOpportunityId !== undefined)
@@ -792,7 +789,7 @@ export const PipelineSurface = ({
       >
         {renderRecordScreen === undefined ? (
           <>
-            {header}
+            {header()}
             <section className={styles.emptyState} role="status">
               <div>
                 <h2>This deal has no record screen yet</h2>
@@ -819,7 +816,7 @@ export const PipelineSurface = ({
         className={`surface-scroll ${styles.pipeline}`}
         data-pipeline-surface
       >
-        {header}
+        {header()}
         <section className={styles.emptyState} role="status">
           <div>
             <h2>The pipeline is unavailable</h2>
@@ -840,31 +837,42 @@ export const PipelineSurface = ({
 
   return (
     <div className={`surface-scroll ${styles.pipeline}`} data-pipeline-surface>
-      {header}
-      <div className={styles.crumbbar}>
-        {/* THE ACTION OF THE SCREEN, AT THE END OF THE BAR. The prototype draws
-            it as the primary action and pushes it right
-            (`v3/screens/pipeline.js:409-410` through `v3/app.css:293`,
-            `:321-332`); the contract calls the primary action one per view and
-            the largest solid-accent object a view may hold (`.ui-craft/tokens.md`,
-            "Usage constraints" 3). ONE PER VIEW IS THE WHOLE PROBLEM HERE, and
-            it is why this is a conditional rather than a class: the form's own
-            "Add opportunity" (below) is already primary, so a toggle that
-            stayed primary would put two of them on one screen the moment the
-            form opened. The toggle steps down to secondary while the form is
-            open, and what it means steps down with it — once the form is on
-            screen the thing to press is inside it, and this button only closes
-            it again. There is never a state with two. */}
+      {header(
+        /* THE ACTION OF THE SCREEN, AT THE END OF ITS TITLE BAND. The prototype
+           draws it as the primary action and pushes it right
+           (`v3/screens/pipeline.js:409-410` through `v3/app.css:293`,
+           `:321-332`); the contract calls the primary action one per container
+           that owns one and the largest solid-accent object a view may hold
+           (`.ui-craft/tokens.md`, "Usage constraints" 3). ONE PER CONTAINER IS
+           THE WHOLE PROBLEM HERE, and it is why this is a conditional rather
+           than a class: the form's own "Add opportunity" (below) is already
+           primary, so a toggle that stayed primary would put two of them in one
+           bar the moment the form opened. The toggle steps down to secondary
+           while the form is open, and what it means steps down with it — once
+           the form is on screen the thing to press is inside it, and this button
+           only closes it again. There is never a state with two.
+
+           PHASE C, LOT C2 — IT USED TO STAND A ROW LOWER, IN ITS OWN
+           `.crumbbar`. The prototype has no second bar: `crumbbar(crumbs,
+           actions)` (`v3/app.js:677-683`) is ONE band carrying the screen's name
+           and its action. Measured before the fix
+           (`dowody/c2-czerwien-poziom.txt`): 74.1 px below the title row against
+           a tolerance of 18. Horizontally it was already at the end — 16 px
+           short against a tolerance of 16, i.e. exactly the crumb bar's own
+           inline padding — which is why the horizontal axis reported it as
+           FLUSH_END and why that reading sat on the boundary rather than in the
+           clear. Inside the band the same action ends flush with the band's
+           content box. */
         <button
           aria-expanded={creating}
-          className={`${styles.createToggle} ${creating ? "secondary-button" : "primary-button"}`}
+          className={creating ? "secondary-button" : "primary-button"}
           onClick={() => setCreating((open) => !open)}
           type="button"
         >
           <Icon name="capture" />
           New opportunity
-        </button>
-      </div>
+        </button>,
+      )}
       {creating && (
         <form
           aria-label="New opportunity"

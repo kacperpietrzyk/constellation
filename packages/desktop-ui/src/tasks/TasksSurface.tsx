@@ -12,6 +12,7 @@ import type {
   MutationFailure,
   SavedWorkViewFilterChange,
 } from "../client/workflow.js";
+import { Icon } from "../components/Icon.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
 import { useSurfaceDensity } from "../hooks/useSurfaceDensity.js";
 import { countLabel, dateKeyInZone } from "../i18n.js";
@@ -19,6 +20,7 @@ import {
   LazySurfaceBoundary,
   SurfaceLoadingState,
 } from "../SurfaceLifecycleStates.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import { TaskListLayout } from "./TaskListLayout.js";
 import type { TaskColumnKey } from "./task-columns.js";
 import { matchesSavedView, matchesSearch } from "./task-filters.js";
@@ -357,11 +359,7 @@ export const TasksSurface = ({
   if (work.kind !== "ready")
     return (
       <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
-        <header className="surface-header">
-          <h1 id="surface-title" tabIndex={-1}>
-            Tasks
-          </h1>
-        </header>
+        <SurfaceTitleBand title="Tasks" />
         <p className={styles.unavailable}>
           Tasks are unavailable while the work plane cannot be read.
         </p>
@@ -389,11 +387,7 @@ export const TasksSurface = ({
           // the record would have carried, because the failure case is exactly
           // when a work plane with no name and no focus target is worst.
           <>
-            <header className="surface-header">
-              <h1 id="surface-title" tabIndex={-1}>
-                This task could not be opened
-              </h1>
-            </header>
+            <SurfaceTitleBand title="This task could not be opened" />
             <p className={styles.unavailable}>
               It is not in the work projection for this Space. Reload, or go
               back to the task list.
@@ -457,11 +451,41 @@ export const TasksSurface = ({
       data-density={density}
       data-tasks-surface
     >
-      <header className="surface-header">
-        <h1 id="surface-title" tabIndex={-1}>
-          Tasks
-        </h1>
-      </header>
+      <SurfaceTitleBand
+        action={
+          /* THE SCREEN'S ACTION, WHICH THIS BAND DID NOT HAVE AT ALL (Phase C,
+             lot C2). The prototype puts one here — `v3/screens/tasks.js:507-513`
+             is `btn("New task", { cls: "primary", icon: "plus", act:
+             "new-task" })` as the second argument of `crumbbar(crumbs, actions)`
+             (`v3/app.js:677-683`), pushed to the band's end by
+             `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) and filled with
+             the accent gradient (`v3/app.css:321-332`). The contract licenses
+             exactly this: `.ui-craft/tokens.md`, "Accent rule" job 2 and "Usage
+             constraints" 3 — the screen's action bar is a container that may own
+             one accent-filled action.
+
+             THIS SCREEN WAS THE ONE SUBJECT THE DIVERGENCE REGISTRY DID NOT
+             HAVE. The title-band census found it on its own: the prototype's
+             Tasks band carries "+ New task" and ours carried nothing, because
+             creating a task went only through `addToGroup` below — an
+             affordance that lives per group and names the group it lands in.
+             That path stays; it answers a different question ("a task in THIS
+             bucket") from the one the band answers ("a task on this screen").
+
+             THE TITLE IS THE ONE THE GROUPED PATH ALREADY WRITES, minus the
+             group: `addToGroup` sends "New task in <group label>" and there is
+             no group here to name. */
+          <button
+            className="primary-button"
+            onClick={() => void onCreateTask("New task")}
+            type="button"
+          >
+            <Icon name="capture" />
+            New task
+          </button>
+        }
+        title="Tasks"
+      />
       <div className={styles.viewbar}>
         <div
           className={styles.switcher}

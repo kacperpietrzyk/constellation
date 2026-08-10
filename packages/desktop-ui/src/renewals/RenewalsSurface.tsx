@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { StrategicRecordId, TaskId } from "@constellation/contracts";
 
@@ -21,6 +21,7 @@ import { TopicHelp } from "../help/TopicHelp.js";
 import { indexRelationships } from "../crm/organization-reading.js";
 import { fmtApprox, fmtMoney, fmtUplift } from "../crm/money.js";
 import { Icon } from "../components/Icon.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
   type ListNavigationItemProps,
@@ -731,12 +732,8 @@ export const RenewalsSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        Renewals
-      </h1>
-    </header>
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="Renewals" />
   );
 
   if (!relationships.available)
@@ -745,7 +742,7 @@ export const RenewalsSurface = ({
         className={`surface-scroll ${styles.renewals}`}
         data-renewals-surface
       >
-        {header}
+        {header()}
         <section className={styles.emptyState} role="status">
           <div>
             <h2>Renewals are unavailable</h2>
@@ -806,21 +803,29 @@ export const RenewalsSurface = ({
 
   return (
     <div className={`surface-scroll ${styles.renewals}`} data-renewals-surface>
-      {header}
-      {/* POSITION 6 — THE SCREEN'S OWN ACTION IS PAINTED AS THE PRIMARY ONE.
-          This is ruling R2, taken once for five surfaces and not decided here:
-          the reference gives this control `.btn.primary`
-          (`v3/screens/renewals.js:217`, painted at `v3/app.css:321-332`), and
-          `.ui-craft/tokens.md` "Accent rule" job 2 licenses exactly one primary
-          action per view.
+      {header(
+        /* POSITION 6 — THE SCREEN'S OWN ACTION IS PAINTED AS THE PRIMARY ONE.
+           This is ruling R2, taken once for five surfaces and not decided here:
+           the reference gives this control `.btn.primary`
+           (`v3/screens/renewals.js:217`, painted at `v3/app.css:321-332`), and
+           `.ui-craft/tokens.md` "Accent rule" job 2 licenses exactly one primary
+           action per container that owns one.
 
-          IT IS A TOGGLE, SO IT DEMOTES ITSELF. The counter-argument the ruling
-          weighed is real — with the create form open, "Open the amendment" and
-          the form's own submit are the primary things on this canvas, and two
-          filled accents in one view is the one thing the rule forbids by
-          counting. Painting the trigger primary only while it is CLOSED keeps
-          the promise of "one per view" true in both states. */}
-      <div className={styles.crumbbar}>
+           IT IS A TOGGLE, SO IT DEMOTES ITSELF. The counter-argument the ruling
+           weighed is real — with the create form open, "Open the amendment" and
+           the form's own submit are the primary things on this canvas, and two
+           filled accents in one view is the one thing the rule forbids by
+           counting. Painting the trigger primary only while it is CLOSED keeps
+           that promise true in both states.
+
+           PHASE C, LOT C2 — THE BAR IT STOOD IN IS GONE, AND THE ACTION MOVED
+           INTO THE TITLE BAND. The prototype does not stack a title band and an
+           action bar: `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) is ONE
+           band carrying the screen's name and its action, with the action pushed
+           to the end by `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`).
+           Measured before the fix (`dowody/c2-czerwien-poziom.txt`): 74.1 px
+           below the title row against a tolerance of 18, and 986.2 px short of
+           the band's end against a tolerance of 16. */
         <button
           aria-expanded={creating}
           className={creating ? "secondary-button" : "primary-button"}
@@ -829,8 +834,8 @@ export const RenewalsSurface = ({
         >
           <Icon name="capture" />
           New renewal
-        </button>
-      </div>
+        </button>,
+      )}
       {/* POSITION 7 — the reading of the list stands in its own band, under the
           row that acts on it (`v3/app.css:295-301`,
           `v3/screens/renewals.js:218-221`). */}
