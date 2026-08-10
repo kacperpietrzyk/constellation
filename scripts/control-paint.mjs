@@ -16,9 +16,27 @@
 // Żadna para tego nie pyta i nie mogła zapytać: para wymaga, żeby ktoś
 // najpierw NAZWAŁ podmiot. Tu podmiotów jest 133 na 422 elementy `<button>`
 // w znaczniku, a 105 z nich nie niesie klasy, którą analiza statyczna umie
-// rozstrzygnąć. Dlatego to jest SPIS POWSZECHNY każdej narysowanej kontrolki
-// na przystanku, a nie mapa — mapy nie da się rozbroić pominięciem podmiotu,
-// spisu owszem, ale tylko przez skasowanie samego ekranu.
+// rozstrzygnąć. Dlatego to jest SPIS POWSZECHNY, a nie mapa — nikt nie wypisuje
+// tu podmiotów, spis bierze KAŻDĄ narysowaną kontrolkę tam, gdzie stanie.
+//
+// GDZIE STAJE, WYPISANE DOKŁADNIE, bo „powszechny" bez granicy jest
+// nieprawdą, a nieprawda w nagłówku jest gorsza od luki w pokryciu:
+//
+//   OBJĘTE — powłoka (pasek boczny, tabbar, dok) raz; każdy cel nawigacji
+//            `.nav-item[data-surface]`; tryb Ustawień wchodzony kołem zębatym;
+//            KAŻDY stan soczewki `[data-layout]` na celu, który je deklaruje.
+//   NIEOBJĘTE — wszystko, co rysuje się dopiero PO WYBORZE albo PO OTWARCIU:
+//            panel deala na Lejku (`pipeline/PipelineSurface.tsx:1020-1037` →
+//            `.moveButton`, `pipeline.module.css:225`, i `.dealPanelLink`,
+//            `:206` — obie bez tła w spoczynku, obie tej samej klasy co dług
+//            niżej), otwarty ekran rekordu, dialogi i menu. Spis ich NIE WIDZI,
+//            więc cisza o nich nie jest zdaniem o nich. Domknięcie tego jest
+//            robotą osobnego lotu (Faza B, B2), nie ozdobą tego pliku.
+//
+// Spisu nie da się rozbroić pominięciem podmiotu — da się go rozbroić
+// pominięciem PRZYSTANKU, i dokładnie dlatego przystanki są niżej WYPROWADZONE
+// z żywego DOM-u i porównywane z tym, co spis naprawdę obejrzał
+// (`classifyControlPaintCensus`), a nie wypisane listą.
 //
 // REGUŁA: tło jest legalne, jeżeli (a) jest W PEŁNI PRZEZROCZYSTE — arkusz
 // mówi „background: transparent" 38 razy i mówi to świadomie (`.ghost-button`,
@@ -41,6 +59,33 @@
 //   * NIE MA progu percepcyjnego ani kontrastu. Wada jest w obu motywach TĄ
 //     SAMĄ wadą CSS; w ciemnym kontrolka ŚWIECI, w jasnym WYGASA. Objaw się
 //     odwraca, wada zostaje.
+//   * NIE MA UZNAWANIA WARTOŚCI WYPROWADZONYCH Z TOKENU, i to jest ŚWIADOME.
+//     Legalne jest tło RÓWNE rozwiązanemu napisowi tokenu, więc
+//     `color-mix(in oklch, var(--surface-stage), transparent 22%)`
+//     (`styles.css:4726`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
+//     czyli werdykt SPOZA rejestru, czyli PADA. Rozpoznanie takiej wartości
+//     wymagałoby porównania „z dokładnością do alfy" po konwersji przestrzeni
+//     WEWNĄTRZ przyrządu, czyli arytmetyki, której poprawności ten przyrząd nie
+//     umie udowodnić o sobie samym. Przypięte testem.
+//
+//     ZMIERZONE, I GORSZE, NIŻ WYGLĄDA: przestrzeń interpolacji zostaje
+//     w wartości wyliczonej, a idiom prototypu (`v3/app.css:466`) brzmi
+//     `color-mix(in oklab, …)` — to wraca jako `oklab(…)`, czego `parseColor`
+//     NIE ROZKŁADA. Taka kontrolka nie dostaje więc werdyktu `OFF_PALETTE`,
+//     tylko `UNREADABLE`, czyli AWARIĘ PRZYRZĄDU, która pada bezwarunkowo,
+//     również przy `pending`. Komunikat `UNREADABLE` mówi to wprost i podaje
+//     obie drogi wyjścia (zapisać mieszankę `in oklch` albo nauczyć
+//     `parseColor` tej przestrzeni), bo inaczej Faza C zobaczyłaby czerwień
+//     wskazującą na zepsuty przyrząd tam, gdzie zepsuty przyrząd nie jest
+//     przyczyną.
+//   * SONDA GOŁEJ KONTROLKI NIE SIĘGA `select` W PEŁNI. Arkusz tej aplikacji
+//     daje `select` tło z tokenu (`styles.css:513-519`), więc sonda wstawiona
+//     do dokumentu czytała TOKEN, nie silnik, i drukowała go jako „farbę tej
+//     przeglądarki". Sonda siedzi teraz w OTWARTYM shadow roocie — selektory
+//     dokumentu tam nie sięgają, a `color-scheme` jako własność dziedziczona
+//     sięga, więc motyw zostaje zachowany. To jest jedyny sposób, jaki tu
+//     działa: `all: revert` zdjęłoby również `color-scheme` i sonda ciemnego
+//     motywu wróciłaby z farbą jasnego.
 //
 // Sam pomiar wymaga przeglądarki, więc siedzi jako przelot w
 // `verify-renderer-layout.mjs`. Sama REGUŁA jest funkcją nad napisami
@@ -64,6 +109,16 @@ import { parseColor } from "./color-contrast.mjs";
  * (Faza C, lot C5) i osobna właściwość. Tu czyta się WYŁĄCZNIE tło.
  */
 export const CONTROL_PAINT_TAGS = ["button", "input", "textarea", "select"];
+
+/**
+ * Nazwa przystanku, którym jest sama POWŁOKA.
+ *
+ * Pasek boczny, tabbar i dok przechwytywania rysują się na KAŻDYM celu, więc
+ * liczone pod każdym z nich zrobiłyby z rejestru dwanaście kopii jednego długu.
+ * Stoi tu, a nie literałem w dwóch plikach, bo strażnik „powłoka to nie jest
+ * cel nawigacji" musi pytać o dokładnie tę nazwę, którą wpisuje spacer.
+ */
+export const CONTROL_PAINT_SHELL = "shell";
 
 /**
  * Status pozycji. Zapisany TUTAJ, a nie w prozie planu, bo od niego zależy, czy
@@ -93,14 +148,24 @@ export const CONTROL_PAINT_ARMED = CONTROL_PAINT_STATUS === "enforced";
 /**
  * Nazwa elementu, po której da się go rozpoznać w rejestrze i w raporcie.
  *
- * Ta sama normalizacja co w bramce (`verify-renderer-layout.mjs:578-581`)
- * i z tego samego powodu: CSS Modules dokleja do klasy skrót treści arkusza
- * (`_chip_1kitm_126`), więc JEDNA edycja arkusza zmieniłaby nazwy wszystkich
- * jego klas i unieważniła cały rejestr naraz. Rejestr, który sam się kasuje
- * przy przebudowie, nie pilnuje niczego.
+ * Ta sama normalizacja co w bramce i z tego samego powodu: CSS Modules dokleja
+ * do klasy skrót treści arkusza (`_chip_1kitm_126`), więc JEDNA edycja arkusza
+ * zmieniłaby nazwy wszystkich jego klas i unieważniła cały rejestr naraz.
+ * Rejestr, który sam się kasuje przy przebudowie, nie pilnuje niczego.
+ *
+ * WZORZEC JEST NAPISEM, I TO NIE JEST OZDOBA. Playwright serializuje ŹRÓDŁO
+ * funkcji mierzącej, więc tej funkcji nie da się do strony zaimportować — a
+ * WKLEJONA kopia regexpa robi z testu niżej strażnika kopii martwej: edycja
+ * kopii żywej zostawiłaby go zielonym („regex zielony, zachowanie zepsute").
+ * Napis przechodzi do `page.evaluate` argumentem i tam odtwarza się przez
+ * `new RegExp`, więc obie strony mają dosłownie ten sam wzorzec i rozjazd jest
+ * niewykonalny. Kopia w `sweep` (`verify-renderer-layout.mjs:578-581`) NIE
+ * została tym objęta — pilnuje innego rejestru i to osobna robota.
  */
+export const CSS_MODULE_HASH_PATTERN = "^_(.+)_[a-z0-9]{5,7}_\\d+$";
+
 export const normaliseClassToken = (token) => {
-  const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+  const match = new RegExp(CSS_MODULE_HASH_PATTERN, "u").exec(token);
   return match === null ? token : `_${match[1]}`;
 };
 
@@ -163,8 +228,14 @@ export const classifyControlPaint = ({ group, palette, uaPaint }) => {
     return {
       state: "UNREADABLE",
       reason:
-        `${group.signature} computes background-color „${group.backgroundColor}", which this ` +
-        "instrument cannot decompose. Instrument failure — the verdict would be a guess.",
+        `${group.signature} on ${group.surface} computes background-color ` +
+        `„${group.backgroundColor}", which this instrument cannot decompose (it reads oklch(), ` +
+        "rgb()/rgba() and hex). Instrument failure — the verdict would be a guess. THE LIKELY " +
+        "CAUSE IS NOT A BROKEN PROBE: a `color-mix()` resolves in its INTERPOLATION SPACE, so " +
+        "`color-mix(in oklab, …)` — the prototype's own idiom — computes to `oklab(…)` and lands " +
+        "exactly here. Write the mix `in oklch`, and it will be judged (as a finding: see the " +
+        "header, a mix over a token is deliberately NOT in the palette), or teach `parseColor` " +
+        "that space. Do not silence this line.",
     };
   if (alpha === 0) return { state: "TRANSPARENT" };
   if (palette.includes(group.backgroundColor)) return { state: "IN_PALETTE" };
@@ -189,11 +260,21 @@ export const classifyControlPaint = ({ group, palette, uaPaint }) => {
  * ZNANY DŁUG — kontrolki, o których wiadomo DZIŚ, że malują się farbą spoza
  * arkusza, i które zamyka Faza C.
  *
- * KLUCZ TO `surface` + `signature`, NIGDY LICZBA ELEMENTÓW. `.treeNode` to
- * jeden wiersz na folder, `.chip` jeden na stan relacji, `.groupName` jeden na
- * organizację w fiksturze — rejestr trzymający liczby zgniłby przy pierwszym
- * urośnięciu fikstury i zaczerwienił bramkę na danych, nie na kodzie. Liczby
- * SĄ drukowane, ale nie są asertowane.
+ * KLUCZ TO `surface` + `signature` + `state`, NIGDY LICZBA ELEMENTÓW.
+ * `.treeNode` to jeden wiersz na folder, `.chip` jeden na stan relacji,
+ * `.groupName` jeden na organizację w fiksturze — rejestr trzymający liczby
+ * zgniłby przy pierwszym urośnięciu fikstury i zaczerwienił bramkę na danych,
+ * nie na kodzie. Liczby SĄ drukowane, ale nie są asertowane.
+ *
+ * `state` JEST CZĘŚCIĄ KLUCZA, i to jest treść, nie formalność. Wpis bez niego
+ * byłby zezwoleniem na KSZTAŁT, a nie na dzisiejszą wadę tego kształtu: lot C3,
+ * który wpisze `button._chip` literał spoza tokenów zamiast tokenu, zmieni
+ * werdykt z `UA_DEFAULT` na `OFF_PALETTE` — czyli RODZAJ wady — a rejestr
+ * milczący o stanie przyjąłby to jako „znany dług" i zaksięgował wpis jako
+ * spotkany. Cicha zieleń nad kontrolką, która zmieniła wadę, jest dokładnie tym,
+ * czego ten przyrząd ma nie robić. Dziś wszystkie wpisy stoją na `UA_DEFAULT`
+ * — ZERO `OFF_PALETTE` w całym przebiegu — więc ten warunek nie zmienia ani
+ * jednego dzisiejszego werdyktu i zaczyna działać dopiero w Fazie C.
  *
  * Każdy wpis niesie `why` — czyli miejsce w arkuszu, w którym reguła MILCZY
  * o tle. To jest robota lotu C3, wypisana adresami, a nie prozą.
@@ -202,66 +283,79 @@ export const KNOWN_CONTROL_PAINT = [
   {
     surface: "pipeline",
     signature: "button._stagesLink",
+    state: "UA_DEFAULT",
     why: "pipeline/pipeline.module.css:123 — no background in the resting state",
   },
   {
     surface: "organizations",
     signature: "button._switch",
+    state: "UA_DEFAULT",
     why: "organizations/organizations.module.css:94 — resting state silent, :102 [aria-selected] paints",
   },
   {
     surface: "organizations",
     signature: "button._chip",
+    state: "UA_DEFAULT",
     why: "organizations/organizations.module.css:126 — resting state silent, :141 [aria-pressed] paints",
   },
   {
     surface: "people",
     signature: "button._switch",
+    state: "UA_DEFAULT",
     why: "people/people.module.css:85 — resting state silent, :93 [aria-selected] paints",
   },
   {
     surface: "people",
     signature: "button._groupName",
+    state: "UA_DEFAULT",
     why: "people/people.module.css:151 — no background in the resting state",
   },
   {
     surface: "renewals",
     signature: "button._basisLink",
+    state: "UA_DEFAULT",
     why: "renewals/renewals.module.css:665 — no background in the resting state",
   },
   {
     surface: "renewals",
     signature: "button._follow",
+    state: "UA_DEFAULT",
     why: "renewals/renewals.module.css:694 — no background in the resting state",
   },
   {
     surface: "renewals",
     signature: "button._action",
+    state: "UA_DEFAULT",
     why: "renewals/renewals.module.css:862 — no background in the resting state",
   },
   {
     surface: "renewals",
     signature: "button._more",
+    state: "UA_DEFAULT",
     why: "renewals/renewals.module.css:219 — no background in the resting state",
   },
   {
     surface: "library",
     signature: "button._switch",
+    state: "UA_DEFAULT",
     why: "library/library.module.css:122 — resting state silent, :130 [aria-selected] paints",
   },
   {
     surface: "library",
     signature: "button._treeNode",
+    state: "UA_DEFAULT",
     why: "library/notes.module.css:144 — resting state silent, :236 .treeNodeSelected paints",
   },
   {
     surface: "library",
     signature: "button._treeNode._treeNodeLoose",
+    state: "UA_DEFAULT",
     why: "library/notes.module.css:144 + :204 — neither declares a background",
   },
   {
     surface: "library",
     signature: "button._arrangementButton",
+    state: "UA_DEFAULT",
     why: "library/notes.module.css:386 — resting state silent, :410 [aria-pressed] paints",
   },
   {
@@ -271,8 +365,21 @@ export const KNOWN_CONTROL_PAINT = [
     // przyczyna: `styles.css:501-505` daje `input` `color` i `font`, i nie daje
     // `background`. Spis obejmujący WYŁĄCZNIE `<button>` nigdy by tego nie
     // powiedział.
+    //
+    // PODPIS Z `name`, NIE Z BRAKU KLASY. „input[no class]" nie było
+    // identyfikatorem podmiotu, tylko DZIKĄ KARTĄ na całą rodzinę: dopasowanie
+    // idzie po `surface` + `signature`, więc DOWOLNY przyszły bezklasowy
+    // `<input>` w Bibliotece trafiłby w ten wpis, zostałby zaklasyfikowany jako
+    // znany dług Fazy C i tylko by się wydrukował. Na tym samym ekranie stoją
+    // już dwa dalsze bezklasowe pola (`SourcesReading.tsx:405`, `:414`).
+    // GRANICA TEJ POPRAWKI, wypisana, bo jest realna: pole zmiany tytułu (`:304`)
+    // i pole nowego źródła (`:405`) niosą TEN SAM `name="sourceTitle"`, więc ten
+    // podpis identyfikuje dwa podmioty, nie jeden. Zwęża rodzinę do pary — nie
+    // domyka jej do sztuki. `id` nie jest wyjściem: rename bierze `useId()`
+    // (`_r_s_-rename`), czyli napis zmienny między wersjami Reacta.
     surface: "library",
-    signature: "input[no class]",
+    signature: "input[name=sourceTitle]",
+    state: "UA_DEFAULT",
     why: "library/SourcesReading.tsx:304 („Change title”) carries no rule at all; styles.css:501-505 gives input color and font but no background",
   },
 ];
@@ -312,17 +419,24 @@ export const signatureCarriesClass = (signature, className) =>
   signature.split(".").slice(1).includes(className);
 
 /**
- * Werdykt o KONTROLACH DODATNICH całego przebiegu.
+ * Werdykt o KONTROLACH DODATNICH JEDNEGO MOTYWU.
  *
- * `observed` to mapa `podpis → zbiór stanów`, zebrana ze wszystkich motywów.
+ * `observed` to mapa `podpis → zbiór stanów` z TEGO motywu, nie z całego
+ * przebiegu — i to jest poprawka, nie kosmetyka. Mapa zlana z obu motywów
+ * milczy o motywie, w którym spacer padł i nie narysował ani jednego świadka:
+ * drugi motyw wypełnia klucze za niego i „świadek nienarysowany" nie ma prawa
+ * paść. Każdy motyw sądzi się osobno, a komunikat mówi który.
+ *
  * Świadek nienarysowany i świadek osądzony inaczej, niż deklaruje, są tą samą
  * klasą awarii — przyrządu, nie produktu — ale mają RÓŻNE komunikaty, bo
  * wymagają różnej roboty.
  */
 export const classifyControlPaintWitnesses = ({
   observed,
+  theme = "",
   witnesses = CONTROL_PAINT_WITNESSES,
 }) => {
+  const where = theme === "" ? "" : ` (${theme})`;
   const failures = [];
   const lines = [];
   for (const witness of witnesses) {
@@ -335,20 +449,23 @@ export const classifyControlPaintWitnesses = ({
     }
     if (states.size === 0) {
       failures.push(
-        `CONTROL_PAINT_WITNESS_NOT_DRAWN: the census never saw a rendered .${witness.class} in ` +
-          "any theme. This instrument then has NO evidence that it can return anything but a " +
-          "finding, and a probe that can only go red is indistinguishable from a broken one.",
+        `CONTROL_PAINT_WITNESS_NOT_DRAWN${where}: the census never saw a rendered ` +
+          `.${witness.class} in this theme. This instrument then has NO evidence that it can ` +
+          "return anything but a finding, and a probe that can only go red is indistinguishable " +
+          "from a broken one.",
       );
-      lines.push(`witness\t.${witness.class}\tNOT DRAWN`);
+      lines.push(`witness\t${theme}\t.${witness.class}\tNOT DRAWN`);
       continue;
     }
     const wrong = [...states].filter((state) => state !== witness.expect);
     lines.push(
-      `witness\t.${witness.class}\t${[...states].sort().join(", ")}\t${elements} element(s)`,
+      `witness\t${theme}\t.${witness.class}\t${[...states].sort().join(", ")}\t` +
+        `${elements} element(s)`,
     );
     if (wrong.length > 0)
       failures.push(
-        `CONTROL_PAINT_WITNESS_FLAGGED: .${witness.class} is declared legal as ${witness.expect} ` +
+        `CONTROL_PAINT_WITNESS_FLAGGED${where}: .${witness.class} is declared legal as ` +
+          `${witness.expect} ` +
           `and this run judged it ${wrong.join(", ")}. Either a rule stopped setting its ` +
           "background — which is a regression of delivered work — or this instrument reports " +
           "false positives, and a false positive is a defect OF THE INSTRUMENT.",
@@ -356,6 +473,22 @@ export const classifyControlPaintWitnesses = ({
   }
   return { failures, lines };
 };
+
+/**
+ * Czy TA grupa jest opisana wpisem rejestru — po `surface`, `signature` I STANIE.
+ *
+ * Stan w porównaniu jest tym, co odróżnia „znany dług" od „znanego kształtu".
+ * Powód stoi przy `KNOWN_CONTROL_PAINT` i sprowadza się do jednego zdania:
+ * kontrolka, która zmieniła RODZAJ wady, jest podmiotem, o którym rejestr nie
+ * wydał zdania.
+ */
+export const isRegisteredControlPaint = ({ surface, signature, state }) =>
+  KNOWN_CONTROL_PAINT.some(
+    (entry) =>
+      entry.surface === surface &&
+      entry.signature === signature &&
+      entry.state === state,
+  );
 
 /**
  * Wpisy rejestru, których ŻADEN przelot nie spotkał.
@@ -366,11 +499,59 @@ export const classifyControlPaintWitnesses = ({
  * `unusedRegistryEntries` w `descendant-overflow.mjs`: lot, który naprawia
  * kontrolkę, KASUJE jej wpis w tym samym locie. To jest zamierzony przepływ
  * Fazy C, nie tarcie.
+ *
+ * SPOTKANIE JEST UNIĄ PO MOTYWACH i to jest wybór, nie niedopatrzenie: reguła,
+ * która maluje tło tylko w jednym motywie, dałaby przy księgowaniu per motyw
+ * wpis „niespotkany" w drugim — czyli czerwień nad poprawną deklaracją. Przed
+ * martwym spacerem w jednym motywie broni tu co innego, i to mocniej:
+ * `CONTROL_PAINT_EXAMINED_*` liczy kontrolki OSOBNO W KAŻDYM MOTYWIE, więc
+ * motyw, który niczego nie obejrzał, pada na podłodze, zanim ktokolwiek zapyta
+ * o rejestr.
  */
 export const unmetControlPaintEntries = (met) =>
   KNOWN_CONTROL_PAINT.filter(
     (entry) => !met.has(`${entry.surface}\t${entry.signature}`),
   );
+
+/**
+ * PODŁOGA LICZBY KONTROLEK NA CELU, wyprowadzona z pomiaru, nie wymyślona.
+ *
+ * Po co, skoro zero jest już awarią: „pusta fikstura chroni fałszywą asercję"
+ * ma stopień pośredni, którego zero nie widzi. Cel, który spadł ze stu pięciu
+ * narysowanych kontrolek do jednej — regresja fikstury, nawigacja, która
+ * przestała dojeżdżać, soczewka, która się nie otworzyła — przechodziłby
+ * z komunikatem „zmierzono", a przelot dalej twierdziłby o nim zdanie. Ta sama
+ * klasa i ten sam kształt lekarstwa co `FOCUS_VISIBILITY_MIN_STOPS`
+ * w `verify-renderer-layout.mjs`.
+ *
+ * LICZBY POCHODZĄ Z PRZEBIEGU (`dowody/b1-czerwien.txt`), a nie z głowy, i są
+ * ŚWIADOMIE ZANIŻONE — 60% zmierzonego, minimum 1. Podłoga równa pomiarowi
+ * czerwieniłaby bramkę przy pierwszej edycji fikstury, czyli na DANYCH zamiast
+ * na kodzie; podłoga na 60% przepuszcza normalne drgnięcie zawartości i pada
+ * na zapadnięciu się ekranu. Komunikat niesie OBIE liczby, żeby pierwsza
+ * czerwień na innej fiksturze dała się odróżnić od awarii przyrządu.
+ *
+ * Cel BEZ wpisu nie jest błędem (nowy ekran nie ma prawa zaczerwienić bramki
+ * w dniu, w którym powstaje) — ale wpis, którego żaden motyw nie odwiedził,
+ * JEST: opisuje przystanek, który zniknął ze spaceru.
+ */
+export const CONTROL_PAINT_SURFACE_FLOORS = {
+  // zmierzone → podłoga (60%, minimum 1), przelot z 2026-08-10, oba motywy
+  // oddały te same liczby co do jednej kontrolki
+  shell: 22, // 37
+  today: 1, // 1
+  calendar: 1, // 3
+  inbox: 2, // 4
+  tasks: 10, // 17
+  projects: 3, // 6
+  pipeline: 2, // 4
+  organizations: 5, // 9
+  people: 3, // 5
+  renewals: 6, // 11
+  meetings: 2, // 4
+  library: 34, // 57
+  settings: 44, // 74
+};
 
 /**
  * Werdykt o CAŁYM przelocie, nie o jednej kontrolce.
@@ -380,10 +561,25 @@ export const unmetControlPaintEntries = (met) =>
  * chroni fałszywą asercję"): asercja, której fikstura nie dosięga, jest
  * nieodróżnialna od poprawnej.
  *
- * Cztery awarie przyrządu, każda z innym mechanizmem:
+ * `walks` to JEDEN WPIS NA MOTYW, nie suma. Księgowość zlana po motywach nie
+ * umie powiedzieć, że w jednym z nich spacer padł: drugi wypełnia klucze za
+ * niego, każda podłoga jest spełniona sumą i wiersz podsumowania pisze „judged
+ * in 2 theme(s)" nad przebiegiem, który zmierzył jeden.
  *
- *   * cel, na którym spis obejrzał ZERO kontrolek — ekran, który się nie
- *     narysował, albo przystanek, który nie doszedł;
+ * Awarie przyrządu, każda z innym mechanizmem:
+ *
+ *   * przystanek ZADEKLAROWANY, którego spis nie obejrzał — i przystanek
+ *     obejrzany, którego nikt nie deklarował. Zbiór celów bierze się z żywego
+ *     DOM-u i jest tu PORÓWNYWANY z tym, co spis naprawdę policzył, zamiast
+ *     być podłogą na liczbę (podłoga wymaga zgadywania i gnije przy każdej
+ *     zmianie kształtu nawigacji);
+ *   * koło zębate Ustawień, które nie trafiło — Ustawienia są TRYBEM, nie
+ *     pozycją nawigacji, więc ich brak nie objawia się nigdzie indziej;
+ *   * kliknięcie, po którym powłoka NIE DOJECHAŁA na deklarowany cel — bez tego
+ *     spis liczy ten sam panel pod trzynastoma nazwami, wszystkie niezerowo;
+ *   * soczewka `[data-layout]` zadeklarowana i nieotworzona (albo zero
+ *     zadeklarowanych) — precedens `measured.lensesDeclared` w `sweep`;
+ *   * cel, na którym spis obejrzał ZERO kontrolek albo MNIEJ niż podłoga;
  *   * sonda gołej kontrolki oddająca farbę PRZEZROCZYSTĄ — wtedy przyrząd nie
  *     odróżnia wady od świadomej przezroczystości i CAŁY jest wydmuszką;
  *   * dwa motywy o IDENTYCZNEJ palecie — oba przeloty zmierzyły tę samą stronę
@@ -394,18 +590,106 @@ export const unmetControlPaintEntries = (met) =>
 export const MINIMUM_TOKEN_PALETTE = 40;
 
 export const classifyControlPaintCensus = ({
-  examined,
+  walks,
   uaPaints,
   palettesByTheme,
+  floors = CONTROL_PAINT_SURFACE_FLOORS,
 }) => {
   const failures = [];
-  for (const [surface, count] of Object.entries(examined))
-    if (count === 0)
+  const visited = new Set();
+  for (const walk of walks) {
+    const theme = walk.theme;
+    const examined = walk.examined;
+    if (!walk.settingsEntry)
       failures.push(
-        `CONTROL_PAINT_EXAMINED_NOTHING: the census reached „${surface}" and found ZERO rendered ` +
-          "controls on it. A screen with no control is not a screen this instrument measured — " +
-          "an empty fixture does not merely fail to measure, IT PROTECTS A WRONG ASSERTION FROM " +
-          "EVER BEING WRONG.",
+        `CONTROL_PAINT_NO_SETTINGS_ENTRY (${theme}): „[data-settings-entry]" matched nothing, so ` +
+          "the Settings mode was never entered and every control that only renders there went " +
+          "unseen. A destination the census cannot reach leaves NO key behind — silence about it " +
+          "is indistinguishable from a clean screen. The affordance moved; this census has to " +
+          "move with it.",
+      );
+    if (walk.declared.filter((id) => id !== CONTROL_PAINT_SHELL).length === 0)
+      failures.push(
+        `CONTROL_PAINT_NO_DESTINATIONS (${theme}): the shell drew no „.nav-item[data-surface]" at ` +
+          "all, so this walk had nowhere to go. An empty walk is a broken measurement, not a pass.",
+      );
+    const seen = Object.keys(examined);
+    const unvisited = walk.declared.filter((id) => !seen.includes(id));
+    const unexpected = seen.filter((id) => !walk.declared.includes(id));
+    if (unvisited.length > 0 || unexpected.length > 0)
+      failures.push(
+        `CONTROL_PAINT_DESTINATIONS_DIVERGED (${theme}): the shell declared ` +
+          `${walk.declared.length} destination(s) and the census counted controls on ` +
+          `${seen.length}` +
+          (unvisited.length > 0
+            ? ` — declared and never examined: ${unvisited.join(", ")}`
+            : "") +
+          (unexpected.length > 0
+            ? ` — examined and never declared: ${unexpected.join(", ")}`
+            : "") +
+          ". A destination that leaves no key behind is not a destination this pass measured, " +
+          "and no floor below can speak about it.",
+      );
+    for (const arrival of walk.arrivals) {
+      if (arrival.seen === null) {
+        failures.push(
+          `CONTROL_PAINT_NO_AFFORDANCE (${theme}): the shell declared „${arrival.id}" as a ` +
+            "destination and the census found nothing to click for it — no nav item, no gear. " +
+            "Nothing was navigated, so the count below this name describes the screen the walk " +
+            "was already standing on, not that destination.",
+        );
+        continue;
+      }
+      if (arrival.seen !== arrival.id)
+        failures.push(
+          `CONTROL_PAINT_DID_NOT_ARRIVE (${theme}): the census clicked the affordance for ` +
+            `„${arrival.id}" and the work pane still reads data-surface="${arrival.seen}". ` +
+            "Navigation that silently fails makes this census count ONE panel under every " +
+            "destination's name, with every count non-zero and every floor met.",
+        );
+    }
+    if (walk.lensesDeclared === 0)
+      failures.push(
+        `CONTROL_PAINT_NO_LENSES (${theme}): no destination declared a „[data-layout]" lens. ` +
+          "Either the shell stopped marking its switchers or this walk opened nothing — and the " +
+          "control of a selected lens paints differently from an unselected one, which is exactly " +
+          "the pair this census exists for.",
+      );
+    else if (walk.lensesMeasured < walk.lensesDeclared)
+      failures.push(
+        `CONTROL_PAINT_LENS_NOT_MEASURED (${theme}): ${walk.lensesMeasured} of ` +
+          `${walk.lensesDeclared} declared „[data-layout]" lens state(s) were opened and counted, ` +
+          "so this pass covers paint nobody looked at.",
+      );
+    for (const [surface, count] of Object.entries(examined)) {
+      visited.add(surface);
+      if (count === 0) {
+        failures.push(
+          `CONTROL_PAINT_EXAMINED_NOTHING (${theme}): the census reached „${surface}" and found ` +
+            "ZERO rendered controls on it. A screen with no control is not a screen this " +
+            "instrument measured — an empty fixture does not merely fail to measure, IT PROTECTS " +
+            "A WRONG ASSERTION FROM EVER BEING WRONG.",
+        );
+        continue;
+      }
+      const floor = floors[surface];
+      if (typeof floor === "number" && count < floor)
+        failures.push(
+          `CONTROL_PAINT_EXAMINED_TOO_FEW (${theme}): „${surface}" drew ${count} rendered ` +
+            `control(s), under the floor of ${floor} derived from today's harness. The fixture, ` +
+            "the navigation or a lens shrank this screen, so silence about it is silence over a " +
+            "smaller product than the one this floor describes — not evidence that its controls " +
+            "are painted.",
+        );
+    }
+  }
+  for (const surface of Object.keys(floors))
+    if (!visited.has(surface))
+      failures.push(
+        `CONTROL_PAINT_FLOOR_UNMET: a floor is declared for „${surface}" and no theme examined ` +
+          "that destination. Either the screen was renamed and the floor stayed behind, or the " +
+          "census stopped reaching it — and a floor over a destination nobody visits is a number " +
+          "that can never fail.",
       );
   for (const [key, paint] of Object.entries(uaPaints)) {
     const alpha = alphaOf(paint);
@@ -460,10 +744,21 @@ export const classifyControlPaintCensus = ({
  * przed złamaniem", jeżeli mierzy się ją kodem wyjścia nad przyrządem, który
  * dziś czerwieni 100+ podmiotów — więc break-test NIE mierzy tego, czy przyrząd
  * coś znalazł. Mierzy, czy znalazł coś NOWEGO: złamanie zdejmuje `background`
- * z kontrolki, która je DZIŚ MA (`.primary-button`), przez co pojawia się
- * podpis spoza rejestru i kod wyjścia bramki idzie z 0 na 1. Baza ZIELONA,
- * złamanie CZERWONE, przywrócenie ZIELONE — na przyrządzie, który przez cały
- * ten czas raportuje ten sam znany dług.
+ * z kontrolki, która je DZIŚ MA (`.secondary-button` — NIE `.primary-button`,
+ * bo na tamtej para Ustawień liczy akcent, więc przebieg czerwieniałby również
+ * bez spisu i nie dowodziłby o nim niczego; wykonane złamanie i jego powód stoją
+ * w `scripts/break-visual-language.mjs`), przez co pojawia się podpis spoza
+ * rejestru i kod wyjścia bramki idzie z 0 na 1. Baza ZIELONA, złamanie CZERWONE,
+ * przywrócenie ZIELONE — na przyrządzie, który przez cały ten czas raportuje ten
+ * sam znany dług.
+ *
+ * TA CZERWIEŃ JEST NADOKREŚLONA i to też jest zapisane, nie przemilczane:
+ * `.secondary-button` jest zarazem KONTROLĄ DODATNIĄ, więc złamanie zapala
+ * osobno `CONTROL_PAINT_WITNESS_FLAGGED`. Sam kod wyjścia nie umiałby
+ * powiedzieć, KTÓRA z dwóch asercji poszła na czerwono — dlatego złamanie żąda
+ * od break-testu FRAGMENTU KOMUNIKATU (`expectRedContains` w
+ * `scripts/break-test.mjs`), czyli zdania z werdyktu nad podpisem spoza
+ * rejestru. Trzy liczby mówią wtedy również, co je wyprodukowało.
  */
 export const controlPaintVerdictThrows = ({ registered, armed }) =>
   armed || !registered;

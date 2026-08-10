@@ -217,6 +217,16 @@ const outcome = runBreakTests({
       // liczy na nim akcent, więc przebieg czerwieniałby również bez spisu
       // i nie dowodziłby o nim niczego.
       name: "take the token background off .secondary-button: controls that HAVE a background fall to the engine default and the census sees a shape its registry does not know",
+      // CZERWIEŃ PRZYPIĘTA DO NAZWANEJ ASERCJI. Powyżej zapisane jest, że ta
+      // czerwień jest NADOKREŚLONA — sam kod wyjścia nie odróżnia werdyktu nad
+      // podpisem spoza rejestru od `CONTROL_PAINT_WITNESS_FLAGGED`, a to ta
+      // pierwsza ścieżka czyni status `pending` bezpiecznym i to o niej ma być
+      // ten dowód. Fragment jest zdaniem z `classifyControlPaint`, czyli
+      // z werdyktu, nie z awarii przyrządu.
+      expectRedContains: [
+        "which is neither fully transparent nor any of the",
+        "so no rule of this stylesheet set it",
+      ],
       file: "packages/desktop-ui/src/styles.css",
       edit: (text) =>
         replaceOnce(

@@ -18,6 +18,7 @@ import test from "node:test";
 import {
   CONTROL_PAINT_ARMED,
   CONTROL_PAINT_STATUS,
+  CONTROL_PAINT_SURFACE_FLOORS,
   CONTROL_PAINT_TAGS,
   KNOWN_CONTROL_PAINT,
   MINIMUM_TOKEN_PALETTE,
@@ -26,6 +27,7 @@ import {
   classifyControlPaintCensus,
   classifyControlPaintWitnesses,
   controlPaintVerdictThrows,
+  isRegisteredControlPaint,
   normaliseClassToken,
   signatureCarriesClass,
   unmetControlPaintEntries,
@@ -165,12 +167,66 @@ test("THE REGISTRY IS KEYED ON SHAPE, NEVER ON COUNTS — a growing fixture may 
       entry.why.length > 0,
       `${entry.signature} must cite where the rule is silent`,
     );
-    assert.equal(Object.keys(entry).length, 3);
+    assert.equal(entry.state, "UA_DEFAULT");
+    assert.equal(Object.keys(entry).length, 4);
   }
   const keys = KNOWN_CONTROL_PAINT.map(
     (entry) => `${entry.surface}\t${entry.signature}`,
   );
   assert.equal(new Set(keys).size, keys.length, "duplicate registry key");
+});
+
+test("AN ENTRY IS A KNOWN DEBT, NOT A KNOWN SHAPE: a control that changed the KIND of defect falls outside it", () => {
+  // Lot C3, który wpisze na `button._chip` literał spoza tokenów zamiast
+  // tokenu, zmieni werdykt z `UA_DEFAULT` na `OFF_PALETTE`. Rejestr milczący
+  // o stanie przyjąłby to jako znany dług i zamilkł nad kontrolką, która wadę
+  // ZMIENIŁA — czyli cicha zieleń dokładnie tam, gdzie coś się właśnie stało.
+  const subject = { surface: "organizations", signature: "button._chip" };
+  assert.equal(
+    isRegisteredControlPaint({ ...subject, state: "UA_DEFAULT" }),
+    true,
+  );
+  assert.equal(
+    isRegisteredControlPaint({ ...subject, state: "OFF_PALETTE" }),
+    false,
+  );
+  assert.equal(
+    controlPaintVerdictThrows({
+      registered: isRegisteredControlPaint({
+        ...subject,
+        state: "OFF_PALETTE",
+      }),
+      armed: CONTROL_PAINT_ARMED,
+    }),
+    true,
+  );
+});
+
+test("A CLASSLESS CONTROL IS NAMED BY AN ATTRIBUTE, because „input[no class]” is a wildcard over a whole family", () => {
+  // Dopasowanie idzie po `surface` + `signature`, więc podpis zbudowany z BRAKU
+  // klasy przygarnąłby każdy przyszły bezklasowy `<input>` w Bibliotece jako
+  // „znany dług". Na tym samym ekranie stoją już dwa dalsze takie pola.
+  const classless = KNOWN_CONTROL_PAINT.filter((entry) =>
+    entry.signature.includes("[no class]"),
+  );
+  assert.deepEqual(classless, []);
+  assert.equal(
+    isRegisteredControlPaint({
+      surface: "library",
+      signature: "input[name=sourceTitle]",
+      state: "UA_DEFAULT",
+    }),
+    true,
+  );
+  // Nowe bezklasowe pole na tym samym ekranie rodzi INNY podpis i pada.
+  assert.equal(
+    isRegisteredControlPaint({
+      surface: "library",
+      signature: "input[name=sourceUrl][type=url]",
+      state: "UA_DEFAULT",
+    }),
+    false,
+  );
 });
 
 test("an entry nobody met is a failure, because a fixed control must take its entry with it", () => {
@@ -205,36 +261,64 @@ test("THE ANSWER TO „RED TODAY, GREEN IN CI”: known debt reports, anything o
   assert.equal(CONTROL_PAINT_STATUS, "pending: FAZA C, lot C3");
 });
 
+// Jeden PRZELOT MOTYWU w kształcie, w jakim oddaje go strona. Domyślnie zdrowy:
+// każdy test psuje DOKŁADNIE JEDNĄ rzecz, więc liczba awarii w asercjach mówi,
+// że pada to, co miało paść, i nic obok.
+const walk = (overrides = {}) => ({
+  theme: "dark",
+  declared: ["shell", "library"],
+  examined: { shell: 37, library: 105 },
+  settingsEntry: true,
+  arrivals: [{ id: "library", seen: "library" }],
+  lensesDeclared: 3,
+  lensesMeasured: 3,
+  ...overrides,
+});
+
+const census = (overrides = {}) =>
+  classifyControlPaintCensus({
+    walks: [walk()],
+    uaPaints: { "dark/button": UA_DARK },
+    palettesByTheme: { dark: PALETTE.concat(Array(60).fill("x")) },
+    floors: { library: 60 },
+    ...overrides,
+  });
+
 test("a destination where the census saw ZERO controls is an instrument failure, not silence", () => {
   // „Pusta fikstura chroni fałszywą asercję" — asercja, której fikstura nie
   // dosięga, jest nieodróżnialna od poprawnej.
-  const failures = classifyControlPaintCensus({
-    examined: { library: 210, meetings: 0 },
-    uaPaints: { "dark/button": UA_DARK },
-    palettesByTheme: { dark: PALETTE.concat(Array(60).fill("x")) },
+  const failures = census({
+    walks: [
+      walk({
+        declared: ["shell", "library", "meetings"],
+        examined: { shell: 37, library: 105, meetings: 0 },
+        arrivals: [
+          { id: "library", seen: "library" },
+          { id: "meetings", seen: "meetings" },
+        ],
+      }),
+    ],
   });
   assert.equal(failures.length, 1);
-  assert.match(failures[0], /CONTROL_PAINT_EXAMINED_NOTHING.*meetings/su);
+  assert.match(
+    failures[0],
+    /CONTROL_PAINT_EXAMINED_NOTHING \(dark\).*meetings/su,
+  );
 });
 
 test("A TRANSPARENT BARE-CONTROL PROBE MAKES THE WHOLE INSTRUMENT A SHELL, so it fails loudly", () => {
   // Na silniku, który nie maluje kontrolek, „nikt tego nie ustawił" i „ktoś
   // ustawił to na przezroczyste" czyta się tak samo — a wtedy przyrząd nie
   // odróżnia wady od `.ghost-button`.
-  const failures = classifyControlPaintCensus({
-    examined: { library: 210 },
-    uaPaints: { "dark/button": "rgba(0, 0, 0, 0)" },
-    palettesByTheme: { dark: PALETTE.concat(Array(60).fill("x")) },
-  });
+  const failures = census({ uaPaints: { "dark/button": "rgba(0, 0, 0, 0)" } });
   assert.equal(failures.length, 1);
   assert.match(failures[0], /CONTROL_PAINT_PROBE_TRANSPARENT/u);
 });
 
 test("two themes resolving the SAME palette means one page was measured twice", () => {
   const palette = PALETTE.concat(Array(60).fill("x"));
-  const failures = classifyControlPaintCensus({
-    examined: { library: 210 },
-    uaPaints: { "dark/button": UA_DARK },
+  const failures = census({
+    walks: [walk(), walk({ theme: "light" })],
     palettesByTheme: { dark: palette, light: [...palette] },
   });
   assert.equal(failures.length, 1);
@@ -242,11 +326,7 @@ test("two themes resolving the SAME palette means one page was measured twice", 
 });
 
 test("a palette that collapsed would make EVERY control read as off-palette, so its size has a floor", () => {
-  const failures = classifyControlPaintCensus({
-    examined: { library: 210 },
-    uaPaints: { "dark/button": UA_DARK },
-    palettesByTheme: { dark: PALETTE },
-  });
+  const failures = census({ palettesByTheme: { dark: PALETTE } });
   assert.equal(failures.length, 1);
   assert.match(failures[0], /CONTROL_PAINT_PALETTE_TOO_SMALL/u);
   assert.ok(MINIMUM_TOKEN_PALETTE > PALETTE.length);
@@ -317,4 +397,152 @@ test("the census covers exactly the group the reset rule names", () => {
     "textarea",
     "select",
   ]);
+});
+
+test("A SCREEN THAT SHRANK IS NOT A SCREEN THIS CENSUS MEASURED — zero is not the only empty", () => {
+  // „Pusta fikstura chroni fałszywą asercję" ma stopień pośredni: cel, który
+  // spadł ze stu pięciu kontrolek do jednej, przechodził jako zmierzony. Ten
+  // sam kształt lekarstwa co `FOCUS_VISIBILITY_MIN_STOPS`, i komunikat niesie
+  // OBIE liczby, żeby pierwsza czerwień na innej fiksturze dała się odróżnić
+  // od awarii przyrządu.
+  const failures = census({
+    walks: [walk({ examined: { shell: 37, library: 1 } })],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_EXAMINED_TOO_FEW \(dark\)/u);
+  assert.match(failures[0], /1 rendered control\(s\), under the floor of 60/u);
+});
+
+test("a floor over a destination nobody visits is a number that can never fail", () => {
+  const failures = census({ floors: { library: 60, renewals: 6 } });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_FLOOR_UNMET.*renewals/su);
+});
+
+test("EVERY FLOOR NAMES A DESTINATION THE SHELL STILL DRAWS, and every number is positive", () => {
+  // Podłogi są wyprowadzone z przebiegu i wpisane tutaj; wpis zerowy albo
+  // ujemny byłby podłogą, której nie da się nie spełnić.
+  const floors = Object.entries(CONTROL_PAINT_SURFACE_FLOORS);
+  assert.ok(floors.length > 0);
+  for (const [surface, floor] of floors) {
+    assert.equal(typeof surface, "string");
+    assert.ok(surface.length > 0);
+    assert.ok(Number.isInteger(floor) && floor > 0, `${surface}: ${floor}`);
+  }
+});
+
+test("A CLICK THAT DID NOT ARRIVE would count ONE panel under thirteen destination names", () => {
+  // Zmierzone w tym pliku przy `sweep`: cel po Ustawieniach mierzył Ustawienia
+  // i kosztowało to trzynaście powierzchni zmierzonych jako jedna. Wszystkie
+  // liczby były wtedy niezerowe, więc żadna podłoga tego nie widziała.
+  const failures = census({
+    walks: [walk({ arrivals: [{ id: "library", seen: "settings" }] })],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_DID_NOT_ARRIVE \(dark\)/u);
+  assert.match(failures[0], /„library".*data-surface="settings"/su);
+});
+
+test("„NIE BYŁO W CO KLIKNĄĆ” IS A DIFFERENT SENTENCE FROM „DID NOT ARRIVE”, so it gets its own", () => {
+  // Komunikat o przybyciu cytuje odczytane `data-surface`; wstawienie w to
+  // miejsce napisu „no affordance to click" kazałoby mu twierdzić, że panel
+  // czyta wartość, której nikt nigdy nie ustawił.
+  const failures = census({
+    walks: [walk({ arrivals: [{ id: "library", seen: null }] })],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_NO_AFFORDANCE \(dark\).*library/su);
+  assert.doesNotMatch(failures[0], /data-surface=/u);
+});
+
+test("A DESTINATION THAT LEAVES NO KEY BEHIND is invisible to a guard that iterates over keys", () => {
+  // To jest mechanizm, przez który martwy selektor dawał CICHĄ ZIELEŃ zamiast
+  // trzeciego stanu: cel, którego nigdy nie policzono, nie ma klucza, a
+  // strażnik „zero kontrolek" chodzi WYŁĄCZNIE po kluczach istniejących.
+  const failures = census({
+    walks: [walk({ declared: ["shell", "library", "settings"] })],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_DESTINATIONS_DIVERGED \(dark\)/u);
+  assert.match(failures[0], /declared and never examined: settings/u);
+});
+
+test("THE GEAR IS THE ONLY WAY INTO SETTINGS, so a gear that matched nothing is an instrument failure", () => {
+  // Ustawienia nie są pozycją nawigacji (`nav-items.ts:20-22` odsiewa je), więc
+  // ich zniknięcie nie objawia się nigdzie indziej — a stoi na nich najbogatszy
+  // zbiór kontrolek całego przebiegu.
+  const failures = census({
+    walks: [walk({ settingsEntry: false })],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_NO_SETTINGS_ENTRY \(dark\)/u);
+});
+
+test("a lens declared and never opened means this pass covers paint nobody looked at", () => {
+  const none = census({
+    walks: [walk({ lensesDeclared: 0, lensesMeasured: 0 })],
+  });
+  assert.equal(none.length, 1);
+  assert.match(none[0], /CONTROL_PAINT_NO_LENSES \(dark\)/u);
+  const partial = census({ walks: [walk({ lensesMeasured: 1 })] });
+  assert.equal(partial.length, 1);
+  assert.match(
+    partial[0],
+    /CONTROL_PAINT_LENS_NOT_MEASURED \(dark\).*1 of 3/su,
+  );
+});
+
+test("AN EMPTY SHELL IS A BROKEN WALK, not a screen without controls", () => {
+  const failures = census({
+    floors: {},
+    walks: [
+      walk({
+        declared: ["shell"],
+        examined: { shell: 37 },
+        arrivals: [],
+      }),
+    ],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_NO_DESTINATIONS \(dark\)/u);
+});
+
+test("THE WITNESSES ARE JUDGED PER THEME, because a union hides the theme that drew nothing", () => {
+  // Mapa zlana z obu motywów ma klucze wypełnione przez ten motyw, w którym
+  // spacer się udał — więc „świadek nienarysowany" nie ma prawa paść w tym,
+  // w którym padł.
+  const { failures } = classifyControlPaintWitnesses({
+    observed: {},
+    theme: "light",
+    witnesses: [{ class: "ghost-button", expect: "TRANSPARENT" }],
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /CONTROL_PAINT_WITNESS_NOT_DRAWN \(light\)/u);
+});
+
+test("A COLOR-MIX OVER A TOKEN IS DELIBERATELY A FINDING, and the interpolation space decides WHICH kind", () => {
+  // Idiom tego arkusza (`styles.css:4726`) i prototypu (`v3/app.css:466`).
+  // Wartość wyliczona nie jest napisem tokenu, więc mieszanka zapisana
+  // `in oklch` wychodzi jako OFF_PALETTE — werdykt SPOZA rejestru, czyli PADA.
+  // Zapisane, bo Faza C na to wejdzie: albo wpis w rejestrze, albo uzbrojenie
+  // porównania wyprowadzonego z tokenu. Cicha zieleń nie jest trzecią
+  // możliwością.
+  const inOklch = judge({ backgroundColor: "oklch(0.21 0.012 285 / 0.78)" });
+  assert.equal(inOklch.state, "OFF_PALETTE");
+  assert.equal(
+    controlPaintVerdictThrows({
+      registered: false,
+      armed: CONTROL_PAINT_ARMED,
+    }),
+    true,
+  );
+  // A ZMIERZONA NIESPODZIANKA: `color-mix(in oklab, …)` — dokładnie ten idiom,
+  // którym napisany jest prototyp — wylicza się do `oklab(…)`, czego
+  // `parseColor` nie rozkłada. To nie jest werdykt o produkcie, tylko AWARIA
+  // PRZYRZĄDU, która pada również przy `pending`; komunikat musi więc nieść
+  // przyczynę, bo inaczej wysyła czytającego w zupełnie złe miejsce.
+  const inOklab = judge({ backgroundColor: "oklab(0.21 0.002 -0.01 / 0.78)" });
+  assert.equal(inOklab.state, "UNREADABLE");
+  assert.match(inOklab.reason, /color-mix\(in oklab/u);
+  assert.match(inOklab.reason, /Write the mix `in oklch`/u);
 });

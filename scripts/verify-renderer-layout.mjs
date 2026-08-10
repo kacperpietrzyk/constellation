@@ -38,13 +38,16 @@ import { fileURLToPath } from "node:url";
 import { parseColor, srgbToOklch } from "./color-contrast.mjs";
 import {
   CONTROL_PAINT_ARMED,
+  CONTROL_PAINT_SHELL,
   CONTROL_PAINT_STATUS,
   CONTROL_PAINT_TAGS,
+  CSS_MODULE_HASH_PATTERN,
   KNOWN_CONTROL_PAINT,
   classifyControlPaint,
   classifyControlPaintCensus,
   classifyControlPaintWitnesses,
   controlPaintVerdictThrows,
+  isRegisteredControlPaint,
   unmetControlPaintEntries,
 } from "./control-paint.mjs";
 import {
@@ -4049,10 +4052,32 @@ const visualLanguagePairs = async (browser) => {
 // mapa tras nie ma dziś ani jednego przystanku na Organizacjach i na Ludziach,
 // a tam siedzą CZTERY z dziesięciu znanych miejsc. Spis widzi je w dniu,
 // w którym są pozycją nawigacji.
+
+/**
+ * Ile spis czeka na to, aż powłoka dojedzie na kliknięty cel.
+ *
+ * PRZYBYCIE JEST ZDARZENIEM, NIE CZASEM — i dlatego to jest limit oczekiwania,
+ * a nie długość snu. Asercja postawiona po stałym `settle` zamieniałaby
+ * drgnięcie maszyny w czerwoną bramkę („flake wymaga powtórzeń"), a ten
+ * strażnik ma paść wyłącznie wtedy, gdy nawigacja NAPRAWDĘ nie zadziałała.
+ *
+ * SKĄD TA LICZBA, uczciwie: NIE JEST WYPROWADZONA Z POMIARU CZASU PRZEJŚCIA —
+ * nikt takiego pomiaru nie zrobił i wpisanie tu „dziesięciokrotności
+ * zmierzonego" byłoby liczbą udającą pomiar, czyli tą samą wadą, którą ten lot
+ * naprawia gdzie indziej. Jedyny zapisany budżet to `settle(700)` sprzed tego
+ * lotu, przy którym cały spacer działał; trzy sekundy dają nad nim czterokrotny
+ * zapas. Wolna maszyna CZEKA, a nie pada — bo to jest odpytywanie zdarzenia,
+ * nie sen — więc ta liczba ogranicza wyłącznie czas do zgłoszenia AWARII.
+ */
+const CONTROL_PAINT_ARRIVAL_TIMEOUT_MS = 3000;
+
 const measureControlPaintInPage = async ({
   tags,
   wantedTheme,
   settingsSurface,
+  shellSurface,
+  classHashPattern,
+  arrivalTimeoutMs,
 }) => {
   const frame = () =>
     new Promise((resolve) =>
@@ -4112,27 +4137,55 @@ const measureControlPaintInPage = async ({
   // motywie. Nie wchodzi do werdyktu — rozdziela dwie klasy znaleziska
   // w raporcie i jest jedynym powodem, dla którego ten przyrząd umie napisać
   // „no rule of this stylesheet set it" zamiast „nie znam tej wartości".
+  // SONDA SIEDZI W SHADOW ROOCIE, i to nie jest ostrożność, tylko poprawka
+  // zmierzonej wady: sonda wstawiona wprost do dokumentu łapie REGUŁY TYPOWE
+  // tego arkusza — `styles.css:513-519` daje `select` tło z tokenu — więc
+  // przyrząd drukował własny token aplikacji jako „farbę tej przeglądarki",
+  // a strażnik przezroczystości sądził dla `select` token zamiast silnika.
+  // Selektory dokumentu nie sięgają do shadow roota, a `color-scheme` sięga
+  // (jest dziedziczona), więc motyw zostaje zachowany — czego `all: revert`
+  // by nie dał, bo zdjąłby również `color-scheme`.
   const uaPaints = {};
+  const probeHost = document.createElement("div");
+  probeHost.style.position = "absolute";
+  probeHost.style.left = "-9999px";
+  probeHost.style.top = "0";
+  probeHost.style.visibility = "hidden";
+  probeHost.style.pointerEvents = "none";
+  document.body.append(probeHost);
+  const probeRoot = probeHost.attachShadow({ mode: "open" });
   for (const tag of tags) {
     const probe = document.createElement(tag);
-    probe.style.position = "absolute";
-    probe.style.left = "-9999px";
-    probe.style.top = "0";
-    probe.style.visibility = "hidden";
-    probe.style.pointerEvents = "none";
-    document.body.append(probe);
+    probeRoot.append(probe);
     uaPaints[tag] = window.getComputedStyle(probe).backgroundColor ?? "";
     probe.remove();
   }
+  probeHost.remove();
 
+  const classHash = new RegExp(classHashPattern, "u");
   const normaliseClass = (token) => {
-    const match = /^_(.+)_[a-z0-9]{5,7}_\d+$/u.exec(token);
+    const match = classHash.exec(token);
     return match === null ? token : `_${match[1]}`;
+  };
+  // KONTROLKA BEZ KLASY DOSTAJE TOŻSAMOŚĆ Z ATRYBUTU, NIE Z BRAKU KLASY.
+  // „input[no class]" nie jest identyfikatorem, tylko dziką kartą na całą
+  // rodzinę: rejestr dopasowuje po podpisie, więc KAŻDY przyszły bezklasowy
+  // `<input>` na tym ekranie trafiałby w cudzy wpis i przechodził jako znany
+  // dług. `name` i `type` są pisane w kodzie i przeżywają rebuild; `id` nie —
+  // te pola biorą `useId()` (`_r_s_-rename`), czyli napis zmienny między
+  // wersjami Reacta i przy zmianie kolejności renderu.
+  const identity = (element) => {
+    const parts = [];
+    for (const attribute of ["name", "type"]) {
+      const value = element.getAttribute(attribute);
+      if (value !== null && value !== "") parts.push(`${attribute}=${value}`);
+    }
+    return parts.length === 0 ? "[no class]" : `[${parts.join("][")}]`;
   };
   const signature = (element) => {
     const tag = element.tagName.toLowerCase();
     const classes = [...element.classList].map(normaliseClass).join(".");
-    return classes === "" ? `${tag}[no class]` : `${tag}.${classes}`;
+    return classes === "" ? `${tag}${identity(element)}` : `${tag}.${classes}`;
   };
   const rendered = (element) => {
     const style = window.getComputedStyle(element);
@@ -4143,13 +4196,38 @@ const measureControlPaintInPage = async ({
 
   const groups = new Map();
   const examined = {};
+  // DWA POZIOMY ODLICZENIA, i to jest cała treść tej pary zbiorów. `collect`
+  // woła się na jednym celu WIELE RAZY — raz po dojeździe i raz na każdy stan
+  // soczewki — więc bez pamięci o tym, co już policzono, ten sam węzeł DOM
+  // wchodził do sumy po jednym razie na przelot i raport podawał liczby
+  // PRZELICZONE (osiem elementów `button._switch` w Bibliotece przy jednym na
+  // Ludziach: różnica jest w liczbie soczewek, nie w produkcie).
+  //
+  // ODLICZENIE JEDNYM ZBIOREM BYŁOBY GORSZE OD WADY, którą naprawia: kontrolka
+  // soczewki wybranej maluje się INACZEJ niż niewybranej, czyli ta sama
+  // kontrolka w dwóch stanach to dwie różne obserwacje — i dokładnie ta para
+  // jest podmiotem tego przyrządu. Dlatego `examined` liczy RÓŻNE ELEMENTY na
+  // celu, a `count` grupy różne elementy W TEJ GRUPIE (czyli przy tej farbie).
+  // Powtórzenie znika, zmiana stanu zostaje.
+  const countedOnSurface = new Map();
+  const countedInGroup = new Map();
   const collect = (root, surface, exclude) => {
     const found = [...(root?.querySelectorAll(tags.join(", ")) ?? [])].filter(
       (element) =>
         (exclude === undefined || !exclude.contains(element)) &&
         rendered(element),
     );
-    examined[surface] = (examined[surface] ?? 0) + found.length;
+    let surfaceSeen = countedOnSurface.get(surface);
+    if (surfaceSeen === undefined) {
+      surfaceSeen = new WeakSet();
+      countedOnSurface.set(surface, surfaceSeen);
+      examined[surface] = examined[surface] ?? 0;
+    }
+    for (const element of found) {
+      if (surfaceSeen.has(element)) continue;
+      surfaceSeen.add(element);
+      examined[surface] += 1;
+    }
     for (const element of found) {
       const style = window.getComputedStyle(element);
       const key = [
@@ -4158,6 +4236,13 @@ const measureControlPaintInPage = async ({
         style.backgroundColor,
         style.backgroundImage,
       ].join("\t");
+      let inGroup = countedInGroup.get(key);
+      if (inGroup === undefined) {
+        inGroup = new WeakSet();
+        countedInGroup.set(key, inGroup);
+      }
+      const repeat = inGroup.has(element);
+      inGroup.add(element);
       const seen = groups.get(key);
       if (seen === undefined)
         groups.set(key, {
@@ -4185,7 +4270,7 @@ const measureControlPaintInPage = async ({
               .join(" ")
               .slice(0, 48),
         });
-      else seen.count += 1;
+      else if (!repeat) seen.count += 1;
     }
   };
 
@@ -4194,16 +4279,45 @@ const measureControlPaintInPage = async ({
   // kopii jednego długu i pierwsza poprawka zostawiłaby jedenaście martwych
   // wpisów.
   const work = () => document.querySelector('#main-content[role="tabpanel"]');
-  collect(document.body, "shell", work() ?? undefined);
+  collect(document.body, shellSurface, work() ?? undefined);
 
-  const all = [...document.querySelectorAll(".nav-item[data-surface]")].map(
+  const navIds = [...document.querySelectorAll(".nav-item[data-surface]")].map(
     (item) => item.dataset.surface,
   );
-  if (
-    document.querySelector("[data-settings-entry]") !== null &&
-    !all.includes(settingsSurface)
-  )
+  const all = [];
+  for (const id of navIds) if (!all.includes(id)) all.push(id);
+  const settingsEntry =
+    document.querySelector("[data-settings-entry]") !== null;
+  if (settingsEntry && !all.includes(settingsSurface))
     all.push(settingsSurface);
+  // ZADEKLAROWANE PRZYSTANKI, wypisane z żywego DOM-u i oddane na zewnątrz.
+  // Bez tego przelot nie ma z czym porównać tego, co obejrzał: cel, który nie
+  // dał się kliknąć, ZOSTAWIAŁ ZERO w księgowości tylko wtedy, gdy ktoś o nim
+  // wiedział — a Ustawienia, których koło zębate zniknęło, nie zostawiały nawet
+  // klucza, więc strażnik „zero kontrolek" nie miał po czym iterować.
+  const declared = [shellSurface, ...all];
+  // KTÓRY CEL DOJECHAŁ. Powłoka stempluje aktywny cel na planie roboczym
+  // (`RealApp.tsx:3669`), więc przybycie jest OBSERWOWALNE — a kliknięcie,
+  // które po cichu nie zadziała, kazałoby spisowi policzyć ten sam panel pod
+  // trzynastoma nazwami i wszystkie byłyby niezerowe.
+  const arrivals = [];
+  // CZEKANIE NA ZDARZENIE, NIE NA CZAS. Twarda asercja po stałym `settle`
+  // zamienia drgnięcie czasu w czerwoną bramkę — a to jest przyrząd, który ma
+  // wołać o pomoc dopiero wtedy, gdy powłoka NAPRAWDĘ nie dojechała.
+  const arrived = async (id) => {
+    const surfaceOf = () =>
+      document
+        .querySelector("main[data-surface]")
+        ?.getAttribute("data-surface") ?? "";
+    const deadline = Date.now() + arrivalTimeoutMs;
+    while (Date.now() < deadline) {
+      if (surfaceOf() === id) return id;
+      await settle(100);
+    }
+    return surfaceOf();
+  };
+  let lensesDeclared = 0;
+  let lensesMeasured = 0;
 
   for (const id of all) {
     // Ustawienia są TRYBEM: wejście w nie podmienia lewą kolumnę, więc pozycja
@@ -4220,9 +4334,22 @@ const measureControlPaintInPage = async ({
         : document.querySelector(`.nav-item[data-surface="${id}"]`);
     if (!(target instanceof HTMLElement)) {
       examined[id] = examined[id] ?? 0;
+      // BRAK AFORDANCJI TO INNE ZDANIE NIŻ „NIE DOJECHAŁ", więc `seen` jest
+      // tu `null`, a nie napisem wstawionym w komunikat o `data-surface`:
+      // panel nie „czyta data-surface=«nie było w co kliknąć»".
+      arrivals.push({ id, seen: null });
       continue;
     }
     target.click();
+    arrivals.push({ id, seen: await arrived(id) });
+    // PRZYBYCIE TO NIE JEST NARYSOWANIE, i to kosztowało jeden przebieg bramki:
+    // stempel `data-surface` przestawia się NATYCHMIAST, a zawartość celu
+    // dojeżdża później. Spis, który zbierał zaraz po potwierdzeniu przybycia,
+    // zobaczył na Kalendarzu, Lejku, Ludziach i Spotkaniach ZERO kontrolek,
+    // a na Zadaniach siedemnaście zamiast osiemdziesięciu czterech — czyli
+    // czekanie na zdarzenie NIE ZASTĘPUJE budżetu na render, tylko go poprzedza.
+    // (Wykryły to podłogi i strażnik zera z tego samego lotu, na własnym
+    // przyrządzie, zanim ktokolwiek zdążył w to uwierzyć.)
     await settle(700);
     collect(work(), id);
     // Cel niesie kilka SOCZEWEK nad tymi samymi rekordami, a kontrolka
@@ -4230,11 +4357,13 @@ const measureControlPaintInPage = async ({
     // ta para, o którą tu chodzi. Spis po samej soczewce domyślnej meldowałby
     // przejście nad farbą, której nikt nie obejrzał.
     const lenses = [...(work()?.querySelectorAll("[data-layout]") ?? [])];
+    lensesDeclared += lenses.length;
     for (const lens of lenses) {
       if (!(lens instanceof HTMLElement)) continue;
       lens.click();
       await settle(600);
       collect(work(), id);
+      lensesMeasured += 1;
     }
     const first = lenses[0];
     if (lenses.length > 0 && first instanceof HTMLElement) {
@@ -4254,6 +4383,11 @@ const measureControlPaintInPage = async ({
     uaPaints,
     groups: [...groups.values()],
     examined,
+    declared,
+    settingsEntry,
+    arrivals,
+    lensesDeclared,
+    lensesMeasured,
   };
 };
 
@@ -4264,14 +4398,11 @@ const controlPaintCensus = async (browser) => {
   const met = new Set();
   const palettesByTheme = {};
   const uaPaints = {};
-  // Ile kontrolek spis obejrzał na każdym celu, ZSUMOWANE PO MOTYWACH. Cel,
-  // który wyszedł na zero w OBU, jest ekranem, o którym ten przebieg nie mówi
-  // nic — i to jest awaria przyrządu, nie cisza.
-  const examined = {};
-  // Podpis → stany, w jakich go osądzono, i ile elementów zliczono. To jest
-  // materiał dla KONTROLI DODATNICH: bez niego przyrząd wie tylko o tym, co
-  // zaczerwienił, czyli nie umie udowodnić, że potrafi cokolwiek przepuścić.
-  const observed = {};
+  // JEDEN WPIS NA MOTYW, NIGDY SUMA. Suma po motywach nie umie powiedzieć, że
+  // w jednym z nich spacer padł: drugi wypełnia klucze za niego, każda podłoga
+  // jest spełniona, a wiersz podsumowania pisze „in 2 theme(s)" nad przebiegiem,
+  // który zmierzył jeden. Ten sam powód dla KONTROLI DODATNICH niżej.
+  const walks = [];
   const started = Date.now();
   let judged = 0;
   let flagged = 0;
@@ -4293,6 +4424,13 @@ const controlPaintCensus = async (browser) => {
       tags: CONTROL_PAINT_TAGS,
       wantedTheme: theme,
       settingsSurface: SETTINGS_SURFACE,
+      shellSurface: CONTROL_PAINT_SHELL,
+      // WZORZEC PRZECHODZI ARGUMENTEM, nie wklejką: Playwright serializuje
+      // źródło funkcji mierzącej, więc importu tam nie ma — ale napis wolno
+      // podać, a wtedy obie strony mają dosłownie ten sam wzorzec i rozjazd
+      // między nimi jest niewykonalny.
+      classHashPattern: CSS_MODULE_HASH_PATTERN,
+      arrivalTimeoutMs: CONTROL_PAINT_ARRIVAL_TIMEOUT_MS,
     });
     if (collected.applied !== theme)
       failures.push(
@@ -4317,6 +4455,11 @@ const controlPaintCensus = async (browser) => {
     );
 
     const states = {};
+    // Podpis → stany, w jakich go osądzono, i ile elementów zliczono, W TYM
+    // MOTYWIE. To jest materiał dla KONTROLI DODATNICH: bez niego przyrząd wie
+    // tylko o tym, co zaczerwienił, czyli nie umie udowodnić, że potrafi
+    // cokolwiek przepuścić.
+    const observed = {};
     for (const group of collected.groups) {
       const decision = classifyControlPaint({
         group,
@@ -4343,11 +4486,14 @@ const controlPaintCensus = async (browser) => {
       flagged += 1;
       flaggedElements += group.count;
       const key = `${group.surface}\t${group.signature}`;
-      const registered = KNOWN_CONTROL_PAINT.some(
-        (entry) =>
-          entry.surface === group.surface &&
-          entry.signature === group.signature,
-      );
+      // PO STANIE TEŻ, nie po samym kształcie: kontrolka z rejestru, która
+      // zmieniła RODZAJ wady (`UA_DEFAULT` → `OFF_PALETTE`), jest podmiotem,
+      // o którym rejestr nie wydał zdania.
+      const registered = isRegisteredControlPaint({
+        surface: group.surface,
+        signature: group.signature,
+        state: decision.state,
+      });
       if (registered) met.add(key);
       const line =
         `${group.surface}\t${decision.state}\t${group.signature}\t` +
@@ -4371,19 +4517,35 @@ const controlPaintCensus = async (browser) => {
           .map(([state, count]) => `${state} ${count}`)
           .join(", ")}`,
     );
-    for (const [surface, count] of Object.entries(collected.examined)) {
+    for (const [surface, count] of Object.entries(collected.examined))
       report(`examined\t${surface}\t${count} rendered control(s)`);
-      examined[surface] = (examined[surface] ?? 0) + count;
-    }
+    report(
+      `walked\t${collected.declared.length} declared destination(s)\t` +
+        `${collected.arrivals.filter((arrival) => arrival.seen === arrival.id).length} of ` +
+        `${collected.arrivals.length} arrival(s) confirmed\t` +
+        `${collected.lensesMeasured} of ${collected.lensesDeclared} declared lens state(s) opened\t` +
+        `settings entry ${collected.settingsEntry ? "found" : "MISSING"}`,
+    );
+    walks.push({
+      theme,
+      declared: collected.declared,
+      examined: collected.examined,
+      settingsEntry: collected.settingsEntry,
+      arrivals: collected.arrivals,
+      lensesDeclared: collected.lensesDeclared,
+      lensesMeasured: collected.lensesMeasured,
+    });
+    // KONTROLE DODATNIE SĄDZONE OSOBNO W KAŻDYM MOTYWIE — świadek nienarysowany
+    // w jednym z nich jest niewidoczny w mapie zlanej z obu.
+    const witnesses = classifyControlPaintWitnesses({ observed, theme });
+    failures.push(...witnesses.failures);
+    for (const line of witnesses.lines) console.log(`control paint\t${line}`);
     await page.close();
   }
 
   failures.push(
-    ...classifyControlPaintCensus({ examined, uaPaints, palettesByTheme }),
+    ...classifyControlPaintCensus({ walks, uaPaints, palettesByTheme }),
   );
-  const witnesses = classifyControlPaintWitnesses({ observed });
-  failures.push(...witnesses.failures);
-  for (const line of witnesses.lines) console.log(`control paint\t${line}`);
   for (const entry of unmetControlPaintEntries(met))
     failures.push(
       `CONTROL_PAINT_REGISTRY_UNMET — ${entry.surface}: ${entry.signature} was never met in ` +
@@ -4398,6 +4560,15 @@ const controlPaintCensus = async (browser) => {
     judged,
     flagged,
     flaggedElements,
+    // KSIĘGOWOŚĆ PER MOTYW ODDANA NA ZEWNĄTRZ, bo wiersz podsumowania nie ma
+    // prawa pisać „in 2 theme(s)", jeżeli nie umie powiedzieć, ILE każdy z nich
+    // obejrzał. Zdanie o dwóch motywach nad przebiegiem, w którym jeden zmierzył
+    // zero celów, jest kłamstwem, którego nikt by nie zauważył.
+    perTheme: walks.map(
+      (walk) =>
+        `${walk.theme} ${Object.keys(walk.examined).length} destination(s)/` +
+        `${Object.values(walk.examined).reduce((sum, n) => sum + n, 0)} control(s)`,
+    ),
     elapsedMs: Date.now() - started,
   };
 };
@@ -6184,7 +6355,7 @@ try {
   console.log(
     `control paint: ${CONTROL_PAINT_STATUS} — ` +
       `${CONTROL_PAINT_ARMED ? "ENFORCED (a verdict fails this run)" : "PENDING (known debt is reported, a control OUTSIDE the registry still fails)"}\t` +
-      `${controlPaint.judged} control group(s) judged in ${THEME_ORDER.length} theme(s)\t` +
+      `${controlPaint.judged} control group(s) judged, per theme: ${controlPaint.perTheme.join(", ")}\t` +
       `${controlPaint.flagged} group(s) / ${controlPaint.flaggedElements} rendered element(s) ` +
       `paint a background this stylesheet did not set\t` +
       `${KNOWN_CONTROL_PAINT.length} registry entr(ies)\t` +

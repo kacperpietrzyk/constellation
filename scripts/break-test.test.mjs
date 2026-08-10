@@ -209,6 +209,41 @@ test("a break that only the compiler catches is a red for the wrong reason", () 
   );
 });
 
+test("AN OVERDETERMINED RED PROVES NOTHING ABOUT THE ASSERTION IT NAMES", () => {
+  // Złamanie potrafi zapalić dwie niezależne asercje naraz — kod wyjścia jest
+  // wtedy ten sam, co przy zapaleniu tej jednej, o którą chodziło. Fragment
+  // komunikatu przypina czerwień do NAZWANEJ asercji, żeby trzy liczby mówiły
+  // również, co je wyprodukowało.
+  const red = (output) =>
+    classifyBreakOutcome({
+      expect: "assertion-fails",
+      buildOk: true,
+      verifyOk: false,
+      output,
+      expectRedContains: ["neither fully transparent nor any of the"],
+    });
+  assert.equal(
+    red(
+      "control paint — dark theme — 4 rendered <button> … computes background-color = rgb(107, 107, 107), which is neither fully transparent nor any of the 55 token value(s)",
+    ).verdict,
+    "passed",
+  );
+  const wrong = red("CONTROL_PAINT_WITNESS_FLAGGED: .secondary-button …");
+  assert.equal(wrong.verdict, "failed");
+  assert.match(wrong.reason, /WITHOUT the message this break names/u);
+  // POLE NIEOBECNE NIE ZMIENIA NICZEGO: każdy istniejący `break-*.mjs` znaczy
+  // dokładnie to, co znaczył, zanim to pole powstało.
+  assert.equal(
+    classifyBreakOutcome({
+      expect: "assertion-fails",
+      buildOk: true,
+      verifyOk: false,
+      output: "",
+    }).verdict,
+    "passed",
+  );
+});
+
 test("REPRODUCTION: a `mv`-restored break-test comes back green against poisoned dist", () => {
   const probe = scaffold();
   try {

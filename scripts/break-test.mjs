@@ -152,6 +152,15 @@ export const rebuildHappened = (before, after) => {
  * Werdykt jednej fazy złamania — czysty, bo to jest ta część, którą najłatwiej
  * napisać źle i najtrudniej zauważyć.
  *
+ * `expectRedContains` (opcjonalne) to fragmenty, które MUSZĄ stać w wyjściu
+ * czerwonego przebiegu. Po co, skoro kod wyjścia już jest czerwony: bo czerwień
+ * bywa NADOKREŚLONA. Złamanie, które zapala dwie niezależne asercje naraz, ma
+ * ten sam kod wyjścia co złamanie zapalające tę jedną, o którą chodziło — a
+ * kiedy ta druga zniknie (bo ktoś przepisał przyrząd), trzy liczby nadal
+ * wyglądają na dowód. Fragment przypina czerwień do NAZWANEJ asercji. Pole
+ * NIEOBECNE nie zmienia niczego: każdy istniejący `break-*.mjs` znaczy dokładnie
+ * to, co znaczył.
+ *
  * `expect` ma DWA legalne kształty i to rozróżnienie jest treścią, nie
  * formalnością:
  *
@@ -164,7 +173,13 @@ export const rebuildHappened = (before, after) => {
  *                       bez ramienia, TS2741). Wtedy udana budowa to porażka:
  *                       typ przepuścił to, co miał odrzucić.
  */
-export const classifyBreakOutcome = ({ expect, buildOk, verifyOk }) => {
+export const classifyBreakOutcome = ({
+  expect,
+  buildOk,
+  verifyOk,
+  output = "",
+  expectRedContains = [],
+}) => {
   if (expect === "build-refuses")
     return buildOk
       ? {
@@ -180,9 +195,29 @@ export const classifyBreakOutcome = ({ expect, buildOk, verifyOk }) => {
         'not from the assertion under test; declare `expect: "build-refuses"` ' +
         "if that is the proof you meant",
     };
-  return verifyOk
-    ? { verdict: "failed", reason: "the assertion stayed green on broken code" }
-    : { verdict: "passed", reason: "the assertion went red on broken code" };
+  if (verifyOk)
+    return {
+      verdict: "failed",
+      reason: "the assertion stayed green on broken code",
+    };
+  const absent = expectRedContains.filter(
+    (fragment) => !output.includes(fragment),
+  );
+  if (absent.length > 0)
+    return {
+      verdict: "failed",
+      reason:
+        "the run went red, but WITHOUT the message this break names " +
+        `(${absent.map((fragment) => `„${fragment}"`).join(", ")}) — so the ` +
+        "red belongs to some other assertion and proves nothing about this one",
+    };
+  return {
+    verdict: "passed",
+    reason:
+      expectRedContains.length === 0
+        ? "the assertion went red on broken code"
+        : "the named assertion went red on broken code",
+  };
 };
 
 const run = ({ command, args, cwd, env }) => {
@@ -232,8 +267,8 @@ const readBack = (file) => readFileSync(file, "utf8");
 /**
  * Pętla break-testów.
  *
- * `breaks` to lista `{ name, file, edit, expect }`, gdzie `edit` dostaje
- * oryginalny tekst i zwraca zepsuty. Tekst identyczny z oryginałem jest
+ * `breaks` to lista `{ name, file, edit, expect, expectRedContains }`, gdzie
+ * `edit` dostaje oryginalny tekst i zwraca zepsuty. Tekst identyczny z oryginałem jest
  * PRZERWANIEM, nie przejściem: regexp, który nie trafił, to najczęstszy powód,
  * dla którego break-test wraca zielony, a lot fali D miał trzy takie naraz.
  */
@@ -317,6 +352,11 @@ export const runBreakTests = ({
         expect,
         buildOk: brokenBuild.ok,
         verifyOk: verifyResult.ok,
+        // OBA STRUMIENIE. Bramki tego repozytorium piszą część werdyktów na
+        // stdout, a listę problemów na stderr — grep po jednym z nich
+        // meldowałby brak fragmentu, który stoi w drugim.
+        output: `${verifyResult.stdout}${verifyResult.stderr}`,
+        expectRedContains: entry.expectRedContains,
       });
 
       // PRZYWRÓCENIE JEST BEZWARUNKOWE i dzieje się przed oceną werdyktu:
