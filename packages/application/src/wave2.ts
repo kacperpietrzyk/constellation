@@ -3719,20 +3719,11 @@ export const executeWave2Command = (
         command.workspaceId,
         command.payload.ownerPrincipalId,
       );
-      const duplicateCycle = transaction
-        .listStrategicRecords(command.workspaceId, command.payload.spaceId)
-        .some(
-          (record) =>
-            record.kind === "renewal" &&
-            record.organizationId === command.payload.organizationId &&
-            record.cycleKey === command.payload.cycleKey,
-        );
       if (
         organization?.kind !== "organization" ||
         organization.spaceId !== command.payload.spaceId ||
         owner === undefined ||
         owner.status === "revoked" ||
-        duplicateCycle ||
         sources.some(
           (source) =>
             source === undefined ||
@@ -3741,6 +3732,40 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
+      // THE DUPLICATE TERM IS ANSWERED BY NAME, and it is the same question
+      // `opportunity.create` answers with `record.already_exists` on
+      // `externalId` (`:3567-3580`): "this is already recorded", which is what
+      // an importer's SECOND RUN looks like. Folded into the precondition sweep
+      // above, it came back as `command.precondition_failed` — the code this
+      // command also returns for an id already taken, a revoked owner, an
+      // organization in another Space and an evidence source that does not
+      // exist. An importer reading that cannot tell a re-run from a broken one,
+      // and the safe reading of an ambiguous failure is to stop.
+      //
+      // AFTER the sweep, not before it: a command whose organization, owner or
+      // evidence is wrong is a BROKEN command, and answering it "already
+      // exists" would send the caller to update a record its payload was never
+      // about.
+      //
+      // The refusal carries the COLLIDING record's id and version, so the
+      // caller pivots straight to `relationship.renewalUpdate` with exactly
+      // those `expectedVersions` instead of minting a second renewal for a term
+      // that already exists. Read against the transaction, not a snapshot, so
+      // two creates inside one batch collide with each other too.
+      const duplicateCycle = transaction
+        .listStrategicRecords(command.workspaceId, command.payload.spaceId)
+        .find(
+          (record) =>
+            record.kind === "renewal" &&
+            record.organizationId === command.payload.organizationId &&
+            record.cycleKey === command.payload.cycleKey,
+        );
+      if (duplicateCycle !== undefined)
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [duplicateCycle.id]: duplicateCycle.version },
+        });
       const workspace = transaction.getWorkspace(command.workspaceId);
       if (workspace === undefined) return precondition(command, occurredAt);
       const record = createRenewal({
