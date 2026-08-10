@@ -729,6 +729,73 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "accent" },
     status: "enforced",
   },
+
+  // ══ FAZA C, LOT C1 — SZYNA ZAMIAST RAMKI ══════════════════════════════════
+  // NOWA PRZESTRZEŃ NAZW, I TO JEST ŚWIADOME. Ta pozycja NIE STOI w briefie
+  // Fazy 3 — piętnaście wierszy Lotu 1 mówi o ikonie aktywnej pozycji
+  // (`v3/app.css:221`), a o nośniku samego stanu nie mówi ani jeden. Rozjazd
+  // wypisała dopiero Faza 4, sześcioma wpisami rejestru
+  // (`faza-4-porownanie-ekranow.md`, wpisy today #1, renewals #11, orgs #17,
+  // people #22 oraz oba wpisy powłokowe z ekranów projektu). Wpisanie tych par
+  // jako „lot 1, pozycja 5" kosztowałoby dokładnie tyle, ile kosztuje każde
+  // kłamstwo o proweniencji w tym pliku: następny czytelnik szukałby ich
+  // uzasadnienia w tabeli, w której go nie ma.
+  //
+  // POZYCJI JEST DWIE, BO MIERZALNOŚĆ ROZCINA JĄ NA DWIE. Pozycja 1 (wiersz
+  // bieżący) rysuje się na powłoce lądowania i mierzy ją TEN przelot; pozycja 2
+  // (cel NADRZĘDNY otwartego rekordu projektu) wymaga otwarcia rekordu, więc
+  // mierzy ją mapa trasowana niżej. Obie deklaracje mówią o tym samym w obie
+  // strony: `positionsWithoutPairs` każdej z map wskazuje na pozycję drugiej.
+  {
+    id: "C1-01a",
+    lot: "C1",
+    position: 1,
+    title: "the current destination is marked with a rail, not a frame",
+    contract:
+      '.ui-craft/tokens.md:254-262 (Form first — "ink is confined to … a 2–2.5 px rail (v3/app.css:485-487, :222-226)") oraz :274-279 („where the reference washes an object it also inks one edge of it")',
+    prototype: {
+      file: "v3/app.css",
+      lines: "222-226",
+      value:
+        '`.nav-item[aria-current="page"]::before { width: 2.5px; height: 1rem; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow) }`',
+    },
+    subject: {
+      // DEKLARACJA, NIE KLASA: `aria-current="page"` stoi na wierszu bieżącym
+      // od `RealApp.tsx` i jest tym samym podmiotem, który czyta L1-05.
+      selector: '.nav-item[aria-current="page"]',
+      why: "the rail is a generated layer, so the pair reads ::before — a rule that never generated it comes back as PSEUDO_ABSENT, which this pass files as DIFFERS rather than as a broken instrument",
+      app: "packages/desktop-ui/src/styles.css (.nav-item.active::before)",
+    },
+    read: { pseudo: "::before", property: "backgroundColor" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "C1-01b",
+    lot: "C1",
+    position: 1,
+    title: "and it stops framing the row with a full accent border",
+    contract:
+      ".ui-craft/tokens.md:262-266 (Ink may not fill a row … a one-pixel accent edge around a PANEL is the named exception, and a navigation row is not one)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "218-220",
+      value:
+        '`.nav-item[aria-current="page"] { background: var(--accent-quieter); color: var(--text-primary); font-weight: 500 }` — ani jednej deklaracji obramowania',
+    },
+    subject: {
+      selector: '.nav-item[aria-current="page"]',
+      why: "same subject as C1-01a; the base rule keeps `border: 1px solid transparent` so the state never moves the layout, which is why the delivered value is the transparent literal and not `0px`",
+      app: "packages/desktop-ui/src/styles.css (.nav-item.active), tokens.css (--nav-active-border)",
+    },
+    read: { property: "borderTopColor" },
+    // NIE `kind: "not"` NA WARTOŚCI AKCENTU, i to jest różnica między asercją
+    // o dostawie a asercją o nieobecności starej wady: „cokolwiek innego niż
+    // fiolet" jest prawdą także o wierszu, któremu ktoś dał obwódkę szarą.
+    // Literał przezroczystości mówi, co ma tam być.
+    expect: { kind: "literal", value: "rgba(0, 0, 0, 0)" },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -776,12 +843,30 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
  * it pending". Odwrotność — zostawić 25 par jako oczekujące — byłaby bramką
  * czerwoną na KAŻDEJ oddanej pozycji.
  */
+/*
+ * 27 → 29 PRZY LOCIE C1 FAZY C, 2026-08-10. Przyrost to DWIE nowe pary
+ * w nowej przestrzeni nazw („C1"), nie zaostrzenie istniejących: nośnik stanu
+ * bieżącego w nawigacji nie miał w tym pliku ANI JEDNEJ pary — L1-05 mierzy
+ * glif, nie wiersz — więc przemalowanie ramki na szynę przechodziło tu do tej
+ * pory bez śladu. Ani jedno `expect` z Lotu 1 nie zostało tknięte, a `pending`
+ * zostaje przy 1 (L1-15a).
+ */
 export const VISUAL_LANGUAGE_EXPECTED = {
-  pairs: 27,
-  enforced: 26,
+  pairs: 29,
+  enforced: 28,
   pending: 1,
   notCovered: 1,
   lots: {
+    C1: {
+      // Rejestr Fazy 4 (`faza-4-porownanie-ekranow.md`) jest briefem tej fazy.
+      // Sześć jego wpisów ma tę JEDNĄ przyczynę, a lot rozcina ją na dwie
+      // pozycje po tym, CO DA SIĘ ZMIERZYĆ I GDZIE: wiersz bieżący (pozycja 1,
+      // powłoka lądowania, tutaj) i cel nadrzędny otwartego rekordu (pozycja 2,
+      // za nawigacją — mapa trasowana).
+      positionsInBrief: 2,
+      positionsWithPairs: 1,
+      positionsWithoutPairs: [2],
+    },
     1: {
       // Pozycje briefu Lotu 1 (`docs/plans/2026-08-06-adopcja-jezyka-wizualnego/
       // faza-3-build-brief.md:180-196`).
@@ -2885,6 +2970,42 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // kolejność.
     status: "enforced",
   },
+
+  // ══ FAZA C, LOT C1 — CEL NADRZĘDNY OTWARTEGO REKORDU ══════════════════════
+  // Druga połowa pozycji, której pierwsza połowa stoi w mapie powłoki
+  // (C1-01a/b). Tutaj, bo podmiot rysuje się WYŁĄCZNIE po otwarciu rekordu
+  // projektu — na powłoce lądowania nie ma go w DOM-ie w ogóle, a para na
+  // nieobecny podmiot wraca NOT_MEASURED, czyli awarią przyrządu w obu
+  // statusach.
+  {
+    id: "C1-02",
+    lot: "C1",
+    position: 2,
+    kind: "restyle",
+    title: "the destination above an open project record is marked too",
+    contract:
+      '.ui-craft/tokens.md:286-294 (What the accent is allowed to mean — "Where the reader is: the current destination, tab, saved view, folder or day")',
+    prototype: {
+      file: "v3/app.js",
+      lines: "573",
+      value:
+        '`route().kind === d.id || (d.id === "projects" && route().kind === "project")` — trasa rekordu zapala `aria-current="page"` RÓWNIEŻ na celu nadrzędnym, więc pod otwartym projektem prototyp świeci dwa wiersze: rodzica i dziecko',
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // NOŚNIKIEM JEST DEKLARACJA, NIE KLASA, i jest to deklaracja WŁASNA tej
+      // aplikacji: `aria-current` zostaje na jednym wierszu (rozstrzygnięcie
+      // `RealApp.tsx`), więc farbę rodzica niesie `data-nav-open`. Para czyta
+      // szynę, nie samo podbarwienie — podbarwienie bez szyny jest dokładnie
+      // tym stanem połowicznym, który ten lot zamyka.
+      selector: ".nav-item[data-nav-open]",
+      why: "declaration stamped by RealApp.tsx when the open project record has its own child row; before this lot the parent row carried no mark at all and the register logged it twice (project-record, project-comments)",
+      app: "packages/desktop-ui/src/styles.css (.nav-item[data-nav-open]::before)",
+    },
+    read: { pseudo: "::before", property: "backgroundColor" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -3080,7 +3201,13 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `--nav-active-bg` na oznaczonej pozycji kolumny trybu, L6-03b liczy TORY
   // siatki wpisu. Pozycje briefu się nie zmieniły, więc rośnie tylko `pairs`
   // tutaj i `lots.6.pairs` niżej — `positionsWithPairs` zostaje 4.
-  pairs: 62,
+  //
+  // 62 → 63 PRZY LOCIE C1 FAZY C, 2026-08-10, i JEST TO NOWA POZYCJA, nie
+  // rozpad istniejącej — pierwsza w tej mapie spoza briefu Fazy 3. Cel
+  // nadrzędny otwartego rekordu projektu nie był mierzony przez nic: rejestr
+  // Fazy 4 zgłosił go dwa razy (ekran rekordu, komentarze na projekcie),
+  // a mapa powłoki go nie dosięga, bo podmiot rysuje się dopiero za nawigacją.
+  pairs: 63,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -3121,6 +3248,15 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // dziś wyłącznie pikseli, nie deklaracji.
   blind: 1,
   lots: {
+    C1: {
+      // Ta sama arytmetyka co w mapie powłoki, widziana z drugiej strony: lot
+      // ma DWIE pozycje, ta mapa dowozi drugą, a pierwsza stoi jako jawnie
+      // nieobjęta TĄ mapą — jest w mapie powłoki, bo tam da się ją zmierzyć.
+      positionsInBrief: 2,
+      pairs: 1,
+      positionsWithPairs: 1, // 2
+      positionsWithoutPairs: [1],
+    },
     2: {
       // faza-3-build-brief.md:230-241
       positionsInBrief: 11,

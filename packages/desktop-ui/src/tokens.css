@@ -433,10 +433,12 @@
      podstawienie ich tutaj zagęściłoby miękki spadek 2,3× — zmiana CIĘŻARU
      wizualnego, czyli dokładnie to, czego zabrania ograniczenie z 2026-07-12.
      Skreślone: wcześniejszy zapis dodawał, że są „zestrojone dla podbarwień".
-     Policzone grepem po całym śledzonym drzewie: `--accent-quiet` i
-     `--accent-glow` mają dziś ZERO odwołań, a więc zero podbarwień, pod które
-     mogłyby być zestrojone. Argument z liczby alfy stoi; argument z roli nie
-     miał podmiotu. */
+     Policzone grepem po całym śledzonym drzewie: `--accent-quiet` ma dziś ZERO
+     odwołań, a `--accent-glow` dokładnie JEDNO — poświatę szyny aktywnej
+     nawigacji (`styles.css`, `.nav-item.active::before`, dopisana w Fazie C za
+     `v3/app.css:226`). Ani jedno z nich nie jest podbarwieniem, pod które ten
+     pierścień mógłby być zestrojony. Argument z liczby alfy stoi; argument
+     z roli nie miał podmiotu i dalej go nie ma. */
   --focus-ring:
     inset 0 0 0 0.0625rem oklch(100% 0 0 / 0.7), 0 0 0 0.0625rem var(--accent),
     0 0 0 0.1875rem oklch(64% 0.2 295 / 0.12),
@@ -471,7 +473,7 @@
      powłoka, a prototyp jej nie ma.
 
      ── TOKENY BEZ KONSUMENTA ───────────────────────────────────────────────
-     DWADZIEŚCIA OSIEM nazw z tego pliku nie ma dziś ANI JEDNEGO odwołania
+     DWADZIEŚCIA SIEDEM nazw z tego pliku nie ma dziś ANI JEDNEGO odwołania
      w całym śledzonym drzewie. Wcześniejszy zapis mówił „trzynaście" i wymieniał
      trzynaście — liczba dotyczyła JEDNEJ GRUPY, a zdanie mówiło o pliku; drugi
      mówił „dwadzieścia siedem" i gubił `--ease-in`, bo liczył granicą słowa,
@@ -498,16 +500,22 @@
        --surface-elevated, --surface-sidebar  czwarty plan (Faza 3)
        --neutral-925, --a-300              pełne rampy, bez dziur
 
-     (2) TRZY TOKENY AKCENTU Z FAZY 1, których poprzednia lista nie wymieniała
+     (2) DWA TOKENY AKCENTU Z FAZY 1, których poprzednia lista nie wymieniała
      wcale — i to nie jest arytmetyka, bo nota pierścienia wyżej UZASADNIAŁA
      nimi swoje literały:
 
-       --accent-hover, --accent-quiet, --accent-glow
+       --accent-hover, --accent-quiet
 
      `--accent-hover` czeka na Fazę 2 (żaden hover nie niesie dziś akcentu),
-     a dwa pozostałe są podbarwieniami bez podbarwionej powierzchni. Argument
-     „są zestrojone dla podbarwień" został przy pierścieniu skreślony właśnie
-     dlatego.
+     a `--accent-quiet` jest podbarwieniem bez podbarwionej powierzchni.
+     Argument „są zestrojone dla podbarwień" został przy pierścieniu skreślony
+     właśnie dlatego.
+
+     TRZECI, `--accent-glow`, ZESZŁA Z TEJ LISTY W FAZIE C (lot C1) i to jest
+     ubytek policzony, nie przeoczony: nosi ją poświata szyny aktywnej
+     nawigacji (`styles.css`, `.nav-item.active::before`) za `v3/app.css:226`.
+     Grupa ma więc DWIE nazwy, nie trzy, a suma wyżej dwadzieścia siedem, nie
+     dwadzieścia osiem.
 
      (3) BEZ KONSUMENTA — dwanaście zastanych i jeden dołożony niżej:
 
@@ -694,17 +702,18 @@
   --input-text: var(--text-primary);
   --input-placeholder: var(--text-quaternary);
   /* AKTYWNA NAWIGACJA niesie akcent — najcichszy jego stopień jako wypełnienie
-     (`v3/app.css:218-220`) i krawędź jako obramowanie. Zwykłe zaznaczenie
-     wiersza i hover ZOSTAJĄ neutralne (`--surface-selected`, `--surface-hover`):
-     akcent na hoverze albo na każdym zaznaczeniu łamie regułę małej
-     powierzchni. */
+     (`v3/app.css:218-220`), a od Fazy C tusz pełnej mocy idzie na SZYNĘ przy
+     lewej krawędzi kolumny, nie na obramowanie wiersza (`v3/app.css:222-226`,
+     `.ui-craft/tokens.md:274-279`). Zwykłe zaznaczenie wiersza i hover ZOSTAJĄ
+     neutralne (`--surface-selected`, `--surface-hover`): akcent na hoverze albo
+     na każdym zaznaczeniu łamie regułę małej powierzchni. */
   --nav-active-bg: var(--accent-quieter);
   --nav-active-text: var(--text-primary);
-  /* KRAWĘDŹ NIESIE STAN „ta pozycja jest aktywna", a stan komponentu jest
+  /* KRAWĘDŹ NIESIE STAN „ta pozycja jest bieżąca", a stan komponentu jest
      w WCAG 1.4.11 wymieniony wprost — więc wiąże ją próg 3:1, tak samo jak
      pierścień ogniska. `--accent-edge` (0,42 w ciemnym, 0,40 w jasnym) go NIE
      ZDAWAŁ i nie zdawał w żadnym z czterech sąsiedztw. Zmierzone
-     (`scripts/status-contrast.test.mjs`, część „krawędź aktywnej nawigacji"):
+     (`scripts/status-contrast.test.mjs`, część „krawędź stanu bieżącego"):
 
        sąsiedztwo                          --accent-edge   var(--accent)
        ciemny, plan okna                       1,80             5,70
@@ -722,11 +731,21 @@
      3,0–3,1, czyli na włosku — i kosztuje osobny literał per motyw. `--accent`
      jest jednym aliasem, remapowanym w bloku jasnym, i zdaje z zapasem w obu.
 
-     JEST TO ZGODNE Z v3, choć v3 nie ma tu krawędzi w ogóle: prototyp znaczy
-     pozycję aktywną podbarwieniem `--accent-quieter`, tekstem pierwszorzędnym,
-     wagą 500 i SZYNKĄ `::before` o wypełnieniu `var(--accent)`, czyli akcentem
-     o pełnym kryciu (`v3/app.css:218-226`). Ta aplikacja wydaje tę samą pełną
-     wartość na krawędź zamiast na szynkę.
+     KOGO TEN TOKEN DZIŚ MALUJE — i to zdanie zmieniło się w Fazie C, bo zmienił
+     się jego podmiot. NAWIGACJA JUŻ NIE: `.nav-item.active` wzięła szynę
+     prototypu (`v3/app.css:222-226`) i nie deklaruje `border-color` w ogóle.
+     Zostają DWA konsumenty, oba stanem „to jest bieżące", oba w tym samym
+     arkuszu: wynik wyszukiwania pod kursorem klawiatury (`styles.css`,
+     `.search-results button.active`) i otwarta przestrzeń robocza
+     (`.workspace-registry-list > button.workspace-current`). Pomiar wyżej wiąże
+     je dalej, CO DO WARTOŚCI — próg 3:1 dotyczy koloru na tle, nie kształtu,
+     a `var(--accent)` przeszedł go w każdym z ośmiu sąsiedztw.
+
+     TA SAMA WARTOŚĆ NIESIE TERAZ SZYNĘ, więc pomiar przeniósł się razem z nią
+     i nie trzeba go powtarzać: `.nav-item.active::before` wypełnia się
+     `var(--accent)` bez alfy, czyli dokładnie tą kolumną tabeli, która zdaje.
+     Skreślone zdanie, prawdziwe do Fazy C i już nie: „ta aplikacja wydaje tę
+     samą pełną wartość na krawędź zamiast na szynkę".
 
      `--accent-edge` ZOSTAJE NIETKNIĘTY, i powód jest JEDEN: to literał v3 co do
      znaku (`v3/tokens.css:154`, `:209`). Odrzucone uzasadnienie drugie, żeby nie

@@ -296,6 +296,52 @@ const outcome = runBreakTests({
           "the surface header's row layout",
         ),
     },
+    {
+      // ZŁAMANIE SZÓSTE — DLA SZYNY AKTYWNEJ NAWIGACJI (Faza C, lot C1).
+      //
+      // CELUJE W WARSTWĘ, KTÓRĄ PARA NAPRAWDĘ CZYTA, i to jest jedyny wybór,
+      // który cokolwiek dowodzi. Kuszące złamanie — zdjęcie `position: relative`
+      // z `.nav-item` — wraca ZIELONE i jest tego dowodem: `::before` dalej się
+      // generuje i dalej rozwiązuje się do akcentu, więc obie pary C1-01a
+      // i C1-02 mają swój pomiar, a szyna ląduje przy górnej krawędzi całej
+      // kolumny. Dokładnie ta klasa ślepoty asercji zwróciła pięć zielonych
+      // break-testów przy wycofywaniu powierzchni `work`.
+      //
+      // Skasowanie WYPEŁNIENIA szyny nie wystarcza z drugiej strony: bez
+      // `background` pseudoelement dalej istnieje, a `backgroundColor` wraca
+      // `rgba(0, 0, 0, 0)`, czyli farbą NIECZYTELNĄ — para zgłasza wtedy
+      // NOT_MEASURED (awarię przyrządu), a nie werdykt o produkcie. Złamanie
+      // zdejmuje więc `content`, czyli JEDYNĄ deklarację, która decyduje o tym,
+      // czy warstwa w ogóle powstaje: `getComputedStyle(el, "::before").content`
+      // wraca wtedy „none", przelot mapuje to na PSEUDO_ABSENT, a PSEUDO_ABSENT
+      // jest DIFFERS z nazwą pozycji.
+      //
+      // CZERWIEŃ PADA NA DWÓCH PRZELOTACH NARAZ i to jest treść, nie hałas:
+      // powłoka lądowania traci szynę wiersza bieżącego (C1-01a), a przelot
+      // tras traci ją na celu nadrzędnym otwartego rekordu projektu (C1-02) —
+      // czyli obie połowy jednej reguły powłokowej, każda zmierzona tam, gdzie
+      // się rysuje. Fragmenty niżej pinują obie, bo sam kod wyjścia nie
+      // odróżnia ich ani od siebie, ani od czerwieni pozostałych przelotów.
+      name: "stop generating the navigation rail: the row the reader is on says so with a wash alone, and both the shell pass and the routed pass lose the ink",
+      expectRedContains: [
+        "C1-01a",
+        "C1-02",
+        "the ::before pseudo-element is not generated (content: none)",
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.nav-item.active::before,
+.nav-item[data-nav-open]::before {
+  content: "";
+  position: absolute;`,
+          `.nav-item.active::before,
+.nav-item[data-nav-open]::before {
+  position: absolute;`,
+          "the navigation rail's generating declaration",
+        ),
+    },
   ],
 });
 

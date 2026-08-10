@@ -925,7 +925,15 @@ kbd {
   /* The top inset used to reserve `--titlebar-height` for a band that was drawn
      over the sidebar. The band is above the sidebar now, so the reservation is
      over — the column starts where the column starts. */
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  /* JEDNA LICZBA NA RYNNĘ TEJ KOLUMNY, bo od tej chwili czytają ją DWIE rzeczy,
+     które muszą się zgadzać co do piksela: własne wcięcie poziome paska i
+     ujemny margines listy nawigacji niżej (`.sidebar nav`), którym szyna
+     aktywnej pozycji dosięga lewej krawędzi kolumny. Wpisane osobno rozjadą się
+     przy pierwszej zmianie gęstości i szyna zniknie w obcięciu — bez ani jednej
+     czerwonej asercji, bo `::before` dalej się GENERUJE i dalej rozwiązuje się
+     do akcentu. Tryb szyny ikon nadpisuje tę jedną liczbę (`:3656`). */
+  --nav-gutter: var(--space-3);
+  padding: var(--space-2) var(--nav-gutter) var(--space-3);
   border-right: 1px solid var(--shell-border);
   /* Lewa kolumna jest PLANEM, nie szybą (`v3/app.css:155-160`). Stało tu
      rozmycie tła, którego prototyp nie ma nigdzie w powłoce; pod nim leży
@@ -1157,6 +1165,22 @@ kbd {
 }
 .sidebar nav {
   margin-top: var(--space-5);
+  /* LISTA SIĘGA DO KRAWĘDZI KOLUMNY, ŻEBY SZYNA MIAŁA GDZIE STANĄĆ, i to jest
+     warunek KONIECZNY, nie kosmetyka. `.sidebar nav` niesie `overflow-y: auto`
+     (`:937-942`), a przeglądarka wylicza wtedy `overflow-x` na `auto` — czyli
+     ten element PRZYCINA po obu osiach na swoim pudełku dopełnienia. Szyna
+     `.nav-item.active::before` stoi przy lewej krawędzi PASKA, więc bez tej
+     pary deklaracji leżałaby poza obszarem przycięcia i nie narysowałaby się
+     ani razu: `::before` byłby wygenerowany, rozwiązywałby się do akcentu,
+     a widać by go nie było. Ujemny margines i dopełnienie tej samej wartości
+     zostawiają pudełko TREŚCI dokładnie tam, gdzie było — nie rusza się ani
+     jeden wiersz — a przesuwają krawędź przycięcia na krawędź kolumny.
+     Prototyp rozwiązuje to odwrotnie i z tym samym skutkiem: tam pasek nie ma
+     wcięcia w ogóle, a niesie je `.nav` (`v3/app.css:196` — `overflow-x: hidden`
+     razem z `padding: 0 var(--space-2) var(--space-4)`), więc szyna o `left:
+     -0.5rem` ląduje równo na jego krawędzi przycięcia. */
+  margin-left: calc(-1 * var(--nav-gutter));
+  padding-left: var(--nav-gutter);
 }
 .nav-label {
   margin-top: var(--space-4);
@@ -1230,6 +1254,12 @@ kbd {
 .nav-item {
   width: 100%;
   min-height: 1.75rem;
+  /* BLOK ODNIESIENIA DLA SZYNY (`v3/app.css:213` — prototyp deklaruje to samo
+     w tej samej regule). Bez tego `::before` niżej zaczepiłby się o najbliższy
+     pozycjonowany przodek, czyli o `.sidebar` (`:920`), i jedna szyna stanęłaby
+     przy górnej krawędzi całej kolumny zamiast przy swoim wierszu. Para
+     czytająca FARBĘ tego pseudoelementu byłaby przy tym ZIELONA. */
+  position: relative;
   display: grid;
   grid-template-columns: 1.1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -1312,25 +1342,84 @@ kbd {
    `:not(a):not(b):not(c)` would weigh (0,5,0) and start winning ties this rule
    was never meant to enter — the same mistake, measured and undone, at
    `.settings-control button:not(.primary-button, .settings-row)`. */
-.nav-item:not(:disabled, .active, [aria-current]):hover {
+/* `[data-nav-open]` DOŁĄCZA DO LISTY WYKLUCZEŃ, NIE DO NIEJ SAMEJ: to trzeci
+   nośnik stanu „tu jesteś" w tej kolumnie (cel nadrzędny otwartego rekordu
+   projektu, `RealApp.tsx`), a nośnik pominięty tutaj gaśnie pod kursorem
+   dokładnie tak, jak zgasł `.active` opisany wyżej. Wykluczenie ATRYBUTEM waży
+   tyle co wykluczenie klasą, więc reguła zostaje przy swoim (0,3,0) — dopisanie
+   tu `:has(…)` podniosłoby ją do (0,5,0) i zaczęłaby wygrywać remisy, do
+   których nigdy nie należała. */
+.nav-item:not(:disabled, .active, [aria-current], [data-nav-open]):hover {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
 .nav-item:not(:disabled):active {
   background: var(--surface-pressed);
 }
-.nav-item.active {
+/* ── GDZIE CZYTELNIK JEST: PODBARWIENIE I SZYNA, NIE RAMKA ───────────────────
+   Stało tu `border-color: var(--nav-active-border)` plus `box-shadow:
+   var(--elevation-rest)`, czyli ciągła obwódka akcentu po CAŁYM obwodzie
+   wiersza i uniesienie. Prototyp nie ma tu ramki w ogóle: `v3/app.css:218-220`
+   daje podbarwienie `--accent-quieter`, tekst pierwszorzędny i wagę 500,
+   a `:222-226` dokłada 2,5-pikselową szynę tuszu przy LEWEJ krawędzi kolumny,
+   z poświatą `--accent-glow`. Kontrakt mówi to samo dwa razy i obie razy
+   z cytatem w tę stronę: `.ui-craft/tokens.md:254-262` („ink is confined to
+   … a 2–2.5 px rail (`v3/app.css:485-487`, `:222-226`)") i `:274-279` („where
+   the reference washes an object it also inks one edge of it … the wash says
+   which object; the ink says the same thing on a channel that survives
+   a grayscale print").
+
+   ODWRÓCENIE NOŚNIKA, NIE ZDJĘCIE SYGNAŁU: znika ramka, zostaje ta sama
+   wartość `var(--accent)` — tyle że na szynie. Pomiar kontrastu, którym
+   uzasadniano krawędź, przenosi się razem z wartością (`tokens.css:703-737`).
+
+   WPIS NADRZĘDNY BIERZE TO SAMO. Prototyp uznaje otwarty rekord projektu za
+   bycie NA „Projects": `v3/app.js:573` stawia `aria-current="page"` również na
+   celu nadrzędnym, gdy trasa to `project`, więc pod jednym otwartym projektem
+   świecą DWA wiersze — rodzic i dziecko. Ta aplikacja świadomie zerowała
+   rodzica (`RealApp.tsx:1935-1941`), żeby nie mieć dwóch `aria-current`
+   naraz; rozstrzygnięcie zostaje, bo dotyczy DEKLARACJI, a nie farby. Nośnikiem
+   farby jest osobna deklaracja `data-nav-open`, dopisana w tym locie.
+
+   DLACZEGO ATRYBUT, A NIE `:has(+ .nav-children .nav-child.active)`. Selektor
+   `:has()` liczyłby (0,5,0) i wygrywałby z regułą wciśnięcia
+   (`.nav-item:not(:disabled):active`, (0,3,0)) — czyli ten JEDEN wiersz
+   przestałby odpowiadać na palec czytelnika, wbrew rozstrzygnięciu zapisanemu
+   dwadzieścia linii wyżej. Atrybut waży tyle co `.active`, więc rodzic
+   dziedziczy WSZYSTKIE zastane remisy tej kolumny bez zmiany którejkolwiek
+   reguły poza dopisaniem nazwy do listy wykluczeń hovera. */
+.nav-item.active,
+.nav-item[data-nav-open] {
   color: var(--nav-active-text);
-  border-color: var(--nav-active-border);
   background: var(--nav-active-bg);
-  box-shadow: var(--elevation-rest);
+  font-weight: 500;
+}
+/* SZYNA. Geometria jest przepisana z prototypu co do liczby (`v3/app.css:222-226`),
+   z JEDNĄ poprawką na różnicę pudełek: tam `.nav-item` nie ma obramowania,
+   tutaj niesie `border: 1px solid transparent` (`:1238`, po to, żeby stan
+   aktywny nie ruszał układu), a `left` odmierza się od pudełka DOPEŁNIENIA,
+   czyli od krawędzi wewnątrz tego obramowania. Stąd `- 1px`: bez niego szyna
+   stanęłaby o piksel w prawo od krawędzi kolumny. */
+.nav-item.active::before,
+.nav-item[data-nav-open]::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--nav-gutter) - 1px);
+  top: 50%;
+  translate: 0 -50%;
+  width: 2.5px;
+  height: 1rem;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
 }
 /* Ikona aktywnej pozycji bierze PEŁNY akcent (`v3/app.css:221`). Podbarwienie
    pod wierszem mówi „ten wiersz", a tusz na glifie mówi „ta pozycja" — bez
    niego cały sygnał niósł prostokąt o alfie 0,08 i pierwsze zadanie akcentu
    („gdzie czytelnik jest") było w tej kolumnie ledwo widoczne. Reguły dla samego
    glifu nie było tu w ogóle: dziedziczył `--nav-active-text`. */
-.nav-item.active > svg {
+.nav-item.active > svg,
+.nav-item[data-nav-open] > svg {
   color: var(--accent);
 }
 .nav-item:disabled {
@@ -1494,6 +1583,18 @@ kbd {
 }
 .nav-child.active .nav-child-dot {
   background: var(--accent);
+}
+/* SZYNA WIERSZA POTOMNEGO NIE STOI PRZY KRAWĘDZI KOLUMNY, TYLKO NA PIONIE
+   DRZEWA — i to jest osobna reguła prototypu, nie niedopatrzenie
+   (`v3/app.css:246`: `left: -0.0625rem; height: 0.875rem`). Wiersz potomny
+   dziedziczyłby z reguły wyżej szynę odmierzoną do lewej krawędzi paska
+   i przeciął pion `.nav-children::before` na pół; tak odmierzona zakrywa
+   dokładnie ten pion na wysokości swojego wiersza, czyli mówi „ta gałąź" tam,
+   gdzie gałąź jest rysowana. Krótsza o 0,125 rem, bo wiersz potomny jest
+   niższy (`:1483-1487`). `- 1px` z tego samego powodu, co wyżej. */
+.nav-child.active::before {
+  left: calc(-0.0625rem - 1px);
+  height: 0.875rem;
 }
 .sidebar-spacer {
   flex: 1;
@@ -3654,7 +3755,12 @@ kbd {
   --sidebar-width: var(--sidebar-rail);
 }
 .desktop-shell.rail .sidebar {
-  padding-inline: 0.25rem;
+  /* Rynna kolumny zmienia się razem z trybem, więc zmienia się TA JEDNA liczba
+     — a ujemny margines listy i `left` szyny idą za nią same. Wpisanie tu
+     samego `padding-inline` zostawiłoby szynę odmierzoną do rynny SZEROKIEJ
+     kolumny, czyli 8 px poza krawędzią i w obcięciu. */
+  --nav-gutter: 0.25rem;
+  padding-inline: var(--nav-gutter);
 }
 /* `.brand-row strong` is NOT in this list any more, and the rule that used to
    slide the mark to `left: 1.25rem` in the rail is gone with it: the mark left

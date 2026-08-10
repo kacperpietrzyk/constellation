@@ -1932,6 +1932,19 @@ export const RealApp = ({
       <div className="nav-entry" key={item.id}>
         <button
           data-surface={item.id}
+          // CEL NADRZĘDNY OTWARTEGO REKORDU DALEJ MÓWI „TU JESTEŚ", TYLKO NIE
+          // BIERZE NA TO `aria-current`. Prototyp stawia bieżącą stronę na
+          // obu wierszach naraz (`v3/app.js:573` — trasa `project` zapala też
+          // cel `projects`), więc pod otwartym projektem świecą tam rodzic
+          // i dziecko. Rozstrzygnięcie niżej — jedno `aria-current` w jednej
+          // nawigacji — ZOSTAJE, bo dotyczy tego, co czyta czytnik ekranu.
+          // Rozjeżdżała się z prototypem sama FARBA, i to ona dostaje tu
+          // własny nośnik: `styles.css` maluje `[data-nav-open]` dokładnie tak
+          // jak `.active`, z tą samą wagą, więc rodzic dziedziczy wszystkie
+          // remisy tej kolumny (hover, wciśnięcie) bez własnych wyjątków.
+          data-nav-open={
+            openProjectHasNavChild && item.id === "projects" ? "" : undefined
+          }
           // MALOWANIE IDZIE ZA `currentNavId`, PRZYSTANEK TAB ZA `surface`,
           // i ten rozjazd jest zamierzony. Przy otwartym rekordzie projektu
           // wiersz potomny przejmuje bieżącą stronę, więc rodzic przestaje
