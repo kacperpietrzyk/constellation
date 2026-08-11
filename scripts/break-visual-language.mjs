@@ -86,7 +86,15 @@ const replaceOnce = (text, needle, replacement, what) => {
 const only = process.env.BREAK_ONLY ?? "";
 const select = (breaks) => {
   if (only === "") return breaks;
-  const chosen = breaks.filter((entry) => entry.name.includes(only));
+  // KILKA FRAGMENTÓW ROZDZIELONYCH `|`, bo lot, który dowozi cztery złamania,
+  // inaczej płaci za każde z nich osobną BAZĄ — a baza to pełny przelot bramki.
+  // Dopisane w locie D1 Fazy D, po przebiegu, w którym cztery nazwy podane
+  // naraz nie trafiły w nic i harness — poprawnie — padł zamiast wrócić zielony
+  // na zerze wykonanych złamań.
+  const needles = only.split("|").filter((part) => part !== "");
+  const chosen = breaks.filter((entry) =>
+    needles.some((needle) => entry.name.includes(needle)),
+  );
   if (chosen.length === 0)
     throw new Error(
       `BREAK_ONLY="${only}" matched none of the ${breaks.length} break(s) in this file, ` +
