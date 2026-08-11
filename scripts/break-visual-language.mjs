@@ -1325,6 +1325,125 @@ const outcome = runBreakTests({
         );
       },
     },
+    {
+      // ZŁAMANIE TRZYDZIESTE DZIEWIĄTE — POWŁOKA PRACY WRACA NAD SPIS SEKCJI
+      // (D5-01a, wpis #67).
+      //
+      // Edycja jest w TSX, bo „Ustawienia są trybem" jest faktem o DRZEWIE:
+      // żadna reguła arkusza nie umie tego złamać tak, jak było złamane
+      // naprawdę — kontrolka nie była schowana, ona po prostu się rysowała.
+      // Warunek jest odwracany na `true`, a nie kasowany, żeby złamanie
+      // dotknęło JEDNEJ z dwóch kontrolek: wyszukiwarka zostaje niewidoczna,
+      // więc czerwień da się przypisać karcie przestrzeni, a nie „czemuś
+      // w tej gałęzi".
+      name: "put the workspace card back above the settings sections: the work shell stops being replaced by the mode",
+      expectRedContains: ["D5-01a"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        {!settingsMode && (
+          <>
+            <button
+              type="button"
+              className="workspace-switcher"`,
+          `        {true && (
+          <>
+            <button
+              type="button"
+              className="workspace-switcher"`,
+          "the settings-mode guard around the workspace card",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE — SPIS SEKCJI TRACI GLIFY (D5-02b, wpis #69).
+      //
+      // Kasowany jest `<Icon>`, a NIE pole `icon` w słowniku kategorii: pole
+      // jest typowane `IconName`, więc jego skasowanie nie skompilowałoby się
+      // i harness zwróciłby „BUILD REFUSED" — werdykt, który nie mówi nic
+      // o parze. Tak złamana pozycja dalej ma etykietę i dalej się rysuje;
+      // znika wyłącznie to, co mierzy D5-02b.
+      name: "take the glyphs off the settings sections: the list goes back to six lines of bare text",
+      expectRedContains: ["D5-02b"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                      <Icon name={category.icon} />
+                      <span>{category.label}</span>`,
+          `                      <span>{category.label}</span>`,
+          "the section entry's glyph",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE PIERWSZE — WIERSZ LISTY WRACA DO BYCIA KARTĄ
+      // (D5-03b, wpis #68).
+      //
+      // Wraca sam PROMIEŃ, bez obwódki i bez tła. To rozróżnia dwie rzeczy,
+      // które łatwo pomylić: „lista nie ma plastra" (mierzy D5-03a) i „plaster
+      // jest, a wiersz w środku dalej rysuje się jak osobna karta". Druga jest
+      // tą, którą rejestr opisał, i tylko ona dowodzi, że D5-03b łapie regresję
+      // wiersza, a nie brak listy.
+      name: "give the status row its card corner back: the plate stays and the rows inside it round off again",
+      expectRedContains: ["D5-03b"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  border-bottom: 1px solid var(--border-subtle);
+}
+.status-list li:last-child {`,
+          `  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.status-list li:last-child {`,
+          "the status row's radius",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE DRUGIE — TRZY SEKCJE WRACAJĄ DO JEDNEJ KARTY
+      // (D5-04a, wpis #70).
+      //
+      // Znika obrys SEKCJI, a nie obrys kategorii: kategoria dalej nie jest
+      // kartą, więc złamanie nie odtwarza starego kształtu w całości i nie
+      // da się go pomylić z cofnięciem commita. Mierzone jest dokładnie jedno
+      // zdanie — „sekcja ma własny obrys".
+      name: "take the outline off the settings section: the sections stop being cards and go back to being floors",
+      expectRedContains: ["D5-04a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  padding: 0 0 var(--space-5);
+  border: 1px solid var(--panel-reading-border);`,
+          `  padding: 0 0 var(--space-5);
+  border: 0;`,
+          "the settings section's outline",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE TRZECIE — PASEK DODAWANIA WRACA DO WYSOKOŚCI
+      // WIERSZA PANELU (D5-05, wpis #71).
+      //
+      // Kasowana jest WYŚCIÓŁKA, a nie podłoga, i to jest cała treść tego
+      // złamania: 44 px brały się z `padding: 0.6rem` reguły panelowej, więc
+      // złamanie zdejmujące `min-height` byłoby zielone (kontrolka i tak
+      // urosłaby z wyściółki), a złamanie zdejmujące wyściółkę pokazuje, że
+      // para czyta WYSOKOŚĆ NARYSOWANĄ, a nie zadeklarowaną liczbę.
+      name: "let the panel padding back onto the add bar: the select grows past the field beside it again",
+      expectRedContains: ["D5-05"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  min-height: 1.8rem;
+  padding: 0 var(--space-2);
+}`,
+          `  min-height: 1.8rem;
+}`,
+          "the add bar's own padding",
+        ),
+    },
   ]),
 });
 
