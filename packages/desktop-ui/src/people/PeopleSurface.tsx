@@ -606,7 +606,7 @@ export const PeopleSurface = ({
           </button>
         </form>
       )}
-      <div className={styles.viewbar}>
+      <div className={`view-band ${styles.viewbar}`}>
         <div
           aria-label="People layout"
           className={styles.switcher}

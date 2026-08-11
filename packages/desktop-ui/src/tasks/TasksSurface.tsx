@@ -486,7 +486,7 @@ export const TasksSurface = ({
         }
         title="Tasks"
       />
-      <div className={styles.viewbar}>
+      <div className={`view-band ${styles.viewbar}`}>
         <div
           className={styles.switcher}
           role="tablist"

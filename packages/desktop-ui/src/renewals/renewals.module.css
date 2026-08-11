@@ -21,9 +21,13 @@
    its tracks have a definite number to shrink against. */
 
 .renewals {
+  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`. Nota przy
+     `.viewbar` niżej mówiła, że pasma „nie mogą stać flush, bo `.renewals`
+     trzyma swój `gap`" — od tego lotu mogą, i dlatego ta liczba ma nazwę. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the sections ───────────────────────────────────────── */
@@ -55,14 +59,12 @@
    flush the way the prototype stacks them. The border stays because it is what
    makes this a band rather than a stray line of text; the air is a named cost,
    not something to close by removing the border. */
+/* Kształt pasma — wysokość, rynna, włoskowa kreska — odszedł do `.view-band`
+   w `styles.css`. Ten arkusz był JEDYNYM z siedmiu, który miał go w komplecie,
+   i właśnie dlatego był dowodem, że jest to jeden kształt, a nie siedem. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-1);
-  min-height: var(--header-band-height);
-  padding: 0.3125rem var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
+  padding-block: 0.3125rem;
 }
 
 /* No auto margin any more: the count is alone in its band and the prototype

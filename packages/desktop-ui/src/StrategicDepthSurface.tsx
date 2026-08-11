@@ -818,7 +818,7 @@ export const StrategicDepthSurface = ({
           </button>
         </form>
       )}
-      <div className={organizationStyles.viewbar}>
+      <div className={`view-band ${organizationStyles.viewbar}`}>
         <div
           aria-label="Organizations layout"
           className={organizationStyles.switcher}

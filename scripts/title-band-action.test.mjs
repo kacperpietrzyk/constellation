@@ -383,27 +383,26 @@ test("every state a row declares is a state the rule can produce", () => {
 // 9 − 3 + 1 = 7. Rekord zadania NIE jest tu piątym ruchem: symetrycznie
 // oceniony jest MATCH-em, nie rozjazdem (patrz predykat w nagłówku modułu).
 //
-// Z TYCH SIEDMIU LOT C2 ZAMKNĄŁ SZEŚĆ, więc asercja niżej pilnuje tego, co
-// ZOSTAŁO, a nie tej siódemki. Zostały Spotkania, i to jest jedyna pozycja
-// tego lotu oddana jako NIEZROBIONA: `.meeting-hero` to siatka
-// JEDNOKOLUMNOWA, czyli pasmo bez prawego końca, a zbudowanie go jest
-// przebudową większą niż lot, który przenosi akcje.
-test("the canonical screen list holds fifteen screens, and Meetings is the last divergence", () => {
+// Z TYCH SIEDMIU LOT C2 ZAMKNĄŁ SZEŚĆ, a Spotkania — siódme i jedyne oddane
+// przez tamten lot JAKO NIEZROBIONE — zamknął lot D1 Fazy D: `.meeting-hero`
+// nie istnieje, ekran rysuje `SurfaceTitleBand` z akcją „Import from Jamie"
+// u końca pasma. Asercja niżej pilnuje więc PUSTEJ listy, a nie jednego wiersza.
+test("the canonical screen list holds fifteen screens and no divergence is left", () => {
   assert.equal(TITLE_BAND_ROWS.length, 15);
-  // SIEDEM ZNALEZIONYCH, SZEŚĆ ZAMKNIĘTYCH W LOCIE C2, JEDNO ZOSTAŁO. Liczba
-  // niżej jest tym, co ZOSTAJE, a nie tym, co przelot kiedyś naliczył —
+  // SIEDEM ZNALEZIONYCH, SZEŚĆ ZAMKNIĘTYCH W LOCIE C2, SIÓDME W LOCIE D1.
+  // Lista jest tym, co ZOSTAJE, a nie tym, co przelot kiedyś naliczył —
   // wyliczenie siedmiu podmiotów stoi w komentarzu wyżej i jest historią tego
   // pomiaru, nie stanem produktu.
   assert.deepEqual(
     TITLE_BAND_DIVERGENCES.map((row) => row.id),
-    ["meetings"],
+    [],
   );
-  // I TO JEST WARUNEK UZBROJENIA, ZAPISANY JAKO ASERCJA, A NIE JAKO PROZA.
-  // Spotkania rysują `.meeting-hero` — siatkę JEDNOKOLUMNOWĄ, która nie ma
-  // prawego końca pasma — więc dopóki ten nagłówek nie zostanie przebudowany,
-  // `TITLE_BAND_ACTION_STATUS` musi zostać na „pending". Uzbrojenie przy
-  // niepustej liście robi z bramki układu czerwień do końca fali.
-  assert.equal(TITLE_BAND_ACTION_ARMED, false);
+  // I TO JEST WARUNEK UZBROJENIA, ZAPISANY JAKO ASERCJA, A NIE JAKO PROZA:
+  // przyrząd wolno uzbroić DOKŁADNIE wtedy, gdy lista rozjazdów jest pusta.
+  // Odwrotny kierunek jest tak samo pilnowany — uzbrojony przyrząd nad niepustą
+  // listą robiłby z bramki układu czerwień do końca fali.
+  assert.equal(TITLE_BAND_ACTION_ARMED, TITLE_BAND_DIVERGENCES.length === 0);
+  assert.equal(TITLE_BAND_ACTION_ARMED, true);
 });
 
 // SZEŚĆ EKRANÓW ODDANYCH PRZEZ LOT C2, WYPISANYCH Z NAZWY. Bez tej asercji
@@ -623,16 +622,16 @@ test("the action classes are the two that carry a fill, and ghost is not one", (
   assert.ok(!TITLE_BAND_ACTION_CLASSES.includes("ghost-button"));
 });
 
-test("pending reports what the list predicts and throws on anything else", () => {
-  assert.equal(TITLE_BAND_ACTION_ARMED, false);
+test("the position is armed and the pending rule still holds as a rule", () => {
+  assert.equal(TITLE_BAND_ACTION_ARMED, true);
   // STATUS NAZYWA TO, CO ZOSTAŁO, A NIE LOT, KTÓRY JUŻ POSZEDŁ. Do lotu C2
-  // brzmiał „pending: FAZA C, lot C2" i było to zdanie prawdziwe dopóty, dopóki
-  // C2 nie wszedł; po wejściu bramka drukowałaby w każdym przebiegu obietnicę
-  // lotu, który się skończył, nad jedynym ekranem, którego NIE zamknął.
-  assert.equal(
-    TITLE_BAND_ACTION_STATUS,
-    "pending: pasmo akcji Spotkań (.meeting-hero)",
-  );
+  // brzmiał „pending: FAZA C, lot C2", potem „pending: pasmo akcji Spotkań
+  // (.meeting-hero)" — a od lotu D1 nie ZOSTAŁO nic, więc mówi „enforced".
+  assert.equal(TITLE_BAND_ACTION_STATUS, "enforced");
+  // REGUŁA TRYBU RAPORTU JEST DALEJ ASERTOWANA, choć produkt jej dziś nie
+  // używa: to jest funkcja nad liczbami, nie stan tej aplikacji, a przyrząd,
+  // który po uzbrojeniu przestaje pilnować własnej ścieżki raportu, oddaje ją
+  // pierwszemu locie, który znów coś odłoży.
   assert.equal(
     titleBandVerdictThrows({ predicted: true, divergent: true, armed: false }),
     false,

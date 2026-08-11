@@ -12,6 +12,7 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 import { createPortal } from "react-dom";
 
 import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
+import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { CalendarConsentDialog } from "./components/CalendarConsentDialog.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -217,6 +218,14 @@ export const MeetingsSurface = ({
   // row the control lived on. Holding the intent rather than calling `focus()`
   // straight away is what makes it survive the refetch: the element the reader
   // pressed is gone by the time React commits the new list.
+  /* STOI PRZY POZOSTAŁYCH ZACZEPACH, A NIE PRZY SWOIM UŻYCIU, i to jest
+     poprawka zmierzona, nie stylistyczna: pierwsza wersja tego lotu wołała
+     `useRef` niżej, obok tafli integracji — czyli PO trzech wczesnych
+     `return`ach tego komponentu (ładowanie, błąd, brak Space'u). Zaczep wołany
+     warunkowo to zmienna liczba zaczepów między przebiegami: ekran Spotkań
+     przestał się renderować w całości, a sonda geometrii wróciła z `band: null`
+     zamiast z komunikatem — awaria, którą lint tego repozytorium przepuścił. */
+  const jamieSectionRef = useRef<HTMLElement | null>(null);
   const detachRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const reattachRef = useRef<HTMLButtonElement | null>(null);
   const pendingFocusRef = useRef<string | undefined>(undefined);
@@ -585,6 +594,68 @@ export const MeetingsSurface = ({
       )}
     </div>
   );
+  /* IMPORT Z JAMIE JAKO JEDNA FUNKCJA, WOŁANA Z DWÓCH MIEJSC. Do tej pory ta
+     obsługa stała wpisana w atrybut `onClick` przycisku w tafli integracji;
+     pasmo tytułu żąda tej samej roboty u swojego prawego końca, a druga kopia
+     tego łańcucha byłaby drugim miejscem, w którym następna zmiana komunikatu
+     może się nie odbyć. */
+  const importFromJamie = () => {
+    setJamieBusy(true);
+    void client
+      .syncJamie()
+      .then((result) => {
+        setJamieBusy(false);
+        setNotice(
+          `Jamie: ${result.applied + result.corrected} new or corrected, ${result.noChange} unchanged, ${result.partial} partial${
+            result.failed ? `, ${countLabel(result.failed, "error")}` : ""
+          }.`,
+        );
+        load();
+      })
+      .catch(() => {
+        setJamieBusy(false);
+        setNotice(
+          "Could not sync Jamie. The results you already have are unchanged.",
+        );
+      });
+  };
+  /* AKCJA PASMA JEST BEZWARUNKOWA, i to jest wymóg, nie wygoda. Prototyp stawia
+     ją w paśmie zawsze (`v3/screens/meetings.js:431-433` — `btn("Import from
+     Jamie", { cls: "bordered", icon: "arrow" })`), niezależnie od tego, czy
+     klucz jest zapisany; przycisk pojawiający się dopiero po podłączeniu byłby
+     akcją, której czytelnik bez klucza nigdy nie zobaczy — a to jest właśnie
+     stan, w którym ma ona najwięcej do powiedzenia.
+
+     BEZ KLUCZA NIE ODMAWIA, TYLKO PROWADZI: naciśnięcie przewija do tafli
+     integracji i daje jej ognisko, czyli robi tę samą rzecz co ręczne szukanie
+     jej w treści. Martwy przycisk „disabled" mówiłby czytelnikowi, że nic nie
+     da się zrobić, a dokładnie w tym stanie da się.
+
+     `secondary-button`, NIE `primary-button`: prototypowy modyfikator to
+     `bordered` (`v3/app.css:319` — `background: var(--surface-raised)`), czyli
+     powierzchnia z obwódką, a nie wypełnienie akcentem. Spis pasma tytułu liczy
+     obie klasy jako akcję (`TITLE_BAND_ACTION_CLASSES`), więc wybór między nimi
+     jest wyborem o WIERNOŚCI, nie o przejściu bramki. */
+  const bandAction = (
+    <button
+      className="secondary-button"
+      disabled={jamieBusy}
+      onClick={() => {
+        if (jamie.kind === "ready" && jamie.configured) {
+          importFromJamie();
+          return;
+        }
+        const section = jamieSectionRef.current;
+        if (section === null) return;
+        section.scrollIntoView({ block: "nearest" });
+        const field = section.querySelector("input");
+        if (field instanceof HTMLInputElement) field.focus();
+      }}
+      type="button"
+    >
+      {jamieBusy ? "Importing…" : "Import from Jamie"}
+    </button>
+  );
   const jamieConnection = (
     <div className="meeting-integration-wrap">
       {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
@@ -592,6 +663,7 @@ export const MeetingsSurface = ({
       <section
         className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
         aria-labelledby="jamie-title"
+        ref={jamieSectionRef}
       >
         {jamie.kind === "ready" && jamie.configured ? (
           <p className="meeting-integration-summary">
@@ -624,28 +696,7 @@ export const MeetingsSurface = ({
             <button
               className="primary-button"
               disabled={jamieBusy}
-              onClick={() => {
-                setJamieBusy(true);
-                void client
-                  .syncJamie()
-                  .then((result) => {
-                    setJamieBusy(false);
-                    setNotice(
-                      `Jamie: ${result.applied + result.corrected} new or corrected, ${result.noChange} unchanged, ${result.partial} partial${
-                        result.failed
-                          ? `, ${countLabel(result.failed, "error")}`
-                          : ""
-                      }.`,
-                    );
-                    load();
-                  })
-                  .catch(() => {
-                    setJamieBusy(false);
-                    setNotice(
-                      "Could not sync Jamie. The results you already have are unchanged.",
-                    );
-                  });
-              }}
+              onClick={importFromJamie}
             >
               {jamieBusy ? "Syncing…" : "Sync the last 90 days"}
             </button>
@@ -726,18 +777,21 @@ export const MeetingsSurface = ({
   );
   return (
     <section className="meeting-surface" aria-labelledby="surface-title">
-      <header className="meeting-hero">
-        <div>
-          <p className="eyebrow">From preparation to follow-up</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Meetings
-          </h1>
-          <p>
-            Facts before a meeting, the Jamie result after, and every action
-            item that follows.
-          </p>
-        </div>
-      </header>
+      {/* PIĄTY KSZTAŁT PASMA ZNIKA, NIE PRZYBYWA SZÓSTY. `.meeting-hero` był
+          czwartym pasmem tytułu tej aplikacji (`.surface-header`, `.meeting-hero`,
+          nagłówek Biblioteki, nagłówek ekranów rekordu) i jedynym, którego
+          siatka JEDNOKOLUMNOWA nie miała prawego końca — więc ten ekran nie
+          miał gdzie postawić akcji głównej i był ostatnim rozjazdem spisu B2.
+          Prototyp składa go tą samą funkcją co pozostałe
+          (`v3/screens/meetings.js:431-433` przez `crumbbar(crumbs, actions)`,
+          `v3/app.js:677-683`), więc odpowiedzią jest ten sam prymityw, którego
+          Faza C użyła na sześciu ekranach, a nie druga implementacja pasma.
+
+          NADPIS I ZDANIE OPISU ODCHODZĄ RAZEM Z NIM, i to jest wierność, a nie
+          skrót: prototypowe pasmo niesie NAZWĘ EKRANU i akcję, nic więcej
+          (`v3/app.css:282-293`), a nadpis „From preparation to follow-up"
+          powtarzał to, co mówią nagłówki dwóch sekcji pod nim. */}
+      <SurfaceTitleBand action={bandAction} title="Meetings" />
 
       {notice && (
         <p className="meeting-notice" role="status">

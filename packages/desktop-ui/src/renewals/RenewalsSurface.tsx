@@ -848,7 +848,7 @@ export const RenewalsSurface = ({
       {/* POSITION 7 — the reading of the list stands in its own band, under the
           row that acts on it (`v3/app.css:295-301`,
           `v3/screens/renewals.js:218-221`). */}
-      <div className={styles.viewbar}>
+      <div className={`view-band ${styles.viewbar}`}>
         <span aria-live="polite" className={styles.count} role="status">
           {`${countLabel(sections.openCount, "contract")} open · ${sections.closed.length} closed this cycle`}
         </span>

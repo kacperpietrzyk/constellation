@@ -1868,13 +1868,24 @@ kbd {
       100% 12rem no-repeat,
     var(--surface-canvas);
 }
+/* RYNNA KANWY MA JEDNĄ DEFINICJĘ I TRZECH KONSUMENTÓW (Faza D, lot D1).
+   `clamp(var(--space-5), 4vw, var(--space-10))` stało dotąd przepisane
+   w `.work-surface` i w `.surface-scroll`, a `.meeting-surface` niosło jego
+   trzecią, INNĄ wersję (`clamp(var(--space-4), 3vw, var(--space-10))`) — czyli
+   ten sam kształt zapisany trzy razy, w tym raz z inną liczbą. To jest w tym
+   repozytorium nazwana klasa defektu, a od tego lotu ma jeszcze jeden skutek:
+   pasmo tytułu wychodzi z kolumny czytelnej na całą szerokość kanwy MARGINESEM
+   równym tej rynnie, więc rynna zapisana dwa razy to pasmo, które przy
+   pierwszej rozbieżności wystaje albo nie dochodzi. Jedna zmienna, dziedziczona
+   w dół, znaczy, że wyściółka nośnika i margines pasma NIE MOGĄ się rozjechać. */
 .work-surface {
   --surface-measure: 72rem;
+  --surface-gutter: clamp(var(--space-5), 4vw, var(--space-10));
   container-type: inline-size;
   position: relative;
   min-width: 0;
   overflow: auto;
-  padding: 0 clamp(var(--space-5), 4vw, var(--space-10)) var(--space-8);
+  padding: 0 var(--surface-gutter) var(--space-8);
   background: var(--surface-canvas);
   scrollbar-color: var(--border-default) transparent;
 }
@@ -2112,20 +2123,48 @@ kbd {
 .shell-tab-close svg {
   width: 0.8rem;
 }
-/* PROPORCJE PASKA `crumbbar` Z PROTOTYPU (`v3/app.css:282-293`), NIE SAM PASEK.
-   Prototypowy `crumbbar` jest pasmem na całą szerokość płótna, z własną dolną
-   krawędzią; tutaj przejęte są WYŁĄCZNIE jego proporcje — wysokość pasma, skala
-   tytułu i akcja po prawej — a nagłówek zostaje w kolumnie czytelnej
-   (`--surface-measure`), którą ma cała powłoka. Pełne pasmo przesunęłoby
-   poziome wyrównanie względem treści na jedenastu powierzchniach i jest ZMIANĄ
-   WIĘKSZĄ, niż ten lot obejmuje.
+/* PASMO `crumbbar` Z PROTOTYPU, TERAZ RÓWNIEŻ JEGO SZEROKOŚĆ (`v3/app.css:282-293`).
+   Do Fazy D stała tu nota mówiąca, że przejęte są WYŁĄCZNIE proporcje pasma,
+   a pełne pasmo jest „zmianą większą, niż ten lot obejmuje". Lot D1 jest tą
+   zmianą, więc nota jest przepisana zamiast zostawiona jako nieprawda o własnym
+   kodzie — komentarz kłamiący o kodzie, który opisuje, jest w tym repozytorium
+   policzoną, powtarzalną wadą.
+
+   CO ROZSTRZYGNĄŁ POMIAR, a nie czyj gust. Rejestr Fazy 4 zeskanował kolumnę
+   x=2600 zrzutu `v5-renewals.png`: stoją na niej DWIE włoskowe kreski, CSS 79
+   i CSS 119, obie ciągnące się od x=481 do x=2879 — od krawędzi bocznego paska
+   do prawej krawędzi okna. Na `app-renewals.png` w tym samym pasie jest DOKŁADNIE
+   JEDNA kreska (CSS 227) i biegnie od x=520 do x=2799, czyli jest wcięta o 40 CSS
+   z obu stron. To samo na Lejku (x=2200: prototyp CSS 79 i 119, aplikacja ani
+   jednej kreski) i na Organizacjach (x=1500). Cztery wpisy rejestru — #9, #11,
+   #16, #22 — mówią przez to jedno zdanie.
+
+   GRANICA, KTÓREJ TA REGUŁA NIE PRZEKRACZA: pasmo idzie na całą szerokość
+   kanwy, ale TREŚĆ pod nim zostaje w kolumnie czytelnej (`--surface-measure`,
+   `.surface-scroll > *` niżej). Sufit czytelności jest osobną regułą i ten lot
+   go nie rusza. Prototyp też trzyma te dwie rzeczy osobno: `.crumbbar` nie ma
+   żadnego `max-width`, a `.record` (`v3/app.css:650`) ma `--surface-measure`.
+
+   JAK PASMO WYCHODZI Z KOLUMNY: ujemny margines poziomy równy rynnie nośnika
+   (`--surface-gutter`) i ta sama rynna z powrotem jako wyściółka. Skutek jest
+   taki, że PUDEŁKO TREŚCI pasma stoi dokładnie tam, gdzie stało — czyli oś
+   pozioma spisu B2 (`koniec_treści = prawa − wyściółka`) mierzy po tej zmianie
+   tę samą krawędź co przed nią, a sześć ekranów oddanych przez lot C2 zostaje
+   `FLUSH_END`. Zmierzone: przed i po, akcja Organizacji kończy się na x=1400.
+
+   `--surface-band-lift` odejmuje wyściółkę GÓRNĄ nośnika, bo prototypowe pasmo
+   siedzi pod chromem okna bez powietrza nad sobą. Obie liczby są nazwane przy
+   nośniku, nie przepisane tutaj: nośnik, który zmieni rynnę, przesuwa pasmo
+   razem ze sobą, zamiast się z nim rozjechać.
 
    `min-height`, a nie `height`, dokładnie jak w prototypie: przy skalowaniu
    tekstu pasmo ma rosnąć, a nie przycinać. */
 .surface-header {
-  max-width: var(--surface-measure, 58rem);
   min-height: var(--header-band-height);
-  margin: 0 auto var(--space-6);
+  margin: calc(-1 * var(--surface-band-lift, 0px))
+    calc(-1 * var(--surface-gutter, 0px)) var(--space-6);
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   /* Było `flex-start` — akcja równała się do GÓRY nagłówka display, czyli do
      niczego, co widać. W rzędzie o wysokości pasma równa się do rzędu tytułu. */
@@ -2141,6 +2180,52 @@ kbd {
 }
 .surface-header > * {
   min-width: 0;
+}
+/* DRUGIE PASMO PROTOTYPU, RAZ, ZAMIAST SIEDMIU KOPII (`v3/app.css:295-301`).
+   Prototyp układa nad płótnem DWA pasma: `crumbbar` z nazwą ekranu i akcją,
+   a pod nim `viewbar` z przełącznikiem układu, filtrem i licznikiem. Oba mają tę
+   samą wysokość (`--header-band-height`), tę samą rynnę i tę samą dolną krawędź
+   — czyli SĄ jednym kształtem o dwóch treściach.
+
+   Ta aplikacja miała ten kształt przepisany w SIEDMIU arkuszach modułowych
+   (`pipeline`, `organizations`, `renewals`, `people`, `tasks`,
+   `project-collection`, `library`) i w każdym inaczej: Odnowienia miały
+   `min-height` i kreskę, Lejek i Organizacje ani jednego z tych dwóch, a rynny
+   były trzy różne. To jest wariant „ręcznej listy obok zamkniętego słownika",
+   nazwanej w tym repozytorium klasy defektu — więc KSZTAŁT stoi tutaj, a moduły
+   zostają przy swojej TREŚCI (odstęp między dziećmi, zawijanie, kolejność).
+
+   Nazwa klasy jest GLOBALNA i dokładana obok klasy modułowej, a nie zamiast
+   niej: `class={`view-band ${styles.viewbar}`}`. Dzięki temu spis B1 dalej widzi
+   moduł po jego skrócie treści, a ta reguła nie zależy od kolejności, w jakiej
+   bundler skleja arkusze modułowe z globalnym — dwie reguły o tej samej sile
+   selektora rozstrzygałyby się kolejnością wczytania, czyli szczegółem budowy. */
+.view-band {
+  min-height: var(--header-band-height);
+  margin-inline: calc(-1 * var(--surface-gutter, 0px));
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* PASMA STOJĄ NA SOBIE, BEZ POWIETRZA MIĘDZY NIMI — prototyp rysuje ich dolne
+   krawędzie na CSS 79 i CSS 119, czyli dokładnie o wysokość pasma od siebie.
+   Dolny margines pasma tytułu jest odstępem od TREŚCI, więc nad paskiem widoku
+   nie ma czego oddzielać; `:has()` zdejmuje go dokładnie tam, gdzie drugie pasmo
+   naprawdę stoi, i nigdzie indziej.
+
+   `--surface-stack-gap` jest DRUGĄ połową tego samego zdania: nośnik ekranu jest
+   kolumną `flex` z własnym `gap`, a `gap` działa MIĘDZY dziećmi niezależnie od
+   marginesów. Ekran, który chce pasm sklejonych, nazywa swój odstęp tą zmienną
+   i pasek widoku go odejmuje. Ekran, który jej nie deklaruje, dostaje 0 i nic
+   się dla niego nie zmienia — więc ta reguła nie sięga po ekrany, których ten
+   lot nie mierzył. */
+.surface-header:has(+ .view-band) {
+  margin-block-end: 0;
+}
+.surface-header + .view-band {
+  margin-block-start: calc(-1 * var(--surface-stack-gap, 0px));
 }
 /* Historia wrzutek jest ODCZYTEM Biblioteki, a nie własnym celem, więc jej
    nagłówek zjeżdża na `h2` pod `h1` powłoki. Wygląd zostaje ten sam: poziom
@@ -2179,8 +2264,7 @@ kbd {
    w Fazie 2 je ujawniło. Reguła celuje więc w KAŻDY akapit nagłówka, a nie
    w ostatnie dziecko: dziesięć ekranów, na których to działało, wygląda
    tak samo, a dwa, na których nie działało, dołączają. */
-.surface-header p:not(.eyebrow),
-.meeting-hero > div:first-child > p:not(.eyebrow) {
+.surface-header p:not(.eyebrow) {
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
@@ -4277,44 +4361,42 @@ kbd {
 
 /* R7 · Meeting and calendar loop · Atlas PAT-26 / OVR-15 / STA-22 */
 .meeting-surface {
+  /* DRUGI NOŚNIK PASMA TYTUŁU, i dlatego deklaruje te same dwie zmienne co
+     `.surface-scroll`: Spotkania nie przewijają się przez `.surface-scroll`,
+     tylko przez własne pudełko, a od Fazy D rysują to samo `.surface-header`.
+     Rynna była tu wcześniej TRZECIĄ wersją tego samego kształtu i miała inne
+     liczby — patrz nota przy `--surface-gutter` w `.work-surface`. */
+  --surface-band-lift: var(--space-8);
   display: grid;
+  /* SIATKA O WYSOKOŚCI 100% ROZCIĄGA SWOJE RZĘDY, i to jest powód, dla którego
+     pasmo tytułu mierzyło tu 70,8 px przy 40 px na dziesięciu innych ekranach.
+     Zmierzone przed tym lotem i po nim — `.meeting-hero` miało DOKŁADNIE tę
+     samą liczbę, więc rozciągnięcie nie przyszło z przepięciem pasma, tylko
+     stało tu od zawsze i było niewidoczne, dopóki nagłówek był trzywierszowy.
+     `start` znaczy „treść płynie od góry", czyli to, co ten ekran i tak robi:
+     przewija się własnym `overflow: auto`. */
+  align-content: start;
   gap: var(--space-6);
   height: 100%;
   overflow: auto;
   max-width: 94rem;
   margin: 0 auto;
-  padding: var(--space-8) clamp(var(--space-4), 3vw, var(--space-10))
-    var(--space-12);
+  padding: var(--surface-band-lift) var(--surface-gutter) var(--space-12);
 }
-.meeting-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-/* TO JEST TYTUŁ EKRANU, tylko pod inną klasą — i pierwsza wersja tej noty
-   twierdziła coś przeciwnego („tytuł rekordu spotkania"), na tej podstawie
-   POWIĘKSZAJĄC go z 31,68 px do 36 px. Obala to `MeetingsSurface.tsx:729-733`:
-   ten `h1` niesie `id="surface-title"` i literał „Meetings", czyli dokładnie
-   etykietę aktywnej zakładki tuż nad sobą. Dubluje tak samo jak jedenaście
-   pozostałych i dostaje to samo lekarstwo co one.
+/* CZTERY REGUŁY `.meeting-hero` SKASOWANE, NIE OSIEROCONE (Faza D, lot D1).
+   Spotkania rysują dziś `SurfaceTitleBand`, czyli `.surface-header` — to samo
+   pasmo co sześć ekranów Fazy C — więc siatka jednokolumnowa, kopia reguły
+   `h1` (rozmiar i waga słowo w słowo takie same jak w `.surface-header h1`),
+   kopia reguły akapitu opisu i wpis w zapytaniu kontenerowym straciły ostatni
+   znacznik, który je wołał.
 
-   Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
-   `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero` — dlatego zła
-   liczba przeszła. Podmiot sondy jest teraz wyprowadzony z `id="surface-title"`,
-   nie z klasy nagłówka; patrz `scripts/verify-renderer-layout.mjs`. */
-.meeting-hero h1 {
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: -0.008em;
-  line-height: var(--leading-snug);
-}
-.meeting-hero > div:first-child > p:last-child {
-  max-width: 48rem;
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: var(--leading-normal);
-}
+   Nota, która tu stała, mówiła rzecz wartą zapamiętania i dlatego zostaje
+   przepisana zamiast usunięta: sonda wierności NIE MIERZYŁA tego tytułu, bo jej
+   podmiotem był selektor `.surface-header h1, h2`, a Spotkania rysowały
+   `.meeting-hero` — i tak przeszła zła liczba (36 px zamiast 31,68 px). Podmiot
+   sondy jest od tamtej poprawki wyprowadzony z `id="surface-title"`, a nie
+   z klasy nagłówka (`scripts/verify-renderer-layout.mjs`), więc ten ekran nie
+   wypada z pomiaru ani przez tę zmianę, ani przez następną. */
 .calendar-capability {
   display: grid;
   gap: var(--space-2);
@@ -5176,12 +5258,13 @@ kbd {
   }
 }
 @container (max-width: 47.5rem) {
+  /* RYNNA, NIE WYŚCIÓŁKA: pasmo tytułu wychodzi z tej powierzchni na pełną
+     szerokość ujemnym marginesem równym `--surface-gutter`, więc zwężenie
+     wyściółki przez `padding-inline` zostawiłoby pasmo wysunięte poza kanwę
+     o różnicę tych dwóch liczb. Nadpisujemy więc RYNNĘ i pozwalamy, żeby
+     wyściółka i margines pasma zmieniły się razem. */
   .meeting-surface {
-    padding-inline: var(--space-4);
-  }
-  .meeting-hero {
-    grid-template-columns: 1fr;
-    align-items: start;
+    --surface-gutter: var(--space-4);
   }
   .meeting-completed,
   .meeting-context-rail {
@@ -5355,9 +5438,16 @@ kbd {
   background: transparent;
 }
 .surface-scroll {
+  /* WYSOKOŚĆ, KTÓRĄ PASMO TYTUŁU ODEJMUJE, ŻEBY USIĄŚĆ NA GÓRNEJ KRAWĘDZI
+     KANWY. Prototyp stawia pasmo bezpośrednio pod chromem okna, bez ani jednego
+     piksela powietrza nad nim (`v3/app.css:281-293` — `.crumbbar` jest
+     RODZEŃSTWEM `.scroller`, nie jego dzieckiem). U nas pasmo jest dzieckiem
+     przewijanego nośnika, więc jedyne, co je z tamtej krawędzi spycha, to
+     wyściółka górna TEGO nośnika — a skoro ma ją odjąć, musi ją znać z nazwy,
+     nie z powtórzonego literału. */
+  --surface-band-lift: var(--space-6);
   min-height: 100%;
-  padding: var(--space-6) clamp(var(--space-5), 4vw, var(--space-10))
-    var(--space-10);
+  padding: var(--surface-band-lift) var(--surface-gutter) var(--space-10);
 }
 /* A READING COLUMN OF AT MOST `--surface-measure`, CENTRED. That is what these
    three declarations say together, and `inline-size: 100%` is the one that makes
@@ -5400,7 +5490,16 @@ kbd {
    reasoned. `margin-inline: 0` also produces the right width, by switching off
    the centring these surfaces were designed around — which is why the definite
    size is the remedy and not the removal. */
-.surface-scroll > * {
+/* DWA WYJĄTKI OD TEJ REGUŁY SĄ PASMAMI, i to jest cała treść dopisku Fazy D.
+   Ta reguła mówi „kolumna czytelna, wyśrodkowana"; pasmo tytułu i pasek widoku
+   mówią coś przeciwnego — „cała szerokość kanwy, z własną dolną krawędzią" —
+   i mówią to trzema deklaracjami, z których każdą ta reguła by nadpisała, bo
+   stoi w arkuszu NIŻEJ przy tej samej sile selektora. Wyjątek zapisany tutaj
+   jest jedyną wersją, przy której geometria pasma zostaje w JEDNEJ regule;
+   alternatywa — dopisać pasmu drugą, silniejszą regułę w tym miejscu — rozbiłaby
+   jeden kształt na dwa odległe miejsca w arkuszu, czyli zrobiłaby dokładnie to,
+   co ta baza kodu nazywa dryfem przepisanego kształtu. */
+.surface-scroll > *:not(.surface-header):not(.view-band) {
   inline-size: 100%;
   max-width: var(--surface-measure, 58rem);
   margin-inline: auto;
@@ -8179,8 +8278,14 @@ kbd {
   .restore-counts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* RYNNA, NIE WYŚCIÓŁKA — ta sama poprawka i ten sam powód co przy
+     `.meeting-surface` w zapytaniu kontenerowym wyżej. Nadpisanie samej
+     wyściółki zostawiało pasmo tytułu wysunięte poza nośnik o RÓŻNICĘ tych
+     dwóch liczb; zmierzone przez bramkę układu przy oknie 320 px na
+     OSIEMNASTU ekranach naraz: „content 272 px wide in a 268 px box", czyli
+     dokładnie 2 × (20 px rynny − 16 px wyściółki). */
   .surface-scroll {
-    padding-inline: var(--space-4);
+    --surface-gutter: var(--space-4);
   }
   .condition-banner {
     margin-inline: var(--space-4);

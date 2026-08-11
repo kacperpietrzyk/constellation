@@ -7,9 +7,11 @@
    screen loses nothing. */
 
 .people {
+  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
@@ -67,12 +69,9 @@
   letter-spacing: normal;
 }
 
+/* Kształt pasma jest w `.view-band` (`styles.css`); tu zostaje treść. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-3);
-  padding-inline: var(--space-4);
 }
 
 .switcher {

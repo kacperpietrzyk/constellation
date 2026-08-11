@@ -19,9 +19,12 @@
    INSIDE each cell. */
 
 .organizations {
+  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`: odstęp kolumny
+     jest nazwany, bo pasma nad listą go odejmują. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
@@ -68,12 +71,9 @@
 
 /* The view bar holds a layout switch, a filter group and a live count. Three
    groups that must not sit on one unbreakable line. */
+/* Kształt pasma jest w `.view-band` (`styles.css`); tu zostaje treść. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-3);
-  padding-inline: var(--space-4);
 }
 
 .switcher {

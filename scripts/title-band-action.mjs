@@ -260,25 +260,29 @@ export const PROTOTYPE_FILLED_MODIFIERS = ["primary", "bordered"];
  * tytułu na powierzchniach i RZĄD WYŻEJ na ekranach rekordu, więc „każdy wiersz
  * IN_BAND" byłoby warunkiem, którego wierna aplikacja NIE MOŻE spełnić.
  *
- * CO ZOSTAŁO PO LOCIE C2, wypisane, bo od tego zależy, kiedy wolno uzbroić:
- * SPOTKANIA. `.meeting-hero` to siatka JEDNOKOLUMNOWA (`styles.css`, reguła
- * `.meeting-hero`) — nie ma prawego końca pasma, więc nie ma dokąd wstawić
- * akcji bez przebudowy tego nagłówka, a przebudowa jest większa niż lot C2
- * i została ODDANA JAKO NIEZROBIONA, nie przemilczana. Lot C2 zamknął pozostałe
- * siedem: Zadania, Lejek, Odnowienia, Organizacje, Ludzie (akcja do pasma,
- * u jego końca), Bibliotekę (slot akcji w `LibraryShell`, licznik do paska
- * widoku) i rekord projektu (ten stał poza rzędem ZGODNIE z prototypem —
- * rozjazdem była FARBA).
+ * WARUNEK SPEŁNIONY 2026-08-11, LOT D1 FAZY D — i dlatego ta pozycja jest dziś
+ * „enforced". Lot C2 zamknął siedem z ośmiu podmiotów: Zadania, Lejek,
+ * Odnowienia, Organizacje, Ludzie (akcja do pasma, u jego końca), Bibliotekę
+ * (slot akcji w `LibraryShell`, licznik do paska widoku) i rekord projektu (ten
+ * stał poza rzędem ZGODNIE z prototypem — rozjazdem była FARBA). Ósmym były
+ * SPOTKANIA i były jedynym powodem, dla którego ten przelot tylko raportował:
+ * `.meeting-hero` było siatką JEDNOKOLUMNOWĄ, czyli pasmem bez prawego końca.
  *
- * Przełączenie przed domknięciem Spotkań zrobiłoby z bramki układu czerwień do
- * końca fali, czyli przyrząd, który nie pilnuje niczego innego.
+ * Lot D1 skasował `.meeting-hero` i przepiął ekran na `SurfaceTitleBand` — ten
+ * sam prymityw, przez który przechodzi sześć ekranów C2 — z akcją „Import from
+ * Jamie" u końca pasma. `TITLE_BAND_DIVERGENCES` jest przez to PUSTE, więc
+ * warunek zapisany wyżej jest spełniony kolumnami, a nie deklaracją.
+ *
+ * CO SIĘ ZMIENIA PO UZBROJENIU: rozjazd przestaje być opisem znanego długu
+ * i staje się awarią przebiegu. Dopóki tablica jest wewnętrznie zgodna
+ * z pomiarem, nic nie pada; ekran, który wróci do akcji rząd niżej albo przy
+ * lewej krawędzi pasma, kładzie bramkę.
  *
  * Rekord zadania NIE JEST na tej liście i to nie jest przeoczenie: prototyp
  * stawia tam wyłącznie kontrolki bez tła, więc nasze puste pasmo jest z nim
  * ZGODNE — patrz predykat symetrii w nagłówku.
  */
-export const TITLE_BAND_ACTION_STATUS =
-  "pending: pasmo akcji Spotkań (.meeting-hero)";
+export const TITLE_BAND_ACTION_STATUS = "enforced";
 
 /**
  * Czy ten przelot EGZEKWUJE werdykty tabeli.
@@ -666,15 +670,19 @@ export const TITLE_BAND_ROWS = [
     prototypeRow: "IN_BAND",
     prototypeInline: "FLUSH_END",
     cite: 'v3/screens/meetings.js:431-433 — btn("Import from Jamie", { cls: "bordered", icon: "arrow" })',
-    today: "NO_ACTION",
-    todayInline: "NO_ACTION",
-    // ODESŁANIE SELEKTOREM, NIE NUMEREM — poprawione 2026-08-11 po przeglądzie,
-    // który zmierzył, że `styles.css:3933-3937` wskazuje dziś na `.work-surface`
-    // w `@media (max-width: 50rem)`, czyli na cudzy kod: reguła `.meeting-hero`
-    // odjechała o 195 linii pod dopiskami Fazy C. Numer w tym arkuszu gnije po
-    // każdym locie fali, a to jest JEDYNY otwarty wpis tej tablicy, więc pójdzie
-    // po nim następny lot.
-    app: "MeetingsSurface.tsx:729-739 — .meeting-hero to siatka JEDNOKOLUMNOWA (styles.css, reguła `.meeting-hero`), prawy koniec pasma nie istnieje",
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    // OSTATNI ROZJAZD TEJ TABLICY, ZAMKNIĘTY W LOCIE D1 FAZY D — i to jest
+    // powód, dla którego `TITLE_BAND_ACTION_STATUS` niżej mówi dziś „enforced".
+    // `.meeting-hero` NIE ISTNIEJE: ekran rysuje ten sam `SurfaceTitleBand`, co
+    // sześć ekranów lotu C2, a akcją pasma jest „Import from Jamie"
+    // (`secondary-button`, bo prototypowy modyfikator to `bordered`, nie
+    // `primary`). Zmierzone w przelocie z 2026-08-11: „band header.surface-header
+    // h=40 content ends x=1400 (right x=1440 − padding 40) column-gap 16",
+    // „button.secondary-button „Import from Jamie" band y 41.5–77.5 h=36
+    // x 1248.1–1400 drift 0px vs tolerance 18px → IN_BAND | end gap 0px vs
+    // tolerance 16px → FLUSH_END".
+    app: 'MeetingsSurface.tsx — <SurfaceTitleBand action={bandAction} title="Meetings" />; akcja bezwarunkowa, bez klucza Jamie prowadzi do tafli integracji zamiast się chować',
   },
   {
     id: "library",

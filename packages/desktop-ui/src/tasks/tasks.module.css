@@ -2,9 +2,13 @@
    własny arkusz — tutaj jest wyłącznie to, co wspólne dla wszystkich pięciu. */
 
 .tasks {
+  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`: odstęp kolumny
+     jest nazwany, bo pasmo tytułu i pasek widoku go odejmują, żeby stanąć na
+     sobie tak, jak stoją w prototypie. */
+  --surface-stack-gap: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--surface-stack-gap);
   min-block-size: 0;
   /* Scaled text must not make the PAGE scroll sideways. Anything genuinely
      wider than the window — a board of columns, a table of eight — scrolls
@@ -45,13 +49,9 @@
   overflow-x: clip;
 }
 
+/* Kształt pasma jest w `.view-band` (`styles.css`); tu zostaje treść. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-3);
-  padding-block-end: var(--space-2);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .switcher {

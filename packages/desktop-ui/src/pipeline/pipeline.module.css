@@ -53,9 +53,14 @@
         `PipelineSurface.tsx` and is older than this pass. */
 
 .pipeline {
+  /* ODSTĘP KOLUMNY NAZWANY, ŻEBY PASMA MOGŁY GO ODJĄĆ. `gap` działa MIĘDZY
+     dziećmi niezależnie od marginesów, więc pasmo tytułu i pasek widoku nie
+     dadzą się skleić dopóty, dopóki ta liczba jest anonimowa. Jedna definicja,
+     dwóch konsumentów — patrz `.view-band` w `styles.css`. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the board ──────────────────────────────────────────── */
@@ -72,12 +77,12 @@
    w `SurfaceTitleBand`, gdzie tę samą robotę robi `justify-content:
    space-between` pasma — czyli reguła, która w `styles.css` stała martwa,
    odkąd pasmo miało jedno dziecko. */
+/* KSZTAŁT PASMA ODSZEDŁ DO `.view-band` W `styles.css` (Faza D, lot D1) —
+   wysokość, rynna i włoskowa kreska były tu przepisane siódmy raz i w tym
+   arkuszu brakowało dwóch z tych trzech. Zostaje TREŚĆ: co ten pasek trzyma
+   i jak się to układa, gdy się nie mieści. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-2);
-  padding-inline: var(--space-4);
 }
 
 .create {
@@ -272,11 +277,19 @@
 
 /* ── The board ───────────────────────────────────────────────────────── */
 
+/* TRZECIA LEWA KRAWĘDŹ NAD TABLICĄ ZNIKA TUTAJ (wpis #11 rejestru Fazy 4).
+   Rejestr zmierzył trzy: tusz tytułu na 41 CSS, pigułkę „Stages" na 56 i kartę
+   kolumny na 57,5 — a w prototypie tytuł i karta kolumny padają na tę samą
+   liczbę (13 CSS), bo `crumbbar`, `viewbar` i `.pp-board` mają w nim JEDNĄ
+   wyściółkę `var(--space-3)`. U nas tę rolę pełni rynna nośnika
+   (`--surface-gutter`), którą pasmo tytułu i pasek widoku już biorą; ta
+   wyściółka była czwartym, lokalnym wcięciem NA TEJ SAMEJ osi i przez to
+   przesuwała karty o 16 px w prawo względem wszystkiego nad nimi.
+   Wyściółka pionowa zostaje — ona nie jest krawędzią. */
 .scroller {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
-  padding-inline: var(--space-4);
 }
 
 .board {

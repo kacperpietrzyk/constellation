@@ -961,7 +961,7 @@ export const PipelineSurface = ({
           </button>
         </form>
       )}
-      <div className={styles.viewbar}>
+      <div className={`view-band ${styles.viewbar}`}>
         {/* The control IS the statement that stages are configurable. The
             paragraph that used to say so is gone and this is where it went. */}
         <button
