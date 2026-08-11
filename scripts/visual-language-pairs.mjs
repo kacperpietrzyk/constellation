@@ -5516,7 +5516,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       file: "v3/screens/crm.js",
       lines: "214",
       value:
-        '`[["list", "List", "list"], ["table", "Table", "table"]]` — trzeci człon to nazwa znaku, składana przed etykietą w :203',
+        '`[["list", "List", "list"], ["table", "Table", "table"]]` — trzeci człon to nazwa znaku, składana przed etykietą w :376 (`${icon(ico)}${label}`; do 2026-08-12 stało tu :203, linia PUSTA)',
     },
     route: { surface: "organizations" },
     subject: {
@@ -5551,6 +5551,63 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "count", atLeast: 2 },
     status: "enforced",
   },
+  // DWIE PARY NIŻEJ SĄ DOPISANE 2026-08-12, PO PRZEGLĄDZIE LOTU D6, I ISTNIEJĄ
+  // Z POWODU, KTÓRY WARTO ZAPAMIĘTAĆ. D6-04a/b liczą ELEMENTY (`property: null`,
+  // `count`), więc mówią wyłącznie o OBECNOŚCI znaku. Nad tą podłogą przeszła
+  // wersja, w której glif segmentu miał 0,6875 rem i `opacity: 0.75` — komplet
+  // przepisany z `v3/screens/crm.css:162`, czyli z reguły PLAKIETKI
+  // UCZESTNICTWA, której lot D6 świadomie nie oddał. Prototypowa reguła tego
+  // znaku to `v3/app.css:348` i mówi 0,8125 rem bez wygaszenia. Bramka była
+  // zielona nad niewłaściwą liczbą, bo żadna para nie czytała WYMIARU — to jest
+  // nazwana w tym repo klasa („bramka mierząca OBECNOŚĆ nigdy nie mierzy
+  // JAKOŚCI"), a nie przeoczenie jednego lotu.
+  {
+    id: "D6-04c",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title:
+      "and the segment glyph is view-bar chrome size, not row-content size",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "348",
+      value:
+        "`.segmented button svg { width: 0.8125rem; height: 0.8125rem; }` — CAŁA reguła, bez `opacity`. Prototyp trzyma trzy stopnie wielkości znaku: 1 rem globalnie (`v3/app.css:20`), 0,8125 rem w chromie paska widoku (`:348`), 0,6875 rem w treści wiersza (`v3/screens/crm.css:162`)",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_switch_"] svg',
+      why: "ten sam podmiot co D6-04a, ale czytany WŁASNOŚCIĄ, a nie liczony: podłoga 2 nad liczbą elementów jest zielona przy KAŻDYM wymiarze, więc para licząca nie umie odróżnić chromu paska od treści wiersza. Wymiar rozstrzyga, z której reguły prototypu ten znak pochodzi",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.switch svg)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-04d",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title: "and the People twin is the same size, from the same rule",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "348",
+      value:
+        'ta sama jedna reguła — prototyp rysuje oba paski widoku tym samym `<div class="segmented">` (`v3/screens/crm.js:373` i `:542`), więc rozmiar znaku ma JEDNO źródło',
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_switch_"] svg',
+      why: "DRUGA para, nie druga własność pierwszej — dokładnie z powodu, dla którego istnieje D6-02a: reguła mieszka w drugim arkuszu modułowym, a jedna para stałaby zielona nad połową poprawki. Obie połowy naprawdę rozjechały się razem i razem zostały poprawione",
+      app: "packages/desktop-ui/src/people/people.module.css (.switch svg)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
   {
     id: "D6-05a",
     lot: "D6",
@@ -5560,9 +5617,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     contract: '.ui-craft/tokens.md — „Component layer"',
     prototype: {
       file: "v3/screens/crm.js",
-      lines: "481",
+      lines: "471",
       value:
-        '`<button class="crm-ghead-name">${icon("org")}${esc(o.name)}</button>` — glif PRZED nazwą',
+        '`<button class="crm-ghead-name">${icon("org")}${esc(o.name)}</button>` — glif PRZED nazwą. Do 2026-08-12 stało tu :481, czyli `<span class="crm-ghead-sig">` — plakietka sygnału, nie przycisk nazwy',
     },
     route: { surface: "people" },
     subject: {
@@ -6021,7 +6078,14 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // jednakowymi kwadratami w czterech odcieniach, czyli nad wersją, której
   // nie da się przeczytać bez koloru — a to jest dokładnie ta wada, którą
   // wpis nazywa.
-  pairs: 129,
+  //
+  // 129 → 131 PO PRZEGLĄDZIE LOTU D6, 2026-08-12, i nie jest to nowa pozycja:
+  // `lots.D6.pairs` rośnie 11 → 13 o dwie pary czytające WYMIAR glifu segmentu
+  // (D6-04c/D6-04d) — powód stoi tam. Ta suma rośnie razem z nim, bo
+  // `auditRoutedMap` liczy jedno i drugie OSOBNO: przelot po samym dopisaniu
+  // par rzucił OBA drifty naraz (`holds 131 routed pairs, declared 129`
+  // i `lot D6: 13 carried, 11 declared`) i nie ocenił ani jednej pary.
+  pairs: 131,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -6169,8 +6233,20 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       //     z `descendant-overflow.mjs`. To jest brak DOSTAWY, nie brak
       //     pomiaru, więc stoi w `notDelivered` raportu, a nie na liście
       //     nieobjętych.
+      //
+      // 11 → 13 PO PRZEGLĄDZIE LOTU D6, 2026-08-12, I NIE JEST TO NOWA POZYCJA:
+      // to druga WŁASNOŚĆ pozycji 3, na której lot pojechał bez dowodu. D6-04a/b
+      // liczą ELEMENTY (`property: null`, `count`, podłoga 2), więc mówią
+      // wyłącznie o OBECNOŚCI znaku — a oddany znak miał 0,6875 rem
+      // i `opacity: 0.75`, czyli komplet przepisany z `v3/screens/crm.css:162`
+      // (plakietka uczestnictwa, której lot świadomie NIE oddał) zamiast
+      // z `v3/app.css:348` (0,8125 rem, bez wygaszenia), rządzącej tym znakiem.
+      // Bramka stała zielona nad niewłaściwą liczbą. D6-04c i D6-04d czytają
+      // WYMIAR — dwie, nie jedna, bo reguła mieszka w dwóch arkuszach
+      // modułowych, tak samo jak w pozycji 1. `positionsWithPairs` się nie
+      // rusza.
       positionsInBrief: 4,
-      pairs: 11,
+      pairs: 13,
       positionsWithPairs: 4, // 1, 2, 3, 4
       positionsWithoutPairs: [],
     },

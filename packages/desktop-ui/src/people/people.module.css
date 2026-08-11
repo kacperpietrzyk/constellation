@@ -98,13 +98,21 @@
 }
 
 /* POZYCJA #29, POŁOWA O SEGMENTACH — budynek przy „By organization", kolumny
-   przy „Table" (`v3/screens/crm.js:216` + `crm.css:141`). Rozmiar w `rem`, bo
-   bramka chodzi też przy 200% i 300%. */
+   przy „Table". Literał układów: `v3/screens/crm.js:216`. Montaż glifu:
+   `v3/screens/crm.js:545`, wewnątrz `<div class="segmented">` otwartego na
+   `:542`. Rozmiar: `v3/app.css:348` (`.segmented button svg`), 0,8125 rem bez
+   wygaszenia.
+
+   POPRAWIONE 2026-08-12, tak jak bliźniak w `organizations.module.css`:
+   pierwsza wersja przepisała tu komplet z `v3/screens/crm.css:162`
+   (0,6875 rem + `opacity: 0.75`) — regułę PLAKIETKI UCZESTNICTWA, której
+   glifu ten lot nie oddał — i powoływała się na `crm.css:141`, linię PUSTĄ.
+
+   Rozmiar w `rem`, bo bramka chodzi też przy 200% i 300%. */
 .switch svg {
-  width: 0.6875rem;
-  height: 0.6875rem;
+  width: 0.8125rem;
+  height: 0.8125rem;
   flex: none;
-  opacity: 0.75;
 }
 
 .switch[aria-selected="true"] {

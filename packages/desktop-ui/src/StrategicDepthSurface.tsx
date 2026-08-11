@@ -829,8 +829,9 @@ export const StrategicDepthSurface = ({
           role="tablist"
         >
           {/* Glif WIODĄCY, tak jak w `v3/screens/crm.js:214` — trzeci człon
-              każdej pary jest nazwą znaku, a `crm.js:203` stawia go PRZED
-              etykietą. Oba znaki pochodzą z zestawu, który `Icon.tsx` już
+              każdej pary jest nazwą znaku, a `crm.js:376` stawia go PRZED
+              etykietą (`${icon(ico)}${label}`; poprzednia wersja tego komentarza
+              wskazywała `:203`, linię PUSTĄ). Oba znaki pochodzą z zestawu, który `Icon.tsx` już
               niesie: prototypowy `table` (`v3/app.js:36`) nie ma tam
               odpowiednika, a właścicielem tego pliku jest lot D2, więc ten lot
               KONSUMUJE nazwę `fields` — prototypowy glif kolumn

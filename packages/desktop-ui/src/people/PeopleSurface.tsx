@@ -52,7 +52,8 @@ import styles from "./people.module.css";
 
 // Trzeci człon to NAZWA GLIFU, tak jak `v3/screens/crm.js:216`
 // (`["orgs", "By organization", "org"], ["table", "Table", "table"]`), a
-// `crm.js:203` stawia go PRZED etykietą. Budynek to nasz `organization` —
+// `crm.js:545` stawia go PRZED etykietą (poprzednia wersja tego komentarza
+// wskazywała `:203`, linię PUSTĄ). Budynek to nasz `organization` —
 // ten sam znak, którym lot D2 rozróżnił pozycję nawigacji; „Table" konsumuje
 // `fields`, bo prototypowy glif tabeli nie ma w `Icon.tsx` odpowiednika,
 // a właścicielem tamtego pliku jest D2.
@@ -246,7 +247,8 @@ const GroupHead = ({
     >
       {/* POZYCJA #26, DRUGA POŁOWA. Szarą pastylkę pod tą nazwą zdjęła Faza C
           (reset przycisku); został glif budynku, który prototyp stawia PRZED
-          nazwą — `v3/screens/crm.js:481` (`${icon("org")}${esc(o.name)}`),
+          nazwą — `v3/screens/crm.js:471` (`${icon("org")}${esc(o.name)}`;
+          poprzednia wersja wskazywała `:481`, czyli plakietkę sygnału),
           rozmiar w `v3/screens/crm.css:191`. Nazwa glifu jest konsumowana
           z zestawu D2, `Icon.tsx` nietknięty. */}
       <button

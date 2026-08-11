@@ -1654,6 +1654,64 @@ const outcome = runBreakTests({
           "the organization glyph in the People group heading",
         ),
     },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE DRUGIE — SEGMENT UKŁADU DOSTAJE ROZMIAR TREŚCI
+      // WIERSZA (D6-04c, druga połowa wpisu #21).
+      //
+      // To nie jest złamanie wymyślone: to jest DOKŁADNIE stan, w jakim lot D6
+      // oddał tę regułę i w jakim przeszła bramka. 0,8125 rem z `v3/app.css:348`
+      // (chrom paska widoku) zjeżdża na 0,6875 rem z `v3/screens/crm.css:162`
+      // (treść wiersza, plakietka uczestnictwa). Znak ZOSTAJE narysowany, więc
+      // D6-04a — para LICZĄCA — ma zostać zielona; czerwień ma przyjść wyłącznie
+      // z pary czytającej wymiar. Po to ta para powstała.
+      //
+      // ANKIETOWANY JEST WIERSZ SELEKTORA, nie sam blok wymiarów: po poprawce
+      // `people.module.css` niesie DWIE reguły o identycznych trzech pierwszych
+      // deklaracjach (`.switch svg` i `.groupName svg`), a `replaceOnce` pada na
+      // wielokrotnym trafieniu. Anchor na selektorze trzyma oba złamania
+      // jednoznaczne w obu arkuszach.
+      //
+      // Wyłączności ten harness nie sprawdza — patrz uwaga przy złamaniu
+      // czterdziestym siódmym.
+      name: "shrink the layout segment glyph to row-content size: the count pair stays green over the wrong dimension",
+      expectRedContains: ["D6-04c"],
+      file: "packages/desktop-ui/src/organizations/organizations.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.switch svg {
+  width: 0.8125rem;
+  height: 0.8125rem;`,
+          `.switch svg {
+  width: 0.6875rem;
+  height: 0.6875rem;`,
+          "the layout segment glyph's size on Organizations",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE TRZECIE — BLIŹNIAK NA LUDZIACH ZOSTAJE Z TYŁU
+      // (D6-04d, połowa wpisu #29 o segmentach).
+      //
+      // Ta sama reguła mieszka w DWÓCH arkuszach modułowych i dlatego ma dwie
+      // pary — tak samo jak znacznik sygnału (złamania czterdzieste szóste
+      // i czterdzieste ósme). Złamanie celuje w arkusz Ludzi i nie dotyka
+      // Organizacji: intencją jest, żeby D6-04c została zielona, bo inaczej
+      // para nad Ludźmi mierzyłaby cudzy plik.
+      name: "shrink the People twin of the segment glyph only: the Organizations size pair stays green over half a fix",
+      expectRedContains: ["D6-04d"],
+      file: "packages/desktop-ui/src/people/people.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.switch svg {
+  width: 0.8125rem;
+  height: 0.8125rem;`,
+          `.switch svg {
+  width: 0.6875rem;
+  height: 0.6875rem;`,
+          "the layout segment glyph's size on People",
+        ),
+    },
   ]),
 });
 

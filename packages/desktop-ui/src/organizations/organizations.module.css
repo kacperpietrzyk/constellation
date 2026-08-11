@@ -101,16 +101,30 @@
 }
 
 /* POZYCJA #21, DRUGA POŁOWA. Farbę zamknęła Faza C (reset przycisku); został
-   glif wiodący, którego prototyp rysuje przy OBU segmentach
-   (`v3/screens/crm.js:203` składa `icon(ic)` przed etykietą, a `crm.css:141`
-   nadaje mu ten rozmiar). Wymiar jest w `rem`, nie w pikselach, bo przeloty
-   bramki chodzą też przy 200% i 300% — znak przybity pikselem przestałby wtedy
-   być znakiem tej samej wielkości co pismo obok. */
+   glif wiodący, którego prototyp rysuje przy OBU segmentach. Montaż:
+   `v3/screens/crm.js:376` składa `${icon(ico)}${label}` w przycisku wewnątrz
+   `<div class="segmented">` otwartego na `:373`. Rozmiar: `v3/app.css:348`,
+   `.segmented button svg { width: 0.8125rem; height: 0.8125rem }` — i to jest
+   CAŁA tamta reguła, bez wygaszenia.
+
+   POPRAWIONE 2026-08-12. Pierwsza wersja niosła 0,6875 rem i `opacity: 0.75`,
+   czyli komplet czterech wartości z `v3/screens/crm.css:162`
+   (`.crm-part svg`) — reguły PLAKIETKI UCZESTNICTWA, czyli dokładnie tego
+   glifu, którego lot D6 świadomie NIE oddał. Prototyp ma trzy stopnie
+   wielkości znaku: 1 rem globalnie (`v3/app.css:20`), 0,8125 rem w chromie
+   paska widoku (`:348`), 0,6875 rem w treści wiersza (`crm.css:162`); tamta
+   wersja zjeżdżała chrom do wielkości treści. Cytat też był fałszywy —
+   `crm.js:203` i `crm.css:141` są LINIAMI PUSTYMI.
+
+   Wymiar jest w `rem`, nie w pikselach, bo przeloty bramki chodzą też przy 200%
+   i 300% — znak przybity pikselem przestałby wtedy być znakiem tej samej
+   wielkości co pismo obok. `flex: none` prototypu tu nie ma, ale pas widoku
+   kurczy się przy 320 px i znak, który da się ścisnąć, zwęziłby się zamiast
+   zostać znakiem. */
 .switch svg {
-  width: 0.6875rem;
-  height: 0.6875rem;
+  width: 0.8125rem;
+  height: 0.8125rem;
   flex: none;
-  opacity: 0.75;
 }
 
 .switch[aria-selected="true"] {
