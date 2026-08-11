@@ -4365,6 +4365,26 @@ kbd {
 .desktop-shell.rail .settings-mode-section {
   display: none;
 }
+/* RAZEM ZE SWOIMI POZYCJAMI, i to jest poprawka regresji zmierzonej w tym
+   samym locie, nie ostrożność. Sekcje są w szynie ukryte (reguła wyżej), więc
+   nagłówek grupy zostawał jako jedyna widoczna treść listy — a jest to zwykły
+   akapit, którego reguła `.nav-item > span { display: none }` nie dosięga.
+   Zmierzone przy 760 px, PRZED tą regułą: etykieta 90,5 px szerokości w szynie
+   szerokiej na 52 px rozpychała listę, a pasmo wyjścia wystawało poza kolumnę
+   o 46,5 px w prawo. Bramka układu tego NIE ZOBACZY — chodzi wyłącznie przy
+   1440 px, a szyna zaczyna się poniżej. Znaleziona osobną sondą.
+
+   `display: none`, a nie samo ukrycie wzrokowe: etykieta jest `aria-hidden`,
+   czyli nie niesie nic czytnikowi ekranu, a grupa, której pozycji nie widać,
+   nie ma czego nazywać. */
+.desktop-shell.rail .settings-mode-group-label {
+  display: none;
+}
+/* Bez własnych pozycji grupa jest pustym pudełkiem, a jej odstęp od sąsiadki
+   zostawiłby w szynie dwie dziury po niczym. */
+.desktop-shell.rail .settings-mode-group + .settings-mode-group {
+  margin-top: 0;
+}
 .desktop-shell.rail .settings-mode-back {
   grid-template-columns: 1fr;
 }
