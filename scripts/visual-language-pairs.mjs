@@ -4856,6 +4856,51 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     status: "enforced",
   },
   {
+    // TRZECIA POŁOWA WPISU #58 — ZNACZNIK AUTORA W KOMPOZYTORZE. Litera idzie
+    // za WPISEM rejestru, nie za pozycją (tak samo jak przy `D4-06a`): #58 ma
+    // trzy zdania i to jest pierwsze z nich, czyli nagłówek wiersza —
+    // „kompozytor: brak awatara". Do naprawy po przeglądzie lotu D4 nie
+    // mierzyło go NIC: `D4-06a` liczy wysyłki poza ramką, `D4-06b` czyta
+    // `resize` pola, a `D4-05` ma podmiot zawężony do znacznika W KARCIE
+    // komentarza (`[class*="_entry_"] …`), więc znacznik stojący w `<form>`
+    // kompozytora jest poza jego zasięgiem z definicji.
+    id: "D4-06c",
+    lot: "D4",
+    position: 6,
+    kind: "restyle",
+    title: "and the composer is stamped by the same author mark as the thread",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "410-411",
+      value:
+        "`.rc-composer { display: grid; grid-template-columns: 1.125rem minmax(0, 1fr) }` + `.rc-mark-me { margin-top: 0.4375rem }` — pierwszą kolumną kompozytora JEST znacznik autora (`v3/screens/record.js:205`), a jego margines opuszcza go do pierwszego wiersza tekstu",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      // ODCZYT WŁAŚCIWOŚCI, NIE `count`, I DECYDUJE O TYM TEN SAM FAKT, co
+      // przy `D4-06a`: zamknięty inspektor trzyma DRUGI, kompletny panel
+      // komentarzy tego samego rekordu, a `count` czyta `querySelectorAll`
+      // BEZ filtra narysowania. `equals: 1` wróciłoby DIFFERS na dwóch,
+      // `equals: 2` zaszyłoby w mapie liczbę montowań panelu, a zliczanie
+      // DOPEŁNIENIA („żaden znacznik kompozytora nie stoi poza kompozytorem")
+      // byłoby ZIELONE nad skasowanym znacznikiem — czyli nad tą właśnie wadą.
+      // Odczyt właściwości filtruje do narysowanych i wymaga JEDNEJ wartości,
+      // więc skasowanie znacznika wraca jako `NOT_MEASURED` z tym id, a nie
+      // jako cisza.
+      selector: '[class*="_composerMark_"]',
+      why: "the composer had no author mark at all: the thread stamped every comment with initials and the box the reader writes in was stamped with nothing",
+      app: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx (styles.composerMark), record-comments.module.css (.composerMark)",
+    },
+    read: { property: "marginTop" },
+    expect: { kind: "rem", value: 0.4375 },
+    status: "enforced",
+  },
+  {
     id: "D4-06b",
     lot: "D4",
     // POZYCJA 7, NIE 6, BO TA PARA CZYTA `resize` — czyli zdanie wpisu #61,
@@ -5256,7 +5301,15 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // dokumentu, a nie o jej kolorze; cztery pary Komentarzy jadą tu przez krok
   // `recordTab`, który mapa umiała robić od Fazy 3 i którego żaden lot Fazy D
   // dotąd nie użył.
-  pairs: 104,
+  //
+  // 104 → 105 PO NAPRAWIE PO PRZEGLĄDZIE LOTU D4, i NIE JEST TO nowa pozycja:
+  // `lots.D4.pairs` urosło wtedy 8 → 9 (trzecia połowa wpisu #58, para
+  // `D4-06c`), a TA suma nie urosła razem z nim. Drzewo zastane przez lot D5
+  // było przez to CZERWONE — `auditRoutedMap` liczy jedno i drugie osobno
+  // i rzucał `ROUTED_COUNT_DRIFT` („holds 105 routed pairs, declared 104")
+  // zanim zdążył ocenić choćby jedną parę. Liczba pozycji się nie zmienia,
+  // bo pozycja 6 lotu D4 była już liczona jako pokryta.
+  pairs: 105,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -5376,8 +5429,15 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // a ta mapa nie ma kroku, który by je otworzył — para nad nim wróciła
       // NOT_MEASURED („matched NO element"), czyli jako AWARIA PRZYRZĄDU, i
       // została zdjęta zamiast zostawiona jako wieczna czerwień.
+      //
+      // SZÓSTA POZYCJA (#58) MA TRZY POŁOWY I DO NAPRAWY PO PRZEGLĄDZIE MIAŁA
+      // PARĘ NAD JEDNĄ. Pozycja liczyła się jako pokryta, bo `D4-06a` mierzy
+      // wysyłkę wewnątrz ramki — a nagłówek wiersza rejestru brzmi „kompozytor:
+      // BRAK AWATARA" i tego nie mierzyło nic. Trzecia para (`D4-06c`) czyta
+      // znacznik autora w kompozytorze; liczba par rośnie 8 → 9, liczba
+      // POKRYTYCH POZYCJI się nie zmienia, bo pozycja 6 była już liczona.
       positionsInBrief: 8,
-      pairs: 8,
+      pairs: 9,
       positionsWithPairs: 7, // 1, 2, 3, 4, 5, 6, 7
       positionsWithoutPairs: [8],
     },
