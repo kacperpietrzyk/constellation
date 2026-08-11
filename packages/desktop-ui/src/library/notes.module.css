@@ -604,13 +604,23 @@
     border-bottom: 1px solid var(--border-subtle);
   }
 
-  /* The arrangement switcher wraps rather than pushing the panel wider: it is
-     three words, and three words are allowed two lines. */
-  .listTools {
-    padding: var(--space-2) var(--space-3);
-  }
+  /* OBIE REGUŁY WĘŻSZEGO KROKU ZOSTAŁY SKASOWANE PRZEZ LOT D3, i to nie jest
+     sprzątanie — jedna z nich ODWRÓCIŁA SIĘ.
 
-  .panelHead {
-    padding: var(--space-3);
-  }
+     Stały tu dwie: `.listTools { padding: var(--space-2) var(--space-3) }`
+     i `.panelHead { padding: var(--space-3) }`. Ich zadaniem było ŚCIĄGNĄĆ
+     wyściółkę w wąskiej kolumnie, gdzie chromu jest najdrożej. Po tym, jak baza
+     zeszła do prototypowych `0.5rem var(--space-4)` (głowa) i `var(--space-2)
+     var(--space-3)` (pasek narzędzi):
+
+       • reguła paska narzędzi jest CO DO ZNAKU tą samą deklaracją co baza,
+         czyli martwa;
+       • reguła głowy dawała 12 px z każdej strony przeciw bazowym 8 px w pionie
+         — czyli w najwęższym kroku ekran wydawał na tę głowę WIĘCEJ pionu niż
+         przy 1440 px. Zdanie, które ta reguła wypowiadała, przestało być
+         prawdziwe w chwili, w której baza się zmieniła, a wpis #34 rejestru
+         jest właśnie o pionie tej kolumny.
+
+     Skasowanie ich znaczy, że wąski krok dziedziczy bazę — a baza jest tu
+     liczbą prototypu, nie kompromisem. */
 }
