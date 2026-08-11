@@ -22,7 +22,7 @@
 // CHODZI RĘCZNIE, nie w `npm run check`: dzieli ograniczenie
 // `verify-renderer-layout.mjs` — potrzebuje przeglądarki, której czysty klon
 // nie ma. PORT PODAJE SIĘ Z ZEWNĄTRZ i to nie jest wygoda: bramka przypina go
-// z `--strictPort`, ten harness odpala ją siedem razy, a dwa drzewa robocze na
+// z `--strictPort`, ten harness odpala ją raz za razem, a dwa drzewa robocze na
 // jednej maszynie zmierzyłyby sobie nawzajem aplikacje i wróciły ZIELONE
 // (zmierzone w locie ACC fali E).
 //
@@ -74,9 +74,9 @@ const replaceOnce = (text, needle, replacement, what) => {
  * Które złamania z tej listy naprawdę wykonać.
  *
  * PO CO, skoro pełna lista jest treścią tego pliku: jedno złamanie to trzy
- * przebudowy i trzy przeloty bramki, a lista ma ich dziewięć — czyli godziny.
+ * przebudowy i trzy przeloty bramki, a lista ma ich trzynaście — czyli godziny.
  * Lot, który uzbraja JEDEN przyrząd, ma obowiązek podać trzy liczby dla SWOJEGO
- * złamania i nie ma powodu przepalać ośmiu cudzych. Filtr jest po fragmencie
+ * złamania i nie ma powodu przepalać cudzych. Filtr jest po fragmencie
  * NAZWY, więc nie da się nim wskazać złamania, które nie istnieje: pusty wybór
  * pada niżej zamiast wrócić zielony na zerze wykonanych złamań — dokładnie ta
  * pułapka, którą fala C zapłaciła na harnessie ekranu szansy.
@@ -572,13 +572,11 @@ const outcome = runBreakTests({
       // z dwóch różnych miejsc kaskady, więc czerwień da się przypisać do
       // pary, a nie do „czegoś w tym pliku".
       //
-      // CZEGO TU NIE MA I DLACZEGO: NIE MA złamania na `max-inline-size` ani
-      // na `flex`, czyli na tej połowie lotu, która dotyczy SZEROKOŚCI.
-      // Wróciłoby ZIELONE — żadna para tego nie czyta i żadna czytać nie może,
-      // bo szerokość `<select>` jest funkcją najdłuższej opcji w fiksturze,
-      // a nie arkusza. Powód stoi wypisany przy parach C5-01a/b i w raporcie
-      // lotu; złamanie, o którym z góry wiadomo, że jest zielone, byłoby
-      // uzbrojeniem udawanym.
+      // CO TO ZŁAMANIE ZOSTAWIA NIETKNIĘTE I DLACZEGO: zostawia
+      // `max-inline-size`, żeby czerwień dało się przypisać do C5-01a/b i tylko
+      // do nich. Szerokość ma OD 2026-08-11 własne złamania (jedenaste,
+      // dwunaste, trzynaste) — do tamtej daty stała tu nota mówiąca, że pary na
+      // szerokość napisać SIĘ NIE DA, i była ona nieprawdą o runnerze.
       name: "delete the record strip's select rule: the control goes back to the bare `select` rule and stands beside the buttons with a bigger type size and a different corner",
       expectRedContains: ["C5-01a", "C5-01b"],
       file: "packages/desktop-ui/src/record/record-screen.module.css",
@@ -595,6 +593,82 @@ const outcome = runBreakTests({
   max-inline-size: 16rem;
 }`,
           "the record action strip's select rule",
+        ),
+    },
+    {
+      // ZŁAMANIE JEDENASTE — SUFIT SZEROKOŚCI W PAŚMIE AKCJI (C5-01c).
+      //
+      // PODNIESIENIE SUFITU, A NIE JEGO SKASOWANIE, i ta różnica jest treścią.
+      // Skasowana deklaracja daje `max-width: none`, a `none` nie jest
+      // długością: runner wraca wtedy NOT_MEASURED (`verify-renderer-layout
+      // .mjs:3665-3672`), czyli AWARIĄ PRZYRZĄDU, a awaria przyrządu to nie
+      // jest werdykt o kodzie. `32rem` daje czysty DIFFERS — „512px” przy
+      // żądanych „256px” — z obiema liczbami wydrukowanymi w wierszu pary.
+      name: "raise the record strip's select ceiling to 32rem: the control may run twice as wide as the sheet declares",
+      expectRedContains: ["C5-01c"],
+      file: "packages/desktop-ui/src/record/record-screen.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.actions select {
+  max-inline-size: 16rem;`,
+          `.actions select {
+  max-inline-size: 32rem;`,
+          "the record action strip's select ceiling",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUNASTE — OBIE OSIE KONTROLKI W USTAWIENIACH (C5-02a/b).
+      //
+      // JEDEN WPIS, DWIE PARY, bo to jeden plik i jedna pozycja lotu, a harness
+      // złamań edytuje w jednym wpisie dokładnie jeden plik. Czerwień zostaje
+      // przypisywalna mimo to: `expectRedContains` wymaga OBU identyfikatorów,
+      // więc wpis przechodzi tylko wtedy, gdy KAŻDA z dwóch par naprawdę
+      // zareagowała (`break-test.mjs:203-213`).
+      //
+      // ODTWARZA STAN SPRZED LOTU CO DO ZNAKU: `align-self: stretch` (kolumna
+      // rozpina kontrolkę na całą taflę) i `flex: 1` (kontrolka zjada wolne
+      // miejsce rzędu, więc pole wyboru staje się tak szerokie jak sąsiednie
+      // pole tekstowe).
+      name: "put the settings select back under the column's stretch and let it eat the row's free space",
+      expectRedContains: ["C5-02a", "C5-02b"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          replaceOnce(
+            text,
+            `.settings-control > select {
+  align-self: start;
+}`,
+            `.settings-control > select {
+  align-self: stretch;
+}`,
+            "the settings select's cross-axis rule",
+          ),
+          `.settings-control select {
+  min-height: 2.75rem;
+  flex: 0 1 auto;`,
+          `.settings-control select {
+  min-height: 2.75rem;
+  flex: 1;`,
+          "the settings select's main-axis rule",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYNASTE — KONTROLKA WIĄZANIA KLIENTA NA SZYNIE REKORDU
+      // (C5-03). Wraca dokładnie do `flex: 1 1 8rem` sprzed lotu, czyli do
+      // kontrolki zjadającej całe wolne miejsce rzędu obok przycisku.
+      name: "give the record rail's select its growth back: it eats every pixel the Link client button leaves",
+      expectRedContains: ["C5-03"],
+      file: "packages/desktop-ui/src/record/project-record.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.railSelect {
+  flex: 0 1 auto;`,
+          `.railSelect {
+  flex: 1 1 8rem;`,
+          "the record rail's select growth",
         ),
     },
   ]),

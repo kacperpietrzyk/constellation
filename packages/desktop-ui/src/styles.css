@@ -8952,7 +8952,40 @@ kbd {
    do wartości tę samą geometrię i ANI JEDNO nie deklaruje szerokości; wpis
    ustawień prototypu (`.st-presetpick`, `v3/screens/settings.js:329-334`) stawia
    etykietę, kontrolkę i notkę w RZĘDZIE, a kontrolka jest w nim tak szeroka,
-   jak jej treść. */
+   jak jej treść.
+
+   TRZECI KSZTAŁT, DOPISANY PO PRZEGLĄDZIE (2026-08-11): ZAPYTANIE KONTENEROWE.
+   Wyliczanka wyżej wymieniała dwa kształty i milczała o `@container (max-width:
+   47.5rem)` (`:9428-9447`), który przewraca `.settings-control > div` w KOLUMNĘ
+   z `align-items: stretch` i daje polom tekstowym `width: 100%`. Zarzut brzmiał:
+   w tym trybie sufit `16rem` obowiązuje kontrolkę, a sąsiednie pole rozpycha się
+   na całość, więc parzystość pole↔kontrolka się rozjeżdża.
+
+   ROZSTRZYGNIĘTE POMIAREM, NIE OSZACOWANE, i wychodzi na to, że ten tryb NIE
+   DOSIĘGA ani jednej kontrolki wyboru. Kontenerem jest `.settings-sections`
+   (`:8535-8537`), więc próg 47,5 rem to 760 px SZEROKOŚCI TAFLI, a nie okna:
+   przy oknie 1440 px tafla ma 1140 px (zapytanie nieaktywne), przy 900 px ma
+   608 px (zapytanie AKTYWNE). Zmierzone w obu stanach na tej samej fiksturze:
+   sześć NARYSOWANYCH kontrolek wyboru, rodzicem żadnej z nich NIE JEST
+   `.settings-control > div` — cztery stoją w `form.status-create`, jedna
+   w `label`, jedna wprost w `.settings-control` — więc reguła zapytania trafia
+   w zbiór, w którym nie ma ŻADNEJ Z TYCH SZEŚCIU. Szerokości są w obu stanach
+   IDENTYCZNE (66,8 / 88,8 / 94,8 / 111,8 / 124,8 / 256 px), a sąsiednie pola
+   trzymają 147,8 px w jednym i drugim. Przewidziany rozjazd się nie zdarza.
+
+   CZEGO TEN POMIAR NIE OBEJMUJE, powiedziane wprost, żeby zdanie wyżej nie
+   urosło do nieprawdy: źródło Ustawień deklaruje JEDENAŚCIE `<select>`
+   (`SettingsSurface.tsx` 7, `settings/AccessSection.tsx` 2,
+   `settings/ActivitySection.tsx` 1, `settings/CommercialDefaultsSection.tsx` 1),
+   a ten harness rysuje sześć — pozostałe siedzą w kategoriach i stanach, do
+   których nie dochodzi. O nich nie wiadomo NIC i nie należy udawać, że wiadomo.
+
+   CO Z TEGO WYNIKA DLA ARKUSZA: nic — i to jest decyzja, nie przeoczenie.
+   Nadpisanie `max-inline-size: none` pod tym zapytaniem byłoby regułą, która nie
+   ma dziś podmiotu i której nic nie mierzy. BRAMKA UKŁADU CHODZI NA 1440 px,
+   więc gdyby kiedyś `<select>` trafił do `.settings-control > div`, ten przelot
+   tego NIE ZOBACZY — zobaczy to dopiero pomiar przy tafli węższej niż 760 px,
+   i wtedy ta reguła ma powstać razem z parą. */
 .settings-control > select {
   align-self: start;
 }

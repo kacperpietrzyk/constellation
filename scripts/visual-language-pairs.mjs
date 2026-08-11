@@ -3110,7 +3110,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // Tutaj, a nie w mapie powłoki, z tego samego powodu co C1-02: podmiot
   // rysuje się WYŁĄCZNIE po otwarciu rekordu projektu.
   //
-  // JEDNO ZDANIE PROTOTYPU, DWIE PARY. `.st-select`
+  // JEDNO ZDANIE PROTOTYPU, SZEŚĆ PAR. `.st-select`
   // (`v3/screens/settings.css:190-194`) i `.btn` (`v3/app.css:306-314`) mają co
   // do wartości TĘ SAMĄ geometrię — wysokość 1,75 rem, wyściółka 0,5 rem,
   // `--radius-sm`, `--text-sm` — i ani jedno, ani drugie nie deklaruje
@@ -3126,17 +3126,36 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // deklarowała goła reguła `select` (`:599-606`). Jedna para pilnowałaby
   // jednej z nich i milczała o drugiej — a lot oddaje obie.
   //
-  // DLACZEGO NIE MA TU PARY NA SZEROKOŚĆ, choć lot ruszył ją w trzech
-  // miejscach. Szerokość kontrolki wyboru NIE JEST właściwością wyrażalną
-  // selektorem: `<select>` bierze szerokość najszerszej OPCJI, więc liczba
-  // pikseli zależy od fikstury, a nie od arkusza — asercja na niej gniłaby przy
-  // pierwszej zmianie danych. Właściwość, która to niesie (`flex-grow` na
-  // `.settings-control select` i `.railSelect`), jest wyrażalna, ale jej
-  // podmioty nie są dziś DOSIĘGALNE tym spacerem: `.settings-control select`
-  // ma w Ustawieniach ponad pół tuzina dopasowań, czyli wraca NOT_MEASURED,
-  // a `.railSelect` rysuje się tylko przy niepustej liście kandydatów, czego
-  // ten harness nie gwarantuje. Obie stoją wypisane w raporcie lotu jako
-  // oddane BEZ pary.
+  // CO Z SZEROKOŚCI JEST WYRAŻALNE, A CO NIE — i to jest SPROSTOWANIE, bo do
+  // 2026-08-11 stała tu nieprawda o przyrządzie, a nieprawda zakomitowana
+  // w przyrządzie czyta się dla następnego lotu jak ustalona niemożliwość.
+  //
+  // NIEWYRAŻALNA jest wyłącznie UŻYTA szerokość: `<select>` bierze szerokość
+  // najszerszej OPCJI, więc `width` zależy od fikstury, a nie od arkusza,
+  // i asercja na niej gniłaby przy pierwszej zmianie danych (zmierzone:
+  // pięć kontrolek Ustawień liczy 66,8 / 88,8 / 94,8 / 111,8 / 256 px,
+  // każda od swojej najdłuższej opcji).
+  //
+  // WYRAŻALNE — i od tej naprawy ZMIERZONE — jest wszystko, co lot naprawdę
+  // zadeklarował: `max-inline-size` liczy się do `256px` niezależnie od opcji
+  // (C5-01c), `flex-grow` do „0" (C5-02b, C5-03), `align-self` do „start"
+  // (C5-02a).
+  //
+  // DWA POWODY, KTÓRE TU DAWNIEJ STAŁY, BYŁY SPRZECZNE Z KODEM RUNNERA:
+  //   * „ponad pół tuzina dopasowań, czyli NOT_MEASURED" — runner wraca
+  //     `not-measured` przy wielu dopasowaniach WYŁĄCZNIE wtedy, gdy liczą one
+  //     RÓŻNE wartości (`verify-renderer-layout.mjs:4034-4045`, `distinct
+  //     .length > 1`). Zmierzone w Ustawieniach na 1440 px: sześć narysowanych
+  //     kontrolek, `flex-grow` = „0" we WSZYSTKICH sześciu i `max-width`
+  //     = „256px" we wszystkich sześciu, czyli jedna wartość i pomiar.
+  //   * „podmioty nie są DOSIĘGALNE tym spacerem" — Ustawienia są pełnoprawnym
+  //     przystankiem przez `route: { settingsMode: true }`
+  //     (`verify-renderer-layout.mjs:5928-5951`, wyjęte spod `ROUTED_ARRIVAL`
+  //     w `:5746`), i sześć par L6-* mierzy tam od Fazy 3. `.railSelect` też
+  //     się rysuje: zmierzone na otwartym rekordzie projektu w tym harnessie —
+  //     jedna narysowana kontrolka, `flex-grow` „0", `max-width` „256px”,
+  //     szerokość 251 px. Warunek „niepusta lista kandydatów" jest w tej
+  //     fiksturze spełniony, więc `blind` byłoby tu wyciszeniem bez powodu.
   {
     id: "C5-01a",
     lot: "C5",
@@ -3189,6 +3208,119 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "borderTopLeftRadius" },
     expect: { kind: "token", token: "--radius-md" },
+    status: "enforced",
+  },
+  {
+    id: "C5-01c",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "and it stops at a ceiling instead of running as wide as its longest option",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size", „Bounded, not unbounded"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "190-194",
+      value:
+        "`.st-select` nie deklaruje ŻADNEJ szerokości, tak samo jak `.btn` (`v3/app.css:306-314`) — kontrolka bierze szerokość własnej treści. Sufit jest tłumaczeniem tego zdania na dane, których prototyp nie ma: jego jedyny `<select>` niesie trzy krótkie opcje zakresu, a ten niesie NAZWY SZABLONÓW, czyli treść rekordu. Bez sufitu „szerokość własnej treści” znaczy „tyle, ile najdłuższa nazwa”",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[data-record-kind="project"] [class*="_crumbs_"] select',
+      why: "same subject as C5-01a",
+      app: "packages/desktop-ui/src/record/record-screen.module.css (.actions select)",
+    },
+    // `max-width` JEST TU JEDYNĄ WŁASNOŚCIĄ SZEROKOŚCI, KTÓRA NIE ZALEŻY OD
+    // FIKSTURY, i dlatego czyta się ją, a nie `width`. Zadeklarowana długość
+    // liczy się do `256px` przy każdej liście opcji; użyta szerokość tej samej
+    // kontrolki to dziś 154 px, jutro tyle, ile ma najdłuższy szablon.
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 16 },
+    status: "enforced",
+  },
+  {
+    id: "C5-02a",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "the settings select stops being stretched to the panel's width by its column",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size", „Width is `flex`, height is `align-self`"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "190-194",
+      value:
+        "to samo jedno zdanie, co przy C5-01a, w miejscu, w którym prototyp je WYPOWIADA: wpis ustawień (`.st-presetpick`, `v3/screens/settings.js:329-334`) stawia etykietę, kontrolkę i notkę obok siebie, a kontrolka jest w nim tak szeroka, jak jej treść",
+    },
+    route: { settingsMode: true },
+    subject: {
+      // DZIECKO WPROST, i to jest cała różnica między tą parą a C5-02b:
+      // `.settings-control` jest kolumną o `align-items: stretch`, więc
+      // rozpina dziecko na całą taflę i tylko `align-self: start` to cofa.
+      // Zmierzone: jeden narysowany podmiot (`#voice-audio-retention`,
+      // `SettingsSurface.tsx:1898-1911`), 124,8 px przy tafli 1098 px.
+      selector: ".settings-control > select",
+      why: "the only <select> that is a DIRECT child of the column, so it is the only one the column's `align-items: stretch` could reach",
+      app: "packages/desktop-ui/src/styles.css (.settings-control > select)",
+    },
+    read: { property: "alignSelf" },
+    expect: { kind: "literal", value: "start" },
+    status: "enforced",
+  },
+  {
+    id: "C5-02b",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title: "and stops eating the free space of the row it stands in",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "`.btn` nie deklaruje szerokości ani `flex`, a `.st-select` (`v3/screens/settings.css:190-194`) też nie — rośnięcie do wolnego miejsca jest właściwością POLA TEKSTOWEGO, nie kontrolki wyboru o skończonym zbiorze opcji",
+    },
+    route: { settingsMode: true },
+    subject: {
+      // POTOMEK, NIE DZIECKO WPROST: te kontrolki stoją w rzędach, których
+      // rodzicem jest `form.status-create` albo `label`, a nie
+      // `.settings-control > div`. Zmierzone na 1440 px: sześć narysowanych
+      // dopasowań, `flex-grow` = „0" we wszystkich sześciu, więc runner ma
+      // JEDNĄ wartość i pomiar (`verify-renderer-layout.mjs:4034-4045`).
+      selector: ".settings-control select",
+      why: "every rendered select of the settings surface at once — the rule this pair judges is written for all of them and they compute one value",
+      app: "packages/desktop-ui/src/styles.css (.settings-control select)",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+  {
+    id: "C5-03",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "the client-linking select on the project record takes its own width too",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "ta sama relacja, co w paśmie akcji: kontrolka stoi jak przycisk obok niej („Link client”), a `.btn` nie deklaruje ani szerokości, ani `flex`",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // TEN SAM PRZYSTANEK, CO C5-01a/b, więc para nie dokłada spaceru.
+      // Zmierzone: jedna narysowana kontrolka, 251 px, `max-width` 256 px —
+      // czyli fikstura RYSUJE listę kandydatów i `blind` byłoby wyciszeniem
+      // stanu, który ten harness ma.
+      selector: '[data-record-kind="project"] [class*="_railSelect_"]',
+      why: "CSS Module class declared exactly once in the tree (project-record.module.css:611), and the only <select> in the record's rail",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.railSelect), ProjectRecordOverview.tsx:302-310",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
     status: "enforced",
   },
 ];
@@ -3401,7 +3533,19 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // samym paśmie jest dla niego niewidoczny. Dwie pary, bo jedno zdanie
   // prototypu („kontrolka stoi jak przycisk obok niej") schodzi tu z dwóch
   // różnych miejsc kaskady — powód stoi przy wpisach.
-  pairs: 65,
+  //
+  // 65 → 69 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU C5, 2026-08-11, i to NIE JEST ani
+  // nowa pozycja, ani rozpad istniejącej: to POŁOWA LOTU, która pojechała bez
+  // dowodu. Lot ruszył szerokość kontrolki wyboru w TRZECH miejscach
+  // (`.actions select`, `.settings-control select`, `.railSelect`) i nie napisał
+  // na to ani jednej pary, uzasadniając to dwiema rzeczami, które są sprzeczne
+  // z kodem runnera — sprostowanie stoi przy wpisach C5. Zmierzone przed
+  // napisaniem par, nie po: `max-width` = „256px" na kontrolce pasma i na
+  // sześciu kontrolkach Ustawień, `flex-grow` = „0" na wszystkich sześciu
+  // i na `.railSelect`, `align-self` = „start" na jedynym dziecku wprost.
+  // Pozycja briefu dalej JEDNA, więc `positionsWithPairs` się nie rusza —
+  // rośnie tylko `pairs` tutaj i `lots.C5.pairs` niżej.
+  pairs: 69,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -3454,11 +3598,16 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
     C5: {
       // Lot C5 ma w swoim zadaniu JEDNĄ pozycję — kontrolkę wyboru z systemową
       // strzałką w paśmie nagłówka — i ta jedna pozycja jest tu objęta parą
-      // (dwiema). Trafień lot naliczył trzy, ale trafienie to MIEJSCE, nie
+      // (sześcioma). Trafień lot naliczył trzy, ale trafienie to MIEJSCE, nie
       // pozycja: wszystkie trzy niosą to samo zdanie prototypu, a rachunek
       // pozycji jest rachunkiem ZDAŃ.
+      //
+      // 2 → 6 PRZY NAPRAWIE PO PRZEGLĄDZIE, 2026-08-11: dwie pary opisywały
+      // WYŁĄCZNIE stopień pisma i promień w jednym z trzech miejsc, a połowa
+      // lotu — szerokość we wszystkich trzech — nie miała dowodu. Powód
+      // i pomiary stoją przy wpisach C5-01c, C5-02a/b i C5-03.
       positionsInBrief: 1,
-      pairs: 2,
+      pairs: 6,
       positionsWithPairs: 1, // 1
       positionsWithoutPairs: [],
     },
