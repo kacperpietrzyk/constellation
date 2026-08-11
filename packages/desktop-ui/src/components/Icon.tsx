@@ -18,6 +18,20 @@
    One owner adds glyphs, once, and publishes that number; screen lots only
    consume names. Reserve left on the tightest budget, hot-path gzip: 2 522 B.
 
+   SECOND OWNER, PHASE D LOT D2 (2026-08-11): `organization` and `calendar`, for
+   registry entries #24 and #31. TWO glyphs, not three — the third retarget
+   (Today) took `clock`, which the 2026-08-07 set already carries, so reading
+   this file before drawing saved a drawing.
+
+   THE NUMBER THIS OWNER CAN HONESTLY PUBLISH IS NOT THE GLYPH SHARE. That lot
+   changed nine files at once (navigation counts, Today's head, the tab, the
+   help mark, font smoothing), so its whole hot-path delta is +625 B gzip
+   (171 952 → 172 577 of 174 000; reserve after: 1 423 B) and the two glyphs
+   were NOT measured in isolation. Extrapolating the 2026-08-07 rate — ~33 B
+   gzip per glyph — puts them near 66 B, which is an estimate and is labelled
+   as one. A lot that needs the real number must measure a build with only the
+   glyph edit in it, the way the entry above did.
+
    GEOMETRY OF THE GLYPHS ADDED 2026-08-07. The shapes come from the v3
    prototype, which draws its icons inline on a 16x16 viewBox with stroke
    width 1.3 (`v3/app.js:14-59`, `v3/screens/knowledge.js:356-368`). This file
