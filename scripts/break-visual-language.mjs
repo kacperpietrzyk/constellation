@@ -791,6 +791,31 @@ const outcome = runBreakTests({
           "the Meetings prototype row",
         ),
     },
+    {
+      // ZŁAMANIE OSIEMNASTE — AKCJA PASMA SPOTKAŃ TRACI GLIF (D1-05).
+      //
+      // ODTWARZA WADĘ NAPRAWDĘ WYDANĄ NA TEJ GAŁĘZI, a nie wyobrażoną: lot D1
+      // przeniósł z prototypu etykietę i modyfikator, a `icon: "arrow"` pominął.
+      // Poniżej 50 rem okna arkusz gasi etykietę akcji pasma i zostawia glif,
+      // więc przycisk bez `svg` był w tym trybie PUSTYM pudełkiem — i wszystkie
+      // przyrządy naraz wracały zielone, bo bramka układu mierzy PRZEPEŁNIENIE,
+      // spis B2 POŁOŻENIE, a spis B1 FARBĘ.
+      //
+      // CZERWIEŃ JEST AWARIĄ PRZYRZĄDU, NIE ROZJAZDEM LICZBY, i to jest jedyna
+      // rzecz, o której trzeba tu wiedzieć: selektor bez dopasowania wraca jako
+      // `NOT_MEASURED`, a `NOT_MEASURED` na parze `enforced` kładzie przelot.
+      name: "take the glyph off the Meetings band action: below 50rem the band draws an empty box",
+      expectRedContains: ["D1-05"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `      <Icon name="arrow" />
+`,
+          "",
+          "the Meetings band glyph",
+        ),
+    },
   ]),
 });
 

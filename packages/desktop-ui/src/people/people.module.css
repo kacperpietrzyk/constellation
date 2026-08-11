@@ -17,8 +17,8 @@
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
 /* WRAPPING IS NOT DECORATION ON THIS SURFACE, it is what keeps it inside
-   itself, and it binds every bar below. `.surface-scroll > *` centres every
-   child with `margin-inline: auto` (`styles.css`), so a child is sized
+   itself, and it binds every bar below. `.surface-scroll > *` gives every
+   child an auto inline END margin (`styles.css`), so a child is sized
    `fit-content` — and `fit-content` is clamped BELOW by min-content. A
    non-wrapping flex row's min-content is the sum of its children, so at 200%
    text such a bar stops fitting the surface's content box and the surface

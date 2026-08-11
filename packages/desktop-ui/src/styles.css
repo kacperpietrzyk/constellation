@@ -4228,6 +4228,17 @@ kbd {
 }
 
 @media (max-width: 50rem) {
+  /* WYŚCIÓŁKA BEZ RYNNY, I TO JEST TU BEZPIECZNE — powiedziane wprost, bo
+     przy `.surface-scroll` (`@media (max-width: 56rem)` niżej) ta sama para
+     musi się ruszać RAZEM: pasmo tytułu wychodzi z kolumny czytania ujemnym
+     marginesem równym `--surface-gutter`, więc nośnik, który nadpisze samą
+     wyściółkę, wypycha pasmo poza siebie o różnicę tych dwóch liczb. Tutaj
+     nadpisana jest sama wyściółka i nic z tego nie wynika, bo `.work-surface`
+     NIE NIESIE PASMA: wszystkie piętnaście pasm tej aplikacji rysuje się
+     wewnątrz `.surface-scroll`, `.meeting-surface` albo własnego nagłówka
+     ekranu rekordu (sprawdzone spisem, nie założone). Zapisane, żeby następny
+     lot nie przepisywał tu rynny „dla symetrii" ani nie czytał tego miejsca
+     jako precedensu dla nośnika, który pasmo niesie. */
   .work-surface {
     padding-inline: var(--space-4);
   }
@@ -4240,8 +4251,11 @@ kbd {
   .shell-history-controls {
     display: none;
   }
+  /* KWADRAT, BO WYSOKOŚĆ JEST TU KONTRAKTEM CELU DOTYKU (2,75 rem niżej).
+     Do naprawy po przeglądzie lotu D1 stało tu 2,25 rem obok wysokości 1,75 rem
+     — czyli prostokąt 36 × 28 px na ekranie dotykowym. */
   .surface-header .secondary-button {
-    width: 2.25rem;
+    width: 2.75rem;
     padding: 0;
     font-size: 0;
   }
@@ -5540,22 +5554,50 @@ kbd {
 
    `align-self: stretch` is the fix a reasonable person tries first and it does
    NOTHING: auto margins in the cross axis beat `align-self`. Measured, not
-   reasoned. `margin-inline: 0` also produces the right width, by switching off
-   the centring these surfaces were designed around — which is why the definite
-   size is the remedy and not the removal. */
+   reasoned. Dropping the auto margin outright also produces the right width, by
+   switching off the shrink-to-fit these surfaces are exposed to — which is why
+   the definite size is the remedy and not the removal. */
 /* DWA WYJĄTKI OD TEJ REGUŁY SĄ PASMAMI, i to jest cała treść dopisku Fazy D.
-   Ta reguła mówi „kolumna czytelna, wyśrodkowana"; pasmo tytułu i pasek widoku
-   mówią coś przeciwnego — „cała szerokość kanwy, z własną dolną krawędzią" —
-   i mówią to trzema deklaracjami, z których każdą ta reguła by nadpisała, bo
-   stoi w arkuszu NIŻEJ przy tej samej sile selektora. Wyjątek zapisany tutaj
-   jest jedyną wersją, przy której geometria pasma zostaje w JEDNEJ regule;
-   alternatywa — dopisać pasmu drugą, silniejszą regułę w tym miejscu — rozbiłaby
-   jeden kształt na dwa odległe miejsca w arkuszu, czyli zrobiłaby dokładnie to,
-   co ta baza kodu nazywa dryfem przepisanego kształtu. */
-.surface-scroll > *:not(.surface-header):not(.view-band) {
+   Ta reguła mówi „kolumna czytelna"; pasmo tytułu i pasek widoku mówią coś
+   innego — „cała szerokość kanwy, z własną dolną krawędzią" — i mówią to
+   trzema deklaracjami, z których każdą ta reguła by nadpisała, bo stoi
+   w arkuszu NIŻEJ. Wyjątek zapisany tutaj jest jedyną wersją, przy której
+   geometria pasma zostaje w JEDNEJ regule; alternatywa — dopisać pasmu drugą,
+   silniejszą regułę w tym miejscu — rozbiłaby jeden kształt na dwa odległe
+   miejsca w arkuszu, czyli zrobiłaby dokładnie to, co ta baza kodu nazywa
+   dryfem przepisanego kształtu.
+
+   WYJĄTEK SIEDZI W `:where()`, ŻEBY NIE RUSZYŁ SIŁY SELEKTORA. `*:not(a):not(b)`
+   sumuje siłę argumentów i podnosi tę regułę z (0,1,0) na (0,3,0) — a przy
+   (0,1,0) stoją CZTERY reguły modułowe celujące w bezpośrednie dzieci tych
+   samych nośników i deklarujące tę samą właściwość (`pipeline.module.css`
+   `.create`, `.dealPanel`, `.emptyState`, `organizations.module.css` `.create`,
+   wszystkie `margin-inline: var(--space-4)`). Podniesiona siła rozstrzygnęłaby
+   ten remis CICHO, na korzyść tej reguły, czyli zmieniłaby wygląd dwóch ekranów
+   albo uciszyła cztery martwe deklaracje — i ani jednego z tych dwóch zdań nie
+   umie dziś powiedzieć żaden przyrząd, bo ani jedna para nie czyta tych
+   elementów. `:where()` wnosi siłę ZERO, więc remis zostaje tam, gdzie był,
+   a wyjątek dla pasm nie płaci za siebie cudzą kaskadą.
+
+   WOLNA PRZESTRZEŃ IDZIE NA KONIEC, NIE NA OBIE STRONY (naprawa po przeglądzie
+   lotu D1). Dopóki pasmo samo siedziało w tej kolumnie, wyśrodkowanie treści
+   i wyśrodkowanie pasma dawały JEDNĄ lewą krawędź. Lot D1 wypuścił pasmo na
+   całą kanwę i zostawił `margin-inline: auto` pod nim, czyli rozjechał te dwie
+   krawędzie o `(szerokość nośnika − 72rem) / 2` — zero, dopóki okno ma nie
+   więcej niż 1452 px (a bramka mierzy najszerzej 1440), i 234 px przy oknie
+   1920 px. Prototyp rozstrzyga to jednoznacznie: sufit czytelności ma tam
+   `.record` (`v3/app.css:650`), `.mt` (`screens/meetings.css:11`), `.ib`
+   (`screens/inbox.css:8`) i `.cal-screen` (`screens/calendar.css:17`), a ŻADEN
+   z nich nie centruje — jedyne `margin: 0 auto` w całym prototypie stoi na
+   `.empty-state` (`v3/app.css:1068`).
+   `0 auto`, A NIE `0`: margines automatyczny po stronie końca zostaje, bo to
+   ON jest mechanizmem opisanym w akapicie wyżej i w czterech arkuszach
+   modułowych — zdjęcie go w całości zrobiłoby z `inline-size: 100%` deklarację
+   bez powodu, którą następny lot skasuje jako zbędną. */
+.surface-scroll > *:where(:not(.surface-header, .view-band)) {
   inline-size: 100%;
   max-width: var(--surface-measure, 58rem);
-  margin-inline: auto;
+  margin-inline: 0 auto;
 }
 .wave2-header {
   margin-bottom: var(--space-6);
@@ -8356,6 +8398,17 @@ kbd {
   .wave2-shell {
     min-width: 0;
   }
+  /* CZTERY KLASY, NIE DWIE (naprawa po przeglądzie lotu D1). Podłoga 2,75 rem
+     jest KONTRAKTEM CELU DOTYKU wąskiego okna, a nie farbą przycisku
+     pobocznego — a stała dotąd wyłącznie pod `quiet`/`ghost`. Odkąd lot D1
+     zszedł z akcją główną na 1,75 rem (`v3/app.css:307`), ten sam pas akcji
+     stawiał obok siebie przycisk 44 px i akcję 28 px (np. `Wave2Surfaces.tsx`
+     — `ghost-button` „Edit outcome" przy `secondary-button compact` „Apply"),
+     czyli DOKŁADNIE tę inwersję, przed którą broniła się nota przy
+     `.quiet-button` wyżej, tylko o 16 px większą. Cel dotyku jest jeden dla
+     całego pasa albo nie jest kontraktem. */
+  .primary-button,
+  .secondary-button,
   .quiet-button,
   .ghost-button {
     min-height: 2.75rem;

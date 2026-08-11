@@ -7,8 +7,9 @@
 
    THE WHOLE SHEET IS WRITTEN AGAINST ONE GATE — the packaged text-scaling check
    at `scripts/run-packaged-alpha-smoke.mjs:786-795`, which fails a surface when
-   `scrollWidth > clientWidth` at 200% root font-size. `styles.css:4404-4407`
-   centres each surface child with `margin-inline: auto`; an auto inline margin
+   `scrollWidth > clientWidth` at 200% root font-size. The reading column rule
+   in `styles.css` gives each surface child an auto inline END margin; an auto
+   inline margin
    turns off stretch and sizes the child `fit-content`, and `fit-content` is
    clamped BELOW by `min-content`. So a child whose min-content exceeds the
    surface content box SETS a width instead of taking one: it fits itself

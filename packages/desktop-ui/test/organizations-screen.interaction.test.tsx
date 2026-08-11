@@ -1081,8 +1081,8 @@ const declarationsOf = (selector: string): string => {
 
 test("the Organizations sheet keeps the declarations that stop the surface sizing itself", () => {
   // 1. Inline-size containment makes an element's own intrinsic width ignore its
-  //    contents. `.surface-scroll > *` centres every child with
-  //    `margin-inline: auto`, which turns off stretch, so a contained list
+  //    contents. `.surface-scroll > *` gives every child an auto inline end
+  //    margin, which turns off stretch, so a contained list
   //    resolves to a fit-content width of ZERO and every row inside it overflows
   //    a box with no width.
   assert.equal(

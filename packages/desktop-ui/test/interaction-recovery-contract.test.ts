@@ -645,9 +645,15 @@ describe("interaction recovery contracts", () => {
       styles,
       /\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*1\.75rem/s,
     );
+    // PODŁOGA WĄSKIEGO OKNA OBEJMUJE CAŁY PAS AKCJI, NIE POŁOWĘ PARY (naprawa
+    // po przeglądzie lotu D1). Ta asercja pilnowała dotąd `quiet`/`ghost`,
+    // a `primary`/`secondary` zostawały na 1,75 rem — czyli przy oknie do 50 rem
+    // akcja główna stała 28 px obok przycisku pobocznego 44 px, dokładnie
+    // odwracając inwersję, przed którą broni się nota wyżej. Asercja mierząca
+    // jedną klasę z pary nie umie zobaczyć rozjazdu MIĘDZY nimi.
     assert.match(
       styles,
-      /@media \(max-width: 50rem\)[\s\S]*?\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.75rem/s,
+      /@media \(max-width: 50rem\)[\s\S]*?\.primary-button,\s*\.secondary-button,\s*\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.75rem/s,
     );
   });
 

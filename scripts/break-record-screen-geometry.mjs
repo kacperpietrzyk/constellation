@@ -78,13 +78,20 @@ if (!fastOnly) {
             // auto-marginesy w osi poprzecznej znów wyłączają `stretch`,
             // `container-type: inline-size` rozwiązuje fit-content do zera,
             // a ekran rekordu wraca do 48 px własnego paddingu.
-            name: "restore the defect: `.surface-scroll > *` loses its definite inline size",
+            //
+            // SELEKTOR PRZEPISANY DWA RAZY, OSTATNI RAZ PRZY NAPRAWIE PO
+            // PRZEGLĄDZIE LOTU D1. To jest sedno tego złamania jako przyrządu:
+            // `replaceOnce` PADA, kiedy nie trafi, więc lot, który przepisze tę
+            // regułę i nie zajrzy tutaj, dostaje głośną awarię zamiast zielonego
+            // przebiegu nad niezmienionym kodem. Lot D1 dołożył do selektora
+            // wyjątek dla pasm i tego nie zauważył.
+            name: "restore the defect: the reading column rule loses its definite inline size",
             file: "packages/desktop-ui/src/styles.css",
             edit: (text) =>
               replaceOnce(
                 text,
-                ".surface-scroll > * {\n  inline-size: 100%;\n",
-                ".surface-scroll > * {\n",
+                ".surface-scroll > *:where(:not(.surface-header, .view-band)) {\n  inline-size: 100%;\n",
+                ".surface-scroll > *:where(:not(.surface-header, .view-band)) {\n",
                 "the fix itself",
               ),
           },

@@ -5345,6 +5345,15 @@ const ROUTED_ARRIVAL = {
   // Biblioteka: przełącznik soczewek (LibraryShell.tsx:111). Ten sam znacznik,
   // po którym przelot geometrii wylicza obiektywy.
   library: "#main-content [data-layout]",
+  // Spotkania: `MeetingsSurface.tsx:779` — korzeń ekranu, ta sama klasa, którą
+  // arkusz obsługuje jako nośnik rynny. Dopisane przy naprawie po przeglądzie
+  // lotu D1: pierwsza para tej mapy nad Spotkaniami potrzebowała przystanku,
+  // a ekran jest osiągalny dla obu spisów (B1 i B2 mierzą go od lotu D1), więc
+  // marker jest jedyną brakującą częścią. `.meeting-skeleton` i `state-panel`
+  // niosą tę samą klasę w stanach ładowania i błędu — dlatego marker musi
+  // zostać potwierdzony jako NARYSOWANY, co `walkRouteInPage` robi dla
+  // każdego przystanku.
+  meetings: "#main-content .meeting-surface",
 };
 
 // RODZAJ REKORDU, KTÓREGO SIĘ SPODZIEWAMY PO TYCH DRZWIACH. Trzy drzwi, trzy

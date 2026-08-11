@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
 import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { CalendarConsentDialog } from "./components/CalendarConsentDialog.js";
+import { Icon } from "./components/Icon.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDate, formatWeekdayTime } from "./i18n.js";
@@ -635,7 +636,19 @@ export const MeetingsSurface = ({
      `bordered` (`v3/app.css:319` — `background: var(--surface-raised)`), czyli
      powierzchnia z obwódką, a nie wypełnienie akcentem. Spis pasma tytułu liczy
      obie klasy jako akcję (`TITLE_BAND_ACTION_CLASSES`), więc wybór między nimi
-     jest wyborem o WIERNOŚCI, nie o przejściu bramki. */
+     jest wyborem o WIERNOŚCI, nie o przejściu bramki.
+
+     GLIF NIE JEST OZDOBĄ, JEST WARUNKIEM WIDOCZNOŚCI TEJ AKCJI (naprawa po
+     przeglądzie lotu D1). Trzeci argument cytowanego wyżej wywołania —
+     `icon: "arrow"` — lot D1 przepisał z prototypu razem z etykietą
+     i modyfikatorem, a sam glif pominął. Poniżej 50 rem okna arkusz zwija
+     KAŻDĄ akcję pasma do kwadratu i gasi jej napis (`styles.css` —
+     `.surface-header .secondary-button { width: …; font-size: 0 }`), bo reguła
+     jest pisana pod akcję Z IKONĄ: chowa etykietę i zostawia glif. Przycisk bez
+     `svg` zostawał w tym trybie PUSTYM prostokątem — jedyny taki z sześciu
+     ekranów, które oddały akcję pasma, bo pięć pozostałych podaje `<Icon />`
+     (np. `people/PeopleSurface.tsx:519-523`). Bramka układu chodzi przy 320 px
+     i wróciła zielona, bo mierzy PRZEPEŁNIENIE, a nie pustkę. */
   const bandAction = (
     <button
       className="secondary-button"
@@ -653,6 +666,7 @@ export const MeetingsSurface = ({
       }}
       type="button"
     >
+      <Icon name="arrow" />
       {jamieBusy ? "Importing…" : "Import from Jamie"}
     </button>
   );

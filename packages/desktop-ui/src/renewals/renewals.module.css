@@ -11,7 +11,7 @@
    the hierarchy in which the DATES have to lead.
 
    WHAT EVERY WRAPPING RULE BELOW IS FOR, said once. `.surface-scroll > *` sets
-   `margin-inline: auto` (`styles.css:4404-4407`), which turns off stretch and
+   an auto inline END margin (`styles.css`), which turns off stretch and
    sizes each surface child `fit-content` — and `fit-content` is clamped BELOW
    by `min-content`. A non-wrapping flex row's min-content is the SUM of its
    children, so at 200% root font size such a row stops being able to fit the

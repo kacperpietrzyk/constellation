@@ -677,11 +677,16 @@ export const TITLE_BAND_ROWS = [
     // `.meeting-hero` NIE ISTNIEJE: ekran rysuje ten sam `SurfaceTitleBand`, co
     // sześć ekranów lotu C2, a akcją pasma jest „Import from Jamie"
     // (`secondary-button`, bo prototypowy modyfikator to `bordered`, nie
-    // `primary`). Zmierzone w przelocie z 2026-08-11: „band header.surface-header
-    // h=40 content ends x=1400 (right x=1440 − padding 40) column-gap 16",
-    // „button.secondary-button „Import from Jamie" band y 41.5–77.5 h=36
-    // x 1248.1–1400 drift 0px vs tolerance 18px → IN_BAND | end gap 0px vs
-    // tolerance 16px → FLUSH_END".
+    // `primary`). CYTAT JEST Z PRZELOTU NA CZUBKU NAPRAWY PO PRZEGLĄDZIE
+    // LOTU D1, i to jest druga wersja tych liczb: pierwsza niosła wysokość
+    // akcji sprzed zejścia na 1,75 rem — pomiar unieważniony dwa commity
+    // później w tym samym locie — a jej oś pozioma unieważniła sama naprawa,
+    // bo dołożony glif poszerzył przycisk o 24 px (1248,1 → 1224,1 na lewej
+    // krawędzi, koniec bez ruchu). Pomiar 2026-08-11: „band header.surface-header
+    // h=40 content ends x=1400 (right x=1440 − padding 40) column-gap 16
+    // button.secondary-button „Import from Jamie” band y 45.5–73.5 h=28
+    // x 1224.1–1400 drift 0px vs tolerance 14px → IN_BAND | end gap 0px vs
+    // tolerance 16px → FLUSH_END”.
     app: 'MeetingsSurface.tsx — <SurfaceTitleBand action={bandAction} title="Meetings" />; akcja bezwarunkowa, bez klucza Jamie prowadzi do tafli integracji zamiast się chować',
   },
   {

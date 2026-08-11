@@ -3488,6 +3488,42 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "rem", value: 1.75 },
     status: "enforced",
   },
+  {
+    id: "D1-05",
+    lot: "D1",
+    position: 3,
+    kind: "restyle",
+    title: "the Meetings band action carries the glyph its collapse depends on",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "431-433",
+      value:
+        '`btn("Import from Jamie", { cls: "bordered", icon: "arrow" })` — trzeci argument tego wywołania JEST ikoną, a `btn` (`v3/app.js:683-687`) rysuje ją PRZED etykietą',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      // GLIF, NIE PRZYCISK. Ta para istnieje, bo poniżej 50 rem okna arkusz
+      // gasi etykietę akcji pasma (`font-size: 0`) i zostawia sam glif —
+      // reguła jest pisana pod akcję Z IKONĄ. Akcja bez `svg` była w tym trybie
+      // PUSTYM prostokątem, a bramka wracała zielona, bo mierzy PRZEPEŁNIENIE,
+      // nie pustkę. Para czytająca sam przycisk byłaby zielona nad tą wadą.
+      //
+      // MIERZONE PRZY 1440 px, GDZIE ZWIJANIE NIE DZIAŁA — i to jest wybór, nie
+      // przeoczenie: para pyta o OBECNOŚĆ glifu, a jego brak jest tu awarią
+      // przyrządu (selektor bez dopasowania → NOT_MEASURED, czyli czerwień),
+      // nie rozjazdem liczby. Szerokość 1 rem pochodzi z reguły bazowej
+      // (`styles.css` — `svg { width: 1rem }`), więc drugie zdanie tej pary
+      // brzmi „glif jest glifem tej aplikacji, a nie obrazkiem o własnym
+      // rozmiarze".
+      selector: ".surface-header .secondary-button svg",
+      why: "the Meetings stop draws exactly one band action and that action carries exactly one glyph",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (bandAction)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 1 },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -3723,7 +3759,17 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // Lot D1 domyka też drugą połowę wpisu #10 rejestru — WYSOKOŚĆ akcji głównej
   // (33 CSS wobec prototypowych 28) — a tego nie mierzyła ani ta mapa, ani spis
   // B2, który czyta POŁOŻENIE akcji i nie ma zdania o jej rozmiarze.
-  pairs: 75,
+  //
+  // 75 → 76 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D1, 2026-08-11, I JEST TO TRZECIA
+  // POZYCJA. Wpis #62 rejestru — akcja pasma Spotkań — był w tym locie mierzony
+  // WYŁĄCZNIE spisem B2, a spis czyta POŁOŻENIE akcji i nie ma zdania o tym,
+  // z czego ta akcja jest zrobiona. Lot przeniósł z prototypu etykietę
+  // i modyfikator, a pominął `icon`, przez co poniżej 50 rem okna — gdzie
+  // arkusz gasi etykietę i zostawia glif — pasmo Spotkań rysowało PUSTE
+  // pudełko. Zielone były wtedy wszystkie przyrządy naraz. Ta para jest
+  // pierwszym przystankiem tej mapy na Spotkaniach; marker przybycia dopisany
+  // razem z nią (`ROUTED_ARRIVAL.meetings`).
+  pairs: 76,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -3797,9 +3843,16 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // spisu B2 (#62 — Spotkania, mierzone TAMTĄD, nie parą), albo pozycje
       // oddane jako niezrobione i wypisane w raporcie lotu. Drugą pozycją jest
       // wysokość akcji głównej (#10), wyrażalna selektorem i dlatego z parą.
-      positionsInBrief: 2,
-      pairs: 6,
-      positionsWithPairs: 2, // 1, 2
+      //
+      // TRZECIA POZYCJA PRZY NAPRAWIE PO PRZEGLĄDZIE: #62 (akcja pasma Spotkań)
+      // stał tu jako „mierzony TAMTĄD, nie parą" i to zdanie było prawdziwe
+      // wyłącznie o POŁOŻENIU akcji. Brakujący glif — bez którego zwijanie
+      // akcji w wąskim oknie daje puste pudełko — nie był mierzony ani przez
+      // spis B2, ani przez tę mapę, ani przez bramkę układu. Pozycja przestaje
+      // być wyłączna dla spisu i dostaje własną parę (D1-05).
+      positionsInBrief: 3,
+      pairs: 7,
+      positionsWithPairs: 3, // 1, 2, 3
       positionsWithoutPairs: [],
     },
     2: {

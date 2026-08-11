@@ -8,7 +8,9 @@
    at all, and the card's accessible name carries it a fourth time, in prose.
 
    THE WINDOWS TEXT-SCALING TRAP, and where it is designed out. `.surface-scroll
-   > *` centres every child with `margin-inline: auto` (`styles.css:4404-4407`),
+   > *` gives every child an auto inline END margin (`styles.css` — the reading
+   column rule; the start margin is 0 since the D1 repair pass, so free space
+   goes to the end instead of both sides),
    which turns off stretch and sizes the child `fit-content` — and `fit-content`
    is clamped BELOW by `min-content`. A non-wrapping flex row's min-content is
    the SUM of its children, so at 200% root font-size such a row sets a width

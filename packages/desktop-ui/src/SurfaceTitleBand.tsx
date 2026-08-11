@@ -34,12 +34,22 @@ import type { ReactNode } from "react";
    i dokładnie jednym takim pojemnikiem na pojemnik. Ten komponent jest naszym
    odpowiednikiem tamtego paska.
 
-   DLACZEGO TO NIE JEST PEŁNY `crumbbar` PROTOTYPU: pasmo prototypu ciągnie się
-   przez całe płótno i ma własną dolną krawędź, a nasze siedzi w kolumnie
-   czytelnej (`--surface-measure`) razem z treścią. Ta różnica jest ŚWIADOMA
-   i opisana przy regule `.surface-header` w `styles.css` — przeniesienie pasma
-   na pełną szerokość przesunęłoby poziome wyrównanie na jedenastu
-   powierzchniach naraz i jest zmianą większą niż lot, który przenosi akcje. */
+   CO Z `crumbbar` PROTOTYPU JEST TU JUŻ WZIĘTE, a co nie. Do Fazy D stał
+   w tym miejscu akapit mówiący, że pasmo siedzi w kolumnie czytelnej
+   (`--surface-measure`) razem z treścią, a pełna szerokość jest „zmianą większą
+   niż lot" — lot D1 tę zmianę zrobił i akapit został tu nieprzepisany przez
+   jeden przegląd. Stan po nim jest taki: pasmo idzie na CAŁĄ SZEROKOŚĆ kanwy
+   i zamyka się własną włoskową kreską, a mechanizmem jest ujemny margines
+   poziomy równy rynnie nośnika (`--surface-gutter`) plus ta sama rynna
+   z powrotem jako wyściółka; w kolumnie czytania zostaje wyłącznie TREŚĆ pod
+   pasmem (`.surface-scroll > *:where(:not(.surface-header, .view-band))`).
+   Liczby i powód stoją przy regule `.surface-header` w `styles.css` i nie są
+   tu przepisywane.
+
+   CZEGO DALEJ NIE MA: pasma prototypu są RODZEŃSTWEM przewijanego nośnika
+   (`v3/app.css:282-303` — `.crumbbar`, `.viewbar`, potem `.scroller`), a nasze
+   siedzą w środku niego, więc przewijają się razem z treścią. To jest jedyna
+   pozostała różnica kształtu i jest nieoddana, a nie zaprzeczona. */
 
 export const SurfaceTitleBand = ({
   title,
