@@ -698,13 +698,22 @@ export const StrategicDepthSurface = ({
      tytułu przy tolerancji 18, poziom 954,6 px od końca pasma przy tolerancji
      16 (`dowody/c2-czerwien-poziom.txt`).
 
-     KLASA JEST WARUNKOWA, i to nie jest ostrożność — to ta sama reguła, którą
-     Lejek i Odnowienia nosiły od swoich lotów: formularz tworzenia ma WŁASNĄ
-     akcję główną („Add organization"), więc bezwarunkowy `primary-button`
-     dawałby dwa wypełnienia akcentu w jednym widoku w chwili otwarcia
-     formularza. Przełącznik schodzi wtedy na `secondary-button` i schodzi
-     z nim jego znaczenie: kiedy formularz jest na ekranie, rzeczą do naciśnięcia
-     jest to, co w środku, a ten przycisk już tylko go zamyka. */
+     KLASA JEST WARUNKOWA I NIE ZMUSZA DO TEGO REGUŁA — poprawione 2026-08-11
+     po przeglądzie, bo poprzednie brzmienie powoływało się na kontrakt, który
+     mówi coś innego. „Usage constraints" 3 zabrania dwóch wypełnień akcentu
+     w JEDNYM POJEMNIKU, a nie w jednym widoku, i została przepisana 2026-08-07
+     dokładnie po to, żeby przestać mówić „one per view"
+     (`.ui-craft/tokens.md`, „Primary action carries the accent fill — one per
+     container that owns a main action, not one per view"). Sprawdzone, a nie
+     założone: formularz tworzenia jest RODZEŃSTWEM pasma, własnym `<form>`
+     niżej w tym pliku — osobnym pojemnikiem, na który kontrakt daje licencję
+     wprost.
+
+     ZOSTAJE WIĘC JAKO WYBÓR O ZNACZENIU: kiedy formularz jest na ekranie,
+     rzeczą do naciśnięcia jest to, co w środku, a ten przycisk już tylko go
+     zamyka. Jest to ŚWIADOMY ROZJAZD z prototypem, którego `crumbbar(crumbs,
+     actions)` (`v3/app.js:677-683`) nie ma ani jednego stanu, w którym akcja
+     pasma gaśnie. Ten sam akapit stoi na Ludziach, Lejku i Odnowieniach. */
   const header = (action?: ReactNode) => (
     <SurfaceTitleBand action={action} title="Organizations" />
   );

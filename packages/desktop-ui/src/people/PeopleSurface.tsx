@@ -493,10 +493,23 @@ export const PeopleSurface = ({
      poniżej rzędu tytułu przy tolerancji 18, poziom 990,1 px od końca pasma
      przy tolerancji 16 — czyli akcja stała przy LEWEJ krawędzi rzędu niżej.
 
-     Klasa jest warunkowa z tego samego powodu co na Organizacjach, Lejku
-     i Odnowieniach: otwarty formularz ma własną akcję główną, a dwa wypełnienia
-     akcentu w jednym widoku są tym jedynym, czego „Usage constraints" 3
-     zabrania licząc. */
+     KLASA JEST WARUNKOWA I NIE ZMUSZA DO TEGO REGUŁA — poprawione 2026-08-11
+     po przeglądzie, bo poprzednie brzmienie powoływało się na kontrakt, który
+     mówi coś innego. „Usage constraints" 3 zabrania dwóch wypełnień akcentu
+     w JEDNYM POJEMNIKU, a nie w jednym widoku, i została przepisana 2026-08-07
+     dokładnie po to, żeby przestać mówić „one per view"
+     (`.ui-craft/tokens.md`, „Primary action carries the accent fill — one per
+     container that owns a main action, not one per view"). Sprawdzone tutaj,
+     a nie założone: formularz tworzenia jest RODZEŃSTWEM pasma, własnym
+     `<form className={styles.create}>` niżej w tym pliku — czyli osobnym
+     pojemnikiem, na który kontrakt daje licencję wprost.
+
+     ZOSTAJE WIĘC JAKO WYBÓR O ZNACZENIU, i tak trzeba go czytać: kiedy
+     formularz jest na ekranie, rzeczą do naciśnięcia jest to, co w środku,
+     a ten przycisk już tylko go zamyka. Jest to ŚWIADOMY ROZJAZD z prototypem,
+     którego `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) nie ma ani
+     jednego stanu, w którym akcja pasma gaśnie. Ten sam akapit stoi na
+     Organizacjach, Lejku i Odnowieniach. */
   const header = (action?: ReactNode) => (
     <SurfaceTitleBand action={action} title="People" />
   );

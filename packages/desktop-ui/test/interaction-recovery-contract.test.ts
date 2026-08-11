@@ -791,18 +791,30 @@ describe("interaction recovery contracts", () => {
   });
 
   it("keeps Document creation progressive and the editor on a distinct reading plane", () => {
+    // 2026-08-11, repair after the C2 review: this assertion named a CLASS, and
+    // the class is gone. Phase C moved both create affordances into the shared
+    // title band through a portal, so the host is now a bare
+    // `<div aria-label="Create in the library">` and the three
+    // `.knowledge-create-bar` rules it used to select — a two-column grid with
+    // its own padding and bottom border — were deleted rather than dragged into
+    // a band they would have fought. What this test is FOR survives the move:
+    // the create path must stay reachable and named. So the accessible name is
+    // what is asserted, and it is asserted as the thing that carries the
+    // affordance, not as a styling hook.
     for (const reading of [notesReading, sourcesReading]) {
-      assert.match(
-        reading,
-        /className="knowledge-create-bar"\s+aria-label="Create in the library"/,
-      );
+      assert.match(reading, /aria-label="Create in the library"/);
     }
     // The two create paths are separately discoverable by name; the accessible
     // name is what makes each one findable, so it is asserted as one. They now
     // live on their own reading — one target, three readings — so each is
     // asserted where it stands.
-    assert.match(sourcesReading, /label="Add source"/);
-    assert.match(notesReading, /label="New content"/);
+    //
+    // The two labels follow the prototype, which is what moved them: it draws
+    // "Add a source" and "New note" (`v3/screens/knowledge.js:802-804`,
+    // `:967-968`), not "Add source" and "New content". The assertion moved with
+    // the product because the product moved toward the reference.
+    assert.match(sourcesReading, /label="Add a source"/);
+    assert.match(notesReading, /label="New note"/);
     assert.match(
       styles,
       /\.knowledge-library\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,

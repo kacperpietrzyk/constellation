@@ -2851,7 +2851,13 @@ const measureTheme = async (
   // podmioty SONDZIE AKCENTU i zamienia jej dzisiejszy wynik w inny — czerwień
   // o czymś, o co ten werdykt nie pyta. Brak jest więc NAZWANY, a przed cichym
   // zniknięciem chroni go podłoga liczby przystanków wyżej.
-  const uncoveredSubjects = ["primary-button", "secondary-button"].filter(
+  //
+  // `.primary-button` WYSZŁO Z TEJ LISTY 2026-08-11, i nie przez skreślenie:
+  // niżej stoi SONDA KIEROWANA, która dochodzi do akcji głównej pasma na
+  // osobnym ekranie i osądza jej ognisko. Nazwanie dziury okazało się za mało —
+  // lot C2 zabrał tej kontrolce pierścień, a bramka wróciła zielona. Zostaje
+  // `.secondary-button`, i zostaje jako brak, nie jako werdykt.
+  const uncoveredSubjects = ["secondary-button"].filter(
     (name) => !focusSubjects.some((stop) => stop.signature.includes(name)),
   );
   report(
@@ -2907,6 +2913,155 @@ const measureTheme = async (
           "so because the paint here is not the ring. It is a keyboard user unable to tell where " +
           "focus is. WCAG 2.4.7.",
       );
+  }
+
+  // ── SONDA KIEROWANA: AKCJA GŁÓWNA PASMA ──────────────────────────────────
+  // POWSTAŁA, BO JEJ BRAK PRZEPUŚCIŁ WADĘ. Akapit wyżej NAZYWAŁ `.primary-button`
+  // jako niepokrytą przez spacer lądowania i uznawał nazwanie za wystarczające.
+  // Nie było: lot C2 dał akcji głównej własny `box-shadow` literałem
+  // o swoistości (0,1,0) w `styles.css`, czyli w pliku wczytywanym PO
+  // `tokens.css`, i ZABRAŁ JEJ PIERŚCIEŃ OGNISKA w obu zwykłych motywach —
+  // a cała bramka wróciła zielona, łącznie z tym przelotem. Nazwana dziura
+  // w pokryciu jest lepsza od ukrytej i gorsza od pomiaru.
+  //
+  // DLACZEGO OSOBNY SPACER, A NIE WIĘKSZY BUDŻET TABÓW: powód z akapitu wyżej
+  // dalej obowiązuje — `stops` karmi też sondę akcentu, więc głębszy spacer
+  // dołożyłby jej podmiotów i zamienił jej wynik w inny. Ten spacer NIE dopisuje
+  // do `stops` ani jednego przystanku, więc `painting` i podłoga liczby
+  // przystanków zostają dokładnie tym, czym były.
+  //
+  // CHODZI PO CELU, BO NA LĄDOWANIU AKCJI GŁÓWNEJ PASMA NIE MA. Kliknięcie
+  // przestawia `activeElement`, i dlatego stoi TUTAJ, po wszystkich werdyktach
+  // spaceru lądowania — nie przed nimi.
+  const bandActionSurface = "people";
+  const bandActionSelector = ".surface-header .primary-button";
+  const navigated = await page.evaluate(async (surface) => {
+    const frame = () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      );
+    const nav = document.querySelector(`.nav-item[data-surface="${surface}"]`);
+    if (nav === null) return false;
+    nav.click();
+    await frame();
+    return true;
+  }, bandActionSurface);
+  if (!navigated)
+    failures.push(
+      `VISUAL_PROBE_BAND_ACTION_UNREACHABLE (${theme}): the left column has no ` +
+        `.nav-item[data-surface="${bandActionSurface}"], so this probe could not walk to a screen ` +
+        "carrying a band primary action. Nothing was measured about the focus ring on " +
+        "`.primary-button` — instrument failure, not a verdict.",
+    );
+  else {
+    await page.waitForTimeout(400);
+    // ZDJĘCIE SPOCZYNKOWE ROBIONE PO NAWIGACJI, bo ta kontrolka montuje się
+    // dopiero teraz — zdjęcie sprzed pętli Tabów jej NIE MA. Przystanek bez
+    // wartości spoczynkowej jest w tej sondzie awarią przyrządu, nie werdyktem,
+    // i dokładnie tak samo jest tutaj.
+    const resting = await page.evaluate((selector) => {
+      const element = document.querySelector(selector);
+      if (element === null) return null;
+      const paint = window.__focusProbeRingPaint(element);
+      return {
+        boxShadow: paint.boxShadow,
+        outline: window.__focusProbeOutline(paint),
+        border: paint.border,
+        background: paint.background,
+      };
+    }, bandActionSelector);
+    if (resting === null)
+      failures.push(
+        `VISUAL_PROBE_BAND_ACTION_ABSENT (${theme}): ${bandActionSurface} drew no ` +
+          `\`${bandActionSelector}\`, so the accent action this probe exists to measure was not on ` +
+          "screen. Either the band lost its action or the fixture stopped reaching this screen — " +
+          "instrument failure, nothing measured.",
+      );
+    else {
+      // BUDŻET JEST POMIAREM, NIE ŻYCZENIEM: liczba naciśnięć potrzebna, żeby
+      // dojść od klikniętej pozycji nawigacji do akcji pasma, jest wypisywana
+      // niżej — kto ją podniesie, ma powiedzieć, co się przesunęło.
+      const budget = 40;
+      let reached = null;
+      for (let index = 0; index < budget; index += 1) {
+        await page.keyboard.press("Tab");
+        const stop = await page.evaluate((selector) => {
+          const element = document.activeElement;
+          if (element === null || !element.matches(selector)) return null;
+          const paint = window.__focusProbeRingPaint(element);
+          return {
+            // PRAWDZIWY TAB, NIE `element.focus()` — i sprawdzane wprost, tak
+            // samo jak w spacerze lądowania, bo bez modalności klawiaturowej
+            // `:focus-visible` się nie uzbraja i sonda mierzyłaby spoczynek.
+            focusVisible: element.matches(":focus-visible"),
+            paint,
+            focusedOutline: window.__focusProbeOutline(paint),
+          };
+        }, bandActionSelector);
+        if (stop !== null) {
+          reached = { presses: index + 1, ...stop };
+          break;
+        }
+      }
+      if (reached === null)
+        failures.push(
+          `VISUAL_PROBE_BAND_ACTION_NOT_A_TAB_STOP (${theme}): ${budget} Tab presses on ` +
+            `${bandActionSurface} never landed on \`${bandActionSelector}\`. The band's primary ` +
+            "action is either not reachable by keyboard at all — a defect in its own right — or it " +
+            "sits deeper in the order than this budget. Nothing was measured about its ring.",
+        );
+      else if (!reached.focusVisible)
+        failures.push(
+          `VISUAL_PROBE_BAND_ACTION_NOT_ARMED (${theme}): focus reached ` +
+            `\`${bandActionSelector}\` after ${reached.presses} Tab press(es) and it did NOT match ` +
+            ":focus-visible. That is the probe failing to reach keyboard modality, not the button " +
+            "missing a ring — fix the probe, do not weaken this.",
+        );
+      else {
+        const judged = judgeFocusVisibility({
+          resting,
+          paint: reached.paint,
+          focusedOutline: reached.focusedOutline,
+        });
+        for (const arm of judged.arms)
+          report(
+            `focus visibility\tband action (${bandActionSurface}, ${reached.presses} tab press(es))\t` +
+              `${bandActionSelector}\t${arm.name}\trest: ${arm.rest}\tfocused: ${arm.focused}\t` +
+              `${arm.changed ? "CHANGES VISIBLY" : "no visible change"}`,
+          );
+        report(
+          `focus visibility\tband action (${bandActionSurface})\t${bandActionSelector}\tVERDICT\t` +
+            `${judged.visible ? "focus is visible" : "FOCUS LOOKS IDENTICAL TO REST"}`,
+        );
+        if (!judged.visible)
+          layoutProblems.push(
+            `focus on the band's primary action (${bandActionSurface}, \`${bandActionSelector}\`) ` +
+              `draws NOTHING a person can see: ${judged.arms
+                .map(
+                  (arm) =>
+                    `${arm.name} ${
+                      arm.changed
+                        ? "changes visibly"
+                        : arm.rest === arm.focused
+                          ? "is identical to rest"
+                          : "changes to something that draws nothing"
+                    }`,
+                )
+                .join(", ")}. ` +
+              (resting.boxShadow === "none"
+                ? ""
+                : "This control carries its own box-shadow at rest. If that shadow is declared as a " +
+                  "LITERAL on a class selector it wins over the global ring — the ring rule is " +
+                  "`:where(button, a, …):focus-visible`, specificity (0,1,0), and styles.css loads " +
+                  "after tokens.css. The remedy is the shadow ROLE, not a rule on the control: " +
+                  "declare the material as a custom property with a `-resting` twin and add it to " +
+                  "the `:focus-visible` remap, so the ring composes IN FRONT of the material " +
+                  "instead of being replaced by it. ") +
+              "This is the accent action of six screens, and it is a keyboard user unable to tell " +
+              "where focus is. WCAG 2.4.7.",
+          );
+      }
+    }
   }
 
   // ── AKCJA GŁÓWNA, AKTYWNA NAWIGACJA I TYTUŁ — NA KAŻDYM CELU ──────────────

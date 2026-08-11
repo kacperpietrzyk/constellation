@@ -43,13 +43,36 @@ const stylesheets = readdirSync(styleRoot, {
   })
   .sort((left, right) => left.name.localeCompare(right.name));
 
+// 2026-08-11: skan czytał arkusz RAZEM Z KOMENTARZAMI, więc proza o tokenach
+// była dla niego kodem. Położyło to `main` na napisie `var(--nazwa)` stojącym
+// w zdaniu, które opisywało własną metodologię liczenia — lint zameldował
+// „niezdefiniowany token --nazwa", którego nie ma w żadnej deklaracji ani
+// w żadnym użyciu. To nie jest literówka do poprawienia w prozie, tylko klasa:
+// arkusze tego repozytorium są komentowane gęsto i po polsku, a każdy kolejny
+// akapit mówiący o `var(…)` po nazwie tokenu wywracałby bramkę ponownie.
+//
+// CIĘCIE IDZIE W OBIE STRONY, nie tylko po referencjach. Deklaracje łapie
+// `^\s*(--…)\s*:` z flagą `m`, więc PRZYKŁAD deklaracji wpisany w komentarz
+// definiował dotąd token naprawdę — i uciszał lint tam, gdzie miał krzyczeć.
+// Po tej zmianie komentarz nie definiuje niczego i nie odwołuje się do niczego.
+//
+// PODMIANA ZACHOWUJE WIERSZE: komentarz zastępowany jest tyloma znakami nowej
+// linii, ile miał, bo inaczej `/* … */` rozpięty na kilku wierszach skleiłby
+// deklarację z linią wyżej i `^` przestałoby ją widzieć. Kasowanie komentarza
+// nie ma prawa zmienić odpowiedzi o kodzie wokół niego.
+const withoutComments = (css: string): string =>
+  css.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
+    "\n".repeat((comment.match(/\n/g) ?? []).length),
+  );
+
 const definitions = new Set<string>();
 const references = new Set<string>();
 for (const { css } of stylesheets) {
-  for (const match of css.matchAll(/^\s*(--[a-zA-Z0-9-]+)\s*:/gm)) {
+  const code = withoutComments(css);
+  for (const match of code.matchAll(/^\s*(--[a-zA-Z0-9-]+)\s*:/gm)) {
     definitions.add(match[1] ?? "");
   }
-  for (const match of css.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)/g)) {
+  for (const match of code.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)/g)) {
     references.add(match[1] ?? "");
   }
 }

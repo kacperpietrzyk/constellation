@@ -1670,6 +1670,21 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // z którego licznik miał wyjść, był wtedy `.crumbbar`, a lot C2 skasował
     // go w całości. Obie pary przeszły więc na pasmo tytułu RAZEM — gdyby
     // przeszła sama L3-07, jej zero opisywałoby nieistniejącego rodzica.
+    //
+    // CZEGO TA PARA ZACZĘŁA KOSZTOWAĆ MNIEJ PO LOCIE C2 — dopisane 2026-08-11
+    // po przeglądzie, żeby następny lot wiedział, co zabiera, ruszając wspólny
+    // komponent. Jej podmiotem nie jest już rząd pisany z palca na tym ekranie,
+    // do którego ktokolwiek mógł dopisać węzeł, tylko `SurfaceTitleBand` —
+    // komponent renderujący DOKŁADNIE `<header className="surface-header">`
+    // z tytułem i slotem akcji. Zero jest przy takim rodzicu bliskie
+    // automatycznemu i NIE jest już świadectwem o niczyjej dyscyplinie.
+    // Falsyfikowalna zostaje mimo to, i dlatego zostaje przy zerze: slot akcji
+    // przyjmuje dowolny `ReactNode` WEWNĄTRZ `.surface-header`, więc regresja
+    // wkładająca licznik do slotu akcji dalej wraca czerwienią. Kto da
+    // `SurfaceTitleBand` trzecie dziecko albo pozwoli mu owinąć treść ekranu,
+    // ma tę parę przepiąć na miejsce, w którym licznik ma STAĆ
+    // (`[data-renewals-surface] [class*="_viewbar_"] [class*="_count_"]`,
+    // `equals: 1`) — asercja na obecność nie ogląda się na cudzy kształt.
     expect: { kind: "count", equals: 0 },
     status: "enforced",
   },

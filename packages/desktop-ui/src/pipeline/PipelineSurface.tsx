@@ -843,14 +843,19 @@ export const PipelineSurface = ({
            (`v3/screens/pipeline.js:409-410` through `v3/app.css:293`,
            `:321-332`); the contract calls the primary action one per container
            that owns one and the largest solid-accent object a view may hold
-           (`.ui-craft/tokens.md`, "Usage constraints" 3). ONE PER CONTAINER IS
-           THE WHOLE PROBLEM HERE, and it is why this is a conditional rather
-           than a class: the form's own "Add opportunity" (below) is already
-           primary, so a toggle that stayed primary would put two of them in one
-           bar the moment the form opened. The toggle steps down to secondary
-           while the form is open, and what it means steps down with it — once
-           the form is on screen the thing to press is inside it, and this button
-           only closes it again. There is never a state with two.
+           (`.ui-craft/tokens.md`, "Usage constraints" 3).
+
+           THE CONDITIONAL IS NOT FORCED BY THAT RULE, and saying it was is what
+           this comment got wrong until 2026-08-11. One per CONTAINER is the
+           wording, and the create form is its own container — a sibling of the
+           band, not a second action inside it — so the contract licenses the
+           form's "Add opportunity" and a filled band action at the same time.
+           The toggle steps down to secondary anyway, as a choice about MEANING:
+           once the form is on screen the thing to press is inside it, and this
+           button only closes it again. It is a deliberate divergence from the
+           prototype, whose `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) has
+           no state in which the band action goes grey. The same paragraph stands
+           on People, Organizations and Renewals.
 
            PHASE C, LOT C2 — IT USED TO STAND A ROW LOWER, IN ITS OWN
            `.crumbbar`. The prototype has no second bar: `crumbbar(crumbs,

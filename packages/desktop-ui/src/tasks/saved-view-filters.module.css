@@ -122,6 +122,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   padding: var(--space-1) var(--space-4);
   color: var(--action-primary-text);
   cursor: pointer;
@@ -132,6 +133,7 @@
 
 .save:hover:not(:disabled) {
   background: var(--action-primary-hover);
+  box-shadow: var(--action-primary-shadow-hover);
 }
 
 /* A disabled control owes the reader a reason, which is what `.hint` beside it

@@ -460,6 +460,7 @@
 
 .inline-popover button {
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--action-primary-text);
@@ -470,6 +471,7 @@
 
 .inline-popover button:hover {
   background: var(--action-primary-hover);
+  box-shadow: var(--action-primary-shadow-hover);
 }
 
 .inline-popover button:active {
@@ -641,14 +643,59 @@ button:disabled {
    GDZIE TO MIESZKA: kopie spoczynkowe stoją w TYM pliku, a nie w warstwie
    tokenów, bo `tokens.css` był poza zakresem tego lotu. To jest miejsce
    tymczasowe, nie wybór architektoniczny — należą do warstwy, która definiuje
-   role cieni. */
+   role cieni.
+
+   ── SIÓDMA I ÓSMA ROLA: MATERIAŁ AKCJI GŁÓWNEJ ────────────────────────────
+   Dopisane przy naprawie po przeglądzie lotu C2. Lot C2 dał `.primary-button`
+   trzy warstwy cienia LITERAŁAMI, o swoistości (0,1,0), w pliku wczytywanym PO
+   `tokens.css` — czyli zbudował dokładnie tę kontrolkę, o której akapit
+   „CZEGO TO NIE OBEJMUJE" wyżej mówi, że dalej wygrywa z pierścieniem. Skutek
+   był taki, jak opisuje ten plik trzysta linii wyżej: akcja główna przy
+   `:focus-visible` wyglądała DOKŁADNIE jak w spoczynku, w motywie jasnym
+   i ciemnym (w `forced-colors` ratował ją `outline-color: Highlight`
+   z `tokens.css`). Hover był drugą połową tej samej wady, bo
+   `.primary-button:not(:disabled):hover` ma (0,3,0) i też deklarował literał —
+   poprawka na samym spoczynku zostawiłaby pierścień martwy dokładnie wtedy,
+   gdy kursor stoi na przycisku, o który klawiatura właśnie zapytała.
+
+   Dlatego materiał jest ROLĄ, a nie deklaracją na klasie: rola wpada pod
+   remap niżej i pierścień składa się PRZED cieniem własnym, zamiast być przez
+   niego zastąpiony. Wariant hoveru ma własną rolę, bo jest inną wartością, a
+   nie innym stanem tej samej wartości.
+
+   TA SAMA ROLA ZAMYKA DRUGI ZARZUT PRZEGLĄDU — dwa materiały dla jednej roli.
+   Wypełnienie `--action-primary-bg` nosiło po locie C2 SZEŚĆ powierzchni,
+   a cień dostała jedna (`.primary-button`), więc identyczna rola rysowała się
+   dwoma materiałami zależnie od tego, czy powierzchnia nosi klasę, czy własną
+   regułę. Rolę czytają dziś: `.primary-button`, `.inline-popover button`,
+   `.settings-control.support-report-action > button`,
+   `.settings-control .import-preview-confirm`, `.submit` kompozytora
+   komentarzy (`record/record-comments.module.css`) i akcja zapisu filtrów
+   (`tasks/saved-view-filters.module.css`).
+
+   SIÓDMA POWIERZCHNIA ZOSTAŁA ŚWIADOMIE POZA ROLĄ i to trzeba nazwać, bo
+   znalazłem ją sam, a nie dostałem w zgłoszeniu: `.skip-link` też jedzie
+   `--action-primary-bg`. Nie jest akcją główną w rozumieniu kontraktu
+   (`.ui-craft/tokens.md`, „Usage constraints" 3 mówi o pojemniku, KTÓRY MA
+   akcję główną), tylko afordancją dostępnościową parkowaną poza kadrem, więc
+   nadanie jej wypukłego materiału byłoby nową farbą w locie naprawczym.
+   Pierścienia to jej nie pozbawia: nie ma własnego `box-shadow`, więc reguła
+   globalna maluje na niej pierścień bez żadnego remapu. */
 :root {
+  --action-primary-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 0.24), 0 1px 2px oklch(0% 0 0 / 0.28),
+    0 0 0 1px var(--accent-edge);
+  --action-primary-shadow-hover:
+    inset 0 1px 0 oklch(100% 0 0 / 0.3), 0 2px 10px var(--accent-glow),
+    0 0 0 1px var(--accent-edge);
   --elevation-rest-resting: var(--elevation-rest);
   --elevation-raised-resting: var(--elevation-raised);
   --elevation-overlay-resting: var(--elevation-overlay);
   --capture-shadow-resting: var(--capture-shadow);
   --overlay-shadow-resting: var(--overlay-shadow);
   --context-shadow-resting: var(--context-shadow);
+  --action-primary-shadow-resting: var(--action-primary-shadow);
+  --action-primary-shadow-hover-resting: var(--action-primary-shadow-hover);
 }
 :where(
   button,
@@ -667,6 +714,10 @@ button:disabled {
   --capture-shadow: var(--control-focus-ring), var(--capture-shadow-resting);
   --overlay-shadow: var(--control-focus-ring), var(--overlay-shadow-resting);
   --context-shadow: var(--control-focus-ring), var(--context-shadow-resting);
+  --action-primary-shadow:
+    var(--control-focus-ring), var(--action-primary-shadow-resting);
+  --action-primary-shadow-hover:
+    var(--control-focus-ring), var(--action-primary-shadow-hover-resting);
 }
 
 svg {
@@ -754,31 +805,42 @@ kbd {
    `.ui-craft/tokens.md`, „Component layer" — `action-primary-*` to jedna
    akcja wypełniona akcentem.
 
-   SAM GRADIENT ZOSTAJE ODRZUCONY I TO JEST ODMOWA NA POMIARZE, nie przeoczenie
-   tego lotu. Prototyp maluje wypełnienie `linear-gradient(180deg, var(--a-400),
+   GRADIENT ZE STOPNI PROTOTYPU NIE ZDAJE — I TO JEST ODMOWA NA POMIARZE.
+   Prototyp maluje wypełnienie `linear-gradient(180deg, var(--a-400),
    var(--a-500) 55%, var(--a-600))`, a `scripts/consumer-contrast.test.mjs`
    ROZKŁADA gradienty na stopnie i mierzy KAŻDY z nich: górny stopień daje
    2,57:1 przeciw `--on-accent` przy progu AA 4,5, środkowy 3,54:1. Pełne
    uzasadnienie, z tabelą całej rampy, stoi przy `--action-primary-bg`
-   w `tokens.css` i jest starsze niż ten lot. Cienie tekstu nie dotykają, więc
+   w `tokens.css` i jest starsze niż ten lot.
+
+   GRADIENT ZE STOPNI LEGALNYCH ZDAJE I ZOSTAŁ ODRZUCONY JAKO WYBÓR, nie jako
+   konieczność — poprzednie brzmienie tego akapitu sugerowało brak wyboru tam,
+   gdzie wybór był, i przegląd słusznie to wytknął. Policzone tą samą
+   matematyką co tabela niżej: `--a-600` daje 5,195:1, `--a-700` 7,599:1, więc
+   `linear-gradient(180deg, var(--a-600), var(--a-700))` zdaje AA na KAŻDYM
+   stopniu i niósłby pion materiału bez ruszania progu. Nie wchodzi, bo w tym
+   drzewie wypełnienie akcji głównej jest JEDNĄ wartością tokenu
+   (`--action-primary-bg`), którą czyta sześć powierzchni; zamiana jej na
+   gradient jest zmianą warstwy tokenów, a nie farbą na kontrolce, i należy do
+   lotu, który weźmie `tokens.css` w zakres. Cienie tekstu nie dotykają, więc
    wchodzą; wypełnienie zostaje wyliczone.
 
    HOVER PODNOSI KRESKĘ I ZAMIENIA CIEŃ NA POŚWIATĘ, tak jak prototyp
-   (`v3/app.css:333-337`) — pierścień zostaje ten sam. */
+   (`v3/app.css:333-337`) — pierścień zostaje ten sam.
+
+   MATERIAŁ JEST ROLĄ, NIE LITERAŁEM NA KLASIE, i to jest poprawka po
+   przeglądzie tego lotu: literał o swoistości (0,1,0) w tym pliku ZABIERAŁ
+   akcji głównej pierścień ogniska. Wartości obu ról stoją przy remapie
+   ognisk — sekcja „SIÓDMA I ÓSMA ROLA" w bloku o jednym właścicielu
+   pierścienia, wyżej w tym pliku. */
 .primary-button {
   color: var(--action-primary-text);
   background: var(--action-primary-bg);
-  box-shadow:
-    inset 0 1px 0 oklch(100% 0 0 / 0.24),
-    0 1px 2px oklch(0% 0 0 / 0.28),
-    0 0 0 1px var(--accent-edge);
+  box-shadow: var(--action-primary-shadow);
 }
 .primary-button:not(:disabled):hover {
   background: var(--action-primary-hover);
-  box-shadow:
-    inset 0 1px 0 oklch(100% 0 0 / 0.3),
-    0 2px 10px var(--accent-glow),
-    0 0 0 1px var(--accent-edge);
+  box-shadow: var(--action-primary-shadow-hover);
 }
 .primary-button:not(:disabled):active {
   background: var(--action-primary-pressed);
@@ -6963,22 +7025,6 @@ kbd {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
-.knowledge-create-bar {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.knowledge-create-bar .inline-popover-trigger {
-  min-width: 0;
-  min-height: 2.25rem;
-  justify-content: center;
-  overflow: hidden;
-  padding-inline: var(--space-2);
-  text-overflow: ellipsis;
-  width: 100%;
-}
 .inline-popover .knowledge-create-form {
   min-width: min(20rem, calc(100vw - 3rem));
   padding: 0;
@@ -7709,9 +7755,6 @@ kbd {
   .document-toolbar {
     width: 100%;
     justify-content: flex-start;
-  }
-  .knowledge-create-bar .inline-popover-trigger {
-    min-height: 2.75rem;
   }
   .knowledge-writing-plane {
     padding: var(--space-3);
@@ -8926,6 +8969,7 @@ kbd {
 
 .settings-control.support-report-action > button {
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   border-color: var(--action-primary-bg);
   color: var(--action-primary-text);
   font-weight: 600;
@@ -8940,6 +8984,7 @@ kbd {
 @media (hover: hover) and (pointer: fine) {
   .settings-control.support-report-action > button:hover:not(:disabled) {
     background: var(--action-primary-hover);
+    box-shadow: var(--action-primary-shadow-hover);
   }
 }
 
@@ -9108,6 +9153,7 @@ kbd {
 
 .settings-control .import-preview-confirm {
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   color: var(--action-primary-text);
 }
 

@@ -811,12 +811,21 @@ export const RenewalsSurface = ({
            `.ui-craft/tokens.md` "Accent rule" job 2 licenses exactly one primary
            action per container that owns one.
 
-           IT IS A TOGGLE, SO IT DEMOTES ITSELF. The counter-argument the ruling
-           weighed is real — with the create form open, "Open the amendment" and
-           the form's own submit are the primary things on this canvas, and two
-           filled accents in one view is the one thing the rule forbids by
-           counting. Painting the trigger primary only while it is CLOSED keeps
-           that promise true in both states.
+           IT IS A TOGGLE, SO IT DEMOTES ITSELF — AND THE RULE DOES NOT MAKE IT.
+           Corrected 2026-08-11 after review: what "Usage constraints" 3 forbids
+           by counting is two accent fills inside ONE CONTAINER, not two in one
+           view. The rule was rewritten on 2026-08-07 precisely to stop saying
+           "one per view" (`.ui-craft/tokens.md`: "one per container that owns a
+           main action, not one per view"). Checked rather than assumed: the
+           create form is a SIBLING of the band, its own element below in this
+           file, so the contract licenses both fills outright.
+
+           It stays as a choice about MEANING: once the form is on screen the
+           thing to press is inside it, and this button only closes it again.
+           That is a deliberate divergence from the prototype, whose
+           `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) has no state in
+           which the band action goes grey. The same paragraph stands on People,
+           Organizations and Pipeline.
 
            PHASE C, LOT C2 — THE BAR IT STOOD IN IS GONE, AND THE ACTION MOVED
            INTO THE TITLE BAND. The prototype does not stack a title band and an

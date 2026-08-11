@@ -414,6 +414,29 @@ export const classifyTitleBandAction = ({ title, actions }) => {
  * `judgeActionAgainstTitleRow`: dzięki temu jedyna arytmetyka tej osi ma test
  * jednostkowy chodzący bez przeglądarki, na trzech systemach.
  */
+/*
+ * CZEGO TA OŚ NIE PYTA, NAZWANE 2026-08-11 PRZY NAPRAWIE PO PRZEGLĄDZIE C2 —
+ * bo dziura nazwana jest tańsza od dziury odkrytej przez adwersarza, a ta akurat
+ * została odkryta przez adwersarza.
+ *
+ * `contentRight` liczy się z pudełka TEGO pasma, więc pytanie brzmi „czy akcja
+ * stoi u końca PASMA", a nie „czy stoi u końca KOLUMNY TREŚCI pod nim". Dla
+ * przyrządu są to dziś dwa nierozróżnialne zdania — i rozjeżdżają się naprawdę:
+ * `.surface-header` nie deklaruje `padding-inline` żadnego, a paski widoku
+ * czterech ekranów CRM (Organizacje, Ludzie, Lejek, Odnowienia) deklarują
+ * `padding-inline: var(--space-4)`. Oba pudełka są dziećmi `.surface-scroll > *`,
+ * czyli mają IDENTYCZNĄ ramkę — więc licznik w pasku widoku kończy się 16 px
+ * WCZEŚNIEJ niż akcja w paśmie nad nim, i dwa elementy dosunięte do prawej stoją
+ * w dwóch różnych liniach. Zadania tej wady NIE MAJĄ, bo ich `.viewbar` nie
+ * deklaruje `padding-inline` — czyli to jest niespójność per-ekran, a nie
+ * konwencja pasma.
+ *
+ * NIE JEST TO NAPRAWIONE W TYM LOCIE I TO JEST DECYZJA O ZAKRESIE: rozstrzygnięcie
+ * brzmi „gdzie kończy się kolumna chromu" i dotyka pięciu arkuszy naraz, więc
+ * jest lotem, a nie poprawką w locie naprawczym. Kto go weźmie, ma dołożyć tej
+ * osi TRZECIĄ odpowiedź — koniec pasma przeciw końcowi pierwszego rodzeństwa
+ * treści — bo bez niej poprawka nie ma jak dowieść, że zadziałała.
+ */
 export const judgeActionAgainstBandEnd = ({ band, action }) => {
   const tolerance = Number.isFinite(band.columnGap) ? band.columnGap : 0;
   const endGap = band.contentRight - action.right;
@@ -645,7 +668,13 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/meetings.js:431-433 — btn("Import from Jamie", { cls: "bordered", icon: "arrow" })',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "MeetingsSurface.tsx:729-739 — .meeting-hero to siatka JEDNOKOLUMNOWA (styles.css:3933-3937), prawy koniec pasma nie istnieje",
+    // ODESŁANIE SELEKTOREM, NIE NUMEREM — poprawione 2026-08-11 po przeglądzie,
+    // który zmierzył, że `styles.css:3933-3937` wskazuje dziś na `.work-surface`
+    // w `@media (max-width: 50rem)`, czyli na cudzy kod: reguła `.meeting-hero`
+    // odjechała o 195 linii pod dopiskami Fazy C. Numer w tym arkuszu gnije po
+    // każdym locie fali, a to jest JEDYNY otwarty wpis tej tablicy, więc pójdzie
+    // po nim następny lot.
+    app: "MeetingsSurface.tsx:729-739 — .meeting-hero to siatka JEDNOKOLUMNOWA (styles.css, reguła `.meeting-hero`), prawy koniec pasma nie istnieje",
   },
   {
     id: "library",

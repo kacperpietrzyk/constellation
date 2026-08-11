@@ -31,9 +31,15 @@
 // KAŻDE ZŁAMANIE MA WŁASNY POWÓD CZERWIENI — i to jest cała treść tego pliku.
 // Jedno złamanie dowodzi tylko tego, że sonda umie paść; kilka, celujących
 // w RÓŻNE reguły, dowodzi, że pada na TYM, co deklaruje, a nie na czymkolwiek.
-// Lot C2 dołożył ósme, dla POZIOMEJ osi pasma tytułu: pasmo ma już złamanie
+// Lot C2 dołożył szóste, dla POZIOMEJ osi pasma tytułu: pasmo ma już złamanie
 // psujące PION (rozłożenie go na blok), a wada, przeciw której powstała druga
 // oś, jest inna — akcja stoi w rzędzie tytułu, ale przy jego LEWEJ krawędzi.
+//
+// NAPRAWA PO PRZEGLĄDZIE LOTU C2 DOŁOŻYŁA DZIEWIĄTE, i to jest jedyne złamanie
+// w tym pliku, które odtwarza WADĘ NAPRAWDĘ WYDANĄ na tej gałęzi, a nie wadę
+// wyobrażoną: literał `box-shadow` na `.primary-button` zabrał akcji głównej
+// pierścień ogniska w obu zwykłych motywach, a bramka wróciła zielona. Złamanie
+// istnieje po to, żeby druga taka regresja nie mogła przejść cicho.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -462,6 +468,59 @@ const outcome = runBreakTests({
   border-color: var(--nav-active-border);
   color: var(--nav-active-text);`,
           "the current navigation row's paint rule",
+        ),
+    },
+    {
+      // ZŁAMANIE ÓSME — DLA SONDY KIEROWANEJ NA AKCJĘ GŁÓWNĄ PASMA, dopisane
+      // przy naprawie po przeglądzie lotu C2.
+      //
+      // ODTWARZA DOKŁADNIE TĘ WADĘ, KTÓRĄ LOT C2 WPROWADZIŁ, A BRAMKA
+      // PRZEPUŚCIŁA. Lot dał `.primary-button` własny `box-shadow` LITERAŁEM,
+      // czyli selektorem klasowym o swoistości (0,1,0) w `styles.css` — pliku
+      // wczytywanym PO `tokens.css`. Globalna reguła pierścienia stoi na
+      // `:where(button, a, …):focus-visible`, ma tę samą swoistość (0,1,0)
+      // i przegrywa KOLEJNOŚCIĄ, więc akcja główna sześciu ekranów wyglądała
+      // przy ognisku dokładnie tak, jak w spoczynku, w obu zwykłych motywach.
+      // Cała bramka wróciła wtedy ZIELONA, łącznie z przelotem widoczności
+      // ogniska — bo `.primary-button` nie był przystankiem spaceru lądowania,
+      // a jego brak był w przyrządzie NAZWANY zamiast zmierzony.
+      //
+      // DLACZEGO TO IDZIE NA CZERWONO DZISIAJ: sonda kierowana dochodzi Tabem
+      // do `.surface-header .primary-button` na Ludziach i porównuje jego farbę
+      // spoczynkową z farbą przy `:focus-visible`. Z rolą cienia pierścień
+      // składa się PRZED materiałem i cień się zmienia; z literałem nie zmienia
+      // się nic — ani cień, ani tło, ani krawędź, a kontur jest przezroczystą
+      // podkładką pod tryb wymuszonych kolorów, nie wskaźnikiem.
+      //
+      // ŁAMANA JEST SAMA REGUŁA SPOCZYNKOWA, NIE HOVER: sonda nie najeżdża
+      // kursorem, więc złamanie hoveru wróciłoby ZIELONE i uzbrojenie byłoby
+      // udawane. Wariant hoveru czyta bliźniaczą rolę i jest chroniony tym samym
+      // mechanizmem, ale JEGO dowodem jest kaskada, nie ten break-test — i tak
+      // to trzeba czytać.
+      name: "give the band's primary action its own literal box-shadow again: the material stops being a role and the focus ring loses to it on order",
+      expectRedContains: [
+        "the band's primary action",
+        ".surface-header .primary-button",
+        "draws NOTHING a person can see",
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.primary-button {
+  color: var(--action-primary-text);
+  background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
+}`,
+          `.primary-button {
+  color: var(--action-primary-text);
+  background: var(--action-primary-bg);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 0.24),
+    0 1px 2px oklch(0% 0 0 / 0.28),
+    0 0 0 1px var(--accent-edge);
+}`,
+          "the primary action's shadow role",
         ),
     },
   ],
