@@ -140,8 +140,10 @@ test("NO PLATFORM AND NO THEME IS PINNED: the same rule judges the light theme w
     uaPaint: "rgb(239, 239, 239)",
   });
   assert.equal(light.state, "UA_DEFAULT");
-  const sources = [...KNOWN_CONTROL_PAINT.map((entry) => entry.why)].join("\n");
-  assert.doesNotMatch(sources, /rgb\(/u);
+  // Ta asercja pilnowała, żeby ŻADEN wpis rejestru nie cytował literału farby —
+  // rejestr jest od lotu C3 pusty, więc trzyma się jej wprost: literału nie ma
+  // gdzie wpisać, bo nie ma wpisów.
+  assert.deepEqual(KNOWN_CONTROL_PAINT, []);
 });
 
 test("the verdict does not need the engine probe at all — it only names the class", () => {
@@ -153,6 +155,15 @@ test("the verdict does not need the engine probe at all — it only names the cl
     uaPaint: undefined,
   });
   assert.equal(blind.state, "OFF_PALETTE");
+});
+
+test("THE REGISTRY IS EMPTY, and that is the whole condition under which this census may be armed", () => {
+  // Uzbrojony spis z NIEPUSTYM rejestrem byłby przyrządem, który jednocześnie
+  // twierdzi „każdy werdykt zatrzymuje przebieg" i wypisuje kontrolki, nad
+  // którymi milczy. Ten test jest bramką na tę parę: `enforced` wolno postawić
+  // wyłącznie nad pustą listą.
+  assert.equal(KNOWN_CONTROL_PAINT.length, 0);
+  assert.equal(CONTROL_PAINT_ARMED, true);
 });
 
 test("THE REGISTRY IS KEYED ON SHAPE, NEVER ON COUNTS — a growing fixture may not turn this red", () => {
@@ -181,7 +192,24 @@ test("AN ENTRY IS A KNOWN DEBT, NOT A KNOWN SHAPE: a control that changed the KI
   // tokenu, zmieni werdykt z `UA_DEFAULT` na `OFF_PALETTE`. Rejestr milczący
   // o stanie przyjąłby to jako znany dług i zamilkł nad kontrolką, która wadę
   // ZMIENIŁA — czyli cicha zieleń dokładnie tam, gdzie coś się właśnie stało.
-  const subject = { surface: "organizations", signature: "button._chip" };
+  //
+  // REGUŁA JEST SĄDZONA NA WŁASNYM REJESTRZE, NIE NA ŻYWYM. Żywy jest od lotu C3
+  // pusty, więc „nie jest wpisana" byłoby prawdą także wtedy, gdyby porównanie
+  // stanu wypadło z kodu — czyli asercja nie do złamania, a to jest asercja bez
+  // wartości.
+  const registry = [
+    {
+      surface: "organizations",
+      signature: "button._chip",
+      state: "UA_DEFAULT",
+      why: "a fixture registry, not the shipped one",
+    },
+  ];
+  const subject = {
+    surface: "organizations",
+    signature: "button._chip",
+    registry,
+  };
   assert.equal(
     isRegisteredControlPaint({ ...subject, state: "UA_DEFAULT" }),
     true,
@@ -200,6 +228,16 @@ test("AN ENTRY IS A KNOWN DEBT, NOT A KNOWN SHAPE: a control that changed the KI
     }),
     true,
   );
+  // I TO SAMO NAD ŻYWYM REJESTREM: pusty rejestr nie tłumaczy NICZEGO, więc ta
+  // sama kontrolka pada również w stanie, który kiedyś był w nim wypisany.
+  assert.equal(
+    isRegisteredControlPaint({
+      surface: "organizations",
+      signature: "button._chip",
+      state: "UA_DEFAULT",
+    }),
+    false,
+  );
 });
 
 test("A CLASSLESS CONTROL IS NAMED BY AN ATTRIBUTE, because „input[no class]” is a wildcard over a whole family", () => {
@@ -210,11 +248,22 @@ test("A CLASSLESS CONTROL IS NAMED BY AN ATTRIBUTE, because „input[no class]�
     entry.signature.includes("[no class]"),
   );
   assert.deepEqual(classless, []);
+  // Rejestr fikstury, bo żywy jest pusty — sądzona jest REGUŁA dopasowania,
+  // a nie dzisiejsza zawartość listy.
+  const registry = [
+    {
+      surface: "library",
+      signature: "input[name=sourceTitle]",
+      state: "UA_DEFAULT",
+      why: "a fixture registry, not the shipped one",
+    },
+  ];
   assert.equal(
     isRegisteredControlPaint({
       surface: "library",
       signature: "input[name=sourceTitle]",
       state: "UA_DEFAULT",
+      registry,
     }),
     true,
   );
@@ -224,20 +273,31 @@ test("A CLASSLESS CONTROL IS NAMED BY AN ATTRIBUTE, because „input[no class]�
       surface: "library",
       signature: "input[name=sourceUrl][type=url]",
       state: "UA_DEFAULT",
+      registry,
     }),
     false,
   );
 });
 
 test("an entry nobody met is a failure, because a fixed control must take its entry with it", () => {
-  assert.equal(
-    unmetControlPaintEntries(new Set()).length,
-    KNOWN_CONTROL_PAINT.length,
-  );
+  // Na ŻYWYM rejestrze (pustym) obie strony są puste i nie da się tym niczego
+  // dowieść, więc reguła sądzi się na rejestrze fikstury. To jest dokładnie ten
+  // przepływ, którym lot C3 wyprowadził czternaście wpisów: kontrolka naprawiona
+  // przestaje być spotykana, jej wpis staje się niespotkany i MUSI wyjść.
+  const registry = [
+    {
+      surface: "library",
+      signature: "button._treeNode",
+      state: "UA_DEFAULT",
+      why: "a fixture registry, not the shipped one",
+    },
+  ];
+  assert.equal(unmetControlPaintEntries(new Set(), registry).length, 1);
   const all = new Set(
-    KNOWN_CONTROL_PAINT.map((entry) => `${entry.surface}\t${entry.signature}`),
+    registry.map((entry) => `${entry.surface}\t${entry.signature}`),
   );
-  assert.deepEqual(unmetControlPaintEntries(all), []);
+  assert.deepEqual(unmetControlPaintEntries(all, registry), []);
+  assert.deepEqual(unmetControlPaintEntries(new Set()), []);
 });
 
 test("THE ANSWER TO „RED TODAY, GREEN IN CI”: known debt reports, anything outside the registry throws", () => {
@@ -257,8 +317,8 @@ test("THE ANSWER TO „RED TODAY, GREEN IN CI”: known debt reports, anything o
     controlPaintVerdictThrows({ registered: true, armed: true }),
     true,
   );
-  assert.equal(CONTROL_PAINT_ARMED, false);
-  assert.equal(CONTROL_PAINT_STATUS, "pending: FAZA C, lot C3");
+  assert.equal(CONTROL_PAINT_ARMED, true);
+  assert.equal(CONTROL_PAINT_STATUS, "enforced");
 });
 
 // Jeden PRZELOT MOTYWU w kształcie, w jakim oddaje go strona. Domyślnie zdrowy:

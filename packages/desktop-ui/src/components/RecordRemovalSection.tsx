@@ -81,7 +81,7 @@ export const RecordRemovalSection = ({
           <div className="task-removal-actions">
             <button
               type="button"
-              className="status-danger"
+              className="secondary-button status-danger"
               data-removal-action="confirm"
               disabled={busy}
               onClick={() => {

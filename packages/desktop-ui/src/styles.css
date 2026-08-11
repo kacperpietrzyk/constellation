@@ -530,9 +530,67 @@ select {
   color: inherit;
   font: inherit;
 }
+/* ── KAŻDA KONTROLKA MA TŁO, KTÓRE USTAWIŁ TEN ARKUSZ (Faza C, lot C3) ───────
+   Ten reset przez cztery fale mówił `border: 0` i milczał o tle, więc każdy
+   przycisk, któremu żadna dalsza reguła tła nie dała, malował się SYSTEMOWYM
+   `ButtonFace` — zmierzone `rgb(107,107,107)` w ciemnym motywie
+   i `rgb(239,239,239)` w jasnym. Skutek widoczny gołym okiem: chip albo segment
+   NIEWYBRANY był mocniej wyróżniony od WYBRANEGO, bo stan wybrany bierze
+   `--surface-hover`, czyli 5,5% bieli nad ciemnym planem (`tokens.css:223`)
+   i 4,5% czerni nad jasnym (`:875`), a farba silnika była od obu dalsza od
+   planu. Spis B1 (`scripts/control-paint.mjs`) naliczył tak czternaście
+   kształtów na pięciu ekranach, 27 narysowanych elementów w każdym motywie.
+
+   POPRAWKA IDZIE W RESET, A NIE W CZTERNAŚCIE REGUŁ, I ROZSTRZYGA TO POMIAR,
+   NIE GUST. Prototyp resetuje przycisk dokładnie tak — `button { background:
+   none; border: 0; cursor: pointer; padding: 0 }` (`v3/app.css:19`) — a spis
+   mówi, że idiom tego arkusza jest już TEN SAM: przy czternastu kształtach bez
+   farby stoi CZTERDZIEŚCI kształtów świadomie przezroczystych i ZERO malowanych
+   literałem spoza tokenów. Reset, który by MALOWAŁ, zamalowałby tamte
+   czterdzieści; reset, który deklaruje przezroczystość, dopisuje czternaście do
+   idiomu, który już rządzi. Tło niesie ta kontrolka, która go chce — tak jak
+   `.primary-button` i `.secondary-button` niżej.
+
+   HIERARCHIA ODWRACA SIĘ TYM SAMYM RUCHEM I W OBU MOTYWACH, bo prototyp trzyma
+   ją RELACJĄ, nie jasnością: tor `.segmented` siedzi na `--surface-sunken`
+   (`v3/app.css:337`), a jego suwak na `--surface-elevated` (`:352`) — wybrane
+   ODCHODZI OD PLANU, niewybrane na nim leży. Po tej poprawce stan spoczynkowy
+   jest planem (przezroczysty), a stan wybrany dalej bierze `--surface-hover`
+   plus `--border-strong` i grubość 500 (`organizations.module.css:100-105`,
+   `people.module.css:93`, `library.module.css:130`), czyli jaśnieje w ciemnym
+   i ciemnieje w jasnym — w obu wypadkach oddala się od planu, na którym leży
+   sąsiad. */
 button {
   border: 0;
+  background: none;
   touch-action: manipulation;
+}
+/* POLE TEKSTOWE BEZ KLASY TEŻ JEST KONTROLKĄ BEZ FARBY. Ta sama przyczyna
+   i ten sam wpis rejestru: pole „Change title" Bibliotece
+   (`library/SourcesReading.tsx:304`) nie niesie ŻADNEJ reguły, więc brało białe
+   `Field` silnika. `select` dwie linijki niżej ma materiał tej aplikacji od
+   zawsze — tu dostają go pola tekstowe i `textarea`, ale WYŁĄCZNIE tło:
+   `min-height`, `padding` i obramowanie zmieniłyby geometrię każdego
+   nieostylowanego pola w aplikacji, a rejestr mówi o farbie.
+
+   RODZAJE NIETEKSTOWE SĄ WYŁĄCZONE, i to nie jest ostrożność: `background-color`
+   na `input[type=checkbox]` z `appearance: auto` przemalowuje w Chromium natywny
+   kwadrat, a kontrakt mówi wprost, że dla prawdziwego checkboxa prototyp NIE MA
+   farby do naśladowania i lot musi zapytać, a nie wywnioskować
+   (`.ui-craft/brief.md:54`, część (c)). `:where()` zeruje swoisty wkład listy,
+   więc ta reguła przegrywa z każdą regułą klasową — pole, które ma własny
+   materiał, zachowuje go. */
+input:where(
+  :not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="color"],
+    [type="file"]
+  )
+),
+textarea {
+  background: var(--input-bg);
 }
 select {
   min-height: 2rem;
@@ -2878,8 +2936,35 @@ kbd {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.task-removal-actions .status-danger {
+/* ── WARIANT NISZCZĄCY NALEŻY DO AKCJI, NIE DO POJEMNIKA (Faza C, lot C3) ────
+   Ta reguła stała na `.task-removal-actions .status-danger` i ustawiała SAM
+   `border-color` na przycisku, którego reset ma `border: 0` — czyli deklaracja
+   nie rysowała NICZEGO, a kontrolka za krokiem `confirming` malowała się farbą
+   silnika (`RecordRemovalSection.tsx:84`, `TaskRemovalSection.tsx:60`).
+   Spis B1 zna tę wadę i jej NIE DOSIĘGA: jego spacer nie otwiera ekranu rekordu
+   ani inspektora, więc cisza przyrządu o niej nie była zdaniem o niej.
+
+   MATERIAŁ NIESIE BAZA, TINT NIESIE WARIANT — to jest układ prototypu:
+   `.btn` deklaruje kształt i `border: 1px solid transparent` (`v3/app.css:307`),
+   a `.st-danger` dokłada wyłącznie kolor i barwę krawędzi na hoverze
+   (`v3/screens/settings.css:176-179`). Kontrakt żąda tego samego: „the fill on
+   a destructive action — the reference gives danger `--status-error` as colour
+   and border and never as a solid fill" (`.ui-craft/tokens.md:257`). Dlatego
+   przycisk potwierdzenia dostaje `secondary-button`, a wariant zaczepia się
+   o klasę akcji, nie o nazwę pojemnika — ten sam napis „secondary-button
+   status-danger" pisały już `CalendarConsentDialog.tsx:113`
+   i `TaskReservationSection.tsx:296`, i do dziś nie dostawały od niego NICZEGO.
+
+   HOVER MUSI BYĆ WYPISANY: `.secondary-button:not(:disabled):hover` ma swoistość
+   (0,3,0) i przebiłby wariant (0,2,0), więc krawędź niszcząca gasłaby dokładnie
+   w chwili, w której kursor na niej stoi. */
+.secondary-button.status-danger {
   border-color: color-mix(in oklch, var(--status-error) 55%, transparent);
+  color: var(--status-error);
+}
+.secondary-button.status-danger:not(:disabled):hover,
+.secondary-button.status-danger:not(:disabled):active {
+  border-color: color-mix(in oklch, var(--status-error) 72%, transparent);
   color: var(--status-error);
 }
 .task-context-dates {

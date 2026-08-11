@@ -6,12 +6,21 @@
 // układu jest ZIELONA na 122 parach języka wizualnego, a od prototypu dzieli
 // tę aplikację 71 potwierdzonych rozjazdów. To nie jest sprzeczność: PARA
 // MIERZY WYŁĄCZNIE TO, CO KTOŚ UMIAŁ ZAPISAĆ SELEKTOREM. Cztery z tych
-// rozjazdów mają jedną przyczynę — `packages/desktop-ui/src/styles.css:509-512`
-// resetuje `button` przez `border: 0` i `touch-action`, a dwie linijki wyżej ta
-// sama grupa kontrolek dostaje `color` i `font`. Brakuje `background`, w całym
+// rozjazdów miały jedną przyczynę — `packages/desktop-ui/src/styles.css`
+// resetował `button` przez `border: 0` i `touch-action`, a dwie linijki wyżej ta
+// sama grupa kontrolek dostawała `color` i `font`. Brakowało `background`, w całym
 // arkuszu nie ma ani jednej deklaracji `appearance`, więc każdy przycisk,
-// któremu żadna reguła nie da tła, maluje się SYSTEMOWYM `ButtonFace`. Skutek
-// widoczny gołym okiem: niewybrany chip jest JAŚNIEJSZY od wybranego.
+// któremu żadna reguła nie dała tła, malował się SYSTEMOWYM `ButtonFace`. Skutek
+// widoczny gołym okiem: niewybrany chip był JAŚNIEJSZY od wybranego.
+//
+// LOT C3 TO ZAMKNĄŁ I DLATEGO TEN PRZYRZĄD JEST DZIŚ UZBROJONY. Reset deklaruje
+// `background: none` — tak samo i z tego samego powodu co prototyp
+// (`v3/app.css:19`) — a pola tekstowe bez klasy biorą `--input-bg` obok
+// `select`, który miał materiał tej aplikacji od zawsze. Rejestr niżej jest
+// PUSTY, `CONTROL_PAINT_STATUS` stoi na „enforced" i KAŻDY werdykt tego spisu
+// zatrzymuje przebieg. Zdanie, które ten plik wypowiada od lotu C3, brzmi więc
+// bezwarunkowo: ani jedna narysowana kontrolka nie maluje się farbą, której nie
+// ustawił ten arkusz.
 //
 // Żadna para tego nie pyta i nie mogła zapytać: para wymaga, żeby ktoś
 // najpierw NAZWAŁ podmiot. Tu podmiotów jest 133 na 422 elementy `<button>`
@@ -124,15 +133,21 @@ export const CONTROL_PAINT_SHELL = "shell";
  * Status pozycji. Zapisany TUTAJ, a nie w prozie planu, bo od niego zależy, czy
  * przelot rzuca, czy raportuje — i bo prozy nikt nie kompiluje.
  *
- * WARUNEK PRZEŁĄCZENIA NA „enforced": Faza C, lot C3 domyka reset przycisku
- * (`styles.css:509-512` dostaje `background`), po czym rejestr `KNOWN_CONTROL_PAINT`
- * niżej robi się PUSTY. Pusty rejestr + `enforced` znaczy „ani jedna narysowana
- * kontrolka nie maluje się farbą, której nie ustawił ten arkusz" i dopiero
- * wtedy wolno to zdanie egzekwować. Przełączenie przy NIEPUSTYM rejestrze
- * zrobiłoby z bramki układu czerwień do końca fali, czyli przyrząd, który nie
- * pilnuje niczego innego.
+ * WARUNEK PRZEŁĄCZENIA NA „enforced" BYŁ TAKI: Faza C, lot C3 domyka reset
+ * przycisku, po czym rejestr `KNOWN_CONTROL_PAINT` niżej robi się PUSTY. Oba
+ * warunki są spełnione — reset deklaruje `background: none`, pola tekstowe biorą
+ * `--input-bg`, a przelot przestał widzieć czternaście kształtów, o których
+ * rejestr mówił (zmierzone: `UA_DEFAULT 0, OFF_PALETTE 0` w obu motywach, przy
+ * 99 osądzonych grupach i 233 narysowanych kontrolkach na trzynastu celach).
+ * Pusty rejestr + `enforced` znaczy „ani jedna narysowana kontrolka nie maluje
+ * się farbą, której nie ustawił ten arkusz".
+ *
+ * CZEGO TO NIE ZNACZY: `enforced` nie egzekwuje na kontrolkach, których ten
+ * spacer NIE ODWIEDZA — panel deala na Lejku, otwarty ekran rekordu, dialogi
+ * i menu stoją wypisane w nagłówku jako NIEOBJĘTE i tak zostaje. Uzbrojenie
+ * zamyka to, co spis widzi, a nie to, o czym milczy.
  */
-export const CONTROL_PAINT_STATUS = "pending: FAZA C, lot C3";
+export const CONTROL_PAINT_STATUS = "enforced";
 
 /**
  * Czy ten przelot EGZEKWUJE werdykty spisu.
@@ -142,6 +157,12 @@ export const CONTROL_PAINT_STATUS = "pending: FAZA C, lot C3";
  * kontrolką z rejestru jest opisem znanego długu Fazy C; werdykt nad kontrolką
  * SPOZA rejestru jest regresją oddanej roboty i pada zawsze — patrz
  * `classifyControlPaintCensus`.
+ *
+ * OD LOTU C3 TE DWIE ŚCIEŻKI SIĘ ZBIEGŁY: rejestr jest pusty, więc KAŻDA
+ * kontrolka jest „spoza rejestru" i każdy werdykt pada również bez
+ * `armed`. Uzbrojenie nie zmienia dziś ANI JEDNEGO werdyktu — zmienia to, co
+ * stanie się jutro, kiedy ktoś dopisze wpis: przy `enforced` wpis nie ucisza
+ * już niczego, więc rejestr przestał być drogą wyjścia.
  */
 export const CONTROL_PAINT_ARMED = CONTROL_PAINT_STATUS === "enforced";
 
@@ -258,131 +279,33 @@ export const classifyControlPaint = ({ group, palette, uaPaint }) => {
 
 /**
  * ZNANY DŁUG — kontrolki, o których wiadomo DZIŚ, że malują się farbą spoza
- * arkusza, i które zamyka Faza C.
+ * arkusza. PUSTY OD LOTU C3 FAZY C, i to jest jedyny stan, w którym wolno
+ * trzymać ten spis uzbrojonym.
  *
- * KLUCZ TO `surface` + `signature` + `state`, NIGDY LICZBA ELEMENTÓW.
- * `.treeNode` to jeden wiersz na folder, `.chip` jeden na stan relacji,
- * `.groupName` jeden na organizację w fiksturze — rejestr trzymający liczby
- * zgniłby przy pierwszym urośnięciu fikstury i zaczerwienił bramkę na danych,
- * nie na kodzie. Liczby SĄ drukowane, ale nie są asertowane.
+ * DLACZEGO PUSTY, A NIE SKREŚLONY. Rejestr niósł czternaście wpisów, każdy
+ * z adresem, pod którym reguła MILCZAŁA o tle. Wychodziły stąd WYŁĄCZNIE
+ * dlatego, że przelot przestał je widzieć po poprawce w resecie
+ * (`packages/desktop-ui/src/styles.css`, `button { background: none }` plus tło
+ * z `--input-bg` na polach tekstowych) — nie dlatego, że ktoś skreślił wiersz.
+ * Dowodem jest przebieg, nie ta proza: `UA_DEFAULT 0, OFF_PALETTE 0` w obu
+ * motywach przy 99 osądzonych grupach, 233 narysowanych kontrolkach i trzynastu
+ * celach, czyli przy TYCH SAMYCH liczbach spaceru co przed poprawką. Zapis
+ * czternastu zamkniętych kształtów zostaje w historii gita i w raporcie lotu;
+ * tutaj rejestr, który nie jest pusty, byłby wyłącznie długiem.
  *
- * `state` JEST CZĘŚCIĄ KLUCZA, i to jest treść, nie formalność. Wpis bez niego
- * byłby zezwoleniem na KSZTAŁT, a nie na dzisiejszą wadę tego kształtu: lot C3,
- * który wpisze `button._chip` literał spoza tokenów zamiast tokenu, zmieni
- * werdykt z `UA_DEFAULT` na `OFF_PALETTE` — czyli RODZAJ wady — a rejestr
- * milczący o stanie przyjąłby to jako „znany dług" i zaksięgował wpis jako
- * spotkany. Cicha zieleń nad kontrolką, która zmieniła wadę, jest dokładnie tym,
- * czego ten przyrząd ma nie robić. Dziś wszystkie wpisy stoją na `UA_DEFAULT`
- * — ZERO `OFF_PALETTE` w całym przebiegu — więc ten warunek nie zmienia ani
- * jednego dzisiejszego werdyktu i zaczyna działać dopiero w Fazie C.
- *
- * Każdy wpis niesie `why` — czyli miejsce w arkuszu, w którym reguła MILCZY
- * o tle. To jest robota lotu C3, wypisana adresami, a nie prozą.
+ * KSZTAŁT WPISU, GDYBY KTOŚ MUSIAŁ GO ZNÓW DOPISAĆ (a dopisanie wpisu przy
+ * `CONTROL_PAINT_STATUS === "enforced"` jest ZDJĘCIEM strażnika, nie
+ * ewidencją — patrz wyżej): KLUCZ TO `surface` + `signature` + `state`, NIGDY
+ * LICZBA ELEMENTÓW. `.treeNode` to jeden wiersz na folder, `.chip` jeden na stan
+ * relacji, `.groupName` jeden na organizację w fiksturze — rejestr trzymający
+ * liczby zgniłby przy pierwszym urośnięciu fikstury i zaczerwienił bramkę na
+ * danych, nie na kodzie. `state` jest częścią klucza, bo wpis bez niego byłby
+ * zezwoleniem na KSZTAŁT, a nie na dzisiejszą wadę tego kształtu: kontrolka,
+ * która zmieniła RODZAJ wady (`UA_DEFAULT` → `OFF_PALETTE`), jest podmiotem,
+ * o którym rejestr nie wydał zdania. Każdy wpis niesie `why`, czyli miejsce
+ * w arkuszu, w którym reguła milczy o tle — adresem, nie prozą.
  */
-export const KNOWN_CONTROL_PAINT = [
-  {
-    surface: "pipeline",
-    signature: "button._stagesLink",
-    state: "UA_DEFAULT",
-    why: "pipeline/pipeline.module.css:123 — no background in the resting state",
-  },
-  {
-    surface: "organizations",
-    signature: "button._switch",
-    state: "UA_DEFAULT",
-    why: "organizations/organizations.module.css:94 — resting state silent, :102 [aria-selected] paints",
-  },
-  {
-    surface: "organizations",
-    signature: "button._chip",
-    state: "UA_DEFAULT",
-    why: "organizations/organizations.module.css:126 — resting state silent, :141 [aria-pressed] paints",
-  },
-  {
-    surface: "people",
-    signature: "button._switch",
-    state: "UA_DEFAULT",
-    why: "people/people.module.css:85 — resting state silent, :93 [aria-selected] paints",
-  },
-  {
-    surface: "people",
-    signature: "button._groupName",
-    state: "UA_DEFAULT",
-    why: "people/people.module.css:151 — no background in the resting state",
-  },
-  {
-    surface: "renewals",
-    signature: "button._basisLink",
-    state: "UA_DEFAULT",
-    why: "renewals/renewals.module.css:665 — no background in the resting state",
-  },
-  {
-    surface: "renewals",
-    signature: "button._follow",
-    state: "UA_DEFAULT",
-    why: "renewals/renewals.module.css:694 — no background in the resting state",
-  },
-  {
-    surface: "renewals",
-    signature: "button._action",
-    state: "UA_DEFAULT",
-    why: "renewals/renewals.module.css:862 — no background in the resting state",
-  },
-  {
-    surface: "renewals",
-    signature: "button._more",
-    state: "UA_DEFAULT",
-    why: "renewals/renewals.module.css:219 — no background in the resting state",
-  },
-  {
-    surface: "library",
-    signature: "button._switch",
-    state: "UA_DEFAULT",
-    why: "library/library.module.css:122 — resting state silent, :130 [aria-selected] paints",
-  },
-  {
-    surface: "library",
-    signature: "button._treeNode",
-    state: "UA_DEFAULT",
-    why: "library/notes.module.css:144 — resting state silent, :236 .treeNodeSelected paints",
-  },
-  {
-    surface: "library",
-    signature: "button._treeNode._treeNodeLoose",
-    state: "UA_DEFAULT",
-    why: "library/notes.module.css:144 + :204 — neither declares a background",
-  },
-  {
-    surface: "library",
-    signature: "button._arrangementButton",
-    state: "UA_DEFAULT",
-    why: "library/notes.module.css:386 — resting state silent, :410 [aria-pressed] paints",
-  },
-  {
-    // NIE PRZYCISK, I TO JEST TREŚĆ TEGO WPISU. Rejestr znalezisk ma to
-    // zapisane jako „Pole «Change title» jest rysowane domyślnym stylem
-    // systemowym" i przypisane innej rodzinie — a to ta sama reguła i ta sama
-    // przyczyna: `styles.css:501-505` daje `input` `color` i `font`, i nie daje
-    // `background`. Spis obejmujący WYŁĄCZNIE `<button>` nigdy by tego nie
-    // powiedział.
-    //
-    // PODPIS Z `name`, NIE Z BRAKU KLASY. „input[no class]" nie było
-    // identyfikatorem podmiotu, tylko DZIKĄ KARTĄ na całą rodzinę: dopasowanie
-    // idzie po `surface` + `signature`, więc DOWOLNY przyszły bezklasowy
-    // `<input>` w Bibliotece trafiłby w ten wpis, zostałby zaklasyfikowany jako
-    // znany dług Fazy C i tylko by się wydrukował. Na tym samym ekranie stoją
-    // już dwa dalsze bezklasowe pola (`SourcesReading.tsx:405`, `:414`).
-    // GRANICA TEJ POPRAWKI, wypisana, bo jest realna: pole zmiany tytułu (`:304`)
-    // i pole nowego źródła (`:405`) niosą TEN SAM `name="sourceTitle"`, więc ten
-    // podpis identyfikuje dwa podmioty, nie jeden. Zwęża rodzinę do pary — nie
-    // domyka jej do sztuki. `id` nie jest wyjściem: rename bierze `useId()`
-    // (`_r_s_-rename`), czyli napis zmienny między wersjami Reacta.
-    surface: "library",
-    signature: "input[name=sourceTitle]",
-    state: "UA_DEFAULT",
-    why: "library/SourcesReading.tsx:304 („Change title”) carries no rule at all; styles.css:501-505 gives input color and font but no background",
-  },
-];
+export const KNOWN_CONTROL_PAINT = [];
 
 /**
  * KONTROLE DODATNIE — kontrolki, które ten spis MUSI zobaczyć i MUSI uznać za
@@ -477,13 +400,26 @@ export const classifyControlPaintWitnesses = ({
 /**
  * Czy TA grupa jest opisana wpisem rejestru — po `surface`, `signature` I STANIE.
  *
+ * REJESTR WCHODZI PARAMETREM, i to jest poprawka lotu C3, nie ozdoba. Od chwili,
+ * w której `KNOWN_CONTROL_PAINT` zrobił się PUSTY, test czytający wprost żywy
+ * rejestr nie umiał już powiedzieć NIC o kluczowaniu po stanie — asercja nad
+ * pustą listą jest prawdziwa niezależnie od tego, czy reguła działa. Domyślna
+ * wartość zostawia produkcyjne wywołanie bez zmian, a test dowodzi REGUŁY na
+ * własnym rejestrze zamiast na dzisiejszych danych. Ten sam idiom co
+ * `witnesses` i `floors` niżej.
+ *
  * Stan w porównaniu jest tym, co odróżnia „znany dług" od „znanego kształtu".
  * Powód stoi przy `KNOWN_CONTROL_PAINT` i sprowadza się do jednego zdania:
  * kontrolka, która zmieniła RODZAJ wady, jest podmiotem, o którym rejestr nie
  * wydał zdania.
  */
-export const isRegisteredControlPaint = ({ surface, signature, state }) =>
-  KNOWN_CONTROL_PAINT.some(
+export const isRegisteredControlPaint = ({
+  surface,
+  signature,
+  state,
+  registry = KNOWN_CONTROL_PAINT,
+}) =>
+  registry.some(
     (entry) =>
       entry.surface === surface &&
       entry.signature === signature &&
@@ -508,10 +444,8 @@ export const isRegisteredControlPaint = ({ surface, signature, state }) =>
  * motyw, który niczego nie obejrzał, pada na podłodze, zanim ktokolwiek zapyta
  * o rejestr.
  */
-export const unmetControlPaintEntries = (met) =>
-  KNOWN_CONTROL_PAINT.filter(
-    (entry) => !met.has(`${entry.surface}\t${entry.signature}`),
-  );
+export const unmetControlPaintEntries = (met, registry = KNOWN_CONTROL_PAINT) =>
+  registry.filter((entry) => !met.has(`${entry.surface}\t${entry.signature}`));
 
 /**
  * PODŁOGA LICZBY KONTROLEK NA CELU, wyprowadzona z pomiaru, nie wymyślona.
@@ -740,25 +674,26 @@ export const classifyControlPaintCensus = ({
  * regresją: ktoś właśnie zdjął tło z kontrolki, która je miała, albo dołożył
  * ekran z kontrolkami bez tła. To pada ZAWSZE, również przy `pending`.
  *
- * I TO JEST DOKŁADNIE TO, CO MIERZY BREAK-TEST. Bramka nie może być „zielona
- * przed złamaniem", jeżeli mierzy się ją kodem wyjścia nad przyrządem, który
- * dziś czerwieni 100+ podmiotów — więc break-test NIE mierzy tego, czy przyrząd
- * coś znalazł. Mierzy, czy znalazł coś NOWEGO: złamanie zdejmuje `background`
- * z kontrolki, która je DZIŚ MA (`.secondary-button` — NIE `.primary-button`,
- * bo na tamtej para Ustawień liczy akcent, więc przebieg czerwieniałby również
- * bez spisu i nie dowodziłby o nim niczego; wykonane złamanie i jego powód stoją
- * w `scripts/break-visual-language.mjs`), przez co pojawia się podpis spoza
- * rejestru i kod wyjścia bramki idzie z 0 na 1. Baza ZIELONA, złamanie CZERWONE,
- * przywrócenie ZIELONE — na przyrządzie, który przez cały ten czas raportuje ten
- * sam znany dług.
+ * I TO JEST DOKŁADNIE TO, CO MIERZY BREAK-TEST — a od lotu C3 mierzy to
+ * WPROST. Dopóki rejestr niósł czternaście kształtów, przyrząd czerwienił
+ * w każdym przebiegu i baza nie mogła być zielona „bo nic nie znaleziono",
+ * więc złamanie musiało celować w kontrolkę, która tło DZIŚ MA
+ * (`.secondary-button`), żeby powstał podpis spoza rejestru. Dziś baza jest
+ * zielona, bo przyrząd naprawdę NICZEGO nie znajduje, więc złamanie celuje
+ * w SAMĄ ODDANĄ POPRAWKĘ: zdejmuje `background: none` z resetu przycisku
+ * i trzynaście kształtów wraca na farbę silnika przy PUSTYM rejestrze
+ * i `enforced` (wykonane złamanie i jego powód stoją
+ * w `scripts/break-visual-language.mjs`). Baza ZIELONA, złamanie CZERWONE,
+ * przywrócenie ZIELONE — i czerwień jest tym razem zdaniem o tej jednej
+ * deklaracji, którą lot oddał.
  *
  * TA CZERWIEŃ JEST NADOKREŚLONA i to też jest zapisane, nie przemilczane:
- * `.secondary-button` jest zarazem KONTROLĄ DODATNIĄ, więc złamanie zapala
- * osobno `CONTROL_PAINT_WITNESS_FLAGGED`. Sam kod wyjścia nie umiałby
- * powiedzieć, KTÓRA z dwóch asercji poszła na czerwono — dlatego złamanie żąda
- * od break-testu FRAGMENTU KOMUNIKATU (`expectRedContains` w
- * `scripts/break-test.mjs`), czyli zdania z werdyktu nad podpisem spoza
- * rejestru. Trzy liczby mówią wtedy również, co je wyprodukowało.
+ * zdjęcie tła z resetu zapala werdykty na trzynastu kształtach naraz, a sam kod
+ * wyjścia nie umie powiedzieć, KTÓRY z nich poszedł na czerwono. Dlatego
+ * złamanie żąda od break-testu FRAGMENTU KOMUNIKATU (`expectRedContains`
+ * w `scripts/break-test.mjs`), czyli zdania z werdyktu `UA_DEFAULT` — „so no
+ * rule of this stylesheet set it". Trzy liczby mówią wtedy również, co je
+ * wyprodukowało.
  */
 export const controlPaintVerdictThrows = ({ registered, armed }) =>
   armed || !registered;

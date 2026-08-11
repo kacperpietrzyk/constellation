@@ -70,11 +70,40 @@ const replaceOnce = (text, needle, replacement, what) => {
   return text.slice(0, at) + replacement + text.slice(at + needle.length);
 };
 
+/**
+ * Które złamania z tej listy naprawdę wykonać.
+ *
+ * PO CO, skoro pełna lista jest treścią tego pliku: jedno złamanie to trzy
+ * przebudowy i trzy przeloty bramki, a lista ma ich dziewięć — czyli godziny.
+ * Lot, który uzbraja JEDEN przyrząd, ma obowiązek podać trzy liczby dla SWOJEGO
+ * złamania i nie ma powodu przepalać ośmiu cudzych. Filtr jest po fragmencie
+ * NAZWY, więc nie da się nim wskazać złamania, które nie istnieje: pusty wybór
+ * pada niżej zamiast wrócić zielony na zerze wykonanych złamań — dokładnie ta
+ * pułapka, którą fala C zapłaciła na harnessie ekranu szansy.
+ *
+ *   BREAK_ONLY="button reset" LAYOUT_PORT=5291 node scripts/break-visual-language.mjs
+ */
+const only = process.env.BREAK_ONLY ?? "";
+const select = (breaks) => {
+  if (only === "") return breaks;
+  const chosen = breaks.filter((entry) => entry.name.includes(only));
+  if (chosen.length === 0)
+    throw new Error(
+      `BREAK_ONLY="${only}" matched none of the ${breaks.length} break(s) in this file, ` +
+        "so this run would prove nothing while looking like a pass. Names available:\n" +
+        breaks.map((entry) => `  ${entry.name}`).join("\n"),
+    );
+  console.log(
+    `BREAK_ONLY="${only}" → running ${chosen.length} of ${breaks.length} break(s)`,
+  );
+  return chosen;
+};
+
 const outcome = runBreakTests({
   root,
   build: { command: "npm", args: ["run", "build"] },
   verify: { command: "npm", args: ["run", "test:renderer-layout"] },
-  breaks: [
+  breaks: select([
     {
       // ZŁAMANIE PIERWSZE — TO, KTÓREGO ŻĄDA PLAN: cofnięcie akcentu do
       // Black Glass. Nie „przygaszenie", tylko powrót do tego, co ta aplikacja
@@ -186,52 +215,49 @@ const outcome = runBreakTests({
         ),
     },
     {
-      // ZŁAMANIE CZWARTE — DLA SPISU FARBY KONTROLEK (Faza B, lot B1).
+      // ZŁAMANIE CZWARTE — DLA SPISU FARBY KONTROLEK (Faza B, lot B1;
+      // PRZECELOWANE W LOCIE C3 FAZY C).
       //
-      // NAJPIERW PROBLEM, BO JEST NIEOCZYWISTY I ŁATWO GO ROZWIĄZAĆ NIEUCZCIWIE.
-      // Break-test stoi na trzech liczbach „baza ZIELONA → złamanie CZERWONE →
-      // przywrócenie ZIELONE", a przyrząd, którego to złamanie dotyczy, jest na
-      // dzisiejszym drzewie CZERWONY: znajduje CZTERNAŚCIE kształtów kontrolek
-      // na PIĘCIU ekranach, które malują się farbą systemową. Baza nie może
-      // więc być zielona „bo nic nie znaleziono".
+      // CO SIĘ ZMIENIŁO I DLACZEGO TO JEST CAŁA TREŚĆ TEGO WPISU. Dopóki
+      // przyrząd stał na `pending`, był na drzewie CZERWONY: znajdował
+      // CZTERNAŚCIE kształtów kontrolek na PIĘCIU ekranach malujących się farbą
+      // systemową. Baza nie mogła więc być zielona „bo nic nie znaleziono" —
+      // była zielona, bo te czternaście stało WYPISANYCH w `KNOWN_CONTROL_PAINT`
+      // i tylko się DRUKOWAŁO. Złamanie musiało wtedy celować w kontrolkę, która
+      // tło MA (`.secondary-button`), żeby w ogóle powstał podpis SPOZA rejestru.
       //
-      // ROZWIĄZANIE NIE JEST OBEJŚCIEM, TYLKO REGUŁĄ TEGO REPOZYTORIUM: pozycja
-      // NIEODDANA raportuje, rzuca dopiero to, co ODDANE i ZEPSUTE. Te
-      // czternaście kształtów stoi WYPISANYCH w `KNOWN_CONTROL_PAINT`
-      // (`scripts/control-paint.mjs`) razem z miejscem, w którym reguła milczy
-      // o tle — i tylko się DRUKUJE. Kod wyjścia bramki nie zależy od tego, ile
-      // przyrząd dziś znalazł; zależy od tego, czy znalazł coś, czego rejestr
-      // nie zna. Baza jest zielona nad przyrządem, który w tym samym przebiegu
-      // wypisuje czternaście znalezisk, i to jest ZAMIERZONE.
+      // Lot C3 domknął przyczynę: reset deklaruje `background: none`
+      // (`packages/desktop-ui/src/styles.css`, za prototypem `v3/app.css:19`),
+      // rejestr jest PUSTY, a `CONTROL_PAINT_STATUS` stoi na „enforced". Baza
+      // jest dziś zielona dlatego, że przyrząd NAPRAWDĘ niczego nie znajduje —
+      // i to znaczy, że złamanie wolno wreszcie wycelować w SAMĄ ODDANĄ
+      // POPRAWKĘ, zamiast w kontrolkę zastępczą.
       //
-      // DLATEGO ZŁAMANIE CELUJE W KONTROLKĘ, KTÓRA TŁO DZIŚ MA. `.secondary-button`
-      // bierze `--action-secondary-bg` (`styles.css:761`) i rysuje się
-      // w spoczynku na Projektach, Organizacjach, Ludziach i w Bibliotece.
-      // Zdjęcie jednej deklaracji sprawia, że reset `button` przestaje mieć
-      // cokolwiek pod sobą i przeglądarka maluje te przyciski `ButtonFace` —
-      // czyli powstaje podpis SPOZA rejestru. Bramka idzie z 0 na 1 z DWÓCH
-      // niezależnych powodów naraz, i to jest treść tego złamania:
+      // ZŁAMANIE ZDEJMUJE JEDNĄ DEKLARACJĘ Z RESETU. Trzynaście kształtów
+      // przyciskowych wraca wtedy na `ButtonFace` silnika (zmierzone:
+      // `rgb(107,107,107)` w ciemnym, `rgb(239,239,239)` w jasnym) przy pustym
+      // rejestrze i uzbrojonym przyrządzie, więc każdy z nich jest werdyktem,
+      // który zatrzymuje przebieg. Czternasty kształt — bezklasowe pole „Change
+      // title" w Bibliotece — bierze tło z osobnej reguły i CELOWO nie jest tym
+      // złamaniem ruszany: gdyby jedna edycja gasiła wszystko naraz, ten
+      // break-test dowodziłby, że przyrząd umie paść, a nie że pada na TYM, co
+      // deklaruje.
       //
-      //   * werdykt nad kontrolką spoza rejestru (regresja oddanej roboty);
-      //   * `CONTROL_PAINT_WITNESS_FLAGGED` — `.secondary-button` jest jedną
-      //     z trzech KONTROLI DODATNICH przyrządu, czyli świadkiem na to, że
-      //     ten spis w ogóle umie zwrócić „w palecie". Świadek, który nagle
-      //     staje się znaleziskiem, jest albo regresją, albo fałszywym
-      //     trafieniem przyrządu — i jedno, i drugie musi zatrzymać przebieg.
-      //
-      // WYBRANA JEST KONTROLKA, KTÓREJ NIE MIERZY ŻADNA PARA ANI SONDA
-      // WIERNOŚCI (`grep "selector:.*secondary-button" scripts/visual-language-pairs.mjs`
-      // → zero trafień), żeby czerwień dało się PRZYPISAĆ. Złamanie
-      // `.primary-button` byłoby wygodniejsze i bezwartościowe: para Ustawień
-      // liczy na nim akcent, więc przebieg czerwieniałby również bez spisu
-      // i nie dowodziłby o nim niczego.
-      name: "take the token background off .secondary-button: controls that HAVE a background fall to the engine default and the census sees a shape its registry does not know",
-      // CZERWIEŃ PRZYPIĘTA DO NAZWANEJ ASERCJI. Powyżej zapisane jest, że ta
-      // czerwień jest NADOKREŚLONA — sam kod wyjścia nie odróżnia werdyktu nad
-      // podpisem spoza rejestru od `CONTROL_PAINT_WITNESS_FLAGGED`, a to ta
-      // pierwsza ścieżka czyni status `pending` bezpiecznym i to o niej ma być
-      // ten dowód. Fragment jest zdaniem z `classifyControlPaint`, czyli
-      // z werdyktu, nie z awarii przyrządu.
+      // CZEGO TO ZŁAMANIE JUŻ NIE DOWODZI, i to jest świadoma strata: dawna
+      // wersja gasiła zarazem KONTROLĘ DODATNIĄ (`.secondary-button` jest jednym
+      // z trzech świadków), więc zapalała też `CONTROL_PAINT_WITNESS_FLAGGED`.
+      // Ta ścieżka nie ma dziś własnego złamania. Wybór jest taki: czerwień
+      // PRZYPISYWALNA do oddanej deklaracji bije czerwień nadokreśloną, a
+      // świadek dalej pilnuje siebie w każdym przebiegu bramki — po prostu nie
+      // jest tu łamany.
+      name: "take `background: none` off the button reset: thirteen shapes fall back to the engine's ButtonFace against an EMPTY registry on an ARMED census",
+      // CZERWIEŃ PRZYPIĘTA DO NAZWANEJ ASERCJI, a nie do kodu wyjścia. Zdjęcie
+      // tła z resetu zapala trzynaście werdyktów naraz i sam kod wyjścia nie
+      // umie powiedzieć, który z nich to zrobił — ani czy nie zrobił tego
+      // zupełnie inny przelot bramki. Oba fragmenty pochodzą z `classifyControlPaint`,
+      // czyli z WERDYKTU, nie z awarii przyrządu, a drugi jest zdaniem
+      // wypowiadanym WYŁĄCZNIE wtedy, gdy farba kontrolki równa się farbie gołej
+      // kontrolki tej przeglądarki — czyli dokładnie tym, co ta poprawka usunęła.
       expectRedContains: [
         "which is neither fully transparent nor any of the",
         "so no rule of this stylesheet set it",
@@ -240,20 +266,24 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
-          `.secondary-button {
-  color: var(--action-secondary-text);
-  border: 1px solid var(--action-secondary-border);
-  background: var(--action-secondary-bg);`,
-          `.secondary-button {
-  color: var(--action-secondary-text);
-  border: 1px solid var(--action-secondary-border);`,
-          "the secondary action's resting fill",
+          `button {
+  border: 0;
+  background: none;
+  touch-action: manipulation;
+}`,
+          `button {
+  border: 0;
+  touch-action: manipulation;
+}`,
+          "the button reset's declared transparency",
         ),
     },
     {
       // ZŁAMANIE PIĄTE — DLA POZYCJI AKCJI W PAŚMIE TYTUŁU (Faza B, lot B2).
       //
-      // TEN SAM PROBLEM CO PRZY ZŁAMANIU CZWARTYM I TA SAMA ODPOWIEDŹ. Przyrząd
+      // TEN SAM PROBLEM, KTÓRY ZŁAMANIE CZWARTE MIAŁO DO LOTU C3, I TA SAMA
+      // ODPOWIEDŹ — tamto zostało PRZECELOWANE, kiedy jego przyrząd wreszcie
+      // przestał cokolwiek znajdować; ten wpis czeka na to samo. Przyrząd
       // B2 jest na dzisiejszym drzewie CZERWONY: osiem ekranów stawia akcję
       // główną poza rzędem tytułu. Baza nie może więc być zielona „bo nic nie
       // znaleziono" — jest zielona, bo te osiem stoi WYPISANYCH
@@ -523,7 +553,7 @@ const outcome = runBreakTests({
           "the primary action's shadow role",
         ),
     },
-  ],
+  ]),
 });
 
 for (const result of outcome.results)
