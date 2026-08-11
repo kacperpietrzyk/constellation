@@ -7579,11 +7579,15 @@ kbd {
 .knowledge-row-where {
   display: inline-flex;
   min-width: 0;
-  max-width: 12rem;
   align-items: center;
   gap: 0.25rem;
 }
+/* SUFITY SZEROKOŚCI SĄ DWA, BO PROTOTYP MA DWA OBIEKTY. `.kn-row-in` stoi na
+   12 rem (`v3/screens/knowledge.css:183`), a `.kn-row-where` na 11 rem (`:192`)
+   — węższy, bo adres folderu jest przypisem, a referencja wyjściem. Zlanie ich
+   w jedną liczbę dawało adresowi folderu sufit, którego prototyp mu nie daje. */
 .knowledge-row-ref {
+  max-width: 12rem;
   padding: 0.0625rem 0.4375rem 0.0625rem 0.3125rem;
   color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
@@ -7598,6 +7602,9 @@ kbd {
 .knowledge-row-ref svg {
   color: var(--accent);
   opacity: 0.85;
+}
+.knowledge-row-where {
+  max-width: 11rem;
 }
 .knowledge-row-where svg {
   color: var(--text-disabled);
@@ -7837,7 +7844,12 @@ kbd {
   display: grid;
   min-width: 0;
   padding: clamp(var(--space-4), 3vw, var(--space-8));
-  background: var(--surface-sunken);
+  /* PŁASZCZYZNA CZYTANIA, nie wklęsłość tła: kanwa notatki przestała być
+     uniesioną kartą (wpis #38, niżej w tym arkuszu), więc powierzchnia czytania
+     jest TA. Wartość stała przez jeden lot w drugiej regule o tym samym
+     selektorze 44 linie niżej, gdzie wygrywała kolejnością — czytelnik
+     poprawiający regułę bazową nie widział skutku. */
+  background: var(--panel-reading-bg);
   /* Shell height minus the title band and the editor header keeps the canvas
      full-height without a magic viewport constant. The `--header-band-height`
      term went out with the work column's own band: subtracting a strip that is
@@ -7876,10 +7888,9 @@ kbd {
    płaszczyzna Biblioteki nadpisuje ją u siebie, dwiema klasami przeciw jednej.
 
    Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
-   znika. */
-.knowledge-writing-plane {
-  background: var(--panel-reading-bg);
-}
+   znika. Samo `background: var(--panel-reading-bg)` stoi w regule bazowej
+   `.knowledge-writing-plane` (`:7843`), a nie tu — druga deklaracja tego samego
+   selektora wygrywała kolejnością i czyniła wartość bazową martwą. */
 .knowledge-writing-plane .document-canvas {
   padding: var(--space-5) 0 var(--space-10);
   border: 0;
@@ -8300,9 +8311,21 @@ kbd {
   .named-versions {
     padding-inline: var(--space-4);
   }
+  /* MARTWA DEKLARACJA, NIE ZMIANA ZDANIA. Do lotu D3 ten rząd był siatką
+     i wąski krok mówił mu `justify-items: start`; lot przeniósł bazę na `flex`
+     (`:7095`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
+     robi NIC — więc reguła prosiła o lewą, a kaskada dawała prawą z bazowego
+     `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: przy
+     `flex: 1 1 28rem` element i tak wypełnia linię węższą niż 28 rem.
+
+     CZEMU AKURAT LEWA: pasek narzędzi jest OSTATNIM DZIECKIEM tego rzędu
+     (`KnowledgeEditor.tsx:1501` i `:1528`), a nie jego rodzeństwem, i reguła
+     dwie niżej daje mu w tym kroku `width: 100%` — więc zajmuje całą linię
+     i układa swoje przyciski od lewej. Pozostali członkowie rzędu, którzy
+     zawinęli się nad niego, stają na tej samej krawędzi zamiast wisieć nad nim
+     po prawej. */
   .document-editor-actions {
-    width: 100%;
-    justify-items: start;
+    justify-content: flex-start;
   }
   .document-toolbar {
     width: 100%;

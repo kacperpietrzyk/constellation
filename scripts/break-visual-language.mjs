@@ -1154,6 +1154,38 @@ const outcome = runBreakTests({
           "the source row's date element",
         ),
     },
+    {
+      // ZŁAMANIE TRZYDZIESTE TRZECIE — GŁOWA GRUPY ŹRÓDEŁ ZOSTAJE NA STAREJ
+      // WYŚCIÓŁCE, KIEDY WIERSZ POD NIĄ DOSZEDŁ DO KRAWĘDZI (D3-04c, druga
+      // połowa wpisu #41).
+      //
+      // TO JEST WADA NAPRAWDĘ WYDANA NA TEJ GAŁĘZI, nie wyobrażona: lot D3
+      // przeniósł `.row` z `var(--space-3)` na `var(--space-4)` i zostawił
+      // `.groupHead` na starej liczbie, przez co rozjazd lewych krawędzi tekstu
+      // urósł z 2 px do 6 px — a bramka wróciła ZIELONA, bo żadna para tej
+      // wyściółki nie czytała. Złamanie odtwarza dokładnie ten stan.
+      //
+      // Czemu akurat `paddingLeft`, skoro reguła zmienia obie osie poziome:
+      // lewa krawędź jest tą, wzdłuż której czytelnik zjeżdża wzrokiem po
+      // liście, i to ją prototyp zrównuje jedną parą reguł
+      // (`v3/screens/knowledge.css:198` i `:139`).
+      name: "leave the sources group head a step inside the rows below it: the column gets two left edges",
+      expectRedContains: ["D3-04c"],
+      file: "packages/desktop-ui/src/library/sources.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  padding: var(--space-2) var(--space-4);
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);`,
+          `  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);`,
+          "the sources group head padding",
+        ),
+    },
   ]),
 });
 

@@ -6,7 +6,11 @@ import Collaboration from "@tiptap/extension-collaboration";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { SERVABLE_IMAGE_MEDIA_TYPES } from "@constellation/contracts";
-import type { DocumentId, KnowledgeSourceId } from "@constellation/contracts";
+import type {
+  DocumentId,
+  FolderId,
+  KnowledgeSourceId,
+} from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   RendererDocumentRevision,
@@ -54,7 +58,7 @@ import { DOCUMENT_SCHEMA_EXTENSIONS } from "../document-editor-extensions.js";
 import { useInlineSuggestions } from "../components/InlineSuggestions.js";
 import { Icon } from "../components/Icon.js";
 import { countLabel, formatDate, formatDateTime } from "../i18n.js";
-import { folderPath } from "./folder-tree.js";
+import { folderPath, isUnfiled } from "./folder-tree.js";
 import { roleCopy, type DocumentItem } from "./library-chrome.js";
 
 const milestoneCopy = {
@@ -418,13 +422,33 @@ export const KnowledgeEditor = ({
   readonly onRename: (title: string) => Promise<boolean>;
 }) => {
   const yDocument = useMemo(() => new Y.Doc({ gc: true }), [document.id]);
-  // GDZIE TA NOTATKA LEŻY — z tego samego odczytu, z którego bierze to drzewo
-  // obok (`knowledge.list`). Odczyt odmówiony daje pustą listę, a wtedy
-  // `folderPath` zwraca sam identyfikator, więc wiersz mówi „nie wiem, gdzie",
-  // a nie „Unfiled" — dwie różne rzeczy, i pomylenie ich jest dokładnie tą
-  // wadą, którą `NotesReading` opisuje przy `structureReadable`.
+  /*
+   * GDZIE TA NOTATKA LEŻY — z tego samego odczytu, z którego bierze to drzewo
+   * obok (`knowledge.list`), i TYLKO wtedy, kiedy ten odczyt jest gotowy.
+   *
+   * ODMÓWIONY ODCZYT NIE DAJE SIĘ ODRÓŻNIĆ OD BRAKU FOLDERU, więc człon „gdzie"
+   * zostaje WYCOFANY, a nie zgadnięty. Wcześniejsza wersja tego komentarza
+   * twierdziła, że przy pustej liście `folderPath` zwraca sam identyfikator —
+   * NIE ZWRACA. `folder-tree.ts:117-133` robi `byId.get(folderId)` na pustej
+   * mapie, dostaje `undefined`, pętli nie wykonuje ani razu i oddaje
+   * `[].join(" / ")`, czyli PUSTY ŁAŃCUCH. Wiersz rysował więc niemy glif
+   * folderu po kropce rozdzielającej — pustkę zamiast zdania, dokładnie tę
+   * klasę wady, którą `NotesReading` nazywa przy `structureReadable`
+   * (`NotesReading.tsx:105-127`: „the claims about structure are withdrawn").
+   * Stan jest TRWAŁY, nie przejściowy: `snapshot.documents` i
+   * `snapshot.knowledge` to dwa niezależne odczyty, a ten edytor montuje się na
+   * `client && open` bez bramki na gotowość `knowledge`.
+   *
+   * Kiedy odczyt JEST gotowy, o „Unfiled" rozstrzyga `isUnfiled`, a nie samo
+   * `folderId === undefined`: notatka wskazująca folder, którego na liście nie
+   * ma, jest dla czytelnika nieprzypisana i `folder-tree.ts:157-167` mówi, czemu
+   * to nie jest błąd. Ta gałąź nie jest mierzona ŻADNĄ parą — fikstura bramki
+   * ma `knowledge` gotowe, a D3-11b liczy wyłącznie `time` w tym wierszu.
+   */
+  const structureReadable = snapshot.knowledge.kind === "ready";
   const folders =
     snapshot.knowledge.kind === "ready" ? snapshot.knowledge.data.folders : [];
+  const unfiled = isUnfiled(document, folders);
   const revisionNameId = useId();
   const evidenceHeadingId = useId();
   const [text, setText] = useState("");
@@ -1459,19 +1483,19 @@ export const KnowledgeEditor = ({
                 )}
               </time>
             </span>
-            <span aria-hidden="true" className="document-editor-meta-dot">
-              ·
-            </span>
-            <span className="document-editor-where">
-              <Icon
-                name={
-                  document.folderId === undefined ? "folder-loose" : "folder"
-                }
-              />
-              {document.folderId === undefined
-                ? "Unfiled"
-                : folderPath(folders, document.folderId)}
-            </span>
+            {structureReadable ? (
+              <>
+                <span aria-hidden="true" className="document-editor-meta-dot">
+                  ·
+                </span>
+                <span className="document-editor-where">
+                  <Icon name={unfiled ? "folder-loose" : "folder"} />
+                  {unfiled
+                    ? "Unfiled"
+                    : folderPath(folders, document.folderId as FolderId)}
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="document-editor-actions">

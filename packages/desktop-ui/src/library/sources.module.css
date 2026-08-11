@@ -37,7 +37,7 @@
    `padding: 0.5rem var(--space-4)`, `--text-2xs`, waga 600, `letter-spacing:
    0.04em`, wersaliki, kolor czwartorzędny i kreska pod spodem; licznik siedzi
    w tym samym rzędzie przez `margin-left: auto` (`:102`), a `helpBtn` stoi
-   OBOK niego, w tej samej linii (`v3/screens/knowledge.js:968`).
+   OBOK niego, w tej samej linii (`v3/screens/knowledge.js:971`).
 
    TO JEST ZMIANA STOPNIA PISMA, NIE SAMEJ WYŚCIÓŁKI, i dopiero ona daje jeden
    rząd. Zmierzone przed zmianą przy 1440 px: tytuł `--text-md` miał 181 px
@@ -162,7 +162,17 @@
 /* GŁOWA GRUPY ZOSTAJE, KIEDY GRUPA JEST PUSTA. Rodzaj należy do słownika, a nie
    do listy — to, że nic jeszcze nie zostało zrzutem ekranu, mówi coś o twoim
    tygodniu, a nie o modelu. Dlatego to nie jest `:empty`-warunkowa dekoracja,
-   tylko element rysowany zawsze, dla każdego rodzaju. */
+   tylko element rysowany zawsze, dla każdego rodzaju.
+
+   WYŚCIÓŁKA POZIOMA JEST TA SAMA, CO W WIERSZU POD NIĄ, i obie liczby wychodzą
+   z JEDNEJ pary reguł prototypu: `.kn-group-head` ma `padding: 0.4375rem
+   var(--space-4) 0.25rem` (`v3/screens/knowledge.css:198`), a `.kn-row` —
+   `padding: 0.5625rem var(--space-4)` (`:138-139`). Zanim wiersz został
+   dociągnięty do krawędzi kolumny (wpis #41, `:209`), głowa stała na
+   `var(--space-3)` i rozjazd lewych krawędzi tekstu wynosił 2 px; po tamtej
+   zmianie urósł do 6 px, bo wiersz doszedł do `var(--space-4)` + 2 px szyny,
+   a głowa została. Bliźniacza głowa grupy Notatek stoi na tej samej liczbie
+   (`notes.module.css:479`) — nie rozdzielaj ich znowu osobno. */
 .groupHead {
   position: sticky;
   top: 0;
@@ -171,7 +181,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
   color: var(--text-tertiary);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-sunken);

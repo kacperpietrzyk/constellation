@@ -4306,7 +4306,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       file: "v3/screens/knowledge.css",
       lines: "92-97",
       value:
-        "ta sama reguła, co przy D3-01a — obie kolumny list Biblioteki są w prototypie tym samym obiektem (`v3/screens/knowledge.js:812` i `:968`)",
+        "ta sama reguła, co przy D3-01a — obie kolumny list Biblioteki są w prototypie tym samym obiektem (`v3/screens/knowledge.js:812` i `:971`)",
     },
     route: { surface: "library", layout: "sources" },
     subject: {
@@ -4338,6 +4338,32 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "textTransform" },
     expect: { kind: "literal", value: "uppercase" },
+    status: "enforced",
+  },
+  {
+    id: "D3-04c",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "and a group head starts on the same left edge as the rows under it",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "198",
+      value:
+        "`.kn-group-head { padding: 0.4375rem var(--space-4) 0.25rem }` przeciw `.kn-row { padding: 0.5625rem var(--space-4) }` (`:139`) — jedna para reguł, JEDNA wyściółka pozioma dla obu",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_groupHead_"]',
+      // Selektor jest ogólny, ale przystanek NIE jest: na tej trasie rysuje się
+      // wyłącznie moduł Źródeł, a bliźniak z Notatek ma własny przystanek i
+      // własną parę (D3-02). Ta sama para na trasie `notes` byłaby dwuznaczna.
+      why: "CSS Module class on the sources column; the head kept var(--space-3) after the row went to var(--space-4), so the two left edges drifted 6 px apart",
+      app: "packages/desktop-ui/src/library/sources.module.css (.groupHead)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "token", token: "--space-4" },
     status: "enforced",
   },
   {
@@ -4942,7 +4968,19 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // „wiersz jest wierszem, nie kartą", „czytelnia jest jednym planem"),
   // a każde z nich psuje się na kilku niezależnych deklaracjach — cień bez
   // promienia, promień bez kreski, kreska bez pasa daty.
-  pairs: 95,
+  //
+  // 95 → 96 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D3, 2026-08-11, I NIE JEST TO ANI
+  // nowa pozycja, ani rozpad istniejącej: to POŁOWA WPISU #41, która pojechała
+  // bez dowodu. Lot dociągnął wiersz Źródeł do krawędzi kolumny
+  // (`var(--space-3)` → `var(--space-4)`) i zostawił głowę grupy nad nim na
+  // starej liczbie, przez co lewe krawędzie tekstu rozjechały się z 2 px na
+  // 6 px. Prototyp daje obu TĘ SAMĄ wyściółkę poziomą jedną parą reguł
+  // (`v3/screens/knowledge.css:198` i `:139`), a w tej mapie nie czytała jej
+  // ŻADNA para: D3-05a czyta promień wiersza, D3-05b kolor jego kreski,
+  // a D3-02 mierzy bliźniaka z Notatek na INNYM przystanku. Pozycja briefu
+  // dalej ta sama, więc `positionsWithPairs` się nie rusza — rośnie tylko
+  // `pairs` tutaj i `lots.D3.pairs` niżej.
+  pairs: 96,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   notCovered: 11,
@@ -5019,8 +5057,13 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // jest puste — co NIE znaczy, że lot oddał wszystko: awatar inicjałowy
       // z wpisu #36 nie ma pola w projekcji i stoi w `notDelivered` raportu,
       // a nie tutaj, bo ta lista mierzy POKRYCIE pozycji, nie ich dostawę.
+      //
+      // 19 → 20 PRZY NAPRAWIE PO PRZEGLĄDZIE: D3-04c, wyściółka pozioma głowy
+      // grupy Źródeł. Powód i pomiar stoją przy `pairs` na górze tej mapy;
+      // pozycja jest ta sama (wiersz listy i jego siatka), więc rośnie tylko ta
+      // liczba.
       positionsInBrief: 3,
-      pairs: 19,
+      pairs: 20,
       positionsWithPairs: 3, // 1, 2, 3
       positionsWithoutPairs: [],
     },
