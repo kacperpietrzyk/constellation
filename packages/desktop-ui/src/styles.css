@@ -840,9 +840,33 @@ kbd {
   opacity: 0.45;
 }
 
+/* WYSOKOŚĆ AKCJI JEST WYSOKOŚCIĄ Z PROTOTYPU (wpis #10 rejestru Fazy 4, druga
+   z dwóch jego połów). Rejestr zmierzył ją na zrzutach: „app 66 px urządzenia =
+   33 CSS, prototyp 56 px = 28 CSS", a `v3/app.css:307` mówi to samo w źródle —
+   `.btn { height: 1.75rem }`, dla WSZYSTKICH swoich wariantów naraz (`primary`,
+   `bordered`, `quiet` zmieniają wyłącznie farbę). Pierwsza połowa wpisu —
+   materiał: jasna kreska u góry i pierścień — weszła w locie C2, a gradient
+   został ODMÓWIONY na pomiarze kontrastu; nota o tym stoi niżej i nie zmienia
+   się przez ten lot.
+
+   1,75 rem, A NIE 28 px, i to nie jest kosmetyka zapisu: bramka układu chodzi
+   przy 200% i 300% pisma, a `rem` znaczy, że przy powiększonym piśmie rośnie
+   też cel. Wpisany piksel dałby przy 300% przycisk o treści trzykrotnie
+   większej niż jego pudełko.
+
+   `.compact` PRZESTAJE ISTNIEĆ JAKO ROZMIAR, bo baza jest już niższa niż on
+   był; zostaje jako wariant WYŚCIÓŁKI, czyli tym, czym prototyp go nie ma
+   wcale. Zmiana bazy bez tego zostawiłaby modyfikator „compact" WYŻSZY od
+   kontrolki, którą modyfikuje.
+
+   CZEGO TA LICZBA NIE ŁAMIE, sprawdzone, a nie założone: paczkowany smoke żąda
+   celu 44 px wyłącznie od `.search-control`, `.nav-item` i `.capture-dock`
+   (`run-packaged-alpha-smoke.mjs:953-955`), czyli od kontrolek POWŁOKI, których
+   ta reguła nie dotyczy. Milczenie o tym czytałoby się jak przeoczenie, więc
+   stoi wypisane. */
 .primary-button,
 .secondary-button {
-  min-height: 2.25rem;
+  min-height: 1.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -952,12 +976,16 @@ kbd {
    rozmiaru jest właściwością kontrolki, a nie jednej z jej farb. */
 .primary-button.compact,
 .secondary-button.compact {
-  min-height: 2rem;
   padding-inline: var(--space-3);
 }
 .quiet-button,
 .ghost-button {
-  min-height: 2.25rem;
+  /* TA SAMA WYSOKOŚĆ CO AKCJA OBOK — powód stoi przy `.primary-button` wyżej.
+     Prototyp nie ma osobnej wysokości dla przycisku bez tła: `.btn.quiet`
+     (`v3/app.css:318`) zmienia sam kolor pisma. Zostawienie tych dwóch klas na
+     2,25 rem dałoby ekran, na którym akcja główna jest NIŻSZA od stojącego przy
+     niej przycisku pobocznego. */
+  min-height: 1.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;

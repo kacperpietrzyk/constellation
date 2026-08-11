@@ -3325,6 +3325,169 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "literal", value: "0" },
     status: "enforced",
   },
+
+  // ── LOT D1 FAZY D — PASMO NA CAŁĄ SZEROKOŚĆ, ZAMKNIĘTE WŁOSKOWĄ KRESKĄ ─────
+  //
+  // JEDNA POZYCJA, PIĘĆ PAR, i podział jest podziałem DEKLARACJI, nie ozdobą:
+  // „pasmo" jest w tym rejestrze jednym zdaniem złożonym z trzech osobnych
+  // rzeczy — własnej dolnej krawędzi, wysokości pasma i szerokości płótna —
+  // a każda z nich psuje się osobno. Para czytająca samą kreskę byłaby zielona
+  // nad pasmem wciętym w kolumnę czytania, czyli nad dokładnie tą wadą, którą
+  // ten lot zamyka.
+  //
+  // MIERZONE NA LEJKU, bo to jedyny ekran, na którym rejestr zmierzył WSZYSTKIE
+  // TRZY krawędzie (wpis #11: tusz tytułu 41 CSS, pigułka „Stages" 56, karta
+  // kolumny 57,5) — więc jeden przystanek niesie i pasmo, i pasek widoku, i tor
+  // tablicy pod nimi.
+  {
+    id: "D1-01a",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "the title band closes with a hairline of its own",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "282-286",
+      value:
+        "`.crumbbar { … border-bottom: 1px solid var(--border-subtle) }` — pasmo ma własną dolną krawędź, a nie jest blokiem tekstu nad treścią",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: ".surface-header",
+      why: "class written by hand in styles.css, one band per screen; the census resolves the same element from `#surface-title`.closest('header')",
+      app: "packages/desktop-ui/src/styles.css (.surface-header)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D1-01b",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "and stops being clamped to the reading column",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "282-293",
+      value:
+        "`.crumbbar` nie deklaruje ŻADNEGO `max-width`; jedyne `--surface-measure` w prototypie stoi na `.record` (`v3/app.css:650`), czyli na TREŚCI, nie na paśmie",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: ".surface-header",
+      why: "same subject as D1-01a",
+      app: "packages/desktop-ui/src/styles.css (.surface-header)",
+    },
+    read: { property: "maxWidth" },
+    // `none`, A NIE LICZBA: sufit czytelności zdjęty, a nie podniesiony. Para
+    // czytająca „więcej niż 72rem" byłaby zielona także nad pasmem, któremu
+    // ktoś dołożył szerszy sufit, czyli nad tą samą wadą o innej liczbie.
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    id: "D1-02a",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "the view bar under it is a band, not a loose row",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "295-299",
+      value:
+        "`.viewbar { min-height: var(--header-band-height); … border-bottom: 1px solid var(--border-subtle) }` — drugie pasmo o tej samej wysokości i z tą samą krawędzią co `crumbbar`",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: '[class*="_viewbar_"]',
+      why: "the pipeline stop draws exactly one view bar; the module hash is normalised by the same expression the paint census uses",
+      app: "packages/desktop-ui/src/styles.css (.view-band) + pipeline/pipeline.module.css (.viewbar)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D1-02b",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "and stands as tall as the band token says",
+    contract: '.ui-craft/tokens.md — „Spacing and density"',
+    prototype: {
+      file: "v3/tokens.css",
+      lines: "107",
+      value: "--header-band-height: 2.5rem",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: '[class*="_viewbar_"]',
+      why: "same subject as D1-02a",
+      app: "packages/desktop-ui/src/styles.css (.view-band)",
+    },
+    // `rem`, NIE PIKSEL: przeloty chodzą też przy 200% i 300% pisma, a pasmo ma
+    // wtedy rosnąć razem z nim — dlatego arkusz mówi `min-height`, a nie
+    // `height`, i dlatego ta para liczy od żywego korzenia.
+    read: { property: "minHeight" },
+    expect: { kind: "rem", value: 2.5 },
+    status: "enforced",
+  },
+  {
+    id: "D1-03",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "and the board under both starts on the same left edge",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/screens/pipeline.css",
+      lines: "24-27",
+      value:
+        "`.pp-board { … padding: var(--space-3) }` — ta sama liczba, co wyściółka `crumbbar` i `viewbar` (`v3/app.css:284`, `:297`), więc tytuł i karta kolumny padają w prototypie na JEDNĄ krawędź (zmierzone: 13 CSS oba)",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: "[data-scrolls-horizontally]",
+      why: "declared attribute, not a class: the horizontal scroller of the board is the element that carried the fourth, local indent on this axis",
+      app: "packages/desktop-ui/src/pipeline/pipeline.module.css (.scroller)",
+    },
+    read: { property: "paddingLeft" },
+    // ZERO, BO RYNNĘ NIESIE JUŻ NOŚNIK. Tablica siedzi w `.surface-scroll`,
+    // którego wyściółka JEST rynną kanwy; własna wyściółka scrollera dokładała
+    // do niej 16 px i robiła z jednej krawędzi trzy.
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D1-04",
+    lot: "D1",
+    position: 2,
+    kind: "restyle",
+    title: "the band's primary action is as tall as the reference's button",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "`.btn { … height: 1.75rem }` — jedna wysokość dla WSZYSTKICH wariantów (`primary`, `bordered`, `quiet` zmieniają wyłącznie farbę)",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: ".surface-header .primary-button",
+      why: "the one accent-filled action of this screen, reached through the band class written by hand in styles.css",
+      app: "packages/desktop-ui/src/styles.css (.primary-button, .secondary-button)",
+    },
+    // WYSOKOŚĆ NARYSOWANA, nie zadeklarowana `min-height`: arkusz mówi
+    // `min-height`, więc treść wyższa od pasma podniosłaby przycisk, a para
+    // czytająca deklarację byłaby wtedy zielona nad kontrolką, która urosła.
+    read: { property: "height" },
+    expect: { kind: "rem", value: 1.75 },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -3547,7 +3710,20 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // i na `.railSelect`, `align-self` = „start" na jedynym dziecku wprost.
   // Pozycja briefu dalej JEDNA, więc `positionsWithPairs` się nie rusza —
   // rośnie tylko `pairs` tutaj i `lots.C5.pairs` niżej.
-  pairs: 69,
+  //
+  // 69 → 74 PRZY LOCIE D1 FAZY D, 2026-08-11, i jest to NOWA POZYCJA. Pasma nad
+  // płótnem nie mierzyła w tej mapie ani jedna para: spis B2 czyta POŁOŻENIE
+  // AKCJI w paśmie i nie ma zdania o tym, czy pasmo w ogóle jest pasmem —
+  // jego własna dolna krawędź, wysokość i szerokość były poza każdym pomiarem
+  // tej fali. Pięć par, bo jedno zdanie rejestru („pasma zamknięte włoskową
+  // kreską na całą szerokość") składa się z trzech deklaracji na dwóch
+  // elementach plus krawędzi tablicy pod nimi, a każda psuje się osobno.
+  //
+  // 74 → 75 W TYM SAMYM LOCIE, I JEST TO DRUGA POZYCJA, nie rozpad pierwszej.
+  // Lot D1 domyka też drugą połowę wpisu #10 rejestru — WYSOKOŚĆ akcji głównej
+  // (33 CSS wobec prototypowych 28) — a tego nie mierzyła ani ta mapa, ani spis
+  // B2, który czyta POŁOŻENIE akcji i nie ma zdania o jej rozmiarze.
+  pairs: 75,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -3611,6 +3787,19 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       positionsInBrief: 1,
       pairs: 6,
       positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    D1: {
+      // Lot D1 niesie DZIEWIĘĆ wpisów rejestru, ale tylko JEDNO zdanie
+      // wyrażalne selektorem nad ekranem, do którego ta mapa umie dojechać:
+      // pasmo na całą szerokość z własną kreską (#9, #11, #16, #22 — cztery
+      // wpisy, jedna robota, jedna pozycja). Reszta lotu to albo pomiar
+      // spisu B2 (#62 — Spotkania, mierzone TAMTĄD, nie parą), albo pozycje
+      // oddane jako niezrobione i wypisane w raporcie lotu. Drugą pozycją jest
+      // wysokość akcji głównej (#10), wyrażalna selektorem i dlatego z parą.
+      positionsInBrief: 2,
+      pairs: 6,
+      positionsWithPairs: 2, // 1, 2
       positionsWithoutPairs: [],
     },
     2: {

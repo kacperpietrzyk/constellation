@@ -671,6 +671,118 @@ const outcome = runBreakTests({
           "the record rail's select growth",
         ),
     },
+    {
+      // ZŁAMANIE CZTERNASTE — PASMO WRACA DO KOLUMNY CZYTANIA (D1-01b).
+      //
+      // ODTWARZA STAN SPRZED LOTU D1 CO DO ZNAKU: sufit `--surface-measure`
+      // z powrotem na paśmie, automatyczne marginesy zamiast ujemnej rynny
+      // i zero wyściółki. To jest dokładnie ten kształt, który rejestr Fazy 4
+      // zmierzył jako JEDNĄ kreskę wciętą o 40 CSS z obu stron zamiast dwóch
+      // ciągnących się od krawędzi do krawędzi.
+      //
+      // KRESKA ZOSTAJE NIETKNIĘTA, i to jest treść tego złamania: pasmo dalej
+      // ma własną dolną krawędź, więc para czytająca samą kreskę (D1-01a) jest
+      // przy tym złamaniu ZIELONA. Czerwień musi przyjść z pary czytającej
+      // sufit — inaczej „pasmo na całą szerokość" nie byłoby zmierzone przez
+      // nic i pierwszy lot, który je z powrotem wsunie, przeszedłby cicho.
+      name: "put the title band back inside the reading column: the hairline stops at the measure instead of the canvas edge",
+      expectRedContains: ["D1-01b"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.surface-header {
+  min-height: var(--header-band-height);
+  margin: calc(-1 * var(--surface-band-lift, 0px))
+    calc(-1 * var(--surface-gutter, 0px)) var(--space-6);
+  padding-inline: var(--surface-gutter, 0px);`,
+          `.surface-header {
+  min-height: var(--header-band-height);
+  max-width: var(--surface-measure, 58rem);
+  margin: 0 auto var(--space-6);
+  padding-inline: 0;`,
+          "the title band's span",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘTNASTE — PASEK WIDOKU TRACI WŁOSKOWĄ KRESKĘ (D1-02a).
+      //
+      // OSOBNE ZŁAMANIE OD CZTERNASTEGO, bo to są dwa różne zdania o dwóch
+      // różnych elementach: tamto psuje SZEROKOŚĆ pasma tytułu, to psuje
+      // KRAWĘDŹ pasma pod nim. Wpis #9 rejestru mówi o obu naraz („paski nad
+      // tablicą bez włoskowych kresek i bez wysokości pasma"), a jedno złamanie
+      // na dwa zdania zostawiłoby jedno z nich bez dowodu.
+      name: "take the hairline off the view bar: the row under the title band stops being a band",
+      expectRedContains: ["D1-02a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.view-band {
+  min-height: var(--header-band-height);
+  margin-inline: calc(-1 * var(--surface-gutter, 0px));
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);`,
+          `.view-band {
+  min-height: var(--header-band-height);
+  margin-inline: calc(-1 * var(--surface-gutter, 0px));
+  padding-inline: var(--surface-gutter, 0px);`,
+          "the view band's hairline",
+        ),
+    },
+    {
+      // ZŁAMANIE SZESNASTE — AKCJA GŁÓWNA ROŚNIE Z POWROTEM DO 2,25 REM (D1-04).
+      //
+      // Wpis #10 rejestru zmierzył tę wadę na zrzutach — „app 66 px urządzenia
+      // = 33 CSS, prototyp 56 px = 28 CSS" — a NIE MIERZYŁ jej dotąd żaden
+      // przyrząd tej fali: spis B2 czyta POŁOŻENIE akcji w paśmie i nie ma
+      // zdania o jej rozmiarze, a spis B1 czyta jej FARBĘ. Złamanie jest więc
+      // testem świeżej pary, nie starej.
+      name: "grow the primary action back to 2.25rem: the band's action is a third taller than the reference's button",
+      expectRedContains: ["D1-04"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.primary-button,
+.secondary-button {
+  min-height: 1.75rem;`,
+          `.primary-button,
+.secondary-button {
+  min-height: 2.25rem;`,
+          "the action height",
+        ),
+    },
+    {
+      // ZŁAMANIE SIEDEMNASTE — DOWÓD, ŻE SPIS PASMA TYTUŁU JEST NAPRAWDĘ
+      // UZBROJONY, a nie tylko tak o sobie pisze.
+      //
+      // DLACZEGO NIE „ZDEJMIJ AKCJĘ ZE SPOTKAŃ": takie złamanie pada RÓWNIEŻ
+      // przy `pending`, bo pomiar rozjeżdża się wtedy z kolumną `today`
+      // (`titleBandVerdictThrows({ predicted: false })` jest prawdziwe w obu
+      // trybach). Zaobserwowane na żywo w tym locie, zanim przyrząd został
+      // uzbrojony — więc jako dowód UZBROJENIA byłoby bezwartościowe.
+      //
+      // TO ZŁAMANIE PADA WYŁĄCZNIE UZBROJONE: przestawia kolumnę PROTOTYPU
+      // Spotkań na `ABOVE_BAND`, czyli mówi „prototyp stawia tę akcję rząd
+      // wyżej". Pomiar dalej zgadza się z kolumną `today` (`predicted: true`),
+      // więc jedyne, co zostaje, to ROZJAZD Z PROTOTYPEM — a rozjazd kładzie
+      // przebieg tylko wtedy, gdy pozycja jest `enforced`.
+      name: "declare that the prototype puts the Meetings action a row higher: an armed census fails on a divergence a pending one would only report",
+      expectRedContains: ["meetings"],
+      file: "scripts/title-band-action.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    id: "meetings",
+    prototype: "action",
+    prototypeRow: "IN_BAND",`,
+          `    id: "meetings",
+    prototype: "action",
+    prototypeRow: "ABOVE_BAND",`,
+          "the Meetings prototype row",
+        ),
+    },
   ]),
 });
 
