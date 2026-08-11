@@ -21,6 +21,7 @@ import {
   type CommentTree,
   type PendingAttachment,
 } from "./record-tabs.js";
+import { initialsOf } from "./record-actors.js";
 import styles from "./record-comments.module.css";
 
 // The Comments tab, in ONE implementation shared by the task, project and
@@ -328,6 +329,7 @@ export const RecordCommentsPanel = ({
   mentionNameOf,
   mentionCandidates = [],
   currentPrincipalId,
+  currentDisplayName,
   canComment,
   canResolve,
   onSubmit,
@@ -367,6 +369,18 @@ export const RecordCommentsPanel = ({
    *  author, and an author may settle their own thread without the grant that
    *  settles anybody else's. */
   readonly currentPrincipalId: PrincipalId | undefined;
+  /** JAK NAZYWA SIĘ CZYTELNIK — wyłącznie po to, żeby znacznik autora
+   *  w kompozytorze niósł jego inicjały (rejestr, wpis #58).
+   *
+   *  OSOBNY PROP, A NIE ODCZYT Z `mentionCandidates`, I JEST KU TEMU POWÓD:
+   *  wywołujący WYCINA czytelnika z listy kandydatów, zanim ją tu poda
+   *  (`RealApp.tsx:2233`, `StrategicDepthSurface.tsx:1929`) — nie wzmiankuje
+   *  się samego siebie — więc w tym komponencie nazwiska czytelnika po prostu
+   *  nie ma. `mentionNameOf` też go nie zna: dla własnego principala zwraca
+   *  słowo „You" (`record-actors.ts:143`), z którego inicjały byłyby literą
+   *  „Y". Wartość może być pusta i wtedy znacznik rysuje glif osoby zamiast
+   *  zmyślonych liter. */
+  readonly currentDisplayName: string | undefined;
   /** Kept apart from `busy` on purpose. A control disabled because a write is
    *  in flight and one disabled because the grant is read-only are different
    *  facts about the same button, and folding them together leaves a reader
@@ -819,143 +833,171 @@ export const RecordCommentsPanel = ({
         className={styles.composer}
         onSubmit={submit}
       >
-        {replyTo !== undefined && (
-          <div className={styles.replyStrip}>
-            <span>Replying to {replyTo.author.displayName}</span>
-            <button
-              className={styles.action}
-              onClick={() => setReplyTo(undefined)}
-              type="button"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-        <textarea
-          aria-label="Write a comment"
-          className={styles.field}
-          disabled={!canComment || busy}
-          maxLength={BODY_LIMIT}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
-              submit(event);
-            // Escape leaves the REPLY, and only when there is one to leave —
-            // otherwise the key keeps closing whatever holds this panel.
-            else if (event.key === "Escape" && replyTo !== undefined) {
-              event.preventDefault();
-              event.stopPropagation();
-              setReplyTo(undefined);
-            }
-          }}
-          placeholder={
-            canComment ? "Write a comment" : "This scope is read-only."
-          }
-          rows={2}
-          value={draft}
-        />
-        {/* The valve, made operable. Everything above this line says a mention
+        {/* ZNACZNIK AUTORA W KOMPOZYTORZE (rejestr, wpis #58). Inicjały —
+            gdy wiadomo, CZYJE; glif osoby — gdy nie. Wymyślone „?" byłoby
+            atrapą, a atrapy są tu nazwaną wadą; imienia nie ma skąd wziąć,
+            dopóki projekcja kandydatów do wzmianki nie jest gotowa. */}
+        <span
+          aria-hidden="true"
+          className={`${styles.mark} ${styles.composerMark}`}
+        >
+          {currentDisplayName === undefined ? (
+            <Icon name="people" />
+          ) : (
+            initialsOf(currentDisplayName)
+          )}
+        </span>
+        <div className={styles.composerMain}>
+          {replyTo !== undefined && (
+            <div className={styles.replyStrip}>
+              <span>Replying to {replyTo.author.displayName}</span>
+              <button
+                className={styles.action}
+                onClick={() => setReplyTo(undefined)}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {/* OPRAWA JEST RAMKĄ PISANEGO KOMENTARZA — pole, to, co komentarz
+            obudzi, i wysyłka stoją w JEDNYM obrysie, a przycisk siedzi
+            w jego prawym dolnym rogu, jak w prototypie
+            (`v3/screens/record.js:206-212`). Wybór wzmianek został MIĘDZY
+            polem a przyciskiem: pod przyciskiem byłby decyzją podejmowaną
+            po wysłaniu. */}
+          <div className={styles.composerField}>
+            <textarea
+              aria-label="Write a comment"
+              className={styles.composerText}
+              disabled={!canComment || busy}
+              maxLength={BODY_LIMIT}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
+                  submit(event);
+                // Escape leaves the REPLY, and only when there is one to leave —
+                // otherwise the key keeps closing whatever holds this panel.
+                else if (event.key === "Escape" && replyTo !== undefined) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setReplyTo(undefined);
+                }
+              }}
+              placeholder={
+                canComment ? "Write a comment" : "This scope is read-only."
+              }
+              rows={2}
+              value={draft}
+            />
+            {/* The valve, made operable. Everything above this line says a mention
             is what wakes somebody; a composer that could not create one would
             have made that sentence describe a thing the reader cannot do.
             Toggles rather than a free-text `@`, because the only honest way to
             name a person is to pick them. */}
-        {mentionCandidates.length > 0 && (
-          <ul aria-label="Mention someone" className={styles.mentions}>
-            {mentionCandidates.map((candidate) => {
-              const named = mentions.includes(candidate.principalId);
-              return (
-                <li key={candidate.principalId}>
-                  <button
-                    aria-pressed={named}
-                    className={`${styles.mentionChip} ${
-                      named ? styles.mentionChipOn : ""
-                    }`}
-                    data-principal-id={candidate.principalId}
-                    disabled={!canComment || busy}
-                    onClick={() =>
-                      setMentions((current) =>
-                        named
-                          ? current.filter((id) => id !== candidate.principalId)
-                          : [...current, candidate.principalId],
-                      )
-                    }
-                    type="button"
-                  >
-                    @{candidate.displayName}
-                    {candidate.participantKind === "guest" && (
-                      <span className={styles.mentionKind}>guest</span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {staged.length > 0 && (
-          <ul
-            aria-label="New comment attachments"
-            className={styles.attachments}
-          >
-            {staged.map((attachment) => (
-              <li className={styles.attachment} key={attachment.sourceId}>
-                <span className={styles.attachmentName}>
-                  {attachment.original.payload.displayName}
-                </span>
-                <span className={styles.attachmentSize}>Ready to attach</span>
+            {mentionCandidates.length > 0 && (
+              <ul aria-label="Mention someone" className={styles.mentions}>
+                {mentionCandidates.map((candidate) => {
+                  const named = mentions.includes(candidate.principalId);
+                  return (
+                    <li key={candidate.principalId}>
+                      <button
+                        aria-pressed={named}
+                        className={`${styles.mentionChip} ${
+                          named ? styles.mentionChipOn : ""
+                        }`}
+                        data-principal-id={candidate.principalId}
+                        disabled={!canComment || busy}
+                        onClick={() =>
+                          setMentions((current) =>
+                            named
+                              ? current.filter(
+                                  (id) => id !== candidate.principalId,
+                                )
+                              : [...current, candidate.principalId],
+                          )
+                        }
+                        type="button"
+                      >
+                        @{candidate.displayName}
+                        {candidate.participantKind === "guest" && (
+                          <span className={styles.mentionKind}>guest</span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {staged.length > 0 && (
+              <ul
+                aria-label="New comment attachments"
+                className={styles.attachments}
+              >
+                {staged.map((attachment) => (
+                  <li className={styles.attachment} key={attachment.sourceId}>
+                    <span className={styles.attachmentName}>
+                      {attachment.original.payload.displayName}
+                    </span>
+                    <span className={styles.attachmentSize}>
+                      Ready to attach
+                    </span>
+                    <button
+                      className={styles.action}
+                      disabled={busy}
+                      onClick={() =>
+                        setStaged((current) =>
+                          current.filter(
+                            (item) => item.sourceId !== attachment.sourceId,
+                          ),
+                        )
+                      }
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* Said before the write, not after: whether this comment will wake
+            anybody is the one thing about it worth knowing in advance. */}
+            <p className={styles.reach}>
+              {mentions.length === 0
+                ? "Nobody is notified."
+                : `${countLabel(mentions.length, "person", "people")} will be notified.`}
+            </p>
+            {staged.length >= ATTACHMENT_LIMIT && (
+              <p className={styles.reach}>
+                {ATTACHMENT_LIMIT} attachments is the limit.
+              </p>
+            )}
+            <div className={styles.send}>
+              {onAttach !== undefined && (
                 <button
                   className={styles.action}
-                  disabled={busy}
-                  onClick={() =>
-                    setStaged((current) =>
-                      current.filter(
-                        (item) => item.sourceId !== attachment.sourceId,
-                      ),
-                    )
+                  disabled={
+                    !canComment || busy || staged.length >= ATTACHMENT_LIMIT
                   }
+                  onClick={attach}
                   type="button"
                 >
-                  Remove
+                  Attach file
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {/* Said before the write, not after: whether this comment will wake
-            anybody is the one thing about it worth knowing in advance. */}
-        <p className={styles.reach}>
-          {mentions.length === 0
-            ? "Nobody is notified."
-            : `${countLabel(mentions.length, "person", "people")} will be notified.`}
-        </p>
-        {staged.length >= ATTACHMENT_LIMIT && (
-          <p className={styles.reach}>
-            {ATTACHMENT_LIMIT} attachments is the limit.
-          </p>
-        )}
-        <div className={styles.send}>
-          {onAttach !== undefined && (
-            <button
-              className={styles.action}
-              disabled={
-                !canComment || busy || staged.length >= ATTACHMENT_LIMIT
-              }
-              onClick={attach}
-              type="button"
-            >
-              Attach file
-            </button>
-          )}
-          {/* Disabled only while there is nothing to send, a write is in
+              )}
+              {/* Disabled only while there is nothing to send, a write is in
               flight, or the grant does not allow one — and the placeholder
               above has already said which. A control greyed out for no stated
               reason is a dummy, and dummies are a named defect here. */}
-          <button
-            className={styles.submit}
-            disabled={!canComment || busy || draft.trim() === ""}
-            type="submit"
-          >
-            {replyTo === undefined ? "Comment" : "Add reply"}
-          </button>
+              <button
+                className={styles.submit}
+                disabled={!canComment || busy || draft.trim() === ""}
+                type="submit"
+              >
+                {replyTo === undefined ? "Comment" : "Add reply"}
+              </button>
+            </div>
+          </div>
         </div>
       </form>
     </div>

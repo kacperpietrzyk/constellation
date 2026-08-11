@@ -1186,6 +1186,117 @@ const outcome = runBreakTests({
           "the sources group head padding",
         ),
     },
+    {
+      // ZŁAMANIE TRZYDZIESTE CZWARTE — DOKUMENT PROJEKTU WRACA OBOK SIATKI
+      // (D4-01a, wpis #47 rejestru, BLOKUJĄCY).
+      //
+      // Odtwarza dokładnie stan sprzed lotu: `{body}` renderowany jako
+      // RODZEŃSTWO dwukolumnowej siatki, a nie w kolumnie tekstu. Zmierzone
+      // przed poprawką przy 1440 px: karta biegła przez całą szerokość siatki
+      // (prawa krawędź 1376 px wobec kolumny kończącej się na 1072), więc
+      // przechodziła pod pasem powiązań, a włoskowa krawędź pasa urywała się
+      // na jej górnym rogu (obie liczby y=667,6).
+      //
+      // Para liczy ZAWIERANIE, nie geometrię, i dlatego to złamanie ją zapala:
+      // po tej edycji `.project-rich-body` przestaje być potomkiem kolumny.
+      name: "render the project document beside the two-column body again: the card leaves the reading column and crosses under the rail",
+      expectRedContains: ["D4-01a"],
+      file: "packages/desktop-ui/src/record/ProjectRecordScreen.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          <ProjectRecordOverview
+            body={body}`,
+          `          <ProjectRecordOverview`,
+          "the project document's place in the Overview",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE PIĄTE — KRAWĘDŹ PASA ZNOWU KOŃCZY SIĘ NA TREŚCI
+      // (D4-01b, druga połowa wpisu #47).
+      //
+      // OSOBNE ZŁAMANIE OD POPRZEDNIEGO, BO TO OSOBNA POŁOWA WADY I OSOBNA
+      // REGUŁA. Karta może siedzieć w kolumnie tekstu, a pas i tak urywać się
+      // w połowie dokumentu — dokładnie to zmierzono w trakcie lotu, po samym
+      // przeniesieniu węzła: kolumna 422,6..1193,1 px, pas 422,6..667,6, czyli
+      // 525,5 px krawędzi brakowało. Bez tego złamania para D4-01b byłaby
+      // asercją, o której nikt nie wie, czy umie paść.
+      name: "let the rail box stop at its own content again: the column edge ends 525 px above the body's floor",
+      expectRedContains: ["D4-01b"],
+      file: "packages/desktop-ui/src/record/project-record.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  align-self: stretch;
+  gap: var(--space-5);`,
+          `  gap: var(--space-5);`,
+          "the rail's stretch",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE SZÓSTE — ZNACZNIK AUTORA-CZŁOWIEKA ZNOWU BEZ
+      // OBWÓDKI (D4-05, wpis #59).
+      //
+      // Kasuje obwódkę z reguły BAZOWEJ i zostawia ją wariantowi agenta — czyli
+      // odtwarza stan, w którym jeden wątek niósł dwa języki oznaczania autora.
+      // Wariant agenta zostaje nietknięty CELOWO: gdyby złamanie zdejmowało
+      // obwódkę obu, nie dowodziłoby, że para patrzy na znacznik człowieka.
+      name: "take the border off the base author mark: the human's initials read as loose text beside the agent's ring",
+      expectRedContains: ["D4-05"],
+      file: "packages/desktop-ui/src/record/record-comments.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-secondary);`,
+          `  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);`,
+          "the base author mark's edge",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE SIÓDME — PLAKIETKA ROLI AGENTA TRACI KSZTAŁT
+      // (D4-04, wpis #56).
+      //
+      // Celuje w STYL krawędzi, nie w kolor, i to jest cała różnica: akcent ma
+      // być podwojony przerywaną krawędzią, więc para czytająca sam kolor
+      // stałaby zielona nad pigułką z krawędzią ciągłą.
+      name: "make the agent's role pill solid-edged again: the accent stops being doubled by anything but hue",
+      expectRedContains: ["D4-04"],
+      file: "packages/desktop-ui/src/record/record-comments.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  border: 1px dashed var(--accent-edge);
+  border-radius: var(--radius-full);
+  color: var(--accent);`,
+          `  border: 1px solid var(--accent-edge);
+  border-radius: var(--radius-full);
+  color: var(--accent);`,
+          "the agent role pill's dashed edge",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE ÓSME — PRZYCISK WYSYŁKI WYCHODZI Z RAMKI POLA
+      // (D4-06a, wpis #58).
+      //
+      // Edycja jest w TSX, bo „wewnątrz ramki" jest faktem o DRZEWIE, nie
+      // o arkuszu. Wiersz wysyłki wraca pod oprawę — czyli tam, gdzie stał
+      // przed lotem, dwa wiersze pod polem, do którego należy.
+      name: "stop the composer's frame from being a frame: every send control is outside one again",
+      expectRedContains: ["D4-06a"],
+      file: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          <div className={styles.composerField}>`,
+          `          <div className={styles.composerMain}>`,
+          "the composer frame's own class",
+        ),
+    },
   ]),
 });
 

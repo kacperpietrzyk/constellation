@@ -162,6 +162,10 @@ export interface ProjectRecordScreenProps {
    *  their own, which is why this and `currentPrincipalId` travel together. */
   readonly canResolve: boolean;
   readonly currentPrincipalId: PrincipalId | undefined;
+  /** Nazwa czytelnika, wyłącznie dla znacznika autora w kompozytorze
+   *  komentarzy (rejestr, wpis #58). Może być pusta i wtedy znacznik rysuje
+   *  glif osoby zamiast zmyślonych inicjałów. */
+  readonly currentDisplayName: string | undefined;
   readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: string) => string;
   readonly mentionCandidates: readonly MentionCandidate[];
@@ -228,6 +232,7 @@ export const ProjectRecordScreen = ({
   canComment,
   canResolve,
   currentPrincipalId,
+  currentDisplayName,
   actorOf,
   mentionNameOf,
   mentionCandidates,
@@ -358,23 +363,22 @@ export const ProjectRecordScreen = ({
         tabs={PROJECT_TABS}
       >
         {selected === "overview" && (
-          <>
-            <ProjectRecordOverview
-              clientLinking={clientLinking}
-              onOpenClient={(organization) =>
-                onOpenRelationship(organization.id as StrategicRecordId)
-              }
-              onOpenDecision={(id) =>
-                onOpenRelationship(id as StrategicRecordId)
-              }
-              onOpenMeeting={(id) => onOpenMeeting(id as StrategicRecordId)}
-              onWriteOutcome={onWriteOutcome}
-              outcomeEditor={outcomeEditor}
-              overview={overview}
-              reading={reading}
-            />
-            {body}
-          </>
+          // Dokument idzie do KOLUMNY tekstu Overview, nie obok siatki
+          // (rejestr, wpis #47) — powód i odniesienie przy propie `body`
+          // w `ProjectRecordOverview.tsx`.
+          <ProjectRecordOverview
+            body={body}
+            clientLinking={clientLinking}
+            onOpenClient={(organization) =>
+              onOpenRelationship(organization.id as StrategicRecordId)
+            }
+            onOpenDecision={(id) => onOpenRelationship(id as StrategicRecordId)}
+            onOpenMeeting={(id) => onOpenMeeting(id as StrategicRecordId)}
+            onWriteOutcome={onWriteOutcome}
+            outcomeEditor={outcomeEditor}
+            overview={overview}
+            reading={reading}
+          />
         )}
 
         {selected === "tasks" && (
@@ -428,6 +432,7 @@ export const ProjectRecordScreen = ({
               canComment={canComment}
               canResolve={canResolve}
               currentPrincipalId={currentPrincipalId}
+              currentDisplayName={currentDisplayName}
               mentionCandidates={mentionCandidates}
               mentionNameOf={(principalId) => mentionNameOf(principalId)}
               onEdit={onEditComment}

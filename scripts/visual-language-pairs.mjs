@@ -4649,6 +4649,246 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // pozycja nieoddana lotu, nie zamknięte cicho.
     status: "enforced",
   },
+
+  // ── LOT D4: EKRAN REKORDU PROJEKTU I KOMENTARZE ───────────────────────────
+  {
+    id: "D4-01a",
+    lot: "D4",
+    position: 1,
+    kind: "restructure",
+    title: "the project document sits INSIDE the reading column",
+    contract: '.ui-craft/patterns.md — „Pattern: Record body and its rail"',
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "454-460",
+      value:
+        '`${doc}` idzie do `<div class="rc-doc">` WEWNĄTRZ `<div class="rc-body">` — dokument jest dzieckiem kolumny tekstu, nie rodzeństwem siatki',
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // PARA JEST O ZAWIERANIU, WIĘC MIERZY ZAWIERANIE. Selektor potomka
+      // czyta dokładnie zdanie wpisu: „karta stoi w kolumnie tekstu".
+      // Odczyt geometrii (prawa krawędź karty) byłby o JEDEN krok dalej od
+      // przyczyny i zieleniałby przy każdej szerokości, przy której karta
+      // akurat się mieści.
+      selector: '[class*="_doc_"] .project-rich-body',
+      why: "containment is the defect: the card was a SIBLING of the grid, so it ran the full 1092 px and passed under the rail",
+      app: "packages/desktop-ui/src/record/ProjectRecordOverview.tsx (prop `body`), ProjectRecordScreen.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D4-01b",
+    lot: "D4",
+    position: 1,
+    kind: "restyle",
+    title: "and the rail's hairline runs the whole height of the body",
+    contract: '.ui-craft/patterns.md — „Pattern: Record body and its rail"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "101",
+      value:
+        "`.rc-rail { border-left: 1px solid var(--border-subtle) }` — krawędź KOLUMNY; w prototypie pas jest kolumną wyższą, więc biegnie do dna ciała rekordu",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // DRUGI KANAŁ TEJ SAMEJ POZYCJI. Sama para D4-01a byłaby zielona nad
+      // ekranem, na którym karta wróciła do kolumny, a włoskowa krawędź
+      // dalej urywa się w połowie dokumentu — czyli nad połową poprawki.
+      selector: '[class*="_rail_"]',
+      why: "with align-items: start the rail's box stops at its content; measured after the move, the edge ended 525.5 px above the column's floor",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.rail)",
+    },
+    read: { property: "alignSelf" },
+    expect: { kind: "literal", value: "stretch" },
+    status: "enforced",
+  },
+  {
+    id: "D4-02",
+    lot: "D4",
+    position: 2,
+    kind: "restyle",
+    title: "a metadata chip is a soft rectangle, not a capsule",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "356-362",
+      value:
+        "`.chip { border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--surface-raised) }`",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[class*="_chipDashed_"]',
+      why: "the empty-state chip is the one the fixture draws (no client, no deadline); it shares the radius with `.chip` because the prototype makes `dashed` a MODIFIER over the same rule",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.chip, .chipDashed)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-sm" },
+    status: "enforced",
+  },
+  {
+    id: "D4-03",
+    lot: "D4",
+    position: 3,
+    kind: "restyle",
+    title: "a legend swatch is a miniature of the bar's segment",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
+    prototype: {
+      file: "v3/screens/projects.css",
+      lines: "238",
+      value:
+        "`.pj-legend .pj-seg { width: 0.625rem; height: 0.625rem; border-radius: 2px }`",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[class*="_swatch_"]',
+      why: "`--radius-sm` is 0.375rem on a 0.625rem swatch — a radius of 60% of the side, which reads as a dot and stops referring to the bar above it",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.swatch)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "2px" },
+    status: "enforced",
+  },
+  {
+    id: "D4-04",
+    lot: "D4",
+    position: 4,
+    kind: "restyle",
+    title: "the agent's role is a pill with a dashed accent edge",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "169-175",
+      value:
+        "`.rc-kind { border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 0.0625rem 0.4375rem }` + `.rc-kind-agent { color: var(--accent); border-color: var(--accent-edge); border-style: dashed }`",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      selector: '[class*="_kind_"]',
+      why: "the role line was colour and size only; the STYLE of the border is what the accent is doubled by, so a colour-only pair would stay green over a solid edge",
+      app: "packages/desktop-ui/src/record/record-comments.module.css (.kind)",
+    },
+    read: { property: "borderStyle" },
+    expect: { kind: "literal", value: "dashed" },
+    status: "enforced",
+  },
+  {
+    id: "D4-05",
+    lot: "D4",
+    position: 5,
+    kind: "restyle",
+    title: "the human author's mark has an edge, like the agent's",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "382-387",
+      value:
+        "`.rc-mark { border: 1px solid var(--border-default); background: var(--surface-raised) }` — obwódka jest w BAZIE, wariant agenta ją tylko podmienia",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      // PODMIOTEM JEST ZNACZNIK CZŁOWIEKA, nie „któryś znacznik": wariant
+      // agenta niósł obwódkę od lotu 4 fazy 3, więc para nad wspólną klasą
+      // mogłaby osądzić kółko agenta i wrócić zielona nad płaskim „AN".
+      // SELEKTOR ZAWĘŻONY PRZEZ PRZYRZĄD, NIE PRZEZ GUST. Napisany jako
+      // `[class*="_mark_"]:not([class*="_markAgent_"])` wrócił NOT_MEASURED:
+      // trafiał w TRZY narysowane elementy o DWÓCH wartościach (0px | 1px), bo
+      // `_mark_` nosi też znacznik zdrowia w nagłówku rekordu projektu
+      // (`project-record.module.css`), który stoi nad zakładkami i nie ma
+      // z komentarzami nic wspólnego. Podmiotem jest znacznik autora W KARCIE
+      // KOMENTARZA, i to karcie NIE-agenta — wariant agenta niósł obwódkę od
+      // lotu 4 Fazy 3, więc para nad wspólną klasą mogła osądzić jego kółko
+      // i wrócić zielona nad płaskim „AN".
+      selector:
+        '[class*="_entry_"]:not([class*="_entryAgent_"]) [class*="_mark_"]',
+      why: "the fixture draws one human root (Ada Nowak) and one agent reply, so this selector has a subject and it is the one the register complains about",
+      app: "packages/desktop-ui/src/record/record-comments.module.css (.mark)",
+    },
+    read: { property: "borderTopWidth" },
+    expect: { kind: "literal", value: "1px" },
+    status: "enforced",
+  },
+  {
+    id: "D4-06a",
+    lot: "D4",
+    position: 6,
+    kind: "restructure",
+    title: "the send control stands INSIDE the composer's frame",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "206-212",
+      value:
+        "`.rc-composer-foot` z przyciskiem siedzi WEWNĄTRZ `.rc-composer-field`, a `margin-left: auto` dosuwa go do prawego dolnego rogu ramki",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      // LICZYMY PRZYCISKI POZA RAMKĄ, NIE W NIEJ, i zdecydował o tym przelot.
+      // Wersja licząca trafienia WEWNĄTRZ ramki asertowała `equals: 1`
+      // i wróciła DIFFERS na dwóch — bo zamknięty inspektor trzyma DRUGI,
+      // kompletny panel komentarzy tego samego rekordu (`ASIDE.inspector`,
+      // `offsetParent === null`), a `count` czyta `querySelectorAll` BEZ filtra
+      // narysowania (w odróżnieniu od odczytu właściwości, który filtruje).
+      // Wpisanie tam dwójki zaszyłoby w mapie liczbę MONTOWAŃ panelu, którą
+      // zmieni pierwszy lot dotykający inspektora. Zdanie „żadna wysyłka nie
+      // stoi poza ramką" jest tym samym zdaniem wpisu i jest niewrażliwe na to,
+      // ile razy panel jest zamontowany.
+      selector: '[class*="_submit_"]:not([class*="_composerField_"] *)',
+      why: "containment is the entry: while the textarea drew its own border there was no interior for the button, and it sat two rows below the box it belongs to",
+      app: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx, record-comments.module.css (.composerField)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D4-06b",
+    lot: "D4",
+    // POZYCJA 7, NIE 6, BO TA PARA CZYTA `resize` — czyli zdanie wpisu #61,
+    // a nie zdanie wpisu #58 o kształcie kompozytora. Para przypisana do
+    // pozycji, której NIE mierzy, jest bramką zapalającą się z powodu,
+    // którego nikt nie umie odczytać z powrotem (ta sama zasada, co przy
+    // `RECORD_TITLE_BAND_OWNER` na dole tego pliku). Przezroczystość pola —
+    // druga połowa tej samej reguły — jest dowodzona spisem farby B1, gdzie
+    // stan `TRANSPARENT` jest jawnie dopuszczony.
+    position: 7,
+    kind: "restyle",
+    title: "and the composer's field offers no native resize handle",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "417-419",
+      value:
+        "`.rc-composer textarea { border: 0; background: none; resize: none }` — ramkę niesie oprawa, nie pole",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      selector: '[class*="_composerText_"]',
+      why: "the wrapper can only be the visible frame if the control inside it stops drawing a second one; B1 reads this as TRANSPARENT, the state `.ghost-button` declares",
+      app: "packages/desktop-ui/src/record/record-comments.module.css (.composerText)",
+    },
+    read: { property: "resize" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -4656,6 +4896,34 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
  * lotom, GDZIE nie ma dowodu, i mówi to ZANIM lot odda robotę.
  */
 export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
+  {
+    // POŁOWA WPISU #61, WYPISANA ZAMIAST ZAMKNIĘTA DEKLARACJĄ. `resize: none`
+    // stoi dziś na OBU polach komentarza — na `.composerText` (pisanie nowego,
+    // mierzone parą D4-06b) i na `.field` (poprawianie istniejącego). Drugiego
+    // nie mierzy NIC i nie da się tego naprawić selektorem: pole edycji
+    // powstaje dopiero po kliknięciu „Edit" na cudzym komentarzu, a `route`
+    // tej mapy zna kroki `surface`, `layout`, `treeKey`, `openRecord`
+    // i `recordTab` — żadnego „naciśnij kontrolkę w wierszu i mierz to, co się
+    // rozwinie".
+    //
+    // PARA NAD TYM POLEM ZOSTAŁA NAPISANA I ZDJĘTA W TYM SAMYM PRZELOCIE, i to
+    // jest powód, dla którego ten wpis brzmi tak stanowczo: wróciła
+    // NOT_MEASURED („[class*=\"_field_\"] matched NO element"), czyli jako
+    // awaria przyrządu, nie jako czerwień do naprawienia kodem. Wyjściem jest
+    // krok trasy naciskający kontrolkę wiersza — przebudowa przelotu, nie
+    // pozycja ekranowa.
+    lot: "D4",
+    position: 7,
+    scope: "drugie pole komentarza — edycja istniejącego, nie kompozytor",
+    title: "the edit-in-place textarea's resize handle has no measurement",
+    prototype:
+      "v3/screens/record.css:419 (`.rc-composer textarea { resize: none }`)",
+    app: "packages/desktop-ui/src/record/record-comments.module.css (.field), RecordCommentsPanel.tsx:633 (styles.editField)",
+    why:
+      "Pole edycji nie istnieje w DOM-ie, dopóki czytelnik nie otworzy edytora na konkretnym komentarzu, " +
+      "a ta mapa nie ma kroku, który by to zrobił. Zmiana JEST oddana i widać ją w odczycie kodu — jedna " +
+      "deklaracja w regule `.field`, ta sama co w `.composerText` — ale dowodem jest tu źródło, nie piksel.",
+  },
   {
     // NIEODDANE PRZEZ NAPRAWĘ PO PRZEGLĄDZIE LOTU D2, WYPISANE ZAMIAST
     // ZAMKNIĘTE. Prototyp ma DOKŁADNIE JEDNĄ formę kontekstowego wyzwalacza
@@ -4980,10 +5248,22 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // a D3-02 mierzy bliźniaka z Notatek na INNYM przystanku. Pozycja briefu
   // dalej ta sama, więc `positionsWithPairs` się nie rusza — rośnie tylko
   // `pairs` tutaj i `lots.D3.pairs` niżej.
-  pairs: 96,
+  //
+  // 96 → 104 PRZY LOCIE D4 FAZY D, 2026-08-11, I SĄ TO SIEDEM NOWYCH POZYCJI —
+  // ekran rekordu projektu i zakładka Komentarzy. Żadna z nich nie była dotąd
+  // mierzona przez tę mapę: dwie pary rekordu (D4-01a/b) czytają ZAWIERANIE
+  // i rozciągnięcie pasa, bo wpis #47 jest o tym, czyim dzieckiem jest karta
+  // dokumentu, a nie o jej kolorze; cztery pary Komentarzy jadą tu przez krok
+  // `recordTab`, który mapa umiała robić od Fazy 3 i którego żaden lot Fazy D
+  // dotąd nie użył.
+  pairs: 104,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
-  notCovered: 11,
+  //
+  // 11 → 12 PRZY LOCIE D4: druga połowa wpisu #61 (uchwyt zmiany rozmiaru
+  // w polu EDYCJI komentarza). Oddana w kodzie, niemierzalna przez tę mapę —
+  // pole powstaje dopiero po kliknięciu „Edit", a `route` nie ma takiego kroku.
+  notCovered: 12,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -5066,6 +5346,40 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       pairs: 20,
       positionsWithPairs: 3, // 1, 2, 3
       positionsWithoutPairs: [],
+    },
+    D4: {
+      // Lot D4 niesie DZIEWIĘĆ wpisów rejestru, z których #55 jest jawnym
+      // duplikatem #51 (ten sam `<select>`, ten sam wspólny pas nagłówka obu
+      // zakładek), więc POZYCJI jest osiem, nie dziewięć. Siedem z nich ma
+      // parę: dokument w kolumnie tekstu wraz z krawędzią pasa (#47), plakietki
+      // metadanych (#52), próbka legendy (#53), plakietka roli agenta (#56),
+      // znacznik autora-człowieka (#59), kompozytor (#58) i uchwyt zmiany
+      // rozmiaru w edycji komentarza (#61).
+      //
+      // ÓSMA POZYCJA — #51/#55 — NIE MA PARY, BO NIE ZOSTAŁA ODDANA, i to jest
+      // ta sama rzecz powiedziana dwa razy w dwóch miejscach: tutaj jako brak
+      // pokrycia, a w raporcie lotu jako `notDelivered` z pomiarem. Wpis żąda,
+      // żeby w paśmie nie stała ŻADNA kontrolka formularza, czyli zamiany
+      // `<select>` na popover; zmierzone na tym drzewie: statyczny import
+      // `InlinePopover` do gorącego `Wave2Surfaces.tsx` kosztuje +1 158 B gzip
+      // ścieżki gorącej (172 424 → 173 582 z sufitu 174 000), czyli ZOSTAWIA
+      // 418 B na lot D5, którego pozycja #67 przebudowuje chunk wejściowy.
+      // Para „pending" nad nieoddaną pozycją byłaby tu poprawna, ale ta mapa
+      // liczy POKRYCIE pozycji — a pozycja bez dostawy i bez pary jest
+      // uczciwiej widoczna jako dziura w pokryciu niż jako czerwony wiersz,
+      // który następny lot musi odczytać z powrotem.
+      //
+      // SIÓDMA POZYCJA (#61) MA PARĘ TYLKO W POŁOWIE, i ta połowa jest wypisana
+      // w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`: uchwyt zmiany rozmiaru zniknął
+      // z OBU pól, ale mierzalne jest tylko pole kompozytora (D4-06b). Pole
+      // EDYCJI istniejącego komentarza rysuje się dopiero po kliknięciu „Edit",
+      // a ta mapa nie ma kroku, który by je otworzył — para nad nim wróciła
+      // NOT_MEASURED („matched NO element"), czyli jako AWARIA PRZYRZĄDU, i
+      // została zdjęta zamiast zostawiona jako wieczna czerwień.
+      positionsInBrief: 8,
+      pairs: 8,
+      positionsWithPairs: 7, // 1, 2, 3, 4, 5, 6, 7
+      positionsWithoutPairs: [8],
     },
     D1: {
       // Lot D1 niesie DZIEWIĘĆ wpisów rejestru, ale tylko JEDNO zdanie

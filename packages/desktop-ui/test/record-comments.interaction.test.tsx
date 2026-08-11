@@ -129,6 +129,10 @@ const base: PanelProps = {
   threads: [openRoot, settledRoot, reply],
   threadsKnown: true,
   recordKey: "project-a",
+  // W POZYCJI WYŁĄCZONEJ, jak reszta tej bazy: znacznik autora rysuje wtedy
+  // glif osoby, a nie inicjały, i żaden test nie przechodzi dlatego, że ktoś
+  // inny podał tu nazwę.
+  currentDisplayName: undefined,
   actorOf: (entry) => ({
     name: entry.author.displayName,
     short: "KP",

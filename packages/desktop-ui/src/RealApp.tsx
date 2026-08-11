@@ -2234,6 +2234,16 @@ export const RealApp = ({
           (candidate) => candidate.principalId !== currentPrincipalId,
         )
       : [];
+  // Ta sama projekcja PRZED odsianiem czytelnika — znacznik autora
+  // w kompozytorze potrzebuje dokładnie tego, co odsiewa linijka wyżej
+  // (rejestr, wpis #58). Nazwa jest tu prawdziwa albo jej nie ma; nic się
+  // nie zmyśla.
+  const currentDisplayName =
+    state.snapshot.mentionCandidates.kind === "ready"
+      ? state.snapshot.mentionCandidates.data.candidates.find(
+          (candidate) => candidate.principalId === currentPrincipalId,
+        )?.displayName
+      : undefined;
 
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
@@ -2587,6 +2597,7 @@ export const RealApp = ({
                       recordTaskCommentsMatch ? comments : COMMENTS_PENDING
                     }
                     currentPrincipalId={currentPrincipalId}
+                    currentDisplayName={currentDisplayName}
                     mentionCandidates={commentMentionCandidates}
                     mentionNameOf={mentionNameOf}
                     onAddComment={(
@@ -2893,6 +2904,7 @@ export const RealApp = ({
                 >
                   <ProjectRecordScreen
                     actions={slots.actions}
+                    currentDisplayName={currentDisplayName}
                     activity={state.snapshot.activity}
                     body={slots.body}
                     busy={projectBusy}
@@ -4697,6 +4709,7 @@ export const RealApp = ({
                     canComment={canComment}
                     canResolve={canResolveComments}
                     currentPrincipalId={currentPrincipalId}
+                    currentDisplayName={currentDisplayName}
                     mentionCandidates={commentMentionCandidates}
                     mentionNameOf={(principalId) => mentionNameOf(principalId)}
                     onAttach={stageCommentAttachment}
@@ -4827,6 +4840,7 @@ export const RealApp = ({
                   canComment={canComment}
                   canResolve={canResolveComments}
                   currentPrincipalId={currentPrincipalId}
+                  currentDisplayName={currentDisplayName}
                   mentionCandidates={commentMentionCandidates}
                   mentionNameOf={(principalId) => mentionNameOf(principalId)}
                   onAttach={stageCommentAttachment}

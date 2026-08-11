@@ -1058,6 +1058,16 @@ export const OpportunityRecordScreen = ({
                 canComment={canComment}
                 canResolve={canResolve}
                 currentPrincipalId={currentPrincipalId}
+                currentDisplayName={
+                  // Ta sama projekcja, tylko bez odsiewania czytelnika —
+                  // znacznik autora w kompozytorze (rejestr, wpis #58).
+                  snapshot.mentionCandidates.kind === "ready"
+                    ? snapshot.mentionCandidates.data.candidates.find(
+                        (candidate) =>
+                          candidate.principalId === currentPrincipalId,
+                      )?.displayName
+                    : undefined
+                }
                 mentionCandidates={
                   snapshot.mentionCandidates.kind === "ready"
                     ? snapshot.mentionCandidates.data.candidates.filter(

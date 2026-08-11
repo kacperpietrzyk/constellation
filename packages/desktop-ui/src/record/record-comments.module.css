@@ -129,6 +129,22 @@
   min-inline-size: 0;
 }
 
+/* JEDEN ZNACZNIK, DWA WARIANTY — i to bazowy wariant był tu niepełny
+   (rejestr, wpis #59). Agent dostawał kółko z przerywaną akcentową obwódką,
+   a człowiek płaski szary tekst na wtopionym tle: w jednym wątku stały dwa
+   różne języki oznaczania autora, więc inicjały „AN" czytały się jak goły
+   tekst, a nie jak znacznik bez wyróżnienia.
+
+   Obwódka i uniesione tło NALEŻĄ DO BAZY, a wariant agenta tylko je
+   PODMIENIA. Odniesienie: `v3/screens/record.css:382-387` — `.rc-mark
+   { border: 1px solid var(--border-default); background:
+   var(--surface-raised); color: var(--text-tertiary) }`, i dopiero :389
+   `.rc-comment-agent .rc-mark { color: var(--accent); border-color:
+   var(--accent-edge); border-style: dashed; background: none }`. Tło idzie
+   z `--surface-sunken` na `--surface-raised`, bo znacznik ma STAĆ na karcie
+   komentarza, a nie być w niej wgłębieniem. `box-sizing: border-box` jest
+   globalny (`styles.css:2`), więc obwódka nie rusza 1,25 rem.
+   Kontrakt: `.ui-craft/patterns.md` — „Pattern: Comment author and composer". */
 .mark {
   display: inline-flex;
   flex: none;
@@ -136,8 +152,9 @@
   justify-content: center;
   inline-size: 1.25rem;
   block-size: 1.25rem;
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
-  background: var(--surface-sunken);
+  background: var(--surface-raised);
   color: var(--text-secondary);
   font-size: var(--text-2xs);
   line-height: 1;
@@ -163,9 +180,38 @@
   font-weight: 590;
 }
 
-/* The role in words, next to the name. */
+/* ROLA AGENTA JEST PLAKIETKĄ, NIE SZARYM DOPISKIEM (rejestr, wpis #56).
+   Sam kolor i stopień pisma zrównywały „agent · propose" z resztą metadanych
+   wiersza — a to jedyne miejsce, w którym czytelnik dowiaduje się, że tekst
+   pod spodem napisała maszyna. Kształt (pigułka) plus PRZERYWANA obwódka
+   akcentu robią z tego rzecz rozpoznawalną rzutem oka.
+
+   Odniesienie: `v3/screens/record.css:169-175` — `.rc-kind { display:
+   inline-flex; gap: 0.25rem; font-size: var(--text-2xs); color:
+   var(--text-quaternary); border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-full); padding: 0.0625rem 0.4375rem }` oraz
+   `.rc-kind-agent { color: var(--accent); border-color: var(--accent-edge);
+   border-style: dashed }`.
+
+   PIGUŁKA PEŁNEGO PROMIENIA — tu, w odróżnieniu od plakietek metadanych
+   rekordu (wpis #52, `--radius-sm`), i to nie jest niekonsekwencja: prototyp
+   trzyma te dwie rzeczy w dwóch różnych regułach o dwóch różnych promieniach,
+   bo jedna niesie DANE, a druga ROLĘ.
+
+   Przerywana krawędź jest tu drugim nośnikiem akcentu obok koloru — kontrakt
+   `.ui-craft/tokens.md`, „What the accent is allowed to mean": akcent zawsze
+   podwojony przerywaną krawędzią. Ta reguła rysuje się WYŁĄCZNIE przy
+   autorze-agencie (`RecordCommentsPanel.tsx:177`), więc wariant akcentowy
+   jest tu stanem bazowym, nie modyfikatorem. */
 .kind {
-  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  padding: 0.0625rem 0.4375rem;
+  border: 1px dashed var(--accent-edge);
+  border-radius: var(--radius-full);
+  color: var(--accent);
   font-size: var(--text-2xs);
 }
 
@@ -240,14 +286,90 @@
   font-size: var(--text-sm);
 }
 
+/* KOMPOZYTOR MA KSZTAŁT WĄTKU, W KTÓRY PISZE (rejestr, wpis #58).
+   Prototyp: `v3/screens/record.css:410` — `.rc-composer { display: grid;
+   grid-template-columns: 1.125rem minmax(0, 1fr); gap: 0.375rem }`, czyli
+   znacznik autora w pierwszej kolumnie i pole w drugiej — dokładnie ta sama
+   siatka, co nagłówek komentarza wyżej. Pierwsza kolumna trzyma NASZ rozmiar
+   znacznika (1,25 rem), bo znacznik kompozytora i znaczniki wątku mają być
+   tym samym kółkiem; różnica byłaby widoczna, bo stoją jeden pod drugim. */
 .composer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-2);
   min-inline-size: 0;
   border-block-start: 1px solid var(--border-subtle);
   padding-block-start: var(--space-4);
+}
+
+/* Znacznik opada do pierwszego wiersza tekstu, zamiast wisieć przy górnej
+   krawędzi ramki (prototyp: `.rc-mark-me { margin-top: 0.4375rem }`, :411). */
+.composerMark {
+  margin-block-start: 0.4375rem;
+}
+
+/* Druga kolumna: pole i wszystko, co kompozytor mówi o wysyłce. */
+.composerMain {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* RAMKĘ NIESIE OPRAWA, NIE POLE — i to jest cała przyczyna, dla której
+   przycisk wysyłki mógł leżeć poza ramką (rejestr, wpis #58). Dopóki
+   obwódkę rysował sam `<textarea>`, „wewnątrz pola" nie było miejscem,
+   w którym cokolwiek dało się postawić. Prototyp:
+   `v3/screens/record.css:412-416` — `.rc-composer-field { border: 1px solid
+   var(--border-default); border-radius: var(--radius-sm); background:
+   var(--surface-content); padding: 0.4375rem 0.5rem }` z
+   `:focus-within { border-color: var(--accent-edge) }`. */
+.composerField {
+  min-inline-size: 0;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--input-bg);
+}
+
+.composerField:hover {
+  border-color: var(--input-border-hover);
+}
+
+/* Ognisko przechodzi na OPRAWĘ, bo to ona jest teraz widoczną ramką pola.
+   Bez tego jedyny sygnał ogniska zniknąłby razem z obwódką textarei. */
+.composerField:focus-within {
+  border-color: var(--accent-edge);
+}
+
+/* Pole jest przezroczyste i bez własnej ramki — rysuje je oprawa wyżej.
+   Prototyp: `v3/screens/record.css:417-421` — `.rc-composer textarea
+   { display: block; width: 100%; border: 0; background: none; resize: none }`
+   plus `:focus-visible { outline: none; box-shadow: none }`, bo ognisko
+   pokazuje oprawa. Przezroczystość jest dla przyrządu B1 stanem
+   `TRANSPARENT`, czyli tym samym, co deklaruje `.ghost-button` — nie farbą
+   spoza palety (`scripts/control-paint.mjs:261`). */
+.composerText {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--input-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  resize: none;
+}
+
+.composerText::placeholder {
+  color: var(--input-placeholder);
+}
+
+.composerText:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .field {
@@ -261,7 +383,13 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
-  resize: vertical;
+  /* ŻADNEGO NATYWNEGO UCHWYTU W ROGU (rejestr, wpis #61). Prototyp mówi to
+     wprost — `v3/screens/record.css:419`: `resize: none`. Uchwyt jest jedyną
+     rzeczą w tym panelu rysowaną przez system, a nie przez arkusz, więc
+     przyciąga oko do rogu pola, w którym nie ma nic do zrobienia; pole i tak
+     rośnie treścią. Ta reguła obsługuje EDYCJĘ istniejącego komentarza
+     (`styles.editField`), kompozytor ma własne `.composerText`. */
+  resize: none;
 }
 
 .field::placeholder {
@@ -292,9 +420,16 @@
   box-shadow: var(--action-primary-shadow-hover);
 }
 
+/* WYŁĄCZONY ZNACZY PRZYGASZONY, NIE PRZEMALOWANY (rejestr, wpis #58, trzecia
+   połowa). Podmiana tła na `--action-secondary-bg` robiła z akcji głównej
+   drugorzędną, więc kompozytor tracił jedyną akcentową powierzchnię dokładnie
+   w stanie, w którym czytelnik jej szuka — zanim cokolwiek napisze. Prototyp
+   gasi ją przezroczystością i NIE rusza wypełnienia:
+   `v3/screens/record.css:429` — `.rc-composer-foot .btn:disabled
+   { opacity: 0.45; cursor: default }`. Kontrakt: `.ui-craft/tokens.md` —
+   „What the accent is allowed to mean". */
 .submit:disabled {
-  background: var(--action-secondary-bg);
-  color: var(--text-disabled);
+  opacity: 0.45;
   cursor: default;
 }
 
@@ -308,7 +443,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  flex-basis: 100%;
   margin: var(--space-2) 0 0;
   padding: 0;
   list-style: none;
@@ -369,7 +503,6 @@
    is the one thing about it worth knowing in advance, and the Inbox is the
    thing this whole valve exists to protect. */
 .reach {
-  flex-basis: 100%;
   margin: var(--space-1) 0 0;
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
@@ -377,13 +510,20 @@
 
 /* The send row is its own line so the Attach control never shares one with the
    textarea. Two controls a finger apart, one of which opens a file picker, is
-   how a comment gets an attachment nobody meant to add. */
+   how a comment gets an attachment nobody meant to add.
+
+   Wiersz stoi teraz WEWNĄTRZ oprawy pola (rejestr, wpis #58) — prototyp
+   trzyma `.rc-composer-foot` wewnątrz `.rc-composer-field`
+   (`v3/screens/record.js:206-212`), a przycisk dosuwa `margin-left: auto`
+   (`v3/screens/record.css:428`). Osobny wiersz POD polem zostaje osobnym
+   wierszem, tylko pod jego wspólną ramką: zdanie wyżej o odległości między
+   „Attach file" a polem dalej obowiązuje i dlatego jest tu margines. */
 .send {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  flex-basis: 100%;
+  margin-block-start: var(--space-2);
 }
 
 /* ── WHAT CAN BE DONE TO A COMMENT ─────────────────────────────────────── */
@@ -460,7 +600,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-basis: 100%;
   min-inline-size: 0;
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
@@ -478,7 +617,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  flex-basis: 100%;
   min-inline-size: 0;
   margin: 0;
   padding: 0;
