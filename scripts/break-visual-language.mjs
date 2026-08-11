@@ -816,6 +816,177 @@ const outcome = runBreakTests({
           "the Meetings band glyph",
         ),
     },
+    {
+      // ZŁAMANIE DZIEWIĘTNASTE — NAGŁÓWEK SEKCJI DZISIAJ ZNOWU KRZYCZY GŁOŚNIEJ
+      // NIŻ TYTUŁ EKRANU NAD NIM (D2-01a).
+      //
+      // Odtwarza wpis #2 rejestru dokładnie tak, jak stał: 16 px zamiast 13.
+      // Do tego lotu nie mierzył go NIC — `heading-typography.mjs` pyta, czy
+      // reguła DEKLARUJE stopień i wagę, i była zielona na obu wartościach,
+      // bo obie są zadeklarowane.
+      name: "make the Today section heading bigger than the screen title again",
+      expectRedContains: ["D2-01a"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;`,
+          `  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.005em;`,
+          "the Today section heading size",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE — POMOC WRACA DO ROZMIARU KONTROLKI (D2-03a).
+      //
+      // Wpis #4 mówi o KSZTAŁCIE afordancji, nie o jej istnieniu, więc
+      // złamaniem nie jest skasowanie przycisku — to złapałby każdy licznik.
+      // Rozdmuchanie znacznika do wysokości akcji jest tą samą wadą, którą
+      // rejestr zmierzył: obiekt szerszy od etykiety, przy której stoi.
+      name: "blow the help mark up to control size: the footnote becomes wider than the label it annotates",
+      expectRedContains: ["D2-03a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.help-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;`,
+          `.help-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 1.125rem;`,
+          "the help mark's width",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE PIERWSZE — ZAKŁADKA ZNOWU ROŚNIE NA CAŁE PASMO
+      // (D2-04a).
+      //
+      // Odtwarza wpis #5 co do deklaracji: `flex: 1 1 10rem` przy podłodze
+      // 7 rem. Rejestr zmierzył skutek na zrzutach, na których OBA produkty
+      // rysują jedną zakładkę — 205 px CSS wobec 55 — a żaden przyrząd tej
+      // fali nie miał o tym zdania.
+      name: "let the shell tab grow into the strip again: one tab fills the whole band",
+      expectRedContains: ["D2-04a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  align-items: center;
+  flex: 0 1 auto;`,
+          `  align-items: center;
+  flex: 1 1 10rem;`,
+          "the shell tab's flex",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE DRUGIE — PISMO WRACA DO GRUBSZEJ KRESKI (D2-05).
+      //
+      // Wpis #12 stoi na pomiarze TUSZU, którego nie widzi żaden inny przyrząd
+      // w tym repozytorium: o 24% więcej pikseli >120 przy identycznej
+      // szerokości napisu. Grep za `font-smoothing` dawał do tego lotu ZERO
+      // trafień w całym `packages/desktop-ui/src`, więc stan sprzed lotu jest
+      // dokładnie tym, co to złamanie odtwarza.
+      name: "drop font smoothing: the same type draws a quarter heavier than the reference",
+      expectRedContains: ["D2-05"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;`,
+          `  -moz-osx-font-smoothing: grayscale;`,
+          "the body font smoothing",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE TRZECIE — DASZEK MODUŁU WRACA NA KONIEC WIERSZA
+      // (D2-06).
+      //
+      // Wpisy #13 i #54. Złamaniem jest PRZENIESIENIE, nie skasowanie:
+      // skasowany daszek byłby czerwony także dla pary, która pyta wyłącznie
+      // „czy w ogóle jest", a rejestr skarży się na POŁOŻENIE. Po tej edycji
+      // znak dalej istnieje, dalej się rysuje i dalej działa — stoi tylko przy
+      // prawej krawędzi paska, oddzielony od napisu całą szerokością kolumny.
+      name: "send the module chevron back to the far edge: it still draws, just nowhere near its label",
+      expectRedContains: ["D2-06"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                        <span
+                          className="nav-group-chevron"
+                          aria-hidden="true"
+                        />
+                        <span>{group}</span>
+                        {activeGroupItem !== undefined && !expanded && (
+                          <small>{activeGroupItem.label}</small>
+                        )}`,
+          `                        <span>{group}</span>
+                        {activeGroupItem !== undefined && !expanded && (
+                          <small>{activeGroupItem.label}</small>
+                        )}
+                        <span
+                          className="nav-group-chevron"
+                          aria-hidden="true"
+                        />`,
+          "the module chevron's place in the row",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE CZWARTE — ORGANIZACJE ZNOWU NOSZĄ ZNAK LUDZI
+      // (D2-07c).
+      //
+      // Wpis #24, zmierzony przez rejestr na powiększeniu 3×: `relationships`
+      // i `people` różni kreska łącznika, której przy 16 px nie widać, a obie
+      // pozycje stoją w tej samej grupie CRM. Glif `relationships` ZOSTAJE
+      // w zestawie i po tej edycji dalej się rysuje — złamana jest sama
+      // PRZYPISANIE, czyli dokładnie to, co było wadą.
+      name: "point Organizations back at the relationships glyph: two rows of the CRM group carry one drawing",
+      expectRedContains: ["D2-07c"],
+      file: "packages/desktop-preload/src/surface-registry.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    label: "Organizations",
+    icon: "organization",`,
+          `    label: "Organizations",
+    icon: "relationships",`,
+          "the Organizations icon",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE PIĄTE — LICZNIKI CRM ZNIKAJĄ Z NAWIGACJI (D2-08).
+      //
+      // Wpisy #50 i #66. TO ZŁAMANIE WYBRAŁO LICZBĘ W PARZE: pierwsza wersja
+      // D2-08 miała podłogę 3 i po tej edycji wracała ZIELONA, bo Zadania,
+      // Projekty i Biblioteka zostają. Podłoga poszła więc na 6 — czyli para
+      // pada na utracie KTÓREGOKOLWIEK z dwóch odczytów, na których ten lot
+      // stoi, a nie dopiero na utracie wszystkich.
+      name: "take the CRM counts off the navigation: four rows go back to an empty right edge",
+      expectRedContains: ["D2-08"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          pipeline: countLiveRecords(strategicRecords, "opportunity"),
+          organizations: countLiveRecords(strategicRecords, "organization"),
+          people: countLiveRecords(strategicRecords, "person"),
+          renewals: countLiveRecords(strategicRecords, "renewal"),
+`,
+          "",
+          "the CRM navigation counts",
+        ),
+    },
   ]),
 });
 

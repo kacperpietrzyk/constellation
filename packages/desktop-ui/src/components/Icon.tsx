@@ -42,6 +42,8 @@ export type IconName =
   | "documents"
   | "meetings"
   | "relationships"
+  | "organization"
+  | "calendar"
   | "people"
   | "pipeline"
   | "renewals"
@@ -79,6 +81,34 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
     relationships: (
       <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
+    ),
+    /* WPIS #24 REJESTRU — BUDYNEK, NIE DRUGIE DWIE SYLWETKI.
+       `v3/app.js:19` (`org`), przeskalowany ×1,5 jak cały ten zestaw. Do tego
+       lotu cel „Organizations" nosił glif `relationships` — dwie sylwetki
+       z kreską łącznika, której przy 16 px nie widać — a tuż pod nim, w TEJ
+       SAMEJ grupie CRM, stoi „People" z dwiema sylwetkami. Rejestr zmierzył to
+       na powiększeniu 3×, a plik sam zapowiadał tę kolizję komentarzem.
+
+       `relationships` ZOSTAJE W ZESTAWIE i nie jest przerysowywany: renderuje
+       go ekran rekordu projektu (`record/ProjectRecordOverview.tsx`) dla pasa
+       POWIĄZAŃ, gdzie graf jest właśnie tym, co znak ma znaczyć. Kolizja była
+       w PRZYPISANIU, nie w rysunku. */
+    organization: (
+      <path d="M4.5 20.25V6.3a1.5 1.5 0 0 1 1.5-1.5h6.75a1.5 1.5 0 0 1 1.5 1.5v13.95M14.25 9.75H18a1.5 1.5 0 0 1 1.5 1.5v9M3 20.25h18M7.8 9h2.4M7.8 12.9h2.4M7.8 16.8h2.4" />
+    ),
+    /* WPIS #31 REJESTRU, POŁOWA DRUGA — KARTKA KALENDARZA.
+       `v3/app.js:37` (`calendar`), ×1,5. „Today" i „Calendar" niosły DOKŁADNIE
+       ten sam glif (`cockpit`, czterokomórkowa siatka) na dwóch sąsiednich
+       wierszach nawigacji. Prototyp stawia tam zegar i kartkę kalendarza;
+       zegar ten zestaw MA od 2026-08-07 (`clock` niżej), więc nowy jest tylko
+       ten jeden znak, a nie dwa.
+
+       RÓŻNICA WOBEC `meetings` JEST ZAMIERZONA I NAZWANA: `meetings` to też
+       kartka, ale z podziałką dni w środku (`M8 14h3M13 14h3`), a ta jest
+       pusta — dokładnie tak rozróżnia je prototyp (`v3/app.js:37` wobec `:20`).
+       Dwa cele w dwóch różnych grupach nawigacji, dwa znaki tej samej rodziny. */
+    calendar: (
+      <path d="M3.75 6.75a1.5 1.5 0 0 1 1.5-1.5h13.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-12ZM3.75 10.5h16.5M8.25 3.75v3M15.75 3.75v3" />
     ),
     // Dwie sylwetki obok siebie: „relationships" niesie graf powiązań, a to są
     // ludzie w nim. Ten sam cel w nawigacji nie może nosić tego samego znaku co

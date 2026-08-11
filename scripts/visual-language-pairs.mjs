@@ -824,6 +824,413 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "literal", value: "rgba(0, 0, 0, 0)" },
     status: "enforced",
   },
+
+  // ══ LOT D2 FAZY D — DZISIAJ I OGON POWŁOKI ═══════════════════════════════
+  //
+  // WSZYSTKIE PARY TEGO LOTU SĄ W MAPIE POWŁOKI, A NIE W TRASOWANEJ, i to jest
+  // fakt o przelocie, nie wygoda: `HARNESS` (`?surface=collaboration`) ląduje
+  // na DZISIAJ, więc pasmo tego ekranu, jego nagłówki sekcji i jego znacznik
+  // pomocy stoją w drzewie bez ani jednego kliknięcia — tak samo jak pasek
+  // zakładek, nagłówki modułów i wiersze nawigacji. Dopisanie ich do mapy
+  // trasowanej kosztowałoby przystanek, który już jest.
+
+  // ── POZYCJA 1 (wpis #2) — nagłówek sekcji przestaje krzyczeć głośniej niż
+  //    tytuł ekranu nad nim ────────────────────────────────────────────────
+  {
+    id: "D2-01a",
+    lot: "D2",
+    position: 1,
+    title: "the section heading takes the prototype's size",
+    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type scale)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "42-45",
+      value:
+        "`.td-sec-head h3 { font-size: var(--text-sm); font-weight: 600 }` — ta sama para liczb, którą `styles.css` daje TYTUŁOWI ekranu (`.surface-header h1`), więc nagłówek sekcji jest tytułowi RÓWNY, nie podporządkowany",
+    },
+    subject: {
+      // NAZWA Z MODUŁU CSS, znormalizowana tym samym wyrażeniem, co reszta
+      // przelotu. Trzy nagłówki sekcji Dzisiaj rysują się naraz i wszystkie
+      // biorą tę samą regułę — przelot wymaga JEDNEJ wartości na wszystkich
+      // dopasowaniach, więc rozjazd między sekcjami byłby tu czerwony.
+      selector: '[class*="_sectionHead_"] h2',
+      why: "the landing surface is Today; its three section heads share one rule and one value",
+      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-sm" },
+    status: "enforced",
+  },
+  {
+    id: "D2-01b",
+    lot: "D2",
+    position: 1,
+    title: "and its weight, instead of being bigger and lighter",
+    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type scale)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "42-45",
+      value: "`font-weight: 600`",
+    },
+    subject: {
+      selector: '[class*="_sectionHead_"] h2',
+      why: "same subject as D2-01a",
+      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2)",
+    },
+    // WAGA OSOBNO OD STOPNIA, BO PSUJE SIĘ OSOBNO: wpis rejestru mówi „większe
+    // I LŻEJSZE", czyli o dwóch liczbach naraz (16 px wagą 560). Para czytająca
+    // sam stopień byłaby zielona nad nagłówkiem 13 px wagą 560, czyli nad
+    // połową tej samej wady.
+    read: { property: "fontWeight" },
+    expect: { kind: "literal", value: "600" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 2 (wpis #3) — data i pojemność zamieniają się miejscami ──────
+  {
+    id: "D2-02a",
+    lot: "D2",
+    position: 2,
+    title: "the date stands at the band's end, quiet and sentence-cased",
+    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type scale)",
+    prototype: {
+      file: "v3/screens/today.js",
+      lines: "129-130",
+      value:
+        "`crumbbar('<span class=\"cur\">Today</span>', '<span class=\"when\">Monday, 27 July 2026</span>')`, a `.when` (`v3/app.css:441`) to `--text-xs` w kolorze trzeciorzędnym",
+    },
+    subject: {
+      selector: ".surface-header [data-band-date]",
+      why: "declared attribute, not a module hash: the band's right end is the position this entry is about",
+      app: "packages/desktop-ui/src/TodaySurface.tsx, today.module.css (.bandDate)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-xs" },
+    status: "enforced",
+  },
+  {
+    id: "D2-02b",
+    lot: "D2",
+    position: 2,
+    title: "the uppercase date badge above the title is gone",
+    contract: ".ui-craft/brief.md:32 (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/screens/today.js",
+      lines: "129-136",
+      value:
+        "prototyp NIE MA na tym ekranie wersalikowej plakietki daty w ogóle — ani w paśmie, ani nad tytułem",
+    },
+    subject: {
+      selector: ".surface-header .eyebrow",
+      why: "hand-written class in styles.css, shared with .nav-label/.section-label; this pair asks only whether the BAND still carries one",
+      app: "packages/desktop-ui/src/styles.css (.eyebrow), TodaySurface.tsx",
+    },
+    read: { property: null },
+    // `equals: 0`, A NIE `atLeast`: „nie ma ani jednej" jest całą treścią tego
+    // pół-wpisu. Reguła `.eyebrow` ZOSTAJE w arkuszu — mają ją inne pasma —
+    // więc para czytająca arkusz zamiast drzewa nic by tu nie zmierzyła.
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D2-02c",
+    lot: "D2",
+    position: 2,
+    title: "and the capacity line has left the band's right end",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band" (licznik idzie do paska widoku, nigdy na prawy koniec pasma)',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "12-17",
+      value:
+        "`.td-capacity { font-size: var(--text-sm); color: var(--text-tertiary) }` — pojemność leży POD tytułem, w `.td-head`, a nie w `crumbbar`",
+    },
+    subject: {
+      selector: ".surface-header [data-capacity]",
+      why: "the same declared attribute the surface already carried, read INSIDE the band: this half of the entry is about where the line stands, not what it says",
+      app: "packages/desktop-ui/src/TodaySurface.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 3 (wpis #4) — pomoc na żądanie jest przypisem ────────────────
+  {
+    id: "D2-03a",
+    lot: "D2",
+    position: 3,
+    title: "help on demand is a round mark smaller than the label it stands by",
+    contract: ".ui-craft/surfaces/contextual-concept-help.md (Visual contract)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "896-904",
+      value:
+        "`.helpb { width: 1.125rem; height: 1.125rem; border-radius: var(--radius-full); font-size: var(--text-2xs) }`",
+    },
+    subject: {
+      selector: ".help-mark",
+      why: "hand-written class in styles.css; the landing surface draws exactly one of these",
+      app: "packages/desktop-ui/src/styles.css (.help-mark), TodaySurface.tsx",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 1.125 },
+    status: "enforced",
+  },
+  {
+    id: "D2-03b",
+    lot: "D2",
+    position: 3,
+    title: "and it is round, not a rounded rectangle with a word in it",
+    contract: ".ui-craft/surfaces/contextual-concept-help.md (Visual contract)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "896-904",
+      value: "`border-radius: var(--radius-full)`",
+    },
+    subject: {
+      selector: ".help-mark",
+      why: "same subject as D2-03a",
+      app: "packages/desktop-ui/src/styles.css (.help-mark)",
+    },
+    // PROMIEŃ OSOBNO OD SZEROKOŚCI, BO WPIS MÓWI O KSZTAŁCIE, NIE O ROZMIARZE:
+    // kwadrat 1,125 rem spełniłby samą szerokość, a rejestr skarży się na
+    // „słowny przycisk" wobec „okrągłego znacznika".
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-full" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 4 (wpis #5) — zakładka obejmuje własną etykietę ──────────────
+  {
+    id: "D2-04a",
+    lot: "D2",
+    position: 4,
+    title: "the shell tab stops growing into the free space of the strip",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "107-115",
+      value:
+        "`.tab` deklaruje `max-width: 13rem` i `min-width: 0`, i NIE deklaruje `flex` ani szerokości — szerokość zakładki jest funkcją jej treści",
+    },
+    subject: {
+      selector: ".shell-tab",
+      why: "hand-written class in styles.css; both screenshots the register compared drew exactly one tab, so this is not a function of how many are open",
+      app: "packages/desktop-ui/src/styles.css (.shell-tab)",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+  {
+    id: "D2-04b",
+    lot: "D2",
+    position: 4,
+    title: "and its floor stops being wider than a short label",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "107-115",
+      value: "`min-width: 0`",
+    },
+    subject: {
+      selector: ".shell-tab",
+      why: "same subject as D2-04a",
+      app: "packages/desktop-ui/src/styles.css (.shell-tab)",
+    },
+    // DRUGA DEKLARACJA, BO WYSTARCZY JEDNA Z DWÓCH, ŻEBY WADA WRÓCIŁA:
+    // `flex-grow: 0` przy podłodze 7 rem dalej daje płytę szerszą od napisu
+    // „Today", i to był dokładnie zmierzony stan sprzed tego lotu.
+    read: { property: "minWidth" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 5 (wpis #12) — pismo rysuje się tą samą kreską, co w prototypie
+  {
+    id: "D2-05",
+    lot: "D2",
+    position: 5,
+    title: "the window smooths its type the way the reference does",
+    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "13",
+      value: "`body { -webkit-font-smoothing: antialiased }`",
+    },
+    subject: {
+      selector: "body",
+      why: "the element the prototype declares it on; the app had NO declaration of this property anywhere in packages/desktop-ui/src",
+      app: "packages/desktop-ui/src/styles.css (body)",
+    },
+    // WŁASNOŚĆ, KTÓREJ NIE DA SIĘ ZOBACZYĆ W ARKUSZU, A DA SIĘ W SILNIKU.
+    // Rejestr postawił ten wpis na pomiarze TUSZU (o 24% więcej pikseli >120
+    // przy identycznej szerokości napisu), a `getComputedStyle` zwraca tę
+    // deklarację wprost — więc dowodem jest przyrząd, nie grep.
+    read: { property: "webkitFontSmoothing" },
+    expect: { kind: "literal", value: "antialiased" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 6 (wpisy #13 i #54) — daszek zwijania stoi przed etykietą ────
+  {
+    id: "D2-06",
+    lot: "D2",
+    position: 6,
+    title: "the module chevron stands before the label, not at the far edge",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "599",
+      value:
+        '`<button class="nav-head" …>${icon("chevDown", "chev")}<span>${title}</span></button>` — znak zwijania jest PIERWSZYM dzieckiem wiersza',
+    },
+    subject: {
+      // POŁOŻENIE JAKO STRUKTURA, NIE JAKO PIKSEL. `gridTemplateColumns`
+      // rozwiązuje się do pikseli, a te zależą od długości nazwy modułu i od
+      // skali pisma — asercja na nich gniłaby przy pierwszej nowej grupie.
+      // „Daszek jest pierwszym dzieckiem" jest zdaniem, które psuje się
+      // dokładnie wtedy, kiedy wraca wada.
+      selector: ".nav-group-toggle > .nav-group-chevron:first-child",
+      why: "hand-written classes in styles.css; the position is asserted as structure so the pair does not rot on label length or text scale",
+      app: "packages/desktop-ui/src/RealApp.tsx, styles.css (.nav-group-toggle)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 7 (wpisy #24 i #31) — dwa cele nawigacji, dwa różne znaki ────
+  {
+    id: "D2-07a",
+    lot: "D2",
+    position: 7,
+    title: "Today carries a clock",
+    contract: ".ui-craft/brief.md:32 (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "15",
+      value: '`today: "M8 2v3 … M2.5 8a5.5 5.5 0 1 0 11 0 …"` — zegar',
+    },
+    subject: {
+      // PREFIKS ŚCIEŻKI, BO GLIF JEST RYSUNKIEM, A NIE WŁASNOŚCIĄ STYLU.
+      // Przelot nie czyta atrybutów, ale selektor atrybutowy je widzi. Prefiks
+      // to pierwsza komenda prototypowego zegara przeskalowana ×1,5 — czyli
+      // ta sama liczba, którą niesie `Icon.tsx`. Świadoma cena: przerysowanie
+      // glifu wymaga poprawienia tej pary, i tak ma być, bo para pilnuje
+      // KTÓRY rysunek stoi przy tym celu.
+      selector: '[data-surface="today"] svg path[d^="M12 6.75V12"]',
+      why: "the glyph itself, reached by its own path data: two destinations carrying the same drawing is what this entry is about",
+      app: "packages/desktop-preload/src/surface-registry.ts, components/Icon.tsx (clock)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D2-07b",
+    lot: "D2",
+    position: 7,
+    title: "and Calendar a calendar page, so the two rows differ",
+    contract: ".ui-craft/brief.md:32 (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "37",
+      value:
+        '`calendar: "M2.5 4.5a1 1 0 0 1 1-1h9 … M2.5 7h11M5.5 2.5v2M10.5 2.5v2"` — kartka z podziałką miesiąca',
+    },
+    subject: {
+      selector: '[data-surface="calendar"] svg path[d^="M3.75 6.75"]',
+      why: "same reasoning as D2-07a; both destinations stood in the navigation carrying `cockpit`, the four-cell grid",
+      app: "packages/desktop-preload/src/surface-registry.ts, components/Icon.tsx (calendar)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D2-07c",
+    lot: "D2",
+    position: 7,
+    title: "and Organizations a building, not a second pair of silhouettes",
+    contract: ".ui-craft/brief.md:32 (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "19",
+      value:
+        '`org: "M3 13.5V4.2a1 1 0 0 1 1-1h4.5 … M5.2 6h1.6M5.2 8.6h1.6M5.2 11.2h1.6"` — budynek z oknami',
+    },
+    subject: {
+      selector: '[data-surface="organizations"] svg path[d^="M4.5 20.25"]',
+      why: "the register measured this at 3x zoom: `relationships` and `people` differ by a connector stroke invisible at 16px, and both stood in the CRM group",
+      app: "packages/desktop-preload/src/surface-registry.ts, components/Icon.tsx (organization)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 8 (wpisy #50 i #66) — prawa krawędź wiersza niesie liczbę ────
+  {
+    id: "D2-08",
+    lot: "D2",
+    position: 8,
+    title: "navigation rows carry counts beyond Tasks and Inbox",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "580-591",
+      value:
+        '`d.id === "projects" ? <span class="n">…</span> : d.id === "pipeline" ? … : d.id === "library" ? …` — liczba przy prawie każdym module',
+    },
+    subject: {
+      // `atLeast: 6`, A NIE DOKŁADNA LICZBA CELÓW — i ta liczba jest wybrana
+      // ZŁAMANIEM, nie okiem. Rachunek z fikstury: Zadania miały licznik przed
+      // tym lotem, a Projekty, Lejek, Organizacje, Ludzie, Odnowienia
+      // i Biblioteka dostają go w nim — czyli siedem (zmierzone: „7 element(s)
+      // match"). Dokładna siódemka byłaby asercją o LICZBIE CELÓW W REJESTRZE,
+      // nie o dostawie: ósmy cel z licznikiem położyłby parę na zielonej
+      // robocie. Podłoga 3 z pierwszej wersji tej pary była z kolei ZA NISKA —
+      // złamanie „zdejmij liczniki CRM" zostawia trzy (Zadania, Projekty,
+      // Biblioteka) i wracało ZIELONE. Sześć pada na utracie któregokolwiek
+      // z dwóch odczytów, na których ten lot stoi.
+      selector: ".sidebar [data-nav-count]",
+      why: "declared attribute on the count element; Inbox keeps its own badge class, so this selector counts the plain tabular numbers only",
+      app: "packages/desktop-ui/src/RealApp.tsx (navCounts), crm/record-census.ts",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 6 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 9 (wpis #6) — wiersz nagłówka sekcji ma prawy koniec ─────────
+  {
+    id: "D2-09",
+    lot: "D2",
+    position: 9,
+    title: "the section heading row has a right end, with something in it",
+    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    prototype: {
+      file: "v3/screens/today.js",
+      lines: "152",
+      value:
+        '`<button class="more" data-go=\'{"kind":"calendar"}\'>Open Calendar →</button>`, dosunięty regułą `.td-sec-head .more { margin-left: auto }` (`v3/screens/today.css:50`)',
+    },
+    subject: {
+      // OBECNOŚĆ, NIE `marginLeft`. `margin-left: auto` rozwiązuje się
+      // w `getComputedStyle` do WARTOŚCI UŻYTEJ w pikselach, więc para
+      // czytająca tę własność mierzyłaby szerokość wolnego miejsca w wierszu,
+      // a nie deklarację. Wpis rejestru mówi o SLOCIE Z TREŚCIĄ — pusty slot
+      // nie jest dostawą — więc mierzona jest treść.
+      selector: '[class*="_sectionHead_"] [data-open-calendar]',
+      why: "declared attribute inside the module-hashed head; this is the half of the entry the harness fixture can draw",
+      app: "packages/desktop-ui/src/TodaySurface.tsx, today.module.css (.sectionMore)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -833,6 +1240,44 @@ export const VISUAL_LANGUAGE_PAIRS = [
  * na zielono.
  */
 export const VISUAL_LANGUAGE_NOT_COVERED = [
+  {
+    lot: "D2",
+    position: 8,
+    title: "the Meetings row carries a count",
+    prototype: {
+      file: "v3/app.js",
+      lines: "590",
+      value:
+        '`d.id === "meetings" ? <span class="n">${MEETINGS.length}</span>`',
+    },
+    // NIE „NIE ZDĄŻYLIŚMY", TYLKO „NIE MA SKĄD". Spotkania nie są w migawce:
+    // stan kalendarza jest świadomie lokalny dla urządzenia i schodzi przez
+    // `client.getMeetingLoop`, z własną odmową uprawnienia
+    // (`client/calendar-reservation.ts`). Licznik przy tym celu wymagałby
+    // odczytu kalendarza przy KAŻDYM otwarciu okna, także u kogoś, kto dostępu
+    // nie dał — i pokazywałby wtedy albo zero, albo pustkę, czyli odpowiedź na
+    // pytanie, którego nie dało się zadać.
+    why: "meetings live outside the snapshot, behind a per-device calendar permission; a count there would need a calendar read at window open for everyone",
+  },
+  {
+    lot: "D2",
+    position: 9,
+    title: "the planned section's right end names who laid the day out",
+    prototype: {
+      file: "v3/screens/today.js",
+      lines: "148-150",
+      value:
+        '`<span class="td-agent">${icon("spark")}laid out by Hermes</span>`, dosunięty `margin-left: auto` (`v3/screens/today.css:51-54`)',
+    },
+    // ODDANE W KODZIE, NIEMIERZALNE W TEJ FIKSTURZE. Plakietka rysuje się
+    // wtedy i tylko wtedy, gdy któryś z DZISIEJSZYCH wierszy planu ma
+    // `plannedBy.principalKind === "agent"`, a fikstura harnessu nie rysuje ani
+    // jednego `[data-planned-row]` — ekran stoi na „Nothing is planned for
+    // today". WARUNEK WYJŚCIA: zaplanowane na dziś zadanie z autorem-agentem
+    // w `dev/CollaborationHarness.tsx`; wtedy ta pozycja dostaje parę
+    // `[data-planned-by-agent]` obok D2-09.
+    why: "the harness fixture draws no planned rows at all, so the agent badge has no state to appear in",
+  },
   {
     lot: 1,
     position: 10,
@@ -917,11 +1362,31 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
  * Obie zmiany są dopisaniem asercji i deklaracji, nie poluzowaniem żadnej.
  */
 export const VISUAL_LANGUAGE_EXPECTED = {
-  pairs: 30,
-  enforced: 29,
+  // 30 → 46 PRZY LOCIE D2 FAZY D, 2026-08-11. Szesnaście par na dziewięciu
+  // pozycjach, i wszystkie w TEJ mapie, a nie w trasowanej: `HARNESS` ląduje
+  // na Dzisiaj, więc pasmo tego ekranu, jego trzy nagłówki sekcji i jego
+  // znacznik pomocy stoją w drzewie bez ani jednego kliknięcia — tak samo jak
+  // pasek zakładek, nagłówki modułów i wiersze nawigacji.
+  //
+  // 2 → 4 W `notCovered`, i oba przyrosty są ODMOWAMI Z POWODEM, nie długiem
+  // bez adresu: licznik przy Spotkaniach nie ma źródła w migawce, a plakietka
+  // autorstwa planu nie ma STANU w fiksturze. Pierwszy wpis mówi, czego
+  // brakuje w produkcie, drugi — czego brakuje w przyrządzie, i drugi niesie
+  // swój warunek wyjścia.
+  pairs: 46,
+  enforced: 45,
   pending: 1,
-  notCovered: 2,
+  notCovered: 4,
   lots: {
+    D2: {
+      // Dziewięć pozycji, wszystkie z parą. Rachunek pozycji jest rachunkiem
+      // ZDAŃ rejestru, nie wpisów: #13 i #54 to jedno zdanie o daszku (pozycja
+      // 6), #24 i #31 to jedno zdanie o rozróżnialności glifów (pozycja 7),
+      // a #50 i #66 to jedno zdanie o licznikach (pozycja 8).
+      positionsInBrief: 9,
+      positionsWithPairs: 9,
+      positionsWithoutPairs: [],
+    },
     C1: {
       // Rejestr Fazy 4 (`faza-4-porownanie-ekranow.md`) jest briefem tej fazy.
       // Sześć jego wpisów ma tę JEDNĄ przyczynę, a lot rozcina ją na dwie

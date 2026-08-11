@@ -522,6 +522,23 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-base);
+  /* WPIS #12 REJESTRU, I JEGO POŁOWA BYŁA OBALONA WŁASNYM POMIAREM AUTORA.
+     Teza „inny krój bazowy" jest FAŁSZYWA: „Inter var" nie jest zainstalowany
+     nigdzie, więc obie strony spadają na `-apple-system`, a zmierzone
+     szerokości są identyczne (96 = 96, 146 ≈ 147 px). Zostaje jedna różnica
+     i jest nią WYGŁADZANIE: prototyp deklaruje `-webkit-font-smoothing:
+     antialiased` (`v3/app.css:13`, w regule `body`), aplikacja nie miała tej
+     deklaracji ani razu w całym `packages/desktop-ui/src` — i dlatego ten sam
+     napis niósł u nas o 24% więcej tuszu (1 250 wobec 1 007 pikseli >120 przy
+     tej samej powierzchni).
+
+     TO JEST JEDNA DEKLARACJA, NIE ZMIANA STOSU PISMA, i tak ma zostać: stos
+     w `tokens.css` nie jest tu podejrzanym. Druga deklaracja jest dla Firefoksa
+     na macOS, gdzie prefiks `-webkit-` nie działa; prototyp jej nie ma, bo
+     chodzi wyłącznie w Chromium, a aplikacja pakuje Chromium — więc jest to
+     zapas, nie rozjazd. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 button,
 input,
@@ -1020,6 +1037,53 @@ kbd {
 .ghost-button:not(:disabled):active {
   background: var(--surface-pressed);
 }
+/* WPIS #4 REJESTRU — POMOC NA ŻĄDANIE MA KSZTAŁT PRZYPISU, NIE KSZTAŁT AKCJI.
+   Prototyp: `v3/app.css:896-904` — `.helpb` to okrąg 1,125 rem
+   (`border-radius: var(--radius-full)`, włoskowa obwódka, `background: none`)
+   z jednym znakiem „?" złożonym `--text-2xs` wagą 600, w kolorze
+   czwartorzędnym; komentarz nad regułą mówi wprost, po co: „wielkość znaku ma
+   być mniejsza niż etykieta, przy której stoi — to jest dopisek, nie kontrolka
+   do klikania na co dzień". U nas ta sama afordancja jechała jako
+   `ghost-button compact`, czyli słowny przycisk 1,75 rem o stopniu `--text-sm`
+   — obiekt SZERSZY od nagłówka, przy którym stał.
+
+   TREŚCI POMOCY TA REGUŁA NIE DOTYKA I DOTKNĄĆ NIE MOŻE: sufit 180 znaków na
+   temat pomocy jest zapisaną regułą tego repozytorium
+   (`help/help-topics.ts:1-11`, decyzja #35) i dalej obowiązuje — sprawdzone
+   przed tą zmianą. Zmienia się WYZWALACZ, nie to, co on otwiera.
+
+   `background: none`, A NIE `transparent`: spis B1 (`control-paint`) jest
+   uzbrojony i czyta TŁO każdej narysowanej kontrolki. Reset przycisku w tym
+   arkuszu daje `background: none` i ta reguła go NIE nadpisuje niczym, czego
+   spis nie zna — kontrolka trafia do `TRANSPARENT`, tak jak `.helpb`
+   w prototypie, który też nie maluje tła.
+
+   CEL DOTYKOWY: pole jest większe niż glif, bo znak stoi w pudełku 1,125 rem,
+   a nie w samym tuszu — ta sama uwaga stoi przy regule prototypu. */
+.help-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-quaternary);
+  background: none;
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+.help-mark:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
 /* A SHARED BUTTON MATERIAL THAT USED TO LIVE IN A LAZY SURFACE SHEET. These
    two rules stood in `access-surface.css`, which only ever loaded when the
    retired `access` destination was opened — while `CaptureDialog.tsx` used the
@@ -1411,11 +1475,25 @@ kbd {
 .sidebar nav > .nav-label:first-child {
   margin-top: 0;
 }
+/* WPISY #13 I #54 REJESTRU (jeden kształt, dwa zgłoszenia) — DASZEK STOI PRZED
+   ETYKIETĄ, NIE PRZY PRAWEJ KRAWĘDZI PASKA. Prototyp rysuje nagłówek modułu
+   jako `${icon("chevDown", "chev")}<span>${title}</span>` (`v3/app.js:599`),
+   czyli znak zwijania jest PIERWSZYM dzieckiem wiersza i stoi kilka pikseli od
+   napisu; `v3/app.css:198-208` nie daje `.nav-head` ani jednej deklaracji, która
+   by go odsunęła. U nas daszek był OSTATNIM dzieckiem siatki
+   `minmax(0,1fr) auto auto`, więc oddzielała go od napisu cała szerokość
+   kolumny — i tak samo działo się na nagłówku każdego modułu.
+
+   TOR ETYKIETY ZOSTAJE ELASTYCZNY, tylko przesuwa się na drugie miejsce:
+   `auto minmax(0,1fr) auto`. Trzeci tor niesie `small` — nazwę bieżącego celu
+   przy zwiniętym module — i ZOSTAJE na końcu świadomie: prototyp nie ma tam
+   niczego, więc nie ma z czym go równać, a to jest jedyna treść tego wiersza,
+   która ma prawo być dosunięta do prawej. */
 .nav-group-toggle {
   width: 100%;
   min-height: 2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   /* `v3/app.css:210-216`: nagłówek modułu odsuwa się od tego, co nad nim,
@@ -2073,15 +2151,29 @@ kbd {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
+/* WPIS #5 REJESTRU — ZAKŁADKA OBEJMUJE WŁASNĄ ETYKIETĘ, NIE CAŁE PASMO.
+   Rejestr zmierzył to na zrzutach, na których OBA produkty rysują DOKŁADNIE
+   JEDNĄ zakładkę, więc różnica nie brała się z liczby kart: u nas „Today" to
+   wypełniona płyta ok. 205 px CSS, w prototypie ok. 55 px. Odpowiadały za to
+   dwie deklaracje, których prototyp nie ma — `flex: 1 1 10rem` (rośnij do
+   wolnego miejsca) i `min-width: 7rem` (podłoga szersza niż niejedna
+   etykieta). `v3/app.css:107-115` daje `.tab` wyłącznie SUFIT (`max-width:
+   13rem`) i `min-width: 0`; szerokość jest funkcją treści.
+
+   SUFIT ZOSTAJE, PODŁOGA SCHODZI DO ZERA, a `flex` schodzi do `0 1 auto`:
+   kurczenie się przy wielu zakładkach jest właściwością prototypu (`min-width:
+   0` istnieje po to), rośnięcie nie jest. Kreska akcentu pod aktywną zakładką
+   ma odtąd szerokość napisu, bo jest wcięta o 0,5 rem od krawędzi zakładki —
+   i to jest dokładnie to, co rejestr zgłasza jako drugą połowę wpisu. */
 .shell-tab {
   position: relative;
-  min-width: 7rem;
+  min-width: 0;
   max-width: 13rem;
   height: 2.25rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1.75rem;
   align-items: center;
-  flex: 1 1 10rem;
+  flex: 0 1 auto;
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;

@@ -52,9 +52,13 @@
 // wpisie niżej, a nie warunek u czytającego rejestr.
 export const desktopSurfaceRegistry = [
   {
+    // WPIS #31 REJESTRU. „Today" i „Calendar" niosły ten sam glif `cockpit`
+    // (czterokomórkowa siatka) na dwóch sąsiednich wierszach nawigacji —
+    // zmierzone na powiększeniu. Prototyp stawia tam zegar (`v3/app.js:15`,
+    // `today`), a ten zestaw ma zegar od 2026-08-07.
     id: "today",
     label: "Today",
-    icon: "cockpit",
+    icon: "clock",
     group: null,
     shortcut: 1,
     chrome: "navigation",
@@ -66,7 +70,7 @@ export const desktopSurfaceRegistry = [
     // spotkań nie istnieje, a układ jest soczewką nad JEDNĄ kolekcją.
     id: "calendar",
     label: "Calendar",
-    icon: "cockpit",
+    icon: "calendar",
     group: null,
     shortcut: 2,
     chrome: "navigation",
@@ -112,9 +116,12 @@ export const desktopSurfaceRegistry = [
     loading: "lazy",
   },
   {
+    // WPIS #24 REJESTRU: cel nosił `relationships` — dwie sylwetki, czyli to
+    // samo, co stojące pod nim „People". Glif `organization` jest budynkiem
+    // z prototypu (`v3/app.js:19`).
     id: "organizations",
     label: "Organizations",
-    icon: "relationships",
+    icon: "organization",
     group: "CRM",
     shortcut: 7,
     chrome: "navigation",

@@ -44,6 +44,7 @@ import type { RelationshipWorkspaceProjection } from "../client/workflow.js";
 
 import { countLabel, formatDate } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
+import { isLiveRecord } from "./record-census.js";
 import {
   fmtMoney,
   opportunityValue,
@@ -236,8 +237,10 @@ export const indexRelationships = (
   for (const record of records) {
     // A removed record is still in the projection: `recordState` is what says
     // whether it counts, and reading past it is how a deleted client keeps
-    // appearing in a total.
-    if (record.recordState !== "active") continue;
+    // appearing in a total. The predicate itself lives in `record-census.ts`
+    // because the sidebar counter needs the SAME sentence and cannot afford
+    // this module — see the header there.
+    if (!isLiveRecord(record)) continue;
     switch (record.kind) {
       case "organization":
         organizations.push(record);

@@ -80,6 +80,7 @@ import {
 import { TodaySurface } from "./TodaySurface.js";
 import { InboxSurface } from "./InboxSurface.js";
 import { inboxWaitingCount } from "./inbox-triage.js";
+import { countLiveRecords } from "./crm/record-census.js";
 import { ProjectsSurface, SearchOverlay, UndoDialog } from "./Wave2Surfaces.js";
 import { TasksSurface } from "./tasks/TasksSurface.js";
 import {
@@ -1836,6 +1837,56 @@ export const RealApp = ({
     state.snapshot.work.kind === "ready"
       ? state.snapshot.work.data.tasks.length
       : tasks.length;
+  // WPISY #50 I #66 REJESTRU — PRAWA KRAWĘDŹ WIERSZA NAWIGACJI NIESIE LICZBĘ.
+  //
+  // Prototyp stawia prawostronnie wyrównaną liczbę przy prawie każdym module
+  // (`v3/app.js:580-591`); tu stała przy DOKŁADNIE dwóch celach, i rejestr
+  // dowiódł, że to nie jest chowanie zer — pod „Projects" widać zagnieżdżony
+  // projekt, a wiersz „Projects" był pusty.
+  //
+  // TRZY REGUŁY, KTÓRE TA MAPA TRZYMA:
+  //
+  // 1. ŹRÓDŁO JEST TO SAMO, CO ŹRÓDŁO EKRANU POD CELEM. Projekty biorą
+  //    `snapshot.projects` — ten sam odczyt, z którego rysuje się kolekcja
+  //    i drugi poziom nawigacji. Cztery cele CRM biorą `snapshot.relationships`
+  //    przez `countLiveRecords`, dzielący predykat z `indexRelationships`,
+  //    czyli z indeksem, na którym stoją wszystkie cztery ekrany. Biblioteka
+  //    bierze te same dwie długości, co `LibraryShell.tsx:77-84`.
+  // 2. NIEDOSTĘPNY ODCZYT NIE JEST ZEREM. Brak klucza znaczy „nie wiem" i wiersz
+  //    nie rysuje wtedy NICZEGO. Zero w tym miejscu byłoby odpowiedzią „nie ma
+  //    ani jednego" na pytanie, którego nie dało się zadać — to jest defekt,
+  //    dla którego istnieje `readSlice` w `client/workflow.ts`.
+  // 3. `meetings` NIE MA TU WPISU I TO JEST ODMOWA Z POWODEM, nie przeoczenie.
+  //    Spotkania nie są w migawce: stan kalendarza jest świadomie lokalny dla
+  //    urządzenia i schodzi przez `client.getMeetingLoop`, z własną odmową
+  //    uprawnienia. Licznik przy tym celu wymagałby odczytu kalendarza przy
+  //    starcie okna, dla wszystkich, także dla tych, którzy dostępu nie dali.
+  const strategicRecords =
+    state.snapshot.relationships.kind === "ready"
+      ? state.snapshot.relationships.data.records
+      : undefined;
+  const navCounts: Partial<Record<SurfaceId, number>> = {
+    tasks: taskCount,
+    ...(state.snapshot.projects.kind === "ready"
+      ? { projects: state.snapshot.projects.data.items.length }
+      : {}),
+    ...(strategicRecords === undefined
+      ? {}
+      : {
+          pipeline: countLiveRecords(strategicRecords, "opportunity"),
+          organizations: countLiveRecords(strategicRecords, "organization"),
+          people: countLiveRecords(strategicRecords, "person"),
+          renewals: countLiveRecords(strategicRecords, "renewal"),
+        }),
+    ...(state.snapshot.documents.kind === "ready" &&
+    state.snapshot.knowledge.kind === "ready"
+      ? {
+          library:
+            state.snapshot.documents.data.items.length +
+            state.snapshot.knowledge.data.sources.length,
+        }
+      : {}),
+  };
   const isPreview = build.channel === "developer-preview";
   const coordinatedDataHome =
     state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
@@ -1934,12 +1985,16 @@ export const RealApp = ({
       shortcutHint.kind === "direct"
         ? shortcutHint.keys
         : `through the palette, ${shortcutHint.keys}`;
+    // NAZWA DOSTĘPNA NIESIE TĘ SAMĄ LICZBĘ, CO WIERSZ. Meta wiersza jest
+    // `aria-hidden`, więc bez tego czytnik ekranu nie dowiaduje się o liczniku
+    // NICZEGO — tak było przez cztery fale dla wszystkiego poza Zadaniami.
+    const navCount = navCounts[item.id];
     const itemName =
-      item.id === "tasks"
-        ? `${item.label} · ${taskCount}`
-        : item.id === "inbox" && inboxWaiting > 0
-          ? `${item.label} · ${inboxWaiting} waiting`
-          : item.label;
+      item.id === "inbox" && inboxWaiting > 0
+        ? `${item.label} · ${inboxWaiting} waiting`
+        : navCount === undefined
+          ? item.label
+          : `${item.label} · ${navCount}`;
     return (
       <div className="nav-entry" key={item.id}>
         <button
@@ -1989,13 +2044,15 @@ export const RealApp = ({
           <Icon name={item.icon} />
           <span>{item.label}</span>
           <span className="nav-item-meta" aria-hidden="true">
-            {item.id === "tasks" ? (
-              <span className="nav-count">{taskCount}</span>
-            ) : item.id === "inbox" && inboxWaiting > 0 ? (
+            {item.id === "inbox" && inboxWaiting > 0 ? (
               <span className="nav-count nav-count--attention">
                 {inboxWaiting}
               </span>
-            ) : null}
+            ) : navCount === undefined ? null : (
+              <span className="nav-count" data-nav-count>
+                {navCount}
+              </span>
+            )}
             <kbd
               className={
                 shortcutHint.kind === "palette"
@@ -2185,6 +2242,13 @@ export const RealApp = ({
           openContext(taskContext(id, task?.title ?? "Task"));
         }}
         onSelectTask={selectTaskInInspector}
+        // Prawy koniec nagłówka sekcji terminów (wpis #6) prowadzi tam, gdzie
+        // prowadzi prototyp — do Kalendarza. Ta sama droga, co pozycja
+        // nawigacji: jeden `destinationContext`, więc otwarcie z Dzisiaj
+        // podmienia tę samą zakładkę, co kliknięcie w lewej kolumnie.
+        onOpenCalendar={() =>
+          openContext(destinationContext("calendar", "Calendar"))
+        }
         onPlanForToday={(id) => {
           const task = tasks.find((item) => item.id === id);
           if (!client || !task) return;
@@ -3560,14 +3624,21 @@ export const RealApp = ({
                         }
                         onClick={() => toggleNavigationGroup(group)}
                       >
-                        <span>{group}</span>
-                        {activeGroupItem !== undefined && !expanded && (
-                          <small>{activeGroupItem.label}</small>
-                        )}
+                        {/* DASZEK JEST PIERWSZYM DZIECKIEM, tak jak
+                        w prototypie (`v3/app.js:599` — `icon("chevDown")`
+                        przed `<span>` z nazwą modułu). Kolejność w JSX-ie JEST
+                        tu układem: siatka `.nav-group-toggle` przypisuje tory
+                        po kolejności dzieci, więc zostawienie tego elementu na
+                        końcu przy zmienionych torach postawiłoby daszek pod
+                        etykietą, a nie przed nią. */}
                         <span
                           className="nav-group-chevron"
                           aria-hidden="true"
                         />
+                        <span>{group}</span>
+                        {activeGroupItem !== undefined && !expanded && (
+                          <small>{activeGroupItem.label}</small>
+                        )}
                       </button>
                     )}
                     <div
