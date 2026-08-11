@@ -3549,22 +3549,33 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     lot: 6,
     position: 3,
     kind: "restyle",
-    title: "and the label gets a track of its own instead of the icon track",
-    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
+    title: "and the label gets a track of its own beside the glyph's",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
     prototype: {
       file: "v3/screens/settings.css",
       lines: "61-71",
       value:
-        "`.st-navitem .lbl { flex: 1; min-width: 0 }` — etykieta zajmuje CAŁY wpis, bo wpis nie ma toru ikony",
+        "`.st-navitem` — tor glifu (`.ico`, 0,9375 rem) i etykieta obok niego (`.lbl { flex: 1; min-width: 0 }`), czyli DWA tory, nie jeden i nie trzy",
     },
     route: { settingsMode: true },
     subject: {
       selector: ".settings-mode-column .settings-mode-section",
-      why: "the entry itself, not its label: the three-track grid is declared on the entry, so the entry is where the defect resolves",
-      app: "packages/desktop-ui/src/styles.css:1387-1395, :1227-1240 (the shared three-track .nav-item grid it overrides)",
+      why: "the entry itself, not its label: the grid is declared on the entry, so the entry is where the defect resolves",
+      app: "packages/desktop-ui/src/styles.css (.settings-mode-column .nav-item)",
     },
     read: { property: "gridTemplateColumns" },
-    expect: { kind: "tracks", equals: 1 },
+    // 1 → 2 PRZY LOCIE D5 FAZY D, I JEST TO POPRAWKA ASERCJI, NIE ROZLUŹNIENIE.
+    // Ta para powstała przy locie 6 Fazy 3 nad wpisem, który renderował JEDNO
+    // dziecko: etykieta lądowała wtedy w torze IKONY (zmierzone: tor 17,59 px,
+    // trzy pozycje po 51 px wysokości), a jedyny tor był lekarstwem, bo ikony
+    // nie było. Cytat pod parą mówił nawet „bo wpis nie ma toru ikony" — i to
+    // zdanie było prawdą O APLIKACJI, a nie o prototypie: `.st-navitem` rysuje
+    // `icon(s.icon, "ico")` PRZED etykietą (`v3/screens/settings.js:983`).
+    // Wpis #69 rejestru („spis sekcji bez ikon") żąda dokładnie tego glifu,
+    // więc zostawienie `equals: 1` znaczyłoby, że bramka zabrania oddać wpis.
+    // Prototyp wygrywa z asercją napisaną wobec jego braku; to, czego ta para
+    // pilnuje, nie zmienia się — etykieta ma SWÓJ tor, nie tor glifu.
+    expect: { kind: "tracks", equals: 2 },
     status: "enforced",
   },
   {
@@ -4855,6 +4866,278 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "count", equals: 0 },
     status: "enforced",
   },
+  // ── LOT D5 FAZY D — USTAWIENIA STAJĄ SIĘ TRYBEM ─────────────────────────
+  // Wszystkie pary tego lotu jadą jednym krokiem `settingsMode: true`, czyli
+  // klikiem w koło zębate. Ekran Ustawień jest w chunku LENIWYM, ale kolumna
+  // trybu należy do `RealApp.tsx`, więc pozycja #67 mierzy powłokę, a #68/#70
+  // treść — z tego samego przystanku.
+  {
+    id: "D5-01a",
+    lot: "D5",
+    position: 1,
+    kind: "prescribed",
+    title: "entering settings takes the workspace card out of the column",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "6-27",
+      value:
+        "`.body:has(#canvas .st-mode) { --sidebar-width: 0px }` — wejście w tryb ZERUJE kolumnę powłoki pracy; karty przestrzeni nie ma tam w ogóle",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".sidebar .workspace-switcher",
+      why: "counted at zero: the register names this control by name as the first of three things that stayed above the section list",
+      app: "packages/desktop-ui/src/RealApp.tsx (gałąź `!settingsMode`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D5-01b",
+    lot: "D5",
+    position: 1,
+    kind: "prescribed",
+    title: "and the search control with it",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.js",
+      lines: "987-1002",
+      value:
+        "`.st-nav` ma DOKŁADNIE dwoje dzieci — `.st-nav-head` i `.st-nav-list`; wyszukiwarki nie ma w tym drzewie",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".sidebar .search-control",
+      why: "DRUGA para, nie druga własność tej samej: karta przestrzeni i wyszukiwarka to dwa osobne warunki w JSX-ie, więc jedna para byłaby zielona nad połową poprawki",
+      app: "packages/desktop-ui/src/RealApp.tsx (gałąź `!settingsMode`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D5-01c",
+    lot: "D5",
+    position: 1,
+    kind: "restyle",
+    title: "and the way out becomes a band with its own hairline",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "40-43",
+      value:
+        "`.st-nav-head { min-height: var(--header-band-height); border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-head",
+      why: "the band itself — the two counts above say what is GONE, and a column emptied without a band would pass both of them",
+      app: "packages/desktop-ui/src/styles.css (.settings-mode-head)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D5-02a",
+    lot: "D5",
+    position: 2,
+    kind: "prescribed",
+    title: "the section list is cut into named groups",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "57-60",
+      value:
+        "`.st-nav-glabel` — wersaliki `--text-2xs` z rozstrzeleniem 0,06em w kolorze czwartorzędnym, po jednej na grupę (`v3/screens/settings.js:996-1000`)",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-group-label",
+      why: "exactly three, and the number is a fact about the shape rather than about the fixture: the groups are derived from a six-entry dictionary compiled into the bundle, not from workspace data",
+      app: "packages/desktop-ui/src/settings-categories.ts (settingsCategoryGroups)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 3 },
+    status: "enforced",
+  },
+  {
+    id: "D5-02b",
+    lot: "D5",
+    position: 2,
+    kind: "prescribed",
+    title: "and every section carries a glyph",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.js",
+      lines: "983",
+      value:
+        '`${icon(s.icon, "ico")}<span class="lbl">…` — glif jest PIERWSZYM dzieckiem pozycji, przed etykietą',
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-section svg",
+      why: "one per section and six sections; `equals`, not `atLeast`, because a floor would pass a list where a single category kept its glyph",
+      app: "packages/desktop-ui/src/settings-categories.ts (pole `icon`), RealApp.tsx (`<Icon name={category.icon} />`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 6 },
+    status: "enforced",
+  },
+  {
+    id: "D5-03a",
+    lot: "D5",
+    position: 3,
+    kind: "restyle",
+    title: "a settings list is one plate instead of a stack of cards",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "109-112",
+      value:
+        "`.st-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden }` — obwódka należy do LISTY",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".status-list",
+      why: "the list element the register names first; the plate is what it lacked",
+      app: "packages/desktop-ui/src/styles.css (.status-list)",
+    },
+    read: { property: "borderTopColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D5-03b",
+    lot: "D5",
+    position: 3,
+    kind: "restyle",
+    title: "and its row stops being a card of its own",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "113-118",
+      value:
+        "`.st-row` niesie WYŁĄCZNIE `border-bottom`, zdejmowany na `:last-child` — bez promienia i bez własnego tła",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".status-list li",
+      why: "the row, read on its RADIUS rather than on its separator, and that is a decision forced by the fixture: this harness gives every status list exactly ONE row, so every row is `:last-child` and the hairline the rule adds is never drawn here. A pair on the separator would be measuring a lane that does not exist — the twin on the stage list below reads the hairline where there are two rows to separate.",
+      app: "packages/desktop-ui/src/styles.css (.status-list li)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D5-03c",
+    lot: "D5",
+    position: 3,
+    kind: "restyle",
+    title: "and the stage rows are told apart by a hairline, not by gaps",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "113-120",
+      value:
+        "`.st-row { border-bottom: 1px solid var(--border-subtle) }` nad `.st-list` bez `gap` — wiersze rozdziela linia, nie przerwa",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector:
+        '[class*="_stageList_"] li:not(:last-child) [class*="_stageRow_"]',
+      why:
+        "the register named BOTH files under one entry; this is the list that actually has more " +
+        "than one row in the harness, so the separator is measurable here and only here. THE " +
+        'SELECTOR EXCLUDES THE LAST ROW ON PURPOSE, and the first draft did not: `[class*="_stageRow_"]` ' +
+        "matched six rendered rows computing TWO values, because the closing row's hairline is " +
+        "removed by design — the pair came back NOT_MEASURED, i.e. as an instrument failure, and " +
+        "widening the expectation to accept both values would have made it green over a list with " +
+        "no separators at all.",
+      app: "packages/desktop-ui/src/settings/commercial-defaults-section.module.css (.stageRow)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D5-04a",
+    lot: "D5",
+    position: 4,
+    kind: "restyle",
+    title: "each settings section becomes its own card",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "235-241",
+      value:
+        "`.st-grant { border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-content); overflow: hidden }` — obrys należy do SEKCJI",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-category > section",
+      why: "the section that used to be a band inside somebody else's outline",
+      app: "packages/desktop-ui/src/styles.css (.settings-category > section)",
+    },
+    read: { property: "borderTopColor" },
+    expect: { kind: "token", token: "--panel-reading-border" },
+    status: "enforced",
+  },
+  {
+    id: "D5-04b",
+    lot: "D5",
+    position: 4,
+    kind: "restyle",
+    title: "and its heading gets a band closed by a hairline",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "239",
+      value:
+        "`.st-grant-head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-category > section > .settings-copy",
+      why: "DRUGA para, bo obrys sekcji i pasmo jej nagłówka psują się osobno: karta bez pasma przechodzi D5-04a i dalej daje nagłówkowi wyściółkę ciała, czyli dokładnie ten kształt, który rejestr zgłosił",
+      app: "packages/desktop-ui/src/styles.css (.settings-category > section > .settings-copy)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D5-05",
+    lot: "D5",
+    position: 5,
+    kind: "restyle",
+    title: "the add bar's select stops being a panel row",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "181-194",
+      value:
+        "`.st-input` i `.st-select` — obie kontrolki paska akcji mają `height: 1.75rem`, tę samą wyściółkę i ten sam stopień",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-control .status-create select",
+      why: "WYSOKOŚĆ NARYSOWANA, nie zadeklarowana podłoga — ta sama ostrożność co przy D1-04: para czytająca `min-height` byłaby zielona nad kontrolką, którą wyściółka podniosła z powrotem. Zmierzone przed poprawką: 44 px przy polu obok o 34,2 px.",
+      app: "packages/desktop-ui/src/styles.css (.settings-control .status-create …)",
+    },
+    read: { property: "height" },
+    expect: { kind: "rem", value: 1.8 },
+    status: "enforced",
+  },
   {
     // TRZECIA POŁOWA WPISU #58 — ZNACZNIK AUTORA W KOMPOZYTORZE. Litera idzie
     // za WPISEM rejestru, nie za pozycją (tak samo jak przy `D4-06a`): #58 ma
@@ -5309,7 +5592,14 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // i rzucał `ROUTED_COUNT_DRIFT` („holds 105 routed pairs, declared 104")
   // zanim zdążył ocenić choćby jedną parę. Liczba pozycji się nie zmienia,
   // bo pozycja 6 lotu D4 była już liczona jako pokryta.
-  pairs: 105,
+  //
+  // 105 → 116 PRZY LOCIE D5 FAZY D, 2026-08-11, I SĄ TO PIĘĆ NOWYCH POZYCJI —
+  // tryb Ustawień. Cztery z nich nie były mierzone przez tę mapę nigdy: sama
+  // powłoka w trybie (#67, trzy pary — dwie liczące, CZEGO NIE MA, i jedna
+  // czytająca pasmo, bez którego pusta kolumna przeszłaby obie), spis sekcji
+  // (#69), plaster listy (#68) i karta sekcji (#70). Piąta (#71) miała już parę
+  // na SZEROKOŚCI od lotu C5 i dostaje drugą na wysokości.
+  pairs: 116,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -5398,6 +5688,26 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       positionsInBrief: 3,
       pairs: 20,
       positionsWithPairs: 3, // 1, 2, 3
+      positionsWithoutPairs: [],
+    },
+    D5: {
+      // Lot D5 niesie PIĘĆ wpisów rejestru (#67-#71) i każdy z nich jest osobną
+      // pozycją — żaden nie jest duplikatem innego. Wszystkie pięć mają parę.
+      //
+      // JEDENAŚCIE PAR NA PIĘĆ POZYCJI, i rozdrobnienie ma wszędzie ten sam
+      // powód: para czytająca NIEOBECNOŚĆ starej wady jest zdaniem prawdziwym
+      // także o ekranie, na którym nikt nie dowiózł nowego kształtu. Pozycja 1
+      // liczy zniknięcie karty przestrzeni i wyszukiwarki OSOBNO (dwa warunki
+      // w JSX-ie, jedna para byłaby zielona nad połową poprawki), a trzecia
+      // czyta pasmo, którego pusta kolumna by nie miała. Pozycja 3 czyta plaster
+      // listy, promień wiersza i kreskę rozdzielającą — tę ostatnią na LIŚCIE
+      // ETAPÓW, bo fikstura harnessu daje każdej `.status-list` dokładnie jeden
+      // wiersz, czyli pas, na którym kreska nigdy się nie rysuje. Pozycja 4
+      // czyta obrys sekcji i pasmo jej nagłówka, bo karta bez pasma przechodzi
+      // pierwszą z nich.
+      positionsInBrief: 5,
+      pairs: 11,
+      positionsWithPairs: 5, // 1, 2, 3, 4, 5
       positionsWithoutPairs: [],
     },
     D4: {

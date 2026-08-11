@@ -192,7 +192,7 @@ import {
 } from "./client/shell-navigation.js";
 import { subscribeToAgentWrites } from "./client/agent-write-reload.js";
 import {
-  settingsCategories,
+  settingsCategoryGroups,
   settingsCategoryElementId,
   settingsPanes,
   type SettingsCategoryId,
@@ -431,6 +431,12 @@ export const RealApp = ({
   const captureRestoreFocusPendingRef = useRef(false);
   const activeContext = activeShellContext(navigation);
   const surface = activeContext.surface;
+  // JEDNO ZDANIE „JESTEŚMY W TRYBIE USTAWIEŃ" DLA CZTERECH CZYTAJĄCYCH — karty
+  // przestrzeni, wyszukiwarki, dwóch grup skrótów i samego spisu sekcji.
+  // Powtórzony `surface === "settings"` przy każdym z nich byłby piątą kopią
+  // tego samego warunku i pierwszy cel dopisany do trybu rozjechałby je po
+  // cichu: kolumna zostałaby podmieniona w połowie.
+  const settingsMode = surface === "settings";
   // Bound to a const so the "an Organization is open" narrowing survives into
   // the callbacks below: a property access is not narrowed inside a closure,
   // and the client-link handlers need the id after the check, not before it.
@@ -3396,78 +3402,120 @@ export const RealApp = ({
         </div>
       </div>
       <aside
-        className="sidebar"
+        className={`sidebar${settingsMode ? " sidebar-settings-mode" : ""}`}
         id="workspace-sidebar"
-        aria-label="Workspace and navigation"
+        aria-label={
+          settingsMode ? "Settings sections" : "Workspace and navigation"
+        }
       >
-        <button
-          type="button"
-          className="workspace-switcher"
-          // CO TEN PRZYCISK ROBI, W JEGO NAZWIE — a nie w dymku obok niej.
-          // Widoczna treść to nazwa przestrzeni, więc czynność („otwiera
-          // ustawienia") nie stała nigdzie poza `title`. W trybie podglądu
-          // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
-          // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
-          // najeżdżającą myszą.
-          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
-            isPreview
-              ? "opens workspace settings"
-              : coordinatedDataHome
-                ? "opens coordinated workspace settings"
-                : "opens workspace settings and switching"
-          }`}
-          disabled={isPreview}
-          onClick={() =>
-            openContext(destinationContext("settings", "Settings"))
-          }
-        >
-          {/* Kafel niósł WPISANĄ literę „I" — nie inicjał, nie skrót, literał,
+        {/* USTAWIENIA SĄ TRYBEM, WIĘC WEJŚCIE PODMIENIA KOLUMNĘ, A NIE DOKŁADA
+        SIĘ POD NIĄ (`v3/screens/settings.css:6-27` — prototyp zeruje szerokość
+        prawdziwego paska i rysuje `.st-nav`, czyli pasmo „‹ Settings" i sam
+        pogrupowany spis sekcji; `.ui-craft/patterns.md` — „Pattern: Application
+        shell", jedna kolumna nawigacji naraz).
+
+        POWŁOKA PRACY ZOSTAWAŁA NAD SPISEM: karta przestrzeni, wyszukiwarka
+        i grupy „Favorites"/„Recent" renderowały się BEZWARUNKOWO, a kolumna
+        trybu doklejała się dopiero pod nimi — zmierzone przed poprawką przy
+        1440 px: pierwsza pozycja spisu zaczynała się na y=215,9, czyli 176 px
+        pod górną krawędzią kolumny.
+
+        WARUNEK, NIE UKRYCIE STYLEM — tak samo jak przy samym spisie sekcji
+        niżej: element schowany `visibility` zostaje w kolejności Tab albo
+        w drzewie dostępności zależnie od reguły, a element, który się nie
+        renderuje, nie zostaje nigdzie. Prototyp musiał sięgnąć po `visibility`,
+        bo jego `renderSidebar()` nie znał trybu i sam nazywa to OBEJŚCIEM
+        (`:24-25`); tutaj kolumnę rysuje ten sam komponent, co tryb, więc
+        warunek jest do napisania wprost.
+
+        CZEGO TA POPRAWKA NIE ZDEJMUJE, i to jest rozstrzygnięcie, nie
+        przeoczenie: stopka tożsamości (`.preview-identity`) zostaje. Prototyp
+        nie ma jej w ŻADNYM trybie, więc jej obecność nie jest rozjazdem
+        TRYBU USTAWIEŃ — jest osobnym zdaniem o powłoce, którego rejestr
+        Fazy 4 nie postawił, a lot ekranowy nie zamyka wpisów, których nie
+        dostał.
+
+        WYSZUKIWANIA TO NIE ZABIERA: `⌘K` wisi na nasłuchu okna
+        (`RealApp.tsx`, gałąź `event.code === "KeyK"`), a nie na tym przycisku
+        — sprawdzone przed skasowaniem go z tej gałęzi. */}
+        {!settingsMode && (
+          <>
+            <button
+              type="button"
+              className="workspace-switcher"
+              // CO TEN PRZYCISK ROBI, W JEGO NAZWIE — a nie w dymku obok niej.
+              // Widoczna treść to nazwa przestrzeni, więc czynność („otwiera
+              // ustawienia") nie stała nigdzie poza `title`. W trybie podglądu
+              // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
+              // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
+              // najeżdżającą myszą.
+              aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
+                isPreview
+                  ? "opens workspace settings"
+                  : coordinatedDataHome
+                    ? "opens coordinated workspace settings"
+                    : "opens workspace settings and switching"
+              }`}
+              disabled={isPreview}
+              onClick={() =>
+                openContext(destinationContext("settings", "Settings"))
+              }
+            >
+              {/* Kafel niósł WPISANĄ literę „I" — nie inicjał, nie skrót, literał,
           i tak było w każdej przestrzeni od co najmniej trzech fal. Rozbicie
           przez `[...]` zamiast `charAt(0)`, bo nazwa zaczynająca się emoji
           rozpada się w połowie pary surogatów. */}
-          <span className="workspace-avatar">
-            {[...bootstrap.workspace.name.trim()][0]?.toUpperCase() ?? "·"}
-          </span>
-          <span>
-            <strong>{bootstrap.workspace.name}</strong>
-            <small>
-              {state.snapshot.dataHome?.availability === "available"
-                ? dataHomeLabel
-                : "Data Home needs attention"}
-            </small>
-          </span>
-          {!isPreview && <span className="workspace-switcher-action">•••</span>}
-        </button>
-        <button
-          className="search-control"
-          aria-label={`Search · ${modifierLabel}K`}
-          onFocus={(event) =>
-            showRailTip(event.currentTarget, "Search", {
-              keys: `${modifierLabel}K`,
-              kind: "direct",
-            })
-          }
-          onBlur={hideRailTip}
-          onMouseEnter={(event) =>
-            showRailTip(event.currentTarget, "Search", {
-              keys: `${modifierLabel}K`,
-              kind: "direct",
-            })
-          }
-          onMouseLeave={hideRailTip}
-          onClick={() => setSearchOpen(true)}
-        >
-          <Icon name="search" />
-          <span>Search</span>
-          {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
+              <span className="workspace-avatar">
+                {[...bootstrap.workspace.name.trim()][0]?.toUpperCase() ?? "·"}
+              </span>
+              <span>
+                <strong>{bootstrap.workspace.name}</strong>
+                <small>
+                  {state.snapshot.dataHome?.availability === "available"
+                    ? dataHomeLabel
+                    : "Data Home needs attention"}
+                </small>
+              </span>
+              {!isPreview && (
+                <span className="workspace-switcher-action">•••</span>
+              )}
+            </button>
+            <button
+              className="search-control"
+              aria-label={`Search · ${modifierLabel}K`}
+              onFocus={(event) =>
+                showRailTip(event.currentTarget, "Search", {
+                  keys: `${modifierLabel}K`,
+                  kind: "direct",
+                })
+              }
+              onBlur={hideRailTip}
+              onMouseEnter={(event) =>
+                showRailTip(event.currentTarget, "Search", {
+                  keys: `${modifierLabel}K`,
+                  kind: "direct",
+                })
+              }
+              onMouseLeave={hideRailTip}
+              onClick={() => setSearchOpen(true)}
+            >
+              <Icon name="search" />
+              <span>Search</span>
+              {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
           w tym arkuszu obwódkę, tło i promień, czyli rysunek klawiatury —
           a to jest jedna kontrolka, nie ściągawka. Znaczenie „to jest skrót"
           zostaje w `aria-label` przycisku, gdzie i tak było jedynym miejscem
           docierającym do czytnika ekranu. */}
-          <span className="search-shortcut">{modifierLabel}K</span>
-        </button>
-        <nav ref={navRef} aria-label="Main navigation" onKeyDown={navKeyDown}>
-          {favorites.length > 0 && (
+              <span className="search-shortcut">{modifierLabel}K</span>
+            </button>
+          </>
+        )}
+        <nav
+          ref={navRef}
+          aria-label={settingsMode ? "Settings sections" : "Main navigation"}
+          onKeyDown={navKeyDown}
+        >
+          {!settingsMode && favorites.length > 0 && (
             <>
               <p className="nav-label">Favorites</p>
               {favorites.map((favorite) => {
@@ -3496,7 +3544,7 @@ export const RealApp = ({
               })}
             </>
           )}
-          {recentContexts.length > 0 && (
+          {!settingsMode && recentContexts.length > 0 && (
             <>
               <p className="nav-label">Recent</p>
               {recentContexts.map((recent) => {
@@ -3524,61 +3572,101 @@ export const RealApp = ({
               i staje się spisem sekcji. Nawigacja nie jest ukrywana stylem —
               po prostu się nie renderuje, więc nie zostaje osiągalna Tabem
               w miejscu, którego nie widać. */}
-          {surface === "settings" ? (
+          {settingsMode ? (
             <nav
               className="settings-mode-column"
               aria-label="Settings sections"
             >
-              <button
-                type="button"
-                className="nav-item settings-mode-back"
-                data-settings-back="true"
-                // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
-                // rule `.nav-item > span { display: none }` (styles.css:3599)
-                // takes BOTH children out of the accessibility tree, and the
-                // only way out of settings mode was left announcing itself as
-                // „‹". The label is now on the button, so it survives the
-                // width at which the text disappears.
-                aria-label="Leave settings"
-                onClick={leaveSettings}
-              >
-                <span aria-hidden="true">‹</span>
-                <span>Settings</span>
-              </button>
-              {settingsCategories.map((category) => (
+              {/* PASMO, NIE PIERWSZY WIERSZ LISTY (`v3/screens/settings.css:40-43`
+              — `.st-nav-head` ma `min-height: var(--header-band-height)`
+              i własną dolną krawędź, a spis zaczyna się dopiero POD nią).
+              Wyjście z trybu stało dotąd w tej samej kolumnie co sekcje, więc
+              czytało się jak siódma sekcja. */}
+              <div className="settings-mode-head">
                 <button
-                  key={category.id}
                   type="button"
-                  className="nav-item settings-mode-section"
-                  data-settings-section={category.id}
-                  // CO TA POZYCJA STEROWANIE — przeprowadzone razem ze
-                  // znacznikiem. Skasowany nawigator w treści ekranu niósł
-                  // `aria-controls`; ten niósł tylko atrybut danych, czyli
-                  // adres dla testu, a nie dla czytnika ekranu.
-                  aria-controls={settingsCategoryElementId(category.id)}
-                  // JEDEN NAWIGATOR USTAWIEŃ, I TO JEST TEN
-                  // (`v3/screens/settings.css:36-80`, `:76-80`). Do fali E
-                  // stały trzy: ta kolumna, drugi nawigator w treści ekranu
-                  // i natywna kontrolka wąskiego okna. Kolumna była jedyną,
-                  // która NIE mówiła, gdzie czytelnik jest — a jest jedyną,
-                  // która stoi tam, gdzie prototyp trzyma spis sekcji.
-                  aria-current={
-                    settingsCategory === category.id ? "location" : undefined
-                  }
-                  onClick={() => {
-                    // Stan ustawiony OD RAZU, a nie dopiero z obserwatora
-                    // przecięć na ekranie: ostatnia sekcja bywa krótsza niż
-                    // okno i przewinięcie do niej nie zawsze przesuwa próg,
-                    // więc znacznik zostawał na poprzedniej. Obserwator
-                    // poprawia tę wartość przy każdym dalszym przewinięciu.
-                    setSettingsCategory(category.id);
-                    document
-                      .getElementById(settingsCategoryElementId(category.id))
-                      ?.scrollIntoView({ block: "start", behavior: "auto" });
-                  }}
+                  className="nav-item settings-mode-back"
+                  data-settings-back="true"
+                  // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
+                  // rule `.nav-item > span { display: none }` (styles.css:3599)
+                  // takes BOTH children out of the accessibility tree, and the
+                  // only way out of settings mode was left announcing itself as
+                  // „‹". The label is now on the button, so it survives the
+                  // width at which the text disappears.
+                  aria-label="Leave settings"
+                  onClick={leaveSettings}
                 >
-                  <span>{category.label}</span>
+                  <span aria-hidden="true">‹</span>
+                  <span>Settings</span>
                 </button>
+              </div>
+              {/* SPIS DZIELI SIĘ NA NAZWANE GRUPY I KAŻDA POZYCJA MA GLIF
+              (`v3/screens/settings.css:57-60` — `.st-nav-glabel`, wersaliki
+              `--text-2xs` z rozstrzeleniem 0,06em w kolorze czwartorzędnym;
+              `:61-71` — `.st-navitem` z torem ikony `.ico` przed etykietą;
+              złożone w `v3/screens/settings.js:996-1000`).
+
+              GRUPY SĄ WYPROWADZONE Z JEDNEJ LISTY, nie zadeklarowane obok niej
+              — `settingsCategoryGroups` skleja SĄSIADUJĄCE kategorie o tej
+              samej nazwie grupy. Druga lista wypisująca „które kategorie są
+              w której grupie" byłaby ręczną listą obok zamkniętego słownika,
+              czyli klasą defektu, którą to repo przegrywa od kilku fal:
+              kategoria dopisana do słownika i nieprzepisana do tamtej listy
+              zniknęłaby ze spisu bez ani jednego błędu. Tutaj kategoria bez
+              grupy nie kompiluje się. */}
+              {settingsCategoryGroups.map((group) => (
+                <div className="settings-mode-group" key={group.label}>
+                  {/* `aria-hidden`, tak jak w prototypie (`settings.js:998`):
+                  nagłówek grupy jest podziałem WZROKOWYM, a czytnik ekranu ma
+                  tę samą listę już opisaną nazwą `nav`. Wypowiedziany byłby
+                  szóstym powtórzeniem tej samej informacji. */}
+                  <p className="settings-mode-group-label" aria-hidden="true">
+                    {group.label}
+                  </p>
+                  {group.categories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className="nav-item settings-mode-section"
+                      data-settings-section={category.id}
+                      // CO TA POZYCJA STEROWANIE — przeprowadzone razem ze
+                      // znacznikiem. Skasowany nawigator w treści ekranu niósł
+                      // `aria-controls`; ten niósł tylko atrybut danych, czyli
+                      // adres dla testu, a nie dla czytnika ekranu.
+                      aria-controls={settingsCategoryElementId(category.id)}
+                      // JEDEN NAWIGATOR USTAWIEŃ, I TO JEST TEN
+                      // (`v3/screens/settings.css:36-80`, `:76-80`). Do fali E
+                      // stały trzy: ta kolumna, drugi nawigator w treści ekranu
+                      // i natywna kontrolka wąskiego okna. Kolumna była jedyną,
+                      // która NIE mówiła, gdzie czytelnik jest — a jest jedyną,
+                      // która stoi tam, gdzie prototyp trzyma spis sekcji.
+                      aria-current={
+                        settingsCategory === category.id
+                          ? "location"
+                          : undefined
+                      }
+                      onClick={() => {
+                        // Stan ustawiony OD RAZU, a nie dopiero z obserwatora
+                        // przecięć na ekranie: ostatnia sekcja bywa krótsza niż
+                        // okno i przewinięcie do niej nie zawsze przesuwa próg,
+                        // więc znacznik zostawał na poprzedniej. Obserwator
+                        // poprawia tę wartość przy każdym dalszym przewinięciu.
+                        setSettingsCategory(category.id);
+                        document
+                          .getElementById(
+                            settingsCategoryElementId(category.id),
+                          )
+                          ?.scrollIntoView({
+                            block: "start",
+                            behavior: "auto",
+                          });
+                      }}
+                    >
+                      <Icon name={category.icon} />
+                      <span>{category.label}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </nav>
           ) : (

@@ -1794,12 +1794,54 @@ kbd {
    (`scripts/verify-renderer-layout.mjs:783`), and the sidebar does not lie
    inside it. This position is closed on a browser measurement recorded in the
    lot report, not on an instrument. */
+/* PASMO WYJŚCIA, NIE PIERWSZY WIERSZ SPISU (`v3/screens/settings.css:40-43` —
+   `.st-nav-head { min-height: var(--header-band-height); border-bottom: 1px
+   solid var(--border-subtle) }`, a `.st-nav-list` zaczyna się dopiero pod nią).
+   Wcięcie zdejmowane ujemnym marginesem o RYNNĘ KOLUMNY, tą samą jedną liczbą,
+   którą czyta szyna aktywnej pozycji — pasmo, które nie dobiega do krawędzi,
+   nie jest pasmem, a wpisana tu druga liczba rozjechałaby się przy pierwszej
+   zmianie gęstości. */
+.sidebar-settings-mode {
+  /* Kolumna trybu nie ma nad spisem NICZEGO, więc jej własne wcięcie górne
+     odsunęłoby pasmo od krawędzi okna o dwa różne odstępy naraz (wyściółka
+     paska + `margin-top` listy). Pasmo ma stać tam, gdzie zaczyna się kolumna. */
+  padding-top: 0;
+}
+.sidebar-settings-mode nav {
+  margin-top: 0;
+}
+.settings-mode-head {
+  display: flex;
+  align-items: center;
+  min-height: var(--header-band-height);
+  margin: 0 calc(-1 * var(--nav-gutter)) var(--space-2);
+  padding: 0 var(--nav-gutter);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.settings-mode-head .settings-mode-back {
+  width: auto;
+}
 .settings-mode-column {
   display: grid;
   gap: 0.12rem;
 }
+/* GRUPY SPISU (`v3/screens/settings.css:55-60` — `.st-nav-group + .st-nav-group
+   { margin-top: var(--space-4) }` i `.st-nav-glabel` wersalikami `--text-2xs`
+   z rozstrzeleniem 0,06em w kolorze czwartorzędnym). Odstęp jest NA GRUPIE
+   PO SĄSIEDZIE, nie na każdej, żeby pierwsza nie odpychała się od pasma. */
+.settings-mode-group + .settings-mode-group {
+  margin-top: var(--space-4);
+}
+.settings-mode-group-label {
+  margin: 0 0 0.25rem;
+  padding: 0 var(--space-2);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 .settings-mode-column .nav-item {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 1.1rem minmax(0, 1fr);
   /* `white-space` STOI NA WPISIE, nie tylko na jego dziecku, i to nie jest
      kosmetyka selektora: „nie zawijaj" jest własnością wpisu, dziecko ją
      dziedziczy, a pomiar pytający o wpis dostaje odpowiedź zamiast `normal`
@@ -3265,11 +3307,22 @@ kbd {
   display: grid;
   gap: var(--space-3);
 }
+/* JEDNA OBWÓDKA NA CAŁĄ LISTĘ, KRESKA MIĘDZY WIERSZAMI (`v3/screens/settings.css:
+   109-120` — `.st-list { border: 1px solid var(--border-subtle); border-radius:
+   var(--radius-md); overflow: hidden }`, a `.st-row` niesie WYŁĄCZNIE
+   `border-bottom` i nie ma ani promienia, ani własnego tła).
+
+   `overflow: hidden`, tak jak tam, i to nie jest ozdoba: bez niego tło wiersza
+   pod kursorem i szyna zaznaczenia wychodzą kwadratowym rogiem poza zaokrągloną
+   krawędź plastra. */
 .status-list {
   display: grid;
-  gap: var(--space-1);
+  gap: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   list-style: none;
 }
 /* PIERWSZY KONSUMENT `--row-height` W USTAWIENIACH (2,125 rem).
@@ -3294,10 +3347,17 @@ kbd {
   gap: var(--space-2) var(--space-3);
   min-height: var(--row-height);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  /* WIERSZ PRZESTAJE BYĆ KARTĄ — obwódka, promień i własne jaśniejsze
+     wypełnienie zeszły na LISTĘ (reguła wyżej). Zostaje jedna kreska
+     rozdzielająca, zdejmowana na ostatnim wierszu, dokładnie jak
+     `.st-row` / `.st-row:last-child` (`v3/screens/settings.css:113-118`). */
+  border-bottom: 1px solid var(--border-subtle);
 }
+.status-list li:last-child {
+  border-bottom: 0;
+}
+/* Wyciszenie zarchiwizowanego wiersza zostaje, ale mówi je samo `opacity`
+   i tło ZAPADNIĘTE — token, nie uniesienie, bo wiersz nie jest już kartą. */
 .status-list li.status-archived {
   opacity: 0.72;
   background: var(--surface-sunken);
@@ -3360,7 +3420,6 @@ kbd {
   font-size: var(--text-xs);
 }
 .status-create select {
-  min-height: 1.8rem;
   font-size: var(--text-2xs);
 }
 /* Pola rekordu: typowane wartości workspace w inspektorze — etykieta po
@@ -9029,14 +9088,23 @@ kbd {
   container-type: inline-size;
 }
 
+/* KATEGORIA PRZESTAJE BYĆ KARTĄ, A SEKCJA NIĄ ZOSTAJE (`v3/screens/settings.css:
+   235-241` — `.st-grant` niesie obwódkę, promień i przycięcie, a `.st-grant-head`
+   jest PASMEM nagłówka zamkniętym własną kreską; prototyp stawia obok siebie
+   „This workspace" i „You", a na ekranie Pipeline „Stages" i „Default markup",
+   jako OSOBNE karty z widoczną przerwą).
+
+   ID, `data-settings-category` I `scroll-margin-top` ZOSTAJĄ TUTAJ, i to nie
+   jest resztka: powłoka przewija do tego elementu (`settingsCategoryElementId`),
+   a obserwator przecięć na nim właśnie stawia znacznik bieżącej sekcji w kolumnie
+   trybu. Zdjęcie pudełka wolno zrobić tylko tak, żeby te trzy rzeczy zostały —
+   inaczej pary L6-02a/b zzielenieją nad zepsutym znacznikiem albo zczerwienieją
+   z powodu, który nie ma nic wspólnego z tym wpisem. */
 .settings-category {
   scroll-margin-top: var(--space-5);
-  overflow: hidden;
-  margin-bottom: var(--space-6);
-  border: 1px solid var(--panel-reading-border);
-  border-radius: var(--radius-lg);
-  background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-rest);
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 /* JEDNA KOLUMNA, NIE DWIE. Stały tu dwa tory — proza w `1fr`, kontrolka
@@ -9053,14 +9121,35 @@ kbd {
    nagłówek → wyjaśnienie → kontrolka. Zysk pozycji — wyjaśnienie przestaje
    być kolumną i staje się linijką — jest ten sam. */
 .settings-category > section {
-  border-top: 1px solid var(--border-default);
+  overflow: hidden;
   display: grid;
   gap: var(--space-4);
-  padding: var(--space-5);
+  /* Wyściółka POZIOMA schodzi na dzieci, bo pasmo nagłówka musi dobiec do obu
+     krawędzi karty — sekcja z wyściółką na wszystkie strony daje kreskę
+     kończącą się 20 px przed obrysem, czyli podkreślenie, a nie pasmo. */
+  padding: 0 0 var(--space-5);
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-rest);
 }
 
-.settings-category > section:first-child {
-  border-top: 0;
+.settings-category > section > * {
+  margin-inline: var(--space-5);
+}
+
+/* PASMO NAGŁÓWKA SEKCJI. `.settings-copy` jest pierwszym dzieckiem w OSIEMNASTU
+   z dziewiętnastu sekcji — policzone, nie założone; dziewiętnasta („App update")
+   oddaje swoją treść komponentowi `ReleaseContinuity` i pasma nie dostaje, więc
+   reguła niżej daje jej zwykłe wcięcie górne zamiast wyrwy. */
+.settings-category > section > .settings-copy {
+  margin-inline: 0;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-category > section > *:first-child:not(.settings-copy) {
+  margin-top: var(--space-5);
 }
 
 .settings-copy h2 {
@@ -9586,6 +9675,46 @@ kbd {
   font-weight: 600;
   padding: var(--space-2) 0.72rem;
   white-space: nowrap;
+}
+/* DRUGA POŁOWA WPISU #71 REJESTRU, ODDANA NA POMIARZE, NIE NA ODCZYCIE — i to
+   jest istotne, bo dwa odczyty kodu stały tu naprzeciwko siebie. Komentarz przy
+   `.settings-control select` (`:9564-9583`, lot C5) mówił „wysokość NIE JEST
+   wadą, bo `.settings-control button` ma tę samą podłogę 2,75 rem"; przeliczenie
+   Fazy D mówiło „teza wpisu stoi, bo sąsiednie POLE TEKSTOWE nie deklaruje
+   żadnej podłogi". Obie prozy były prawdziwe i żadna nie była zmierzona.
+   Zmierzone w Chromium przy 1440 px, jasny motyw, w rzędzie `form.status-create`
+   („New status — label" + „Task" + „Add", `align-items: center`, więc nic się
+   nie rozciąga): pole 34,2 px, kontrolka wyboru 44 px, przycisk 44 px. Wpis
+   rejestru mówi o polu i o kontrolce, i różnica wynosiła 9,8 px.
+
+   PASEK DODAWANIA JEST PASKIEM AKCJI, NIE WIERSZEM PANELU (`v3/screens/
+   settings.css:181-194` — `.st-input` i `.st-select` mają w prototypie tę samą
+   wysokość 1,75 rem, tę samą wyściółkę i ten sam stopień; `.st-bar` niżej,
+   `:165-170`, jest ich wspólnym pojemnikiem). Ten pasek MIAŁ tu już własną,
+   gęstą geometrię — `min-height: 1.8rem` na kontrolce i na przycisku — i nigdy
+   nie docierała ona do ekranu: `.settings-control select` (`:9583`) i
+   `.settings-control button:not(…)` (`:9634`) są tak samo swoiste (0,2,1)
+   i stoją PÓŹNIEJ, więc wygrywały. Reguła niżej jest wiązana `.settings-control`
+   po to i tylko po to, żeby stanąć na tym samym poziomie swoistości (0,2,1)
+   i zdecydować KOLEJNOŚCIĄ, a nie żeby dołożyć wagi — dlatego stoi TUTAJ,
+   pod regułami, które wygrywały, a nie przy `.status-create` trzy tysiące
+   wierszy wyżej, gdzie napisana najpierw przegrywała z nimi tak samo, jak
+   przegrywała reguła, którą miała naprawić. Wysokość nie schodzi sama:
+   34,2 px pola brało się z WYŚCIÓŁKI 0,6 rem (`:9549`), nie z podłogi, więc
+   podłoga bez wyściółki nie ruszyłaby ani jednego piksela.
+
+   PRÓG DOTYKOWY, POWIEDZIANY LICZBĄ, A NIE PRZEMILCZANY: 1,8 rem to 28,8 px,
+   czyli powyżej 24 px z WCAG 2.5.8 (AA) — tego samego progu, na którym stoi
+   wyliczenie przy `.stageRow` (34 px, „spełnione z zapasem"). Traci się zapas
+   do 2.5.5 (AAA, 44 px), którego ten ekran nigdzie nie deklaruje, i traci się
+   parzystość kontrolki z przyciskiem zmierzoną przez lot C5 — dlatego przycisk
+   schodzi razem z nimi, a nie zostaje sam na 44 px. Trzy kontrolki jednego
+   paska mają jedną wysokość albo nie są jednym paskiem. */
+.settings-control .status-create input,
+.settings-control .status-create select,
+.settings-control .status-create button {
+  min-height: 1.8rem;
+  padding: 0 var(--space-2);
 }
 
 /* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,

@@ -18,11 +18,19 @@
   gap: var(--space-3);
 }
 
+/* JEDNA OBWÓDKA NA CAŁĄ LISTĘ ETAPÓW, dokładnie jak przy `.status-list`
+   w `styles.css` i z tego samego cytatu: `v3/screens/settings.css:109-120`
+   (`.st-list` niesie obwódkę, promień i przycięcie; `.st-row` — samą kreskę).
+   Rejestr zgłosił oba te wiersze jednym wpisem („wiersze list to osobne
+   karty") i wymienił OBA pliki, więc obie listy dostają jeden kształt. */
 .stageList {
   display: grid;
-  gap: var(--space-1);
+  gap: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   list-style: none;
 }
 
@@ -80,10 +88,18 @@
   gap: var(--space-2);
   min-height: var(--row-height);
   padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  /* Wiersz przestaje być kartą: obwódka, promień i uniesione wypełnienie
+     zeszły na `.stageList`. Tło ZNIKA, a nie zmienia odcień — kontrolka bez
+     tła jest dla spisu farby stanem TRANSPARENT, czyli tym samym, który
+     deklaruje `.ghost-button` (`scripts/control-paint.mjs:331`), więc ten
+     wiersz nie wchodzi do rejestru farby spoza palety. */
+  border-bottom: 1px solid var(--border-subtle);
+  background: none;
   text-align: left;
+}
+
+.stageList li:last-child .stageRow {
+  border-bottom: 0;
 }
 
 /* THE HOVER RULE MAY NOT REPAINT THE ROW THE READER IS ON, and the exclusion
