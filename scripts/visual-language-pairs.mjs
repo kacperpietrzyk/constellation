@@ -4941,6 +4941,38 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     status: "enforced",
   },
   {
+    // CZWARTA PARA POZYCJI 1, DOPISANA PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D5.
+    // Trzy pary wyżej mówią, CZEGO NIE MA, i że kreska pasma jest we właściwym
+    // tokenie — a żadna z nich nie ma zdania o tym, dokąd to pasmo SIĘGA.
+    // Wada, którą przegląd znalazł odczytem, była dokładnie tam: margines
+    // ujemny pasma jest symetryczny, a nawigacja odtwarzała rynnę tylko po
+    // LEWEJ, więc prawe 12 px pasma leżało poza jej pudełkiem przycięcia i było
+    // ścinane. Pomiar lotu przy 760 px („wystawanie w prawo 0 px") był
+    // PRAWDZIWY i ślepy: `getBoundingClientRect` oddaje pudełko UKŁADU.
+    id: "D5-01d",
+    lot: "D5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "and that band runs the full width of the column instead of being cut by it",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "36-43",
+      value:
+        "`.st-nav` nie ma wyściółki poziomej w ogóle, a `.st-nav-head` niesie własną — więc pasmo prototypu z natury dobiega do OBU krawędzi kolumny, a przewijalna jest dopiero `.st-nav-list` pod nim",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-head",
+      why: "ta sama kontrolka co D5-01c, ale czytana na osi, na której się psuje: kolor kreski jest identyczny w paśmie pełnej szerokości, w paśmie obciętym o rynnę i w podkreśleniu kończącym się przed krawędzią",
+      app: "packages/desktop-ui/src/styles.css (.sidebar-settings-mode nav)",
+    },
+    read: { property: "rect.clipGapRight", clip: ".sidebar nav" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
     id: "D5-02a",
     lot: "D5",
     position: 2,
@@ -5115,6 +5147,44 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     status: "enforced",
   },
   {
+    // TRZECIA PARA POZYCJI 4, DOPISANA PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D5.
+    // Obie pary wyżej mają PODMIOT `.settings-category > section`, czyli
+    // dokładnie ten zbiór, który wpis #70 obdarował kartą — i są ślepe na
+    // dziecko kategorii, które `section` NIE JEST. Takie dziecko było: korzeń
+    // `AccessSection` zwracał `<div>`, więc jako jedyne w sześciu kategoriach
+    // nie dostawało ani obrysu, ani przeniesienia wyściółki, i zostawało przy
+    // własnej kresce górnej wiszącej w przerwie siatki. Bliźniaczy
+    // `ActivitySection` zwraca `<section>` i wpadł poprawnie — różnił je
+    // WYŁĄCZNIE tag, czyli jedyna rzecz, której tamte pary nie czytają.
+    //
+    // LICZBA, NIE WŁASNOŚĆ, i to jest cała treść tej pary: para przypięta do
+    // drugiego dziecka jednej kategorii byłaby zielona przy siódmym komponencie
+    // dopisanym tą samą drogą. Zero dzieci spoza zbioru podmiotów znaczy, że
+    // zbiór podmiotów obu par wyżej JEST kompletem kart tego ekranu.
+    id: "D5-04c",
+    lot: "D5",
+    position: 4,
+    kind: "prescribed",
+    title: "and no block of a category sits outside that set of cards",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "235-241",
+      value:
+        "`.st-grant` — w prototypie KAŻDY blok kategorii niesie obwódkę, promień i przycięcie; bloku bez karty nie ma tam ani jednego",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-category > *:not(section)",
+      why: "policzone nad WSZYSTKIMI sześcioma kategoriami naraz — jedno dziecko spoza zbioru podmiotów D5-04a/b to jedna karta, której nikt nie narysował, a obie tamte pary zostają nad tym zielone",
+      app: "packages/desktop-ui/src/settings/AccessSection.tsx (korzeń komponentu)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
     id: "D5-05",
     lot: "D5",
     position: 5,
@@ -5134,8 +5204,13 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       why: "WYSOKOŚĆ NARYSOWANA, nie zadeklarowana podłoga — ta sama ostrożność co przy D1-04: para czytająca `min-height` byłaby zielona nad kontrolką, którą wyściółka podniosła z powrotem. Zmierzone przed poprawką: 44 px przy polu obok o 34,2 px.",
       app: "packages/desktop-ui/src/styles.css (.settings-control .status-create …)",
     },
+    // 1,8 → 1,75 PRZY NAPRAWIE PO PRZEGLĄDZIE: para CYTOWAŁA `height: 1.75rem`
+    // z prototypu i pilnowała 1,8 rem, a nigdzie — ani przy regule, ani tutaj,
+    // ani we wzorcu — nie stało zdania, że to świadome odstępstwo. Wartość
+    // „mniej więcej jak w prototypie" nie jest wartością z prototypu; reguła
+    // zeszła na 1,75 rem razem z tą liczbą.
     read: { property: "height" },
-    expect: { kind: "rem", value: 1.8 },
+    expect: { kind: "rem", value: 1.75 },
     status: "enforced",
   },
   {
@@ -5599,7 +5674,17 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // czytająca pasmo, bez którego pusta kolumna przeszłaby obie), spis sekcji
   // (#69), plaster listy (#68) i karta sekcji (#70). Piąta (#71) miała już parę
   // na SZEROKOŚCI od lotu C5 i dostaje drugą na wysokości.
-  pairs: 116,
+  //
+  // 116 → 118 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D5, 2026-08-11, i NIE JEST TO
+  // ani nowa pozycja, ani rozpad istniejącej: dwie osie tych samych pozycji,
+  // na których lot pojechał bez dowodu. Pozycja 1 miała trzy pary i żadna nie
+  // czytała, DOKĄD pasmo sięga — a sięgało o rynnę za daleko i było ścinane
+  // przez przewijalnego przodka (D5-01d, odczyt świadomy przycięcia, bo pudełko
+  // układu jest na to ślepe). Pozycja 4 miała dwie pary i obie brały za podmiot
+  // `.settings-category > section`, więc dziecko kategorii, które `section` nie
+  // jest, leżało poza pomiarem — a takie było (D5-04c, licząca je nad
+  // wszystkimi sześcioma kategoriami). `positionsWithPairs` się nie rusza.
+  pairs: 118,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -5705,8 +5790,12 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // wiersz, czyli pas, na którym kreska nigdy się nie rysuje. Pozycja 4
       // czyta obrys sekcji i pasmo jej nagłówka, bo karta bez pasma przechodzi
       // pierwszą z nich.
+      //
+      // 11 → 13 PRZY NAPRAWIE PO PRZEGLĄDZIE: po jednej parze na pozycje 1 i 4,
+      // obie na osiach, których lot nie zmierzył — zasięg pasma (D5-01d)
+      // i komplet kart kategorii (D5-04c). Powody stoją przy wpisach.
       positionsInBrief: 5,
-      pairs: 11,
+      pairs: 13,
       positionsWithPairs: 5, // 1, 2, 3, 4, 5
       positionsWithoutPairs: [],
     },

@@ -3923,6 +3923,39 @@ const measureVisualLanguageInPage = async ({
       const rect = element.getBoundingClientRect();
       return `${Math.round(rect.left * 100) / 100}px`;
     }
+    // ILE PASMO WYSTAJE POZA NAJCIAŚNIEJSZĄ KRAWĘDŹ PRZYCIĘCIA NAD SOBĄ, jedną
+    // liczbą ze znakiem — i to jest jedyny odczyt, który odróżnia PASMO od
+    // podkreślenia ORAZ od pasma obciętego. `getBoundingClientRect` oddaje
+    // pudełko UKŁADU, więc para czytająca samą szerokość jest ślepa na
+    // przycięcie: element z symetrycznym ujemnym marginesem MIERZY się na pełną
+    // szerokość kolumny i jednocześnie jest ścinany przez przewijalnego
+    // przodka, którego krawędź przycięcia leży bliżej.
+    //
+    // Dodatnia liczba = ścinane; zero = dobiega dokładnie do krawędzi; ujemna =
+    // kończy się przed nią, czyli podkreślenie zamiast pasma.
+    //
+    // NAJCIAŚNIEJSZY, A NIE NAJBLIŻSZY PRZODEK: przewijalne pudełka bywają
+    // zagnieżdżone (spis sekcji Ustawień siedzi w nawigacji powłoki), a poprawka
+    // zrobiona o jeden poziom za nisko zostawiłaby przycięcie piętro wyżej —
+    // czyli parę zieloną nad wadą, którą opisuje.
+    if (read.property === "rect.clipGapRight") {
+      let node = element.parentElement;
+      let clipRight = Number.POSITIVE_INFINITY;
+      while (node !== null) {
+        if (node.matches(read.clip)) {
+          const box = node.getBoundingClientRect();
+          clipRight = Math.min(
+            clipRight,
+            box.left + node.clientLeft + node.clientWidth,
+          );
+        }
+        node = node.parentElement;
+      }
+      if (!Number.isFinite(clipRight))
+        return `no ancestor matches „${read.clip}"`;
+      const gap = element.getBoundingClientRect().right - clipRight;
+      return `${Math.round(gap * 100) / 100}px`;
+    }
     return window.getComputedStyle(element)[read.property] ?? "";
   };
 

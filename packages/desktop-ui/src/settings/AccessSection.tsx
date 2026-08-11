@@ -515,7 +515,17 @@ export const AccessSection = ({
   };
 
   return (
-    <div className={styles.root}>
+    // `<section>`, NIE `<div>`, I TO JEST WŁAŚCIWOŚĆ UKŁADU, NIE SEMANTYKI.
+    // Kartą sekcji Ustawień jest `.settings-category > section` (`styles.css`)
+    // — obrys, promień, przycięcie i wyściółka zdjęta na dzieci. Ten korzeń był
+    // jedynym dzieckiem kategorii, które nie jest `section`, więc jako jedyny
+    // nie dostawał karty: zostawał przy własnej wyściółce 20 px (treść wcięta
+    // wobec obrysów kart nad i pod nim) i przy `border-top`, który był kreską
+    // MIĘDZYPIĘTROWĄ w środku wspólnej karty, a po wpisie #70 wisiał w 16 px
+    // przerwy siatki i nie rozdzielał niczego. Bliźniaczy `ActivitySection`
+    // zwraca `section` i tę samą parę deklaracji w swoim module ma nadpisaną
+    // poprawnie — różnił je wyłącznie tag.
+    <section className={styles.root}>
       {access.kind === "unavailable" ? (
         // A SECTION-LEVEL STATE. The surface this content came from returned a
         // whole screen here; returning one now would blank the other five
@@ -1273,6 +1283,6 @@ export const AccessSection = ({
           </>
         )}
       </section>
-    </div>
+    </section>
   );
 };

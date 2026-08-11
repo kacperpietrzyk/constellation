@@ -1436,12 +1436,67 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
-          `  min-height: 1.8rem;
+          `  min-height: 1.75rem;
   padding: 0 var(--space-2);
 }`,
-          `  min-height: 1.8rem;
+          `  min-height: 1.75rem;
 }`,
           "the add bar's own padding",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE CZWARTE — PASMO WYJŚCIA WRACA POD NÓŻ (D5-01d,
+      // wpis #67), i jest to złamanie POPRAWKI PO PRZEGLĄDZIE, nie lotu.
+      //
+      // Zdejmowana jest para deklaracji, która przesuwa krawędź przycięcia
+      // nawigacji na prawą krawędź kolumny. Pasmo zostaje nietknięte — dalej ma
+      // symetryczny margines ujemny, dalej MIERZY się na pełną szerokość
+      // kolumny i dalej ma kreskę we właściwym tokenie, więc D5-01c zostaje
+      // zielona. Czerwień może pochodzić wyłącznie z odczytu świadomego
+      // przycięcia, i o to w tym złamaniu chodzi.
+      name: "take the clip edge back off the settings column: the exit band gets its right gutter shaved off again",
+      expectRedContains: ["D5-01d"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  margin-right: calc(-1 * var(--nav-gutter));
+  padding-right: var(--nav-gutter);
+}
+.settings-mode-head {`,
+          `}
+.settings-mode-head {`,
+          "the settings column's right clip edge",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE PIĄTE — BLOK LUDZI WYPADA ZE ZBIORU KART
+      // (D5-04c, wpis #70), też złamanie POPRAWKI PO PRZEGLĄDZIE.
+      //
+      // Wracany jest TAG, i tylko tag: `styles.css` zostaje nietknięty, więc
+      // pozostałe dwadzieścia sekcji dalej jest kartami i D5-04a/b zostają
+      // zielone — dokładnie tak, jak były zielone nad tą wadą, kiedy istniała
+      // naprawdę. Czerwona ma być wyłącznie para licząca dzieci kategorii.
+      name: "hand the People block its plain div back: one category child stops being a card and both card pairs stay green",
+      expectRedContains: ["D5-04c"],
+      file: "packages/desktop-ui/src/settings/AccessSection.tsx",
+      edit: (text) =>
+        replaceOnce(
+          replaceOnce(
+            text,
+            `    <section className={styles.root}>`,
+            `    <div className={styles.root}>`,
+            "the Access section's root tag (opening)",
+          ),
+          `      </section>
+    </section>
+  );
+};`,
+          `      </section>
+    </div>
+  );
+};`,
+          "the Access section's root tag (closing)",
         ),
     },
   ]),

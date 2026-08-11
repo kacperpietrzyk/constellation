@@ -1809,6 +1809,36 @@ kbd {
 }
 .sidebar-settings-mode nav {
   margin-top: 0;
+  /* KRAWĘDŹ PRZYCIĘCIA IDZIE ZA PASMEM PO OBU STRONACH, INACZEJ PASMO JEST
+     OBCIĘTE PO PRAWEJ — i to jest poprawka po przeglądzie lotu D5, znaleziona
+     ODCZYTEM, a nie pomiarem, bo `getBoundingClientRect` oddaje pudełko UKŁADU
+     i jest ślepy na przycięcie: pomiar lotu („wystawanie w prawo 0 px") był
+     prawdziwy i nic o tej wadzie nie mówił.
+
+     `.sidebar nav` niesie `overflow-y: auto`, więc przeglądarka wylicza
+     `overflow-x` na `auto` i element PRZYCINA na swoim pudełku dopełnienia po
+     OBU osiach (to samo zdanie stoi przy regule z ujemnym marginesem po
+     lewej). Tamta para deklaracji przesunęła krawędź przycięcia na krawędź
+     kolumny TYLKO z lewej, a `.settings-mode-head` ma margines ujemny
+     SYMETRYCZNY — więc jego prawe `--nav-gutter` leżało poza pudełkiem
+     przycięcia nawigacji i było ścinane (12 px przy 1440 px, 4 px w szynie),
+     a pasek stawał się przewijalny poziomo. Pasmo, które nie dobiega do
+     krawędzi, nie jest pasmem — i tak samo nie jest nim pasmo, któremu
+     krawędź obcięto.
+
+     TA SAMA JEDNA LICZBA, `--nav-gutter`: ujemny margines i dopełnienie tej
+     samej wartości zostawiają pudełko TREŚCI dokładnie tam, gdzie było, a
+     przesuwają krawędź przycięcia na krawędź kolumny — dokładnie tak, jak po
+     lewej, i tak samo samo dostraja się w szynie ikon.
+
+     WIĄZANE DO TRYBU USTAWIEŃ, NIE DO `.sidebar nav`: w powłoce pracy pasma
+     nie ma, a przesunięcie krawędzi przycięcia dosunęłoby tam pionowy pasek
+     przewijania do obwódki kolumny bez żadnego powodu. Selektor potomka trafia
+     w OBIE nawigacje — zewnętrzną i `.settings-mode-column` — i to jest
+     wymagane, nie uboczne: naprawa samej kolumny trybu zostawia jej pudełko
+     brzegowe na krawędzi kolumny, a przycina je nawigacja o poziom wyżej. */
+  margin-right: calc(-1 * var(--nav-gutter));
+  padding-right: var(--nav-gutter);
 }
 .settings-mode-head {
   display: flex;
@@ -9621,18 +9651,29 @@ kbd {
    wyboru ma zbiór opcji skończony i znany, więc rośnie do najszerszej z nich
    i tam się zatrzymuje.
 
-   WYSOKOŚĆ ZOSTAJE NA 2,75 REM I NIE JEST WADĄ, wbrew temu, co mówił rekonesans
-   tego lotu („kontrolka wyraźnie wyższa od sąsiadów"). Zmierzone w arkuszu:
-   `.settings-control button` ma DOKŁADNIE tę samą podłogę 2,75 rem
-   (`:9155-9159`), więc pion zgadza się z sąsiadem co do piksela. Rozjazd, który
-   widać, jest na SZEROKOŚCI i na stopniu pisma — kontrolka dziedziczy
-   `--text-base` po `body`, a sąsiedni przycisk deklaruje `--text-xs`
-   (`:9051-9064`). Stopnia NIE RUSZAM świadomie: prototyp żąda, żeby pole tekstowe
-   i kontrolka wyboru miały ten sam stopień (`.st-input` i `.st-select`, oba
-   `--text-sm`), a ta aplikacja tę parzystość dziś MA; zrównanie kontrolki
-   z przyciskiem rozbiłoby ją na rzecz drugiej parzystości, której prototyp
-   żąda tak samo. Trójstronny rozjazd pole↔kontrolka↔przycisk jest osobną
-   pozycją i osobnym lotem. */
+   PODŁOGA 2,75 REM OBOWIĄZUJE POZA PASKIEM DODAWANIA, a nie wszędzie, i to
+   zdanie jest tu przepisane po przeglądzie: stało tu „wysokość zostaje na
+   2,75 rem i nie jest wadą" jako zdanie o KAŻDEJ kontrolce wyboru panelu,
+   a wpis #71 zmierzył pasek `form.status-create` i zszedł tam na wysokość
+   paska akcji (reguła `.settings-control .status-create …` niżej w tym pliku,
+   szukaj jej po selektorze — numer wiersza przesuwa każdy lot). W wierszach
+   panelu, które paskiem dodawania NIE SĄ, 2,75 rem zostaje i dalej nie jest
+   wadą: `.settings-control button` ma tę samą podłogę, więc pion zgadza się
+   z sąsiadem co do piksela.
+
+   PARZYSTOŚĆ STOPNIA POLE↔KONTROLKA ISTNIEJE, ale NIE z deklaracji, które widać
+   przy `.status-create` — i przegląd tego lotu wyliczył ją stamtąd odwrotnie.
+   `.status-create input` deklaruje `--text-xs`, `.status-create select`
+   deklaruje `--text-2xs` (obie 0,2,0, obie wcześniej w pliku), a obie przegrywa
+   `font: inherit` z reguły nad tą: `.settings-control input:not([type])`
+   i `.settings-control select` ważą 0,2,1 i stoją PÓŹNIEJ. Pole i kontrolka
+   dziedziczą więc jeden i ten sam stopień, a osobno stoi przycisk
+   (`--text-xs` z `.settings-control button:not(…)`). Stopnia NIE RUSZAM
+   świadomie: prototyp żąda równego stopnia pola i kontrolki (`.st-input`
+   i `.st-select`, oba `--text-sm`) i ta parzystość jest tym, co aplikacja ma;
+   zrównanie kontrolki z przyciskiem rozbiłoby ją na rzecz drugiej parzystości,
+   której prototyp żąda tak samo. Trójstronny rozjazd pole↔kontrolka↔przycisk
+   jest osobną pozycją i osobnym lotem. */
 .settings-control select {
   min-height: 2.75rem;
   flex: 0 1 auto;
@@ -9712,6 +9753,7 @@ kbd {
    wysokość 1,75 rem, tę samą wyściółkę i ten sam stopień; `.st-bar` niżej,
    `:165-170`, jest ich wspólnym pojemnikiem). Ten pasek MIAŁ tu już własną,
    gęstą geometrię — `min-height: 1.8rem` na kontrolce i na przycisku — i nigdy
+   (uwaga: 1,8 rem, czyli LICZBĘ PODOBNĄ DO PROTOTYPU, a nie prototypową)
    nie docierała ona do ekranu: `.settings-control select` (`:9583`) i
    `.settings-control button:not(…)` (`:9634`) są tak samo swoiste (0,2,1)
    i stoją PÓŹNIEJ, więc wygrywały. Reguła niżej jest wiązana `.settings-control`
@@ -9723,9 +9765,18 @@ kbd {
    34,2 px pola brało się z WYŚCIÓŁKI 0,6 rem (`:9549`), nie z podłogi, więc
    podłoga bez wyściółki nie ruszyłaby ani jednego piksela.
 
-   PRÓG DOTYKOWY, POWIEDZIANY LICZBĄ, A NIE PRZEMILCZANY: 1,8 rem to 28,8 px,
+   LICZBA JEST PROTOTYPOWA, A NIE „MNIEJ WIĘCEJ PROTOTYPOWA" — poprawka po
+   przeglądzie. Reguła stała na 1,8 rem, a para D5-05 CYTOWAŁA 1,75 rem
+   z prototypu i pilnowała 1,8; wartość podobna do prototypowej nie jest
+   wartością z prototypu, a nigdzie nie było zdania „prototyp mówi 1,75, zostaje
+   1,8, bo…". Zostaje 1,75 rem, czyli dokładnie to, co deklarują `.st-input`,
+   `.st-select` (`v3/screens/settings.css:181-194`) i `.btn`
+   (`v3/app.css:306-307`).
+
+   PRÓG DOTYKOWY, POWIEDZIANY LICZBĄ, A NIE PRZEMILCZANY: 1,75 rem to 28 px,
    czyli powyżej 24 px z WCAG 2.5.8 (AA) — tego samego progu, na którym stoi
-   wyliczenie przy `.stageRow` (34 px, „spełnione z zapasem"). Traci się zapas
+   wyliczenie przy `.stageRow` (34 px, „spełnione z zapasem"); całe wyliczenie
+   zostaje w mocy po zejściu z 28,8 px. Traci się zapas
    do 2.5.5 (AAA, 44 px), którego ten ekran nigdzie nie deklaruje, i traci się
    parzystość kontrolki z przyciskiem zmierzoną przez lot C5 — dlatego przycisk
    schodzi razem z nimi, a nie zostaje sam na 44 px. Trzy kontrolki jednego
@@ -9733,7 +9784,7 @@ kbd {
 .settings-control .status-create input,
 .settings-control .status-create select,
 .settings-control .status-create button {
-  min-height: 1.8rem;
+  min-height: 1.75rem;
   padding: 0 var(--space-2);
 }
 

@@ -3404,9 +3404,15 @@ export const RealApp = ({
       <aside
         className={`sidebar${settingsMode ? " sidebar-settings-mode" : ""}`}
         id="workspace-sidebar"
-        aria-label={
-          settingsMode ? "Settings sections" : "Workspace and navigation"
-        }
+        // TRZY PUNKTY ORIENTACYJNE, TRZY RÓŻNE NAZWY — poprawka po przeglądzie.
+        // Ta kolumna, nawigacja w środku i `nav.settings-mode-column` są
+        // zagnieżdżone jedno w drugim, a w trybie Ustawień wszystkie trzy
+        // nazywały się „Settings sections": czytnik ekranu wypisywał trzy
+        // nieodróżnialne regiony, w tym dwa tej samej roli `navigation`, zamiast
+        // jednego spisu sekcji. Nazwa spisu należy do listy i tam zostaje
+        // (prototyp trzyma ją wyłącznie na `.st-nav-list`,
+        // `v3/screens/settings.js:995`); kolumna nazywa SIEBIE.
+        aria-label={settingsMode ? "Settings" : "Workspace and navigation"}
       >
         {/* USTAWIENIA SĄ TRYBEM, WIĘC WEJŚCIE PODMIENIA KOLUMNĘ, A NIE DOKŁADA
         SIĘ POD NIĄ (`v3/screens/settings.css:6-27` — prototyp zeruje szerokość
@@ -3512,7 +3518,11 @@ export const RealApp = ({
         )}
         <nav
           ref={navRef}
-          aria-label={settingsMode ? "Settings sections" : "Main navigation"}
+          // Nazwa BEZ WARUNKU: to jest ta sama nawigacja w obu trybach — nosi
+          // `navRef` i obsługę klawiszy, więc w trybie Ustawień to ona wodzi
+          // ognisko po pozycjach spisu. „Settings sections" należy do listy
+          // w środku i byłoby tu drugą kopią tej samej nazwy.
+          aria-label="Main navigation"
           onKeyDown={navKeyDown}
         >
           {!settingsMode && favorites.length > 0 && (

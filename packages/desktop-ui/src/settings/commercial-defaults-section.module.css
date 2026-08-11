@@ -135,15 +135,25 @@
 }
 
 /* WYBRANY WIERSZ, oznaczony DWOMA rzeczami naraz — podbarwieniem całego
-   obiektu i tuszem na jednej jego krawędzi (`v3/screens/settings.css:120`;
-   `.ui-craft/tokens.md:250-262` — wash na całym obiekcie jest dozwolony, a
-   „wash rarely travels alone": tam, gdzie prototyp podbarwia obiekt, tuszuje
-   też jedną jego krawędź; `:268-276` licencjonuje ZAZNACZENIE wiersza jako
-   „gdzie czytelnik jest"). Wash mówi, który
+   obiektu i szyną akcentu przy jego lewej krawędzi, dokładnie tą parą, którą
+   ma prototyp (`v3/screens/settings.css:120` — `.st-row[aria-selected="true"]`
+   niesie `background: var(--accent-quieter)` i `box-shadow: inset 2px 0 0
+   var(--accent)`, i NIC WIĘCEJ; `.ui-craft/tokens.md:250-262` — wash na całym
+   obiekcie jest dozwolony, a „wash rarely travels alone": tuszem na krawędzi
+   jest tutaj szyna; `:268-276` licencjonuje ZAZNACZENIE wiersza jako „gdzie
+   czytelnik jest"). Wash mówi, który
    wiersz; szyna mówi to samo kanałem, który przeżyje wydruk w skali szarości
    i czytelnika nierozróżniającego barw.
 
-   NONE OF THE THREE DECLARATIONS BELOW REACHED THE SCREEN UNTIL THE ROW GOT
+   `border-color: var(--accent-edge)` STĄD ZNIKA — poprawka po przeglądzie.
+   Wpis #68 zdjął z wiersza obwódkę i zostawił samą kreskę rozdzielającą, więc
+   ta deklaracja nie miała już trzech krawędzi do zabarwienia, a na OSTATNIM
+   wierszu nie miała ani jednej: `.stageList li:last-child .stageRow`
+   (0,3,1) zeruje `border-bottom` skrótem, czyli razem z kolorem. Zapis, który
+   na jednym wierszu maluje kreskę rozdzielającą, a na innym nie maluje nic, nie
+   jest nośnikiem zaznaczenia — nośnikami są wash i szyna, i one zostają.
+
+   NONE OF THE DECLARATIONS BELOW REACHED THE SCREEN UNTIL THE ROW GOT
    ITS `settings-row` CLASS, and that is a bigger fault than the hover one that
    led to it. This section's root is `.settings-control`, so `styles.css`'s
    `.settings-control button:not(.primary-button)` (0,2,1) matched the row and
@@ -157,7 +167,6 @@
    reason: a list row that happens to be a button is not a secondary action. */
 .stageRow[aria-pressed="true"] {
   background: var(--accent-quieter);
-  border-color: var(--accent-edge);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
