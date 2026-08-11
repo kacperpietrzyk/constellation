@@ -3217,7 +3217,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title:
       "and it stops at a ceiling instead of running as wide as its longest option",
-    contract: '.ui-craft/patterns.md — „Pattern: Control size", „Bounded, not unbounded"',
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Control size", „Bounded, not unbounded"',
     prototype: {
       file: "v3/screens/settings.css",
       lines: "190-194",
@@ -3245,7 +3246,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title:
       "the settings select stops being stretched to the panel's width by its column",
-    contract: '.ui-craft/patterns.md — „Pattern: Control size", „Width is `flex`, height is `align-self`"',
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Control size", „Width is `flex`, height is `align-self`"',
     prototype: {
       file: "v3/screens/settings.css",
       lines: "190-194",
