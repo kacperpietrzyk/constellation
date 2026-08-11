@@ -1286,16 +1286,44 @@ const outcome = runBreakTests({
       // Edycja jest w TSX, bo „wewnątrz ramki" jest faktem o DRZEWIE, nie
       // o arkuszu. Wiersz wysyłki wraca pod oprawę — czyli tam, gdzie stał
       // przed lotem, dwa wiersze pod polem, do którego należy.
-      name: "stop the composer's frame from being a frame: every send control is outside one again",
+      // ZŁAMANIE TRZYDZIESTE ÓSME — PRZYCISK WYSYŁKI WYCHODZI Z RAMKI POLA
+      // (D4-06a, wpis #58).
+      //
+      // Edycja jest w TSX, bo „wewnątrz ramki" jest faktem o DRZEWIE, nie
+      // o arkuszu — żadna reguła CSS nie umie tego złamać. Oprawa `.composerField`
+      // ZOSTAJE i dalej rysuje ramkę; zmienia się wyłącznie to, po której jej
+      // stronie stoi wiersz wysyłki. To odróżnia dwie rzeczy, które łatwo
+      // pomylić: „ramki nie ma" i „ramka jest, a przycisk z niej uciekł".
+      // Druga jest tą, którą rejestr zmierzył na tej gałęzi, i tylko ona
+      // dowodzi, że para D4-06a łapie regresję, a nie brak komponentu.
+      //
+      // DWIE PODMIANY, bo przeniesienie węzła to zamknięcie oprawy WCZEŚNIEJ
+      // i skasowanie osieroconego zamknięcia z ogona. Jedna bez drugiej daje
+      // niezrównoważony JSX, czyli „BUILD REFUSED" — werdykt, który nie mówi
+      // nic o parze.
+      name: "move the send row out of the composer frame: the frame stays and the button leaves it",
       expectRedContains: ["D4-06a"],
       file: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx",
-      edit: (text) =>
-        replaceOnce(
+      edit: (text) => {
+        const closedEarly = replaceOnce(
           text,
-          `          <div className={styles.composerField}>`,
-          `          <div className={styles.composerMain}>`,
-          "the composer frame's own class",
-        ),
+          `            <div className={styles.send}>`,
+          `          </div>
+            <div className={styles.send}>`,
+          "the composer frame's closing tag",
+        );
+        return replaceOnce(
+          closedEarly,
+          `            </div>
+          </div>
+        </div>
+      </form>`,
+          `            </div>
+        </div>
+      </form>`,
+          "the orphaned closing tag left in the form's tail",
+        );
+      },
     },
   ]),
 });

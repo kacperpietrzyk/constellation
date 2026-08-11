@@ -1904,7 +1904,20 @@ test("zwolnienia dla NIEAKTYWNYCH kontrolek są mierzone i policzalne", () => {
       ),
     ].sort(),
     [
-      "record/record-comments.module.css .submit:disabled (dark)",
+      // WIERSZ KOMPOZYTORA KOMENTARZY ZSZEDŁ Z TEJ LISTY W LOCIE D4 FAZY D
+      // (rejestr, wpis #58) — i jest to zejście W GÓRĘ, nie zdjęcie asercji.
+      // `.submit:disabled` przestało PRZEMALOWYWAĆ akcję główną na wypełnienie
+      // drugorzędne z napisem `--text-disabled` (para kolorów pod progiem)
+      // i gasi ją dziś `opacity: 0.45`, tak jak robi to prototyp
+      // (`v3/screens/record.css:429`). Deklarowana para kolorów jest więc ta
+      // sama, co w stanie aktywnym, i próg zdaje.
+      //
+      // CZEGO TEN PRZYRZĄD NIE WIDZI, powiedziane wprost, żeby liczba nie
+      // czytała się lepiej, niż jest: on liczy ZADEKLAROWANE kolory i nie
+      // modeluje `opacity`. Kontrolka wygaszona przezroczystością ma na ekranie
+      // kontrast NIŻSZY niż ten wyliczony tutaj. Wiersz zniknął z listy zwolnień
+      // dlatego, że reguła nie deklaruje już pary pod progiem — a nie dlatego,
+      // że napis stał się czytelniejszy.
       "tasks/saved-view-filters.module.css .save:disabled (dark)",
     ],
     "Zbiór zwolnionych wierszy POD PROGIEM się zmienił. Każdy taki wiersz to " +
