@@ -32,12 +32,34 @@
   background: var(--surface-sunken);
 }
 
+/* FAZA D, LOT D3, WPIS #42 — GŁOWA KOLUMNY JEST JEDNYM PASKIEM, NIE TYTUŁEM
+   EKRANU. Prototyp: `v3/screens/knowledge.css:92-97` (`.kn-side-head`) —
+   `padding: 0.5rem var(--space-4)`, `--text-2xs`, waga 600, `letter-spacing:
+   0.04em`, wersaliki, kolor czwartorzędny i kreska pod spodem; licznik siedzi
+   w tym samym rzędzie przez `margin-left: auto` (`:102`), a `helpBtn` stoi
+   OBOK niego, w tej samej linii (`v3/screens/knowledge.js:968`).
+
+   TO JEST ZMIANA STOPNIA PISMA, NIE SAMEJ WYŚCIÓŁKI, i dopiero ona daje jeden
+   rząd. Zmierzone przed zmianą przy 1440 px: tytuł `--text-md` miał 181 px
+   tuszu, a wyzwalacz pomocy 106 px — razem 295 px w rzędzie o 291,8 px, więc
+   pomoc łamała się do WŁASNEJ linii i głowa miała 80,4 px zamiast prototypowych
+   35. Po zejściu na `--text-2xs` mieszczą się obok siebie.
+
+   `flex-wrap: wrap` ZOSTAJE i to jest świadome: reguła, którą zdejmuję, mówiła,
+   że przy 200% tekstu ten napis nie mieści się obok znaku zapytania w 17 rem.
+   To dalej jest prawda i tam złamanie jest poprawnym zachowaniem — chodzi o to,
+   żeby złamanie było zachowaniem SKRAJNEJ szerokości, a nie stanem domyślnym.
+
+   WERSALIKI SĄ TU BEZPIECZNE, w odróżnieniu od bliźniaczej głowy Notatek:
+   „Everything you collected" jest napisem stałym tego ekranu, a tam ten sam
+   element niesie ŚCIEŻKĘ FOLDERU CZYTELNIKA. Powód zapisany przy tamtej regule
+   (`notes.module.css`, `.panelHead h2`) i ten lot go nie odwraca. */
 .listHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  gap: var(--space-2);
+  padding: 0.5rem var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--panel-reading-bg);
 }
@@ -54,13 +76,16 @@
 
 /* LOT 5 #4 — the weight, missing here as on the other four Library headings.
    600 from `v3/screens/knowledge.css:94`; without it this heading computed the
-   user-agent 700 and outweighed the screen title above it. */
+   user-agent 700 and outweighed the screen title above it. Stopień, tracking
+   i wersaliki dołożył lot D3 z tej samej reguły prototypu — patrz nota nad
+   `.listHead`. */
 .listTitle h2 {
   margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-md);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 /* LOT 5 #11 — THE FOURTH COUNTER, and it is the one that nearly shipped as the
@@ -104,12 +129,30 @@
   letter-spacing: 0;
 }
 
+/* FAZA D, LOT D3, WPIS #41 — LISTA JEST KOLUMNĄ WIERSZY, NIE STOSEM KART.
+   Prototyp: `.kn-list` (`v3/screens/knowledge.css:106`) nie ma ani wyściółki
+   bocznej, ani odstępu między grupami — `padding-bottom` jest tam jedynym
+   marginesem i istnieje po to, żeby ostatni wiersz nie chował się pod dokiem
+   przechwytywania. Odstęp i wcięcie tutaj to właśnie to, co robiło z wierszy
+   wsunięte karty: kreska włoskowa nie ma jak być kreską, jeśli sąsiedzi jej
+   nie dotykają.
+
+   Zmierzone przed zmianą przy 1440 px: pierwszy wiersz zaczynał się na x=236
+   przy kolumnie od x=220 (16 px wcięcia po każdej stronie) i miał
+   `border-radius: 12px` z `border-bottom: 0px`; prototypowy `.kn-row` stoi
+   dokładnie na krawędzi kolumny (240 = 240) z `border-radius: 0px`
+   i `border-bottom: 1px`. */
 .groups {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-2) var(--space-5);
+  padding-bottom: var(--space-10);
+}
+
+/* Reset `.source-list` w `styles.css` daje tej liście `padding: var(--space-2)`
+   — wspólny z trzema innymi listami, więc zdejmowany TU, dla tej jednej. */
+.groups :global(.source-list) {
+  padding: 0;
 }
 
 .group {
@@ -156,14 +199,35 @@
   min-width: 0;
 }
 
+/* FAZA D, LOT D3, WPIS #41 — WIERSZ DOCIĄGNIĘTY DO OBU KRAWĘDZI, ROZDZIELONY
+   KRESKĄ WŁOSKOWĄ. Prototyp: `v3/screens/knowledge.css:138-143` — `padding:
+   0.5625rem var(--space-4)`, `border-bottom: 1px solid var(--border-subtle)`,
+   `border-left: 2px solid transparent` i ŻADNEGO zaokrąglenia; `:143` zdejmuje
+   kreskę ostatniemu wierszowi. Szyna zaznaczenia jest przez to przyklejona do
+   krawędzi kolumny, a nie zaokrąglona razem z kartą — to druga połowa wpisu
+   i wychodzi z tej samej jednej zmiany, bo szyną jest `border-left`. */
 .row {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
+  padding: 0.5625rem var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
   border-left: 2px solid transparent;
   cursor: default;
+}
+
+/* KRESKA JEST SEPARATOREM MIĘDZY WIERSZAMI, więc ostatni wiersz grupy jej nie
+   niesie: rozdzielenie od następnej grupy robi już jej głowa, która ma własne
+   wklęsłe tło i własną kreskę. Prototyp mówi to samo o swojej liście
+   (`v3/screens/knowledge.css:143`, `.kn-row:last-child { border-bottom: 0 }`)
+   — tam grupy i wiersze są rodzeństwem w jednym `.kn-list`, u nas wiersze każdej
+   grupy siedzą we własnym `<ul>`, więc `:last-child` znaczy „ostatni w grupie".
+
+   TO JEST TEŻ POWÓD, DLA KTÓREGO PARA D3-05b MA WĘŻSZY SELEKTOR NIŻ D3-05a:
+   przy tej regule sześć wierszy daje dwie wartości `border-bottom-color`, co
+   przelot zgłosił jako niemożność przypisania werdyktu. Powód stoi przy parze. */
+.rowItem:last-child .row {
+  border-bottom: 0;
 }
 
 .row:hover {
@@ -249,21 +313,76 @@
   line-clamp: 2;
 }
 
+/* FAZA D, LOT D3, WPIS #45 — STOPKA WIERSZA TRZYMA SIATKĘ. Prototyp:
+   `.kn-row-foot` (`v3/screens/knowledge.css:162-164`) to rząd o odstępie
+   `var(--space-2)`, w którym stoją DWIE obwódkowe pigułki (`.kn-row-ref`,
+   `:165-171`) i data odepchnięta na prawy koniec przez `.kn-row-when`
+   (`:175-178`: `margin-left: auto`, `font-variant-numeric: tabular-nums`).
+
+   Zmierzone w prototypie przy 1440 px: prawe krawędzie dat czterech kolejnych
+   wierszy to 559 / 559 / 559 / 559 — jedna pionowa linia. W aplikacji przed
+   zmianą element daty NIE ISTNIAŁ (sonda pytała o `time` w wierszu i dostała
+   cztery `null`): „observed …" był gołym tekstem w tym samym pasie co licznik
+   zależności, więc data kończyła się tam, gdzie kończył się poprzedzający ją
+   napis. */
 .rowMeta {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1) var(--space-3);
+  gap: var(--space-1) var(--space-2);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
 
-.kindChip {
-  padding: 0 var(--space-2);
+/* DWIE PIGUŁKI, NIE JEDNA I JEDEN GOŁY NAPIS. Rodzaj i liczba zależności są
+   w prototypie tym samym obiektem (`.kn-row-ref` dwa razy w jednym rzędzie),
+   więc dostają jedną regułę.
+
+   CZEGO TU NIE MA I DLACZEGO: prototypowa pigułka rodzaju niesie glif
+   (`v3/screens/knowledge.js:895`, `icon(k.icon)` — `link` / `doc` / `panel` /
+   `comment`). Żadnej z tych czterech nazw nie ma dziś w `components/Icon.tsx`,
+   a dokładanie glifów należy do JEDNEGO właściciela tego pliku (nota w jego
+   nagłówku); loty ekranowe KONSUMUJĄ nazwy. Pigułka jest więc słowna, a brak
+   glifu zgłoszony, nie przemilczany. */
+.kindChip,
+.refChip {
+  /* `flex: none` STAŁO TU DO PIERWSZEGO PRZELOTU BRAMKI i było tą samą pomyłką,
+     co przy pasie daty obok: przelot „Library at 300% text" zgłosił, że rząd
+     stopki wychodzi ze swojego pudełka o 12 px. Prototyp radzi sobie z tym
+     inaczej — `max-width: 11rem` plus `overflow: hidden`
+     (`v3/screens/knowledge.css:169`) — czyli PRZYCINA. Ten arkusz przycinać nie
+     może: jego własna nota otwierająca mówi, że żadna kolumna tego ekranu nie
+     jest `nowrap` z wielokropkiem, bo kolumna uciętych URL-i to kolumna
+     identycznych wierszy. Pigułka zawija się więc w środku. */
+  min-width: 0;
+  padding: 0.0625rem 0.4375rem;
+  overflow-wrap: anywhere;
   color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
+}
+
+/* Własny pas przy prawym końcu, cyframi tabularnymi — kolumna dat, których nie
+   da się porównać w dół, jest kolumną, której nikt nie czyta.
+   `margin-inline-start: auto` na zawijającym się rzędzie zostawia datę na
+   prawym końcu TEGO wiersza, na który spadła, co jest zachowaniem chcianym:
+   przy 300% tekstu pigułki i data nie mieszczą się w jednej linii. */
+/* `0 1 auto`, NIE `flex: none` — i ta liczba jest pomiarem, dokładnie tym samym,
+   który stoi już przy bliźniaczym pasie daty na wierszu Notatek
+   (`styles.css`, `.knowledge-row-when`). Prototyp pisze tam `flex: none`
+   („data nigdy nie ustępuje"); wzięte dosłownie, ten rząd przy 300% tekstu
+   wychodził ze swojego pudełka o 12 px — zgłoszone przez przelot „Library at
+   300% text" na PIERWSZYM buildzie tej reguły, nie przewidziane. `0 1 auto`
+   z zerowym minimum trzyma pas na każdej szerokości, na której pas się mieści,
+   i pozwala dacie zawinąć zamiast wypchnąć kolumnę tam, gdzie się nie mieści.
+   Dwa razy ta sama pułapka na dwóch wierszach tej samej rodziny. */
+.rowWhen {
+  margin-inline-start: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
 }
 
 /* DOSTĘPNOŚĆ JEST SŁOWEM, ZANIM JEST KOLOREM. Trzy stany różnią się tłem i
@@ -321,6 +440,13 @@
 
 /* LOT 5 #4 — weight from `v3/screens/knowledge.css:243` (`.kn-reader-title`),
    which is the same object: the title of the thing being read. */
+/* Druga połowa wpisu #46: głowa czytelni domyka się kreską, jak
+   `.kn-reader-head` (`v3/screens/knowledge.css:235`). */
+.readerHead {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .readerHead h3 {
   margin: var(--space-1) 0 var(--space-3);
   color: var(--text-primary);
@@ -330,14 +456,6 @@
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
   text-wrap: balance;
-}
-
-.readerAvailability {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
 }
 
 /* Zdanie, które dostaje WYŁĄCZNIE źródło nieosiągalne. Powód istnienia trzech
@@ -353,27 +471,40 @@
   line-height: 1.55;
 }
 
-/* DWIE DATY, DWIE ETYKIETY, obok siebie. To jedyne miejsce, gdzie widać je
-   razem, więc jedyne, w którym ich sklejenie byłoby widoczne. */
-.dates {
+/* FAZA D, LOT D3, WPIS #46 — METRYKA JEST JEDNĄ LINIĄ DROBNEGO DRUKU, A GŁOWA
+   CZYTELNI MA POD SOBĄ KRESKĘ. Prototyp: `.kn-reader-meta`
+   (`v3/screens/knowledge.css:246-249`) — rząd `--text-xs` w tonie
+   czwartorzędnym, w którym plakietka dostępności, „observed …" i „added …"
+   stoją obok siebie rozdzielone `.kn-dot` (`v3/screens/knowledge.js:913-916`);
+   `.kn-reader-head` (`:235`) domyka głowę kreską włoskową.
+
+   Zmierzone przed zmianą przy 1440 px: `dl._dates` zajmowało 33 px na dwa
+   piętra (rząd wersalików DT na y=314,9..327,9, daty DD na y=331,9..347,9),
+   a głowa czytelni kończyła się bez żadnego rozdzielenia — sekcja „WHAT RESTS
+   ON THIS" zaczynała się wprost po niej. Prototypowy wiersz metadanych ma
+   20,7 px i jest jeden.
+
+   `<dl>` USTĘPUJE `<p>`, i to nie jest kosmetyka znacznika: para etykieta-
+   wartość rysowana w jednej linii bez etykiety przestaje być listą definicji.
+   Słowa „observed" i „added" zostają jako tekst, a `data-source-observed`
+   i `data-source-added` przenoszą się na elementy `<time>`, więc wszystko, co
+   te daty czytało, dalej je znajduje. */
+.readerMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-6);
-  margin: 0;
-}
-
-.dates dt {
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.4375rem 0 0;
   color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--text-xs);
 }
 
-.dates dd {
-  margin: var(--space-1) 0 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+.readerMeta time {
   font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  color: var(--text-disabled);
 }
 
 /* `grid-template-columns: minmax(0, 1fr)` — the fifth site of one family in
@@ -401,6 +532,24 @@
   max-width: 100%;
 }
 
+/* FAZA D, LOT D3, WPIS #43 — NAGŁÓWEK SEKCJI JEST NAGŁÓWKIEM ZDANIOWYM.
+   Prototyp: `.kn-sec-head` (`v3/screens/knowledge.css:389-392`) — `--text-sm`,
+   waga 600, `letter-spacing: -0.005em`, ŻADNYCH wersalików; zmierzone na
+   prototypie: 13 px / 600 / `none` / -0,065 px. Aplikacja rysowała je jako
+   `--text-2xs` w wersalikach z trackingiem +0,06em, czyli MNIEJSZE i ciemniejsze
+   od treści, którą zapowiadają.
+
+   PODZIAŁ, KTÓREGO REJESTR NIE ZROBIŁ, A KTÓRY JEST TU KONIECZNY. Wpis mówi
+   „trzy razy na jednym ekranie" i wylicza „WHAT RESTS ON THIS", „CAN IT STILL
+   BE REACHED" i „CHANGE TITLE". Sonda przy 1440 px potwierdza trzy narysowane
+   elementy z tą klasą — ale TRZECI z nich jest `<label>` pola tekstowego
+   (`SourcesReading.tsx`, `htmlFor` na `#…-rename`), a nie nagłówek sekcji.
+   Etykieta pola i nagłówek sekcji to dwa różne obiekty i prototyp też je
+   rozróżnia: `.st-field-l` (`v3/screens/settings.css`) jest mikroetykietą,
+   `.kn-sec-head` nie. Więc `.sectionLabel` ZOSTAJE mikroetykietą i zostaje przy
+   etykiecie pola, a nagłówki sekcji dostają własną klasę niżej. Zamiana
+   etykiety formularza w nagłówek zdaniowy byłaby wykonaniem litery wpisu
+   przeciwko jego przyczynie. */
 .sectionLabel {
   display: flex;
   align-items: baseline;
@@ -411,6 +560,17 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .sectionCount {
@@ -449,21 +609,41 @@
    navigation call to spend them on. An arrow with nowhere to go is a lying
    affordance — it costs a click and returns nothing — so the row is drawn
    without one until there is a destination. */
+/* FAZA D, LOT D3, WPIS #44 — ZALEŻNOŚCI SIEDZĄ W OBRAMOWANYM PLASTRZE,
+   A KAŻDY WIERSZ MA WŁASNĄ KRESKĘ. Prototyp: `.kn-refs`
+   (`v3/screens/knowledge.css:397-400`) — `border: 1px solid
+   var(--border-subtle)`, `border-radius: var(--radius-md)`, `overflow: hidden`;
+   `.kn-ref-row` (`:401-407`) niesie `padding: 0.5rem var(--space-3)`,
+   `border-bottom` i `border-radius: 0`, a `:407` zdejmuje kreskę ostatniemu.
+   Zmierzone na prototypie: obwódka 1 px, promień 12 px. W aplikacji przed
+   zmianą `restsList` miał `border-top-width: 0px` — dwa wpisy leżały luzem na
+   tle czytelni i blok czytał się jak akapit.
+
+   `overflow: hidden` NIE JEST tu ozdobą: bez niego kwadratowe rogi wierszy
+   wystają zza zaokrąglonej obwódki plastra. */
 .restsList {
   display: grid;
-  gap: var(--space-1);
   width: 100%;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   font-size: var(--text-sm);
   list-style: none;
 }
 
 .restsList li {
   min-width: 0;
+  padding: 0.5rem var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.restsList li:last-child {
+  border-bottom: 0;
 }
 
 /* `minmax(0, 1fr)` on the text track, not `1fr`: a dependent's title is free

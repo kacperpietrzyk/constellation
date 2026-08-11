@@ -7074,10 +7074,31 @@ kbd {
 .document-presence.migration_failed > span {
   background: var(--status-error);
 }
+/* FAZA D, LOT D3, WPIS #37 — AKCJE CZYTELNI STOJĄ W JEDNYM RZĘDZIE, NIE
+   W PIONOWEJ KOLUMNIE. Prototyp: `.kn-actions`
+   (`v3/screens/knowledge.css:253`) — `display: flex; align-items: center;
+   flex-wrap: wrap; gap: var(--space-3)`, a stojąca w nim pigułka to `.kn-act`
+   (`:254-264`) o wysokości 1,75 rem. Zmierzone przed zmianą przy 1440 px: ta
+   siatka miała 187 px wysokości, bo stan zapisu, „Rename", „Export to Markdown"
+   i pasek narzędzi stały jedno POD drugim; prototypowy rząd ma 28 px.
+
+   CZEGO TA REGUŁA NIE ROZSTRZYGA, BO REJESTR SAM SIĘ WSTRZYMAŁ: pasek
+   formatowania (B / I / H2 / Code / Link). Prototyp nie ma paska edycji
+   w ogóle, więc nie ma czego z czym porównać — wpis mówi to wprost i ocenia
+   WYŁĄCZNIE układ. Pasek zostaje więc członkiem tego rzędu i zawija się razem
+   z nim.
+
+   `flex-wrap: wrap` JEST TU WARUNKIEM, NIE OZDOBĄ: cztery obiekty w jednym
+   rzędzie nie mieszczą się w kolumnie czytania przy 200% tekstu, a rząd, który
+   nie umie się złamać, wypycha czytelnię w bok — dokładnie ta klasa wady, na
+   którą ten arkusz nosi już pięć deklaracji. */
 .document-editor-actions {
-  display: grid;
-  justify-items: end;
-  gap: var(--space-2);
+  display: flex;
+  flex: 1 1 28rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 .document-toolbar {
   display: flex;
@@ -7542,6 +7563,49 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* FAZA D, LOT D3, WPIS #35 — REFERENCJA WIERSZA DOSTAJE PLAKIETKĘ Z GLIFEM.
+   Prototyp: `.kn-row-in` (`v3/screens/knowledge.css:182-189`) — obwódka
+   włoskowa, `--radius-full`, sufit szerokości 12 rem i glif w kolorze akcentu
+   (`:188`, `opacity: .85`); nadmiar referencji stoi obok, w `.kn-row-more`
+   (`:190`). Adres folderu jest w prototypie INNYM obiektem — `.kn-row-where`
+   (`:191-195`): ten sam glif co w drzewie, w tonie wygaszonym, BEZ obwódki, bo
+   „ta notatka leży tutaj" nie jest wyjściem dokądś.
+
+   ZAKRES WPISU JEST WĄSKI I TAKI ZOSTAJE. Rejestr sam obala drugą połowę
+   zgłoszenia („data spada niżej" to długość referencji, nie reguła) i sam
+   odmawia liczenia kolumny „Move" jako dowodu — więc ta reguła nie rusza ani
+   pasa daty, ani afordancji przeniesienia. */
+.knowledge-row-ref,
+.knowledge-row-where {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 12rem;
+  align-items: center;
+  gap: 0.25rem;
+}
+.knowledge-row-ref {
+  padding: 0.0625rem 0.4375rem 0.0625rem 0.3125rem;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+.knowledge-row-ref svg,
+.knowledge-row-where svg {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  flex: none;
+}
+.knowledge-row-ref svg {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.knowledge-row-where svg {
+  color: var(--text-disabled);
+}
+.knowledge-row-more {
+  flex: none;
+  color: var(--text-disabled);
+}
 /* Its own lane on the right: `margin-left: auto`, the quietest step of the text
    ramp and the tabular figures are all `.kn-row-when`
    (`v3/screens/knowledge.css:175-178`) — a column of dates that do not line up
@@ -7723,8 +7787,51 @@ kbd {
   background: var(--surface-canvas);
 }
 .knowledge-editor-header {
+  flex-wrap: wrap;
   padding-inline: var(--space-6);
   background: var(--panel-reading-bg);
+}
+/* Druga połowa wpisu #37: rząd akcji musi mieć GDZIE się zmieścić. Zmierzone
+   przy 1440 px — obok tytułu zostaje 386 px, a te cztery obiekty (stan zapisu,
+   „Rename", eksport, pasek formatowania) chcą około 760 px, więc `flex-wrap`
+   na samym rzędzie dawał cztery piętra zamiast jednego. Baza 28 rem jest
+   większa od tego, co zostaje obok tytułu, więc rząd schodzi na WŁASNĄ linię
+   i tam rozciąga się na całą szerokość głowy — dokładnie tak, jak w prototypie,
+   gdzie `.kn-actions` (`v3/screens/knowledge.css:253`) stoi POD wierszem
+   metadanych, a nie obok tytułu. */
+.document-editor-identity {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+/* FAZA D, LOT D3, WPIS #36 — jeden przygaszony wiersz pod tytułem, kształtem
+   `.kn-reader-meta` (`v3/screens/knowledge.css:246-249`): `--text-xs`, ton
+   czwartorzędny, `margin-top: 0.4375rem`, odstęp 0,375 rem i zawijanie, bo
+   ścieżka folderu bywa długa. */
+.document-editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  margin: 0.4375rem 0 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+.document-editor-meta-dot {
+  color: var(--text-disabled);
+}
+.document-editor-where {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.document-editor-where svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: none;
+  color: var(--text-disabled);
 }
 .knowledge-writing-plane {
   display: grid;
@@ -7741,6 +7848,66 @@ kbd {
 .knowledge-writing-plane > .document-canvas {
   display: block;
   min-height: 30rem;
+}
+/* ── FAZA D, LOT D3, WPIS #38 ────────────────────────────────────────────────
+   TREŚĆ NOTATKI PRZESTAJE BYĆ ZAGNIEŻDŻONĄ, UNIESIONĄ KARTĄ, A HIERARCHIA
+   TYPOGRAFICZNA PRZESTAJE BYĆ ODWRÓCONA.
+
+   Prototyp ma tu JEDEN plan: `.kn-body` (`v3/screens/knowledge.css:282`) to
+   `padding-top: var(--space-5)` i nic więcej — bez obwódki, bez tła, bez
+   cienia; zmierzone na prototypie: `border-top-width: 0px`, `background:
+   rgba(0,0,0,0)`, `box-shadow: none`. Aplikacja rysowała trzy: okno, wklęsłą
+   płaszczyznę pisania i jaśniejszą od nich obu kartę z promieniem `--radius-xl`
+   i `--elevation-rest`.
+
+   ODWRÓCENIE, ZMIERZONE, NIE OSZACOWANE. Przy 1440 px kanwa liczyła 18,88 px
+   pisma, jej `h1` 37,76 px, a `h2` 28,32 px — przy tytule czytanej notatki
+   również 28,32 px. Czyli śródtytuł drugiego poziomu RÓWNAŁ SIĘ tytułowi, a
+   pierwszego był od niego o połowę większy. W prototypie największy śródtytuł
+   (`.kn-h2`, `--text-lg`) jest MNIEJSZY od tytułu (`.kn-reader-title`,
+   `--text-xl`), a akapit stoi na `--text-sm` (`:283-291`, zmierzone: 18 / 14 /
+   13 px pod tytułem 22 px).
+
+   REGUŁA BAZOWA `.document-canvas` ZOSTAJE NIETKNIĘTA I TO JEST DECYZJA
+   O ZAKRESIE, nie zaniechanie. Ta sama klasa jedzie na karcie dokumentu rekordu
+   projektu (`ProjectRichBody.tsx`, `.project-editor-shell >
+   .project-document-canvas`), która ma własny wpis rejestru w INNYM locie tej
+   fazy (#47). Przepisanie reguły bazowej byłoby wejściem w cudzą domenę, więc
+   płaszczyzna Biblioteki nadpisuje ją u siebie, dwiema klasami przeciw jednej.
+
+   Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
+   znika. */
+.knowledge-writing-plane {
+  background: var(--panel-reading-bg);
+}
+.knowledge-writing-plane .document-canvas {
+  padding: var(--space-5) 0 var(--space-10);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+/* WAGA JEST TU, BO ZAŻĄDAŁA JEJ BRAMKA `scripts/heading-typography.mjs` — trzy
+   reguły niżej deklarowały sam stopień, a nagłówek bez zadeklarowanej wagi
+   bierze `bold` przeglądarki, czyli 700, którego na skali v3 nie ma. Prototyp
+   deklaruje ją raz dla całej rodziny: `.kn-h { font-weight: 600;
+   letter-spacing: -0.01em }` (`v3/screens/knowledge.css:283`). */
+.knowledge-writing-plane .document-canvas h1,
+.knowledge-writing-plane .document-canvas h2,
+.knowledge-writing-plane .document-canvas h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.knowledge-writing-plane .document-canvas h1 {
+  font-size: var(--text-lg);
+}
+.knowledge-writing-plane .document-canvas h2 {
+  font-size: var(--text-md);
+}
+.knowledge-writing-plane .document-canvas h3 {
+  font-size: var(--text-base);
 }
 /* Podgląd markdownu tej notatki (decyzja #17).
    `pre-wrap` plus łamanie w dowolnym miejscu, a NIE poziomy pasek: sam blok

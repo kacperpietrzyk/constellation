@@ -845,9 +845,35 @@ describe("interaction recovery contracts", () => {
       styles,
       /\.knowledge-library\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
+    // 2026-08-11, FAZA D, LOT D3 — TA ASERCJA NAZYWA TERAZ SWÓJ EKRAN, bo od
+    // dziś jej podmiot jest prawdą o JEDNYM z dwóch, a nie o obu.
+    //
+    // `.document-canvas` ma dwóch konsumentów: notatkę w Bibliotece
+    // (`KnowledgeEditor.tsx:505`) i dokument na rekordzie projektu
+    // (`ProjectRichBody.tsx:129`, przez `.project-editor-shell >
+    // .project-document-canvas`). Wpis #38 rejestru Fazy 4 mówi o PIERWSZYM
+    // z nich, że treść notatki leży w zagnieżdżonej, uniesionej karcie tam,
+    // gdzie prototyp ma jeden plan (`v3/screens/knowledge.css:282`, `.kn-body`
+    // — sam `padding`, bez obwódki, tła i cienia). Lot D3 zdjął tę kartę
+    // WYŁĄCZNIE w płaszczyźnie Biblioteki, dwiema klasami przeciw jednej,
+    // i nie ruszył reguły bazowej, bo karta rekordu projektu ma własny,
+    // otwarty wpis rejestru (#47) i należy do innego lotu tej fazy.
+    //
+    // Gdyby ta asercja została napisana jak przedtem — jako zdanie o regule
+    // bazowej pod tytułem „the editor on a distinct reading plane" — byłaby
+    // ZIELONA nad stanem, w którym jej własny tytuł przestał być prawdą
+    // o edytorze Biblioteki. Dlatego jest tu podzielona na dwa zdania i oba
+    // mówią, o którym planie są. Płaszczyzna Biblioteki jest dodatkowo
+    // mierzona parami D3-10a/D3-10b w przelocie bramki układu.
     assert.match(
       styles,
       /\.document-canvas\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
+      "the record's document canvas lost the raised plane it still wants",
+    );
+    assert.match(
+      styles,
+      /\.knowledge-writing-plane \.document-canvas\s*\{[^}]*border:\s*0;[^}]*background:\s*none;[^}]*box-shadow:\s*none/s,
+      "the Library's note body took the raised card back — register entry #38 says the reference has one plane there, not three",
     );
     assert.match(
       styles,

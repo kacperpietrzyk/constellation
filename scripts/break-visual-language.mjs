@@ -1059,6 +1059,101 @@ const outcome = runBreakTests({
           "the capacity line's tabular numerals",
         ),
     },
+    {
+      // ZŁAMANIE DWUDZIESTE DZIEWIĄTE — WIERSZ ŹRÓDŁA WRACA DO BYCIA WSUNIĘTĄ
+      // KARTĄ (D3-05a, wpis #41 rejestru).
+      //
+      // Sam promień wystarcza jako złamanie, bo to on jest w tym wpisie
+      // czynnikiem odróżniającym „wiersz" od „karty": kreska włoskowa zostaje,
+      // a mimo to lista przestaje być listą. Gdyby para czytała wyłącznie
+      // kreskę, ta edycja wróciłaby ZIELONA — i dlatego są dwie pary, a nie
+      // jedna.
+      name: "give the source row its card corner back: the list stops being a column of rows and becomes a stack of inset cards",
+      expectRedContains: ["D3-05a"],
+      file: "packages/desktop-ui/src/library/sources.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  padding: 0.5625rem var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 2px solid transparent;`,
+          `  padding: 0.5625rem var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  border-left: 2px solid transparent;`,
+          "the source row's corner",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE — TREŚĆ NOTATKI ZNOWU UNOSI SIĘ NAD PŁASZCZYZNĄ
+      // CZYTANIA (D3-10a, wpis #38 rejestru).
+      //
+      // Cień jest tu jedynym kanałem, który odróżnia „karta" od „obszar
+      // z obwódką", i jedynym, którego nie widzi ani spis farby (czyta TŁO),
+      // ani bramka układu (czyta PRZEPEŁNIENIE). Bez tego złamania para
+      // D3-10a jest nieodróżnialna od pary mierzącej własną obecność.
+      name: "float the note body back over the reading plane: the third surface returns where the reference has one",
+      expectRedContains: ["D3-10a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  background: none;
+  box-shadow: none;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);`,
+          `  background: none;
+  box-shadow: var(--elevation-rest);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);`,
+          "the Library canvas elevation",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE PIERWSZE — GŁOWA GRUPY NOTATEK ODZYSKUJE MARGINES
+      // PRZEGLĄDARKI (D3-02, druga połowa wpisu #34).
+      //
+      // To jedyne złamanie z tej trójki, które nie zmienia ŻADNEJ deklarowanej
+      // wartości, tylko ją USUWA — a usunięta deklaracja to dokładnie ta
+      // postać wady, która przeżyła tu dwie fale: `<h3>` bez resetu bierze
+      // `1em` marginesu w każdą stronę, więc lista rozjeżdża się o 11 px na
+      // grupę i nikt nie widzi w arkuszu reguły, którą można by o to obwinić.
+      name: "let the notes group head take the browser's heading margin back: every group drifts 11 px down again",
+      expectRedContains: ["D3-02"],
+      file: "packages/desktop-ui/src/library/notes.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  min-width: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);`,
+          `  min-width: 0;
+  padding: var(--space-2) var(--space-4);`,
+          "the notes group head margin",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZYDZIESTE DRUGIE — DATA ŹRÓDŁA TRACI SWÓJ ELEMENT (D3-06,
+      // wpis #45 rejestru).
+      //
+      // Edycja jest w TSX, nie w arkuszu, i to jest jej sens: pas daty nie jest
+      // regułą CSS, tylko istnieniem elementu, który tę regułę może przyjąć.
+      // Wiersz dalej DRUKUJE datę — zmienia się wyłącznie to, czy ma ona własne
+      // pudełko. Para licząca elementy pada, para czytająca styl nie miałaby
+      // czego czytać.
+      name: "put the source's date back into the shared meta lane: it stops being an element and stops having a lane",
+      expectRedContains: ["D3-06"],
+      file: "packages/desktop-ui/src/library/SourcesReading.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <time className={styles.rowWhen} dateTime={source.observedAt}>
+          observed {observationDay(source)}
+        </time>`,
+          `        <span>observed {observationDay(source)}</span>`,
+          "the source row's date element",
+        ),
+    },
   ]),
 });
 

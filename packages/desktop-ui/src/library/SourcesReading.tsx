@@ -108,12 +108,27 @@ const SourceRow = ({
         <span className={styles.rowTitle}>{source.title}</span>
         <AvailabilityBadge availability={source.availability} />
       </span>
+      {/* FAZA D, LOT D3, WPIS #45 — DWIE PIGUŁKI I DATA NA PRAWYM KOŃCU.
+          Prototyp: `v3/screens/knowledge.js:894-898` — `.kn-row-ref` dwa razy
+          (rodzaj, liczba referencji), a potem `.kn-row-when`, który
+          `v3/screens/knowledge.css:175-178` odpycha na koniec rzędu.
+
+          `<time>` JEST TU NOWYM ELEMENTEM, NIE PRZEBRANYM `<span>`-em: data
+          dostaje własny pas dopiero wtedy, gdy jest własnym elementem, a przy
+          okazji `dateTime` jest pierwszym miejscem, w którym maszynowa wartość
+          tej daty ma gdzie zamieszkać — dokładnie jak na bliźniaczym wierszu
+          Notatek. Nazwa dostępna wiersza (`sourceRowName`) niesie te same trzy
+          fakty i nie jest ruszana, więc czytnik ekranu czyta to, co czytał. */}
       <span className={styles.rowMeta}>
         <span className={styles.kindChip}>
           {sourceKindCopy[source.sourceKind]}
         </span>
-        <span>{restsOnSentence(source.referencedByCount)}</span>
-        <span>observed {observationDay(source)}</span>
+        <span className={styles.refChip}>
+          {restsOnSentence(source.referencedByCount)}
+        </span>
+        <time className={styles.rowWhen} dateTime={source.observedAt}>
+          observed {observationDay(source)}
+        </time>
       </span>
     </div>
   </li>
@@ -154,11 +169,33 @@ const SourceReader = ({
       className={styles.reader}
       data-source-reader={source.id}
     >
+      {/* FAZA D, LOT D3, WPIS #46 — PLAKIETKA I OBIE DATY W JEDNEJ LINII POD
+          TYTUŁEM. Prototyp: `v3/screens/knowledge.js:912-916` stawia
+          `knAvail(...)` , „observed …" i „added …" w jednym `.kn-reader-meta`,
+          rozdzielone `.kn-dot`; blok `dt/dd` był u nas dwoma piętrami tej samej
+          informacji.
+
+          OBA ZNACZNIKI DANYCH ZOSTAJĄ, przeniesione na `<time>`: to one, a nie
+          znacznik `<dd>`, są tym, po czym te daty są znajdowane. Kropki są
+          `aria-hidden`, bo „·" przeczytane na głos jest hałasem, a rozdzielenie
+          niosą już same słowa „observed" i „added". */}
       <header className={styles.readerHead}>
         <p className="eyebrow">{sourceKindCopy[source.sourceKind]}</p>
         <h3 id={`${fieldId}-title`}>{source.title}</h3>
-        <p className={styles.readerAvailability}>
+        <p className={styles.readerMeta}>
           <AvailabilityBadge availability={source.availability} />
+          <span aria-hidden="true" className={styles.dot}>
+            ·
+          </span>
+          <time dateTime={source.observedAt} data-source-observed>
+            observed {observationDay(source)}
+          </time>
+          <span aria-hidden="true" className={styles.dot}>
+            ·
+          </span>
+          <time dateTime={source.createdAt} data-source-added>
+            added {addedDay(source)}
+          </time>
           <TopicHelp topic="source-availability" />
         </p>
         {source.availability === "unavailable" && (
@@ -166,22 +203,9 @@ const SourceReader = ({
         )}
       </header>
 
-      {/* TWO DATES UNDER TWO LABELS. The screen is the only place they are ever
-          seen side by side, and it is where collapsing them would show. */}
-      <dl className={styles.dates}>
-        <div>
-          <dt>Observed</dt>
-          <dd data-source-observed>{observationDay(source)}</dd>
-        </div>
-        <div>
-          <dt>Added</dt>
-          <dd data-source-added>{addedDay(source)}</dd>
-        </div>
-      </dl>
-
       {source.canonicalUrl !== undefined && (
         <section className={styles.section}>
-          <p className={styles.sectionLabel}>Where it is</p>
+          <p className={styles.sectionHead}>Where it is</p>
           <a
             className={styles.link}
             href={source.canonicalUrl}
@@ -196,7 +220,7 @@ const SourceReader = ({
       {/* WHAT RESTS ON THIS — one stored edge, read from the source's end. The
           other end is the note's own evidence, and nothing is stored twice. */}
       <section className={styles.section}>
-        <p className={styles.sectionLabel}>
+        <p className={styles.sectionHead}>
           What rests on this{" "}
           <span className={styles.sectionCount}>
             {source.referencedByCount}
@@ -246,7 +270,7 @@ const SourceReader = ({
       </section>
 
       <section className={styles.section}>
-        <p className={styles.sectionLabel} id={`${fieldId}-availability`}>
+        <p className={styles.sectionHead} id={`${fieldId}-availability`}>
           Can it still be reached
         </p>
         {/* NATIVE RADIOS, not a select and not buttons wearing `role="radio"`.

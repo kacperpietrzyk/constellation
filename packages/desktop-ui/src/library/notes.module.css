@@ -63,13 +63,31 @@
   overflow-y: auto;
 }
 
+/* FAZA D, LOT D3, WPIS #34 — GŁOWA KOLUMNY WRACA DO JEDNEGO RZĘDU.
+   Prototyp: `.kn-side-head` (`v3/screens/knowledge.css:92-97`) —
+   `padding: 0.5rem var(--space-4)`, `--text-2xs`, waga 600, tracking 0.04em,
+   licznik odepchnięty `margin-left: auto` (`:102`), a `helpBtn` w tej samej
+   linii (`v3/screens/knowledge.js:807`).
+
+   POMIAR, KTÓRY TEN WPIS NIÓSŁ NIEPRZEMIERZONY. Rejestr mówi „2,7× więcej
+   pionu na chrom" i nikt tej liczby nie sprawdził. Zmierzone przy 1440 px na
+   OBU stronach — aplikacja od górnej krawędzi kolumny do górnej krawędzi
+   pierwszego wiersza: 220,9 px (głowa 79,6 + pasek narzędzi 81,4 + odstępy
+   + głowa grupy 30). Prototyp, ta sama miara na jego własnym drzewie: 107,4 px
+   (33,7 + 45 + 28,7). Czyli 2,06×, nie 2,7× — liczba rejestru była szacunkiem
+   z oka i tak jest tu odnotowana.
+
+   TRZY PIĘTRA, KTÓRE ZNIKAJĄ: mikroetykieta „Notes" nad tytułem (skasowana —
+   nazwę odczytu niesie już zakładka nad kolumną), wyściółka 16/12 zamiast 8/8,
+   i osobny wiersz linku pomocy (wyzwalacz przenosi się do TEGO rzędu, gdzie
+   prototyp go stawia). */
 .panelHead {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  padding: var(--space-4) var(--space-4) var(--space-3);
+  padding: 0.5rem var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -86,32 +104,43 @@
    FOLDER'S PATH — data, and often a proper noun. Upper-casing a person's folder
    name is a claim about their text that this screen has no business making, and
    it is unrecoverable for a reader who wants to know what they actually typed.
-   The micro-label the reference carries is restored instead as its own line
-   above, where it is a label and not somebody's data. */
+   The micro-label the reference carries was restored instead as its own line
+   above — and lot D3 deleted that line, because a second tier of head is the
+   very thing register entry #34 counts. The panel's name is said by the lens
+   tab over the column („Notes"), which is where the shell already says it.
+
+   FAZA D, LOT D3 — STOPIEŃ, TRACKING I TON SCHODZĄ DO PROTOTYPU
+   (`--text-2xs`, 0.04em, `--text-quaternary`), a WERSALIKI DALEJ NIE. Powód
+   powyżej stoi bez zmian i ten lot go nie odwraca: prototyp niesie w tym
+   miejscu napis stały, aplikacja niesie ŚCIEŻKĘ FOLDERU CZYTELNIKA. Bliźniacza
+   głowa Źródeł, gdzie napis JEST stały, wersaliki dostała — rozjazd jest więc
+   między dwiema głowami tej samej rodziny i jest wypisany po obu stronach.
+   Waga 600 zostaje, bo para `L5-04` czyta dokładnie ją. */
 .panelHead h2 {
   min-width: 0;
   overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The micro-label from `v3/screens/knowledge.css:92-97`, split off the heading
-   for the reason above: it says what the panel IS, so it can be uppercase and
-   tracked, while the line under it says what is selected and cannot. */
-.panelEyebrow {
-  margin: 0 0 0.125rem;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* `flex-wrap` I `flex: 1 1 auto` DOŁOŻONE PO PIERWSZYM PRZELOCIE BRAMKI, i to
+   bramka je wymusiła: przy 300% tekstu przelot Biblioteki zgłosił, że licznik
+   (`span.library-count._headCount`) wychodzi ze swojego pudełka o 8 px na obu
+   przystankach Notatek. Przyczyną było to, że tytuł i wyzwalacz pomocy stały
+   w jednym rzędzie NIEZDOLNYM do złamania i zabierały licznikowi całą
+   szerokość. Tytuł ma tu `white-space: nowrap` z wielokropkiem, więc to nie on
+   ustępuje — ustępuje rząd. */
 .panelTitle {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* Only vertically. `overflow: auto` would also declare horizontal scrolling,
@@ -319,6 +348,9 @@
    once, at the same rule in `sources.module.css`. */
 .panelHead .headCount {
   display: inline;
+  /* `flex: none` po pierwszym przelocie bramki — patrz nota przy `.panelTitle`.
+     Licznik jest ostatnim, co ma ustąpić w tym rzędzie. */
+  flex: none;
   min-width: 0;
   min-height: 0;
   padding-inline: 0;
@@ -331,13 +363,16 @@
   letter-spacing: 0;
 }
 
+/* Wyściółka z `.kn-modes` (`v3/screens/knowledge.css:82-85`): `var(--space-2)
+   var(--space-3)` i kreska pod spodem. Rząd niesie już tylko przełącznik —
+   wyzwalacz pomocy poszedł do głowy kolumny (wpis #34). */
 .listTools {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
   min-width: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -423,6 +458,15 @@
 
 /* Sticky, so the heading a row belongs to is readable while scrolling past a
    long group — which is the whole point of the rotation. */
+/* `margin: 0` DOMYKA WPIS #34 I JEST JEDYNĄ DEKLARACJĄ TEGO LOTU POZA GŁOWĄ
+   KOLUMNY. Ten nagłówek jest elementem `<h3>`, a ten pakiet nie ma resetu
+   nagłówków — więc brał marginesy przeglądarki (1em własnego stopnia w każdą
+   stronę) i wstawiał 11 px nad KAŻDĄ grupą oraz 11 px między swoją kreską
+   a pierwszym wierszem. Zmierzone przy 1440 px: pierwsza głowa grupy stała
+   11 px pod paskiem narzędzi, choć w prototypie `.kn-group-head`
+   (`v3/screens/knowledge.css:196-203`) styka się z nim krawędzią. Bliźniacza
+   głowa grupy Źródeł jest `<div>`-em i tej wady nie miała — dlatego widać ją
+   było tylko na jednym z dwóch ekranów tej samej rodziny. */
 .groupHead {
   position: sticky;
   top: 0;
@@ -431,6 +475,7 @@
   gap: var(--space-2);
   align-items: baseline;
   min-width: 0;
+  margin: 0;
   padding: var(--space-2) var(--space-4);
   color: var(--text-tertiary);
   background: var(--surface-window);

@@ -4128,6 +4128,501 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "rem", value: 1 },
     status: "enforced",
   },
+  // ── LOT D3 (FAZA D) — BIBLIOTEKA: NOTATKI I ŹRÓDŁA ──────────────────────────
+  //
+  // Jedenaście wpisów rejestru, TRZY pozycje wyrażalne selektorem nad
+  // przystankami, do których ta mapa umie dojechać: głowa kolumny listy (#34,
+  // #42), wiersz listy i jego siatka (#35, #41, #45) oraz czytelnia (#36, #37,
+  // #38, #43, #44, #46). Kontrakt dostał w tym samym przebiegu dwa nowe wzorce
+  // („Reading list column", „Reading surface"), bo NIE MIAŁ o tym obiekcie ani
+  // jednego zdania — a zasada mówi, że prototyp wygrywa z kontraktem i że
+  // rozjazd przepisuje się w tym samym locie.
+  {
+    id: "D3-01a",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "the notes column head drops to the reference's micro-label step",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "92-97",
+      value:
+        "`.kn-side-head { padding: 0.5rem var(--space-4); font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.04em }` — głowa kolumny jest mikroetykietą, nie tytułem ekranu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_panelHead_"] h2',
+      why: "the same subject L5-04 reads for weight; this pair reads the step, which is what made the head two lines tall",
+      app: "packages/desktop-ui/src/library/notes.module.css (.panelHead h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-2xs" },
+    // WERSALIKÓW TA PARA NIE ASERTUJE, I TO JEST ZAPISANE, NIE PRZEOCZONE.
+    // Prototyp daje `text-transform: uppercase`; ten element niesie ŚCIEŻKĘ
+    // FOLDERU czytelnika, a nie napis stały, więc rozjazd jest świadomy
+    // i wypisany przy regule oraz w ograniczeniach wzorca. Bliźniacza głowa
+    // Źródeł, gdzie napis JEST stały, wersaliki dostała i asertuje je D3-04b.
+    status: "enforced",
+  },
+  {
+    id: "D3-01b",
+    lot: "D3",
+    position: 1,
+    kind: "prescribed",
+    title: "and the help trigger stands in that same row instead of its own",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.js",
+      lines: "807-815",
+      value:
+        '`<div class="kn-side-head">…${helpBtn("folders")}</div>` — wyzwalacz pomocy jest DZIECKIEM głowy kolumny, a nie osobnym piętrem pod przełącznikiem',
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_panelHead_"] [data-help-topic="note-arrangement"]',
+      why: "`data-help-topic` is TopicHelp's own declaration and is what the route assertion already counts; the class around it is a module name",
+      app: "packages/desktop-ui/src/library/NotesReading.tsx (panelTitle)",
+    },
+    read: { property: null },
+    // LICZBA, NIE POŁOŻENIE, I JEST TO CELOWE ZAWĘŻENIE. Selektor jest
+    // POTOMKIEM głowy kolumny, więc „1" znaczy „ten wyzwalacz stoi w tej
+    // głowie". Para czytająca `getBoundingClientRect().top` byłaby zielona nad
+    // wyzwalaczem, który wrócił do paska narzędzi w chwili, gdy ten pasek
+    // przypadkiem stanął w tej samej linii.
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D3-01c",
+    lot: "D3",
+    position: 1,
+    kind: "prescribed",
+    title: "and the tier above the head is gone entirely",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "92-102",
+      value:
+        "cała głowa to JEDEN rząd — `.kn-side-head` z `.kn-n` odepchniętym `margin-left: auto`; prototyp nie ma nad nim żadnej drugiej etykiety",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_panelEyebrow_"]',
+      why: "the micro-label tier this lot deleted; a module class that no longer exists in the sheet resolves to no element",
+      app: "packages/desktop-ui/src/library/notes.module.css (usunięte)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D3-02",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "the group head stops carrying the browser's own heading margin",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "196-203",
+      value:
+        "`.kn-group-head` deklaruje wyłącznie `padding`, siada wprost na wierszach i wprost pod przełącznikiem — między grupami nie ma ani odstępu, ani marginesu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_groupHead_"]',
+      why: "an <h3> in a package with no heading reset; it took the user-agent 1em block margin on both sides",
+      app: "packages/desktop-ui/src/library/notes.module.css (.groupHead)",
+    },
+    read: { property: "marginTop" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D3-03a",
+    lot: "D3",
+    position: 2,
+    kind: "prescribed",
+    title: "a note row's reference is an outlined pill, not a bare string",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "182-189",
+      value:
+        "`.kn-row-in { border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 0.0625rem 0.4375rem 0.0625rem 0.3125rem }`",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-row-ref",
+      why: "hand-written class in styles.css; three of the harness's notes carry references, so the subject is drawn on this stop",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-row-ref)",
+    },
+    read: { property: null },
+    // PODŁOGA TRZY, NIE JEDEN, I TA LICZBA JEST WYNIKIEM SPISU FIKSTURY:
+    // `documentReferences` w `dev/library-fixture.ts` ma DOKŁADNIE trzy wpisy
+    // (runbook 1, network 2, handover 1), a `librarySummaries` daje pozostałym
+    // notatkom pustą tablicę — więc trzy jest tu i podłogą, i całą populacją;
+    // przelot potwierdza to obserwacją („3 element(s) match"). Lot dołożył do
+    // tej fikstury dwa ŹRÓDŁA i ani jednej referencji notatki, więc ta liczba
+    // się nie ruszyła. Podłoga „1" byłaby zielona nad zmianą, która przestała
+    // rysować pigułkę wszędzie poza jednym wierszem — a pierwszy wiersz tej
+    // listy referencji NIE MA, więc para patrząca tylko na niego mierzyłaby
+    // gałąź `roleCopy`.
+    expect: { kind: "count", atLeast: 3 },
+    status: "enforced",
+  },
+  {
+    id: "D3-03b",
+    lot: "D3",
+    position: 2,
+    kind: "restyle",
+    title: "and its glyph is the accent",
+    contract:
+      ".ui-craft/tokens.md:335-378 (What the accent is allowed to mean)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "188",
+      value: "`.kn-row-in .kn-glyph { color: var(--accent); opacity: 0.85 }`",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-row-ref svg",
+      why: "the glyph inside the pill; the app drew no glyph at all before this lot",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-row-ref svg)",
+    },
+    read: { property: "color" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "D3-04a",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "the sources column head is one micro-label row too",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "92-97",
+      value:
+        "ta sama reguła, co przy D3-01a — obie kolumny list Biblioteki są w prototypie tym samym obiektem (`v3/screens/knowledge.js:812` i `:968`)",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_listTitle_"] h2',
+      why: "CSS Module class; the app drew a --text-md sentence title that pushed the help trigger onto a second line",
+      app: "packages/desktop-ui/src/library/sources.module.css (.listTitle h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-2xs" },
+    status: "enforced",
+  },
+  {
+    id: "D3-04b",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "and it takes the reference's case, because its words are fixed",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "95",
+      value: "`.kn-side-head { text-transform: uppercase }`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_listTitle_"] h2',
+      why: "same subject as D3-04a; this is the half of the reference rule the twin head on Notes deliberately does not take",
+      app: "packages/desktop-ui/src/library/sources.module.css (.listTitle h2)",
+    },
+    read: { property: "textTransform" },
+    expect: { kind: "literal", value: "uppercase" },
+    status: "enforced",
+  },
+  {
+    id: "D3-05a",
+    lot: "D3",
+    position: 2,
+    kind: "restyle",
+    title: "a source row is square-cornered, flush to the column",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "138-143",
+      value:
+        "`.kn-row { padding: 0.5625rem var(--space-4); border-bottom: 1px solid var(--border-subtle); border-left: 2px solid transparent }` — ŻADNEGO promienia",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[role="option"][class*="_row_"]',
+      why: "declaration-based (`role=option`) plus the module class; the app drew a --radius-md card inset from both column edges",
+      app: "packages/desktop-ui/src/library/sources.module.css (.row)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D3-05b",
+    lot: "D3",
+    position: 2,
+    kind: "restyle",
+    title: "and rows are told apart by a hairline instead of by a gap",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "140",
+      value: "`.kn-row { border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      // SELEKTOR ZAWĘŻONY PRZY PIERWSZYM PRZELOCIE, I ZAWĘZIŁ GO PRZYRZĄD,
+      // NIE GUST. Napisany jako `[role="option"][class*="_row_"]` — czyli tak
+      // samo jak D3-05a — wrócił NOT_MEASURED: sześć wierszy dawało DWIE
+      // wartości `borderBottomColor`, bo ostatni wiersz KAŻDEJ grupy kreski nie
+      // niesie i jego `border-bottom-color` spada do `color` elementu. Para
+      // czytająca „którąś z dwóch" nie umiałaby powiedzieć, którą osądziła.
+      // Podmiotem jest więc wiersz, POD którym stoi następny wiersz — czyli
+      // dokładnie ten, dla którego zdanie „wiersze rozdziela kreska" jest
+      // zdaniem.
+      selector: '[class*="_rowItem_"]:not(:last-child) [role="option"]',
+      why: "same subject as D3-05a on the other channel: the separator the gap replaced. A radius pair alone would be green over rows that lost their corners and kept their gaps",
+      app: "packages/desktop-ui/src/library/sources.module.css (.row)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D3-06",
+    lot: "D3",
+    position: 2,
+    kind: "prescribed",
+    title: "the date in a source row has its own lane at the row's end",
+    contract: ".ui-craft/tokens.md:94-109 (Type)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "175-178",
+      value:
+        "`.kn-row-when { margin-left: auto; flex: none; font-variant-numeric: tabular-nums }` — zmierzone na prototypie: prawe krawędzie czterech kolejnych dat na jednej linii (559 px)",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[role="option"] time[class*="_rowWhen_"]',
+      why: "the element did not exist before this lot — the date was a bare text node sharing a lane with the dependants count, so no probe could reach it",
+      app: "packages/desktop-ui/src/library/SourcesReading.tsx (SourceRow)",
+    },
+    read: { property: null },
+    // OSIEM, BO TYLE JEST ŹRÓDEŁ W FIKSTURZE, I TA LICZBA JEST PODANA ZE SWOIM
+    // SPISEM. Napisana najpierw jako sześć — tyle, ile fikstura miała przed tym
+    // lotem — i podniesiona przy odbiorze, bo ten sam lot dołożył dwa źródła
+    // (`dev/library-fixture.ts`, wpisy `sourceId("07")` i `("08")`), żeby lista
+    // dalej przewijała się w swoim panelu. Podłoga niższa od populacji jest
+    // dokładnie tą wadą, którą to repozytorium zbiera falami: byłaby ZIELONA
+    // nad zmianą, po której dwa wiersze przestały rysować datę, a komentarz
+    // powoływałby się na liczbę, której nikt nie przeliczył.
+    //
+    // SPIS: `librarySources()` zwraca dziś osiem wpisów (`sourceId("01")` …
+    // `("08")`), a odczyt rysuje wiersz dla każdego z nich w grupie jego
+    // rodzaju — przelot potwierdza to samą obserwacją („8 element(s) match").
+    // Podłoga, a nie równość: pusta grupa rysuje zdanie zamiast wiersza, więc
+    // liczba wierszy jest funkcją populacji, nie słownika rodzajów.
+    expect: { kind: "count", atLeast: 8 },
+    status: "enforced",
+  },
+  {
+    id: "D3-07",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "a section heading in the reader is a sentence, not a micro-label",
+    contract: ".ui-craft/tokens.md:94-109 (Type)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "389-392",
+      value:
+        "`.kn-sec-head { font-size: var(--text-sm); font-weight: 600; letter-spacing: -0.005em }` — zmierzone na prototypie: 13 px, 600, `text-transform: none`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_sectionHead_"]',
+      why: "the class this lot split off `.sectionLabel`; the field label of the rename form KEEPS the micro-label treatment and is deliberately not this subject",
+      app: "packages/desktop-ui/src/library/sources.module.css (.sectionHead)",
+    },
+    read: { property: "textTransform" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    id: "D3-08",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: '"What rests on this" gets its bordered plate back',
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "397-407",
+      value:
+        "`.kn-refs { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden }` + `.kn-ref-row { border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_restsList_"]',
+      why: "the same subject L5-06 counts glyphs inside; this pair reads the plate the register says the block lost",
+      app: "packages/desktop-ui/src/library/sources.module.css (.restsList)",
+    },
+    read: { property: "borderTopColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D3-09",
+    lot: "D3",
+    position: 3,
+    kind: "prescribed",
+    title: "the two dates collapse into one line of small print",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "246-249",
+      value:
+        "`.kn-reader-meta` — plakietka, „observed …" +
+        " i „added …" +
+        " w JEDNYM rzędzie `--text-xs`, rozdzielone `.kn-dot` (`v3/screens/knowledge.js:912-916`)",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_dates_"]',
+      why: "the `dl` block this lot replaced; a class no rule declares any more resolves to no element",
+      app: "packages/desktop-ui/src/library/sources.module.css (usunięte)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D3-10a",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "the note body stops being a raised card on a second plane",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "282",
+      value:
+        "`.kn-body { padding-top: var(--space-5) }` i nic więcej — zmierzone na prototypie: `border-top-width: 0px`, tło `rgba(0,0,0,0)`, `box-shadow: none`",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-writing-plane .document-canvas",
+      why: "hand-written classes in styles.css; the selector is scoped because the SAME canvas class carries the project record's document card, which belongs to another lot",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-writing-plane .document-canvas)",
+    },
+    read: { property: "boxShadow" },
+    // CIEŃ, PROMIEŃ I TŁO PSUJĄ SIĘ OSOBNO — ta para czyta cień, D3-10b promień.
+    // Sama nieobecność cienia byłaby zdaniem prawdziwym także o karcie, której
+    // ktoś zdjął wyłącznie uniesienie i zostawił obwódkę z promieniem.
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    id: "D3-10b",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "and it loses the corner that made it a card",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "282",
+      value: "`.kn-body` nie deklaruje ani `border-radius`, ani obwódki",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-writing-plane .document-canvas",
+      why: "same subject as D3-10a on the other channel",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-writing-plane .document-canvas)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D3-10c",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "and no heading inside it reaches the step of the title above it",
+    contract: ".ui-craft/tokens.md:94-109 (Type)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "283-287",
+      value:
+        "`.kn-h2 { font-size: var(--text-lg) }` pod `.kn-reader-title { font-size: var(--text-xl) }` (`:242-245`) — największy śródtytuł jest MNIEJSZY od tytułu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-writing-plane .document-canvas h1",
+      why: "the body's own top heading, which computed 37.76 px against a 22 px title before this lot — the inversion the register names",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-writing-plane .document-canvas h1)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-lg" },
+    status: "enforced",
+  },
+  {
+    id: "D3-11a",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "the reader's actions stand in one row of pills",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "253",
+      value:
+        "`.kn-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3) }` — zmierzone na prototypie: 28 px wysokości",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".document-editor-actions",
+      why: "hand-written class in styles.css; it declared `display: grid; justify-items: end`, i.e. one action per row, and measured 187 px tall",
+      app: "packages/desktop-ui/src/styles.css (.document-editor-actions)",
+    },
+    read: { property: "display" },
+    expect: { kind: "literal", value: "flex" },
+    status: "enforced",
+  },
+  {
+    id: "D3-11b",
+    lot: "D3",
+    position: 3,
+    kind: "prescribed",
+    title: "and the head under the title says when and where",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "246-249",
+      value:
+        "`.kn-reader-meta` — jeden przygaszony wiersz pod tytułem czytanej notatki (`v3/screens/knowledge.js:747-753`)",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".document-editor-meta time",
+      why: "the timestamp inside the metadata line; counting the line alone would be green over a line that draws only the folder",
+      app: "packages/desktop-ui/src/library/KnowledgeEditor.tsx (document-editor-meta)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    // KOGO ta linia NIE MÓWI: `document.list`
+    // (`packages/contracts/src/query.ts:1718-1733`) nie niesie autora, więc
+    // prototypowy awatar z inicjałami nie ma z czego powstać. Zgłoszone jako
+    // pozycja nieoddana lotu, nie zamknięte cicho.
+    status: "enforced",
+  },
 ];
 
 /**
@@ -4437,7 +4932,17 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // udający pokrycie. Bliźniak jest asertowany tam, gdzie fikstura go dosięga
   // (`desktop-ui/test/calendar.interaction.test.tsx`), a brak pomiaru
   // PIKSELOWEGO stoi wypisany niżej, w `notCovered`.
-  pairs: 76,
+  //
+  // 76 → 95 PRZY LOCIE D3 FAZY D, 2026-08-11, I SĄ TO TRZY NOWE POZYCJE. Kolumny
+  // list Biblioteki i czytelnia notatki nie były w tej mapie mierzone przez nic
+  // poza farbą wiersza (L5-01a/b) i deklaracją siatki (L5-02a): ani GŁOWA
+  // kolumny, ani jej wysokość, ani kształt wiersza, ani cokolwiek w czytelni
+  // powyżej treści. Dziewiętnaście par, bo rejestr niesie tu jedenaście wpisów
+  // składających się na trzy zdania („głowa kolumny jest jednym paskiem",
+  // „wiersz jest wierszem, nie kartą", „czytelnia jest jednym planem"),
+  // a każde z nich psuje się na kilku niezależnych deklaracjach — cień bez
+  // promienia, promień bez kreski, kreska bez pasa daty.
+  pairs: 95,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   notCovered: 11,
@@ -4503,6 +5008,20 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       positionsInBrief: 1,
       pairs: 6,
       positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    D3: {
+      // Lot D3 niesie JEDENAŚCIE wpisów rejestru, a rejestr sam grupuje je
+      // w trzy rodziny, i to one są tu pozycjami: głowa kolumny listy (#34,
+      // #42), wiersz listy i jego siatka (#35, #41, #45), czytelnia (#36, #37,
+      // #38, #43, #44, #46). Wszystkie trzy są wyrażalne selektorem nad
+      // przystankami, do których ta mapa dojeżdża, więc `positionsWithoutPairs`
+      // jest puste — co NIE znaczy, że lot oddał wszystko: awatar inicjałowy
+      // z wpisu #36 nie ma pola w projekcji i stoi w `notDelivered` raportu,
+      // a nie tutaj, bo ta lista mierzy POKRYCIE pozycji, nie ich dostawę.
+      positionsInBrief: 3,
+      pairs: 19,
+      positionsWithPairs: 3, // 1, 2, 3
       positionsWithoutPairs: [],
     },
     D1: {
