@@ -969,11 +969,19 @@ kbd {
   background: var(--surface-pressed);
   border-color: var(--border-strong);
 }
-/* `.compact` NALEŻY DO OBU AKCJI, NIE DO SEKUNDARNEJ. Selektor wymieniał samą
-   `.secondary-button`, więc `primary-button compact` — wołane od 2026-08 przez
-   `ReleaseContinuity.tsx:132`, a od lotu C2 także przez pas akcji rekordu
-   projektu — rysowało się w pełnej wysokości OBOK sąsiadów o 2 rem. Wariant
-   rozmiaru jest właściwością kontrolki, a nie jednej z jej farb. */
+/* `.compact` NIE JEST JUŻ WARIANTEM WYSOKOŚCI — poprawione w locie D1 Fazy D
+   razem z regułą, którą modyfikuje. Ten modyfikator dawał kiedyś `min-height:
+   2rem` przy bazie 2,25 rem; po zejściu bazy do prototypowych 1,75 rem
+   (`v3/app.css:307`) ta deklaracja robiłaby przycisk „compact" WYŻSZYM od
+   zwykłego, więc odeszła, a nota o niej odchodzi razem z nią zamiast zostać
+   jako zdanie nieprawdziwe o kodzie pod sobą.
+
+   ZOSTAJE JAKO WARIANT WYŚCIÓŁKI, i to nadal jest właściwość KONTROLKI, a nie
+   jednej z jej farb — dlatego selektor wymienia obie klasy akcji. Powód jest
+   ten sam, dla którego wymieniał je wcześniej: `primary-button compact` woła
+   `ReleaseContinuity.tsx:132`, a od lotu C2 także pas akcji rekordu projektu,
+   i przy selektorze wymieniającym samą `.secondary-button` żadna z tych dwóch
+   akcji nie dostawała tego, po co modyfikator nosi. */
 .primary-button.compact,
 .secondary-button.compact {
   padding-inline: var(--space-3);
@@ -2222,6 +2230,23 @@ kbd {
    były trzy różne. To jest wariant „ręcznej listy obok zamkniętego słownika",
    nazwanej w tym repozytorium klasy defektu — więc KSZTAŁT stoi tutaj, a moduły
    zostają przy swojej TREŚCI (odstęp między dziećmi, zawijanie, kolejność).
+
+   TĘ KLASĘ WZIĘŁO PIĘĆ Z SIEDMIU, I DWA ODMÓWIENIA SĄ ZMIERZONE, nie pominięte
+   — bo „kształt jest już raz zapisany" byłoby nieprawdą dla następnego lotu,
+   który tam zajrzy. Wzięły: Lejek, Organizacje, Odnowienia, Ludzie i Zadania —
+   wszystkie rysują pasek widoku jako BEZPOŚREDNIE dziecko `.surface-scroll`,
+   którego wyściółka JEST `--surface-gutter`, więc ujemny margines pada dokładnie
+   na krawędź nośnika. Nie wzięły dwa:
+
+     * `library.module.css` — `LibraryShell` rysuje w `.shell`, siatce BEZ
+       wyściółki, więc rynna 40 px odziedziczona po `.work-surface` wypchnęłaby
+       pasmo 40 px POZA nośnik;
+     * `project-collection.module.css` — jego pasek widoku jest WNUKIEM, wewnątrz
+       `.collection`, na którą dalej działa sufit `--surface-measure`, więc ten
+       sam margines przepełniłby pudełko węższe od kanwy.
+
+   Oba trzymają dziś własną kopię kształtu i oddadzą ją locie, który da ich
+   nośnikom rynnę.
 
    Nazwa klasy jest GLOBALNA i dokładana obok klasy modułowej, a nie zamiast
    niej: `class={`view-band ${styles.viewbar}`}`. Dzięki temu spis B1 dalej widzi
