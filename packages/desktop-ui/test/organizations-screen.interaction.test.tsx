@@ -1117,13 +1117,28 @@ test("the Organizations sheet keeps the declarations that stop the surface sizin
   // ją teraz niesie, deklaruje `flex-wrap: wrap` w `styles.css` przy
   // `.surface-header`, z tego samego powodu i z własnym uzasadnieniem — nie
   // w tym arkuszu, więc nie w tej pętli.
-  for (const bar of [".viewbar", ".filter"]) {
+  // `.viewbar` ZSZEDŁ Z TEJ PĘTLI W LOCIE D1 FAZY D, TĄ SAMĄ DROGĄ CO
+  // `.crumbbar` i z tego samego powodu: deklaracja nie zniknęła, tylko przestała
+  // być W TYM ARKUSZU. Kształt paska widoku — wysokość pasma, rynna, włoskowa
+  // kreska i właśnie zawijanie — stoi teraz raz, w `styles.css` przy
+  // `.view-band`, bo był przepisany w siedmiu arkuszach modułowych i w każdym
+  // inaczej. Gwarancja nie może przez to zniknąć, więc jest asertowana NIŻEJ,
+  // na arkuszu, w którym naprawdę mieszka.
+  for (const bar of [".filter"]) {
     assert.match(
       declarationsOf(bar),
       /flex-wrap: wrap/u,
       `${bar} stopped wrapping — its min-content becomes the sum of its children and the surface overflows itself at 200% text`,
     );
   }
+  assert.match(
+    readFileSync(path.join(packageRoot, "src", "styles.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//gu,
+      "",
+    ),
+    /\.view-band\s*\{[^}]*flex-wrap:\s*wrap/su,
+    "the shared view band stopped wrapping — its min-content becomes the sum of its children and every screen that draws one overflows itself at 200% text",
+  );
   // 5. And the list declares a definite width rather than taking one from the
   //    rows, which for a grid is the sum of its tracks.
   assert.match(

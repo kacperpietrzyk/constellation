@@ -630,9 +630,20 @@ describe("interaction recovery contracts", () => {
   });
 
   it("maps ghost actions to the accepted quiet-button target contract", () => {
+    // 2,25 rem → 1,75 rem W LOCIE D1 FAZY D, i to jest zmiana ROZMIARU, nie
+    // rozluźnienie CELU DOTYKU. Prototyp daje wszystkim swoim przyciskom jedną
+    // wysokość (`v3/app.css:307` — `.btn { height: 1.75rem }`, `quiet` zmienia
+    // sam kolor), a lot D1 zszedł na nią z akcją główną, zamykając drugą połowę
+    // wpisu #10 rejestru Fazy 4. Zostawienie tych dwóch klas wyżej dałoby ekran,
+    // na którym przycisk poboczny jest WYŻSZY od akcji obok niego.
+    //
+    // CEL DOTYKU JEST DRUGĄ ASERCJĄ NIŻEJ I NIE ZOSTAŁ TKNIĘTY: przy oknie do
+    // 50 rem te same dwie klasy dalej żądają 2,75 rem, czyli 44 px przy korzeniu
+    // 16 px. To ta reguła — a nie 2,25 rem — jest kontraktem celu, i dlatego
+    // pierwsza liczba mogła się ruszyć, a druga nie.
     assert.match(
       styles,
-      /\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.25rem/s,
+      /\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*1\.75rem/s,
     );
     assert.match(
       styles,
