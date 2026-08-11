@@ -1833,10 +1833,6 @@ export const RealApp = ({
   // sidebar said "100" beside a screen saying "157 tasks" on a real workspace —
   // one number, two answers, a finger apart. `work.overview` is whole-Space and
   // uncapped, which is exactly why the Tasks screen stands on it.
-  const taskCount =
-    state.snapshot.work.kind === "ready"
-      ? state.snapshot.work.data.tasks.length
-      : tasks.length;
   // WPISY #50 I #66 REJESTRU — PRAWA KRAWĘDŹ WIERSZA NAWIGACJI NIESIE LICZBĘ.
   //
   // Prototyp stawia prawostronnie wyrównaną liczbę przy prawie każdym module
@@ -1856,6 +1852,13 @@ export const RealApp = ({
   //    nie rysuje wtedy NICZEGO. Zero w tym miejscu byłoby odpowiedzią „nie ma
   //    ani jednego" na pytanie, którego nie dało się zadać — to jest defekt,
   //    dla którego istnieje `readSlice` w `client/workflow.ts`.
+  //    REGUŁA OBEJMUJE TEŻ `tasks`, I DOPIERO OD NAPRAWY PO PRZEGLĄDZIE. Wpis
+  //    wypisany jako pierwszy był bezwarunkowy: przy niegotowym `work` schodził
+  //    na `snapshot.tasks.length`, czyli na odczyt PRZYCIĘTY do stu, opisany
+  //    w akapicie nad tą mapą jako sto obok stu pięćdziesięciu siedmiu. Wiersz
+  //    podawał wtedy złą liczbę OBOK ekranu Zadań, który w tym samym stanie
+  //    mówi, że nie dało się zapytać — czyli zdanie tej reguły było nieprawdą
+  //    o kodzie pod nią, a kod przywracał wadę, przeciw której ta reguła stoi.
   // 3. `meetings` NIE MA TU WPISU I TO JEST ODMOWA Z POWODEM, nie przeoczenie.
   //    Spotkania nie są w migawce: stan kalendarza jest świadomie lokalny dla
   //    urządzenia i schodzi przez `client.getMeetingLoop`, z własną odmową
@@ -1866,7 +1869,9 @@ export const RealApp = ({
       ? state.snapshot.relationships.data.records
       : undefined;
   const navCounts: Partial<Record<SurfaceId, number>> = {
-    tasks: taskCount,
+    ...(state.snapshot.work.kind === "ready"
+      ? { tasks: state.snapshot.work.data.tasks.length }
+      : {}),
     ...(state.snapshot.projects.kind === "ready"
       ? { projects: state.snapshot.projects.data.items.length }
       : {}),

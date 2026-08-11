@@ -711,15 +711,24 @@ export const CalendarSurface = ({
             której nie ma na ekranie: tydzień bez spotkań pytania nie stawia.
             Liczone po dniach, NIE po `totals.meetingCount` — tamta suma
             pomija weekend, więc sobotnie spotkanie zostałoby bez wyjaśnienia. */}
+        {/* WPIS #4 REJESTRU, BLIŹNIAK Z DZISIAJ. Ten przycisk otwiera DOKŁADNIE
+            ten sam temat pomocy co znacznik na Dzisiaj (`calendar-meetings`),
+            stał w tej samej klasie (`ghost-button compact`) i niósł to samo
+            zdanie — a lot D2 poprawił tylko jeden z dwóch, przez co jeden ekran
+            mówił „?", a sąsiedni dalej zdanie. Naprawa po przeglądzie zdejmuje
+            ten rozjazd: jedna afordancja, jeden kształt (`v3/app.css:896-904`,
+            `.helpb`). Etykieta idzie do `aria-label`, bo znak „?" sam nie mówi
+            czytnikowi ekranu, o co pyta. */}
         {week.days.some((day) => day.meetings.length > 0) ? (
           <button
             type="button"
-            className="ghost-button compact"
+            className="help-mark"
             aria-haspopup="dialog"
+            aria-label="Why the calendar is read-only"
             data-meeting-help
             onClick={() => setHelpTopic("calendar-meetings")}
           >
-            Why read-only?
+            ?
           </button>
         ) : null}
         {meetingsState.kind === "loading" ? (

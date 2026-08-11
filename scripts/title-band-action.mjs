@@ -88,8 +88,11 @@
 // `.ghost-button` do tego zbioru NIE NALEŻY, i to jest pomiar, nie gust. Jest
 // świadomie przezroczysty (`styles.css:787`) — to odpowiednik prototypowego
 // `.btn` bez modyfikatora — i siedzi na rzeczach, które akcją główną nie są:
-// „Why read-only?" na Dziś, trzy strzałki tygodnia na Kalendarzu, „Areas and
-// initiatives" na Projektach. Wciągnięcie go zamieniłoby Kalendarz w znalezisko
+// trzy strzałki tygodnia na Kalendarzu i „Areas and initiatives" na Projektach.
+// (Trzeci przykład, „Why read-only?", stał tu do 2026-08-11 i wypadł, bo ta
+// afordancja jest dziś okrągłym znacznikiem `.help-mark` na obu ekranach,
+// na których stoi — nie `.ghost-button`. Przykład, który przestał istnieć,
+// czyta się przy odbiorze jak pomiar.) Wciągnięcie go zamieniłoby Kalendarz w znalezisko
 // (jego pasmo NIESIE trzy ghosty, a prototypowy Kalendarz nie ma w paśmie
 // żadnej akcji), czyli czerwień nad ekranem, o którym rejestr rozjazdów nie ma
 // nic do powiedzenia. Wypełnienie niosą `--action-primary-bg` i
@@ -120,14 +123,30 @@
 //
 // GRANICĄ JEST WIĘC WYSOKOŚĆ, ODCZYTANA, NIE WPISANA: sąsiad wchodzi do
 // obszaru tytułu tylko wtedy, gdy jest NIE WYŻSZY OD SAMEGO PASMA. Rząd chromu
-// jest rzędem; obszar treści jest wysoki. Zmierzone na dzisiejszym drzewie,
-// wszystkie liczby z jednego przelotu 1440×900:
+// jest rzędem; obszar treści jest wysoki. TABELA PRZELICZONA 2026-08-11 przy
+// naprawie po przeglądzie lotu D2, wszystkie liczby z JEDNEGO przelotu
+// 1440×900 i odczytane z linii „[searched, ceiling h≤…]" tego przyrządu —
+// poprzednia wersja miała pięć wierszy i cztery z nich były już nieprawdą,
+// bo loty C2, D1 i D2 ruszyły i pasma, i ich sąsiadów:
 //
-//     rekord proj. pasmo 58,6  ← `.crumbs`   36     WCHODZI  (akcje, rząd wyżej)
-//     Dziś         pasmo 40    ← `section`   64     ODPADA   (to jest treść)
-//     Skrzynka     pasmo 40    ← `section`  106,9   ODPADA   (to jest treść)
-//     Zadania      pasmo 40    ← `.viewbar`  96,6   ODPADA
-//     Spotkania    pasmo 70,6  ← `.lanes`   624,4   ODPADA
+//     rekord proj. pasmo 58,6  ← `.crumbs`      32    WCHODZI  (akcje, rząd wyżej)
+//     Dziś         pasmo 40    ← `p[data-capacity]` 16 WCHODZI  (rząd bez akcji)
+//     Skrzynka     pasmo 40    ← `section`     106,9  ODPADA   (to jest treść)
+//     Zadania      pasmo 40    ← `.viewbar`     88,6  ODPADA
+//     Spotkania    pasmo 40    ← `.lanes`      593,5  ODPADA
+//
+// WIERSZ „DZIŚ" ZMIENIŁ SIĘ Z `ODPADA` NA `WCHODZI` I TO JEST ZMIANA ZAKRESU
+// TEGO PRZYRZĄDU, a nie kosmetyka tabeli. Lot D2 wyprowadził akapit pojemności
+// z `.surface-header` do kolumny treści (para D2-02c mierzy
+// `.surface-header [data-capacity]` = 0), więc rodzeństwem pasma na tym ekranie
+// nie jest już pierwsza sekcja o wysokości 64 px, tylko rząd 16 px. Werdykt się
+// nie zmienił — `today` dalej mierzy się `NO_ACTION/NO_ACTION` po obu stronach —
+// i to NIE JEST przypadek do przemilczenia: nie zmienił się dlatego, że w tym
+// rzędzie nie stoi ani jeden `<button>`. Granica ZOSTAJE taka, jaka jest,
+// świadomie: gdyby ktoś kiedyś postawił akcję ekranu w rzędzie pojemności,
+// przyrząd ma ją ZOBACZYĆ, a nie zameldować „bez akcji". Zapisane tutaj, bo lot
+// D1 jest jedyną rzeczą między tym przyrządem a uzbrojeniem, a zakres zmieniony
+// bez przepisania własnego dowodu jest długiem oddawanym uzbrojonej bramce.
 //
 // CZTERY DALSZE WIERSZE TEJ TABELI ZNIKNĘŁY WRAZ Z LOTEM C2, i to jest jedyny
 // powód, dla którego ta granica ma dziś mniej roboty: Lejek, Odnowienia,
@@ -556,7 +575,10 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/app.js:762-763 — crumbbar(„Today”, `<span class="when">`): drugi argument nie niesie przycisku',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "RealApp Today — .surface-header z <h1> i <p> pojemności (Wave2Surfaces.tsx:209-248)",
+    // SKŁAD PASMA PRZELICZONY 2026-08-11: lot D2 wyprowadził akapit pojemności
+    // do kolumny treści, a w paśmie została data. Plik też był zły — od czasu
+    // przed tym lotem ekran mieszka w `TodaySurface.tsx`, nie w `Wave2Surfaces`.
+    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:224-235)",
   },
   {
     id: "calendar",

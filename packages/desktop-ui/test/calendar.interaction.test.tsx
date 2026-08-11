@@ -566,6 +566,32 @@ test("B5 …and EVERY meeting says why, rather than being silently inert", async
   const help = helps[0];
   assert.ok(help);
   assert.equal(help.getAttribute("aria-haspopup"), "dialog");
+  // WPIS #4 REJESTRU, MIERZONY TUTAJ, BO PRZELOT PIKSELI TU NIE DOJEŻDŻA.
+  // Kształt tej afordancji — okrągły znacznik „?" mniejszy od etykiety, przy
+  // której stoi (`v3/app.css:896-904`) — jest zmierzony parami D2-03a i D2-03b
+  // na Dzisiaj. Bliźniak na Kalendarzu bierze tę samą regułę TYLKO wtedy, gdy
+  // niesie tę samą klasę, a klienta scenariuszowego bramki układu nie da się
+  // doprowadzić do tygodnia ze spotkaniem (odmawia kalendarza), więc żaden
+  // przelot pikseli tego przycisku nie widzi. Do naprawy po przeglądzie lotu D2
+  // stał tu `ghost-button compact` ze zdaniem „Why read-only?" — słowny przycisk
+  // w rozmiarze kontrolki, czyli dokładnie ta forma, którą wpis #4 nazywa
+  // rozjazdem — obok Dzisiaj, które ten sam temat pomocy otwierało znacznikiem.
+  //
+  // TA ASERCJA JEST UDOWODNIONA, nie zadeklarowana: cofnięcie klasy do
+  // `ghost-button compact` z napisem „Why read-only?" dało 336 zielonych → 1
+  // czerwony (ten) → 336 zielonych po przywróceniu, 2026-08-11.
+  assert.equal(
+    help.className,
+    "help-mark",
+    "the Calendar trigger must take the same rule as the one on Today, or the shape measured there says nothing about this one",
+  );
+  // Nie „niepuste": znacznik jest ZNAKIEM, a etykieta idzie do `aria-label`,
+  // bo „?" sam nie mówi czytnikowi ekranu, o co pyta.
+  assert.equal(help.textContent?.trim(), "?");
+  assert.equal(
+    help.getAttribute("aria-label"),
+    "Why the calendar is read-only",
+  );
   await act(async () => {
     help.click();
   });

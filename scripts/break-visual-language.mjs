@@ -987,6 +987,78 @@ const outcome = runBreakTests({
           "the CRM navigation counts",
         ),
     },
+    {
+      // ZŁAMANIE DWUDZIESTE SZÓSTE — LICZNIK SEKCJI ZNOWU JEST TAK DUŻY, JAK
+      // NAGŁÓWEK, KTÓREGO JEST DOPISKIEM (D2-01c).
+      //
+      // TO NIE JEST WADA WYOBRAŻONA: dokładnie ten stan pojechał w locie D2
+      // i wyszedł na jaw dopiero przy przeglądzie. Lot zdjął stopień
+      // NAGŁÓWKOWI (`--text-md` → `--text-sm`) i zostawił licznik na
+      // `--text-sm`, więc stopień między nimi zniknął, a para na sam nagłówek
+      // (D2-01a) była nad tym ZIELONA — bo nagłówek ma dokładnie tę wartość,
+      // której się od niego chce. Złamanie przywraca tamten dzień.
+      name: "put the section count back at heading size: the footnote stops being a footnote",
+      expectRedContains: ["D2-01c"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.count {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);`,
+          `.count {
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);`,
+          "the Today section count size",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE ÓSME — LICZNIK ZOSTAJE MAŁY, ALE WRACA DO WAGI
+      // TEKSTU CIĄGŁEGO (D2-01d).
+      //
+      // Osobne złamanie, bo osobna para, bo osobna psucha: D2-01c czyta STOPIEŃ
+      // i po tej edycji jest ZIELONA — licznik dalej ma 12 px. Prototyp daje mu
+      // wagę 500 (`v3/screens/today.css:47`), czyli o stopień więcej niż tekst
+      // ciągły, żeby dopisek dało się odczytać przy mniejszym piśmie.
+      name: "drop the section count back to body weight: the smaller type stops being legible as a label",
+      expectRedContains: ["D2-01d"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}`,
+          `  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}`,
+          "the Today section count weight",
+        ),
+    },
+    {
+      // ZŁAMANIE DWUDZIESTE SIÓDME — WIERSZ POJEMNOŚCI ZNOWU PRZESUWA SIĘ
+      // PRZY KAŻDYM PRZELICZENIU DNIA (D2-02d).
+      //
+      // Para czyta `fontVariantNumeric`, a przed nią nie robiła tego ŻADNA para
+      // w tym pliku — więc to złamanie jest też jedynym dowodem, że przelot tę
+      // własność w ogóle widzi. Zielone złamanie znaczyłoby tu „para mierzy
+      // własną obecność", a nie „kod jest dobry".
+      name: "take the tabular numerals off the capacity line: the only all-number row on the surface goes proportional again",
+      expectRedContains: ["D2-02d"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  font-variant-numeric: tabular-nums;
+}
+
+/* Prototyp wyróżnia wolny czas WAGĄ i KOLOREM`,
+          `}
+
+/* Prototyp wyróżnia wolny czas WAGĄ i KOLOREM`,
+          "the capacity line's tabular numerals",
+        ),
+    },
   ]),
 });
 

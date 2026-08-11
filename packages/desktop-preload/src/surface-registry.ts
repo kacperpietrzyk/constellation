@@ -54,7 +54,7 @@ export const desktopSurfaceRegistry = [
   {
     // WPIS #31 REJESTRU. „Today" i „Calendar" niosły ten sam glif `cockpit`
     // (czterokomórkowa siatka) na dwóch sąsiednich wierszach nawigacji —
-    // zmierzone na powiększeniu. Prototyp stawia tam zegar (`v3/app.js:15`,
+    // zmierzone na powiększeniu. Prototyp stawia tam zegar (`v3/app.js:16`,
     // `today`), a ten zestaw ma zegar od 2026-08-07.
     id: "today",
     label: "Today",
@@ -118,7 +118,7 @@ export const desktopSurfaceRegistry = [
   {
     // WPIS #24 REJESTRU: cel nosił `relationships` — dwie sylwetki, czyli to
     // samo, co stojące pod nim „People". Glif `organization` jest budynkiem
-    // z prototypu (`v3/app.js:19`).
+    // z prototypu (`v3/app.js:20`).
     id: "organizations",
     label: "Organizations",
     icon: "organization",

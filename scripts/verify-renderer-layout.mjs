@@ -5354,6 +5354,15 @@ const ROUTED_ARRIVAL = {
   // zostać potwierdzony jako NARYSOWANY, co `walkRouteInPage` robi dla
   // każdego przystanku.
   meetings: "#main-content .meeting-surface",
+  // KALENDARZA TU NIE MA, I JEST TO POMIAR, NIE PRZEOCZENIE. Naprawa po
+  // przeglądzie lotu D2 dopisała ten przystanek razem z parą na bliźniaka
+  // znacznika pomocy i OBA PRZELOTY WRÓCIŁY `NOT_MEASURED`: klient scenariuszowy
+  // ODMAWIA kalendarza (`client/scenario-client.ts:81-94` —
+  // `availability: "provider_unavailable"`, `canRead: false`, `upcoming: []`),
+  // a przycisk rysuje się tylko nad tygodniem, w którym jakieś spotkanie stoi
+  // (`CalendarSurface.tsx`). Przystanek, na którym nie ma czego zmierzyć, to
+  // czas przelotu bez werdyktu — więc go nie ma, a bliźniak jest asertowany tam,
+  // gdzie fikstura go dosięga: `desktop-ui/test/calendar.interaction.test.tsx`.
 };
 
 // RODZAJ REKORDU, KTÓREGO SIĘ SPODZIEWAMY PO TYCH DRZWIACH. Trzy drzwi, trzy

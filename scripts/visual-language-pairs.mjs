@@ -8,6 +8,32 @@
 // `v3/app.css`. Lista rozsiana po asercjach byłaby tym samym brakiem napisanym
 // inaczej: nie dałoby się jej przeczytać ani policzyć.
 //
+// ── NUMERY LINII W `contract` GNIJĄ, I TO JEST WŁASNOŚĆ, NIE WYPADEK ─────────
+// `.ui-craft/` jest GITIGNOROWANY (`.gitignore:5`) i przepisywany w tym samym
+// przebiegu, w którym prototyp wygrywa z kontraktem — więc każdy zakres linii
+// w polu `contract` opisuje treść, której historia nie pilnuje. Zmierzone przy
+// naprawie po przeglądzie lotu D2, 2026-08-11: DZIEWIĘĆDZIESIĄT PIĘĆ cytatów
+// w tym pliku wskazywało na inne sekcje, niż nazywał ich własny nawias — dwa
+// najczęstsze zakresy (22 × „Spacing and density", 26 × „Component layer")
+// pokazywały wtedy na rampę kolorów i na motyw ciemny. Lot D2 nie wymyślił tej
+// wady, tylko powielił zastaną konwencję — i dlatego zamknięcie jej dziewięciu
+// własnych par byłoby zostawieniem w jednym pliku dwóch sprzecznych adresów tej
+// samej sekcji.
+//
+// OBOWIĄZEK NASTĘPNEGO LOTU, KTÓRY PRZEPISZE `.ui-craft/`: przeliczyć te zakresy
+// JEDNYM przebiegiem po całym pliku, nie po własnych parach. NAZWA SEKCJI
+// W NAWIASIE JEST CZĘŚCIĄ CYTATU WAŻNIEJSZĄ NIŻ LICZBY — to po niej odnajduje
+// się sekcję, kiedy liczby już nie trafiają. Numery stanu na 2026-08-11:
+// Spacing and density 85, Type 94, Shape/motion/depth 110, Dark theme 140,
+// Component layer 184, Form first 303, What the accent is allowed to mean 335.
+//
+// TEN SAM PRZEBIEG PRZELICZYŁ JE DRUGI RAZ, i to jest dowód, jak tanio ta rot
+// wraca: para D2-02d potrzebowała reguły o cyfrach tabularnych, `tokens.md` jej
+// NIE MIAŁ, więc zgodnie z zasadą „prototyp wygrywa z kontraktem" reguła weszła
+// do `### Type` — dziewięć linii, po których WSZYSTKIE zakresy od `### Shape`
+// w dół przesunęły się o dziewięć i musiały zostać przeliczone ponownie. Liczby
+// wyżej są już po tej poprawce.
+//
 // ── DLACZEGO PARA „PENDING" MUSI NIE PASOWAĆ ─────────────────────────────────
 // Wpis o pozycji, której lot jeszcze nie oddał, jest asercją NA DZISIEJSZYM
 // DRZEWIE: „ta właściwość NIE ma jeszcze wartości z prototypu". Gdyby taki wpis
@@ -71,7 +97,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 1,
     title: "the sidebar drops the glass blur",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md:140-154 (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "155-160",
@@ -91,7 +117,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 1,
     title: "the sidebar takes the sidebar plane",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md:140-154 (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "155-160",
@@ -114,7 +140,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 2,
     title: "the left column grows a second level",
     contract:
-      ".ui-craft/tokens.md:127-140 (Component layer — shell-*, nav-active-*)",
+      ".ui-craft/tokens.md:184-196 (Component layer — shell-*, nav-active-*)",
     prototype: {
       file: "v3/app.css",
       lines: "240-260",
@@ -145,7 +171,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 3,
     title: "the active tab is underlined with the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "where the reader is")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "where the reader is")',
     prototype: {
       file: "v3/app.css",
       lines: "119-122",
@@ -167,7 +193,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 3,
     title: "the active tab takes the material's top edge",
     contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+      ".ui-craft/tokens.md:110-136 (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/app.css",
       lines: "117-118",
@@ -190,7 +216,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 4,
     title: "the workspace mark is an accent tile",
-    contract: ".ui-craft/tokens.md:183-211 (Form first — ink and wash)",
+    contract: ".ui-craft/tokens.md:303-334 (Form first — ink and wash)",
     prototype: {
       file: "v3/app.css",
       lines: "169-175",
@@ -211,7 +237,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 4,
     title: 'the workspace mark stops saying "I" on every workspace',
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "169-175",
@@ -232,7 +258,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 4,
     title: "the brand row carries an accent-painted mark",
-    contract: ".ui-craft/tokens.md:183-211 (Form first — ink and wash)",
+    contract: ".ui-craft/tokens.md:303-334 (Form first — ink and wash)",
     prototype: {
       file: "v3/app.css",
       lines: "98-103",
@@ -259,7 +285,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 5,
     title: "the active destination's icon takes the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "where the reader is")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "where the reader is")',
     prototype: {
       file: "v3/app.css",
       lines: "221",
@@ -283,7 +309,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 6,
     title: "the shortcut stays quiet on rows that are not current",
     contract:
-      ".ui-craft/tokens.md:64-70 (Type — mono only for time, shortcuts, versions, IDs)",
+      ".ui-craft/tokens.md:94-108 (Type — mono only for time, shortcuts, versions, IDs)",
     prototype: {
       file: "v3/app.css",
       lines: "229-234",
@@ -306,7 +332,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 7,
     title: "the navigation row is 1.75rem, not 2.125rem",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — dense rows)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density — dense rows)",
     prototype: {
       file: "v3/app.css",
       lines: "198-204",
@@ -327,7 +353,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 7,
     title: "the group heading sits space-3 from what precedes it",
     contract:
-      ".ui-craft/tokens.md:55-63 (Spacing and density — 4/8/12px increments)",
+      ".ui-craft/tokens.md:85-92 (Spacing and density — 4/8/12px increments)",
     prototype: {
       file: "v3/app.css",
       lines: "210-216",
@@ -349,7 +375,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 8,
     title: "the window carries grain",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — material, not texture)",
+    contract:
+      ".ui-craft/tokens.md:140-154 (Dark theme — material, not texture)",
     prototype: {
       file: "v3/app.css",
       lines: "79-82",
@@ -370,7 +397,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 8,
     title: "the grain layer does not take the click",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth — Z roles)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth — Z roles)",
     prototype: {
       file: "v3/app.css",
       lines: "80",
@@ -392,7 +419,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 9,
     title: "the search control is not dimmed as a whole",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — input-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — input-*)",
     prototype: {
       file: "v3/app.css",
       lines: "183-194",
@@ -413,7 +440,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 9,
     title: "the search control drops the keycap",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — input-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — input-*)",
     prototype: {
       file: "v3/app.css",
       lines: "183-194",
@@ -435,7 +462,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 10,
     title: "the capture dock is a pill",
-    contract: ".ui-craft/tokens.md:71-80 (Shape — full radius for pills)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape — full radius for pills)",
     prototype: {
       file: "v3/app.css",
       lines: "808",
@@ -455,7 +482,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 10,
     title: "the capture dock takes the prototype's vertical padding",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/app.css",
       lines: "807",
@@ -479,7 +506,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     // deklaruje wysokości w ogóle, więc jej 34 px jest SKUTKIEM paddingu
     // i interlinii i nie da się go zacytować jako wartości. Ta para mierzy to,
     // co v3 NAPRAWDĘ mówi: żadnego `min-height`.
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/app.css",
       lines: "804-816",
@@ -501,7 +528,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 11,
     title: "the title band spans the window, not the work column",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "84-90",
@@ -528,7 +555,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 13,
     title: "the left column can be collapsed on purpose",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "152",
@@ -575,7 +602,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 14,
     title: "the right end of the tab strip is a glyph, not a word",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "135-143",
@@ -595,7 +622,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 14,
     title: "and it is square, so no label can be hiding inside it",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "135-143",
@@ -632,7 +659,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     // świeżych w Bibliotece i jednym NOWYM na `tasks:calendar`. Pełny rozpis
     // stoi przy samym tokenie (`packages/desktop-ui/src/tokens.css`), żeby nie
     // było go w dwóch miejscach.
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
       lines: "103",
@@ -652,7 +679,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 15,
     title: "the titlebar band is 2.5rem",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
       lines: "106",
@@ -676,7 +703,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 15,
     title: "the header band is 2.5rem",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
       lines: "107",
@@ -713,7 +740,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 12,
     title: "the Inbox badge takes the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is on the books")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "what is on the books")',
     prototype: {
       file: "v3/app.css",
       lines: "235-239",
@@ -752,7 +779,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 1,
     title: "the current destination is marked with a rail, not a frame",
     contract:
-      '.ui-craft/tokens.md:271-279, sekcja „Form first — ink and wash" („Ink is confined to … a 2–2.5 px rail (v3/app.css:485-487, :222-226)") oraz :291-296, „Wash rarely travels alone" („where the reference washes an object it also inks one edge of it")',
+      '.ui-craft/tokens.md:308-315, sekcja „Form first — ink and wash" („Ink is confined to … a 2–2.5 px rail (v3/app.css:485-487, :222-226)") oraz :328-333, „Wash rarely travels alone" („where the reference washes an object it also inks one edge of it")',
     prototype: {
       file: "v3/app.css",
       lines: "222-226",
@@ -782,7 +809,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 1,
     title: "and the ink stays a rail: 2.5 px, not a bar filling the row",
     contract:
-      '.ui-craft/tokens.md:271-279, sekcja „Form first — ink and wash" („Ink is confined to a mark, a rail … a 2–2.5 px rail (v3/app.css:485-487, :222-226)"; „Ink may not fill a row, a card, a column, a panel, or a plane")',
+      '.ui-craft/tokens.md:308-315, sekcja „Form first — ink and wash" („Ink is confined to a mark, a rail … a 2–2.5 px rail (v3/app.css:485-487, :222-226)"; „Ink may not fill a row, a card, a column, a panel, or a plane")',
     prototype: {
       file: "v3/app.css",
       lines: "222-226",
@@ -804,7 +831,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 1,
     title: "and it stops framing the row with a full accent border",
     contract:
-      '.ui-craft/tokens.md:279-283, sekcja „Form first — ink and wash" (Ink may not fill a row … a one-pixel accent edge around a PANEL is the named exception, and a navigation row is not one)',
+      '.ui-craft/tokens.md:316-320, sekcja „Form first — ink and wash" (Ink may not fill a row … a one-pixel accent edge around a PANEL is the named exception, and a navigation row is not one)',
     prototype: {
       file: "v3/app.css",
       lines: "218-220",
@@ -841,7 +868,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 1,
     title: "the section heading takes the prototype's size",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type scale)",
+    contract: ".ui-craft/tokens.md:94-108 (Type — scale)",
     prototype: {
       file: "v3/screens/today.css",
       lines: "42-45",
@@ -866,7 +893,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 1,
     title: "and its weight, instead of being bigger and lighter",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type scale)",
+    contract: ".ui-craft/tokens.md:94-108 (Type — scale)",
     prototype: {
       file: "v3/screens/today.css",
       lines: "42-45",
@@ -885,6 +912,62 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "literal", value: "600" },
     status: "enforced",
   },
+  {
+    // DOPISANE PRZY NAPRAWIE PO PRZEGLĄDZIE TEGO LOTU. Dwie pary wyżej pilnują
+    // NAGŁÓWKA, a wpis #2 jest o RELACJI: dowód rejestru cytuje
+    // `v3/screens/today.css:42-49`, czyli nagłówek RAZEM z licznikiem, a lot
+    // zawęził cytat do `42-45`. Skutek był mierzalny i niemierzony — nagłówek
+    // zszedł z 1 rem na 0,8125, licznik został na 0,8125, więc dopisek zrównał
+    // się z rzeczą, do której jest dopiskiem. Para na sam nagłówek jest nad tą
+    // wadą ZIELONA, bo nagłówek ma dokładnie tę wartość, której się od niego
+    // chce.
+    id: "D2-01c",
+    lot: "D2",
+    position: 1,
+    title: "and the count beside it stays one step quieter than the heading",
+    contract: ".ui-craft/tokens.md:94-108 (Type — scale)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "46-49",
+      value:
+        "`.td-sec-head .n { font-size: var(--text-xs); color: var(--text-quaternary); font-weight: 500 }` — stopień NIŻEJ niż `h3` w tym samym wierszu (`:42-45`); to samo rozstrzygnięcie niesie drugie pasmo prototypu, `v3/app.css:692`",
+    },
+    subject: {
+      // ZAGNIEŻDŻENIE, NIE SAMA KLASA: `.count` jest nazwą modułu i mogłaby
+      // kiedyś stanąć poza wierszem nagłówka. Para pyta o licznik STOJĄCY
+      // W NAGŁÓWKU, bo to jest relacja, którą wpis rejestru opisuje.
+      selector: '[class*="_sectionHead_"] [class*="_count_"]',
+      why: "two of the three section heads on the landing surface draw one (TodaySurface.tsx:367, :439) and both take the same rule",
+      app: "packages/desktop-ui/src/today.module.css (.count)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-xs" },
+    status: "enforced",
+  },
+  {
+    // WAGA OSOBNO OD STOPNIA, Z TEGO SAMEGO POWODU, CO PRZY D2-01a/D2-01b
+    // trzydzieści linii wyżej — i dopisane dlatego, że pierwsza wersja tej
+    // naprawy ruszyła OBIE liczby (`400` → `500`), a napisała parę tylko na
+    // jedną. Reguła własnego pliku, zastosowana do własnej dostawy.
+    id: "D2-01d",
+    lot: "D2",
+    position: 1,
+    title: "and it is a footnote's weight, not body text dropped in",
+    contract: ".ui-craft/tokens.md:94-108 (Type — headings and body weights)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "46-49",
+      value: "`font-weight: 500`",
+    },
+    subject: {
+      selector: '[class*="_sectionHead_"] [class*="_count_"]',
+      why: "same subject as D2-01c",
+      app: "packages/desktop-ui/src/today.module.css (.count)",
+    },
+    read: { property: "fontWeight" },
+    expect: { kind: "literal", value: "500" },
+    status: "enforced",
+  },
 
   // ── POZYCJA 2 (wpis #3) — data i pojemność zamieniają się miejscami ──────
   {
@@ -892,7 +975,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 2,
     title: "the date stands at the band's end, quiet and sentence-cased",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type scale)",
+    contract: ".ui-craft/tokens.md:94-108 (Type — scale)",
     prototype: {
       file: "v3/screens/today.js",
       lines: "129-130",
@@ -954,6 +1037,45 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "count", equals: 0 },
     status: "enforced",
   },
+  {
+    // DOPISANE PRZY NAPRAWIE PO PRZEGLĄDZIE TEGO LOTU. Lot przepisał `.capacity`
+    // z cytatem na `v3/screens/today.css:12-15` i wziął z tamtej reguły DWIE
+    // deklaracje z trzech — stopień i kolor — a zostawił cyfry tabularne, mimo
+    // że trzydzieści linii wyżej wziął tę samą deklarację dla `.bandDate`.
+    //
+    // ORAZ: DO TEJ PARY ŻADNA W TYM PLIKU NIE CZYTAŁA `fontVariantNumeric`,
+    // więc zdanie „przelot tę własność widzi" było domysłem o przyrządzie,
+    // a nie jego pomiarem. Teraz jest pomiarem.
+    id: "D2-02d",
+    lot: "D2",
+    position: 2,
+    title: "and its numbers stop shifting as the day is recounted",
+    // KONTRAKT DOPISANY W TYM SAMYM PRZEBIEGU, bo pierwsza wersja tej pary
+    // cytowała `### Type` pod nawiasem „mono only for time…", czyli regułę
+    // o PIŚMIE MASZYNOWYM — a to jest dokładnie ta wada, którą ten commit
+    // zamyka gdzie indziej: nawias nazywający treść, której nie ma pod adresem.
+    // Prototyp regułę MIAŁ, kontrakt jej nie miał, więc zgodnie z zasadą
+    // „prototyp wygrywa z kontraktem" reguła weszła do `tokens.md`, a nie
+    // cytat został naciągnięty.
+    contract:
+      ".ui-craft/tokens.md:99-107 (Type — a row of recounted numbers takes tabular figures)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "12-15",
+      value:
+        "`.td-capacity { font-size: var(--text-sm); color: var(--text-tertiary); margin-bottom: var(--space-5); font-variant-numeric: tabular-nums }` — trzy deklaracje, nie dwie",
+    },
+    subject: {
+      // BEZ ZAKRESU `.surface-header`, ODWROTNIE NIŻ D2-02c: tamta para pyta,
+      // czy wiersza NIE MA w paśmie, ta — jak jest złożony tam, gdzie stoi.
+      selector: "[data-capacity]",
+      why: "the same declared attribute, read where the line actually stands: this is the only row on the surface made entirely of numbers that change through the day",
+      app: "packages/desktop-ui/src/today.module.css (.capacity)",
+    },
+    read: { property: "fontVariantNumeric" },
+    expect: { kind: "literal", value: "tabular-nums" },
+    status: "enforced",
+  },
 
   // ── POZYCJA 3 (wpis #4) — pomoc na żądanie jest przypisem ────────────────
   {
@@ -1007,7 +1129,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 4,
     title: "the shell tab stops growing into the free space of the strip",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "107-115",
@@ -1028,7 +1150,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 4,
     title: "and its floor stops being wider than a short label",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "107-115",
@@ -1053,7 +1175,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 5,
     title: "the window smooths its type the way the reference does",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "13",
@@ -1079,7 +1201,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 6,
     title: "the module chevron stands before the label, not at the far edge",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.js",
       lines: "599",
@@ -1110,7 +1232,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     contract: ".ui-craft/brief.md:32 (Meaning earns color — form first)",
     prototype: {
       file: "v3/app.js",
-      lines: "15",
+      lines: "16",
       value: '`today: "M8 2v3 … M2.5 8a5.5 5.5 0 1 0 11 0 …"` — zegar',
     },
     subject: {
@@ -1157,7 +1279,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     contract: ".ui-craft/brief.md:32 (Meaning earns color — form first)",
     prototype: {
       file: "v3/app.js",
-      lines: "19",
+      lines: "20",
       value:
         '`org: "M3 13.5V4.2a1 1 0 0 1 1-1h4.5 … M5.2 6h1.6M5.2 8.6h1.6M5.2 11.2h1.6"` — budynek z oknami',
     },
@@ -1177,7 +1299,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 8,
     title: "navigation rows carry counts beyond Tasks and Inbox",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/app.js",
       lines: "580-591",
@@ -1210,7 +1332,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: "D2",
     position: 9,
     title: "the section heading row has a right end, with something in it",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/today.js",
       lines: "152",
@@ -1373,8 +1495,25 @@ export const VISUAL_LANGUAGE_EXPECTED = {
   // autorstwa planu nie ma STANU w fiksturze. Pierwszy wpis mówi, czego
   // brakuje w produkcie, drugi — czego brakuje w przyrządzie, i drugi niesie
   // swój warunek wyjścia.
-  pairs: 46,
-  enforced: 45,
+  // 46 → 47 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D2, 2026-08-11, I NIE JEST TO ANI
+  // nowa pozycja, ani rozpad istniejącej: to POŁOWA POZYCJI 1, która pojechała
+  // bez pomiaru. Lot zdjął nagłówkowi sekcji stopień i tym samym ZRÓWNAŁ go
+  // z jego własnym licznikiem, który został na `--text-sm` — a rejestr cytuje
+  // w dowodzie wpisu #2 zakres `v3/screens/today.css:42-49`, czyli nagłówek
+  // RAZEM z licznikiem. Regresję wywołał sam lot, w tej samej rodzinie
+  // selektorów, i nie mierzyła jej ani jedna para. `positionsWithPairs` się nie
+  // rusza — pozycja była objęta, tylko połową.
+  //
+  // 47 → 48 W TEJ SAMEJ NAPRAWIE I Z TEGO SAMEGO POWODU, na pozycji 2: lot
+  // przepisał `.capacity` z cytatem na regułę prototypu i wziął z niej dwie
+  // deklaracje z trzech. `positionsWithPairs` znowu bez zmian.
+  //
+  // 48 → 49 W TEJ SAMEJ NAPRAWIE: `.count` zszedł z wagi 400 na 500 razem ze
+  // stopniem, a para była napisana tylko na stopień. Ten plik trzyma trzydzieści
+  // linii wyżej regułę „waga osobno od stopnia, bo psuje się osobno" i naprawa
+  // złamała ją na własnej dostawie.
+  pairs: 49,
+  enforced: 48,
   pending: 1,
   notCovered: 4,
   lots: {
@@ -1562,7 +1701,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the stage meter is painted with the indigo ramp",
-    contract: ".ui-craft/tokens.md:183-211 (Form first — ink and wash)",
+    contract: ".ui-craft/tokens.md:303-334 (Form first — ink and wash)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "80-84",
@@ -1609,7 +1748,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the stage meter animates its width",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "83",
@@ -1661,7 +1800,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the card carries a resting shadow",
     contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+      ".ui-craft/tokens.md:110-136 (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "98-102",
@@ -1683,7 +1822,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "restyle",
     title: "the stale day badge is filled, not only tinted",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — status-*)",
     prototype: {
       file: "v3/app.css",
       lines: "426",
@@ -1709,7 +1848,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "prescribed",
     title: "the stale day badge carries a clock",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/pipeline.js",
       lines: "326",
@@ -1731,7 +1870,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 6,
     kind: "restyle",
     title: "the column heading sticks while the column scrolls",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth — Z roles)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth — Z roles)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "58-65",
@@ -1769,7 +1908,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the owner avatar takes the elevated plane",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md:140-154 (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "431-436",
@@ -1794,7 +1933,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the owner avatar takes an edge",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme)",
+    contract: ".ui-craft/tokens.md:140-154 (Dark theme)",
     prototype: {
       file: "v3/app.css",
       lines: "431-436",
@@ -1817,7 +1956,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the create toggle is painted as the primary action",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is primary")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "what is primary")',
     prototype: {
       file: "v3/app.css",
       lines: "321-332",
@@ -1847,7 +1986,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "prescribed",
     title: "the next step carries a glyph",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "196-202",
@@ -1869,7 +2008,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "prescribed",
     title: "the waiting note carries a glyph",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "186-194",
@@ -1891,7 +2030,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 10,
     kind: "restyle",
     title: "the Stages control stops being permanently outlined",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — quiet controls)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — quiet controls)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "8-16",
@@ -1916,7 +2055,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 11,
     kind: "restyle",
     title: "the card declares a transition",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "103-107",
@@ -1987,7 +2126,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "a section boundary reads louder than a row boundary",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "11",
@@ -2009,7 +2148,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 3,
     kind: "prescribed",
     title: "the row mark is drawn, not typed",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "52-55",
@@ -2031,7 +2170,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "prescribed",
     title: "the row buttons carry glyphs",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/renewals.js",
       lines: "84-85, 97, 175",
@@ -2054,7 +2193,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "prescribed",
     title: "a mid-term change carries its own mark",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — status-*)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "170",
@@ -2077,7 +2216,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the create toggle is painted as the primary action",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is primary")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "what is primary")',
     prototype: {
       file: "v3/app.css",
       lines: "321-332",
@@ -2101,7 +2240,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "prescribed",
     title: "the count leaves the button row",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell bands)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell bands)",
     prototype: {
       file: "v3/app.css",
       lines: "295-301",
@@ -2159,7 +2298,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 8,
     kind: "prescribed",
     title: "Show/Hide draws its own chevron",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "31-32",
@@ -2182,7 +2321,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the row takes the prototype's vertical padding",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "40",
@@ -2204,7 +2343,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the section heading declares tracking",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "17",
@@ -2234,7 +2373,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 1,
     kind: "restyle",
     title: "the project record title is --text-xl",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "651-652",
@@ -2256,7 +2395,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 1,
     kind: "restyle",
     title: "the task record title is --text-xl",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "651-652",
@@ -2284,7 +2423,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // „oczekująca, a pasuje". Waga 620 kontra 600 jest jawnie POZA zakresem
     // lotu („nie rusza wag pisma 580/590/620"). Zostaje tracking: v3 deklaruje
     // -0.022em, aplikacja nie deklaruje nic.
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "651",
@@ -2306,7 +2445,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the plan and the deadline are two cells, not one sentence",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "214-251",
@@ -2328,7 +2467,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the operational signal gets a band",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — status-*)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "203-211",
@@ -2412,7 +2551,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "restyle",
     title: "every comment is a card, not only the agent's",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "368-371",
@@ -2439,7 +2578,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "restyle",
     title: "the decision number steps up a size",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "55-62",
@@ -2462,7 +2601,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 6,
     kind: "restyle",
     title: "the task's micro-heading is --text-2xs like every other one",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "89-92",
@@ -2484,7 +2623,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the exit rail hangs on a negative indent",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "107-112",
@@ -2507,7 +2646,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 8,
     kind: "restyle",
     title: "the record tab bar sticks",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth — Z roles)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth — Z roles)",
     prototype: {
       file: "v3/app.css",
       lines: "655-658",
@@ -2547,7 +2686,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the open record tab is underlined with the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "where the reader is")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "where the reader is")',
     prototype: {
       file: "v3/app.css",
       lines: "666",
@@ -2570,7 +2709,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the offers are subordinate rows, not equal cards",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "343",
@@ -2614,7 +2753,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 10,
     kind: "restyle",
     title: "a list on a record has a container",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md:110-136 (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "142",
@@ -2674,7 +2813,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 11,
     kind: "restyle",
     title: "the composition bar is 5px, not 8px",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/projects.css",
       lines: "25-28",
@@ -2725,7 +2864,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 12,
     kind: "restyle",
     title: "the record family has ONE reading measure",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "93",
@@ -2817,7 +2956,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the selected note row stops painting a literal shadow",
     contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+      ".ui-craft/tokens.md:110-136 (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "145-150",
@@ -2889,7 +3028,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the note row is laid out as a grid",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "138-143",
@@ -2925,7 +3064,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "prescribed",
     title: "the date has its own lane instead of sharing the context string",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "175-178",
@@ -2950,7 +3089,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     title: "the knowledge welcome heading declares a size",
     // TO JEST DOKŁADNIE TA WADA, DLA KTÓREJ ZBUDOWANO SONDĘ TYTUŁU — i obie
     // siedzą poza jej podmiotem, bo `TITLE_SELECTOR` to `#surface-title`.
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "242-245",
@@ -3010,7 +3149,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 3,
     kind: "restyle",
     title: "the sources welcome heading declares a size",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "242-245",
@@ -3048,7 +3187,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "restyle",
     title: "the panel heading declares a weight",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "92-97",
@@ -3104,7 +3243,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 6,
     kind: "prescribed",
     title: '"What rests on this" says what kind of record each line is',
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "409-414",
@@ -3136,7 +3275,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the arrangement switcher gets a sunken track",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md:140-154 (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "336-339",
@@ -3170,7 +3309,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 8,
     kind: "prescribed",
     title: "the folder tree draws folders",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "52-53",
@@ -3200,7 +3339,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the selected source row stops painting a literal shadow",
     contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+      ".ui-craft/tokens.md:110-136 (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "145-150",
@@ -3265,7 +3404,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // TA POZYCJA JEST PRZYKŁADEM Z SEKCJI P5 BRIEFU: konsument używa POŁOWY pary
     // status-*, a komentarz nad nim twierdzi, że używa całej. Bramka kontrastu
     // mierzy pary TOKENÓW, więc jest na to ślepa.
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — status-*)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "444",
@@ -3305,7 +3444,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "prescribed",
     title: "the second settings navigator is gone",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md:184-196 (Component layer — shell-*)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "36-80",
@@ -3339,7 +3478,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "and the one that stays says where the reader is",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is active")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "what is active")',
     prototype: {
       file: "v3/screens/settings.css",
       lines: "74-80",
@@ -3367,7 +3506,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // ANI JEDNEJ reguły — sprawdzone grepem — więc etykieta dziedziczy siatkę
     // `.nav-item` z torem ikony, a `nowrap` celuje w `nth-child(2)`, którego ta
     // kolumna nie renderuje.
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "61-80",
@@ -3411,7 +3550,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 3,
     kind: "restyle",
     title: "and the label gets a track of its own instead of the icon track",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "61-71",
@@ -3435,7 +3574,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the two named settings actions are filled with the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is primary")',
+      '.ui-craft/tokens.md:335-378 (What the accent is allowed to mean — "what is primary")',
     prototype: {
       file: "v3/app.css",
       lines: "321-332",
@@ -3509,7 +3648,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "restyle",
     title: "the explanation takes a reading measure instead of a column",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md:85-92 (Spacing and density)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "199-204",
@@ -3548,7 +3687,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the destination above an open project record is marked too",
     contract:
-      '.ui-craft/tokens.md:298-311, sekcja „What the accent is allowed to mean" („1. Where the reader is. The current destination, tab, saved view, folder or day")',
+      '.ui-craft/tokens.md:340-345, sekcja „What the accent is allowed to mean" („1. Where the reader is. The current destination, tab, saved view, folder or day")',
     prototype: {
       file: "v3/app.js",
       lines: "573",
@@ -3997,6 +4136,58 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
  */
 export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
   {
+    // NIEODDANE PRZEZ NAPRAWĘ PO PRZEGLĄDZIE LOTU D2, WYPISANE ZAMIAST
+    // ZAMKNIĘTE. Prototyp ma DOKŁADNIE JEDNĄ formę kontekstowego wyzwalacza
+    // pomocy i stawia ją dwanaście razy przez jedną funkcję (`v3/app.js:2001`
+    // → `class="helpb"`, `v3/app.css:896-904`). Ta aplikacja ma dziś DWIE:
+    // okrągły znacznik `.help-mark` na Dzisiaj i na Kalendarzu (dwa miejsca,
+    // objęte parami D2-03a/b/c) oraz dzielony komponent `help/TopicHelp.tsx`
+    // — słowny wyzwalacz z kropkowanym podkreśleniem, bez ramki i bez okręgu
+    // (`help/topic-help.module.css:21-29`) — zamontowany w dziesięciu
+    // miejscach na siedmiu ekranach.
+    lot: "D2",
+    position: 3,
+    scope: "trzecia forma tego samego wyzwalacza — dziesięć montaży TopicHelp",
+    title: "on-demand help has one shape in the reference and two in the app",
+    prototype:
+      "v3/app.css:896-904 (`.helpb`), wywołania m.in. v3/screens/calendar.js:205, screens/inbox.js:292, screens/meetings.js:439",
+    app: "packages/desktop-ui/src/help/TopicHelp.tsx:21-51 + help/topic-help.module.css:21-29 (StrategicDepthSurface.tsx:897, MeetingsSurface.tsx:1457, pipeline/PipelineSurface.tsx:980, :1001, :1002, library/NotesReading.tsx:362, library/SourcesReading.tsx:162, :371, renewals/RenewalsSurface.tsx:443, :1076)",
+    why:
+      "Przepięcie `TopicHelp` na okrągły znacznik nie jest zmianą klasy: jego etykietą JEST całe pytanie " +
+      "(„What do these three states mean?”), które przy tej formie musiałoby zejść do `aria-label`, " +
+      "a reguła `white-space: normal` w tym module powstała z POMIARU — 181 px nadmiaru w czytelni Źródeł " +
+      "przy 300% tekstu. Zmiana dotyka siedmiu ekranów i dwóch bramek szerokości naraz, więc jest LOTEM, " +
+      "nie naprawą po przeglądzie. Kontrakt " +
+      "(`.ui-craft/surfaces/contextual-concept-help.md`) mówi o tym wprost, zamiast deklarować formę, " +
+      "której app nie ma w dziesięciu na dwanaście miejsc.",
+    greenWrong:
+      "Jedenasty montaż `TopicHelp` może dołożyć trzecią formę pomocy i żaden przelot tego nie zobaczy.",
+  },
+  {
+    // ZMIERZONE, NIE ZAŁOŻONE: naprawa po przeglądzie lotu D2 NAPISAŁA tę parę
+    // (`[data-meeting-help]`, `width` = 1,125 rem) razem z markerem przybycia
+    // Kalendarza, przeleciała bramkę i dostała `NOT_MEASURED` w OBU motywach.
+    // Dopiero ten przelot powiedział, dlaczego.
+    lot: "D2",
+    position: 3,
+    scope: "połowa pozycji — piksel bliźniaka na Kalendarzu",
+    title: "the Calendar twin of the help mark has no pixel measurement",
+    prototype:
+      "v3/app.css:896-904 (`.helpb`), v3/screens/calendar.js:205, :207",
+    app: "packages/desktop-ui/src/CalendarSurface.tsx (`.help-mark`, `[data-meeting-help]`)",
+    why:
+      "Klient scenariuszowy ODMAWIA kalendarza (`client/scenario-client.ts:81-94`: " +
+      '`availability: "provider_unavailable"`, `canRead: false`, `upcoming: []`), a przycisk rysuje ' +
+      "się wyłącznie nad tygodniem, w którym stoi jakieś spotkanie — i tak ma być, bo tydzień bez " +
+      "spotkań nie tłumaczy zachowania rzeczy, której nie ma na ekranie. Wyjściem jest DRUGI zestaw " +
+      "danych (klient scenariuszowy z czytelnym kalendarzem), nie linijka. Sam KSZTAŁT tej afordancji " +
+      "jest zmierzony parami D2-03a i D2-03b na Dzisiaj — obie kontrolki biorą tę samą regułę " +
+      "`.help-mark` — a to, że kontrolka Kalendarza NIĄ JEST, asertuje " +
+      "`desktop-ui/test/calendar.interaction.test.tsx`.",
+    greenWrong:
+      "Kontrolka pomocy na Kalendarzu może wrócić do dowolnego ROZMIARU bez zmiany klasy i żaden przelot pikseli tego nie zobaczy.",
+  },
+  {
     lot: 2,
     position: 1,
     scope: "cała pozycja",
@@ -4234,8 +4425,22 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // pudełko. Zielone były wtedy wszystkie przyrządy naraz. Ta para jest
   // pierwszym przystankiem tej mapy na Spotkaniach; marker przybycia dopisany
   // razem z nią (`ROUTED_ARRIVAL.meetings`).
+  //
+  // 76 ZOSTAJE 76 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D2, 2026-08-11, I TA LICZBA
+  // JEST WYNIKIEM POMIARU, NIE REZYGNACJI. Naprawa dopisała siedemdziesiątą
+  // siódmą parę — bliźniak znacznika pomocy na Kalendarzu — razem z markerem
+  // przybycia dla tego ekranu, i OBA PRZELOTY (dark, light) wróciły
+  // `NOT_MEASURED`: klient scenariuszowy odmawia kalendarza
+  // (`client/scenario-client.ts:81-94`), a przycisk rysuje się tylko nad
+  // tygodniem ze spotkaniem. Para i przystanek zostały ZDJĘTE zamiast wyciszone
+  // polem `blind` — przystanek bez ani jednego werdyktu to czas przelotu
+  // udający pokrycie. Bliźniak jest asertowany tam, gdzie fikstura go dosięga
+  // (`desktop-ui/test/calendar.interaction.test.tsx`), a brak pomiaru
+  // PIKSELOWEGO stoi wypisany niżej, w `notCovered`.
   pairs: 76,
-  notCovered: 9,
+  // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
+  // bliźniaka na Kalendarzu. Powody przy wpisach.
+  notCovered: 11,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //

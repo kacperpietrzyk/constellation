@@ -97,7 +97,7 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
       <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
     ),
     /* WPIS #24 REJESTRU — BUDYNEK, NIE DRUGIE DWIE SYLWETKI.
-       `v3/app.js:19` (`org`), przeskalowany ×1,5 jak cały ten zestaw. Do tego
+       `v3/app.js:20` (`org`), przeskalowany ×1,5 jak cały ten zestaw. Do tego
        lotu cel „Organizations" nosił glif `relationships` — dwie sylwetki
        z kreską łącznika, której przy 16 px nie widać — a tuż pod nim, w TEJ
        SAMEJ grupie CRM, stoi „People" z dwiema sylwetkami. Rejestr zmierzył to
@@ -117,10 +117,16 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
        zegar ten zestaw MA od 2026-08-07 (`clock` niżej), więc nowy jest tylko
        ten jeden znak, a nie dwa.
 
-       RÓŻNICA WOBEC `meetings` JEST ZAMIERZONA I NAZWANA: `meetings` to też
-       kartka, ale z podziałką dni w środku (`M8 14h3M13 14h3`), a ta jest
-       pusta — dokładnie tak rozróżnia je prototyp (`v3/app.js:37` wobec `:20`).
-       Dwa cele w dwóch różnych grupach nawigacji, dwa znaki tej samej rodziny. */
+       RÓŻNICA WOBEC `meetings` JEST ZAMIERZONA, ALE NIE JEST RÓŻNICĄ
+       PROTOTYPU, i to prostuje naprawa po przeglądzie tego lotu. Tutaj oba
+       znaki są z jednej rodziny: `meetings` to kartka z podziałką dni
+       (`M8 14h3M13 14h3`), a ta jest pusta. Prototyp rozdziela je INACZEJ —
+       jego `meeting` (`v3/app.js:23`) to nie kartka, tylko kamera (zaokrąglony
+       prostokąt z trójkątem obiektywu), więc para „pusta kartka wobec kartki
+       z podziałką" jest rozstrzygnięciem TEJ aplikacji, nie cytatem. Adoptowany
+       z prototypu jest sam `calendar`; `meetings` zostaje starszym glifem tego
+       zestawu, bo przerysowanie go na kamerę byłoby zmianą, o którą nie prosi
+       żaden wpis rejestru. Dwa cele w dwóch różnych grupach nawigacji. */
     calendar: (
       <path d="M3.75 6.75a1.5 1.5 0 0 1 1.5-1.5h13.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-12ZM3.75 10.5h16.5M8.25 3.75v3M15.75 3.75v3" />
     ),
@@ -171,7 +177,7 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     warn: (
       <path d="M12 9v4.5M12 16.5h.015M10.65 4.35a1.5 1.5 0 0 1 2.7 0l7.5 13.5A1.5 1.5 0 0 1 19.5 20.1H4.5a1.5 1.5 0 0 1-1.35-2.25l7.5-13.5Z" />
     ),
-    /* `v3/app.js:56` — "this leads somewhere", on a link out of a row. */
+    /* `v3/app.js:54` — "this leads somewhere", on a link out of a row. */
     arrow: <path d="M5.25 12h13.5M13.5 6.75 18.75 12 13.5 17.25" />,
     /* `v3/app.js:28` and `:29`. The prototype ALSO carries a second, slightly
        smaller pair under `caretRight`/`caretDown` in
