@@ -3105,6 +3105,92 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "accent" },
     status: "enforced",
   },
+
+  // ══ FAZA C, LOT C5 — KONTROLKA WYBORU W PASIE AKCJI ═══════════════════════
+  // Tutaj, a nie w mapie powłoki, z tego samego powodu co C1-02: podmiot
+  // rysuje się WYŁĄCZNIE po otwarciu rekordu projektu.
+  //
+  // JEDNO ZDANIE PROTOTYPU, DWIE PARY. `.st-select`
+  // (`v3/screens/settings.css:190-194`) i `.btn` (`v3/app.css:306-314`) mają co
+  // do wartości TĘ SAMĄ geometrię — wysokość 1,75 rem, wyściółka 0,5 rem,
+  // `--radius-sm`, `--text-sm` — i ani jedno, ani drugie nie deklaruje
+  // szerokości. Prototyp ma dokładnie JEDEN `<select>` w całym drzewie, więc to
+  // jest cała jego wypowiedź o kontrolkach wyboru i brzmi ona: kontrolka stoi
+  // tak jak przycisk obok niej. Ta aplikacja ma inne metryki przycisku niż
+  // prototyp (`--radius-md`, 2 rem), więc PRZENOSI SIĘ RELACJA, a nie liczby —
+  // dokładnie tak, jak przy `.compact` w locie C2.
+  //
+  // DLACZEGO DWIE, A NIE JEDNA. Rozmiar pisma i promień to dwie różne reguły
+  // w dwóch różnych miejscach kaskady: stopień pisma schodził z `body` przez
+  // `font: inherit` grupowego resetu (`styles.css:526-532`), a promień
+  // deklarowała goła reguła `select` (`:599-606`). Jedna para pilnowałaby
+  // jednej z nich i milczała o drugiej — a lot oddaje obie.
+  //
+  // DLACZEGO NIE MA TU PARY NA SZEROKOŚĆ, choć lot ruszył ją w trzech
+  // miejscach. Szerokość kontrolki wyboru NIE JEST właściwością wyrażalną
+  // selektorem: `<select>` bierze szerokość najszerszej OPCJI, więc liczba
+  // pikseli zależy od fikstury, a nie od arkusza — asercja na niej gniłaby przy
+  // pierwszej zmianie danych. Właściwość, która to niesie (`flex-grow` na
+  // `.settings-control select` i `.railSelect`), jest wyrażalna, ale jej
+  // podmioty nie są dziś DOSIĘGALNE tym spacerem: `.settings-control select`
+  // ma w Ustawieniach ponad pół tuzina dopasowań, czyli wraca NOT_MEASURED,
+  // a `.railSelect` rysuje się tylko przy niepustej liście kandydatów, czego
+  // ten harness nie gwarantuje. Obie stoją wypisane w raporcie lotu jako
+  // oddane BEZ pary.
+  {
+    id: "C5-01a",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "the select in the record's action strip takes the type size of the buttons beside it",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Control size", dopisany w tym samym locie (kontrakt milczał o geometrii kontrolki wyboru; prototyp nie)',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "190-194",
+      value:
+        "`.st-select { font-size: var(--text-sm) }` — ta sama wartość, co `.btn { font-size: var(--text-sm) }` (`v3/app.css:306-314`), czyli kontrolka niesie stopień pisma przycisku obok niej",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // `_crumbs_` JEST TU JEDYNĄ NAZWĄ BEZ KOLIZJI, i to jest sprawdzone,
+      // a nie założone: `.actions` deklarują TRZY moduły (`inbox.module.css`,
+      // `tasks/saved-view-filters.module.css`, `record/record-comments.module.css`)
+      // obok tego, więc `[class*="_actions_"]` mogłoby złapać cudzy pas na tym
+      // samym ekranie. `.crumbs` deklaruje w całym drzewie wyłącznie
+      // `record/record-screen.module.css:31`.
+      selector: '[data-record-kind="project"] [class*="_crumbs_"] select',
+      why: "the only <select> in this application with no class rule at all — the whole of its form came from the bare `select` rule of the global sheet, so the subject is the element itself and not a name someone can rename",
+      app: "packages/desktop-ui/src/record/record-screen.module.css (.actions select), Wave2Surfaces.tsx:652-664",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-sm" },
+    status: "enforced",
+  },
+  {
+    id: "C5-01b",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title: "and the same corner as the buttons beside it",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "190-194",
+      value:
+        "`.st-select { border-radius: var(--radius-sm) }` — znowu ta sama wartość, co `.btn` (`v3/app.css:306-314`); przenosi się RELACJA (kontrolka stoi jak przycisk obok niej), bo przycisk tej aplikacji bierze `--radius-md`, nie `--radius-sm` (`styles.css:843-853`)",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[data-record-kind="project"] [class*="_crumbs_"] select',
+      why: "same subject as C5-01a",
+      app: "packages/desktop-ui/src/record/record-screen.module.css (.actions select)",
+    },
+    read: { property: "borderTopLeftRadius" },
+    expect: { kind: "token", token: "--radius-md" },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -3306,7 +3392,16 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // nadrzędny otwartego rekordu projektu nie był mierzony przez nic: rejestr
   // Fazy 4 zgłosił go dwa razy (ekran rekordu, komentarze na projekcie),
   // a mapa powłoki go nie dosięga, bo podmiot rysuje się dopiero za nawigacją.
-  pairs: 63,
+  //
+  // 63 → 65 PRZY LOCIE C5 FAZY C, 2026-08-11, i znowu jest to NOWA POZYCJA,
+  // nie rozpad istniejącej. Kontrolki wyboru nie mierzyło w tej fali NIC:
+  // spis B1 czyta ich TŁO i deklaruje wprost, że natywna strzałka do niego
+  // nie należy (`scripts/control-paint.mjs:117-118`), a spis B2 szuka
+  // w paśmie PRZYCISKU o klasie akcji, więc goły `<select>` stojący w tym
+  // samym paśmie jest dla niego niewidoczny. Dwie pary, bo jedno zdanie
+  // prototypu („kontrolka stoi jak przycisk obok niej") schodzi tu z dwóch
+  // różnych miejsc kaskady — powód stoi przy wpisach.
+  pairs: 65,
   notCovered: 9,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
@@ -3355,6 +3450,17 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       pairs: 1,
       positionsWithPairs: 1, // 2
       positionsWithoutPairs: [1],
+    },
+    C5: {
+      // Lot C5 ma w swoim zadaniu JEDNĄ pozycję — kontrolkę wyboru z systemową
+      // strzałką w paśmie nagłówka — i ta jedna pozycja jest tu objęta parą
+      // (dwiema). Trafień lot naliczył trzy, ale trafienie to MIEJSCE, nie
+      // pozycja: wszystkie trzy niosą to samo zdanie prototypu, a rachunek
+      // pozycji jest rachunkiem ZDAŃ.
+      positionsInBrief: 1,
+      pairs: 2,
+      positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
     },
     2: {
       // faza-3-build-brief.md:230-241

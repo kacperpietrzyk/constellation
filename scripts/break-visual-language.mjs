@@ -553,6 +553,50 @@ const outcome = runBreakTests({
           "the primary action's shadow role",
         ),
     },
+    {
+      // ZŁAMANIE DZIESIĄTE — DLA PARY LOTU C5, czyli dla kontrolki wyboru
+      // stojącej w paśmie akcji rekordu projektu.
+      //
+      // ODTWARZA DOKŁADNIE STAN SPRZED TEGO LOTU, a nie wadę wyobrażoną:
+      // przed C5 `.actions select` nie istniało w ogóle, więc goły `<select>`
+      // brał całą swoją postać z gołej reguły `select` arkusza globalnego —
+      // stopień pisma odziedziczony po `body` (`--text-base`, 0,875 rem) obok
+      // sąsiadów o `--text-sm` (0,8125 rem) i `--radius-sm` obok ich
+      // `--radius-md`. Skasowanie tej jednej reguły cofa OBIE własności naraz.
+      //
+      // DLACZEGO TO IDZIE NA CZERWONO: obie pary czytają `getComputedStyle` na
+      // `[data-record-kind="project"] [class*="_crumbs_"] select` po otwarciu
+      // rekordu projektu i porównują z tokenem rozwiązanym W TEJ SAMEJ
+      // STRONIE. Bez tej reguły `fontSize` wraca 14px przy żądanych 13px,
+      // a `borderTopLeftRadius` 6px przy żądanych 12px — dwie różne liczby
+      // z dwóch różnych miejsc kaskady, więc czerwień da się przypisać do
+      // pary, a nie do „czegoś w tym pliku".
+      //
+      // CZEGO TU NIE MA I DLACZEGO: NIE MA złamania na `max-inline-size` ani
+      // na `flex`, czyli na tej połowie lotu, która dotyczy SZEROKOŚCI.
+      // Wróciłoby ZIELONE — żadna para tego nie czyta i żadna czytać nie może,
+      // bo szerokość `<select>` jest funkcją najdłuższej opcji w fiksturze,
+      // a nie arkusza. Powód stoi wypisany przy parach C5-01a/b i w raporcie
+      // lotu; złamanie, o którym z góry wiadomo, że jest zielone, byłoby
+      // uzbrojeniem udawanym.
+      name: "delete the record strip's select rule: the control goes back to the bare `select` rule and stands beside the buttons with a bigger type size and a different corner",
+      expectRedContains: ["C5-01a", "C5-01b"],
+      file: "packages/desktop-ui/src/record/record-screen.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.actions select {
+  max-inline-size: 16rem;
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}`,
+          `.actions select {
+  max-inline-size: 16rem;
+}`,
+          "the record action strip's select rule",
+        ),
+    },
   ]),
 });
 

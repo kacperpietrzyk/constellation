@@ -595,8 +595,24 @@ button.railRow:focus-visible .railArrow {
   line-height: var(--leading-snug);
 }
 
+/* SZEROKOŚĆ WŁASNEJ TREŚCI, NIE SZEROKOŚĆ RZĘDU (Faza C, lot C5). `flex: 1 1
+   8rem` kazało tej kontrolce zjadać CAŁE wolne miejsce rzędu, więc pole wyboru
+   z jedną krótką nazwą klienta rozciągało się na wszystko, czego nie zajął
+   przycisk obok. Prototyp mówi odwrotnie i mówi to dwoma miejscami naraz:
+   `.st-select` (`v3/screens/settings.css:190-194`) i `.btn`
+   (`v3/app.css:306-314`) mają tę samą geometrię i ANI JEDNO nie deklaruje
+   szerokości — kontrolka wyboru stoi jak przycisk obok niej.
+
+   SUFIT ZOSTAJE, BO ZNIKŁA TYLKO PODŁOGA. Nazwy organizacji są treścią rekordu
+   i biegną długo, a `<select>` bierze szerokość najszerszej opcji; `flex-basis:
+   8rem` chronił przed jednym, `max-inline-size` chroni przed drugim. Sufit
+   16rem to idiom tego arkusza dla tej samej kontrolki w innym miejscu
+   (`styles.css:5933-5941`). `min-inline-size: 0` zostaje: rząd zawija, a bez
+   tego kontrolka nie umiałaby zejść poniżej swojej wewnętrznej szerokości
+   i wystawałaby z wąskiego kadru. */
 .railSelect {
-  flex: 1 1 8rem;
+  flex: 0 1 auto;
+  max-inline-size: 16rem;
   min-inline-size: 0;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-subtle);

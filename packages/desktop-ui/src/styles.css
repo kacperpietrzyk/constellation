@@ -8926,9 +8926,35 @@ kbd {
   font-size: 0.95em;
 }
 
-.settings-control > select,
 .settings-control > button {
   align-self: stretch;
+}
+/* ── KONTROLKA WYBORU BIERZE SZEROKOŚĆ SWOJEJ TREŚCI (Faza C, lot C5) ─────────
+   `align-self: start`, A NIE SKREŚLENIE `stretch` — i to jest cała różnica
+   między poprawką a jej pozorem. `.settings-control` jest kolumną
+   (`:8828-8834`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
+   dziecko na całą szerokość tafli; sam wpis `align-self: stretch` był tu
+   powtórzeniem domyślnej wartości i skasowanie go NIE ZMIENIŁOBY NICZEGO.
+   Kontrolka wraca do szerokości własnej treści dopiero wtedy, gdy powie
+   `start` wprost.
+
+   DLACZEGO SELEKTOR MA `>`, a reguła geometrii niżej go NIE MA. Te dwie
+   deklaracje mówią o dwóch RÓŻNYCH osiach i sięgają dwóch różnych zbiorów.
+   `.settings-control` bywa kolumną (dziecko wprost, np. `#voice-audio-retention`
+   — `SettingsSurface.tsx:1898-1911`), ale bywa też pojemnikiem RZĘDÓW
+   (`.settings-control > div` ustawia `display: flex` w poziomie, `:8836-8840`),
+   a w rzędzie osią poprzeczną jest PION: `align-self: start` przykleiłoby tam
+   kontrolkę do górnej krawędzi rzędu obok rozciągniętych pól tekstowych. Oś
+   pozioma w rzędzie to `flex`, i tym zajmuje się reguła niżej.
+
+   PROTOTYP MÓWI TO DWOMA MIEJSCAMI NA RAZ. `.st-select`
+   (`v3/screens/settings.css:190-194`) i `.btn` (`v3/app.css:306-314`) mają co
+   do wartości tę samą geometrię i ANI JEDNO nie deklaruje szerokości; wpis
+   ustawień prototypu (`.st-presetpick`, `v3/screens/settings.js:329-334`) stawia
+   etykietę, kontrolkę i notkę w RZĘDZIE, a kontrolka jest w nim tak szeroka,
+   jak jej treść. */
+.settings-control > select {
+  align-self: start;
 }
 
 .settings-control label,
@@ -8948,8 +8974,34 @@ kbd {
   font: inherit;
   padding: 0.6rem 0.65rem;
 }
+/* Druga połowa tej samej pozycji, na drugiej osi i dla obu kształtów naraz —
+   powód i cytaty stoją przy `.settings-control > select` wyżej.
+
+   `flex: 1` KAZAŁ KONTROLCE ZJEŚĆ CAŁE WOLNE MIEJSCE RZĘDU, więc pole wyboru
+   z napisem „Task" stało tak samo szerokie jak sąsiadujące z nim pole tekstowe
+   na etykietę (`SettingsSurface.tsx:1547-1583`). Reguła nad tą zbiera pola
+   tekstowe I kontrolkę wyboru w jeden materiał — i to jest słuszne, prototyp
+   trzyma `.st-input` i `.st-select` w jednej geometrii — ale `flex: 1` jest
+   właściwością POLA TEKSTOWEGO: pole rośnie, bo rośnie jego treść. Kontrolka
+   wyboru ma zbiór opcji skończony i znany, więc rośnie do najszerszej z nich
+   i tam się zatrzymuje.
+
+   WYSOKOŚĆ ZOSTAJE NA 2,75 REM I NIE JEST WADĄ, wbrew temu, co mówił rekonesans
+   tego lotu („kontrolka wyraźnie wyższa od sąsiadów"). Zmierzone w arkuszu:
+   `.settings-control button` ma DOKŁADNIE tę samą podłogę 2,75 rem
+   (`:9155-9159`), więc pion zgadza się z sąsiadem co do piksela. Rozjazd, który
+   widać, jest na SZEROKOŚCI i na stopniu pisma — kontrolka dziedziczy
+   `--text-base` po `body`, a sąsiedni przycisk deklaruje `--text-xs`
+   (`:9051-9064`). Stopnia NIE RUSZAM świadomie: prototyp żąda, żeby pole tekstowe
+   i kontrolka wyboru miały ten sam stopień (`.st-input` i `.st-select`, oba
+   `--text-sm`), a ta aplikacja tę parzystość dziś MA; zrównanie kontrolki
+   z przyciskiem rozbiłoby ją na rzecz drugiej parzystości, której prototyp
+   żąda tak samo. Trójstronny rozjazd pole↔kontrolka↔przycisk jest osobną
+   pozycją i osobnym lotem. */
 .settings-control select {
   min-height: 2.75rem;
+  flex: 0 1 auto;
+  max-inline-size: 16rem;
   cursor: pointer;
 }
 
