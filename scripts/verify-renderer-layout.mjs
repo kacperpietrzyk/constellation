@@ -5387,6 +5387,15 @@ const ROUTED_ARRIVAL = {
   // zostać potwierdzony jako NARYSOWANY, co `walkRouteInPage` robi dla
   // każdego przystanku.
   meetings: "#main-content .meeting-surface",
+  // Organizacje i Ludzie, dopisane przez lot D6 — pierwsze pary tej mapy nad
+  // ekranami CRM-owej listy. MARKEREM JEST WIERSZ, A NIE KORZEŃ EKRANU, i to
+  // jest wybór, nie skrót: `[data-organizations-surface]` /
+  // `[data-people-surface]` niesie także gałąź ODMOWY (`StrategicDepthSurface
+  // .tsx:739`, `PeopleSurface.tsx:530`), więc ekran, który nie umiał zapytać
+  // o dane, potwierdziłby przyjazd i wpuściłby cały lot w `NOT_MEASURED`
+  // z przyczyną wyglądającą jak zły selektor. Wiersza w tym stanie nie ma.
+  organizations: "#main-content [data-org-row]",
+  people: "#main-content [data-person-row]",
   // KALENDARZA TU NIE MA, I JEST TO POMIAR, NIE PRZEOCZENIE. Naprawa po
   // przeglądzie lotu D2 dopisała ten przystanek razem z parą na bliźniaka
   // znacznika pomocy i OBA PRZELOTY WRÓCIŁY `NOT_MEASURED`: klient scenariuszowy

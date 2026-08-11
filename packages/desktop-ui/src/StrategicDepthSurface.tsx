@@ -32,10 +32,9 @@ import {
   renewalPhrase,
   type CrmProse,
   type OrganizationReading,
-  type SignalKey,
 } from "./crm/organization-reading.js";
 import { TopicHelp } from "./help/TopicHelp.js";
-import { Icon } from "./components/Icon.js";
+import { Icon, type IconName } from "./components/Icon.js";
 import {
   countSentence,
   filterOrganizations,
@@ -147,19 +146,23 @@ const StateMark = ({ state }: { readonly state: string }) => (
 // All three sit BELOW the accepted screen, so the client list is what the
 // surface opens on.
 
-// Spelled as a mapped type rather than `Record<…>`: this file declares its own
-// local `Record` alias for a strategic record, which shadows the built-in.
-const SIGNAL_MARKS: { readonly [K in SignalKey]: string } = {
-  risk: "▲",
-  watch: "◧",
-  good: "■",
-  none: "□",
-};
-
+// ZNACZNIK SYGNAŁU JEST RYSOWANY, NIE PISANY. Do lotu D6 stała tu mapa znaków
+// pisma (▲ ◧ ■ □) — glify z kroju czytelnika, mniejsze od sąsiedniego tekstu
+// i różniące się właściwie samym KOLOREM. Prototyp (`v3/app.css:389-409`,
+// `.health` + cztery modyfikatory, wybierane przez `healthDot` w `v3/app.js:116`)
+// rysuje kwadrat wielkości wersalika w CZTERECH ROZRÓŻNIALNYCH KSZTAŁTACH:
+// pełny („On track"), z ukośnym półwypełnieniem („Watch"), pełny z wyciętym
+// wykrzyknikiem („At risk") i kreskowana obwódka („Dormant"). To jest wymóg
+// dostępności (kolor podwojony kształtem), nie ozdoba — i dlatego mapa napisów
+// znikła zamiast dostać nowe znaki.
+//
+// Kształt mieszka w arkuszu, więc ten plik niesie WYŁĄCZNIE nazwę stanu. Klucz
+// jest ten sam, co w `organizations.module.css` (`.signalMark_<key>`), i to on
+// wiąże obie strony; drugiej listy „który stan ma który kształt" nie ma.
 const LAYOUTS = [
-  ["list", "List"],
-  ["table", "Table"],
-] as const;
+  ["list", "List", "list"],
+  ["table", "Table", "fields"],
+] as const satisfies readonly (readonly [string, string, IconName])[];
 type Layout = (typeof LAYOUTS)[number][0];
 
 const SignalChip = ({ reading }: { readonly reading: OrganizationReading }) => (
@@ -167,9 +170,10 @@ const SignalChip = ({ reading }: { readonly reading: OrganizationReading }) => (
     className={`${organizationStyles.signal} ${organizationStyles[`signal_${reading.signal.key}`]}`}
     data-relationship-signal={reading.signal.key}
   >
-    <span aria-hidden="true" className={organizationStyles.signalMark}>
-      {SIGNAL_MARKS[reading.signal.key]}
-    </span>
+    <span
+      aria-hidden="true"
+      className={`${organizationStyles.signalMark} ${organizationStyles[`signalMark_${reading.signal.key}`]}`}
+    />
     {reading.signal.label}
   </span>
 );
@@ -824,7 +828,14 @@ export const StrategicDepthSurface = ({
           className={organizationStyles.switcher}
           role="tablist"
         >
-          {LAYOUTS.map(([id, label]) => (
+          {/* Glif WIODĄCY, tak jak w `v3/screens/crm.js:214` — trzeci człon
+              każdej pary jest nazwą znaku, a `crm.js:203` stawia go PRZED
+              etykietą. Oba znaki pochodzą z zestawu, który `Icon.tsx` już
+              niesie: prototypowy `table` (`v3/app.js:36`) nie ma tam
+              odpowiednika, a właścicielem tego pliku jest lot D2, więc ten lot
+              KONSUMUJE nazwę `fields` — prototypowy glif kolumn
+              (`v3/app.js:42`) — zamiast dokładać glif po pomiarze właściciela. */}
+          {LAYOUTS.map(([id, label, glyph]) => (
             <button
               aria-selected={layout === id}
               className={organizationStyles.switch}
@@ -833,6 +844,7 @@ export const StrategicDepthSurface = ({
               role="tab"
               type="button"
             >
+              <Icon name={glyph} />
               {label}
             </button>
           ))}

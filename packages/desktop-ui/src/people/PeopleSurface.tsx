@@ -10,7 +10,6 @@ import {
   renewalPhrase,
   type DeliveryReading,
   type OrganizationReading,
-  type SignalKey,
 } from "../crm/organization-reading.js";
 import {
   createPerson,
@@ -18,7 +17,7 @@ import {
   type DesktopSnapshot,
   type MutationFailure,
 } from "../client/workflow.js";
-import { Icon } from "../components/Icon.js";
+import { Icon, type IconName } from "../components/Icon.js";
 import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
@@ -51,10 +50,16 @@ import styles from "./people.module.css";
 // only as a `title` (`crm.js:481`), and a native tooltip does not exist for a
 // keyboard or for touch.
 
+// Trzeci człon to NAZWA GLIFU, tak jak `v3/screens/crm.js:216`
+// (`["orgs", "By organization", "org"], ["table", "Table", "table"]`), a
+// `crm.js:203` stawia go PRZED etykietą. Budynek to nasz `organization` —
+// ten sam znak, którym lot D2 rozróżnił pozycję nawigacji; „Table" konsumuje
+// `fields`, bo prototypowy glif tabeli nie ma w `Icon.tsx` odpowiednika,
+// a właścicielem tamtego pliku jest D2.
 const LAYOUTS = [
-  ["organizations", "By organization"],
-  ["table", "Table"],
-] as const;
+  ["organizations", "By organization", "organization"],
+  ["table", "Table", "fields"],
+] as const satisfies readonly (readonly [string, string, IconName])[];
 type Layout = (typeof LAYOUTS)[number][0];
 
 // The relationship state is a DECLARATION somebody made, so it is drawn as a
@@ -68,13 +73,10 @@ const RELATIONSHIP_STATE_LABELS: Readonly<
   inactive: "Inactive",
 };
 
-const SIGNAL_MARKS: Readonly<Record<SignalKey, string>> = {
-  risk: "▲",
-  watch: "◧",
-  good: "■",
-  none: "□",
-};
-
+// ZNACZNIK SYGNAŁU JEST RYSOWANY, NIE PISANY — bliźniak pozycji z ekranu
+// Organizacji (rejestr zgłosił tę samą wadę dwa razy, #20 i #30). Mapa znaków
+// pisma znikła; kształt niesie arkusz (`people.module.css`, `.signalMark_<key>`),
+// a prototypem jest `v3/app.css:389-409` przez `healthDot` (`v3/app.js:116`).
 const RelationshipSignalChip = ({
   reading,
 }: {
@@ -84,9 +86,10 @@ const RelationshipSignalChip = ({
     className={`${styles.signal} ${styles[`signal_${reading.signal.key}`]}`}
     data-relationship-signal={reading.signal.key}
   >
-    <span aria-hidden="true" className={styles.signalMark}>
-      {SIGNAL_MARKS[reading.signal.key]}
-    </span>
+    <span
+      aria-hidden="true"
+      className={`${styles.signalMark} ${styles[`signalMark_${reading.signal.key}`]}`}
+    />
     {reading.signal.label}
   </span>
 );
@@ -163,7 +166,26 @@ const PersonRow = ({
         )}
       </span>
       {/* Participation, and only what exists. A chip reading "0 deals" is
-          noise dressed as content. */}
+          noise dressed as content.
+
+          POŁOWA POZYCJI #29 — GLIF WIODĄCY W TEJ PLAKIETCE — NIE ZOSTAŁA
+          ODDANA, I POWODEM JEST POMIAR, NIE OCENA. Prototyp go ma
+          (`v3/screens/crm.js:418-423`: `icon("pipeline")` przy dealach,
+          `icon("meeting")` przy spotkaniach), lot D6 go dołożył i bramka
+          układu wróciła CZERWONA na wpisie, który `scripts/descendant-overflow
+          .mjs:143-150` prowadzi nad tym pasem: `span._parts` wystawał 55 px
+          przy tekście 200% wobec zapisanych 25 i 36 px w oknie 320 px wobec
+          zapisanych 24. Arytmetyka się zgadza co do piksela — znak 0,6875 rem
+          plus odstęp 0,25 rem to przy 200% dokładnie 30 px na najszerszej
+          plakietce, a plakietka jest `white-space: nowrap`, więc szerokość
+          idzie wprost w przepełnienie toru.
+
+          Te sufity są ZAPISANYM DŁUGIEM z własnym wątkiem („skalowanie
+          interfejsu, R3-5, za falą E"), więc podniesienie ich, żeby zmieściła
+          się ta zmiana, byłoby przepisaniem przyrządu pod dostawę. Glif wraca
+          razem z tamtym wątkiem albo z węższą plakietką (np. samą liczbą przy
+          znaku), a to jest decyzja o TREŚCI wiersza, nie restyl. Druga połowa
+          #29 — glify w segmentach układu — jest oddana i zmierzona (D6-04b). */}
       <span className={styles.parts}>
         {reading.deals.length === 0 && reading.meetings.length === 0 ? (
           <span className={styles.absent}>Nothing recorded yet</span>
@@ -222,6 +244,11 @@ const GroupHead = ({
       className={styles.groupHead}
       data-people-group={reading.organization.id}
     >
+      {/* POZYCJA #26, DRUGA POŁOWA. Szarą pastylkę pod tą nazwą zdjęła Faza C
+          (reset przycisku); został glif budynku, który prototyp stawia PRZED
+          nazwą — `v3/screens/crm.js:481` (`${icon("org")}${esc(o.name)}`),
+          rozmiar w `v3/screens/crm.css:191`. Nazwa glifu jest konsumowana
+          z zestawu D2, `Icon.tsx` nietknięty. */}
       <button
         className={styles.groupName}
         onClick={() =>
@@ -229,6 +256,7 @@ const GroupHead = ({
         }
         type="button"
       >
+        <Icon name="organization" />
         {reading.organization.name}
       </button>
       <span className={styles.groupCount}>{peopleCount}</span>
@@ -612,7 +640,7 @@ export const PeopleSurface = ({
           className={styles.switcher}
           role="tablist"
         >
-          {LAYOUTS.map(([id, label]) => (
+          {LAYOUTS.map(([id, label, glyph]) => (
             <button
               aria-selected={layout === id}
               className={styles.switch}
@@ -621,6 +649,7 @@ export const PeopleSurface = ({
               role="tab"
               type="button"
             >
+              <Icon name={glyph} />
               {label}
             </button>
           ))}

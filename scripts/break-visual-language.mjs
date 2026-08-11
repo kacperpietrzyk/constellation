@@ -1499,6 +1499,161 @@ const outcome = runBreakTests({
           "the Access section's root tag (closing)",
         ),
     },
+    {
+      // ZŁAMANIE CZTERDZIESTE SZÓSTE — ZNACZNIK SYGNAŁU WRACA DO ROZMIARU
+      // ZNAKU PISMA (D6-01a/D6-02a, wpisy #20 i #30).
+      //
+      // Nie kasujemy pudełka: zjeżdżamy jego bok z prototypowych 0,8125 rem na
+      // 0,4375 rem, czyli do wielkości, jaką miał glif ▲ z kroju czytelnika.
+      // Kształt zostaje, więc INTENCJĄ jest, żeby D6-01b (ukośne
+      // półwypełnienie) i D6-01c (wypełnienie „At risk") zostały zielone,
+      // a czerwona była wyłącznie para czytająca wymiar, i tylko na arkuszu
+      // Organizacji, bo bliźniak Ludzi jest osobnym plikiem.
+      //
+      // CZEGO TEN HARNESS NIE SPRAWDZA: `expectRedContains` pyta, czy nazwana
+      // para JEST w zbiorze czerwonych (`break-test.mjs:203-213`) — nie pyta,
+      // czy jest w nim SAMA. Wyłączność wyżej jest więc intencją projektu
+      // złamania, a nie zmierzonym faktem, i tak samo należy ją czytać przy
+      // trzech następnych złamaniach.
+      name: "shrink the relationship mark back to the size of a typed glyph: the box stops being letter-height",
+      expectRedContains: ["D6-01a"],
+      file: "packages/desktop-ui/src/organizations/organizations.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  position: relative;
+  width: 0.8125rem;
+  height: 0.8125rem;`,
+          `  position: relative;
+  width: 0.4375rem;
+  height: 0.4375rem;`,
+          "the drawn relationship mark's box on Organizations",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE SIÓDME — CZTERY KSZTAŁTY ZAPADAJĄ SIĘ W CZTERY
+      // KOLORY (D6-01b, wpis #20).
+      //
+      // TO JEST ZŁAMANIE, DLA KTÓREGO TA PARA POWSTAŁA. Ukośne półwypełnienie
+      // „Watch" zamieniamy na PEŁNE wypełnienie tym samym tokenem — czyli na
+      // wersję, która wygląda poprawnie na kolorowym ekranie i jest nie do
+      // odróżnienia od „At risk" bez koloru. Pudełko, jego wymiar i obwódka
+      // zostają, więc D6-01a i D6-01c zostają zielone: czerwień ma przyjść
+      // z KSZTAŁTU, nie z obecności znacznika.
+      name: "fill the Watch mark solid: four shapes collapse into four colours and nothing else changes",
+      expectRedContains: ["D6-01b"],
+      file: "packages/desktop-ui/src/organizations/organizations.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  border-color: var(--status-warning);
+  background: linear-gradient(
+    135deg,
+    var(--status-warning) 50%,
+    transparent 50%
+  );`,
+          `  border-color: var(--status-warning);
+  background: var(--status-warning);`,
+          "the diagonal half-fill of the Watch mark",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE ÓSME — BLIŹNIAK NA LUDZIACH ZOSTAJE Z TYŁU
+      // (D6-02a, wpis #30).
+      //
+      // Ten sam kształt mieszka w DWÓCH arkuszach modułowych i właśnie dlatego
+      // ma dwie pary. Złamanie celuje w arkusz Ludzi i nie dotyka Organizacji;
+      // intencją jest, żeby D6-01a/b/c zostały zielone — gdyby padły razem
+      // z nim, para nad Ludźmi mierzyłaby cudzy plik. Wyłączności ten harness
+      // nie sprawdza, patrz uwaga przy złamaniu czterdziestym siódmym.
+      name: "shrink the People twin of the mark only: the Organizations pairs stay green over half a fix",
+      expectRedContains: ["D6-02a"],
+      file: "packages/desktop-ui/src/people/people.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  position: relative;
+  width: 0.8125rem;
+  height: 0.8125rem;`,
+          `  position: relative;
+  width: 0.4375rem;
+  height: 0.4375rem;`,
+          "the drawn relationship mark's box on People",
+        ),
+    },
+    {
+      // ZŁAMANIE CZTERDZIESTE DZIEWIĄTE — „PROSPECT" WRACA DO INFORMACJI
+      // (D6-03a, wpis #19).
+      //
+      // Wracany jest SAM TUSZ; laserunek zostaje. To jest ta połowa wady,
+      // której druga para (D6-03b, czytająca `--accent-quieter`) nie ma prawa
+      // zobaczyć — i o to chodzi: gdyby złamanie tuszu zapaliło obie pary,
+      // jedna z nich byłaby zbędna. Że druga NAPRAWDĘ została zielona, ten
+      // harness nie mierzy; patrz uwaga przy złamaniu czterdziestym siódmym.
+      name: "put the Prospect pill back on the info hue: the accent leaves the word and the tint stays",
+      expectRedContains: ["D6-03a"],
+      file: "packages/desktop-ui/src/organizations/organizations.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.state_prospect {
+  color: var(--accent);`,
+          `.state_prospect {
+  color: var(--status-info);`,
+          "the Prospect pill's ink on Organizations",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE — SEGMENTY UKŁADU TRACĄ GLIF (D6-04a, druga
+      // połowa wpisu #21).
+      //
+      // Zdejmowany jest JEDEN z dwóch znaków, nie oba, i to jest cała treść
+      // tego złamania: podłoga pary wynosi 2 właśnie dlatego, że prototyp
+      // rysuje znak przy OBU segmentach. Złamanie na obu naraz byłoby zielone
+      // przy podłodze 1 i nie powiedziałoby nic o wybranym progu.
+      //
+      // ŁAMANY JEST MONTAŻ, NIE TYP. Pierwsza wersja tego złamania zmieniała
+      // trzeci człon krotki na `null` i rozszerzała typ na `IconName | null` —
+      // czego `<Icon name={glyph} />` nie kompiluje (TS2322). `npm run build`
+      // zaczyna się od `tsc -b`, więc takie złamanie nie dochodzi do drzewa:
+      // albo harness rzuca na nieudanym buildzie, albo `dist` zostaje ze
+      // starym źródłem i bramka wraca ZIELONA, czyli break-test raportuje
+      // porażkę z powodu, który nie jest zachowaniem produktu. Warunek na
+      // `id` zostawia typ nietknięty i zdejmuje dokładnie jeden narysowany
+      // znak.
+      name: "take the glyph off one layout segment: the floor of two is what makes this red",
+      expectRedContains: ["D6-04a"],
+      file: "packages/desktop-ui/src/StrategicDepthSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <Icon name={glyph} />
+              {label}`,
+          `              {id === "list" ? <Icon name={glyph} /> : null}
+              {label}`,
+          "the Table segment's glyph mount on Organizations",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE PIERWSZE — NAGŁÓWEK GRUPY TRACI BUDYNEK
+      // (D6-05a, druga połowa wpisu #26).
+      //
+      // Kasowany jest sam montaż znaku; reguła `.groupName svg` zostaje
+      // w arkuszu. Para liczy ELEMENTY, więc martwa reguła jej nie uratuje —
+      // a gdyby liczyła deklarację, ten właśnie układ (reguła jest, znaku nie
+      // ma) przeszedłby na zielono.
+      name: "drop the building glyph from the group heading: the rule survives and the mark does not",
+      expectRedContains: ["D6-05a"],
+      file: "packages/desktop-ui/src/people/PeopleSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <Icon name="organization" />
+        {reading.organization.name}`,
+          `        {reading.organization.name}`,
+          "the organization glyph in the People group heading",
+        ),
+    },
   ]),
 });
 

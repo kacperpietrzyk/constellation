@@ -87,11 +87,24 @@
 /* The pressed layout carries a FILL and a stronger border, not only a warmer
    text colour: which layout is on has to survive a screen with no colour. */
 .switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   padding: 0.125rem 0.625rem;
   border-radius: var(--radius-full);
   border: 1px solid transparent;
+}
+
+/* POZYCJA #29, POŁOWA O SEGMENTACH — budynek przy „By organization", kolumny
+   przy „Table" (`v3/screens/crm.js:216` + `crm.css:141`). Rozmiar w `rem`, bo
+   bramka chodzi też przy 200% i 300%. */
+.switch svg {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  flex: none;
+  opacity: 0.75;
 }
 
 .switch[aria-selected="true"] {
@@ -167,6 +180,18 @@
   white-space: nowrap;
 }
 
+/* POZYCJA #26, DRUGA POŁOWA — glif budynku przed nazwą organizacji.
+   `v3/screens/crm.css:191`: `.crm-ghead-name svg { width: 0.8125rem; height:
+   0.8125rem; opacity: 0.7 }`. `flex: none` jest tu nośne, a nie porządkowe:
+   nagłówek grupy skraca się elipsą (`overflow: hidden` wyżej), a znak, który
+   dałby się ścisnąć, zwężałby się razem z nazwą zamiast zniknąć razem z nią. */
+.groupName svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: none;
+  opacity: 0.7;
+}
+
 .groupName:hover {
   color: var(--text-link);
 }
@@ -226,9 +251,60 @@
   color: var(--text-secondary);
 }
 
+/* POZYCJA #30 — ZNACZNIK JEST RYSOWANY, NIE PISANY. Bliźniak reguły
+   z `organizations/organizations.module.css`: rejestr zgłosił ten sam kształt
+   dwa razy (#20 na Organizacjach, #30 na Ludziach), więc jest to jedna
+   poprawka w dwóch arkuszach. Prototyp: `v3/app.css:389-409`, wybierane przez
+   `healthDot` (`v3/app.js:116`). Cztery ROZRÓŻNIALNE KSZTAŁTY, nie cztery
+   kolory — kontrakt `.ui-craft/tokens.md` „Status and accessibility" żąda, żeby
+   kolor był podwojony czymś, co widać bez koloru. */
 .signalMark {
-  font-size: var(--text-2xs);
-  line-height: 1;
+  flex: none;
+  position: relative;
+  width: 0.8125rem;
+  height: 0.8125rem;
+  border-radius: 2px;
+  border: 1.5px solid var(--text-disabled);
+}
+
+.signalMark_good {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+
+.signalMark_watch {
+  border-color: var(--status-warning);
+  background: linear-gradient(
+    135deg,
+    var(--status-warning) 50%,
+    transparent 50%
+  );
+}
+
+.signalMark_risk {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+
+.signalMark_risk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--surface-canvas);
+  clip-path: polygon(
+    44% 18%,
+    56% 18%,
+    54% 58%,
+    46% 58%,
+    44% 74%,
+    56% 74%,
+    56% 84%,
+    44% 84%
+  );
+}
+
+.signalMark_none {
+  border-style: dashed;
 }
 
 .signal_risk {
@@ -265,8 +341,15 @@
   border-color: var(--border-strong);
 }
 
+/* POZYCJA #19, DRUGI Z DWÓCH EKRANÓW. Ta sama plakietka była niebieska tu i na
+   Organizacjach, i właśnie dlatego rejestr nazwał to REGUŁĄ, a nie przypadkiem.
+   Prototyp: `v3/screens/crm.css:33`. Kontrast zmierzony przed edycją, w obu
+   motywach i na obu planach czytania: 5,31 / 5,02 (ciemny), 4,62 / 4,86
+   (jasny) przy progu 4,5. */
 .state_prospect {
-  color: var(--status-info);
+  color: var(--accent);
+  border-color: var(--accent-edge);
+  background: var(--accent-quieter);
 }
 
 .state_inactive {
@@ -416,6 +499,16 @@
   padding: 0.0625rem 0.4375rem;
   white-space: nowrap;
 }
+
+/* GLIFU W TEJ PLAKIETCE NIE MA I JEST TO ZMIERZONA ODMOWA, NIE PRZEOCZENIE.
+   Prototyp go rysuje (`v3/screens/crm.css:162`), lot D6 go dołożył i bramka
+   układu wróciła czerwona: `span._parts` wystawał 55 px przy tekście 200%
+   wobec sufitu 25 px zapisanego w `scripts/descendant-overflow.mjs:143-150`
+   i 36 px w oknie 320 px wobec 24. Rozumowanie o WYSOKOŚCI było poprawne
+   i nieistotne — ten sufit mierzy SZEROKOŚĆ, a plakietka jest
+   `white-space: nowrap`, więc znak wchodzi w przepełnienie toru co do
+   piksela. Sufit należy do zapisanego wątku „skalowanie interfejsu (R3-5)"
+   i nie jest liczbą, którą wolno podnieść pod własną dostawę. */
 
 .contact {
   min-width: 0;

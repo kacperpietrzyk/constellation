@@ -25,7 +25,22 @@
 // W NAWIASIE JEST CZĘŚCIĄ CYTATU WAŻNIEJSZĄ NIŻ LICZBY — to po niej odnajduje
 // się sekcję, kiedy liczby już nie trafiają. Numery stanu na 2026-08-11:
 // Spacing and density 85, Type 94, Shape/motion/depth 110, Dark theme 140,
-// Component layer 184, Form first 303, What the accent is allowed to mean 335.
+// Component layer 202, Form first 321, What the accent is allowed to mean 353.
+//
+// PRZELICZONE TRZECI RAZ PRZEZ LOT D6, 2026-08-11, i znowu z tej samej
+// przyczyny: „prototyp wygrywa z kontraktem" kazało dopisać dwie reguły,
+// których `tokens.md` nie miał — rysowany znacznik stanu (do `### Status and
+// accessibility`, 18 linii) i szósta praca akcentu (do `### What the accent is
+// allowed to mean`, 17 linii). Pierwsza wstawka przesunęła W DÓŁ wszystko od
+// `## Component layer`: 184 → 202, 303 → 321, 335 → 353. Sekcje NAD nią stoją
+// nietknięte, i to jest cała różnica między przeliczeniem a zgadywaniem.
+//
+// ZAKRESY LINII W POLACH `contract` PONIŻEJ TYCH WSTAWEK PRZESUNĘŁY SIĘ O TYLE
+// SAMO i NIE zostały przepisane jeden po drugim — to jest ta sama rot, którą
+// akapit wyżej nazywa, i przepisywanie dziewięćdziesięciu cytatów pod plik,
+// którego historia nie pilnuje, kupiłoby jeden dzień celności. Pary lotu D6
+// cytują SAMĄ NAZWĘ SEKCJI, bez liczb, i to jest konwencja, którą ten nagłówek
+// poleca.
 //
 // TEN SAM PRZEBIEG PRZELICZYŁ JE DRUGI RAZ, i to jest dowód, jak tanio ta rot
 // wraca: para D2-02d potrzebowała reguły o cyfrach tabularnych, `tokens.md` jej
@@ -5292,6 +5307,281 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "literal", value: "none" },
     status: "enforced",
   },
+
+  // ── LOT D6 — OGON CRM (Organizacje i Ludzie) ──────────────────────────────
+  //
+  // PIERWSZE PARY TEJ MAPY NAD DWOMA EKRANAMI CRM-owej listy; markery przybycia
+  // (`ROUTED_ARRIVAL.organizations`, `.people`) dopisane razem z nimi.
+  //
+  // CO FIKSTURA DOSIĘGA, ZMIERZONE PRZED NAPISANIEM PAR, A NIE PO. Sonda przy
+  // 1440 px na obu przystankach zwróciła DWA z czterech stanów sygnału — `risk`
+  // i `watch` — oraz dwa z trzech stanów relacji (`active`, `prospect`). Pary
+  // niżej czytają WYŁĄCZNIE to, co ta fikstura rysuje: para nad zielonym
+  // kwadratem („On track") albo nad kreskowaną obwódką („Dormant") wróciłaby
+  // NOT_MEASURED, czyli jako awaria przyrządu nad poprawnym kodem. To jest
+  // w tym repo nazwana klasa defektu („pusta fikstura chroni fałszywą
+  // asercję") i dlatego stoi tu pomiar, a nie założenie.
+  {
+    id: "D6-01a",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "the relationship mark is a drawn box, not a typed character",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "389-392",
+      value:
+        "`.health { width: 0.8125rem; height: 0.8125rem; border-radius: 2px; border: 1.5px solid var(--text-disabled) }` — kwadrat wielkości wersalika, wstawiany przez `healthDot` (v3/app.js:116)",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_signalMark_"]',
+      why: "szerokość, bo to ona rozstrzyga spór wpisu: znak pisma bierze wymiar z KROJU czytelnika (▲ przy --text-2xs mierzyło ~7 px i było MNIEJSZE od tekstu obok), a pudełko bierze go z tego arkusza",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-01b",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "and „Watch” is told apart by a SHAPE, not by a second colour",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "394",
+      value:
+        "`.health.watch { background: linear-gradient(135deg, var(--status-warning) 50%, transparent 50%) }` — ukośne półwypełnienie",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-relationship-signal="watch"] [class*="_signalMark_"]',
+      why: "SEDNEM wpisu jest „cztery kształty, nie cztery kolory” — para czytająca kolor stałaby zielona nad czterema jednakowymi kwadratami w czterech odcieniach, czyli nad wersją nieczytelną bez koloru. `watch` jest jednym z dwóch stanów, które fikstura rysuje",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark_watch)",
+    },
+    read: { property: "backgroundImage" },
+    expect: { kind: "contains", value: "linear-gradient" },
+    status: "enforced",
+  },
+  {
+    id: "D6-01c",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "and „At risk” is a FILLED box, not an outlined one",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "395",
+      value:
+        "`.health.risk { border-color: var(--status-error); background: var(--status-error) }` — wypełnione, w odróżnieniu od `.health.none` (:409), które jest samą kreskowaną obwódką",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-relationship-signal="risk"] [class*="_signalMark_"]',
+      why:
+        "drugi ze stanów dosięgniętych przez fiksturę, czytany INNĄ własnością niż `watch`: wypełnienie kontra sama obwódka jest różnicą KSZTAŁTU, nie odcienia, i to ona dzieli cztery stany na wypełnione (`ok`, `risk`) i niewypełnione (`watch` w połowie, `none` wcale). " +
+        "TA PARA NIE MIERZY WYKRZYKNIKA — cięcie siedzi w `::after`, którego `read` tej mapy nie widzi, i stoi wypisane w VISUAL_LANGUAGE_ROUTED_NOT_COVERED. " +
+        "GRUBOŚCI OBWÓDKI TEŻ NIE, i to jest pomiar, nie rezygnacja: arkusz deklaruje `1.5px` za prototypem, a `getComputedStyle` w tym przelocie oddaje `1px` — Chromium przycina krawędź do piksela urządzenia przy DPR 1. Para na literale „1.5px” byłaby czerwona nad poprawnym arkuszem, a para na „1px” asertowałaby artefakt zaokrąglenia, który zniknie na ekranie o innej gęstości.",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark_risk)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--status-error" },
+    status: "enforced",
+  },
+  {
+    id: "D6-02a",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "the same mark is drawn on People, not typed there either",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "389-392",
+      value:
+        "ten sam `.health` — prototyp ma JEDNĄ definicję kształtu dla wszystkich miejsc (`v3/screens/crm.css:7-8` mówi to wprost)",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_signalMark_"]',
+      why: "DRUGA para, nie druga własność pierwszej: rejestr zgłosił ten kształt dwa razy (#20, #30), bo mieszka w DWÓCH arkuszach modułowych — jedna para byłaby zielona nad połową poprawki",
+      app: "packages/desktop-ui/src/people/people.module.css (.signalMark)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-02b",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "and „Watch” keeps its shape on People too",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "394",
+      value: "`.health.watch` — ukośne półwypełnienie, ta sama jedna definicja",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-relationship-signal="watch"] [class*="_signalMark_"]',
+      why: "bliźniak D6-01b na drugim arkuszu; podmiot jest tu jednoznaczny, bo przystanek rysuje wyłącznie ekran Ludzi",
+      app: "packages/desktop-ui/src/people/people.module.css (.signalMark_watch)",
+    },
+    read: { property: "backgroundImage" },
+    expect: { kind: "contains", value: "linear-gradient" },
+    status: "enforced",
+  },
+  {
+    id: "D6-03a",
+    lot: "D6",
+    position: 2,
+    kind: "restyle",
+    title: "„Prospect” belongs to the accent, not to information",
+    contract: '.ui-craft/tokens.md — „What the accent is allowed to mean"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "33",
+      value:
+        "`.crm-state-prospect { color: var(--accent); border-color: var(--accent-edge); background: var(--accent-quieter) }`",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_state_prospect_"]',
+      why: "tu odcień JEST pozycją (rejestr: „niebieska, nie indygo-fioletowa”), więc para czyta go wprost — tym samym osądem, którym sonda osądza akcję główną, czyli niezależnie od motywu",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.state_prospect)",
+    },
+    read: { property: "color" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "D6-03b",
+    lot: "D6",
+    position: 2,
+    kind: "restyle",
+    title: "and it sits on its own tint, not on the row",
+    contract: '.ui-craft/tokens.md — „What the accent is allowed to mean"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "33",
+      value: "`background: var(--accent-quieter)` na tej samej plakietce",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_state_prospect_"]',
+      why: "sam tusz przemalowany bez laserunku przechodzi D6-03a, a prototyp niesie OBIE deklaracje; laserunek jest też tym, co bramka kontrastu mierzy — 4,62:1 najciaśniej, w motywie jasnym na płótnie",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.state_prospect)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--accent-quieter" },
+    status: "enforced",
+  },
+  {
+    id: "D6-03c",
+    lot: "D6",
+    position: 2,
+    kind: "restyle",
+    title: "and the same pill says the same thing on People",
+    contract: '.ui-craft/tokens.md — „What the accent is allowed to mean"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "33",
+      value: "jedna reguła prototypu na oba ekrany",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_state_prospect_"]',
+      why: "rejestr nazwał ten rozjazd REGUŁĄ właśnie dlatego, że ta sama plakietka była niebieska na dwóch ekranach; dwa arkusze, więc dwie pary",
+      app: "packages/desktop-ui/src/people/people.module.css (.state_prospect)",
+    },
+    read: { property: "color" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "D6-04a",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title: "both layout segments open with a glyph",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "214",
+      value:
+        '`[["list", "List", "list"], ["table", "Table", "table"]]` — trzeci człon to nazwa znaku, składana przed etykietą w :203',
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_switch_"] svg',
+      why: "liczone, a nie czytane własnością: pozycja jest o OBECNOŚCI znaku. Podłoga 2, bo prototyp rysuje go przy OBU segmentach, a podłoga 1 byłaby zielona nad wersją, w której glif dostał tylko wybrany",
+      app: "packages/desktop-ui/src/StrategicDepthSurface.tsx (LAYOUTS) + organizations.module.css (.switch svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  {
+    id: "D6-04b",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title: "and so do the two on People",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "216",
+      value:
+        '`[["orgs", "By organization", "org"], ["table", "Table", "table"]]` — budynek przy grupowaniu, siatka przy tabeli',
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_switch_"] svg',
+      why: "drugi arkusz i drugi literał LAYOUTS — jedna para nad Organizacjami nie mówi nic o tym ekranie",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx (LAYOUTS) + people.module.css (.switch svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  {
+    id: "D6-05a",
+    lot: "D6",
+    position: 4,
+    kind: "prescribed",
+    title: "the organization in a group heading opens with a building",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "481",
+      value:
+        '`<button class="crm-ghead-name">${icon("org")}${esc(o.name)}</button>` — glif PRZED nazwą',
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_groupName_"] svg',
+      why: "podłoga 2, bo tyle nagłówków grup rysuje ta fikstura (zmierzone: Northwind i Helio) — podłoga 1 przeszłaby nad wersją, w której glif dostał tylko pierwszy nagłówek. Grupa „No organization recorded” celowo nie dostaje znaku i prototyp też jej go nie daje",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx (GroupHead) + people.module.css (.groupName svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  // PARY NAD PLAKIETKĄ UCZESTNICTWA TU NIE MA, BO TA POŁOWA #29 NIE ZOSTAŁA
+  // ODDANA. Para została napisana (`[data-people-surface] [class*="_part_"]
+  // svg`, podłoga 3 — tyle plakietek rysuje ta fikstura) i ZDJĘTA razem
+  // z glifem, kiedy bramka układu wróciła czerwona na `span._parts`: 55 px
+  // przepełnienia przy tekście 200% wobec sufitu 25 px i 36 px w oknie 320 px
+  // wobec 24. Zostawienie samej pary byłoby wiecznym czerwonym wierszem nad
+  // świadomą odmową; powód i arytmetyka stoją w `people/PeopleSurface.tsx`
+  // przy pasie uczestnictwa, a pozycja jest w raporcie lotu w `notDelivered`.
 ];
 
 /**
@@ -5525,6 +5815,39 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     greenWrong:
       "Konsument może odwoływać się do liczby zamiast do tokenu, albo zniknąć razem z regułą.",
   },
+  {
+    // CZWARTY KSZTAŁT ZNACZNIKA SYGNAŁU, WYPISANY ZAMIAST ZAMKNIĘTY
+    // DEKLARACJĄ. Wpisy #20/#30 żądają CZTERECH rozróżnialnych kształtów,
+    // a lot D6 dowiózł wszystkie cztery w arkuszu. Zmierzone parami są dwa
+    // („Watch” — ukośne półwypełnienie, „At risk” — obwódka wypełnionego
+    // pudełka), i to nie z wyboru: wykrzyknik jest WYCIĘTY z wypełnienia
+    // pseudoelementem (`::after` + `clip-path`), a słownik `read` tej mapy zna
+    // wyłącznie `getComputedStyle(element)` — bez drugiego argumentu, więc bez
+    // pseudoelementów. Para napisana na samym elemencie wróciłaby z `clipPath:
+    // none` i była zielona nad kodem, w którym wykrzyknika nie ma.
+    //
+    // DRUGI, NIEZALEŻNY POWÓD, DLA KTÓREGO POŁOWA TEJ POZYCJI NIE MA DOWODU:
+    // fikstura harnessu rysuje DWA z czterech stanów (`risk`, `watch`).
+    // Zielony kwadrat („On track”) i kreskowana obwódka („Dormant") nie mają
+    // gdzie się narysować, więc pary nad nimi byłyby NOT_MEASURED — awarią
+    // przyrządu nad poprawnym kodem, nie czerwienią do naprawienia.
+    lot: "D6",
+    position: 1,
+    scope:
+      "dwa z czterech kształtów — wycięty wykrzyknik („At risk”) i dwa stany, których fikstura nie rysuje",
+    title: "the exclamation cut out of the risk mark has no measurement",
+    prototype:
+      "v3/app.css:396-399 (`.health.risk::after { background: var(--surface-canvas); clip-path: polygon(…) }`), :393 (`.health.ok`), :409 (`.health.none { border-style: dashed }`)",
+    app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark_risk::after, .signalMark_good, .signalMark_none) + bliźniak w people/people.module.css",
+    why:
+      "Dwie przyczyny, obie o PRZYRZĄDZIE, nie o kodzie. (1) `read` tej mapy czyta styl ELEMENTU; " +
+      "`clip-path` wykrzyknika siedzi na `::after`, którego ta ścieżka nie widzi. (2) Fikstura harnessu " +
+      "dosięga stanów `risk` i `watch` — zmierzone sondą na obu przystankach przed napisaniem par — " +
+      "więc `good` i `none` nie mają gdzie się narysować. Wyjściem dla (1) jest drugi argument " +
+      "`getComputedStyle` w przelocie, czyli przebudowa przyrządu; dla (2) druga organizacja w fiksturze.",
+    greenWrong:
+      "Wykrzyknik może zniknąć z „At risk”, a zielony kwadrat i kreskowana obwódka mogą nigdy nie powstać — cztery kształty zredukowałyby się wtedy do dwóch i żaden przelot by tego nie zobaczył.",
+  },
 ];
 
 /**
@@ -5684,14 +6007,33 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `.settings-category > section`, więc dziecko kategorii, które `section` nie
   // jest, leżało poza pomiarem — a takie było (D5-04c, licząca je nad
   // wszystkimi sześcioma kategoriami). `positionsWithPairs` się nie rusza.
-  pairs: 118,
+  //
+  // 118 → 129 PRZY LOCIE D6 FAZY D, 2026-08-11, I SĄ TO CZTERY NOWE POZYCJE —
+  // ogon CRM. Organizacji i Ludzi nie mierzyła w tej mapie ANI JEDNA para:
+  // oba ekrany dojechały tu razem z markerami przybycia dopisanymi przez ten
+  // lot. Jedenaście par na cztery pozycje, i rozdrobnienie ma dwie przyczyny,
+  // obie policzalne. Po pierwsze, każdy z tych kształtów mieszka w DWÓCH
+  // arkuszach modułowych (`organizations.module.css` i `people.module.css`),
+  // bo rejestr zgłosił je jako pary bliźniaków (#20/#30, #19 dwa razy,
+  // #21/#29) — jedna para byłaby zielona nad połową poprawki. Po drugie,
+  // pozycja 1 („znacznik jest rysowany”) rozpada się na WYMIAR pudełka
+  // i na KSZTAŁT stanu: para nad samym wymiarem stałaby zielona nad czterema
+  // jednakowymi kwadratami w czterech odcieniach, czyli nad wersją, której
+  // nie da się przeczytać bez koloru — a to jest dokładnie ta wada, którą
+  // wpis nazywa.
+  pairs: 129,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
   // 11 → 12 PRZY LOCIE D4: druga połowa wpisu #61 (uchwyt zmiany rozmiaru
   // w polu EDYCJI komentarza). Oddana w kodzie, niemierzalna przez tę mapę —
   // pole powstaje dopiero po kliknięciu „Edit", a `route` nie ma takiego kroku.
-  notCovered: 12,
+  //
+  // 12 → 13 PRZY LOCIE D6: dwa z czterech kształtów znacznika sygnału.
+  // Wykrzyknik „At risk" mieszka w `::after`, którego `read` tej mapy nie
+  // widzi, a stanów `good` i `none` fikstura nie rysuje. Oddane w arkuszu,
+  // niemierzalne tym przelotem — powody przy wpisie.
+  notCovered: 13,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -5797,6 +6139,39 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       positionsInBrief: 5,
       pairs: 13,
       positionsWithPairs: 5, // 1, 2, 3, 4, 5
+      positionsWithoutPairs: [],
+    },
+    D6: {
+      // Lot D6 niesie SZEŚĆ wpisów rejestru (#19, #20, #21, #26, #29, #30),
+      // a POZYCJI — czyli zdań prototypu — jest cztery, i rachunek jest tu
+      // rachunkiem zdań, nie miejsc:
+      //   1. znacznik sygnału jest rysowany, nie pisany (#20 + #30 — jedna
+      //      wada zgłoszona dwa razy, bo mieszka w dwóch arkuszach);
+      //   2. „Prospect” należy do akcentu, nie do informacji (#19 — jedna
+      //      plakietka na dwóch ekranach, i to właśnie z tego rejestr wywnioskował,
+      //      że rozjazd jest REGUŁĄ);
+      //   3. segmenty układu otwierają się glifem (druga połowa #21 na
+      //      Organizacjach i połowa #29 o segmentach na Ludziach);
+      //   4. glif wiodący przy nazwie organizacji i w plakietkach uczestnictwa
+      //      (druga połowa #26 i druga połowa #29).
+      // Pozycje 3 i 4 są POŁÓWKAMI wpisów, których farbę zamknęła Faza C
+      // (`5d4f2c2`, reset przycisku) — ten lot dowozi wyłącznie brakującą
+      // połowę i nie udaje, że rusza tamtą.
+      //
+      // WSZYSTKIE CZTERY MAJĄ PARĘ, ale DWIE Z NICH MAJĄ JĄ NAD POŁOWĄ, i te
+      // dwie połowy są różnymi rzeczami:
+      //   - pozycja 1 dostała parę nad DWOMA z czterech kształtów, i to jest
+      //     ograniczenie PRZYRZĄDU nad oddanym kodem (pseudoelement + zasięg
+      //     fikstury) — wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`;
+      //   - pozycja 4 dostała parę nad nagłówkiem grupy, a NIE nad plakietką
+      //     uczestnictwa, bo tej połowy LOT NIE ODDAŁ: glif wiodący pchał
+      //     `span._parts` 55 px poza tor przy tekście 200% wobec sufitu 25 px
+      //     z `descendant-overflow.mjs`. To jest brak DOSTAWY, nie brak
+      //     pomiaru, więc stoi w `notDelivered` raportu, a nie na liście
+      //     nieobjętych.
+      positionsInBrief: 4,
+      pairs: 11,
+      positionsWithPairs: 4, // 1, 2, 3, 4
       positionsWithoutPairs: [],
     },
     D4: {
