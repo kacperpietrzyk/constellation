@@ -373,9 +373,18 @@ describe("interaction recovery contracts", () => {
       /className="ghost-button"[\s\S]{0,200}?onClick=\{\(\) => setConfirmingId\(project\.id\)\}/,
     );
     assert.match(strategicSurface, /confirmingId === project\.id \? \(/);
+    // The guarantee is that the detach is the DESTRUCTIVE variant of a real
+    // button, so the pattern pins `secondary-button` and `status-danger` and
+    // deliberately tolerates whatever sits between them. Phase C moved the
+    // variant from a container rule (`.task-removal-actions .status-danger`,
+    // which painted a border on a reset that has `border: 0`) onto the action
+    // class, and then gave this row's confirm the `compact` size its siblings
+    // already carry. Both are material decisions the surrounding row owns; a
+    // literal string here would make this assertion red on each of them while
+    // saying nothing about the wiring it exists to judge.
     assert.match(
       strategicSurface,
-      /className="status-danger"[\s\S]{0,300}?onUnlink\(project\.id\)/,
+      /className="secondary-button[^"]*status-danger"[\s\S]{0,300}?onUnlink\(project\.id\)/,
     );
     // Copy again, for the same reason as its twin: `activeProjects` unions two
     // reaches, so a delivery an opportunity also names stays listed and a

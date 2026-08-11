@@ -556,8 +556,12 @@ select {
    (`v3/app.css:337`), a jego suwak na `--surface-elevated` (`:352`) — wybrane
    ODCHODZI OD PLANU, niewybrane na nim leży. Po tej poprawce stan spoczynkowy
    jest planem (przezroczysty), a stan wybrany dalej bierze `--surface-hover`
-   plus `--border-strong` i grubość 500 (`organizations.module.css:100-105`,
-   `people.module.css:93`, `library.module.css:130`), czyli jaśnieje w ciemnym
+   plus `--border-strong` i grubość 500 — reguła `.switch[aria-selected="true"]`
+   w `organizations.module.css:99-104`, `people.module.css:98-103`
+   i `library.module.css:164-169` (selektor wypisany, bo sam numer wiersza
+   gnije przy pierwszym przesunięciu pliku i zostaje cytatem, który KŁAMIE:
+   dwa z tych trzech adresów były przepisane z rejestru B1 i wskazywały już
+   na wyściółkę stanu spoczynkowego) — czyli jaśnieje w ciemnym
    i ciemnieje w jasnym — w obu wypadkach oddala się od planu, na którym leży
    sąsiad. */
 button {
@@ -2951,9 +2955,19 @@ kbd {
    a destructive action — the reference gives danger `--status-error` as colour
    and border and never as a solid fill" (`.ui-craft/tokens.md:257`). Dlatego
    przycisk potwierdzenia dostaje `secondary-button`, a wariant zaczepia się
-   o klasę akcji, nie o nazwę pojemnika — ten sam napis „secondary-button
-   status-danger" pisały już `CalendarConsentDialog.tsx:113`
-   i `TaskReservationSection.tsx:296`, i do dziś nie dostawały od niego NICZEGO.
+   o klasę akcji, nie o nazwę pojemnika.
+
+   CO STARA REGUŁA ROBIŁA NAPRAWDĘ, zmierzone na rodzicu (228d8ad), a nie
+   zgadnięte: selektor potomka dosięgał WSZYSTKICH czterech miejsc, ale malował
+   tylko na dwóch. `CalendarConsentDialog.tsx:113`
+   i `TaskReservationSection.tsx:296` niosły „secondary-button status-danger"
+   od zawsze, a `.secondary-button` deklaruje `border: 1px solid` — więc tam
+   krawędź do pomalowania ISTNIAŁA i deklaracja rysowała. Nie rysowała
+   wyłącznie na gołych `<button class="status-danger">`
+   (`RecordRemovalSection.tsx:84`, `TaskRemovalSection.tsx:60` na rodzicu),
+   bo nad resetem z `border: 0` sam `border-color` nie ma czego pomalować.
+   Ten lot dopisał im `secondary-button` i tym samym ruchem zabrał regule
+   powód, żeby nazywać pojemnik.
 
    HOVER MUSI BYĆ WYPISANY: `.secondary-button:not(:disabled):hover` ma swoistość
    (0,3,0) i przebiłby wariant (0,2,0), więc krawędź niszcząca gasłaby dokładnie

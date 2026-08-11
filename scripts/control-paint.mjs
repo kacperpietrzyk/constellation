@@ -471,7 +471,19 @@ export const unmetControlPaintEntries = (met, registry = KNOWN_CONTROL_PAINT) =>
  */
 export const CONTROL_PAINT_SURFACE_FLOORS = {
   // zmierzone → podłoga (60%, minimum 1), przelot z 2026-08-10, oba motywy
-  // oddały te same liczby co do jednej kontrolki
+  // oddały te same liczby co do jednej kontrolki.
+  //
+  // JEDNA ADNOTACJA JEST JUŻ NIEAKTUALNA I ZOSTAJE ŚWIADOMIE: przelot
+  // z 2026-08-11 (`dowody/c3-zielen.txt`) naliczył na `tasks` OSIEMNAŚCIE
+  // kontrolek, nie siedemnaście — pozostałe dwanaście celów oddało te same
+  // liczby. Podłoga się nie rusza (60% z 18 to dalej 10), a liczba w komentarzu
+  // NIE jest podmieniana pojedynczo, bo cała tabela nosi w nagłówku JEDEN
+  // przelot i JEDNĄ datę: łata na jednym wierszu robi z niej mieszankę dwóch
+  // pomiarów, czyli dokładnie to, po czym lot B1 przepisał swój zapis w całości
+  // zamiast go poprawiać. Następny pełny przelot przepisuje tabelę i nagłówek
+  // razem. Adnotacja, która milczy o tym, że rozminęła się z pomiarem, byłaby
+  // za to tą samą wadą, którą naprawa po przeglądzie lotu C3 usuwała z dwóch
+  // komentarzy w `styles.css`.
   shell: 22, // 37
   today: 1, // 1
   calendar: 1, // 3

@@ -1235,7 +1235,7 @@ const DeliveryLinkRow = ({
             </small>
             <button
               type="button"
-              className="secondary-button status-danger"
+              className="secondary-button compact status-danger"
               disabled={busy}
               onClick={() => {
                 setConfirmingId(undefined);
