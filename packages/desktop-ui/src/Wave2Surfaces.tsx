@@ -50,6 +50,19 @@ const ProjectContextPanel = lazy(async () => ({
 
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
 
+// Wybór szablonu do zastosowania. Leniwy Z POWODU BUDŻETU, i to jest pomiar:
+// ten moduł jest na ścieżce gorącej, a `InlinePopover` — mimo ośmiu konsumentów
+// — nie jest na niej dzisiaj wcale (`grep -c InlinePopover dist/index.html` = 0,
+// zmierzone przed tym lotem i po nim). Statyczny import wciągnąłby go tam wraz
+// z portalem, obsługą ognisk i pozycjonowaniem, przy 1 304 B zapasu na całej
+// ścieżce. Stała jest na poziomie MODUŁU, nie w ciele komponentu, więc nie
+// dokłada ani jednego haka — a w tym pliku hak dopisany po warunkowym powrocie
+// niżej wygasiłby cały ekran przy zielonych bramkach.
+const ApplyTemplatePopover = lazy(async () => ({
+  default: (await import("./projects/ApplyTemplatePopover.js"))
+    .ApplyTemplatePopover,
+}));
+
 /* TEN WARIANT NIE DELEGUJE DO `SurfaceTitleBand`, I TO JEST POMIAR, NIE
    PRZEOCZENIE. Lot C2 raz go przepiął i cofnął po CZERWIENI bramki typografii
    nagłówków (`scripts/heading-typography.mjs`): ta bramka czyta LITERALNE
@@ -561,7 +574,6 @@ export const ProjectsSurface = ({
   const [title, setTitle] = useState("");
   const [newOutcome, setNewOutcome] = useState("");
   const [createTemplateId, setCreateTemplateId] = useState("");
-  const [applyTemplateId, setApplyTemplateId] = useState("");
   const createTriggerRef = useRef<HTMLButtonElement>(null);
   const createTitleRef = useRef<HTMLInputElement>(null);
   const [editedOutcome, setEditedOutcome] = useState(
@@ -643,36 +655,21 @@ export const ProjectsSurface = ({
               {templateApplied !== undefined && (
                 <small>Template: {templateApplied}</small>
               )}
+              {/* KROK POTWIERDZENIA ODCHODZI RAZEM Z KONTROLKĄ FORMULARZA
+                  (lot D11, wpisy #51 i #55). Wybór szablonu wysyła JEDNĄ
+                  komendę, a toast niesie działające Cofnij przez 8 s
+                  (`RealApp.tsx:1245`, `refreshAfter` `:1459+`) — więc pomyłka
+                  kosztuje jedno kliknięcie wstecz. Nazwa dostępna szła dotąd
+                  z `sr-only` etykiety `<label for>`; dymek nie ma czego takiego,
+                  więc niesie ją TREŚĆ wyzwalacza plus `panelLabel`. */}
               {appliable.length > 0 && (
-                <>
-                  <label className="sr-only" htmlFor="project-apply-template">
-                    Template to apply
-                  </label>
-                  <select
-                    disabled={busy}
-                    id="project-apply-template"
-                    onChange={(event) => setApplyTemplateId(event.target.value)}
-                    value={applyTemplateId}
-                  >
-                    <option value="">Apply template…</option>
-                    {appliable.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="secondary-button compact"
-                    disabled={busy || applyTemplateId === ""}
-                    onClick={() => {
-                      onApplyTemplate(applyTemplateId);
-                      setApplyTemplateId("");
-                    }}
-                    type="button"
-                  >
-                    Apply
-                  </button>
-                </>
+                <Suspense fallback={null}>
+                  <ApplyTemplatePopover
+                    busy={busy}
+                    onApplyTemplate={onApplyTemplate}
+                    templates={appliable}
+                  />
+                </Suspense>
               )}
             </>
           ),

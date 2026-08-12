@@ -20,8 +20,18 @@
    INSIDE each cell. */
 
 .organizations {
-  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`: odstęp kolumny
-     jest nazwany, bo pasma nad listą go odejmują. */
+  /* ODSTĘP KOLUMNY, I OD LOTU D10 JUŻ TYLKO TYLE. Nota, która tu stała,
+     mówiła: „ta zmienna ma nazwę, bo pasma nad listą go odejmują" — i przestała
+     być prawdą o tym ekranie. Pasma są dziś RODZEŃSTWEM tego pudełka, a nie
+     jego dziećmi (`styles.css`, `.work-surface:has(> .surface-header)`), więc
+     `gap` w ogóle ich nie dotyczy i nie ma czego odejmować. Właśnie ten
+     nieodejmowany `gap` między paskiem widoku a listą BYŁ ostatnimi 12 px
+     wpisu #22.
+
+     NAZWA ZOSTAJE, bo `.surface-header + .view-band` w arkuszu powłoki dalej ją
+     czyta — na ośmiu ekranach, na których pasma siedzą w środku nośnika. Zdjęcie
+     jej tutaj byłoby zdjęciem uczestnictwa w kształcie, który nadal istnieje,
+     a nie sprzątaniem. */
   --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;

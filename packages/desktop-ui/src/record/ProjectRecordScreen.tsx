@@ -309,7 +309,7 @@ export const ProjectRecordScreen = ({
         </button>
         {/* THE ONE ACCENT-FILLED ACTION OF THIS STRIP (Phase C, lot C4).
             The reference draws exactly this button in exactly this place:
-            `v3/screens/record.js:428-432` is
+            `v3/screens/record.js:429-433` is
             `crumbbar(trail, btn("New task", { cls: "primary", icon: "plus",
             act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)` — the
             filled action in the crumb bar, the record's own title in the NEXT

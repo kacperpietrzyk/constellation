@@ -538,7 +538,7 @@ export const classifyTitleBandInline = ({ band, actions }) => {
  *                 jest `<span class="cur">` W crumbbarze, więc tytuł i akcja
  *                 dzielą JEDNO pasmo. Na EKRANACH REKORDU to FAŁSZ: crumbbar
  *                 niesie ŚLAD i akcję, a tytuł jest osobnym `<h1 class="rec-title">`
- *                 w NASTĘPNYM paśmie — `v3/screens/record.js:428-432` to
+ *                 w NASTĘPNYM paśmie — `v3/screens/record.js:429-433` to
  *                 dosłownie `crumbbar(ślad, btn("New task", { cls: "primary" }))
  *                 + rcShell(`<h1 class="rec-title">…`)`, czyli sklejenie DWÓCH
  *                 rodzeństw. Nasz `.crumbs` z `.actions` nad `header._header`
@@ -739,7 +739,7 @@ export const TITLE_BAND_ROWS = [
     prototype: "action",
     prototypeRow: "ABOVE_BAND",
     prototypeInline: "FLUSH_END",
-    cite: 'v3/screens/record.js:428-432 — `crumbbar(ślad, btn("New task", { cls: "primary", icon: "plus", act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)`: filled action w crumbbarze, tytuł rekordu w NASTĘPNYM paśmie — dwa rodzeństwa sklejone `+`, więc prototyp stawia tu akcję RZĄD WYŻEJ niż tytuł',
+    cite: 'v3/screens/record.js:429-433 — `crumbbar(ślad, btn("New task", { cls: "primary", icon: "plus", act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)`: filled action w crumbbarze, tytuł rekordu w NASTĘPNYM paśmie — dwa rodzeństwa sklejone `+`, więc prototyp stawia tu akcję RZĄD WYŻEJ niż tytuł',
     today: "ABOVE_BAND",
     todayInline: "FLUSH_END",
     app: "record/ProjectRecordScreen.tsx:300-336 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), record-screen.module.css:62-68",

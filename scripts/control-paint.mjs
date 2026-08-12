@@ -320,16 +320,32 @@ export const KNOWN_CONTROL_PAINT = [];
  *                       świadek, o którego pyta zadanie: kontrolka bez tła,
  *                       która NIE JEST wadą. Zgłoszenie jej byłoby fałszywym
  *                       trafieniem, czyli wadą przyrządu.
- *   * `primary-button`, `secondary-button` — tło Z TOKENU (`styles.css:726`,
- *                       `:761`). Świadek na to, że porównanie z paletą w ogóle
- *                       umie zwrócić „w palecie", a nie tylko „nie znam".
+ *   * `secondary-button` — tło Z TOKENU. Świadek na to, że porównanie z paletą
+ *                       w ogóle umie zwrócić „w palecie", a nie tylko „nie znam".
+ *   * `primary-button`  — GRADIENT AKCENTU. Świadek na to, że akcja główna
+ *                       naprawdę nosi obraz tła, a nie płaską farbę.
  *
  * Świadek NIENARYSOWANY jest awarią przyrządu, nie ciszą: spacer, który go nie
  * spotkał, nie obejrzał ekranów, o których myśli, że je obejrzał.
+ *
+ * `primary-button` PRZESZEDŁ NA `PAINTED_IMAGE` W LOCIE D8 (2026-08-12) i nie
+ * jest to poluzowanie świadka, tylko PRZEPIĘCIE GO NA NOWĄ ASERCJĘ. Akcja główna
+ * maluje od tego lotu gradient akcentu prototypu (`styles.css`, `.primary-button`),
+ * a klasyfikator zwraca `PAINTED_IMAGE` dla każdej kontrolki z obrazem tła — patrz
+ * pierwszy warunek `classifyControlPaint` wyżej, którego komentarz ten gradient
+ * przewidywał. Świadek mówi więc odtąd: „akcja główna NOSI gradient". Cofnięcie jej
+ * do płaskiego wypełnienia zapali `CONTROL_PAINT_WITNESS_FLAGGED` — i to jest
+ * jedyny przyrząd tej fali, który cofnięcie gradientu widzi w ŻYWEJ przeglądarce,
+ * a nie w arkuszu.
+ *
+ * `secondary-button` ZOSTAJE NA `IN_PALETTE` ŚWIADOMIE: bez niego zniknąłby
+ * jedyny dodatni świadek na to, że porównanie z paletą w ogóle UMIE zwrócić
+ * „w palecie". Spis z samymi `TRANSPARENT` i `PAINTED_IMAGE` przechodziłby
+ * z martwą gałęzią porównania palety.
  */
 export const CONTROL_PAINT_WITNESSES = [
   { class: "ghost-button", expect: "TRANSPARENT" },
-  { class: "primary-button", expect: "IN_PALETTE" },
+  { class: "primary-button", expect: "PAINTED_IMAGE" },
   { class: "secondary-button", expect: "IN_PALETTE" },
 ];
 

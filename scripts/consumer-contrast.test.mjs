@@ -619,8 +619,41 @@ const splitSelectorList = (selector) => {
 //
 // Wiersze zwolnione są MIERZONE I WYPISANE — zwolnienie zdejmuje asercję,
 // nie pomiar.
-const INACTIVE_COMPONENT =
+//
+// `:not(…)` JEST ZDEJMOWANE PRZED DOPASOWANIEM, i to jest naprawa KŁAMIĄCEGO
+// PRZYRZĄDU, znaleziona w locie D8. Goły wzorzec łapał `:disabled` stojące
+// WEWNĄTRZ `:not(:disabled)`, więc KAŻDA reguła hoveru i stanu wciśniętego
+// pisana idiomem `:not(:disabled):hover` była filowana jako „kontrolka
+// nieaktywna" — czyli dokładnie odwrotnie, niż mówi jej selektor.
+// Zdejmowane jest INNERMOST i w pętli, żeby zagnieżdżone `:not()` też zeszło.
+//
+// ZMIERZONY ZAKRES NAPRAWY: **76 wierszy w 21 regułach** wypadło ze zwolnienia,
+// w tym `.primary-button:not(:disabled):hover`. Zwolnionych jest odtąd 4 zamiast
+// 80 — i to jest ZWĘŻENIE ZBIORU, nie poluzowanie bramki: zwolnienie przestało
+// obejmować reguły, których selektor mówi o sobie „aktywna". Wiersz naprawdę
+// nieaktywny i naprawdę pod progiem (`.save:disabled`) stoi w nim dalej.
+//
+// NAPRAWA JEST BEZPIECZNA, I TO JEST ASERCJA, NIE ZAPEWNIENIE: wszystkie 76
+// wierszy zdaje próg (najniższy 4,62:1), więc odsłonięcie ich nie przenosi
+// ŻADNEGO długu z listy zwolnień na listę porażek. Pilnuje tego asercja
+// „zdjęcie `:not(…)` nie odsłoniło wiersza poniżej progu" niżej w tym pliku,
+// licząca WZORCEM, nie podnapisem. Gdyby choć jeden był pod progiem, decyzję
+// musiałby podjąć człowiek — naprawa przyrządu, która przy okazji ucisza
+// pomiar, jest gorsza niż defekt.
+const stripNot = (selector) => {
+  let previous;
+  let current = selector;
+  do {
+    previous = current;
+    current = current.replace(/:not\([^()]*\)/g, "");
+  } while (current !== previous);
+  return current;
+};
+const INACTIVE_COMPONENT_PATTERN =
   /(:disabled|\[disabled\]|\[aria-disabled=["']?true["']?\])/;
+const INACTIVE_COMPONENT = {
+  test: (selector) => INACTIVE_COMPONENT_PATTERN.test(stripNot(selector)),
+};
 
 // ── DRUGIE ZWOLNIENIE: CZYSTA DEKORACJA, WYPISANA Z IMIENIA ────────────────
 //
@@ -661,6 +694,76 @@ const decorativeKey = (sheet, selector) => `${sheet}|${selector}`;
 const DECORATIVE_KEYS = new Set(
   DECORATIVE_EXEMPTIONS.map((entry) =>
     decorativeKey(entry.sheet, entry.selector),
+  ),
+);
+
+// ── TRZECIE ZWOLNIENIE: GRADIENT AKCENTU POD NAPISEM, DECYZJA WŁAŚCICIELA ───
+//
+// To NIE JEST wyjątek techniczny i nie udaje, że mieści się w SC 1.4.3. To jest
+// ŚWIADOMY DŁUG DOSTĘPNOŚCIOWY, przyjęty przez człowieka, z nazwiskiem i datą,
+// i dlatego jego zbiór jest zamknięty, wypisywany w każdym przebiegu i pilnowany
+// osobnym testem niżej („ZWOLNIENIE DLA GRADIENTU AKCENTU…").
+//
+// CO ZOSTAŁO ZMIERZONE. Akcja główna maluje od 2026-08-12 gradient prototypu
+// `linear-gradient(180deg, var(--a-400), var(--a-500) 55%, var(--a-600))`
+// (`v3/app.css:321-325`) pismem `--on-accent`. Ta bramka rozkłada gradient na
+// stopnie i mierzy KAŻDY: 2,57:1 na `--a-400`, 3,54:1 na `--a-500`, 5,19:1 na
+// `--a-600`, przy progu 4,5:1. Napis leży W POPRZEK CAŁEGO gradientu, więc wiąże
+// go stopień NAJGORSZY, czyli 2,57:1.
+//
+// DLACZEGO ZWOLNIENIE JEST PRZY GRADIENCIE, A NIE PRZY TUSZU — dowód
+// WYCZERPUJĄCY, nie próbka. Kontrast jest monotoniczny względem jasności tuszu,
+// a stopnie idą w dwie strony, więc wystarczą oba końce: CZYSTA BIEL daje
+// 2,64 / 3,64 / 5,35 (pada na `--a-400`), CZYSTA CZERŃ daje 7,95 / 5,76 / 3,93
+// (pada na `--a-600`). Skoro pada najjaśniejszy i najciemniejszy tusz, jaki
+// istnieje, to NIE MA tuszu zdającego na wszystkich trzech stopniach.
+// Najciemniejszy tusz tego drzewa, `--neutral-950`, daje 7,78 / 5,64 / 3,84
+// i mieści się w tym samym wniosku. Pada GRADIENT, nie tusz.
+//
+// CZEGO ZWOLNIENIE NIE OBEJMUJE, powiedziane wprost, żeby nikt tego nie
+// rozciągnął: hover prototypu to DRUGI gradient (`--a-300 → --a-400 55% →
+// --a-500`, czyli 1,88 / 2,57 / 3,54 — wszystkie trzy pod progiem) i NIE JEST
+// przyjęty; hover tej aplikacji zostaje na `--a-700` (7,60:1). Decyzja
+// właściciela dotyczy JEDNEJ pary: spoczynku akcji głównej. Drugi gradient
+// wymaga drugiej decyzji, nie rozszerzenia tej listy.
+//
+// DLACZEGO OSOBNY ZNACZNIK, A NIE `exempt` ANI `decorative`: komunikat `exempt`
+// mówi „bo kontrolka jest nieaktywna" (nieprawda — ta jest najaktywniejszą
+// kontrolką aplikacji), a `decorative` żąda `aria-hidden="true"` (niespełnialne —
+// przycisk niesie prawdziwy napis). Trzy różne powody, trzy różne zbiory, trzy
+// różne bloki wypisu.
+const ACCENT_GRADIENT_EXEMPTIONS = [
+  {
+    sheet: "styles.css",
+    selector: ".primary-button",
+    // Bez pola `source`: klasa jest GLOBALNA i nosi ją kilkanaście plików, więc
+    // wskazanie jednego byłoby nieprawdą. Pokrycie w drzewie sprawdza się
+    // wyszukaniem klasy WYPROWADZONEJ z `selector` — patrz asercja niżej.
+    // Stopnie POD progiem, ZAMKNIĘTY zbiór liczb. Nie „lista informacyjna":
+    // asercja niżej porównuje go z tym, co przelot NAPRAWDĘ zmierzył, więc
+    // przestrojenie `--a-400` albo `--a-500` nie da się schować w zwolnieniu.
+    forgivenRatios: [2.57, 3.54],
+    // Stopień, który zdaje — też pinowany, bo gdyby zjechał pod próg, gradient
+    // byłby już CAŁY pod progiem i to jest inna decyzja niż podjęta.
+    passingRatio: 5.19,
+    // KROTNOŚĆ, nie tylko wartości: dwa stopnie pod progiem × dwa motywy = 4,
+    // jeden stopień nad progiem × dwa motywy = 2. Bez tych dwóch liczb
+    // zwolnienie jest zamknięte na ZBIÓR LICZB i otwarte na LICZBĘ WIERSZY —
+    // uzasadnienie przy asercji (5) niżej.
+    forgivenRowCount: 4,
+    passingRowCount: 2,
+    decidedBy: "Kacper, 2026-08-12",
+    reason:
+      "gradient akcentu prototypu na akcji głównej (v3/app.css:321-325), przyjęty 1:1; " +
+      "napis leży w poprzek całego gradientu, więc wiąże stopień najgorszy (2,57:1), " +
+      "a żaden tusz tego nie ratuje — biel pada na --a-400 (2,64), czerń pada na " +
+      "--a-600 (3,93). Hover prototypu (1,88 / 2,57 / 3,54) NIE jest przyjęty.",
+  },
+];
+const gradientExemptKey = (sheet, selector) => `${sheet}|${selector}`;
+const ACCENT_GRADIENT_KEYS = new Set(
+  ACCENT_GRADIENT_EXEMPTIONS.map((entry) =>
+    gradientExemptKey(entry.sheet, entry.selector),
   ),
 );
 
@@ -1151,6 +1254,26 @@ for (const themeName of THEMES) {
           decorative: DECORATIVE_KEYS.has(
             decorativeKey(consumer.sheet, consumer.selector),
           ),
+          // ZWOLNIENIE JEST NA WIERSZ Z GRADIENTU, NIE NA SELEKTOR. Klucz
+          // `sheet|selector` sam nie wystarcza i to jest poprawka po przeglądzie
+          // lotu D8: `selector` to CAŁY napis listy selektorów reguły, więc
+          // DRUGA reguła w `styles.css`, której lista selektorów brzmi dokładnie
+          // `.primary-button` — na przykład wewnątrz `@media` — dostawała ten sam
+          // klucz i była wybaczana z AA razem z gradientem. Żadna z czterech
+          // asercji zamykających zwolnienie by tego nie zobaczyła: wąskość
+          // porównuje LISTĘ zwolnień, a obie asercje na liczby filtrują wprzód
+          // do `fromGradient`, czyli do wierszy Z `gradientKey`. Wiersz z płaskim
+          // wypełnieniem nie ma `gradientKey`, więc wypadał ze wszystkich trzech
+          // i zostawał tylko z odjęciem w bramce AA.
+          //
+          // Warunek niżej zawęża zwolnienie do tego, co właściciel naprawdę
+          // przyjął: stopnia ROZŁOŻONEGO GRADIENTU. Płaskie wypełnienie na tym
+          // samym selektorze wraca pod próg 4,5:1 jak każdy inny konsument.
+          gradientExempt:
+            paint.gradientKey !== undefined &&
+            ACCENT_GRADIENT_KEYS.has(
+              gradientExemptKey(consumer.sheet, consumer.selector),
+            ),
         });
       }
     }
@@ -1217,6 +1340,10 @@ for (const themeName of THEMES) {
         inherited: true,
         exempt: INACTIVE_COMPONENT.test(target.selector),
         decorative: false,
+        // Stos nazwany wnosi powierzchnię z TABELI, nie z gradientu na regule,
+        // więc zwolnienie gradientowe tej gałęzi nie dotyczy i ma tu stać
+        // jawnym `false`, a nie brakiem pola.
+        gradientExempt: false,
       });
     }
   }
@@ -1534,6 +1661,15 @@ test("GRADIENTY SĄ ROZŁOŻONE NA STOPNIE, a każdy stopień zmierzony", () => 
     [
       "linear-gradient( 150deg, var(--a-400), var(--a-600) 62%, var(--a-700) ) → 3",
       "linear-gradient( 150deg, var(--accent-legible-bg), var(--a-700) 62% ) → 2",
+      // AKCJA GŁÓWNA, od lotu D8 (2026-08-12). Ten wpis jest DRUGĄ POŁOWĄ
+      // zwolnienia z AA: zwolnienie mówi „te dwa stopnie wolno mieć pod
+      // progiem", a ten wiersz mówi „i mają być TRZY, rozłożone, zmierzone".
+      // Bez niego cofnięcie wypełnienia do płaskiego tokenu wróciłoby ZIELONE —
+      // płaskie `--a-600` zdaje 5,19:1, więc sam kontrast nic by nie zauważył.
+      // Klucz jest wklejony z WYDRUKU przelotu, nie przepisany z arkusza: to
+      // normalizacja runnera decyduje o spacjach, a te biorą się z tego, jak
+      // `prettier` ZŁAMAŁ deklarację na linie — nie z tego, co się napisało.
+      "linear-gradient( 180deg, var(--a-400), var(--a-500) 55%, var(--a-600) ) → 3",
     ],
     `Zbiór ROZŁOŻONYCH gradientów albo liczba ich stopni się zmieniły. Dziś: ` +
       `[${table.join(" | ")}]. Jeżeli gradient zniknął z tej listy, a nie ma go ` +
@@ -1618,7 +1754,10 @@ test("KAŻDY konsument zdaje AA (WCAG 2.x SC 1.4.3, próg 4,5:1)", () => {
   const failures = measurements
     .filter(
       (row) =>
-        !row.exempt && !row.decorative && row.ratio < WCAG_AA_NORMAL_TEXT,
+        !row.exempt &&
+        !row.decorative &&
+        !row.gradientExempt &&
+        row.ratio < WCAG_AA_NORMAL_TEXT,
     )
     .sort((left, right) => left.ratio - right.ratio)
     .map(
@@ -1797,6 +1936,177 @@ test("ZWOLNIENIE DLA DEKORACJI ma pokrycie w kodzie, inaczej PADA", () => {
   );
 });
 
+test("ZWOLNIENIE DLA GRADIENTU AKCENTU jest WĄSKIE, POKRYTE i POLICZONE", () => {
+  // Cztery rzeczy, bo świadomy dług dostępnościowy bez każdej z nich jest
+  // zgodą na wszystko:
+  //   1. PODMIOT ISTNIEJE — reguła dała wiersze pomiaru. Zwolnienie, które
+  //      przeżyło skasowanie swojego gradientu, zwalnia powietrze i wraca
+  //      zielone na pustym dowodzie.
+  //   2. PODMIOT JEST W DRZEWIE — klasa jest naprawdę nakładana przez kod
+  //      renderujący. Zwolnienie dla reguły, której nikt nie nosi, to dług
+  //      wpisany w powietrze.
+  //   3. ZWOLNIENIE JEST WĄSKIE — dokładnie ten jeden podmiot, wymieniony
+  //      z nazwy w `deepEqual`. Bez tej asercji dopisanie drugiego selektora
+  //      do listy przechodzi bez śladu, a warunek właściciela mówi o JEDNEJ
+  //      parze.
+  //   4. LICZBY SĄ ZAMKNIĘTE — wybaczone stopnie są PORÓWNYWANE z tym, co
+  //      przelot NAPRAWDĘ zmierzył. Przestrojenie `--a-400` albo `--a-500`
+  //      na cokolwiek innego wywali TĘ asercję, zamiast schować się pod
+  //      zwolnieniem.
+  const rendererRoot = path.join(repoRoot, "packages", "desktop-ui", "src");
+
+  // (3) WĄSKOŚĆ — najpierw, bo to ona pilnuje pozostałych trzech przed
+  // rozlaniem się na kolejne podmioty.
+  assert.deepEqual(
+    ACCENT_GRADIENT_EXEMPTIONS.map(
+      (entry) => `${entry.sheet} ${entry.selector}`,
+    ).sort(),
+    ["styles.css .primary-button"],
+    "Zbiór podmiotów zwolnionych z AA na gradiencie akcentu się ZMIENIŁ. " +
+      "Decyzja właściciela z 2026-08-12 obejmuje DOKŁADNIE JEDNĄ parę — spoczynek " +
+      "akcji głównej. Hover, stan wciśnięty, `.secondary-button` i warstwa tokenów " +
+      "to osobne pary i wymagają osobnej decyzji człowieka, nie dopisania linijki.",
+  );
+
+  for (const entry of ACCENT_GRADIENT_EXEMPTIONS) {
+    const rows = measurements.filter(
+      (row) =>
+        row.gradientExempt &&
+        row.sheet === entry.sheet &&
+        row.selector === entry.selector,
+    );
+    // (1) PODMIOT ISTNIEJE, i to nie „jakiś wiersz": wiersze Z GRADIENTU.
+    // Wypełnienie płaskie dałoby wiersze bez `gradientKey` i zwolnienie
+    // przestałoby mieć przedmiot, mimo że lista dalej by je wymieniała.
+    const fromGradient = rows.filter((row) => row.gradientKey !== undefined);
+    assert.ok(
+      fromGradient.length > 0,
+      `Zwolnienie ${entry.sheet} ${entry.selector} nie ma ANI JEDNEGO wiersza ` +
+        "pochodzącego z ROZŁOŻONEGO GRADIENTU. Albo reguła przestała malować " +
+        "gradient (wtedy zwolnienie jest do usunięcia, bo dług został spłacony), " +
+        "albo zmieniła selektor — w obu razach ta lista dziś kłamie.",
+    );
+
+    // (4) LICZBY ZAMKNIĘTE — wyliczone z POMIARU, porównane z listą.
+    const measuredForgiven = [
+      ...new Set(
+        fromGradient
+          .filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT)
+          .map((row) => Number(row.ratio.toFixed(2))),
+      ),
+    ].sort((left, right) => left - right);
+    assert.deepEqual(
+      measuredForgiven,
+      [...entry.forgivenRatios].sort((left, right) => left - right),
+      `Stopnie WYBACZONE na ${entry.selector} zmierzyły się dziś jako ` +
+        `[${measuredForgiven.join(", ")}], a zwolnienie deklaruje ` +
+        `[${entry.forgivenRatios.join(", ")}]. Zwolnienie jest na KONKRETNE liczby; ` +
+        "przestrojony stopień rampy ma się zgłosić TUTAJ, a nie wjechać pod " +
+        "wybaczenie wydane na inną wartość.",
+    );
+    const measuredPassing = [
+      ...new Set(
+        fromGradient
+          .filter((row) => row.ratio >= WCAG_AA_NORMAL_TEXT)
+          .map((row) => Number(row.ratio.toFixed(2))),
+      ),
+    ].sort((left, right) => left - right);
+    assert.deepEqual(
+      measuredPassing,
+      [entry.passingRatio],
+      `Stopnie ZDAJĄCE na ${entry.selector} to dziś [${measuredPassing.join(", ")}], ` +
+        `a zwolnienie deklaruje [${entry.passingRatio}]. Gdyby ta lista opustoszała, ` +
+        "gradient byłby CAŁY pod progiem — a to jest inna decyzja niż ta, którą " +
+        "właściciel podjął.",
+    );
+
+    // (5) ILE WIERSZY, a nie tylko JAKIE LICZBY — poprawka po przeglądzie lotu
+    // D8. Obie asercje wyżej przechodzą przez `new Set(...)`, więc pinują zbiór
+    // RÓŻNYCH wartości i milczą o krotności: siódmy wybaczony wiersz mierzący
+    // dokładnie 2,57 (nowy motyw, nowy stopień o tej samej jasności, nowe
+    // wystąpienie tego samego selektora) wjeżdżałby pod zwolnienie bez ani
+    // jednej czerwonej asercji, bo `[2.57, 3.54]` nie drgnęłoby. Liczba
+    // wierszy jest wyprowadzalna i stała: 3 stopnie × 2 motywy = 6, z tego
+    // 4 pod progiem i 2 nad. Zwolnienie ma być ZAMKNIĘTE także w tym wymiarze.
+    assert.equal(
+      fromGradient.filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT).length,
+      entry.forgivenRowCount,
+      `Zwolnienie ${entry.selector} wybacza dziś ` +
+        `${fromGradient.filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT).length} ` +
+        `wierszy, a deklaruje ${entry.forgivenRowCount}. Zbiór LICZB może się nie ` +
+        "zmienić, kiedy zmienia się zbiór WIERSZY — dlatego krotność jest tu " +
+        "pinowana osobno.",
+    );
+    assert.equal(
+      fromGradient.filter((row) => row.ratio >= WCAG_AA_NORMAL_TEXT).length,
+      entry.passingRowCount,
+      `Zwolnienie ${entry.selector} obejmuje dziś ` +
+        `${fromGradient.filter((row) => row.ratio >= WCAG_AA_NORMAL_TEXT).length} ` +
+        `zdających wierszy, a deklaruje ${entry.passingRowCount}.`,
+    );
+
+    // (2) PODMIOT W DRZEWIE. Klasa jest globalna i noszona przez kilkanaście
+    // plików, więc pytanie brzmi „czy ktokolwiek ją nakłada", a nie „ile razy" —
+    // podłoga na liczbie plików gniłaby przy każdym locie ekranowym i zamieniłaby
+    // asercję o produkcie w asercję o rozkładzie kodu.
+    // Klasa jest WYPROWADZONA z selektora zwolnienia, nie wpisana obok niego:
+    // wpisana rozjechałaby się z podmiotem przy pierwszej zmianie i sprawdzałaby
+    // pokrycie CZEGOŚ INNEGO, wracając przy tym zielona.
+    const className = entry.selector.replace(/^\./u, "");
+    const carriers = readdirSync(rendererRoot, {
+      recursive: true,
+      withFileTypes: true,
+    })
+      .filter(
+        (item) =>
+          item.isFile() &&
+          (item.name.endsWith(".tsx") || item.name.endsWith(".ts")),
+      )
+      .filter((item) =>
+        new RegExp(`["'\`][^"'\`]*\\b${className}\\b[^"'\`]*["'\`]`, "u").test(
+          readFileSync(
+            path.join(item.parentPath ?? item.path, item.name),
+            "utf8",
+          ),
+        ),
+      )
+      .map((item) => item.name);
+    assert.ok(
+      carriers.length > 0,
+      `Klasa ${className} nie jest nakładana w ŻADNYM pliku renderera — ` +
+        "zwolnienie z AA opisuje wtedy regułę, której nikt nie nosi, czyli dług " +
+        "wpisany w powietrze.",
+    );
+  }
+
+  // Wiersze zwolnione są MIERZONE I WYPISANE — dług ma być WIDOCZNY w wyjściu
+  // bramki przy każdym przebiegu, nigdy schowany. Tu stoi też powód i nazwisko,
+  // żeby czytający raport nie musiał szukać, kto to przyjął.
+  const gradientExempt = measurements.filter((row) => row.gradientExempt);
+  console.log(
+    `\nZWOLNIENI (gradient akcentu, DŁUG DOSTĘPNOŚCIOWY PRZYJĘTY PRZEZ CZŁOWIEKA): ` +
+      `${gradientExempt.length} wierszy, z tego ` +
+      `${gradientExempt.filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT).length} ` +
+      `poniżej progu ${WCAG_AA_NORMAL_TEXT}:1:\n` +
+      gradientExempt
+        .slice()
+        .sort((left, right) => left.ratio - right.ratio)
+        .map(
+          (row) =>
+            `  ${row.theme.padEnd(5)} ${format(row.ratio).padStart(6)}:1  ` +
+            `${row.ratio >= WCAG_AA_NORMAL_TEXT ? "AA     " : "PONIŻEJ"}  ` +
+            `${row.where} ${row.subject}  ${row.surfaceLabel}`,
+        )
+        .join("\n") +
+      "\n" +
+      ACCENT_GRADIENT_EXEMPTIONS.map(
+        (entry) =>
+          `  → ${entry.sheet} ${entry.selector}: przyjął ${entry.decidedBy}. ${entry.reason}`,
+      ).join("\n") +
+      "\n",
+  );
+});
+
 // ── DŁUG NAZWANY W `tokens.css`, ZAMIENIONY NA ASERCJĘ ──────────────────────
 //
 // `tokens.css` niósł przez dwa loty akapit prozy o tym, że `.primary-button kbd`
@@ -1877,8 +2187,13 @@ test("SKRÓT NA AKCJI GŁÓWNEJ nie odzyskuje własnego koloru", () => {
   const inheritedInk = measurements.filter((row) =>
     PRIMARY_ACTION_INK.has(row.textValue),
   );
+  // `gradientExempt` musi być odjęte TAKŻE TUTAJ, a nie tylko w bramce „KAŻDY
+  // konsument zdaje AA": ten filtr nie ma ŻADNEJ furtki (nie odejmuje nawet
+  // `exempt`), więc bez tego warunku zwolnienie gradientowe byłoby udawane —
+  // jedna asercja by je uznała, druga wywaliłaby bramkę na tych samych
+  // wierszach. Zbiór odejmowanych par jest ten sam i zamknięty.
   const failing = inheritedInk
-    .filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT)
+    .filter((row) => !row.gradientExempt && row.ratio < WCAG_AA_NORMAL_TEXT)
     .map((row) => `${row.theme}/${row.where}: ${format(row.ratio)}:1`);
   assert.ok(
     inheritedInk.length >= 12,
@@ -1900,6 +2215,52 @@ test("zwolnienia dla NIEAKTYWNYCH kontrolek są mierzone i policzalne", () => {
   const exempt = measurements.filter((row) => row.exempt);
   const belowThreshold = exempt.filter(
     (row) => row.ratio < WCAG_AA_NORMAL_TEXT,
+  );
+  // ZWOLNIENIE NIE ŁAPIE JUŻ REGUŁ, KTÓRE MÓWIĄ O SOBIE „AKTYWNA". Ta asercja
+  // jest tu po naprawie wzorca w locie D8 i pilnuje jej wprost: gdyby ktoś
+  // cofnął zdejmowanie `:not(…)`, 76 wierszy hoveru i stanu wciśniętego wróciłoby
+  // pod komunikat „bo jego kontrolka jest nieaktywna", czyli pod zdanie, które
+  // ich selektor jawnie zaprzecza.
+  const contradicting = exempt.filter((row) =>
+    row.selector.includes(":not(:disabled)"),
+  );
+  // DRUGA POŁOWA TEJ SAMEJ NAPRAWY, LICZONA WZORCEM, NIE PODNAPISEM. Asercja
+  // wyżej pyta o dosłowne `:not(:disabled)`, a `stripNot` zdejmuje KAŻDĄ postać
+  // `:not(…)`. Ta liczba jest tu po to, żeby zakres naprawy był WIDOCZNY
+  // i policzalny, a nie oszacowany po jednym wariancie zapisu.
+  const releasedByStripNot = measurements.filter(
+    (row) =>
+      INACTIVE_COMPONENT_PATTERN.test(row.selector) &&
+      !INACTIVE_COMPONENT_PATTERN.test(stripNot(row.selector)),
+  );
+  console.log(
+    `\nWIERSZE ODDANE POD ASERCJĘ PRZEZ ZDJĘCIE :not(…) (naprawa wzorca, lot D8): ` +
+      `${releasedByStripNot.length} wierszy w ` +
+      `${new Set(releasedByStripNot.map((row) => row.where)).size} regułach; ` +
+      `najniższy ${format(Math.min(...releasedByStripNot.map((row) => row.ratio)))}:1, ` +
+      `poniżej progu: ${releasedByStripNot.filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT).length}.\n`,
+  );
+  // TO JEST DOWÓD, ŻE NAPRAWA PRZYRZĄDU NIE UCISZYŁA POMIARU. Wiersze wypadły
+  // ze zwolnienia, więc wpadły pod asercję „KAŻDY konsument zdaje AA" — i mają
+  // ją PRZEJŚĆ. Gdyby choć jeden był pod progiem, naprawa przenosiłaby dług
+  // z listy zwolnień na listę porażek i wymagałaby decyzji człowieka, nie
+  // poprawki wzorca.
+  assert.deepEqual(
+    releasedByStripNot
+      .filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT)
+      .map((row) => `${row.where} ${row.selector} ${format(row.ratio)}:1`),
+    [],
+    "Zdjęcie `:not(…)` odsłoniło wiersz PONIŻEJ progu. Naprawa wzorca nie jest " +
+      "wtedy samą naprawą przyrządu — odsłania dług, o którym musi zdecydować " +
+      "człowiek.",
+  );
+  assert.deepEqual(
+    contradicting.map((row) => `${row.where} ${row.selector}`),
+    [],
+    "Reguły z `:not(:disabled)` w selektorze trafiły do zwolnionych jako " +
+      `„nieaktywna kontrolka": ${contradicting.map((row) => row.selector).join("; ")}. ` +
+      "To jest ten sam kłamiący przyrząd, który lot D8 naprawił — wzorzec ma " +
+      "dopasowywać się do selektora PO zdjęciu `:not(…)`, nie przed.",
   );
   console.log(
     `\nZWOLNIENI (SC 1.4.3 „Incidental", nieaktywna kontrolka): ${exempt.length} ` +

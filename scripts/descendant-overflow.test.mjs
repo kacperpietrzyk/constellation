@@ -5,10 +5,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  COLLAPSED_TEXT_ENFORCED_SURFACES,
+  KNOWN_COLLAPSED_TEXT,
   KNOWN_DESCENDANT_OVERFLOWS,
   KNOWN_OVERFLOW_TOLERANCE_PX,
+  classifyCollapsedText,
   classifyDescendantOverflow,
+  collapsedTextEnforced,
   matchesSurface,
+  unusedCollapsedEntries,
   unusedRegistryEntries,
 } from "./descendant-overflow.mjs";
 
@@ -217,4 +222,101 @@ test("every shipped registry entry names an owning thread and a measured ceiling
     }
     assert.ok(entry.thread.length > 20, `thread too vague: ${entry.thread}`);
   }
+});
+
+// ── ZAPADNIĘTA TREŚĆ ────────────────────────────────────────────────────────
+// Druga reguła tego pliku pilnuje ŚLEPEJ PLAMKI pierwszej: przelotka
+// przepełnień odrzuca każde pudełko węższe niż 1 px, więc komórka tekstowa
+// znika z raportu dokładnie wtedy, gdy znika z ekranu. Powód powstania stoi
+// przy `KNOWN_COLLAPSED_TEXT`.
+
+const collapse = (overrides) => ({
+  surface: "people",
+  signature: "span._role",
+  clientWidth: 0,
+  textLength: 24,
+  pass: "text scaled to 200%",
+  ...overrides,
+});
+
+test("pudełko bez tekstu nie jest zapadnięciem, tylko pustym pudełkiem", () => {
+  assert.equal(
+    classifyCollapsedText(collapse({ textLength: 0 }), []).verdict,
+    "empty",
+  );
+});
+
+test("komórka, która ma czym rysować, nie jest findingiem", () => {
+  assert.equal(
+    classifyCollapsedText(collapse({ clientWidth: 8 }), []).verdict,
+    "visible",
+  );
+});
+
+test("zapadnięcie bez wpisu w rejestrze PADA", () => {
+  assert.equal(classifyCollapsedText(collapse(), []).verdict, "violation");
+});
+
+test("wpis zwalnia TYLKO wymienione przeloty — na pozostałych zapadnięcie pada", () => {
+  const registry = [
+    {
+      surface: "people",
+      signature: "span._role",
+      passes: ["text scaled to 200%"],
+      thread: "skalowanie interfejsu — kolejność zwijania",
+    },
+  ];
+  assert.equal(
+    classifyCollapsedText(collapse(), registry).verdict,
+    "known",
+    "przelot wymieniony w rejestrze",
+  );
+  const elsewhere = classifyCollapsedText(
+    collapse({ pass: "a full-size window" }),
+    registry,
+  );
+  assert.equal(elsewhere.verdict, "violation");
+  assert.ok(
+    elsewhere.thread.length > 0,
+    "wiadomość ma powiedzieć, KTO jest właścicielem wpisu, który tego przelotu nie obejmuje",
+  );
+});
+
+test("wpis, którego nie dopasował żaden przelot, jest zgłaszany", () => {
+  const registry = [
+    { surface: "people", signature: "span._role", passes: ["x"], thread: "y" },
+    { surface: "tasks", signature: "span._plan", passes: ["x"], thread: "y" },
+  ];
+  assert.deepEqual(
+    unusedCollapsedEntries(new Set(["people|span._role"]), registry).map(
+      (entry) => entry.signature,
+    ),
+    ["span._plan"],
+  );
+});
+
+test("każdy wysłany wpis o zapadnięciu niesie właściciela i co najmniej jeden przelot", () => {
+  assert.ok(KNOWN_COLLAPSED_TEXT.length > 0);
+  for (const entry of KNOWN_COLLAPSED_TEXT) {
+    assert.equal(typeof entry.surface, "string");
+    assert.equal(typeof entry.signature, "string");
+    assert.ok(
+      Array.isArray(entry.passes) && entry.passes.length > 0,
+      `no pass listed: ${entry.signature}`,
+    );
+    for (const pass of entry.passes) assert.ok(pass.length > 0);
+    assert.ok(entry.thread.length > 20, `thread too vague: ${entry.thread}`);
+  }
+});
+
+test("zakres egzekwowania jest ZAMKNIĘTY i obejmuje soczewki swojej powierzchni", () => {
+  // Zakres wypisany, a nie „jakaś lista": rozszerzenie go jest decyzją, która ma
+  // się zgłosić TUTAJ, a nie wjechać jako szósty element tablicy. Uzasadnienie
+  // wąskości i wyjście z niej stoją przy `COLLAPSED_TEXT_ENFORCED_SURFACES`.
+  assert.deepEqual(COLLAPSED_TEXT_ENFORCED_SURFACES, ["people"]);
+  assert.equal(collapsedTextEnforced("people"), true);
+  assert.equal(collapsedTextEnforced("people:person:overview"), true);
+  assert.equal(collapsedTextEnforced("organizations"), false);
+  // I nie łapie sąsiada o wspólnym prefiksie nazwy.
+  assert.equal(collapsedTextEnforced("people-archive"), false);
 });

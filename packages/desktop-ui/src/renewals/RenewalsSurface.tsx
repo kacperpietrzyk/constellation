@@ -738,29 +738,35 @@ export const RenewalsSurface = ({
 
   if (!relationships.available)
     return (
-      <div
-        className={`surface-scroll ${styles.renewals}`}
-        data-renewals-surface
-      >
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także tutaj — patrz nota
+      // przy głównym zwrocie niżej. Gdyby stan awaryjny trzymał stary układ,
+      // chrom skakałby o 12 px dokładnie wtedy, gdy ekran mówi, że czegoś nie
+      // dało się przeczytać.
+      <>
         {header()}
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>Renewals are unavailable</h2>
-            {/* The slice's own reason. The three section headings do NOT render
+        <div
+          className={`surface-scroll ${styles.renewals}`}
+          data-renewals-surface
+        >
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>Renewals are unavailable</h2>
+              {/* The slice's own reason. The three section headings do NOT render
                 behind this: an empty "Time to start" is an answer computed from
                 the watching set, and printing it over a failed read would say
                 "nothing to do" when the truth is "nothing could be asked". */}
-            <p data-renewals-unavailable>{relationships.message}</p>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
-      </div>
+              <p data-renewals-unavailable>{relationships.message}</p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </section>
+        </div>
+      </>
     );
 
   const renderRows = (
@@ -802,7 +808,16 @@ export const RenewalsSurface = ({
   );
 
   return (
-    <div className={`surface-scroll ${styles.renewals}`} data-renewals-surface>
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest WARUNKIEM, nie stylem: pasma muszą być
+    // bezpośrednimi dziećmi `.work-surface`, więc nic nie może stanąć między
+    // nimi a nośnikiem.
+    <>
       {header(
         /* POSITION 6 — THE SCREEN'S OWN ACTION IS PAINTED AS THE PRIMARY ONE.
            This is ruling R2, taken once for five surfaces and not decided here:
@@ -854,300 +869,307 @@ export const RenewalsSurface = ({
         </span>
       </div>
 
-      {creating && (
-        <form
-          aria-label="New renewal"
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitRenewal();
-          }}
-        >
-          <label className={styles.field}>
-            Client
-            <select
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  organizationId: event.target.value,
-                }))
-              }
-              required
-              value={draft.organizationId}
-            >
-              <option value="">Choose a client</option>
-              {index.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            Contract
-            <input
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              required
-              value={draft.title}
-            />
-          </label>
-          <label className={styles.field}>
-            Scope
-            <input
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  scope: event.target.value,
-                }))
-              }
-              required
-              value={draft.scope}
-            />
-          </label>
-          <label className={styles.field}>
-            Expires
-            <input
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  expiresAt: event.target.value,
-                }))
-              }
-              required
-              type="date"
-              value={draft.expiresAt}
-            />
-          </label>
-          {/* What the contract is worth per term. It is the number the NEXT
+      <div
+        className={`surface-scroll ${styles.renewals}`}
+        data-renewals-surface
+      >
+        {creating && (
+          <form
+            aria-label="New renewal"
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitRenewal();
+            }}
+          >
+            <label className={styles.field}>
+              Client
+              <select
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    organizationId: event.target.value,
+                  }))
+                }
+                required
+                value={draft.organizationId}
+              >
+                <option value="">Choose a client</option>
+                {index.organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              Contract
+              <input
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                required
+                value={draft.title}
+              />
+            </label>
+            <label className={styles.field}>
+              Scope
+              <input
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    scope: event.target.value,
+                  }))
+                }
+                required
+                value={draft.scope}
+              />
+            </label>
+            <label className={styles.field}>
+              Expires
+              <input
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    expiresAt: event.target.value,
+                  }))
+                }
+                required
+                type="date"
+                value={draft.expiresAt}
+              />
+            </label>
+            {/* What the contract is worth per term. It is the number the NEXT
               term is projected from, so without it the row can only say
               "nothing to project from" — and until this field existed there
               was no way to put one on a contract from the product at all. */}
-          <label className={styles.field}>
-            Worth per term
-            <input
-              inputMode="decimal"
-              // The command bounds the amount to non-negative
-              // (`MoneyInputSchema`), so the control refuses a negative here
-              // rather than letting it travel and come back as a toast about a
-              // rejected command. `step` admits the minor unit: the row prints
-              // whole major units, but a contract may be worth 195 000,50.
-              min={0}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  value: event.target.value,
-                }))
+            <label className={styles.field}>
+              Worth per term
+              <input
+                inputMode="decimal"
+                // The command bounds the amount to non-negative
+                // (`MoneyInputSchema`), so the control refuses a negative here
+                // rather than letting it travel and come back as a toast about a
+                // rejected command. `step` admits the minor unit: the row prints
+                // whole major units, but a contract may be worth 195 000,50.
+                min={0}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    value: event.target.value,
+                  }))
+                }
+                step="0.01"
+                type="number"
+                value={draft.value}
+              />
+            </label>
+            <label className={styles.field}>
+              Currency
+              <select
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    currency: event.target.value,
+                  }))
+                }
+                value={
+                  draft.currency === ""
+                    ? (defaultCurrency ?? "")
+                    : draft.currency
+                }
+              >
+                {currencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                draft.organizationId === "" ||
+                draft.title.trim() === "" ||
+                draft.scope.trim() === "" ||
+                draft.expiresAt === ""
               }
-              step="0.01"
-              type="number"
-              value={draft.value}
-            />
-          </label>
-          <label className={styles.field}>
-            Currency
-            <select
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  currency: event.target.value,
-                }))
-              }
-              value={
-                draft.currency === "" ? (defaultCurrency ?? "") : draft.currency
-              }
+              type="submit"
             >
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="primary-button"
-            disabled={
-              busy ||
-              draft.organizationId === "" ||
-              draft.title.trim() === "" ||
-              draft.scope.trim() === "" ||
-              draft.expiresAt === ""
-            }
-            type="submit"
-          >
-            {busy ? "Adding…" : "Add contract"}
-          </button>
-        </form>
-      )}
+              {busy ? "Adding…" : "Add contract"}
+            </button>
+          </form>
+        )}
 
-      {amendTarget !== undefined && (
-        <form
-          // The form NAMES the contract it will write to. It opens above the
-          // sections rather than inside the row, so with more than one contract
-          // under watch an unnamed form is a form pointing at whichever one you
-          // last pressed — and it writes a sale.
-          aria-label={`Add to ${amendTarget.renewal.title}`}
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            amend(amendTarget);
-          }}
-        >
-          <p className={styles.formTitle}>
-            Add to <b>{amendTarget.renewal.title}</b>
-            {amendTarget.organization === undefined
-              ? ""
-              : ` · ${amendTarget.organization.name}`}
-          </p>
-          <label className={styles.field}>
-            What is being added
-            <input
-              onChange={(event) =>
-                setAmendment((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              required
-              value={amendment.title}
-            />
-          </label>
-          <label className={styles.field}>
-            Why
-            <input
-              onChange={(event) =>
-                setAmendment((current) => ({
-                  ...current,
-                  need: event.target.value,
-                }))
-              }
-              required
-              value={amendment.need}
-            />
-          </label>
-          <label className={styles.field}>
-            Next step
-            <input
-              onChange={(event) =>
-                setAmendment((current) => ({
-                  ...current,
-                  nextAction: event.target.value,
-                }))
-              }
-              required
-              value={amendment.nextAction}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={
-              busy ||
-              amendment.title.trim() === "" ||
-              amendment.need.trim() === "" ||
-              amendment.nextAction.trim() === ""
-            }
-            type="submit"
+        {amendTarget !== undefined && (
+          <form
+            // The form NAMES the contract it will write to. It opens above the
+            // sections rather than inside the row, so with more than one contract
+            // under watch an unnamed form is a form pointing at whichever one you
+            // last pressed — and it writes a sale.
+            aria-label={`Add to ${amendTarget.renewal.title}`}
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              amend(amendTarget);
+            }}
           >
-            {busy ? "Opening…" : "Open the amendment"}
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => setAmending(undefined)}
-            type="button"
-          >
-            Cancel
-          </button>
-        </form>
-      )}
+            <p className={styles.formTitle}>
+              Add to <b>{amendTarget.renewal.title}</b>
+              {amendTarget.organization === undefined
+                ? ""
+                : ` · ${amendTarget.organization.name}`}
+            </p>
+            <label className={styles.field}>
+              What is being added
+              <input
+                onChange={(event) =>
+                  setAmendment((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                required
+                value={amendment.title}
+              />
+            </label>
+            <label className={styles.field}>
+              Why
+              <input
+                onChange={(event) =>
+                  setAmendment((current) => ({
+                    ...current,
+                    need: event.target.value,
+                  }))
+                }
+                required
+                value={amendment.need}
+              />
+            </label>
+            <label className={styles.field}>
+              Next step
+              <input
+                onChange={(event) =>
+                  setAmendment((current) => ({
+                    ...current,
+                    nextAction: event.target.value,
+                  }))
+                }
+                required
+                value={amendment.nextAction}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                amendment.title.trim() === "" ||
+                amendment.need.trim() === "" ||
+                amendment.nextAction.trim() === ""
+              }
+              type="submit"
+            >
+              {busy ? "Opening…" : "Open the amendment"}
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => setAmending(undefined)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </form>
+        )}
 
-      <section className={styles.section} data-renewal-section="due">
-        <div className={styles.sectionHead}>
-          <h2>
-            Time to start{" "}
-            <span className={styles.n}>{sections.due.length}</span>
-          </h2>
-          {/* The section, not the expiry date, organises this screen — so the
+        <section className={styles.section} data-renewal-section="due">
+          <div className={styles.sectionHead}>
+            <h2>
+              Time to start{" "}
+              <span className={styles.n}>{sections.due.length}</span>
+            </h2>
+            {/* The section, not the expiry date, organises this screen — so the
               question "what is a lead time" belongs at the section heading and
               nowhere else (#35). */}
-          <TopicHelp topic="lead-time" />
-        </div>
-        {sections.due.length === 0 ? (
-          // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the
-          // watching set, which is why this can be said at all.
-          <div
-            className={styles.computedEmpty}
-            data-renewal-empty
-            role="status"
-          >
-            <p>
-              <b>No contract has entered its lead time.</b>
-            </p>
-            <p className={styles.sub}>
-              {sections.nextLead === undefined
-                ? "Nothing is being watched."
-                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens ${dayDistance(sections.nextLead.days, "elapsed")}, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
-            </p>
+            <TopicHelp topic="lead-time" />
           </div>
-        ) : (
-          renderRows(sections.due, "due", 0, "Time to start")
-        )}
-      </section>
+          {sections.due.length === 0 ? (
+            // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the
+            // watching set, which is why this can be said at all.
+            <div
+              className={styles.computedEmpty}
+              data-renewal-empty
+              role="status"
+            >
+              <p>
+                <b>No contract has entered its lead time.</b>
+              </p>
+              <p className={styles.sub}>
+                {sections.nextLead === undefined
+                  ? "Nothing is being watched."
+                  : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens ${dayDistance(sections.nextLead.days, "elapsed")}, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
+              </p>
+            </div>
+          ) : (
+            renderRows(sections.due, "due", 0, "Time to start")
+          )}
+        </section>
 
-      <section className={styles.section} data-renewal-section="watching">
-        <div className={styles.sectionHead}>
-          <h2>
-            Watching{" "}
-            <span className={styles.n}>{sections.watching.length}</span>
-          </h2>
-        </div>
-        {sections.watching.length === 0 ? (
-          <p className={styles.none}>Nothing is waiting for its lead time.</p>
-        ) : (
-          renderRows(
-            sections.watching,
-            "watching",
-            sections.due.length,
-            "Watching",
-          )
-        )}
-      </section>
+        <section className={styles.section} data-renewal-section="watching">
+          <div className={styles.sectionHead}>
+            <h2>
+              Watching{" "}
+              <span className={styles.n}>{sections.watching.length}</span>
+            </h2>
+          </div>
+          {sections.watching.length === 0 ? (
+            <p className={styles.none}>Nothing is waiting for its lead time.</p>
+          ) : (
+            renderRows(
+              sections.watching,
+              "watching",
+              sections.due.length,
+              "Watching",
+            )
+          )}
+        </section>
 
-      <section className={styles.section} data-renewal-section="closed">
-        <div className={styles.sectionHead}>
-          <h2>
-            Closed this cycle{" "}
-            <span className={styles.n}>{sections.closed.length}</span>
-          </h2>
-          <button
-            aria-expanded={showClosed}
-            className={styles.more}
-            onClick={() => setShowClosed((open) => !open)}
-            type="button"
-          >
-            {showClosed ? "Hide" : "Show"}
-            {/* The state the button announces is now also a state the button
+        <section className={styles.section} data-renewal-section="closed">
+          <div className={styles.sectionHead}>
+            <h2>
+              Closed this cycle{" "}
+              <span className={styles.n}>{sections.closed.length}</span>
+            </h2>
+            <button
+              aria-expanded={showClosed}
+              className={styles.more}
+              onClick={() => setShowClosed((open) => !open)}
+              type="button"
+            >
+              {showClosed ? "Hide" : "Show"}
+              {/* The state the button announces is now also a state the button
                 SHOWS: the chevron turns on `aria-expanded="true"`
                 (`v3/screens/renewals.css:31-32`,
                 `v3/screens/renewals.js:237-238`). */}
-            <Icon name="chevron-down" />
-          </button>
-        </div>
-        {showClosed &&
-          (sections.closed.length === 0 ? (
-            <p className={styles.none}>Nothing has closed this cycle.</p>
-          ) : (
-            renderRows(
-              sections.closed,
-              "closed",
-              sections.due.length + sections.watching.length,
-              "Closed this cycle",
-            )
-          ))}
-      </section>
-    </div>
+              <Icon name="chevron-down" />
+            </button>
+          </div>
+          {showClosed &&
+            (sections.closed.length === 0 ? (
+              <p className={styles.none}>Nothing has closed this cycle.</p>
+            ) : (
+              renderRows(
+                sections.closed,
+                "closed",
+                sections.due.length + sections.watching.length,
+                "Closed this cycle",
+              )
+            ))}
+        </section>
+      </div>
+    </>
   );
 };

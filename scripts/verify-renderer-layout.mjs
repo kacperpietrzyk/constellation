@@ -51,9 +51,15 @@ import {
   unmetControlPaintEntries,
 } from "./control-paint.mjs";
 import {
+  COLLAPSED_CLIENT_WIDTH_PX,
+  COLLAPSED_TEXT_ENFORCED_SURFACES,
   HORIZONTAL_SCROLL_ATTRIBUTE,
+  KNOWN_COLLAPSED_TEXT,
   KNOWN_DESCENDANT_OVERFLOWS,
+  classifyCollapsedText,
   classifyDescendantOverflow,
+  collapsedTextEnforced,
+  unusedCollapsedEntries,
   unusedRegistryEntries,
 } from "./descendant-overflow.mjs";
 import {
@@ -448,6 +454,18 @@ const MINIMUM_ROWS = {
   // STRUKTURY ekranu, nie do zawartości fikstury.
   pipelineCards: { floor: 4, needs: "pipeline" },
   renewalRows: { floor: 2, needs: "renewals" },
+  // ── DZISIAJ: WIERSZ PLANU ─────────────────────────────────────────────────
+  // Liczony jest WIERSZ, nie plakietka, i ta różnica jest cała treść progu.
+  // Nieobecność plakietki ma już swojego strażnika — para `D2-09b` żąda
+  // dokładnie jednego `[data-planned-by-agent]`. Czego nikt nie pilnował, to
+  // STANU, w którym plakietka w ogóle może się pojawić: przez całą falę D
+  // fikstura nie rysowała ani jednego `[data-planned-row]`, sekcja stała na
+  // „Nothing is planned for today", a bramka nie miała jak tego nazwać — to
+  // ta sama dziura, przez którą cztery ekrany CRM przejechały falę bez pomiaru.
+  //
+  // Próg 1, nie 2, bo pilnuje „sekcja planu opustoszała", a nie zawartości
+  // fikstury; fikstura niesie dziś dokładnie jedno zaplanowane zadanie.
+  todayPlannedRows: { floor: 1, needs: "today" },
 };
 
 // Tryb raportu: wypisz KAŻDE przepełnienie z werdyktem i nie przerywaj. Tak
@@ -491,6 +509,54 @@ const DECLARED_HEIGHT_BOUND = derive("data-height-bound");
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
 // się w swoim pudełku, a dokument w oknie. Zwracamy WSZYSTKIE przewinienia, nie
 // pierwsze — inaczej naprawa jednego ekranu ukrywa drugi.
+
+// ── KTÓRE WIERSZE SĄ DRZWIAMI DO EKRANU REKORDU ──────────────────────────────
+// Trzy atrybuty (`data-project-row`, `data-task-row`, `data-pipeline-card`)
+// rysuje SZEŚĆ komponentów, a znaczenie podwójnego kliknięcia jest własnością
+// MIEJSCA, nie atrybutu. Ta tabela wypowiada to rozróżnienie zamiast go zakładać.
+//
+//   "opens"      — wiersz promuje rekord na własny ekran; przelot ma prawo żądać
+//                  `[data-record-kind]` po dwukliku i zmierzyć ten ekran.
+//   "navigates"  — wiersz ZABIERA DO rekordu w jego kolekcji i nie otwiera nic;
+//                  żądanie ekranu byłoby tu żądaniem zachowania, którego produkt
+//                  świadomie nie ma (`RealApp.tsx:2702-2704`).
+//
+// STRAŻNIK WYCZERPANIA JEST CZĘŚCIĄ TABELI, nie dodatkiem: powierzchnia, która
+// narysowała taki wiersz i nie stoi tutaj, wywala przelot z własną nazwą. Bez
+// niego to jest ręczna lista obok zamkniętego słownika — nazwana klasa defektu
+// tego repozytorium, trafiona sześć razy w żywych miejscach i trzy razy w jednej
+// fali.
+//
+// STRAŻNIK DZIAŁA W OBIE STRONY OD PRZEGLĄDU FALI. Wpis BRAKUJĄCY pada niżej
+// po nazwie („drew a row this sweep knows how to double-click, and RECORD_DOORS
+// does not say…"); wpis ZBĘDNY — opisujący powierzchnię, która przestała rysować
+// otwieralny wiersz, bo opustoszała jej fikstura albo zniknął atrybut — pada
+// przy podsumowaniu przebiegu, tak samo jak `unusedRegistryEntries` w rejestrze
+// przepełnień. Do tego przeglądu ta strona była zapisanym brakiem, a materiał
+// na nią leżał gotowy w `openAttempts`.
+//
+// DLACZEGO AKURAT `navigates` JEST TU NAJGROŹNIEJSZY: taka powierzchnia nie
+// dostaje dwukliku W OGÓLE, więc nie zostawia po sobie ŻADNEJ obserwacji.
+// Deklaracja nieaktualna wygląda dokładnie tak samo jak aktualna, a różnicę
+// robi wyłącznie to, czy ktokolwiek narysował tam wiersz — czyli dokładnie to,
+// co pilnuje teraz kontrola przy podsumowaniu.
+//
+// BRAK, KTÓRY ZOSTAJE: `navigates` jest DEKLARACJĄ INTENCJI, nie pomiarem.
+// Nikt nie sprawdza, czy dwuklik naprawdę DOKĄDŚ zabiera — czy powłoka wylądowała
+// na kolekcji z zaznaczonym rekordem. Zdanie „to nie są drzwi" jest tu
+// weryfikowane, zdanie „to jest przejście" nie jest.
+const RECORD_DOORS = {
+  // `taskContext(id, title, { record: true })` — `RealApp.tsx:2705-2708`.
+  tasks: "opens",
+  // `projectContext` — kolekcja Projektów promuje projekt na jego ekran.
+  projects: "opens",
+  // Jedyne drzwi do rekordu szansy, potwierdzone przy zdjęciu `[data-renewal-row]`.
+  pipeline: "opens",
+  // `taskContext(id, title)` BEZ `{ record: true }` — `RealApp.tsx:2307-2310`.
+  // Wiersz istnieje na tym ekranie dopiero od fikstury lotu D9.
+  calendar: "navigates",
+};
+
 const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   // DWIE listy, bo to dwa różne rodzaje złej wiadomości. `failures` to awarie
@@ -513,6 +579,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       SETTINGS_SURFACE,
       titleSelector,
       recordScreenSelector,
+      RECORD_DOORS,
     }) => {
       const frame = () =>
         new Promise((resolve) =>
@@ -568,6 +635,9 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           : surfaces.filter((id) => !all.includes(id));
       const results = [];
       const descendants = [];
+      // Ślepa plamka przelotki przepełnień, zbierana osobno — patrz komentarz
+      // przy `sweepCollapsedText`.
+      const collapsed = [];
       const recordScreens = [];
       const heightBound = [];
       // Ile wierszy i kart NADAJĄCYCH SIĘ DO OTWARCIA narysował każdy cel.
@@ -593,6 +663,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         libraryNoteBody: 0,
         pipelineCards: 0,
         renewalRows: 0,
+        todayPlannedRows: 0,
       };
       let recordPanels = 0;
       let lensesDeclared = 0;
@@ -718,6 +789,13 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           // zdaniem w środku — zawsze przepełnione i NIGDY widoczne. Odsiewane
           // po KSZTAŁCIE (pudełko nie ma wymiaru), nie po nazwie klasy, żeby
           // reguła nie była listą nazw, która rozjedzie się z arkuszem.
+          //
+          // TEN FILTR MA ŚLEPĄ PLAMKĘ I MA JĄ ŚWIADOMIE: komórka tekstowa
+          // ściśnięta do zera wypada tędy razem z narzędziami czytnika ekranu,
+          // czyli przestaje być raportowana dokładnie wtedy, kiedy przestaje być
+          // widoczna. Filtr zostaje (bez niego rejestr długu zalałyby pudełka
+          // 1×1 px), a plamkę mierzy `sweepCollapsedText` niżej — osobną
+          // przelotką i osobnym rejestrem, bo to inna awaria i inna wiadomość.
           if (element.clientWidth <= 1 || element.clientHeight <= 1) continue;
           // Pole tekstowe przewija SWOJĄ TREŚĆ z natury: `scrollWidth` mówi tu
           // o długości wpisanego napisu, nie o tym, że kontrolka nie mieści się
@@ -771,6 +849,56 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         }
         descendants.push(...widest.values());
       };
+      // ── ŚLEPA PLAMKA PRZELOTKI WYŻEJ, ZMIERZONA OSOBNO ────────────────────
+      //
+      // Zbiera dokładnie to, co tamta odrzuca: elementy NIOSĄCE TEKST, których
+      // pudełko nie ma szerokości. Warunki są trzy i każdy odcina inny rodzaj
+      // fałszywego trafienia:
+      //   * `getClientRects().length > 0` — element w układzie, nie `display:
+      //     none` i nie schowana zakładka. Bez tego zebrałoby się pół powłoki.
+      //   * tekst WŁASNY, liczony bez potomków z elementami — inaczej każdy
+      //     przodek zapadniętej komórki melduje się z jej treścią i jeden defekt
+      //     zajmuje kolumnę wpisów, czyli ta sama choroba, którą tamta przelotka
+      //     leczy filtrem „tylko najgłębszy".
+      //   * `clientHeight > 0` — pudełko zwinięte w PIONIE to inna awaria
+      //     (i zwykle zamierzona: zwinięta sekcja), a ten rejestr mówi o tym,
+      //     że napis nie ma się gdzie zmieścić w POZIOMIE.
+      const sweepCollapsedText = (drawn, label) => {
+        if (drawn === undefined) return;
+        // JEDEN WPIS NA SYGNATURĘ, z NAJDŁUŻSZĄ treścią — trzy wiersze listy
+        // dają trzy identyczne sygnatury, a rejestr długu, w którym jeden defekt
+        // zajmuje tyle wierszy, ile narysowała fikstura, jest nie do
+        // przeczytania i zmienia się przy każdej zmianie fikstury.
+        const worst = new Map();
+        for (const element of drawn.querySelectorAll("*")) {
+          if (element.clientWidth >= 1) continue;
+          if (element.clientHeight < 1) continue;
+          if (element.getClientRects().length === 0) continue;
+          if (
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement
+          )
+            continue;
+          const ownText = [...element.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent ?? "")
+            .join("")
+            .trim();
+          if (ownText === "") continue;
+          const name = signature(element);
+          const previous = worst.get(name);
+          if (previous !== undefined && previous.textLength >= ownText.length)
+            continue;
+          worst.set(name, {
+            surface: label,
+            signature: name,
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            textLength: ownText.length,
+          });
+        }
+        collapsed.push(...worst.values());
+      };
       for (const id of ids) {
         // Settings is a MODE: entering it replaces the left column, so the nav
         // item for the next destination is not there to click. Without leaving
@@ -816,11 +944,53 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // replaces the drawn element, so a stale reference would report the
         // geometry of the layout that just left.
         const measure = (label) => {
-          const drawn = [...(work?.children ?? [])].find(
+          // POWIERZCHNIA MOŻE MIEĆ WIĘCEJ NIŻ JEDEN KORZEŃ, i to jest poprawka
+          // przyrządu z lotu D10, nie kosmetyka.
+          //
+          // CO TU STAŁO I DLACZEGO KŁAMAŁO. Ta linia brała PIERWSZE widoczne
+          // dziecko `#main-content` i nazywała je „powierzchnią". Twierdzenie
+          // było prawdziwe wyłącznie dopóki każdy ekran rysował JEDEN korzeń.
+          // Lot D10 przepiął Organizacje i Odnowienia na układ prototypu, gdzie
+          // pasmo tytułu, pasek widoku i przewijane pudełko są TROJGIEM
+          // rodzeństwa — i pierwszym widocznym dzieckiem stało się PASMO. Skutek
+          // zmierzony: `sweepDescendants`, `sweepRecordScreens`,
+          // `sweepHeightBound` i wszystkie liczniki wierszy chodziły po samym
+          // pasmie, więc `renewalRows` spadło do ZERA, a wpis rejestru
+          // `organizations / span._nameLine` przestał być spotykany w każdym
+          // z pięciu przelotów. Bramka mierzyła 40-pikselowy pasek i meldowała
+          // o ekranie.
+          //
+          // ZŁAPAŁY TO WYŁĄCZNIE PODŁOGI WIERSZY. Same przelotki przepełnienia
+          // wróciłyby ZIELONE — nad poddrzewem, w którym nie ma czego przepełnić.
+          // To jest dokładnie ta klasa, którą to repozytorium ma już nazwaną
+          // („pusta fikstura nie tylko nie mierzy, ona CHOWA"), tyle że tym razem
+          // pustkę zrobił nie brak danych, lecz zawężony podmiot.
+          //
+          // JEDNO DZIECKO CZY TROJE — reguła jest teraz jedna i nie pyta o nazwę
+          // ekranu: korzeniami są WSZYSTKIE widoczne dzieci nośnika poza chromem
+          // powłoki. Na jedenastu ekranach z jednym korzeniem daje to dokładnie
+          // to samo, co dawała poprzednia linia.
+          const roots = [...(work?.children ?? [])].filter(
             (element) =>
               element.getClientRects().length > 0 &&
               !element.classList.contains("shell-tabbar") &&
               !element.classList.contains("capture-dock"),
+          );
+          // WIERSZ „czy powierzchnia przepełnia SAMĄ SIEBIE w poziomie" zostaje
+          // JEDEN na etykietę, więc musi wskazać jeden korzeń — i wskazuje ten,
+          // który przepełnia się NAJMOCNIEJ. Porównanie jest ostre, więc przy
+          // remisie (w tym przy zerze, czyli gdy nic nie wystaje) wygrywa
+          // pierwszy: na ekranie o jednym korzeniu ten wybór jest tożsamy
+          // z poprzednim zachowaniem, a na ekranie o trzech nie da się schować
+          // przepełnienia w korzeniu, którego wiersz akurat nie opisuje.
+          const drawn = roots.reduce(
+            (worst, element) =>
+              worst === undefined ||
+              element.scrollWidth - element.clientWidth >
+                worst.scrollWidth - worst.clientWidth
+                ? element
+                : worst,
+            undefined,
           );
           results.push({
             surface: label,
@@ -877,9 +1047,16 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
               });
             }
           }
-          sweepDescendants(drawn, label);
-          sweepRecordScreens(drawn, label);
-          sweepHeightBound(drawn, label);
+          // PO KAŻDYM KORZENIU, nie po wybranym: wybór wyżej służy JEDNEMU
+          // wierszowi raportu, a przelotki mają obejść cały ekran. Pasmo
+          // wystające poza nośnik jest defektem tak samo jak wiersz wystający
+          // poza listę — i przy jednym korzeniu ta pętla wykonuje się raz.
+          for (const root of roots) {
+            sweepDescendants(root, label);
+            sweepCollapsedText(root, label);
+            sweepRecordScreens(root, label);
+            sweepHeightBound(root, label);
+          }
           // Ile wierszy NAPRAWDĘ się narysowało. Bez tego fikstura może się
           // opróżnić, a bramka dalej melduje „brak przepełnienia" — nad
           // geometrią, której nie ma.
@@ -893,8 +1070,15 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           // `library`: historia przechwyceń przenosi się do Library w tej fali,
           // a strażnik przywiązany do nazwy celu przestałby wtedy liczyć,
           // niczego nie zgłaszając.
+          // SUMOWANE PO KORZENIACH, bo korzenie są rozłącznymi poddrzewami.
+          // Liczone na `roots`, a nie na `work`, żeby nie wciągnąć chromu
+          // powłoki, i nie na `drawn`, bo `drawn` jest JEDNYM korzeniem —
+          // dokładnie ta wąskość wyzerowała `renewalRows` w locie D10.
           const count = (selector) =>
-            drawn?.querySelectorAll(selector).length ?? 0;
+            roots.reduce(
+              (total, root) => total + root.querySelectorAll(selector).length,
+              0,
+            );
           rowCounts.libraryDocuments = Math.max(
             rowCounts.libraryDocuments,
             count(".knowledge-document-list > li"),
@@ -926,6 +1110,22 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           rowCounts.renewalRows = Math.max(
             rowCounts.renewalRows,
             count("[data-renewal-row]"),
+          );
+          // ZAWĘŻONY DO EKRANU DZIŚ, I TO JEST CAŁA TREŚĆ TEGO SELEKTORA.
+          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:404`
+          // i `CalendarSurface.tsx:217` — a te liczniki idą `Math.max` po
+          // WSZYSTKICH powierzchniach przelotu. Selektor po samym atrybucie
+          // byłby więc spełniony kopią z Kalendarza także wtedy, gdy sekcja
+          // planu na Dziś opustoszeje do zera: próg spełniony przez NIE TEN
+          // podmiot, czyli dokładnie ta porażka, o której ten plik pisze przy
+          // `renewalRows` („próg musi umieć powiedzieć, KTÓRY podmiot
+          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:396`)
+          // — jedyne wystąpienie w `src`, sprawdzone grepem — a nie zahaszowana
+          // nazwa klasy modułu, która zeruje licznik po cichu przy pierwszym
+          // przebudowaniu arkusza.
+          rowCounts.todayPlannedRows = Math.max(
+            rowCounts.todayPlannedRows,
+            count('[aria-label="Planned for today"] [data-planned-row]'),
           );
         };
         measure(id);
@@ -1029,13 +1229,50 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // collision, and neither is a mistake of the lot that wrote it: both
         // are instruments that could not be exercised in the state the repo was
         // in at the time. Removing the selector deletes a claim, not coverage.
+        //
+        // ── I TO SAMO ZDARZYŁO SIĘ DRUGI RAZ, JEDNO ROŚNIĘCIE FIKSTURY PÓŹNIEJ
+        // Ten sam blok, ta sama lista selektorów, ta sama przyczyna. Zdanie
+        // „`[data-task-row]` otwiera rekord zadania" jest PRAWDZIWE O EKRANIE
+        // ZADAŃ i FAŁSZYWE O KALENDARZU, a przez całą falę D nie dało się tego
+        // zobaczyć, bo fikstura nie kładła na Kalendarzu ani jednego wiersza:
+        // `taskContext(id, title)` BEZ `{ record: true }` niesie
+        // `surface: "tasks"` i żadnej flagi rekordu
+        // (`client/shell-navigation.ts:494-504`), więc podwójne kliknięcie
+        // wiersza Kalendarza ZABIERA DO zadania w jego kolekcji, zamiast
+        // promować je na własny ekran. Nie jest to defekt produktu, tylko jego
+        // zapisane rozstrzygnięcie: `RealApp.tsx:2702-2704` mówi wprost „the
+        // ONE place a list promotes a task to its own screen", a Kalendarz
+        // (`:2307-2310`) i Dziś (`:2261-2264`) świadomie nie są tym miejscem.
+        //
+        // DRUGA POŁOWA TEGO DEFEKTU BYŁA GORSZA OD CZERWIENI, KTÓRA GO ODKRYŁA.
+        // `measure(`${id}:${kind}`)` niżej podstawia „record", kiedy nic się nie
+        // otworzyło — więc przelot zapisywał geometrię pod etykietą
+        // `calendar:record`, mając NA EKRANIE kolekcję Zadań, do której właśnie
+        // przeszedł. Cichy fałszywy pomiar, nie cisza. Dlatego powierzchnia,
+        // która nie jest drzwiami, NIE DOSTAJE dziś podwójnego kliknięcia
+        // w ogóle: nie ma jak skłamać etykietą o czymś, czego się nie zrobiło.
+        //
+        // TABELA, NIE ZAWĘŻONY SELEKTOR, i tabela ze STRAŻNIKIEM WYCZERPANIA.
+        // Zdjęcie `[data-task-row]` z listy skasowałoby ŻYWE pokrycie ekranu
+        // Zadań — inaczej niż przy `[data-renewal-row]`, gdzie rekordu nie ma
+        // w ogóle. Ręczna lista obok zamkniętego słownika jest w tym repozytorium
+        // nazwaną klasą defektu, więc lista bez strażnika nie wchodzi w grę:
+        // powierzchnia, która narysowała wiersz i NIE JEST tu wymieniona,
+        // wywala przelot z nazwą, zamiast po cichu wypaść z pomiaru.
+        const door = RECORD_DOORS[id];
         const row =
           window.innerWidth >= 760
             ? work?.querySelector(
                 "[data-project-row], [data-task-row], [data-pipeline-card]",
               )
             : null;
-        if (row instanceof HTMLElement) {
+        if (row instanceof HTMLElement && door !== "opens") {
+          // Wiersz jest, drzwi nie ma. Zgłoszone JAWNIE — z werdyktem, którego
+          // ten przelot użył — żeby „nie mierzone" nigdy nie było nie do
+          // odróżnienia od „zmierzone i w porządku".
+          openAttempts.push({ surface: id, kind: null, door: door ?? null });
+        }
+        if (row instanceof HTMLElement && door === "opens") {
           row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
           await frame();
           await new Promise((resolve) => setTimeout(resolve, 900));
@@ -1044,6 +1281,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           openAttempts.push({
             surface: id,
             kind: opened?.getAttribute("data-record-kind") ?? null,
+            door: "opens",
           });
           const kind = opened?.getAttribute("data-record-kind") ?? "record";
           measure(`${id}:${kind}`);
@@ -1072,6 +1310,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         missing,
         results,
         descendants,
+        collapsed,
         recordScreens,
         heightBound,
         openableRows,
@@ -1097,6 +1336,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       SETTINGS_SURFACE,
       titleSelector: TITLE_SELECTOR,
       recordScreenSelector: RECORD_SCREEN_SELECTOR,
+      RECORD_DOORS,
     },
   );
 
@@ -1194,7 +1434,44 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // double-click did nothing, so a screen stopped opening. This is what the
   // hand-written pair was really guarding, and it now guards it by observation
   // rather than by naming two kinds it happened to know about.
+  //
+  // TRZY WERDYKTY, NIE DWA, i różnicę między nimi robi TABELA `RECORD_DOORS`,
+  // a nie obserwacja: przelot nie ma jak odróżnić „dwuklik się zepsuł" od
+  // „dwuklik nigdy tu nie promował rekordu", bo w obu przypadkach po nim NIE MA
+  // `[data-record-kind]`. Do lotu D9 gate zakładał pierwsze o każdym wierszu
+  // i przez całą falę D nie mógł się na tym przewrócić, bo fikstura nie kładła
+  // wiersza na żadnej powierzchni z drugiej grupy.
+  // KTÓRE DRZWI TEN PRZELOT NAPRAWDĘ SPRAWDZIŁ. Dopisane po przeglądzie fali,
+  // który zauważył, że strażnik tej tabeli działa w JEDNĄ stronę: powierzchnia
+  // nieopisana pada po nazwie, ale wpis OPISUJĄCY POWIERZCHNIĘ, KTÓRA NIC NIE
+  // RYSUJE, jest ciszą. Groźniejszy jest wpis `navigates`: taka powierzchnia nie
+  // dostaje nawet dwukliku, więc stara albo błędna deklaracja czyta się DOKŁADNIE
+  // jak pokrycie. Rejestr przepełnień ma na to `unusedRegistryEntries` i to jest
+  // ta sama kontrola, przeniesiona na tę tabelę.
+  const exercisedDoors = new Set();
   for (const attempt of recordsExpected ? measured.openAttempts : []) {
+    if (attempt.door !== null) exercisedDoors.add(attempt.surface);
+    if (attempt.door === null) {
+      failures.push({
+        surface: attempt.surface,
+        reason:
+          `${attempt.surface} drew a row this sweep knows how to double-click, and RECORD_DOORS does not say ` +
+          `whether that row OPENS a record screen or merely NAVIGATES to the record in its collection. ` +
+          `Declare it — an undeclared destination is one that quietly falls out of the record measurement`,
+      });
+      continue;
+    }
+    if (attempt.door === "navigates") {
+      // WYPISANE PRZY KAŻDYM PRZEBIEGU, także idealnym. „Nie otwierano" i „w
+      // porządku" to dwa różne zdania, a odstępstwo, którego nie widać
+      // w wyjściu, jest nieodróżnialne od pokrycia.
+      console.log(
+        `${label}\t${attempt.surface}: drew an openable row but is declared "navigates" — its double-click ` +
+          `takes the reader to the record in its collection (taskContext without { record: true }), so no ` +
+          `record screen is opened OR measured here, by decision rather than by defect`,
+      );
+      continue;
+    }
     if (attempt.kind === null)
       failures.push({
         surface: attempt.surface,
@@ -1421,6 +1698,52 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         `Otherwise it is a layout defect`,
     });
   }
+  // ── TREŚĆ ZAPADNIĘTA DO ZERA ────────────────────────────────────────────
+  // Ta sama księgowość co wyżej, nad drugim rejestrem. Werdykt `known` jest
+  // KSIĘGOWANY, a nie tylko przemilczany — inaczej `unusedCollapsedEntries`
+  // uznałby spłacony i niespłacony dług za to samo.
+  const matchedCollapsedEntries = new Set();
+  for (const reading of measured.collapsed) {
+    const decision = classifyCollapsedText({ ...reading, pass: label });
+    if (REPORT_ONLY) {
+      console.log(
+        `${label}\t${reading.surface}\t${reading.signature}\tclientWidth ${reading.clientWidth}px\ttext ${reading.textLength} chars\t${decision.verdict}`,
+      );
+    }
+    if (decision.verdict === "known") {
+      matchedCollapsedEntries.add(
+        `${reading.surface.split(":")[0]}|${reading.signature}`,
+      );
+      continue;
+    }
+    if (decision.verdict !== "violation") continue;
+    // POZA ZAKRESEM EGZEKWOWANIA — WYPISANE, NIE PRZEMILCZANE. Uzasadnienie
+    // zakresu stoi przy `COLLAPSED_TEXT_ENFORCED_SURFACES`; tutaj liczy się
+    // jedno: liczby wychodzą w KAŻDYM przebiegu, więc „nie egzekwowane" nigdy
+    // nie jest nie do odróżnienia od „nie ma czego egzekwować".
+    if (!collapsedTextEnforced(reading.surface)) {
+      console.log(
+        `${label}\t${reading.surface}: ${reading.signature} carries ${reading.textLength} characters in ` +
+          `${reading.clientWidth} px of inner width (content ${reading.scrollWidth} px) — COLLECTED, NOT ENFORCED. ` +
+          `The collapsed-text gate is armed for ${COLLAPSED_TEXT_ENFORCED_SURFACES.join(", ")} only; ` +
+          `this surface is pre-existing debt nobody has taken`,
+      );
+      continue;
+    }
+    layoutProblems.push({
+      surface: reading.surface,
+      reason:
+        `${reading.signature} carries ${reading.textLength} characters and has NO inner width ` +
+        `(clientWidth ${reading.clientWidth} px, content ${reading.scrollWidth} px), so it draws nothing. ` +
+        `The overflow sweep cannot say this — it skips every box under ${COLLAPSED_CLIENT_WIDTH_PX} px wide — ` +
+        `which is why a collapse reads as an improvement in its report. Either give the cell a ` +
+        `collapse order that keeps a character of it, or record the debt in KNOWN_COLLAPSED_TEXT ` +
+        `with the thread that owns it` +
+        (decision.thread === undefined
+          ? ""
+          : `. It IS registered, but not for this pass — the entry says it does not collapse here (owner: ${decision.thread})`),
+    });
+  }
   for (const entry of measured.results) {
     if (!entry.present) {
       failures.push({ surface: entry.surface, reason: "rendered no surface" });
@@ -1561,7 +1884,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       });
   }
   await page.close();
-  return { failures, layoutProblems, matchedRegistryEntries, titleProblems };
+  return {
+    failures,
+    layoutProblems,
+    matchedRegistryEntries,
+    matchedCollapsedEntries,
+    exercisedDoors,
+    titleProblems,
+  };
 };
 
 // ── SONDA WIERNOŚCI WIZUALNEJ ────────────────────────────────────────────────
@@ -5435,6 +5765,14 @@ const ROUTED_RECORD_KIND = {
 // an open note. Left out of the key, that stop would collapse into
 // „library | notes | - | -" and the pair riding it would measure the OTHER
 // state's elements, which is the shape of a green pair that proves nothing.
+//
+// `openPopover` JEST CZĘŚCIĄ KLUCZA Z TEGO SAMEGO POWODU CO `treeKey`, i to
+// jest dopisek lotu D11. Otwarty dymek to inny STAN tego samego ekranu: panel
+// jest portalowany do `<body>`, więc przed kliknięciem wyzwalacza nie ma go
+// w drzewie WCALE, a nie „jest, tylko niewidoczny". Para czytająca cokolwiek
+// w panelu na przystanku bez tego kroku wracałaby NOT_MEASURED, czyli awarią
+// przyrządu — a wrzucona do wspólnego klucza mierzyłaby drugą połowę par tego
+// przystanku w stanie, w którym one nie są napisane.
 const routeKey = (route) =>
   route.settingsMode === true
     ? "settings"
@@ -5444,6 +5782,7 @@ const routeKey = (route) =>
         route.treeKey ?? "-",
         route.openRecord ?? "-",
         route.recordTab ?? "-",
+        route.openPopover ?? "-",
       ].join(" | ");
 
 const routeLabel = (route) =>
@@ -5457,6 +5796,9 @@ const routeLabel = (route) =>
           ? null
           : `record via ${route.openRecord}`,
         route.recordTab === undefined ? null : `tab ${route.recordTab}`,
+        route.openPopover === undefined
+          ? null
+          : `popover via ${route.openPopover}`,
       ]
         .filter((part) => part !== null && part !== undefined)
         .join(" › ");
@@ -6174,6 +6516,61 @@ const walkRouteInPage = async ({ route, arrival, recordKind }) => {
         reason: `the tab „${route.recordTab}" was clicked and reads aria-selected="${selected}".`,
       };
     steps.push(`tab ${route.recordTab}`);
+  }
+
+  // ── OTWARCIE DYMKA ───────────────────────────────────────────────────────
+  // TRZECI KROK, KTÓRY ZMIENIA STAN, A NIE MIEJSCE (po `treeKey` i `recordTab`)
+  // — dopisany w locie D11, bo panel dymka jest PORTALOWANY do `<body>`
+  // (`components/InlinePopover.tsx`) i przed kliknięciem wyzwalacza nie istnieje
+  // w drzewie w ogóle. Bez tego kroku każda para nad zawartością panelu wracała
+  // z NOT_MEASURED, czyli z awarią przyrządu, a nie z werdyktem o kodzie.
+  //
+  // WYZWALACZ BYWA LENIWY, więc ten krok GO WYCZEKUJE, zamiast raz spytać
+  // i uznać nieobecność za awarię trasy: `ApplyTemplatePopover` jedzie osobnym
+  // chunkiem (budżet ścieżki gorącej), a `<Suspense fallback={null}>` znaczy,
+  // że przez pierwsze klatki po otwarciu rekordu w paśmie nie ma nic. Awarią
+  // jest dopiero brak po całym oknie — i wtedy jest głośna, z nazwą selektora.
+  //
+  // WARUNEK DOJŚCIA JEST PODWÓJNY, i to nie jest ostrożność: sam `[role=
+  // "dialog"]` byłby spełniony przez KAŻDY inny otwarty dymek tej strony,
+  // a sam `aria-expanded` przez wyzwalacz, którego panel się nie narysował.
+  if (route.openPopover !== undefined) {
+    const deadline = Date.now() + 4000;
+    let trigger = null;
+    for (;;) {
+      const candidate = document.querySelector(route.openPopover);
+      if (candidate instanceof HTMLElement && rendered(candidate)) {
+        trigger = candidate;
+        break;
+      }
+      if (Date.now() > deadline) break;
+      await settle(120);
+    }
+    if (trigger === null)
+      return {
+        ok: false,
+        steps,
+        step: `popover via ${route.openPopover}`,
+        reason:
+          `„${route.openPopover}" matched no rendered element within 4 s — the disclosure ` +
+          "trigger is absent (or its lazy chunk never arrived), so nothing could be opened.",
+      };
+    trigger.click();
+    await settle(400);
+    const expanded = trigger.getAttribute("aria-expanded");
+    const panel = document.querySelector('[role="dialog"].inline-popover');
+    if (expanded !== "true" || !rendered(panel))
+      return {
+        ok: false,
+        steps,
+        step: `popover via ${route.openPopover}`,
+        reason:
+          `the trigger was clicked and reads aria-expanded="${expanded}", while ` +
+          `[role="dialog"].inline-popover is ${panel === null ? "absent" : "present but not rendered"}. ` +
+          "The panel did not open, so anything measured here would be a statement about the " +
+          "screen underneath it.",
+      };
+    steps.push(`popover ${route.openPopover}`);
   }
 
   return { ok: true, steps };
@@ -7012,11 +7409,21 @@ const passes = [
 
 const problems = [];
 const matchedRegistry = new Set();
+const matchedCollapsed = new Set();
+const doorsExercised = new Set();
 try {
   for (const pass of passes) {
-    const { failures, layoutProblems, matchedRegistryEntries, titleProblems } =
-      await sweep(browser, pass);
+    const {
+      failures,
+      layoutProblems,
+      matchedRegistryEntries,
+      matchedCollapsedEntries,
+      exercisedDoors,
+      titleProblems,
+    } = await sweep(browser, pass);
     for (const entry of matchedRegistryEntries) matchedRegistry.add(entry);
+    for (const entry of matchedCollapsedEntries) matchedCollapsed.add(entry);
+    for (const entry of exercisedDoors) doorsExercised.add(entry);
     for (const failure of failures) {
       problems.push(`${pass.label} — ${failure.surface}: ${failure.reason}`);
     }
@@ -7247,6 +7654,35 @@ try {
     // pisał, że niczego nie egzekwuje.
     if (REPORT_ONLY) console.log(`report: ${line}`);
     else problems.push(line);
+  }
+  // Ta sama kontrola nad drugim rejestrem, i to nie jest kopia dla symetrii:
+  // wpis o zapadniętej treści jest jeszcze łatwiejszy do przeżycia niż wpis
+  // o przepełnieniu, bo jego przedmiot jest NIEWIDOCZNY — nikt go nie zauważy
+  // ani na zrzucie, ani w raporcie przepełnień, który go z definicji pomija.
+  for (const entry of unusedCollapsedEntries(matchedCollapsed)) {
+    const line =
+      `the collapsed-text registry — ${entry.surface}: ${entry.signature} never collapsed in any pass. ` +
+      `Either the collapse order was fixed and the entry goes, or this gate stopped seeing that screen.`;
+    if (REPORT_ONLY) console.log(`report: ${line}`);
+    else problems.push(line);
+  }
+  console.log(
+    `collapsed text: ${KNOWN_COLLAPSED_TEXT.length} registered debt(s), ` +
+      `${matchedCollapsed.size} met; enforced on ${COLLAPSED_TEXT_ENFORCED_SURFACES.join(", ")}, ` +
+      `collected and printed everywhere else`,
+  );
+  // Ta sama kontrola nad tabelą drzwi rekordu. Wpis, którego żaden przelot nie
+  // wykonał, opisuje powierzchnię, która przestała rysować otwieralny wiersz —
+  // i wtedy zdanie tej tabeli o niej jest zdaniem o niczym. Przy `navigates`
+  // jest to szczególnie ciche, bo taki wpis SAM WYŁĄCZA dwuklik: nie ma czego
+  // zaobserwować, więc nieaktualna deklaracja wygląda tak samo jak aktualna.
+  for (const surface of Object.keys(RECORD_DOORS)) {
+    if (doorsExercised.has(surface)) continue;
+    problems.push(
+      `the record-door table — ${surface}: declared "${RECORD_DOORS[surface]}" but drew no openable row in any pass. ` +
+        `Either the destination stopped drawing one (and the entry goes), or the fixture stopped reaching it — ` +
+        `and a "navigates" entry that nothing exercises is indistinguishable from coverage.`,
+    );
   }
 } finally {
   await browser.close();

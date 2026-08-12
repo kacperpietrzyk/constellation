@@ -81,6 +81,32 @@ export const crmRecordIds = {
   stackFact: recordId("13"),
   pilotDecision: recordId("14"),
   supportOffer: recordId("15"),
+  // ── SPOTKANIA, DOŁOŻONE W LOCIE D9 ───────────────────────────────────────
+  // Do tej zmiany `grep -c 'kind: "meeting"'` na tym pliku dawał ZERO, więc
+  // `reading.meetings` był pusty na każdym ekranie CRM i plakietka spotkań —
+  // żywy stan produkcyjny — NIE NARYSOWAŁA SIĘ ANI RAZU. Każdy sufit
+  // przepełnienia zapisany nad pasem uczestnictwa był w istocie zdaniem
+  // o siedmioznakowym „3 deals", a decyzja o TREŚCI tej plakietki oparta na
+  // takim pomiarze byłaby niefalsyfikowalna. To jest ta sama klasa defektu,
+  // którą to repozytorium ma już nazwaną dwa razy: pusta fikstura nie tylko nie
+  // mierzy — ona CHRONI błędną asercję przed byciem błędną.
+  kickoffMeeting: recordId("16"),
+  retainerMeeting: recordId("17"),
+  boardMeeting: recordId("18"),
+  // ── CZWARTA UMOWA, DOŁOŻONA W LOCIE D10 ──────────────────────────────────
+  // LICZBA JEST WYLICZONA, NIE WYBRANA. Lot D10 przepina pasma na rodzeństwo
+  // przewijanego pudełka, a różnica między „pasmo jedzie z treścią" a „pasmo
+  // stoi" jest OBSERWOWALNA WYŁĄCZNIE wtedy, gdy jest co przewijać. Zmierzone
+  // sondą przy 1440×900, czyli przy jedynym oknie, którym chodzi bramka układu:
+  // dół treści Odnowień stał na 767 px przy dolnej krawędzi nośnika 839 px,
+  // czyli NIE PRZEWIJAŁ SIĘ i brakowało do tego 72 px. Wysokość wiersza umowy
+  // to na tym ekranie 175-219 px, więc JEDNA umowa więcej jest najmniejszą
+  // liczbą, która ten stan osiąga — i pierwszą, która go osiąga.
+  //
+  // ŻADEN INNY EKRAN NIE BYŁ BLIŻEJ: Lejek brakowało 300 px, Organizacje 251 px,
+  // Ludzie 465 px, a wiersz osoby ma 48 px — tam ta sama zmiana kosztowałaby
+  // dziesięć rekordów. Wybór ekranu jest więc też pomiarem, nie wygodą.
+  edrContract: recordId("19"),
 } as const;
 
 const DAY_MS = 86_400_000;
@@ -176,6 +202,7 @@ export const crmRecords = (
   const supportExpiry = at(38);
   const licenceExpiry = at(214);
   const closedExpiry = at(96);
+  const edrExpiry = at(151);
 
   return [
     {
@@ -526,6 +553,34 @@ export const crmRecords = (
       // different numbers on purpose.
       state: "renewed",
     },
+    {
+      ...base,
+      id: crmRecordIds.edrContract,
+      kind: "renewal",
+      organizationId: crmRecordIds.northwind,
+      title: "Firewall support and licences — Ostrava",
+      scope:
+        "Vendor support and subscription licences for the gateway pair at the Ostrava plant, including the RMA cover that the migration slipped past twice.",
+      expiresAt: edrExpiry,
+      // 151 dni do wygaśnięcia przy czasie wyprzedzenia 45, czyli sekcja
+      // OBSERWOWANE, daleko od granicy z „czas zacząć" — żaden poranek nie
+      // przeniesie tego wiersza między sekcjami. Dokładnie ta sama dyscyplina,
+      // co przy trzech umowach wyżej.
+      leadTimeDays: 45,
+      ownerPrincipalId: principalId,
+      evidenceSourceIds: [],
+      // Bez zadania kontrolnego, tak jak licencje: to jest stan („nikt tego nie
+      // zaczął"), a nie brak w fiksturze.
+      termStartsAt: at(151 - 365),
+      termMonths: 12,
+      cycleOrdinal: 4,
+      cycleKey: `${crmRecordIds.northwind}:${edrExpiry.slice(0, 10)}`,
+      // Kwota nie jest okrągła i nie jest kopią żadnej z trzech wyżej —
+      // zaokrąglone liczby chowają wady formatowania, co to repozytorium ma już
+      // nazwane osobno.
+      value: { amountMinor: 18_240_00, currency: "PLN" },
+      state: "watching",
+    },
     // BOTH EDGES A CONTRACT CAN CARRY, on purpose. One deal RENEWS the support
     // agreement and is what the next term is worth; one AMENDS it, selling
     // inside the term that is running and leaving the expiry alone. The screen
@@ -575,6 +630,122 @@ export const crmRecords = (
       evidenceSourceIds: evidence(1),
       linkedRecordIds: [crmRecordIds.mdrDeal],
       state: "current",
+    },
+
+    // ── SPOTKANIA ────────────────────────────────────────────────────────────
+    // TRZY, i liczba jest WYLICZONA Z EKRANU, nie wybrana pod pixel. Rozkład to
+    // 3 / 1 / 0 na trzech osobach fikstury i każda z tych trzech wartości robi
+    // w pomiarze inną robotę:
+    //   • Grzegorz — 3 spotkania Z jednym dealem, więc jego pas uczestnictwa
+    //     rysuje OBIE plakietki naraz. To jest jedyny stan, w którym da się
+    //     zmierzyć zawijanie `flex-wrap` w tym pasie, i pierwszy raz, kiedy
+    //     w ogóle się rysuje.
+    //   • Agata — 1 spotkanie, czyli LICZBA POJEDYNCZA („1 meeting"), bo
+    //     `countLabel` odmienia i forma pojedyncza jest osobnym napisem.
+    //   • Tomasz — zero, czyli plakietka spotkań się NIE rysuje i gałąź
+    //     „pokazujemy wyłącznie to, co istnieje" zostaje pod asercją.
+    // Trzy to nie jest „najgorszy przypadek produkcji" i nie udaje nim być:
+    // najgorszy przypadek to dwucyfrowy licznik, a zmierzony koszt tej różnicy
+    // w tym wierszu jest znany — „3 meetings" ma przy tekście 200% 136,2 px,
+    // „12 meetings" 145,4 px, czyli 9,2 px. Tor plakietki niesie od lotu D9 dół
+    // `min-content` (`people.module.css`, `.row`), więc obie liczby mieszczą się
+    // BEZ przepełnienia i różnica nie jest już różnicą między zielonym
+    // a czerwonym. Wpisanie „12" byłoby produkowaniem liczby pod piksel —
+    // nazwany defekt tego repozytorium — a nie zapisem stanu, który ktoś widział.
+    {
+      ...base,
+      id: crmRecordIds.kickoffMeeting,
+      kind: "meeting",
+      meeting: {
+        id: crmRecordIds.kickoffMeeting,
+        workspaceId,
+        spaceId,
+        connectionId: "dev-harness",
+        externalMeetingId: "harness/nwmg-kickoff",
+        title: "Kickoff wdrożenia MDR — zakres i cztery zakłady",
+        startedAt: at(-31),
+        endedAt: at(-31),
+        organizationId: crmRecordIds.northwind,
+        participants: [
+          {
+            externalId: "harness/p-wisniewski",
+            name: "Grzegorz Wiśniewski-Zaremba",
+            personId: crmRecordIds.wisniewski,
+          },
+        ],
+        workItems: [],
+        contentHash:
+          "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        triage: "ready",
+        missingComponents: [],
+        version: 1,
+        updatedAt: at(-31),
+      },
+    },
+    {
+      ...base,
+      id: crmRecordIds.retainerMeeting,
+      kind: "meeting",
+      meeting: {
+        id: crmRecordIds.retainerMeeting,
+        workspaceId,
+        spaceId,
+        connectionId: "dev-harness",
+        externalMeetingId: "harness/nwmg-retainer",
+        title: "Retainer on-site — wycena aneksu",
+        startedAt: at(-12),
+        endedAt: at(-12),
+        organizationId: crmRecordIds.northwind,
+        participants: [
+          {
+            externalId: "harness/p-wisniewski",
+            name: "Grzegorz Wiśniewski-Zaremba",
+            personId: crmRecordIds.wisniewski,
+          },
+          {
+            externalId: "harness/p-krol",
+            name: "Agata Król",
+            personId: crmRecordIds.krol,
+          },
+        ],
+        workItems: [],
+        contentHash:
+          "b1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        triage: "ready",
+        missingComponents: [],
+        version: 1,
+        updatedAt: at(-12),
+      },
+    },
+    {
+      ...base,
+      id: crmRecordIds.boardMeeting,
+      kind: "meeting",
+      meeting: {
+        id: crmRecordIds.boardMeeting,
+        workspaceId,
+        spaceId,
+        connectionId: "dev-harness",
+        externalMeetingId: "harness/nwmg-board",
+        title: "Przygotowanie do zarządu — dwa numery obok siebie",
+        startedAt: at(-4),
+        endedAt: at(-4),
+        organizationId: crmRecordIds.northwind,
+        participants: [
+          {
+            externalId: "harness/p-wisniewski",
+            name: "Grzegorz Wiśniewski-Zaremba",
+            personId: crmRecordIds.wisniewski,
+          },
+        ],
+        workItems: [],
+        contentHash:
+          "c1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        triage: "ready",
+        missingComponents: [],
+        version: 1,
+        updatedAt: at(-4),
+      },
     },
   ];
 };

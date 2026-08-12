@@ -678,6 +678,12 @@
        --a-700  46%   7,60:1   AA        ← hover akcji
        literał  38%  10,56:1   AA        ← stan wciśnięty akcji
 
+     TA TABELA MÓWI O TOKENACH, NIE O ZAKAZIE. Od lotu D8 istnieje dokładnie
+     JEDEN podmiot, który niesie tekst na `--a-400` i `--a-500` mimo tych liczb:
+     spoczynek `.primary-button`, pod nazwanym zwolnieniem opisanym niżej.
+     Kolejny taki podmiot wymaga kolejnej decyzji człowieka — tabela nie jest
+     dla niego furtką.
+
      Próg przecina rampę przy ~58,3% jasności, więc PRZECHODZĄ TYLKO DWA
      STOPNIE — i dlatego rola ma dokładnie JEDEN stopień do wydania na rzecz
      bez stanów: `--a-600`. Gdyby plakietka miała stać o stopień jaśniej „bo
@@ -690,13 +696,30 @@
      `:active` jako stanu osobnego, a `:active` przychodzi NA hoverze — trzy
      z nich nie mają przy tym żadnej innej różnicy niż kolor.
 
-     ODSTĘPSTWO OD v3, NAZWANE: prototyp maluje akcję główną gradientem
-     `--a-400 → --a-500 → --a-600` z hoverem `--a-300 → --a-400 → --a-500`
-     (`v3/app.css:321-331`) i tym samym prawie białym tekstem. Zmierzone na tej
-     samej matematyce: górny stopień spoczynku 2,57:1, górny stopień hovera
-     1,88:1 — czyli wartość prototypu NIE PRZECHODZI, i to nie o włos. Zostaje
-     wartość wyliczona, dokładnie jak przy statusach motywu jasnego wyżej.
+     ODSTĘPSTWO OD v3, PRZEPOŁOWIONE 2026-08-12 (lot D8) — i przepołowione
+     DECYZJĄ, nie pomiarem, bo pomiar się nie zmienił. Prototyp maluje akcję
+     główną gradientem `--a-400 → --a-500 → --a-600` z hoverem
+     `--a-300 → --a-400 → --a-500` (`v3/app.css:321-331`) i tym samym prawie
+     białym tekstem. Zmierzone na tej samej matematyce: górny stopień spoczynku
+     2,57:1, górny stopień hovera 1,88:1 — czyli wartość prototypu NIE
+     PRZECHODZI, i to nie o włos.
+
+     SPOCZYNEK: gradient prototypu WCHODZI 1:1, na kontrolce `.primary-button`
+     w `styles.css`, jako świadomy dług dostępnościowy przyjęty przez Kacpra
+     (zwolnienie `ACCENT_GRADIENT_EXEMPTIONS` w
+     `scripts/consumer-contrast.test.mjs` — nazwane, policzone, wypisywane
+     w każdym przebiegu i pilnowane break-testami). Próg 4,5:1 stoi
+     NIETKNIĘTY; zwolnienie zdejmuje asercję, nie pomiar, i nie sięga ani
+     o linijkę dalej niż ta jedna para.
+
+     HOVER I STAN WCIŚNIĘTY: bez zmian, wartość wyliczona zostaje. Prototypowy
+     hover to DRUGI gradient i wymagałby DRUGIEJ decyzji; nikt jej nie podjął.
      Progu nie wolno obniżyć; to zamieniłoby pomiar z powrotem w deklarację.
+
+     TOKEN ZOSTAJE PŁASKI, i to jest granica zakresu, nie przeoczenie:
+     `--action-primary-bg` czytają jako tło także inne reguły, więc gradient
+     w tokenie wciągnąłby je wszystkie pod jedno zwolnienie wydane na jedną
+     kontrolkę. Wypełnienie gradientem siedzi na regule `.primary-button`.
 
      DRUGIE ODSTĘPSTWO, NAZWANE: zbocze idzie MONOTONICZNIE CIEMNIEJ w OBU
      motywach, więc w ciemnym hover POGŁĘBIA zamiast rozjaśniać. To jest

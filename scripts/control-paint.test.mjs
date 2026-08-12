@@ -428,10 +428,17 @@ test("witness matching is by CLASS TOKEN, because „primary-button” and „se
     false,
   );
   assert.equal(signatureCarriesClass("button.primary-button", "button"), false);
+  // OBSERWACJA JEST ZMYŚLONA, więc musi iść za DEKLARACJĄ, nie odwrotnie: ten
+  // test pyta o dopasowanie po TOKENIE KLASY (`button.secondary-button` kontra
+  // `button.primary-button`), a nie o to, jaką farbę nosi akcja główna.
+  // `primary-button` stoi tu jako `PAINTED_IMAGE` od lotu D8, bo tyle deklaruje
+  // `CONTROL_PAINT_WITNESSES`, a ten wywołanie bierze deklarację domyślną.
+  // Asercja („zero znalezisk, kiedy każdy świadek zgadza się z deklaracją")
+  // jest niezmieniona.
   const { failures } = classifyControlPaintWitnesses({
     observed: {
       "button.secondary-button": { states: ["IN_PALETTE"], count: 4 },
-      "button.primary-button": { states: ["IN_PALETTE"], count: 1 },
+      "button.primary-button": { states: ["PAINTED_IMAGE"], count: 1 },
       "button.ghost-button": { states: ["TRANSPARENT"], count: 3 },
     },
   });

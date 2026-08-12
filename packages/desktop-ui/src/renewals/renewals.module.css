@@ -21,9 +21,17 @@
    its tracks have a definite number to shrink against. */
 
 .renewals {
-  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`. Nota przy
-     `.viewbar` niżej mówiła, że pasma „nie mogą stać flush, bo `.renewals`
-     trzyma swój `gap`" — od tego lotu mogą, i dlatego ta liczba ma nazwę. */
+  /* ODSTĘP KOLUMNY, I OD LOTU D10 JUŻ TYLKO TYLE. Historia tej jednej liczby
+     jest w tym pliku dwuzdaniowa i warto ją mieć w całości: najpierw nota przy
+     `.viewbar` mówiła, że pasma „nie mogą stać flush, bo `.renewals` trzyma swój
+     `gap`"; lot D1 nadał tej liczbie nazwę, żeby pasek widoku mógł ją odjąć
+     i pasma stanęły na sobie. Lot D10 wyprowadził oba pasma POZA to pudełko
+     (`styles.css`, `.work-surface:has(> .surface-header)`), więc `gap` już ich
+     nie dotyczy i nie ma czego odejmować — a nieodejmowany `gap` między paskiem
+     widoku a pierwszą sekcją BYŁ ostatnimi 12 px wpisu #22.
+
+     NAZWA ZOSTAJE, bo `.surface-header + .view-band` czyta ją dalej na ośmiu
+     ekranach, które rysują pasma w środku nośnika. */
   --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;

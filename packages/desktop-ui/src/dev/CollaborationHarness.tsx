@@ -24,6 +24,7 @@ import type {
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
 
+import { dateKeyInZone } from "../i18n.js";
 import { RealApp } from "../RealApp.js";
 import { createScenarioClient } from "../client/scenario-client.js";
 import { crmRecords } from "./crm-fixture.js";
@@ -58,6 +59,22 @@ const agentPrincipalId = PrincipalIdSchema.parse(
   "00000000-0000-4000-8000-0000000000f2",
 );
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000006");
+
+// STREFA WORKSPACE'U JAKO STAŁA, A NIE JAKO POWTÓRZONY NAPIS. Dzień „dzisiaj"
+// liczy się niżej DOKŁADNIE w tej strefie, którą `workspace.bootstrapContext`
+// oddaje jako strefę workspace'u — bo `plannedForDay` porównuje `startAt`
+// z kluczem dnia W TEJ strefie (`today-plan.ts:163-164`). Fikstura licząca
+// dzień w innej strefie niż deklaruje, rysuje pusty plan przez kilka godzin na
+// dobę i nikt nie umie powiedzieć dlaczego.
+const harnessTimeZone = "Europe/Warsaw";
+// WYPROWADZONE Z ZEGARA, NIGDY WPISANE. Wpisana data w fiksturze położyła
+// `main` tego repozytorium dwa razy — asercja przestaje mierzyć to, co mierzyła,
+// nie dlatego, że ktoś zmienił kod, tylko dlatego, że minął dzień. Południe UTC
+// leży tego samego dnia w Warszawie przy obu przesunięciach (+1 i +2), więc ten
+// instant jest „dziś" bez rozróżniania czasu letniego.
+const todayKey = dateKeyInZone(Date.now(), harnessTimeZone);
+const plannedStartAt = `${todayKey}T12:00:00.000Z`;
+const plannedByAt = `${todayKey}T06:00:00.000Z`;
 // Jedno źródło tytułu zadania i identyfikatora projektu, bo od tego PR-a
 // fikstura Library niesie ODWOŁANIA do obu i musi nazywać je tak samo, jak
 // nazywają się w swoich własnych projekcjach — grupa `Record` z tytułem, który
@@ -313,7 +330,7 @@ const client = createScenarioClient({
       workspace: {
         id: workspaceId,
         name: "Praca",
-        timezone: "Europe/Warsaw",
+        timezone: harnessTimeZone,
         defaultTaskStatusId: statusId,
         voiceAudioRetentionPolicy: "delete_after_transcript",
         // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
@@ -344,6 +361,13 @@ const client = createScenarioClient({
           version: 1,
         },
       ],
+      // DWA SZABLONY, NIE JEDEN, I TO JEST WYMÓG POMIARU (lot D11). Panel
+      // dymka „Apply template" to LISTA przycisków; przy jednym szablonie
+      // bramka mierzyłaby listę, która nie ma jeszcze geometrii listy —
+      // odstępu między pozycjami, chodzenia strzałkami, sufitu szerokości nad
+      // dwiema różnej długości nazwami. Drugi wpis kosztuje zero wysłanych
+      // bajtów (`import.meta.env.DEV`) i jest jedyną drogą do stanu, w którym
+      // to, co lot oddał, w ogóle się rysuje.
       projectTemplates: [
         {
           id: ProjectTemplateIdSchema.parse(
@@ -353,6 +377,16 @@ const client = createScenarioClient({
           taskTitles: ["Kickoff", "Plan wdrożenia", "Retro"],
           fieldIds: [],
           position: 0,
+          version: 1,
+        },
+        {
+          id: ProjectTemplateIdSchema.parse(
+            "00000000-0000-4000-8000-0000000000c2",
+          ),
+          name: "Odnowienie umowy wsparcia",
+          taskTitles: ["Zebranie warunków", "Wycena", "Podpis"],
+          fieldIds: [],
+          position: 1,
           version: 1,
         },
       ],
@@ -370,6 +404,31 @@ const client = createScenarioClient({
             operationalSemantics: "actionable",
           },
           completionState: "open",
+          // ── DWA POLA, KTÓRE DAJĄ PLAKIETCE AUTORSTWA STAN DO NARYSOWANIA ──
+          // Wpis #6 był oddany w kodzie od lotu D2 i NIEMIERZALNY, bo ta
+          // fikstura nie rysowała ANI JEDNEGO `[data-planned-row]` — ekran stał
+          // na „Nothing is planned for today", więc warunek plakietki
+          // (`TodaySurface.tsx:191-197`: którykolwiek dzisiejszy wiersz planu
+          // z `plannedBy.principalKind === "agent"`) nie miał jak być spełniony.
+          // To nie było „za trudne do zmierzenia", tylko „nie ma czego mierzyć",
+          // a rozwiązaniem jest fikstura, nie niższy próg.
+          //
+          // `calendarBlock` ŚWIADOMIE NIE JEST DOKŁADANY. Wiersz rysuje wtedy
+          // „No time" klasą `.loose`, a `dayCapacity.reservedMinutes` zostaje
+          // zerem (`today-plan.ts:133-137` czyta wyłącznie `calendarBlock`) —
+          // czyli plakietka dostaje stan bez przestawiania drugiej liczby na
+          // tym samym ekranie.
+          startAt: plannedStartAt,
+          // Ten sam `agentPrincipalId`, którym stoi grant „Orbit Runner"
+          // w `agent.access` niżej: `principalName` rozwiązuje imię właśnie po
+          // grancie (`TodaySurface.tsx:61-67`), więc inny identyfikator dałby
+          // ogólne „An agent" i plakietka mierzyłaby gałąź zapasową zamiast
+          // właściwej.
+          plannedBy: {
+            principalId: agentPrincipalId,
+            principalKind: "agent" as const,
+            at: plannedByAt,
+          },
           // THE WRITTEN CONTEXT, and the only projection that carries it. The
           // record screen reads `description` off THIS capped list
           // (`TaskRecordScreen.tsx:386` — `snapshot.tasks.find(...)`), never off
@@ -411,6 +470,29 @@ const client = createScenarioClient({
       ],
       nextCursor: null,
     }),
+    // `startAt` NIE JEST TU POWTÓRZONY, i jest to wybór, nie przeoczenie. Ta
+    // sama praca jest w tej fiksturze ZAPLANOWANA w `task.list` (co daje ekranowi
+    // Dziś wiersz planu i plakietkę autorstwa) i NIEZAPLANOWANA w `work.overview`,
+    // bo `planStateOf` czyta wyłącznie `startAt` (`tasks/task-view.ts:246-251`):
+    // dopisanie go tutaj przestawiłoby znacznik na ekranie Zadań z „unplanned"
+    // na „planned", wpis rejestru `tasks|span._plan._plan_unplanned`
+    // (`descendant-overflow.mjs:96-103`) przestałby się dopasowywać, a
+    // `unusedRegistryEntries` robi z niedopasowanego wpisu BŁĄD, nie ciszę.
+    // Czyli: zaspokojenie jednej pary skasowałoby pomiar drugiej. Dwie projekcje
+    // mówią tu o tym samym zadaniu dwie różne rzeczy — świadomie.
+    //
+    // CO TA ŚWIADOMOŚĆ KOSZTUJE, dopisane po przeglądzie fali, bo sam powód nie
+    // jest jeszcze zapisem długu. Ta fikstura modeluje dziś workspace, którego
+    // produkt nie umie wytworzyć: jedno zadanie zaplanowane w jednej projekcji
+    // i niezaplanowane w drugiej. Póki tak stoi, REGRESJA, w której planowanie
+    // dociera do jednej projekcji, a do drugiej nie, jest tutaj NIEOBSERWOWALNA
+    // — obie bramki widzą dokładnie ten stan i uznają go za poprawny.
+    // WYJŚCIE, i jest tanie: zasiać DRUGIE zadanie, żeby jedno było zaplanowane
+    // w OBU projekcjach, a drugie niezaplanowane w OBU. To zaspokaja plakietkę
+    // autorstwa, próg `todayPlannedRows` i wpis rejestru
+    // `tasks|span._plan._plan_unplanned` naraz, bez rekordu sprzecznego ze sobą.
+    // Nie robione w tym przeglądzie, bo drugie zadanie przestawia liczniki
+    // wierszy na dwóch ekranach, a ten przegląd naprawia przyrządy, nie fikstury.
     "work.overview": result({
       kind: "work.overview",
       tasks: [

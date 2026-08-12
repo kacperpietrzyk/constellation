@@ -368,7 +368,7 @@ test("every state a row declares is a state the rule can produce", () => {
 //       panelem zakładki (`ProjectRecordScreen.tsx:300-306` wobec `:308`);
 //   −1  i TEN JEDEN wiersz NIE JEST rozjazdem POŁOŻENIA, co wyszło dopiero
 //       w locie C2: prototyp stawia akcję rekordu w crumbbarze, a tytuł rekordu
-//       W NASTĘPNYM PAŚMIE (`v3/screens/record.js:428-432` skleja `crumbbar(…)`
+//       W NASTĘPNYM PAŚMIE (`v3/screens/record.js:429-433` skleja `crumbbar(…)`
 //       z `rcShell(`<h1 class="rec-title">…`)`), czyli robi DOKŁADNIE to samo,
 //       co nasz `.crumbs` nad `header._header`. Rejestr mówi o tym ekranie to
 //       samo — „w pasie akcji NAD TYTUŁEM nie ma ani jednej powierzchni

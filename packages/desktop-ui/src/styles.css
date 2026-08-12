@@ -436,8 +436,15 @@
   overscroll-behavior: contain;
 }
 
+/* `.popover-choices` DOŁĄCZA DO TEJ REGUŁY, ZAMIAST POŻYCZAĆ `.task-state-actions`
+   (Faza D, lot D11). Panel wyboru szablonu ma dokładnie tę geometrię — kolumnę
+   przycisków po jednym kliknięciu — ale nie jest stanem zadania, a nazwa klasy,
+   która kłamie o swoim ekranie, jest w tym repozytorium nazwaną wadą. Trzecia
+   nazwa w tym samym selektorze kosztuje jeden wiersz i nic nie zmienia nikomu
+   innemu. */
 .inline-popover form,
-.inline-popover .task-state-actions {
+.inline-popover .task-state-actions,
+.inline-popover .popover-choices {
   display: grid;
   gap: var(--space-2);
 }
@@ -899,7 +906,7 @@ kbd {
 }
 /* MATERIAŁ AKCJI GŁÓWNEJ (Faza C, lot C2, pozycja C4 rejestru o kształcie
    przycisku). Prototyp daje jej TRZY warstwy cienia obok wypełnienia
-   (`v3/app.css:326-330`): jasną kreskę `inset 0 1px 0` pod górną krawędzią,
+   (`v3/app.css:321-325`): jasną kreskę `inset 0 1px 0` pod górną krawędzią,
    płytki cień pod spodem i pierścień `0 0 0 1px var(--accent-edge)`. Rejestr
    potwierdził brak wszystkich trzech PIONOWĄ SONDĄ w wyściółce przycisku, poza
    tuszem napisu: „app, x=2455: od góry do dołu jednolite rgb(127,75,220) — zero
@@ -908,37 +915,65 @@ kbd {
    `.ui-craft/tokens.md`, „Component layer" — `action-primary-*` to jedna
    akcja wypełniona akcentem.
 
-   GRADIENT ZE STOPNI PROTOTYPU NIE ZDAJE — I TO JEST ODMOWA NA POMIARZE.
-   Prototyp maluje wypełnienie `linear-gradient(180deg, var(--a-400),
-   var(--a-500) 55%, var(--a-600))`, a `scripts/consumer-contrast.test.mjs`
-   ROZKŁADA gradienty na stopnie i mierzy KAŻDY z nich: górny stopień daje
-   2,57:1 przeciw `--on-accent` przy progu AA 4,5, środkowy 3,54:1. Pełne
-   uzasadnienie, z tabelą całej rampy, stoi przy `--action-primary-bg`
-   w `tokens.css` i jest starsze niż ten lot.
+   GRADIENT ZE STOPNI PROTOTYPU WCHODZI 1:1 I NIE ZDAJE AA — DECYZJA
+   WŁAŚCICIELA, KACPER, 2026-08-12 (lot D8, pozycja #1 rejestru). Wypełnienie
+   spoczynkowe jest odtąd tym samym gradientem, co w prototypie
+   (`v3/app.css:321-325`): `linear-gradient(180deg, var(--a-400),
+   var(--a-500) 55%, var(--a-600))`. Do 2026-08-12 stała tu odmowa; poniżej
+   stoi to, co się zmieniło, i to, co się NIE zmieniło.
 
-   GRADIENT ZE STOPNI LEGALNYCH ZDAJE I ZOSTAŁ ODRZUCONY JAKO WYBÓR, nie jako
-   konieczność — poprzednie brzmienie tego akapitu sugerowało brak wyboru tam,
-   gdzie wybór był, i przegląd słusznie to wytknął. Policzone tą samą
-   matematyką co tabela niżej: `--a-600` daje 5,195:1, `--a-700` 7,599:1, więc
-   `linear-gradient(180deg, var(--a-600), var(--a-700))` zdaje AA na KAŻDYM
-   stopniu i niósłby pion materiału bez ruszania progu. Nie wchodzi, bo w tym
-   drzewie wypełnienie akcji głównej jest JEDNĄ wartością tokenu
-   (`--action-primary-bg`), którą czyta sześć powierzchni; zamiana jej na
-   gradient jest zmianą warstwy tokenów, a nie farbą na kontrolce, i należy do
-   lotu, który weźmie `tokens.css` w zakres. Cienie tekstu nie dotykają, więc
-   wchodzą; wypełnienie zostaje wyliczone.
+   CO SIĘ NIE ZMIENIŁO: PRÓG. `scripts/consumer-contrast.test.mjs` dalej
+   ROZKŁADA ten gradient na trzy stopnie i mierzy KAŻDY przeciw `--on-accent`
+   progiem AA 4,5:1 — 2,57:1 na `--a-400`, 3,54:1 na `--a-500`, 5,19:1 na
+   `--a-600`. Napis leży W POPRZEK CAŁEGO gradientu, więc wiąże stopień
+   NAJGORSZY: 2,57:1. Próg nie został przeskalowany ani na jotę; zamiast tego
+   ta jedna para stoi w NAZWANYM, POLICZONYM zwolnieniu
+   `ACCENT_GRADIENT_EXEMPTIONS` i jej dług jest WYPISYWANY w każdym przebiegu
+   bramki. Zwolnienie zdejmuje asercję, nie pomiar.
+
+   ŻADEN TUSZ TEGO NIE RATUJE, i to jest dowód WYCZERPUJĄCY, nie próbka.
+   Kontrast jest monotoniczny względem jasności tuszu, a stopnie idą w dwie
+   strony, więc wystarczy sprawdzić oba końce (`scripts/color-contrast.mjs`):
+   CZYSTA BIEL daje 2,64 / 3,64 / 5,35 — pada na `--a-400`; CZYSTA CZERŃ daje
+   7,95 / 5,76 / 3,93 — pada na `--a-600`. Skoro pada najjaśniejszy i pada
+   najciemniejszy tusz, jaki fizycznie istnieje, to nie ma tuszu, który zdaje
+   na wszystkich trzech stopniach. Najciemniejszy tusz TEGO drzewa,
+   `--neutral-950`, daje 7,78 / 5,64 / 3,84 i mieści się w tym samym wniosku.
+   PADA GRADIENT, NIE TUSZ — i dlatego zwolnienie jest przy gradiencie.
+
+   HOVER I STAN WCIŚNIĘTY ZOSTAJĄ TAKIE, JAKIE SĄ — ZAKRES DECYZJI TO SAM
+   SPOCZYNEK. Prototypowy hover (`v3/app.css:326-330`) to DRUGI gradient,
+   `--a-300 → --a-400 55% → --a-500`, czyli 1,88 / 2,57 / 3,54 — wszystkie trzy
+   stopnie pod progiem, i do tego idzie JAŚNIEJ, odwrotnie niż zbocze tej
+   aplikacji (`--a-700`, 7,60:1). Nie wchodzi. Warunek właściciela mówi o JEDNEJ
+   parze; drugi gradient to druga para i wymagałby drugiej decyzji.
 
    HOVER PODNOSI KRESKĘ I ZAMIENIA CIEŃ NA POŚWIATĘ, tak jak prototyp
-   (`v3/app.css:333-337`) — pierścień zostaje ten sam.
+   (`v3/app.css:326-330`) — pierścień zostaje ten sam.
 
    MATERIAŁ JEST ROLĄ, NIE LITERAŁEM NA KLASIE, i to jest poprawka po
    przeglądzie tego lotu: literał o swoistości (0,1,0) w tym pliku ZABIERAŁ
    akcji głównej pierścień ogniska. Wartości obu ról stoją przy remapie
    ognisk — sekcja „SIÓDMA I ÓSMA ROLA" w bloku o jednym właścicielu
    pierścienia, wyżej w tym pliku. */
+/* WYPEŁNIENIE JEST TU, NA KONTROLCE, A NIE W `--action-primary-bg`, i to jest
+   ograniczenie zakresu, nie wygoda: ten token czytają jako tło jeszcze SZEŚĆ
+   innych reguł w TRZECH arkuszach (policzone: `styles.css:469`, `:6003`,
+   `:10169`, `:10353`, `tasks/saved-view-filters.module.css:124`,
+   `record/record-comments.module.css:415`), a warunek właściciela mówi
+   o JEDNEJ parze. Gradient w tokenie wciągnąłby je wszystkie pod jedno
+   zwolnienie wydane na jedną kontrolkę. Skrót
+   `background`, nie `background-image` — bramka kontrastu zbiera `background`
+   i `background-color`, więc `background-image` nie dołożyłby ANI JEDNEGO
+   zmierzonego wiersza i przepuściłby 2,57:1 po cichu. */
 .primary-button {
   color: var(--action-primary-text);
-  background: var(--action-primary-bg);
+  background: linear-gradient(
+    180deg,
+    var(--a-400),
+    var(--a-500) 55%,
+    var(--a-600)
+  );
   box-shadow: var(--action-primary-shadow);
 }
 .primary-button:not(:disabled):hover {
@@ -2406,11 +2441,31 @@ kbd {
        wyściółki, więc rynna 40 px odziedziczona po `.work-surface` wypchnęłaby
        pasmo 40 px POZA nośnik;
      * `project-collection.module.css` — jego pasek widoku jest WNUKIEM, wewnątrz
-       `.collection`, na którą dalej działa sufit `--surface-measure`, więc ten
-       sam margines przepełniłby pudełko węższe od kanwy.
+       `.collection`.
 
-   Oba trzymają dziś własną kopię kształtu i oddadzą ją locie, który da ich
-   nośnikom rynnę.
+   OBIE ODMOWY SPRAWDZONE POMIAREM W LOCIE D10, i jedna z nich była zapisana
+   ODWROTNIE, niż zachowuje się kod.
+
+     * BIBLIOTEKA: odmowa dotyczy KLASY, a nie UKŁADU, i to rozróżnienie było
+       tu nienazwane. Zmierzone przy 1440 / 760 / 1920: `_header_` i `_viewbar_`
+       są BEZPOŚREDNIMI dziećmi `.shell`, a na całej drodze od nich do
+       `#main-content` nie ma ANI JEDNEGO pudełka przewijania (`.shell` liczy
+       `overflow-y: visible`, przewijają się dopiero pola odczytu w trzecim
+       rzędzie siatki). Oba pasma idą przy tym na pełną szerokość kanwy
+       (220..1440, 52..760, 220..1920). Biblioteka MA więc układ prototypu —
+       doszła do niego siatką zamiast dzieloną klasą — i nie jest zaległością
+       lotu D10 ani żadnego następnego.
+     * KOLEKCJA PROJEKTÓW: odmowa STOI, ale jej powód był napisany W ZŁĄ
+       STRONĘ. Stało tu „ten sam margines PRZEPEŁNIŁBY pudełko węższe od
+       kanwy"; zmierzone przepełnienie wynosi ZERO przy każdej z trzech
+       szerokości, a przy 1920 — czyli tam, gdzie `--surface-measure` naprawdę
+       przycina — pasek ma 1152 px i kończy się na x=1412 w nośniku kończącym
+       się na 1920, czyli jest o **508 px ZA KRÓTKI**, a nie za długi. Lot,
+       który sprawdziłby tę odmowę przy 1440 px, uznałby ją za nieaktualną:
+       tam różnica to same 40 px rynny. Prawdziwy mechanizm jest inny i jest
+       nim rodzic: `.collection` sama liczy `overflow-y: auto`, więc pasek
+       siedzi w CUDZYM pudełku przewijania i wyprowadzenie go wymaga decyzji
+       o tamtym pudełku, a nie o marginesie.
 
    Nazwa klasy jest GLOBALNA i dokładana obok klasy modułowej, a nie zamiast
    niej: `class={`view-band ${styles.viewbar}`}`. Dzięki temu spis B1 dalej widzi
@@ -2437,12 +2492,136 @@ kbd {
    marginesów. Ekran, który chce pasm sklejonych, nazywa swój odstęp tą zmienną
    i pasek widoku go odejmuje. Ekran, który jej nie deklaruje, dostaje 0 i nic
    się dla niego nie zmienia — więc ta reguła nie sięga po ekrany, których ten
-   lot nie mierzył. */
+   lot nie mierzył.
+
+   OBIE REGUŁY SĄ MARTWE NA EKRANACH PRZEPIĘTYCH PRZEZ LOT D10, i to jest
+   napisane tutaj, żeby następny lot nie skasował ich jako zbędnych. Tam, gdzie
+   pasma są rodzeństwem przewijanego pudełka, żadna z tych dwóch nie ma pracy:
+   `--surface-stack-gap` deklaruje NOŚNIK TREŚCI (`.organizations`, `.renewals`),
+   a wyniesione pasma nie są już jego dziećmi, więc nie dziedziczą tej zmiennej
+   i `var(…, 0px)` daje zero; margines dolny pasma tytułu i tak zeruje reguła
+   przepięcia niżej. Konsumentów zostaje OŚMIU — każdy ekran, który dalej rysuje
+   pasmo w środku nośnika — i dla nich obie reguły pracują dokładnie tak jak
+   przedtem. Kasować je będzie wolno wtedy, gdy przepięty będzie ostatni ekran,
+   a nie wcześniej. */
 .surface-header:has(+ .view-band) {
   margin-block-end: 0;
 }
 .surface-header + .view-band {
   margin-block-start: calc(-1 * var(--surface-stack-gap, 0px));
+}
+
+/* ── PASMA JAKO RODZEŃSTWO PRZEWIJANEGO PUDEŁKA (Faza D, lot D10) ──────────
+   OTWARTE I SPRAWDZONE PRZY CYTOWANYCH LINIACH: prototyp trzyma `.crumbbar`
+   (`v3/app.css:282-285`), `.viewbar` (`:295-299`) i `.scroller` (`:303`) jako
+   TROJE DZIECI `.canvas` (`:278-281`), która jest kolumną `flex`. Przewija się
+   WYŁĄCZNIE trzecie z nich — `.scroller` niesie `flex: 1; min-height: 0;
+   overflow: auto`, a oba pasma `flex: none`, więc stoją pod chromem okna i nie
+   ruszają się. Nota przy `.surface-scroll` niżej cytowała dotąd `281-293`:
+   zakres urwany z obu stron, bez deklaracji `.canvas` i bez `.scroller`, czyli
+   akurat bez tych dwóch reguł, które dowodzą rodzeństwa. Zakres, który je
+   obejmuje, to `278-303`, i tak brzmiał już `SurfaceTitleBand.tsx:50`.
+
+   U NAS BYŁO ODWROTNIE: pasma były DZIEĆMI przewijanego nośnika, więc jechały
+   z treścią. Ta reguła odwraca to dla ekranu, który sam się zgłosi.
+
+   ZGŁOSZENIE JEST STRUKTURALNE, A NIE LISTĄ NAZW. Warunkiem jest `:has(>
+   .surface-header)`, czyli „pasmo tytułu jest BEZPOŚREDNIM dzieckiem nośnika" —
+   a to jest dokładnie ta zmiana układu, o którą chodzi. Ekran deklaruje ją tym,
+   że ją robi. Alternatywa `[data-surface="…"]` byłaby ręczną listą obok
+   zamkniętego słownika, czyli nazwaną w tym repozytorium klasą defektu (sześć
+   żywych miejsc, trzy trafione w jednej fali) — i rozjechałaby się przy
+   pierwszym ekranie, który zmieni układ bez zmiany identyfikatora.
+
+   SPRAWDZONE, ŻE NIE ŁAPIE NIKOGO PRZYPADKIEM. Wszystkie sześć pozostałych
+   miejsc rysujących `.surface-header` trzyma je o poziom GŁĘBIEJ, więc żadne nie
+   jest bezpośrednim dzieckiem `.work-surface`: Spotkania w `<section
+   class="meeting-surface">` (`MeetingsSurface.tsx:1829`), ekran rekordu projektu
+   w `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:640`), pełny kontekst
+   organizacji w `.surface-scroll.organization-context`
+   (`StrategicDepthSurface.tsx:1752`), historia wrzutek w
+   `.surface-scroll.history-surface` (`CaptureHistoryReading.tsx:199`),
+   Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:963`)
+   i martwy `TasksSurface` w `.surface-scroll` (`Wave2Surfaces.tsx:188`).
+
+   SIŁA SELEKTORA JEST TU CELOWO WYŻSZA, nie przypadkiem. `:has()` wnosi siłę
+   swojego argumentu, więc `.work-surface:has(> .surface-header)` liczy (0,2,0),
+   a z `> .surface-header` — (0,3,0). Reguła `.surface-header + .view-band` wyżej
+   liczy (0,2,0) i zerowanie marginesu MUSI ją pobić; przy remisie
+   rozstrzygałaby kolejność w arkuszu, czyli szczegół budowy. Dlatego oba pasma
+   mają tu osobne selektory zamiast wspólnego `:where(…)`, które wniosłoby zero.
+
+   CZEGO TA REGUŁA NIE ROBI: nie rusza rynny (`--surface-gutter` zostaje ta sama
+   i pasmo bierze ją jako WŁASNĄ wyściółkę zamiast dostawać ujemnym marginesem),
+   nie rusza sufitu czytelnej kolumny i nie dotyka ośmiu ekranów, które dalej
+   rysują pasmo w środku nośnika. */
+.work-surface:has(> .surface-header) {
+  display: flex;
+  flex-direction: column;
+  /* Nośnik przestaje być przewijany — przewija się jego trzecie dziecko. Bez
+     tego strona miałaby DWA pudełka przewijania jedno w drugim. */
+  overflow: hidden;
+}
+.work-surface:has(> .surface-header) > .surface-header,
+.work-surface:has(> .surface-header) > .view-band {
+  /* Ujemne marginesy były mechanizmem WYCHODZENIA z czytelnej kolumny. Pasmo
+     poza nośnikiem treści nie ma z czego wychodzić, a odziedziczony ujemny
+     margines poziomy wypchnąłby je o rynnę POZA kanwę. */
+  margin: 0;
+  padding-inline: var(--surface-gutter, 0px);
+  flex: none;
+}
+.work-surface:has(> .surface-header) > .surface-scroll {
+  flex: 1;
+  /* `min-height: 100%` z `.surface-scroll` rozwiązuje się tu do PEŁNEJ wysokości
+     kolumny, więc pudełko z pasmami nad sobą przepełniłoby nośnik i wypchnęło
+     pasma za jego górną krawędź. `min-height: 0` jest też tym, co pozwala
+     dziecku `flex` skurczyć się poniżej treści, czyli w ogóle mieć własne
+     przewijanie. */
+  min-height: 0;
+  overflow: auto;
+  /* Nie ma nad czym unosić pasma: pasmo stoi wyżej, poza tym pudełkiem. Zerowana
+     jest ZMIENNA, a nie `padding-top`, bo wyściółka jest tu zapisana skrótem
+     `padding` i druga deklaracja rozbiłaby jeden kształt na dwa miejsca. */
+  --surface-band-lift: 0px;
+  scrollbar-color: var(--border-default) transparent;
+}
+/* KOMUNIKAT POWŁOKI I PLAKIETKA WARUNKU SĄ TU TRZECIM I CZWARTYM RODZAJEM
+   DZIECKA, i ta reguła istnieje, bo bez niej się KURCZĄ.
+
+   Oba niosą `margin-inline: auto` obok `max-width` (`.notice` niżej,
+   `.condition-banner` na końcu arkusza) — pod nośnikiem BLOKOWYM znaczy to
+   „wypełnij, przytnij do miary, wyśrodkuj". Pod kolumną `flex` oś liniowa jest
+   osią POPRZECZNĄ, a automatyczny margines w osi poprzecznej WYŁĄCZA rozciąganie
+   i każe pudełku zmierzyć własną treść. Ten sam mechanizm jest w tym arkuszu
+   opisany i zmierzony przy `.surface-scroll > *` — piętnaścioro dzieci narysowanych
+   węziej niż kolumna, w tym tytuł zadania po jednym znaku w wierszu. Lekarstwo
+   jest to samo i celowo nie jest nowe: rozmiar OKREŚLONY, żeby `max-width` miało
+   od czego przycinać.
+
+   ŻADNA BRAMKA TEGO NIE WIDZI: harness nie rysuje ani komunikatu, ani plakietki
+   (`.condition-banner` wisi na `build.channel === "developer-preview"`,
+   `RealApp.tsx:1901`), więc przelot melduje o niej „no stop draws it". Zmierzone
+   sondą lotu przez WSTRZYKNIĘCIE obu węzłów do nośnika, przy 1440 px, z obiema
+   stronami — z tą deklaracją i po jej zdjęciu:
+
+     ekran przepięty (nośnik `flex`):  komunikat 1152 → 131,4 px bez niej,
+                                       plakietka 1152 →  78,0 px bez niej
+     ekran nieprzepięty (nośnik blok): 1152 px OBOJĘTNIE, w obie strony
+
+   Czyli deklaracja jest nośna dokładnie tam, gdzie ma być, i jest no-opem
+   wszędzie indziej. Bez pomiaru drugiej strony byłaby asercją, której nikt nie
+   widział na czerwono.
+
+   CO SIĘ ZMIENIA I NIE DA SIĘ COFNĄĆ TĄ REGUŁĄ: oba stoją teraz POZA pudełkiem
+   przewijania, więc nie odjeżdżają z treścią. Dla komunikatu to jest lepiej.
+   Dla plakietki warunku znaczy to, że jej `position: sticky` nie ma już czego
+   się trzymać — jest przypięta na stałe, co jest MOCNIEJSZE niż przyklejenie,
+   ale to jest inna deklaracja niż ta, którą ktoś napisał. Nazwane tutaj, żeby
+   następny lot nie odkrywał tego pomiarem. */
+.work-surface:has(> .surface-header) > .notice,
+.work-surface:has(> .surface-header) > .condition-banner {
+  inline-size: 100%;
 }
 /* Historia wrzutek jest ODCZYTEM Biblioteki, a nie własnym celem, więc jej
    nagłówek zjeżdża na `h2` pod `h1` powłoki. Wygląd zostaje ten sam: poziom
@@ -5837,11 +6016,18 @@ kbd {
 .surface-scroll {
   /* WYSOKOŚĆ, KTÓRĄ PASMO TYTUŁU ODEJMUJE, ŻEBY USIĄŚĆ NA GÓRNEJ KRAWĘDZI
      KANWY. Prototyp stawia pasmo bezpośrednio pod chromem okna, bez ani jednego
-     piksela powietrza nad nim (`v3/app.css:281-293` — `.crumbbar` jest
-     RODZEŃSTWEM `.scroller`, nie jego dzieckiem). U nas pasmo jest dzieckiem
-     przewijanego nośnika, więc jedyne, co je z tamtej krawędzi spycha, to
-     wyściółka górna TEGO nośnika — a skoro ma ją odjąć, musi ją znać z nazwy,
-     nie z powtórzonego literału. */
+     piksela powietrza nad nim (`v3/app.css:278-303` — `.crumbbar` i `.viewbar`
+     są RODZEŃSTWEM `.scroller`, nie jego dziećmi; poprzedni cytat `281-293` nie
+     obejmował ani `.canvas`, ani `.scroller`, czyli dwóch reguł, na których to
+     zdanie stoi). NA OŚMIU EKRANACH pasmo jest jeszcze dzieckiem przewijanego
+     nośnika, więc jedyne, co je z tamtej krawędzi spycha, to wyściółka górna
+     TEGO nośnika — a skoro ma ją odjąć, musi ją znać z nazwy, nie
+     z powtórzonego literału.
+
+     DWA EKRANY JUŻ TAK NIE MAJĄ. Lot D10 przepiął Organizacje i Odnowienia na
+     układ prototypu; tam pasma są rodzeństwem tego pudełka, a ta zmienna jest
+     zerowana przy `.work-surface:has(> .surface-header) > .surface-scroll`
+     wyżej. Ta reguła zostaje, bo zostaje jej ośmiu konsumentów. */
   --surface-band-lift: var(--space-6);
   min-height: 100%;
   padding: var(--surface-band-lift) var(--surface-gutter) var(--space-10);
@@ -5924,6 +6110,12 @@ kbd {
    ON jest mechanizmem opisanym w akapicie wyżej i w czterech arkuszach
    modułowych — zdjęcie go w całości zrobiłoby z `inline-size: 100%` deklarację
    bez powodu, którą następny lot skasuje jako zbędną. */
+/* WYJĄTEK NA PASMA JEST MARTWY NA EKRANACH PRZEPIĘTYCH PRZEZ LOT D10 — nie
+   dlatego, że przestał obowiązywać, tylko dlatego, że nie ma tam czego wyjmować:
+   ani jedno pasmo nie jest już dzieckiem `.surface-scroll`. Reguła ZOSTAJE
+   w całości, bo na ośmiu pozostałych ekranach oba pasma dalej są jej dziećmi
+   i bez wyjątku wpadłyby z powrotem do kolumny czytelnej. Kasowanie wyjątku
+   przed przepięciem ostatniego ekranu cofnęłoby wpis #9 rejestru. */
 .surface-scroll > *:where(:not(.surface-header, .view-band)) {
   inline-size: 100%;
   max-width: var(--surface-measure, 58rem);

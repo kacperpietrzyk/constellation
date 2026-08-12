@@ -169,36 +169,41 @@ const PersonRow = ({
       {/* Participation, and only what exists. A chip reading "0 deals" is
           noise dressed as content.
 
-          POŁOWA POZYCJI #29 — GLIF WIODĄCY W TEJ PLAKIETCE — NIE ZOSTAŁA
-          ODDANA, I POWODEM JEST POMIAR, NIE OCENA. Prototyp go ma
-          (`v3/screens/crm.js:418-423`: `icon("pipeline")` przy dealach,
-          `icon("meeting")` przy spotkaniach), lot D6 go dołożył i bramka
-          układu wróciła CZERWONA na wpisie, który `scripts/descendant-overflow
-          .mjs:143-150` prowadzi nad tym pasem: `span._parts` wystawał 55 px
-          przy tekście 200% wobec zapisanych 25 i 36 px w oknie 320 px wobec
-          zapisanych 24. Arytmetyka się zgadza co do piksela — znak 0,6875 rem
-          plus odstęp 0,25 rem to przy 200% dokładnie 30 px na najszerszej
-          plakietce, a plakietka jest `white-space: nowrap`, więc szerokość
-          idzie wprost w przepełnienie toru.
+          POZYCJA #29 DOMKNIĘTA W LOCIE D9: glif wiodący wraca do plakietki.
+          Prototyp rysuje go pod `v3/screens/crm.js:420-421` — `icon("pipeline")`
+          przy dealach, `icon("meeting")` przy spotkaniach, oba PRZED pełnym
+          słowem z `pjPlural(…, "deal", "deals")`. Otwarte i sprawdzone pod tymi
+          numerami; wcześniejszy cytat („418-423") obejmował nagłówek funkcji
+          i wiersz NOTATEK (`:422`), których ta aplikacja nie rysuje — dlatego
+          zakres kończy się na 421, a nie na 422.
 
-          Te sufity są ZAPISANYM DŁUGIEM z własnym wątkiem („skalowanie
-          interfejsu, R3-5, za falą E"), więc podniesienie ich, żeby zmieściła
-          się ta zmiana, byłoby przepisaniem przyrządu pod dostawę. Glif wraca
-          razem z tamtym wątkiem albo z węższą plakietką (np. samą liczbą przy
-          znaku), a to jest decyzja o TREŚCI wiersza, nie restyl. Druga połowa
-          #29 — glify w segmentach układu — jest oddana i zmierzona (D6-04b). */}
+          DWA POPRZEDNIE PODEJŚCIA ODMÓWIŁY, I ICH POWÓD BYŁ MIERZONY, TYLKO
+          MIERZYŁ OBJAW. Lot D6 dołożył glif i bramka wróciła czerwona na
+          `span._parts`; zapisano to jako „glif nie mieści się pod sufitem
+          cudzego wątku". Lot D9 zmierzył tor, a nie glif: przy tekście 200%
+          plakietka „3 deals" ma 99,0 px w torze o szerokości 73,5 px, czyli
+          NIE MIEŚCI SIĘ RÓWNIEŻ BEZ GLIFU. Przyczyną był tor, który kazał
+          ustępować jedynej rzeczy w tym wierszu, która nie umie się skrócić.
+          Poprawka jest w `.row` (`minmax(min-content, 1fr)`) i opisana tam.
+
+          Glify są z `Icon.tsx` (`pipeline`, `meetings`) i nie dokładają nic do
+          zestawu — obie nazwy niesie już lewa kolumna, więc otwarcie okna nie
+          płaci za nie drugi raz. Druga połowa #29 — glify w segmentach układu —
+          była oddana i zmierzona wcześniej (D6-04b). */}
       <span className={styles.parts}>
         {reading.deals.length === 0 && reading.meetings.length === 0 ? (
           <span className={styles.absent}>Nothing recorded yet</span>
         ) : (
           <>
             {reading.deals.length > 0 && (
-              <span className={styles.part}>
+              <span className={styles.part} data-part="deals">
+                <Icon name="pipeline" />
                 {countLabel(reading.deals.length, "deal")}
               </span>
             )}
             {reading.meetings.length > 0 && (
-              <span className={styles.part}>
+              <span className={styles.part} data-part="meetings">
+                <Icon name="meetings" />
                 {countLabel(reading.meetings.length, "meeting")}
               </span>
             )}

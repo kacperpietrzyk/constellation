@@ -367,8 +367,9 @@ export const TodaySurface = ({
             <span className={styles.count}>{planned.length}</span>
           </h2>
           {/* WPIS #6, PIERWSZY Z DWÓCH KOŃCÓW. Prototyp dosuwa tu plakietkę
-              autorstwa planu (`v3/screens/today.js:148-150` — `laid out by
-              Hermes`, gdy którykolwiek wiersz położył agent). Warunek jest
+              autorstwa planu (`v3/screens/today.js:141-142` — `laid out by
+              Hermes`, gdy którykolwiek wiersz położył agent; „148-150"
+              wskazywało nagłówek SĄSIEDNIEJ sekcji). Warunek jest
               przepisany, nie zgadnięty: `plannedBy.principalKind === "agent"`
               to ta sama własność, którą wiersz niżej pokazuje jako `data-
               planned-by`. Glifu `spark` z prototypu ta plakietka NIE niesie —
@@ -439,7 +440,7 @@ export const TodaySurface = ({
             <span className={styles.count}>{approaching.length}</span>
           </h2>
           {/* WPIS #6, DRUGI KONIEC — I TEN JEST BEZWARUNKOWY. Prototyp:
-              `v3/screens/today.js:152` — `<button class="more" data-go='
+              `v3/screens/today.js:150` — `<button class="more" data-go='
               {"kind":"calendar"}'>Open Calendar →</button>`, dosunięty regułą
               `.td-sec-head .more { margin-left: auto }`
               (`v3/screens/today.css:50`). Cel istnieje w rejestrze powierzchni

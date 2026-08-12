@@ -124,8 +124,8 @@
 
    PUSTY SLOT NIE JEST DOSTAWĄ, więc slot wchodzi RAZEM ze swoją treścią:
    `Open Calendar →` przy sekcji terminów bez planu (prototyp:
-   `v3/screens/today.js:152`) i plakietka autorstwa planu przy sekcji planu
-   (prototyp: `:148-150`, `laid out by Hermes`). Oba cele istnieją w tej
+   `v3/screens/today.js:150`) i plakietka autorstwa planu przy sekcji planu
+   (prototyp: `:141-142`, `laid out by Hermes`). Oba cele istnieją w tej
    aplikacji — Kalendarz jest w rejestrze powierzchni, a autorstwo planu niesie
    `PlannedTask.plannedBy` — więc to nie jest prototyp wyprzedzający domenę. */
 .sectionMore {

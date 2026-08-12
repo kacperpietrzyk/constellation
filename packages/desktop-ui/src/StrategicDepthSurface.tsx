@@ -738,90 +738,52 @@ export const StrategicDepthSurface = ({
   // answers and this screen has to say which one it is holding.
   if (!relationships.available)
     return (
-      <div
-        className={`surface-scroll ${organizationStyles.organizations}`}
-        data-organizations-surface
-      >
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także w stanie awaryjnym —
+      // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
+      // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
+      // powiedzieć, że czegoś nie dało się przeczytać.
+      <>
         {header()}
-        <section className={organizationStyles.emptyState} role="status">
-          <div>
-            <h2>Organizations are unavailable</h2>
-            <p data-organizations-unavailable>{relationships.message}</p>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
-      </div>
+        <div
+          className={`surface-scroll ${organizationStyles.organizations}`}
+          data-organizations-surface
+        >
+          <section className={organizationStyles.emptyState} role="status">
+            <div>
+              <h2>Organizations are unavailable</h2>
+              <p data-organizations-unavailable>{relationships.message}</p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </section>
+        </div>
+      </>
     );
 
   return (
-    <div
-      className={`surface-scroll ${organizationStyles.organizations}`}
-      data-organizations-surface
-    >
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, a przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest tu WARUNKIEM, a nie stylem: pasma muszą
+    // być bezpośrednimi dziećmi `.work-surface`, więc żaden dodatkowy element
+    // nie może stanąć między nimi a nośnikiem.
+    <>
       {header(bandAction)}
-      {creating && (
-        <form
-          aria-label="New organization"
-          className={organizationStyles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitOrganization();
-          }}
-        >
-          <label className={organizationStyles.field}>
-            Name
-            <input
-              onChange={(event) => setDraftName(event.target.value)}
-              required
-              value={draftName}
-            />
-          </label>
-          <label className={organizationStyles.field}>
-            Relationship
-            <select
-              onChange={(event) =>
-                setDraftState(
-                  event.target.value as "prospect" | "active" | "inactive",
-                )
-              }
-              value={draftState}
-            >
-              {RELATIONSHIP_STATES.map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={organizationStyles.field}>
-            Segment
-            <input
-              onChange={(event) => setDraftSegment(event.target.value)}
-              value={draftSegment}
-            />
-          </label>
-          <label className={organizationStyles.field}>
-            Next step
-            <input
-              onChange={(event) => setDraftNextAction(event.target.value)}
-              value={draftNextAction}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={busyId !== undefined || draftName.trim() === ""}
-            type="submit"
-          >
-            {busyId === "create:organization" ? "Adding…" : "Add organization"}
-          </button>
-        </form>
-      )}
+      {/* FORMULARZ TWORZENIA ZJECHAŁ POD PASEK WIDOKU, i to jest skutek układu,
+          a nie osobna decyzja o kolejności. Do tego lotu stał MIĘDZY pasmami —
+          czyli rozpychał chrom w stanie tworzenia, a `.surface-header +
+          .view-band` przestawało wtedy trafiać i pasma się rozjeżdżały. Prototyp
+          układa dwa pasma jedno na drugim i dopiero pod nimi treść
+          (`v3/app.css:278-303`), a formularz jest treścią: przewija się razem
+          z listą, którą uzupełnia. */}
       <div className={`view-band ${organizationStyles.viewbar}`}>
         <div
           aria-label="Organizations layout"
@@ -909,236 +871,300 @@ export const StrategicDepthSurface = ({
             every filter press. */}
         <TopicHelp topic="relationship-reading" />
       </div>
-      {allRows.length === 0 ? (
-        <section className={organizationStyles.emptyState} role="status">
-          <div>
-            <h2>No organizations yet</h2>
-            <p>An organization is a client you deal with, not a folder.</p>
-          </div>
-        </section>
-      ) : rows.length === 0 ? (
-        <section className={organizationStyles.emptyState} role="status">
-          <div>
-            <h2>Nothing matches this filter</h2>
-            {/* The sentence names which states are being held, because "nothing
-                here" is not something a reader can act on. */}
-            <p>
-              {`The filter is holding ${heldStatesSentence(held)}, and no organization is in that state.`}
-            </p>
-          </div>
-          <button
-            className="secondary-button"
-            data-org-filter="all"
-            onClick={() => setHeld([])}
-            type="button"
+      <div
+        className={`surface-scroll ${organizationStyles.organizations}`}
+        data-organizations-surface
+      >
+        {creating && (
+          <form
+            aria-label="New organization"
+            className={organizationStyles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitOrganization();
+            }}
           >
-            Show all organizations
-          </button>
-        </section>
-      ) : layout === "table" ? (
-        <OrganizationsTable
-          itemProps={itemProps}
-          onOpen={openOrganization}
-          onSelect={onSelectRecord}
-          rows={rows}
-          selectedRecordId={selectedRecordId}
-        />
-      ) : (
-        <div
-          aria-label="Organizations"
-          className={organizationStyles.list}
-          role="listbox"
-        >
-          {rows.map((row, position) => (
-            <OrganizationRowView
-              index={position}
-              itemProps={itemProps}
-              key={row.reading.organization.id}
-              onOpen={openOrganization}
-              onSelect={onSelectRecord}
-              row={row}
-              selected={row.reading.organization.id === selectedRecordId}
-            />
-          ))}
-        </div>
-      )}
+            <label className={organizationStyles.field}>
+              Name
+              <input
+                onChange={(event) => setDraftName(event.target.value)}
+                required
+                value={draftName}
+              />
+            </label>
+            <label className={organizationStyles.field}>
+              Relationship
+              <select
+                onChange={(event) =>
+                  setDraftState(
+                    event.target.value as "prospect" | "active" | "inactive",
+                  )
+                }
+                value={draftState}
+              >
+                {RELATIONSHIP_STATES.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={organizationStyles.field}>
+              Segment
+              <input
+                onChange={(event) => setDraftSegment(event.target.value)}
+                value={draftSegment}
+              />
+            </label>
+            <label className={organizationStyles.field}>
+              Next step
+              <input
+                onChange={(event) => setDraftNextAction(event.target.value)}
+                value={draftNextAction}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={busyId !== undefined || draftName.trim() === ""}
+              type="submit"
+            >
+              {busyId === "create:organization"
+                ? "Adding…"
+                : "Add organization"}
+            </button>
+          </form>
+        )}
+        {allRows.length === 0 ? (
+          <section className={organizationStyles.emptyState} role="status">
+            <div>
+              <h2>No organizations yet</h2>
+              <p>An organization is a client you deal with, not a folder.</p>
+            </div>
+          </section>
+        ) : rows.length === 0 ? (
+          <section className={organizationStyles.emptyState} role="status">
+            <div>
+              <h2>Nothing matches this filter</h2>
+              {/* The sentence names which states are being held, because "nothing
+                here" is not something a reader can act on. */}
+              <p>
+                {`The filter is holding ${heldStatesSentence(held)}, and no organization is in that state.`}
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              data-org-filter="all"
+              onClick={() => setHeld([])}
+              type="button"
+            >
+              Show all organizations
+            </button>
+          </section>
+        ) : layout === "table" ? (
+          <OrganizationsTable
+            itemProps={itemProps}
+            onOpen={openOrganization}
+            onSelect={onSelectRecord}
+            rows={rows}
+            selectedRecordId={selectedRecordId}
+          />
+        ) : (
+          <div
+            aria-label="Organizations"
+            className={organizationStyles.list}
+            role="listbox"
+          >
+            {rows.map((row, position) => (
+              <OrganizationRowView
+                index={position}
+                itemProps={itemProps}
+                key={row.reading.organization.id}
+                onOpen={openOrganization}
+                onSelect={onSelectRecord}
+                row={row}
+                selected={row.reading.organization.id === selectedRecordId}
+              />
+            ))}
+          </div>
+        )}
 
-      {/* ── What the retirement could not rehome ──────────────────────────
+        {/* ── What the retirement could not rehome ──────────────────────────
           Everything below this line is the residue named in the block comment
           above: the create panel (the only authoring path for the kinds with no
           screen), the records with no edge to a client, and the review rail
           whose items do not ride the relationship slice at all. */}
-      <StrategicCreatePanel
-        client={client}
-        snapshot={snapshot}
-        records={records}
-        busy={busyId !== undefined}
-        onRun={async (id, operation) => {
-          let succeeded = false;
-          await act(`create:${id}`, async () => {
-            const result = await operation();
-            if (result.kind === "success") succeeded = true;
-            else onFailure(result);
-          });
-          return succeeded;
-        }}
-      />
+        <StrategicCreatePanel
+          client={client}
+          snapshot={snapshot}
+          records={records}
+          busy={busyId !== undefined}
+          onRun={async (id, operation) => {
+            let succeeded = false;
+            await act(`create:${id}`, async () => {
+              const result = await operation();
+              if (result.kind === "success") succeeded = true;
+              else onFailure(result);
+            });
+            return succeeded;
+          }}
+        />
 
-      <div className="strategic-layout">
-        <div className="strategic-work-plane">
-          <section
-            className="strategic-ledger"
-            aria-labelledby="supporting-title"
-          >
-            <header className="section-heading">
-              <div>
-                {/* Named for what is actually in it. It held people, decisions
+        <div className="strategic-layout">
+          <div className="strategic-work-plane">
+            <section
+              className="strategic-ledger"
+              aria-labelledby="supporting-title"
+            >
+              <header className="section-heading">
+                <div>
+                  {/* Named for what is actually in it. It held people, decisions
                     and recurrences; the first two have screens of their own and
                     a recurrence repeats WORK, so this is the last stop before
                     it moves to the project and area record that will own it. */}
-                <h2 id="supporting-title">Recurring work</h2>
-              </div>
-            </header>
-            {supportRecords.map((record, position) => (
-              <div
-                className={`ledger-row${
-                  selectedRecordId === record.id ? " selected" : ""
-                }`}
-                data-support-row={record.id}
-                key={record.id}
-              >
-                <button
-                  type="button"
-                  className="ledger-select"
-                  aria-pressed={selectedRecordId === record.id}
-                  {...supportNav(position)}
-                  onClick={() => onSelectRecord(record.id)}
+                  <h2 id="supporting-title">Recurring work</h2>
+                </div>
+              </header>
+              {supportRecords.map((record, position) => (
+                <div
+                  className={`ledger-row${
+                    selectedRecordId === record.id ? " selected" : ""
+                  }`}
+                  data-support-row={record.id}
+                  key={record.id}
                 >
-                  <span className="record-kind">
-                    {recordKindLabels[record.kind] ?? record.kind}
-                  </span>
-                  <span className="ledger-copy">
-                    <strong>{record.title}</strong>
-                    <small>
-                      {`${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
-                    </small>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ledger-action"
-                  disabled={!client || busyId === record.id}
-                  onClick={() => {
-                    if (!client) return;
-                    void act(record.id, async () => {
-                      const result = await generateRecurrenceOccurrence(
-                        client,
-                        snapshot,
-                        record,
-                      );
-                      if (result.kind !== "success") onFailure(result);
-                    });
-                  }}
-                >
-                  Create occurrence
-                </button>
-              </div>
-            ))}
-            {supportRecords.length === 0 && (
-              <p className="strategic-quiet">
-                Nothing repeats on a cadence in this Space.
-              </p>
-            )}
-          </section>
-        </div>
-
-        <aside className="strategic-review" aria-labelledby="review-title">
-          <header>
-            <h2 id="review-title">To decide</h2>
-            <span>The list does not grow while you review it.</span>
-          </header>
-          {radar.map((candidate) => {
-            const radarBusy =
-              busyId === `${candidate.id}:saved` ||
-              busyId === `${candidate.id}:dismissed`;
-            return (
-              <article key={candidate.id} className="review-item">
-                <span className="review-type">Knowledge radar</span>
-                <strong>{candidate.title}</strong>
-                <p>{candidate.relevance}</p>
-                <div className="review-actions">
                   <button
-                    className="secondary-button compact"
-                    disabled={radarBusy}
-                    onClick={() => resolveRadar(candidate, "saved")}
+                    type="button"
+                    className="ledger-select"
+                    aria-pressed={selectedRecordId === record.id}
+                    {...supportNav(position)}
+                    onClick={() => onSelectRecord(record.id)}
                   >
-                    {busyId === `${candidate.id}:saved` ? "Saving…" : "Keep"}
+                    <span className="record-kind">
+                      {recordKindLabels[record.kind] ?? record.kind}
+                    </span>
+                    <span className="ledger-copy">
+                      <strong>{record.title}</strong>
+                      <small>
+                        {`${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
+                      </small>
+                    </span>
                   </button>
                   <button
-                    className="secondary-button compact"
-                    disabled={radarBusy}
-                    onClick={() => resolveRadar(candidate, "dismissed")}
+                    type="button"
+                    className="ledger-action"
+                    disabled={!client || busyId === record.id}
+                    onClick={() => {
+                      if (!client) return;
+                      void act(record.id, async () => {
+                        const result = await generateRecurrenceOccurrence(
+                          client,
+                          snapshot,
+                          record,
+                        );
+                        if (result.kind !== "success") onFailure(result);
+                      });
+                    }}
                   >
-                    {busyId === `${candidate.id}:dismissed`
-                      ? "Saving…"
-                      : "Dismiss"}
+                    Create occurrence
                   </button>
                 </div>
-              </article>
-            );
-          })}
-          {openConsequences.map(({ review, item }) => (
-            <article
-              key={`${review.id}:${item.recordId}`}
-              className="review-item"
-            >
-              <span className="review-type">Decision impact</span>
-              <strong>
-                {recordKindLabels[item.recordKind] ?? item.recordKind}
-              </strong>
-              <p>{review.reason}</p>
-              <button
-                className="secondary-button compact"
-                disabled={busyId === `${review.id}:${item.recordId}`}
-                onClick={() => resolveImpact(review, item.recordId)}
-              >
-                Mark impact as reviewed
-              </button>
-            </article>
-          ))}
-          {!radarSlice.available ? (
-            <div className="review-complete" role="alert">
-              <strong>The review list is unavailable</strong>
-              <p data-radar-unavailable>{radarSlice.message}</p>
-              <button
-                className="secondary-button compact"
-                onClick={() => void onReload()}
-                type="button"
-              >
-                Try again
-              </button>
-            </div>
-          ) : (
-            radar.length + openConsequences.length === 0 && (
-              <div className="review-complete" role="status">
-                <span aria-hidden="true">✓</span>
-                <strong>Review complete</strong>
-                <p>New items appear only with a new source or context.</p>
-              </div>
-            )
-          )}
-          <footer>
-            <span>
-              {plural(
-                radar.length + openConsequences.length,
-                "item needs a decision",
-                "items need a decision",
+              ))}
+              {supportRecords.length === 0 && (
+                <p className="strategic-quiet">
+                  Nothing repeats on a cadence in this Space.
+                </p>
               )}
-            </span>
-          </footer>
-        </aside>
+            </section>
+          </div>
+
+          <aside className="strategic-review" aria-labelledby="review-title">
+            <header>
+              <h2 id="review-title">To decide</h2>
+              <span>The list does not grow while you review it.</span>
+            </header>
+            {radar.map((candidate) => {
+              const radarBusy =
+                busyId === `${candidate.id}:saved` ||
+                busyId === `${candidate.id}:dismissed`;
+              return (
+                <article key={candidate.id} className="review-item">
+                  <span className="review-type">Knowledge radar</span>
+                  <strong>{candidate.title}</strong>
+                  <p>{candidate.relevance}</p>
+                  <div className="review-actions">
+                    <button
+                      className="secondary-button compact"
+                      disabled={radarBusy}
+                      onClick={() => resolveRadar(candidate, "saved")}
+                    >
+                      {busyId === `${candidate.id}:saved` ? "Saving…" : "Keep"}
+                    </button>
+                    <button
+                      className="secondary-button compact"
+                      disabled={radarBusy}
+                      onClick={() => resolveRadar(candidate, "dismissed")}
+                    >
+                      {busyId === `${candidate.id}:dismissed`
+                        ? "Saving…"
+                        : "Dismiss"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+            {openConsequences.map(({ review, item }) => (
+              <article
+                key={`${review.id}:${item.recordId}`}
+                className="review-item"
+              >
+                <span className="review-type">Decision impact</span>
+                <strong>
+                  {recordKindLabels[item.recordKind] ?? item.recordKind}
+                </strong>
+                <p>{review.reason}</p>
+                <button
+                  className="secondary-button compact"
+                  disabled={busyId === `${review.id}:${item.recordId}`}
+                  onClick={() => resolveImpact(review, item.recordId)}
+                >
+                  Mark impact as reviewed
+                </button>
+              </article>
+            ))}
+            {!radarSlice.available ? (
+              <div className="review-complete" role="alert">
+                <strong>The review list is unavailable</strong>
+                <p data-radar-unavailable>{radarSlice.message}</p>
+                <button
+                  className="secondary-button compact"
+                  onClick={() => void onReload()}
+                  type="button"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (
+              radar.length + openConsequences.length === 0 && (
+                <div className="review-complete" role="status">
+                  <span aria-hidden="true">✓</span>
+                  <strong>Review complete</strong>
+                  <p>New items appear only with a new source or context.</p>
+                </div>
+              )
+            )}
+            <footer>
+              <span>
+                {plural(
+                  radar.length + openConsequences.length,
+                  "item needs a decision",
+                  "items need a decision",
+                )}
+              </span>
+            </footer>
+          </aside>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

@@ -357,7 +357,7 @@
    overflow: auto` inside a bounded column (`v3/app.css:303`, `:279`), so it has
    a height of its own and really does scroll vertically.
    This shell scrolls the WHOLE surface instead: `.work-surface`
-   (`styles.css:1426-1435`) is the vertical scroll port, and `.scroller` below
+   (`styles.css:2095-2105`) is the vertical scroll port ON THIS SCREEN — lot D10 made that conditional (`.work-surface:has(> .surface-header)` turns the carrier into a non-scrolling flex column), and Pipeline is one of the screens it deliberately did NOT migrate, and `.scroller` below
    declares `overflow-x: auto` — which makes the used `overflow-y` `auto` too,
    so `.scroller` becomes this head's nearest scroll port and never scrolls
    vertically. A top-sticky element in a box whose scroll top is always zero

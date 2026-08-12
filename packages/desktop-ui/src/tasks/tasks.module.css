@@ -25,7 +25,7 @@
      neither `visible` nor `clip`, and `hidden` on ONE axis computes the other
      axis to `auto` — which made THIS box the scrollport for everything under
      it. It never scrolls: its height is not constrained, and the pane above it
-     (`styles.css:1426-1435`, `.work-surface { overflow: auto }`) is what
+     (`styles.css:2095-2105`, `.work-surface { overflow: auto }` — conditional since lot D10: `.work-surface:has(> .surface-header)` makes the carrier a non-scrolling flex column, and Tasks is a screen that lot deliberately did NOT migrate) is what
      actually moves. A task opened as a record renders inside this same wrapper
      (`TasksSurface.tsx:381-383`), so on the task record alone the bar pinned
      to a box that stands still. Measured 2026-08-07: `projects › record` held

@@ -46,10 +46,23 @@ import type { ReactNode } from "react";
    Liczby i powód stoją przy regule `.surface-header` w `styles.css` i nie są
    tu przepisywane.
 
-   CZEGO DALEJ NIE MA: pasma prototypu są RODZEŃSTWEM przewijanego nośnika
-   (`v3/app.css:282-303` — `.crumbbar`, `.viewbar`, potem `.scroller`), a nasze
-   siedzą w środku niego, więc przewijają się razem z treścią. To jest jedyna
-   pozostała różnica kształtu i jest nieoddana, a nie zaprzeczona. */
+   RODZEŃSTWO PRZEWIJANEGO PUDEŁKA — ODDANE W LOCIE D10, NA DWÓCH EKRANACH
+   Z DZIESIĘCIU. Do tego lotu stało tu zdanie „to jest jedyna pozostała różnica
+   kształtu i jest nieoddana"; nie jest już prawdziwe i dlatego jest przepisane,
+   a nie zostawione. Prototyp trzyma `.crumbbar` (`v3/app.css:282-285`),
+   `.viewbar` (`:295-299`) i `.scroller` (`:303`) jako TROJE DZIECI `.canvas`
+   (`:278-281`), kolumny `flex`, w której przewija się wyłącznie trzecie.
+   Organizacje i Odnowienia rysują dziś dokładnie ten układ: oba pasma są
+   bezpośrednimi dziećmi `.work-surface`, a `.surface-scroll` bierze
+   przewijanie. Reguła i jej powód stoją przy `.work-surface:has(>
+   .surface-header)` w `styles.css` i nie są tu przepisywane.
+
+   NA POZOSTAŁYCH EKRANACH pasmo dalej siedzi w przewijanym nośniku i jedzie
+   z treścią. Rozstrzygnięcie każdego z nich — przepięty, oddany inną drogą,
+   czy odłożony wraz z mechanizmem i warunkiem wyjścia — stoi w przeliczeniu
+   Fazy D przy pozycji 12 listy nieoddanego. Ten komponent nie zmienia się przy
+   żadnym z tych przepięć: o układzie decyduje to, CZYIM dzieckiem jest pasmo,
+   a to jest wybór ekranu, który je montuje. */
 
 export const SurfaceTitleBand = ({
   title,

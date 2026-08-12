@@ -67,52 +67,30 @@
   margin-inline-start: auto;
 }
 
-/* ── KONTROLKA W PASIE STOI TAK SAMO JAK PRZYCISK OBOK NIEJ (Faza C, lot C5) ──
-   Pas akcji rekordu projektu niesie JEDEN element formularza — `<select>`
-   „Apply template…" (`Wave2Surfaces.tsx:652-664`, etykieta `:648`) — i jest to jedyny `<select>`
-   w tej aplikacji bez ani jednej reguły klasowej: całą jego postać ustawia goła
-   reguła `select` arkusza globalnego (`styles.css:599-606`).
+/* ── W TYM PAŚMIE NIE STOI JUŻ ŻADNA KONTROLKA FORMULARZA (Faza D, lot D11) ──
+   Do 2026-08-12 stała tu reguła `.actions select` z lotu C5 i cała jej proza:
+   pas akcji otwartego projektu niósł `<select>` „Apply template…" i osobny
+   przycisk „Apply", a reguła nadawała kontrolce metrykę przycisków obok niej
+   (`max-inline-size: 16rem`, `padding-inline: var(--space-3)`,
+   `border-radius: var(--radius-md)`, `font-size: var(--text-sm)`).
 
-   REGUŁA PROTOTYPU JEST JEDNYM ZDANIEM I DA SIĘ JĄ ODCZYTAĆ Z DWÓCH MIEJSC NA
-   RAZ. `.st-select` (`v3/screens/settings.css:190-194`) i `.btn`
-   (`v3/app.css:306-314`) mają CO DO WARTOŚCI tę samą geometrię — `height:
-   1.75rem`, `padding: 0 var(--space-2)` (0.5rem), `border-radius:
-   var(--radius-sm)`, `font-size: var(--text-sm)` — i ani jedno, ani drugie nie
-   deklaruje szerokości. Kontrolka wyboru stoi więc jak przycisk obok niej
-   i bierze szerokość WŁASNEJ treści, nigdy szerokość pojemnika. Prototyp ma
-   dokładnie jeden `<select>` w całym drzewie i to on jest tą deklaracją.
+   ODESZŁA RAZEM ZE SWOIM PODMIOTEM, A NIE ZAMIAST NIEGO. `<select>` zastąpił
+   dymek (`projects/ApplyTemplatePopover.tsx`), którego wyzwalacz JEST
+   przyciskiem — niesie `secondary-button compact`, tak samo jak „Close
+   project" obok. Metryki nie trzeba już przepisywać na kontrolkę wyboru, bo
+   kontrolki wyboru w tym paśmie nie ma; zdanie prototypu, którego lot C5
+   bronił („kontrolka stoi jak przycisk obok niej"), jest teraz spełnione przez
+   to, że to JEST przycisk. Prototyp mówi to samo z drugiej strony: w żadnym
+   z czternastu jego ekranów nie ma ani jednego `<select>`, `<input>` ani
+   `<textarea>` w paśmie tytułu, a wybór jednej rzeczy z listy robi u niego
+   przycisk otwierający menu (`popover()`, `v3/app.js:1921-1961`, zawieszony na
+   `.btn`, np. `v3/app.js:1571`).
 
-   CO SIĘ TU ROZJEŻDŻAŁO, ZMIERZONE, A NIE WYWNIOSKOWANE. Sąsiedzi w tym
-   pasie to `.primary-button.compact` i `.secondary-button.compact` — bramka
-   układu drukuje ich pudełka wprost (przelot `title band`, wiersz
-   `projects/record:project`: „New task" i „Close project" oba `h=32`). Ich
-   metryka to `min-height: 2rem` (`styles.css:953-957`), `border-radius:
-   var(--radius-md)` i `font-size: var(--text-sm)` (`:843-853`), a wyściółka
-   pozioma `var(--space-3)`. Goła reguła `select` daje 2 rem wysokości — czyli
-   pion się ZGADZA — ale `--radius-sm` zamiast `--radius-md`, wyściółkę
-   `--space-2` zamiast `--space-3` i rozmiar pisma odziedziczony po `body`,
-   czyli `--text-base` (0.875 rem) obok sąsiadów o `--text-sm` (0.8125 rem).
-   Kontrolka miała więc W TYM PASIE największe pismo ze wszystkiego, co w nim
-   stoi.
-
-   SZEROKOŚĆ JEST OGRANICZONA, A NIE ROZPIĘTA: nazwy szablonów są treścią
-   rekordu i bywają długie, a `<select>` bierze szerokość najszerszej opcji.
-   Sufit `16rem` jest idiomem tego arkusza dla dokładnie tego przypadku
-   (`styles.css:5933-5941` — `.project-template-row select`, ta sama kontrolka
-   w innym miejscu).
-
-   CZEGO TA REGUŁA NIE ROBI I DLACZEGO — bo cisza w tym miejscu byłaby
-   nieprawdą: NIE zdejmuje systemowej strzałki. Powód jest zmierzony i stoi
-   w raporcie lotu; `appearance: none` nie ma w prototypie ANI JEDNEGO
-   wystąpienia, a szewron z `background-image` przewraca każdy `<select>`
-   w werdykt `PAINTED_IMAGE` spisu B1 (`scripts/control-paint.mjs:240-246`),
-   czyli w jego zadeklarowaną ślepą plamę. */
-.actions select {
-  max-inline-size: 16rem;
-  padding-inline: var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
+   CO PILNUJE, ŻE TO SIĘ NIE COFNIE: pary C5-01a i C5-01b mierzą dziś stopień
+   pisma i promień WYZWALACZA (przepięte w tym locie), a para D11-01 liczy
+   `<select>` w tym paśmie i żąda ZERA — bez niej ktoś mógłby dostawić drugą
+   kontrolkę obok dymka przy zielonym przelocie. Powody stoją przy wpisach
+   w `scripts/visual-language-pairs.mjs`. */
 
 /* A slice that did not land says so where its panel would have been. Told
    apart from an empty panel on purpose: "nothing here" and "we could not read

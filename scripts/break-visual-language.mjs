@@ -71,6 +71,48 @@ const replaceOnce = (text, needle, replacement, what) => {
 };
 
 /**
+ * WERYFIKACJA ARKUSZOWA, nie przeglądarkowa.
+ *
+ * Domyślnym `verify` tego harnessu jest bramka układu — ona chodzi po ŻYWEJ
+ * aplikacji i o treści arkuszy ani o zawartość list w skryptach bramek nie ma
+ * ŻADNEGO zdania. Złamanie celujące w `consumer-contrast.test.mjs` puszczone
+ * przez domyślny `verify` wróciłoby więc ZIELONE, a harness zgłosiłby to jako
+ * defekt przyrządu — poprawnie, tylko że defektem byłby wtedy dobór bramki,
+ * nie kod. Dlatego złamania lotu D8 mierzone w arkuszu podają swoją bramkę
+ * wprost. `entry.verify` obsługuje `break-test.mjs` zarówno przy złamaniu, jak
+ * i przy przywróceniu, więc obie strony pętli patrzą na ten sam przyrząd.
+ */
+const CONTRAST_VERIFY = {
+  command: "node",
+  args: ["--test", "scripts/consumer-contrast.test.mjs"],
+};
+
+/**
+ * Cofnięcie wypełnienia akcji głównej do płaskiego tokenu.
+ *
+ * JEDNA EDYCJA, DWA ZŁAMANIA, i to jest treść, a nie oszczędność: ta sama
+ * regresja jest pytana raz w żywej przeglądarce (świadek spisu kontrolek) i raz
+ * w arkuszu (zamknięta tabela gradientów). Dwie kopie tego samego napisu
+ * rozjechałyby się przy pierwszej zmianie formatowania i jedno ze złamań
+ * zamieniłoby się w no-op — a `replaceOnce` zgłasza to dopiero, gdy napis
+ * zniknie CAŁKIEM, nie gdy zniknie z jednej z dwóch kopii.
+ */
+const revertPrimaryFill = (text) =>
+  replaceOnce(
+    text,
+    `  background: linear-gradient(
+    180deg,
+    var(--a-400),
+    var(--a-500) 55%,
+    var(--a-600)
+  );
+  box-shadow: var(--action-primary-shadow);`,
+    `  background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);`,
+    "the primary action's gradient fill",
+  );
+
+/**
  * Które złamania z tej listy naprawdę wykonać.
  *
  * PO CO, skoro pełna lista jest treścią tego pliku: jedno złamanie to trzy
@@ -558,20 +600,159 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
+          // ŹRÓDŁO PRZEPISANE W LOCIE D8 razem z samą regułą. Ta łatka OSADZA
+          // literalny blok spoczynkowy `.primary-button`, a lot D8 zmienił w nim
+          // linię wypełnienia — bez tej aktualizacji `replaceOnce` przestałoby
+          // cokolwiek podmieniać, a złamanie raportowałoby ZIELEŃ na niewykonanej
+          // edycji. Łamany jest dalej sam `box-shadow`, nie wypełnienie.
           `.primary-button {
   color: var(--action-primary-text);
-  background: var(--action-primary-bg);
+  background: linear-gradient(
+    180deg,
+    var(--a-400),
+    var(--a-500) 55%,
+    var(--a-600)
+  );
   box-shadow: var(--action-primary-shadow);
 }`,
           `.primary-button {
   color: var(--action-primary-text);
-  background: var(--action-primary-bg);
+  background: linear-gradient(
+    180deg,
+    var(--a-400),
+    var(--a-500) 55%,
+    var(--a-600)
+  );
   box-shadow:
     inset 0 1px 0 oklch(100% 0 0 / 0.24),
     0 1px 2px oklch(0% 0 0 / 0.28),
     0 0 0 1px var(--accent-edge);
 }`,
           "the primary action's shadow role",
+        ),
+    },
+    {
+      // ZŁAMANIE LOTU D8 (a1) — COFNIĘCIE WYPEŁNIENIA AKCJI GŁÓWNEJ DO PŁASKIEGO
+      // TOKENU, SPRAWDZONE W ŻYWEJ PRZEGLĄDARCE. To jest złamanie DOWODZĄCE
+      // POZYCJI #1 REJESTRU, a nie jej braku: płaskie `--action-primary-bg`
+      // (= `--a-600`) zdaje kontrast 5,19:1, więc bramka kontrastu na samym
+      // progu wróciłaby ZIELONA i „usunięcie gradientu" byłoby zmianą, której
+      // nie widzi żaden przyrząd. Widzi ją świadek spisu kontrolek: klasyfikator
+      // zwraca `PAINTED_IMAGE` tylko dla kontrolki z OBRAZEM tła, a spis
+      // deklaruje od lotu D8, że akcja główna nim jest.
+      name: "revert the primary action's fill to the flat token, measured in the browser: the reference's gradient leaves the one control it is drawn on",
+      expectRedContains: [
+        "CONTROL_PAINT_WITNESS_FLAGGED",
+        ".primary-button is declared legal as PAINTED_IMAGE",
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) => revertPrimaryFill(text),
+    },
+    {
+      // ZŁAMANIE LOTU D8 (a2) — TA SAMA EDYCJA, DRUGI PRZYRZĄD. Świadek wyżej
+      // mówi „kontrolka nosi jakiś obraz"; ON NIE WIE, JAKI. Zamknięta tabela
+      // „gradient → liczba stopni" w `consumer-contrast.test.mjs` wie: wpis
+      // akcji głównej znika z listy ROZŁOŻONYCH, więc trzy stopnie przestają
+      // być mierzone. Bez tego drugiego złamania podmiana gradientu na
+      // JAKIKOLWIEK inny obraz tła przeszłaby przez świadka na zielono.
+      //
+      // WŁASNY `verify`, bo domyślnym jest bramka układu, a ta o arkuszach nie
+      // ma zdania — bez tego złamanie wróciłoby ZIELONE i harness zgłosiłby
+      // przyrząd, nie kod.
+      name: "revert the primary action's fill to the flat token, measured in the sheet: three stops leave the closed table of decomposed gradients",
+      expectRedContains: [
+        "Zbiór ROZŁOŻONYCH gradientów albo liczba ich stopni się zmieniły",
+      ],
+      verify: CONTRAST_VERIFY,
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) => revertPrimaryFill(text),
+    },
+    {
+      // ZŁAMANIE LOTU D8 (b) — ZWOLNIENIE ROZLEWA SIĘ NA DRUGI PODMIOT.
+      // Warunek właściciela mówi o JEDNEJ parze. Bez asercji wąskości dopisanie
+      // `.secondary-button` do listy przeszłoby bez śladu i zwolnienie z AA
+      // stałoby się workiem. Czerwień ma przyjść z `deepEqual` na zbiorze
+      // podmiotów, NIE z kontrastu — `.secondary-button` zdaje próg, więc sam
+      // pomiar niczego by nie zauważył.
+      name: "let the accent-gradient exemption cover a second control: one owner decision starts forgiving everything",
+      expectRedContains: [
+        "Zbiór podmiotów zwolnionych z AA na gradiencie akcentu się ZMIENIŁ",
+      ],
+      verify: CONTRAST_VERIFY,
+      file: "scripts/consumer-contrast.test.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `const ACCENT_GRADIENT_EXEMPTIONS = [
+  {
+    sheet: "styles.css",
+    selector: ".primary-button",`,
+          `const ACCENT_GRADIENT_EXEMPTIONS = [
+  {
+    sheet: "styles.css",
+    selector: ".secondary-button",
+    source: "styles.css",
+    forgivenRatios: [],
+    passingRatio: 5.19,
+    decidedBy: "nikt",
+    reason: "rozlanie zwolnienia",
+  },
+  {
+    sheet: "styles.css",
+    selector: ".primary-button",`,
+          "the narrowness of the accent-gradient exemption",
+        ),
+    },
+    {
+      // ZŁAMANIE LOTU D8 (c) — PRZESTROJONY STOPIEŃ CHOWA SIĘ POD ZWOLNIENIEM.
+      // Zwolnienie wydane na „2,57 i 3,54" nie może milcząco obejmować 2,60 ani
+      // żadnej innej liczby: wtedy przestrojenie `--a-400` byłoby zmianą, której
+      // nie widzi ŻADEN przyrząd. Łamana jest LISTA, nie token — bo to liczba
+      // w liście jest tu asercją, a token ma prawo się zmienić, o ile się zgłosi.
+      name: "retune a forgiven ratio in the accent-gradient exemption: a moved ramp step hides inside a decision made about a different number",
+      expectRedContains: ["Stopnie WYBACZONE na .primary-button"],
+      verify: CONTRAST_VERIFY,
+      file: "scripts/consumer-contrast.test.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "    forgivenRatios: [2.57, 3.54],",
+          "    forgivenRatios: [2.6, 3.54],",
+          "the closed set of forgiven ratios",
+        ),
+    },
+    {
+      // ZŁAMANIE (d) — DOŁOŻONE PO PRZEGLĄDZIE LOTU D8. Zwolnienie było
+      // kluczowane wyłącznie na `sheet|selector`, więc DRUGA reguła o tej samej
+      // liście selektorów — a `@media` daje ją za darmo — dostawała wybaczenie
+      // z AA, mimo że nie maluje żadnego gradientu. Trzy złamania wyżej tego
+      // nie widziały i to nie jest ich wina: (b) i (c) łamią LISTĘ zwolnień,
+      // a obie asercje na liczby filtrują wprzód do wierszy Z `gradientKey`,
+      // czyli dokładnie omijają wiersz z płaskim wypełnieniem.
+      //
+      // ŁAMANY JEST ARKUSZ, NIE TEST, i o to chodzi: to jest regresja, którą
+      // popełni ktoś piszący CSS, nie ktoś edytujący zwolnienie. Wartości są
+      // LITERAŁAMI, a nie tokenami, żeby czerwień nie zależała od tego, czy
+      // ktoś kiedyś przestroi rampę: 1,48:1 (zmierzone `contrastRatio` na
+      // `oklch(70% 0 0)` nad `oklch(60% 0 0)`) leży pod progiem 4,5:1 z takim
+      // zapasem, że żadna zmiana tokenów tego nie uratuje.
+      name: "let a second flat-filled .primary-button rule ride the gradient exemption: an @media rule that paints no gradient is forgiven from AA",
+      expectRedContains: ["KAŻDY konsument"],
+      verify: CONTRAST_VERIFY,
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.primary-button:not(:disabled):hover {`,
+          `@media (min-width: 1px) {
+  .primary-button {
+    color: oklch(70% 0 0);
+    background: oklch(60% 0 0);
+  }
+}
+
+.primary-button:not(:disabled):hover {`,
+          "a second flat-filled rule under the exempted selector",
         ),
     },
     {
@@ -598,44 +779,113 @@ const outcome = runBreakTests({
       // do nich. Szerokość ma OD 2026-08-11 własne złamania (jedenaste,
       // dwunaste, trzynaste) — do tamtej daty stała tu nota mówiąca, że pary na
       // szerokość napisać SIĘ NIE DA, i była ona nieprawdą o runnerze.
-      name: "delete the record strip's select rule: the control goes back to the bare `select` rule and stands beside the buttons with a bigger type size and a different corner",
+      //
+      // ┌ PRZEPIĘTE W LOCIE D11, 2026-08-12 ────────────────────────────────┐
+      // │ REGUŁA `.actions select` PRZESTAŁA ISTNIEĆ RAZEM ZE SWOIM         │
+      // │ PODMIOTEM: pas akcji nie niesie już `<select>`, tylko wyzwalacz    │
+      // │ dymka. Złamanie zostawione bez zmian byłoby no-opem, na który      │
+      // │ `replaceOnce` rzuca — czyli głośno, ale bezużytecznie.             │
+      // │                                                                    │
+      // │ NOWE ZŁAMANIE ŁAMIE REGUŁĘ, A NIE KASUJE PODMIOTU (zasada 7).     │
+      // │ `.inline-popover-trigger` NADAL deklaruje własne                   │
+      // │ `font-size: var(--text-2xs)` i `border-radius: var(--radius-full)`;│
+      // │ przegrywa z `.primary-button, .secondary-button` WYŁĄCZNIE         │
+      // │ kolejnością w tym samym arkuszu, przy równej swoistości (0,1,0).   │
+      // │ Podniesienie jej selektora do dwuklasowego (0,2,0) odwraca tę      │
+      // │ kaskadę bez ruszania ani jednej wartości — i wyzwalacz wraca do    │
+      // │ metryki pigułki, stojąc w paśmie przycisków. To JEST wada, którą   │
+      // │ pary C5-01a/b nazywają.                                            │
+      // │                                                                    │
+      // │ DLACZEGO NIE ZŁAMAĆ `.secondary-button`: ta reguła jest WSPÓLNA   │
+      // │ dla kilkudziesięciu przycisków aplikacji, więc jej czerwień        │
+      // │ zaczerwieniłaby pół mapy naraz i nie dałoby się jej przypisać do   │
+      // │ tych dwóch par. Wzorzec dwuklasowy istnieje w tym arkuszu obok —   │
+      // │ `.inline-popover-trigger.primary-button` — więc złamanie nie       │
+      // │ wymyśla mechanizmu, tylko go odwraca.                              │
+      // │                                                                    │
+      // │ DLACZEGO DOPISANIE REGUŁY, A NIE ZWĘŻENIE ISTNIEJĄCEJ: zwężenie    │
+      // │ `.inline-popover-trigger` do dwuklasowego selektora zabrałoby       │
+      // │ pigułkę POZOSTAŁYM SIEDMIU konsumentom naraz, a wtedy czerwień      │
+      // │ mogłaby przyjść skądkolwiek. Dopisana reguła dotyka DOKŁADNIE tego  │
+      // │ jednego wyzwalacza i nie zmienia ani jednej wartości — przenosi     │
+      // │ tylko, kto wygrywa.                                                 │
+      // └────────────────────────────────────────────────────────────────────┘
+      name: "let the popover trigger's chip metrics win the cascade back: the template chooser stands in a strip of buttons wearing a pill's type size and corner",
       expectRedContains: ["C5-01a", "C5-01b"],
-      file: "packages/desktop-ui/src/record/record-screen.module.css",
+      file: "packages/desktop-ui/src/styles.css",
       edit: (text) =>
         replaceOnce(
           text,
-          `.actions select {
-  max-inline-size: 16rem;
-  padding-inline: var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}`,
-          `.actions select {
-  max-inline-size: 16rem;
-}`,
-          "the record action strip's select rule",
+          `.inline-popover-trigger {
+  background: transparent;`,
+          `.inline-popover-trigger.secondary-button {
+  font-size: var(--text-2xs);
+  border-radius: var(--radius-full);
+}
+
+.inline-popover-trigger {
+  background: transparent;`,
+          "the inline popover trigger's own metric rule",
         ),
     },
     {
-      // ZŁAMANIE JEDENASTE — SUFIT SZEROKOŚCI W PAŚMIE AKCJI (C5-01c).
+      // ZŁAMANIE JEDENASTE — SUFIT SZEROKOŚCI TAM, GDZIE MIESZKA TREŚĆ REKORDU
+      // (C5-01c).
       //
       // PODNIESIENIE SUFITU, A NIE JEGO SKASOWANIE, i ta różnica jest treścią.
       // Skasowana deklaracja daje `max-width: none`, a `none` nie jest
       // długością: runner wraca wtedy NOT_MEASURED (`verify-renderer-layout
       // .mjs:3665-3672`), czyli AWARIĄ PRZYRZĄDU, a awaria przyrządu to nie
-      // jest werdykt o kodzie. `32rem` daje czysty DIFFERS — „512px” przy
-      // żądanych „256px” — z obiema liczbami wydrukowanymi w wierszu pary.
-      name: "raise the record strip's select ceiling to 32rem: the control may run twice as wide as the sheet declares",
+      // jest werdykt o kodzie. Podwojenie daje czysty DIFFERS — „768px” przy
+      // żądanych „384px” — z obiema liczbami wydrukowanymi w wierszu pary.
+      //
+      // PRZEPIĘTE W LOCIE D11 z `.actions select` na `.inline-popover`: nazwy
+      // szablonów przeniosły się z opcji kontrolki wyboru do przycisków panelu,
+      // więc sufit, który je ogranicza, jest teraz sufitem panelu. Sam panel
+      // rysuje się WYŁĄCZNIE po otwarciu dymka — trasa pary robi to krokiem
+      // `openPopover`, dopisanym w tym samym locie.
+      name: "raise the popover panel's ceiling to 48rem: the template names may run twice as wide as the sheet declares",
       expectRedContains: ["C5-01c"],
-      file: "packages/desktop-ui/src/record/record-screen.module.css",
+      file: "packages/desktop-ui/src/styles.css",
       edit: (text) =>
         replaceOnce(
           text,
-          `.actions select {
-  max-inline-size: 16rem;`,
-          `.actions select {
-  max-inline-size: 32rem;`,
-          "the record action strip's select ceiling",
+          "  max-width: min(24rem, calc(100vw - 1.5rem));",
+          "  max-width: min(48rem, calc(100vw - 1.5rem));",
+          "the inline popover panel's width ceiling",
+        ),
+    },
+    {
+      // ZŁAMANIE DLA PARY LOTU D11 — KONTROLKA FORMULARZA WRACA DO PASMA.
+      //
+      // DOSTAWIA `<select>` OBOK DYMKA, A NIE ZAMIAST NIEGO, i to jest cała
+      // treść tego złamania. Wersja kasująca dymek dowodziłaby NIEOBECNOŚCI
+      // (zasada 7) i przewróciłaby przy okazji C5-01a/b, więc czerwieni nie
+      // dałoby się przypisać. Tak jak jest, wyzwalacz stoi nietknięty, obie
+      // tamte pary zostają zielone co do joty, a czerwona jest DOKŁADNIE ta
+      // jedna, która mówi, czego w paśmie stać nie ma.
+      //
+      // ODTWARZA REGRESJĘ REALNĄ, nie wyobrażoną: „dołóż kontrolkę obok" jest
+      // najtańszym ruchem dla kogoś, kto dokłada do tego pasma następną
+      // operację — i jest dokładnie tym, co wpis #51 rejestru zakazuje.
+      name: "put a form control back into the record's action strip beside the disclosure",
+      expectRedContains: ["D11-01"],
+      file: "packages/desktop-ui/src/Wave2Surfaces.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                <Suspense fallback={null}>
+                  <ApplyTemplatePopover`,
+          `                <Suspense fallback={null}>
+                  <select aria-label="Apply template">
+                    {appliable.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ApplyTemplatePopover`,
+          "the project record's action slot",
         ),
     },
     {
@@ -2083,6 +2333,371 @@ const outcome = runBreakTests({
   flex: 1 1 1.5rem;
 }`,
           "the scoped connector width in the upcoming row",
+        ),
+    },
+    {
+      // ── LOT D9, ZŁAMANIE PIERWSZE — PLAKIETKA UCZESTNICTWA TRACI GLIF ──────
+      // Kasowany jest JEDEN z dwóch montaży, nie oba — plakietka spotkań dalej
+      // rysuje swój znak — bo złamanie ma dowieść, że para pilnuje OBU połówek
+      // dostawy, a nie tylko obecności czegokolwiek na tym ekranie.
+      //
+      // TO ZŁAMANIE WRÓCIŁO RAZ ZIELONE I ZMIENIŁO PARĘ, NIE SIEBIE. `D9-01a`
+      // stała najpierw na `[data-part] svg` z podłogą 2; fikstura rysuje PIĘĆ
+      // znaków (trzy plakietki dealów, dwie spotkań), więc po zdjęciu glifu
+      // z całej połowy dealowej zostawały 2 i asercja przechodziła nad zepsutym
+      // kodem. Harness zgłosił to jako `FAILED (the assertion stayed green on
+      // broken code)`. Podłoga rozdzielona atrybutem `data-part` — dopiero
+      // wtedy to złamanie mierzy podmiot, o którym mówi.
+      name: "take the glyph off the deals half of the participation badge: the pill goes back to a bare typed count",
+      expectRedContains: ["D9-01a"],
+      file: "packages/desktop-ui/src/people/PeopleSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <span className={styles.part} data-part="deals">
+                <Icon name="pipeline" />
+`,
+          `              <span className={styles.part} data-part="deals">
+`,
+          "the deals badge's leading glyph",
+        ),
+    },
+    {
+      // ── LOT D9, ZŁAMANIE DRUGIE — GLIF W ROZMIARZE CHROMU PASKA WIDOKU ─────
+      // TO JEST ZŁAMANIE, KTÓRE `D9-01a` PRZEPUSZCZA, I PO TO ISTNIEJE
+      // `D9-01b`. Znak zostaje na miejscu, liczba elementów się nie zmienia,
+      // więc para licząca wraca ZIELONA — zmienia się wyłącznie WYMIAR,
+      // z 0,6875 rem treści wiersza na 0,8125 rem chromu paska widoku. Dokładnie
+      // ta pomyłka pojechała już raz na tym ekranie w drugą stronę (lot D6 dał
+      // segmentowi rozmiar plakietki) i nie zobaczyła jej żadna bramka.
+      name: "give the participation glyph the view bar's size: the row's own third step of glyph size disappears",
+      expectRedContains: ["D9-01b"],
+      file: "packages/desktop-ui/src/people/people.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.part svg {
+  width: 0.6875rem;
+  height: 0.6875rem;`,
+          `.part svg {
+  width: 0.8125rem;
+  height: 0.8125rem;`,
+          "the participation glyph's own size",
+        ),
+    },
+    {
+      // ── LOT D9, ZŁAMANIE TRZECIE — TOR PLAKIETKI ZNOWU USTĘPUJE PIERWSZY ───
+      // ZŁAMANIE, KTÓRE DOWODZI WPISU, A NIE JEGO NIEOBECNOŚCI, i to jest tu
+      // rozstrzygające. Wpis rejestru `people|span._parts` został przez ten lot
+      // SPŁACONY I SKASOWANY, więc powrót do `minmax(0, 1fr)` nie wraca do
+      // tolerowanego długu — wraca jako ŚWIEŻE `violation`, bo dla tej
+      // sygnatury nie ma już żadnego sufitu. Gdyby wpis zostawić „na wszelki
+      // wypadek", to złamanie wróciłoby ZIELONE pod sufitem 25 px, a lot
+      // twierdziłby, że mierzy coś, czego nie mierzy.
+      //
+      // ŁAMANY JEST TOR, NIE PLAKIETKA. Skasowanie plakietki też dałoby
+      // czerwień, ale dowodziłoby jej NIEOBECNOŚCI — a poprawka tego lotu
+      // dotyczy kolejności ustępowania w wierszu, więc to ona ma być łamana.
+      name: "let the participation track give up its room before the truncatable cells again",
+      expectRedContains: ["span._parts"],
+      file: "packages/desktop-ui/src/people/people.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    1.5rem minmax(0, 1.4fr) minmax(min-content, 1fr) minmax(0, 1fr)`,
+          `    1.5rem minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)`,
+          "the participation track's content floor",
+        ),
+    },
+    {
+      // ── LOT D9, ZŁAMANIE TRZECIE-BIS — KOMÓRKA DATY ZNOWU BEZ SKRACANIA ────
+      // DOŁOŻONE PO PRZEGLĄDZIE FALI, i przegląd miał w tej sprawie rację.
+      // Lot D9 skasował wpis rejestru `people|b._absent` i zastąpił go trzema
+      // deklaracjami na `.met b` — a te trzy deklaracje NIE MIAŁY ŻADNEGO
+      // STRAŻNIKA. Dało się je usunąć jednym ruchem i żadne złamanie tego lotu
+      // nie zrobiłoby się czerwone, mimo że wpis rejestru zniknął właśnie na ich
+      // rzecz. Wpis skasowany bez złamania nie jest spłatą długu, tylko jego
+      // przeniesieniem w miejsce, którego nikt nie pilnuje.
+      //
+      // ŁAMANE JEST SAMO OBCINANIE, NIE KOMÓRKA. `text-overflow` i
+      // `white-space` zostają — zdjęcie `overflow: hidden` przestawia werdykt
+      // przelotki z `contained` na `visible`, więc gałąź z datą wychodzi ze
+      // swojego toru o 107 px przy 200% i jako świeże `violation`, bo dla
+      // sygnatury `b` żadnego sufitu w rejestrze nie ma. Skasowanie całej
+      // komórki dowodziłoby jej nieobecności, a nie reguły.
+      name: "take the truncation off the last-met date: the cell the registry entry was retired for goes back to spilling out of its track",
+      expectRedContains: ["descendant b overflows its own box"],
+      file: "packages/desktop-ui/src/people/people.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}`,
+          `  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}`,
+          "the last-met date's own truncation",
+        ),
+    },
+    {
+      // ── PRZYRZĄD PRZEGLĄDU — REJESTR ZAPADNIĘTEJ TREŚCI MA PRZEDMIOT ───────
+      // Nowa przelotka `sweepCollapsedText` i rejestr `KNOWN_COLLAPSED_TEXT`
+      // powstały w tym przeglądzie, więc w tym przeglądzie są łamane. To
+      // złamanie kasuje JEDYNY wpis rejestru: jeśli przelotka naprawdę widzi
+      // zapadniętą rolę, brak wpisu zamienia ją w `violation` i bramka pada.
+      // Zieleń tutaj znaczyłaby, że rejestr opisuje coś, czego pomiar nie
+      // dosięga — czyli dokładnie ten rodzaj deklaracji, który ten przegląd
+      // zgłosił jako defekt.
+      name: "delete the only collapsed-text debt entry: a cell with no inner width has to fail when nothing owns it",
+      expectRedContains: ["has NO inner width"],
+      file: "scripts/descendant-overflow.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    passes: ["text scaled to 200%", "a 320 px window"],
+    thread:
+      "skalowanie interfejsu (R3-5, za falą E) — kolejność zwijania w wierszu osoby",`,
+          `    passes: ["a full-size window"],
+    thread:
+      "skalowanie interfejsu (R3-5, za falą E) — kolejność zwijania w wierszu osoby",`,
+          "the passes the collapsed role is registered for",
+        ),
+    },
+    {
+      // ── PRZYRZĄD PRZEGLĄDU — PRZELOTKA NAPRAWDĘ MIERZY ────────────────────
+      // DRUGA STRONA TEGO SAMEGO PYTANIA, i bez niej pierwsze złamanie nie
+      // wystarcza. Tamto dowodzi, że BRAK WPISU pada; to dowodzi, że wpis jest
+      // ZASPOKAJANY POMIAREM, a nie samą swoją obecnością. Złamanie przywraca
+      // ślepotę przelotki (pomija komórki, które i tak są niewidoczne), więc
+      // wpis nie zostaje dopasowany w żadnym przelocie i pada
+      // `unusedCollapsedEntries`. Bez tego dałoby się zostawić rejestr nad
+      // przelotką, która niczego nie zbiera, i całość wracałaby zielona.
+      name: "make the collapsed-text sweep blind again: the registry entry stops being met by any pass",
+      expectRedContains: ["the collapsed-text registry"],
+      file: "scripts/verify-renderer-layout.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          if (element.clientWidth >= 1) continue;
+          if (element.clientHeight < 1) continue;`,
+          `          if (element.clientWidth >= 0) continue;
+          if (element.clientHeight < 1) continue;`,
+          "the collapsed-text sweep's own threshold",
+        ),
+    },
+    {
+      // ── LOT D9, ZŁAMANIE CZWARTE — EKRAN DZIŚ ZNOWU NIE MA WIERSZA PLANU ───
+      // DWA STRAŻNIKI NA JEDNO ZŁAMANIE, I TO JEST CAŁY POWÓD, DLA KTÓREGO OBA
+      // ISTNIEJĄ. Zdjęcie `plannedBy` z jedynej pozycji `task.list` zabiera
+      // plakietce autorstwa jej stan: `D2-09b` liczy wtedy 0 zamiast 1.
+      // Zdjęcie `startAt` zabrałoby wiersz W OGÓLE i zaczerwieniło RÓWNIEŻ próg
+      // `todayPlannedRows` — ale łamiemy `plannedBy`, bo to jest węższe
+      // złamanie i dowodzi, że para pilnuje SWOJEGO podmiotu, a nie tego, że na
+      // ekranie cokolwiek się rysuje.
+      name: "take the plan's authorship off the harness task: the Today section head loses its right end again",
+      expectRedContains: ["D2-09b"],
+      file: "packages/desktop-ui/src/dev/CollaborationHarness.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          plannedBy: {
+            principalId: agentPrincipalId,
+            principalKind: "agent" as const,
+            at: plannedByAt,
+          },`,
+          ``,
+          "the plan authorship on the harness task",
+        ),
+    },
+    {
+      // ── LOT D9, ZŁAMANIE PIĄTE — PRÓG `todayPlannedRows` ───────────────────
+      // PRÓG DOŁOŻONY PRZEZ TEN LOT, WIĘC ZŁAMANY PRZEZ TEN LOT. Bez tego
+      // złamania `MINIMUM_ROWS.todayPlannedRows` byłby asercją, której nikt
+      // nigdy nie zobaczył na czerwono — a to jest w tym repozytorium nazwana
+      // klasa („przyrząd, którego nie było"): strażnik dopisany razem z dostawą
+      // i nigdy nieuruchomiony różni się od braku strażnika wyłącznie tym, że
+      // wygląda na obecnego.
+      //
+      // ŁAMANA JEST DATA, NIE OBECNOŚĆ POLA. Skasowanie `startAt` osierociłoby
+      // `plannedStartAt` i czerwień przyszłaby z lintu, czyli spoza mierzonej
+      // rzeczy. Przypięcie daty do 2020 roku zostawia kod poprawny i wypycha
+      // zadanie poza „dziś", więc `plannedForDay` nie zwraca nic i sekcja planu
+      // wraca do stanu „Nothing is planned for today" — dokładnie tego, w którym
+      // stała przez całą falę D.
+      //
+      // DWA OCZEKIWANE PODMIOTY, bo padają dwie różne rzeczy: próg (nie ma
+      // wiersza) i para D2-09b (nie ma plakietki). Asertowanie samego D2-09b
+      // pozwoliłoby temu złamaniu przejść na czerwieni pary i NIE dowieść progu.
+      name: "pin the harness task's plan to a date that is not today: the Today plan section empties again",
+      expectRedContains: ["todayPlannedRows", "D2-09b"],
+      file: "packages/desktop-ui/src/dev/CollaborationHarness.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "const plannedStartAt = `${todayKey}T12:00:00.000Z`;",
+          `const plannedStartAt = "2020-01-01T12:00:00.000Z";`,
+          "the clock-derived start of the planned harness task",
+        ),
+    },
+    {
+      // ── LOT D10, ZŁAMANIE PIERWSZE — PASEK WIDOKU WRACA DO ŚRODKA ─────────
+      //
+      // ŁAMANY JEST UKŁAD, NIE OBECNOŚĆ PASMA, i to jest cała treść tego
+      // złamania. Skasowanie paska widoku dowiodłoby wyłącznie tego, że bramka
+      // widzi jego brak — czyli nieobecności, nie wpisu. Ten edit PRZENOSI go
+      // z powrotem do przewijanego pudełka: pasek dalej się rysuje, dalej niesie
+      // swój licznik, dalej ma dolną krawędź — i znowu jedzie z treścią.
+      // Zmierzone przed lotem i po nim na Odnowieniach przy 1440 px: przy
+      // `scrollTop = 60` pasmo tytułu schodziło z y=40 na y=-20, a pasek widoku
+      // z y=80 na y=20; po locie oba stoją.
+      //
+      // CZERWIEŃ IDZIE Z D10-01d, czyli z pary liczącej BEZPOŚREDNIE dzieci
+      // nośnika. Pary czytające `overflow` (D10-01a/b) zostają przy tym złamaniu
+      // ZIELONE — nośnik dalej deklaruje `hidden`, pudełko pod nim dalej `auto`
+      // — i to jest powód, dla którego para o położeniu w ogóle istnieje.
+      name: "put the view bar back inside the scrolling box: the band travels with the content again",
+      expectRedContains: ["D10-01d"],
+      file: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `      <div className={\`view-band \${styles.viewbar}\`}>
+        <span aria-live="polite" className={styles.count} role="status">
+          {\`\${countLabel(sections.openCount, "contract")} open · \${sections.closed.length} closed this cycle\`}
+        </span>
+      </div>
+
+      <div
+        className={\`surface-scroll \${styles.renewals}\`}
+        data-renewals-surface
+      >`,
+          `      <div
+        className={\`surface-scroll \${styles.renewals}\`}
+        data-renewals-surface
+      >
+        <div className={\`view-band \${styles.viewbar}\`}>
+          <span aria-live="polite" className={styles.count} role="status">
+            {\`\${countLabel(sections.openCount, "contract")} open · \${sections.closed.length} closed this cycle\`}
+          </span>
+        </div>`,
+          "the view bar's place beside the scrolling box",
+        ),
+    },
+    {
+      // ── LOT D10, ZŁAMANIE DRUGIE — NOŚNIK ZNOWU PRZEWIJA ──────────────────
+      //
+      // DRUGIE ZDANIE WPISU, ŁAMANE OSOBNO. Złamanie pierwsze rusza POŁOŻENIE
+      // pasm; to rusza to, KTÓRE PUDEŁKO jest portem przewijania. Rozdzielone,
+      // bo przy jednym złamaniu na oba zdania para o `overflow` mogłaby nigdy
+      // nie zaczerwienić się z własnego powodu i nikt by tego nie zobaczył.
+      //
+      // `auto` zamiast `hidden` zostawia obie pary o położeniu ZIELONE (pasma
+      // dalej są rodzeństwem) i obie geometrie prawie nietknięte — a robi
+      // z ekranu DWA zagnieżdżone porty przewijania. Dokładnie ta cicha wada,
+      // przed którą ta reguła ma bronić.
+      //
+      // PIERWSZA WERSJA TEGO ZŁAMANIA WRÓCIŁA ZIELONA I JEST TO LEKCJA O TYM
+      // HARNESSIE, nie o parze. Dopisywała `overflow: auto` NAD `flex-direction`
+      // — czyli PRZED własnym `overflow: hidden` tego samego bloku, które jako
+      // późniejsze wygrywało. Edycja wylądowała dokładnie tam, gdzie celowała,
+      // `replaceOnce` nie miał czego zgłosić, a wartość obliczona nie drgnęła:
+      // strażnik jednokrotnego trafienia pilnuje, GDZIE ląduje tekst, i nie umie
+      // powiedzieć, CZY tekst cokolwiek zmienia. Harness zgłosił to jako FAILED
+      // i to była poprawna diagnoza — złamanie było no-opem. Wersja niżej rusza
+      // ISTNIEJĄCĄ deklarację, więc nie ma nad sobą nikogo, kto ją przykryje.
+      name: "let the migrated carrier keep its own scrolling: two nested scroll ports instead of one",
+      expectRedContains: ["D10-01a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `     tego strona miałaby DWA pudełka przewijania jedno w drugim. */
+  overflow: hidden;`,
+          `     tego strona miałaby DWA pudełka przewijania jedno w drugim. */
+  overflow: auto;`,
+          "the migrated carrier's own overflow",
+        ),
+    },
+    {
+      // ── LOT D10, ZŁAMANIE TRZECIE — PRZYRZĄD, NIE PRODUKT ─────────────────
+      //
+      // NAPRAWA PRZYRZĄDU DOŁOŻONA PRZEZ TEN LOT, WIĘC ZŁAMANA PRZEZ TEN LOT.
+      // `measure()` brał PIERWSZE widoczne dziecko `#main-content` i nazywał je
+      // powierzchnią. Odkąd pasma są rodzeństwem, pierwszym dzieckiem jest
+      // PASMO — 40-pikselowy pasek — więc wszystkie przelotki i wszystkie
+      // liczniki wierszy chodziły po nim zamiast po ekranie. To złamanie wraca
+      // do tamtej wąskiej wersji `count`.
+      //
+      // CZERWIEŃ IDZIE Z PODŁOGI, NIE Z PARY, i to jest tu pointa: same
+      // przelotki przepełnienia wróciłyby ZIELONE nad poddrzewem, w którym nie
+      // ma czego przepełnić. Jedynym przyrządem, który tę wąskość widzi, jest
+      // liczba narysowanych wierszy — i dlatego ten lot nie mógł jej obejść.
+      //
+      // ŁAMANE SĄ OBIE POŁOWY POPRAWKI, licznik I przelotki, i to jest poprawka
+      // po przeglądzie tego lotu. Pierwsza wersja cofała sam `count`: wracała
+      // czerwona, więc wyglądała na dowód — a dowodziła WYŁĄCZNIE zakresu
+      // licznika, zostawiając bez strażnika tę połowę, która jest groźniejsza.
+      // To przelotki zgłosiły `organizations / span._nameLine` jako „never met
+      // in any pass", czyli zaprosiły następny lot do skasowania ŻYWEGO wpisu
+      // rejestru jako spłaconego. Złamanie, które tej połowy nie rusza, zostawia
+      // ją w stanie, o którym da się powiedzieć tylko „jest zielona".
+      // ROZDZIELONE NA DWA ZŁAMANIA PO PRZEGLĄDZIE FALI, i przegląd miał rację.
+      // Wersja poprzednia cofała OBIE połowy jedną edycją, ale asertowała
+      // wyłącznie `renewalRows` — a `renewalRows` produkuje SAM licznik. Czerwień
+      // dawała się więc przypisać w całości cofnięciu licznika, a połowa
+      // groźniejsza (zakres przelotek) nie miała nic, co by ją czytało: złamanie
+      // ruszające tylko ją spełniałoby zero asercji tego wpisu. Dwa złamania
+      // niżej pytają o dwie różne rzeczy dwoma różnymi przyrządami, więc żadnej
+      // z połówek nie da się cofnąć pod zieloną bramką.
+      name: "measure the surface by its first child again, the row counters: a 40 px band has no rows to count",
+      expectRedContains: ["renewalRows"],
+      file: "scripts/verify-renderer-layout.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          const count = (selector) =>
+            roots.reduce(
+              (total, root) => total + root.querySelectorAll(selector).length,
+              0,
+            );`,
+          `          const count = (selector) =>
+            drawn?.querySelectorAll(selector).length ?? 0;`,
+          "the row counter's scope",
+        ),
+    },
+    {
+      // ── LOT D10, ZŁAMANIE CZWARTE — DRUGA POŁOWA TEJ SAMEJ POPRAWKI ────────
+      // TA POŁOWA JEST GROŹNIEJSZA I DOTĄD NIE MIAŁA ASERCJI. Przelotki
+      // chodzące po 40-pikselowym paśmie nie zgłaszają przepełnień — bo w paśmie
+      // nie ma czego przepełnić — więc same z siebie wracają ZIELONE. Widzi to
+      // dopiero `unusedRegistryEntries`: wpis `organizations|span._nameLine`
+      // przestaje być dopasowany w jakimkolwiek przelocie i bramka mówi „never
+      // met in any pass", czyli zaprasza następny lot do skasowania ŻYWEGO długu
+      // jako spłaconego. Dokładnie to zaszło w locie D10 przed poprawką.
+      //
+      // ASERTOWANY JEST WPIS, NIE LICZNIK — licznika to złamanie nie rusza, więc
+      // czerwień nie da się przypisać niczemu innemu.
+      name: "measure the surface by its first child again, the sweeps: a live registry entry starts reading as paid",
+      expectRedContains: ["span._nameLine was never met in any pass"],
+      file: "scripts/verify-renderer-layout.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          for (const root of roots) {
+            sweepDescendants(root, label);
+            sweepCollapsedText(root, label);
+            sweepRecordScreens(root, label);
+            sweepHeightBound(root, label);
+          }`,
+          `          sweepDescendants(drawn, label);
+          sweepCollapsedText(drawn, label);
+          sweepRecordScreens(drawn, label);
+          sweepHeightBound(drawn, label);`,
+          "the sweeps' scope",
         ),
     },
   ]),
