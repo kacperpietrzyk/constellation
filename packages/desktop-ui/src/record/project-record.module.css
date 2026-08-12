@@ -170,10 +170,24 @@ button.chip:hover {
   white-space: nowrap;
 }
 
-/* Ikona wiodąca stoi także w stanie pustym — prototyp rysuje w pustej
-   plakietce zegar (`v3/app.css:364`: `.chip svg { width: 0.75rem; height:
-   0.75rem; opacity: 0.7 }`), bo ikona mówi, CZEGO tu nie ma. Bez niej
-   „No client" i „No deadline" są dwoma nierozróżnialnymi szarymi owalami. */
+/* Ikona wiodąca stoi także w stanie pustym, bo mówi, CZEGO tu nie ma — bez
+   niej „No client" i „No deadline" są dwoma nierozróżnialnymi szarymi owalami.
+
+   CO ROBI PROTOTYP, dokładnie, bo poprzednia wersja tego komentarza cytowała
+   go za szeroko: pustą plakietkę terminu rysuje z zegarem
+   (`v3/screens/record.js:445` — `<span class="chip dashed">${icon("clock")}No
+   deadline</span>`), a pustą plakietkę klienta BEZ glifu (`:442`). Glif
+   w „No client" jest więc rozszerzeniem tej aplikacji ponad odniesienie,
+   świadomym i zamkniętym w rejestrze jako wpis #52 („glif wiodący u OBU
+   pustych plakietek") — nie cytatem.
+
+   ROZMIAR JEST LICZBĄ TEJ APLIKACJI, NIE PROTOTYPU. `v3/app.css:364` mówi
+   `.chip svg { width: 0.75rem; height: 0.75rem; opacity: 0.7 }`; ta reguła
+   bierze 0,875rem z siostrzanej `.chip svg` wyżej w TYM arkuszu, żeby obie
+   plakietki — pełna i pusta — niosły glif tej samej wielkości. Przezroczystość
+   0,7 jest z odniesienia. Poprzednia wersja komentarza cytowała 0,75rem
+   i deklarowała 0,875rem, czyli była dowodem na wartość, której reguła nie
+   używa. */
 .chipDashed svg {
   flex: none;
   inline-size: 0.875rem;

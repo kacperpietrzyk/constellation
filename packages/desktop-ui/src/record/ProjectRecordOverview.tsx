@@ -145,8 +145,19 @@ export const ProjectRecordHeader = ({
             label alone says which bucket; only the reason says why. */}
         <span className={styles.why}>{reading.health.why.join(" · ")}</span>
         <span className={styles.gap} />
+        {/* JEDEN SLOT, JEDEN GLIF — w obu stanach `organization`.
+            Slot klienta rysował dotąd DWA rysunki zależnie od tego, czy jest
+            wypełniony: pusty niósł `organization`, wypełniony
+            `relationships`. Ikona pustego stanu ma mówić, CZEGO tu nie ma
+            (rejestr, wpis #52), a wtedy musi być tym samym rysunkiem, który ta
+            rzecz nosi, kiedy JEST. Ujednolicone w stronę `organization`, bo
+            tak stoi w prototypie (`v3/screens/record.js:441` — wypełniona
+            plakietka klienta to `icon("org")`) i bo `relationships` na
+            organizacji jest w tym drzewie nazwaną wadą: złamanie dwudzieste
+            czwarte („point Organizations back at the relationships glyph")
+            istnieje po to, żeby dwa wiersze grupy CRM nie niosły jednego
+            rysunku. */}
         {client === undefined ? (
-          // Ikona mówi, CZEGO tu nie ma (rejestr, wpis #52).
           <span className={styles.chipDashed}>
             <Icon name="organization" />
             No client
@@ -155,7 +166,7 @@ export const ProjectRecordHeader = ({
           // Nothing to enter, so nothing that looks enterable. A greyed
           // control with no stated reason is a dummy.
           <span className={styles.chip}>
-            <Icon name="relationships" />
+            <Icon name="organization" />
             <span className={styles.chipLabel}>{client.name}</span>
           </span>
         ) : (
@@ -164,7 +175,7 @@ export const ProjectRecordHeader = ({
             onClick={() => onOpenClient(client)}
             type="button"
           >
-            <Icon name="relationships" />
+            <Icon name="organization" />
             <span className={styles.chipLabel}>{client.name}</span>
           </button>
         )}
@@ -422,7 +433,7 @@ export interface ProjectRecordOverviewProps {
    *  górnym rogu — pas kończył się tam, gdzie kończyła się siatka. Odniesienie
    *  robi dokładnie to, co ten prop: `v3/screens/record.js:454-460` wkłada
    *  `${doc}` do `<div class="rc-doc">` WEWNĄTRZ `<div class="rc-body">`,
-   *  a `.rc-rail` (`v3/screens/record.css:100`) niesie własną lewą krawędź
+   *  a `.rc-rail` (`v3/screens/record.css:101`) niesie własną lewą krawędź
    *  przez całą wysokość siatki. */
   readonly body?: ReactNode;
 }

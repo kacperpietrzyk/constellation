@@ -372,8 +372,14 @@
   box-shadow: none;
 }
 
+/* Wspólna farba pola tekstowego. Dziś ma JEDNEGO konsumenta — pole edycji
+   istniejącego komentarza (`RecordCommentsPanel.tsx`, `.field` + `.editField`);
+   kompozytor zszedł z niej na `.composerText` przy przebudowie oprawy.
+   Dlatego nie ma tu `flex: 1 1 16rem`: baza wzrostu wzdłuż RZĘDU została po
+   kompozytorze, którego już nie ma, a jedyny konsument i tak przykrywał ją
+   `flex: none`. Deklaracja, której nikt nie czyta, opisuje układ, którego nie
+   ma. */
 .field {
-  flex: 1 1 16rem;
   min-inline-size: 0;
   border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
@@ -437,8 +443,10 @@
 
 /* The mention picker sits between the field and the send control, on its own
    row, because it is a decision about the comment rather than part of writing
-   it. Full-basis so it never shares a line with the textarea and turns two
-   controls into one crowded strip. */
+   it. Its parent `.composerField` is a block, so the row is its own by
+   construction — no basis needed. (Poprzednia wersja tego komentarza
+   powoływała się na `flex-basis: 100%`, którą przebudowa oprawy kompozytora
+   zdjęła razem z rzędem, w którym miała sens.) */
 .mentions {
   display: flex;
   flex-wrap: wrap;
@@ -582,8 +590,10 @@
   min-inline-size: 0;
 }
 
-/* The composer's field grows along a row; this one owns a column, so the
-   row-wise basis is dropped and the height comes from a floor instead. */
+/* This field owns a column of its own, so its height comes from a floor rather
+   than from what stands beside it. (Ten komentarz mówił dotąd „the composer's
+   field grows along a row" — kompozytor nie używa już `.field`, jego pole to
+   `.composerText` w siatce, więc porównanie opisywało układ, którego nie ma.) */
 .editField {
   flex: none;
   inline-size: 100%;

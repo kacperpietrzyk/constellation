@@ -1416,18 +1416,47 @@ test("CZEGO TA BRAMKA NIE ZMIERZYŁA — wypisane, nie przemilczane", () => {
   );
   // Wykrywanie przezroczystości musi COŚ znajdować, inaczej lista „czego nie
   // modeluję" byłaby pusta z powodu awarii, a nie z powodu braku długu —
-  // i wtedy cisza znowu udawałaby werdykt. `.entryResolved` jest nazwane
-  // z imienia, bo to o nie chodzi w akapicie wyżej.
-  assert.ok(
-    dimmed.some(
-      (rule) =>
-        rule.sheet === "record/record-comments.module.css" &&
-        rule.selector === ".entryResolved",
-    ),
-    "`.entryResolved` z `record/record-comments.module.css` wypadło z listy reguł " +
-      `przezroczystych (znalezionych: ${dimmed.length}). Albo reguła zniknęła, albo ` +
-      "wykrywanie `opacity` przestało działać — w drugim wypadku ta lista kłamie.",
-  );
+  // i wtedy cisza znowu udawałaby werdykt.
+  //
+  // WIERSZE NAZWANE Z IMIENIA — czyli te, których czytelność wisi WYŁĄCZNIE na
+  // przezroczystości. Lista `dimmed` jest wypisywana, ale wypisanie nie jest
+  // asercją: reguła może z niej wypaść i nikt tego nie zobaczy. Dlatego każde
+  // miejsce, o którym wiadomo, że jego dług przeszedł TUTAJ z innego rejestru,
+  // stoi tu z nazwą.
+  const DIMMED_BY_NAME = [
+    {
+      sheet: "record/record-comments.module.css",
+      selector: ".entryResolved",
+      why: "pismo akcentu na rozstrzygniętym komentarzu — przykład, na którym policzono akapit wyżej (≈2,6:1 zamiast ponad 5:1)",
+    },
+    {
+      // DŁUG PRZENIESIONY, NIE SPŁACONY (rejestr, wpis #58; odzyskane
+      // zgłoszenie z przeglądu lotu D4). Ta kontrolka stała w ZAMKNIĘTYM
+      // zbiorze zwolnionych wierszy POD PROGIEM na dole tego pliku, dopóki
+      // `.submit:disabled` PRZEMALOWYWAŁO akcję główną na wypełnienie
+      // drugorzędne z napisem `--text-disabled`. Lot D4 poszedł za prototypem
+      // (`v3/screens/record.css:429`) i gasi ją dziś `opacity: 0.45`, więc
+      // zadeklarowana para kolorów zdaje próg i wiersz z tamtej listy
+      // ZNIKNĄŁ — a realny kontrast na ekranie przez to SPADŁ, nie wzrósł.
+      // Zbiór zwolnionych i ta lista to dwa różne rejestry: przeniesienie
+      // między nimi musi być widoczne w obu, inaczej dług wychodzi z jednego
+      // i nie wchodzi do żadnego.
+      sheet: "record/record-comments.module.css",
+      selector: ".submit:disabled",
+      why: "akcja główna kompozytora komentarzy: zeszła ze zbioru zwolnionych POD PROGIEM, bo nie deklaruje już pary pod progiem — jej czytelność w stanie nieaktywnym wisi w całości na `opacity: 0.45`, którego ta bramka nie modeluje",
+    },
+  ];
+  for (const named of DIMMED_BY_NAME)
+    assert.ok(
+      dimmed.some(
+        (rule) =>
+          rule.sheet === named.sheet && rule.selector === named.selector,
+      ),
+      `\`${named.selector}\` z \`${named.sheet}\` wypadło z listy reguł ` +
+        `przezroczystych (znalezionych: ${dimmed.length}). Albo reguła zniknęła, ` +
+        "albo wykrywanie `opacity` przestało działać — w drugim wypadku ta lista " +
+        `kłamie. Czego dotyczy ten wiersz: ${named.why}.`,
+    );
 });
 
 test("kształty spoza matematyki koloru są DOKŁADNIE tymi, o których wiem", () => {
@@ -1918,6 +1947,10 @@ test("zwolnienia dla NIEAKTYWNYCH kontrolek są mierzone i policzalne", () => {
       // kontrast NIŻSZY niż ten wyliczony tutaj. Wiersz zniknął z listy zwolnień
       // dlatego, że reguła nie deklaruje już pary pod progiem — a nie dlatego,
       // że napis stał się czytelniejszy.
+      //
+      // DLATEGO DŁUG NIE JEST ŚLEDZONY „NIGDZIE": `.submit:disabled` stoi
+      // z nazwy w `DIMMED_BY_NAME` w teście „reguły, których ta bramka nie
+      // modeluje". Zejście z TEJ listy jest wejściem na TAMTĄ, a nie spłatą.
       "tasks/saved-view-filters.module.css .save:disabled (dark)",
     ],
     "Zbiór zwolnionych wierszy POD PROGIEM się zmienił. Każdy taki wiersz to " +

@@ -1199,16 +1199,40 @@ const outcome = runBreakTests({
       //
       // Para liczy ZAWIERANIE, nie geometrię, i dlatego to złamanie ją zapala:
       // po tej edycji `.project-rich-body` przestaje być potomkiem kolumny.
+      //
+      // PRZEPISANE PO PRZEGLĄDZIE LOTU D4 (odzyskane zgłoszenie, MAJOR).
+      // Pierwsza wersja tego złamania zdejmowała prop `body` w
+      // `ProjectRecordScreen.tsx`, a `{body}` ma w całej aplikacji JEDEN punkt
+      // montowania (`ProjectRecordOverview.tsx`, wewnątrz `.doc`). Po tamtej
+      // edycji dokument nie rysował się NIGDZIE, więc para szła na zero
+      // z powodu NIEOBECNOŚCI karty, a nie z powodu złego rodzica — czyli
+      // dokładnie ta wada, którą lot rozpoznał u złamania 38 („złamanie nie
+      // odróżnia «ramka jest, a przycisk z niej uciekł» od «ramki nie ma»”)
+      // i której u siebie nie zobaczył. Ta wersja PRZENOSI węzeł: karta dalej
+      // istnieje i dalej się rysuje, tylko wisi jako dziecko `.overview` obok
+      // dwukolumnowej `.body`. Czerwień D4-01a jest wtedy przypisywalna do
+      // zawierania, bo jedyne, co się zmieniło, to rodzic.
       name: "render the project document beside the two-column body again: the card leaves the reading column and crosses under the rail",
       expectRedContains: ["D4-01a"],
-      file: "packages/desktop-ui/src/record/ProjectRecordScreen.tsx",
+      file: "packages/desktop-ui/src/record/ProjectRecordOverview.tsx",
       edit: (text) =>
         replaceOnce(
-          text,
-          `          <ProjectRecordOverview
-            body={body}`,
-          `          <ProjectRecordOverview`,
-          "the project document's place in the Overview",
+          replaceOnce(
+            text,
+            `          {/* Dokument projektu zamyka KOLUMNĘ tekstu, a nie ekran. */}
+          {body}
+        </div>`,
+            `        </div>`,
+            "the project document's place inside the reading column",
+          ),
+          `        </aside>
+      </div>
+    </div>`,
+          `        </aside>
+      </div>
+      {body}
+    </div>`,
+          "the project document's place beside the two-column body",
         ),
     },
     {
@@ -1710,6 +1734,50 @@ const outcome = runBreakTests({
   width: 0.6875rem;
   height: 0.6875rem;`,
           "the layout segment glyph's size on People",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE CZWARTE — KOMPOZYTOR ZNOWU BEZ ZNACZNIKA AUTORA
+      // (D4-06c, pierwsza połowa wpisu #58).
+      //
+      // DOPISANE PO PRZEGLĄDZIE LOTU D4, NIE PRZEZ LOT D4 — i stoi na końcu
+      // listy, a nie obok złamań 34-38, bo numeracja tego pliku jest cytowana
+      // w tabeli raportu fazy D. Przesunięcie dwudziestu numerów, żeby jedno
+      // złamanie stanęło w swojej grupie, kosztowałoby więcej niż daje.
+      //
+      // POZYCJA, KTÓRA PRZEZ CAŁY LOT NIE MIAŁA CZYM PAŚĆ. Wpis #58 nazywa
+      // się „kompozytor: brak awatara", a mapa trasowana liczyła tę pozycję
+      // jako pokrytą dwiema parami, z których ŻADNA nie patrzyła na znacznik
+      // (D4-06a liczy wysyłki poza ramką, D4-06b czyta `resize` pola). Para
+      // `D4-06c` dopiero domknęła to w `8e5f698`.
+      //
+      // DLACZEGO KASOWANIE, A NIE PODMIANA MARGINESU. `D4-06c` czyta
+      // `marginTop` znacznika, więc złamanie na samej liczbie dowiodłoby
+      // tylko, że para czyta swój wymiar. Zdanie wpisu jest o OBECNOŚCI,
+      // a para broni obecności inaczej: przy skasowanym znaczniku odczyt
+      // właściwości nie ma na czym stanąć i para wraca `NOT_MEASURED`, co
+      // `verify-renderer-layout.mjs` liczy jako AWARIĘ z nazwą pary
+      // (a nie jako ciszę, jak zrobiłoby zliczanie dopełnienia). To złamanie
+      // jest jedynym dowodem, że ta ścieżka naprawdę zapala bramkę.
+      name: "take the author mark out of the comment composer: the thread stamps every comment and the box the reader writes in is stamped with nothing",
+      expectRedContains: ["D4-06c"],
+      file: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <span
+          aria-hidden="true"
+          className={\`\${styles.mark} \${styles.composerMark}\`}
+        >
+          {currentDisplayName === undefined ? (
+            <Icon name="people" />
+          ) : (
+            initialsOf(currentDisplayName)
+          )}
+        </span>
+`,
+          ``,
+          "the composer's author mark",
         ),
     },
   ]),
