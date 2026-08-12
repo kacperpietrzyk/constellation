@@ -484,6 +484,23 @@ export const CONTROL_PAINT_SURFACE_FLOORS = {
   // razem. Adnotacja, która milczy o tym, że rozminęła się z pomiarem, byłaby
   // za to tą samą wadą, którą naprawa po przeglądzie lotu C3 usuwała z dwóch
   // komentarzy w `styles.css`.
+  //
+  // DRUGA TAKA ADNOTACJA, TĄ SAMĄ DROGĄ I Z TEGO SAMEGO POWODU: przelot
+  // z 2026-08-12 (lot D7, rekompozycja ciała Spotkań) naliczył na `meetings`
+  // DZIEWIĘĆ kontrolek, nie cztery, w obu motywach. Przyrost jest ZAMIERZONY
+  // i wiadomo, z czego się bierze, kontrolka po kontrolce: harness powłoki
+  // dostał w tym locie własną pętlę spotkań, więc ekran rysuje wreszcie
+  // kontrolkę uprawnienia kalendarza (która przeniosła się ze skasowanej szyny
+  // do sekcji „Coming up") i wiersze wyników Jamie, nagłówek sekcji
+  // „Jamie results" dostał wyjście „Open Sources →", a przy odbiorze tego lotu
+  // fikstura zaczęła rysować JEDEN wiersz nadchodzących — czyli dziewiąty
+  // przycisk, „Preview block". Podłoga NIE JEST przy tej okazji podnoszona
+  // z 2 na 5 (60% z 9), i to jest ta sama zasada, co wyżej: jeden wiersz
+  // przeliczony osobno robi z tej tabeli mieszankę dwóch przelotów. Następny
+  // pełny przelot przepisuje tabelę, nagłówek i obie te adnotacje razem.
+  // LICZBA W TEJ ADNOTACJI ZOSTAŁA PRZY ODBIORZE POPRAWIONA Z „OSIEM" —
+  // adnotacja, która sama rozminęła się z pomiarem, jest tą samą wadą, którą
+  // ten lot naprawiał w cudzych komentarzach.
   shell: 22, // 37
   today: 1, // 1
   calendar: 1, // 3

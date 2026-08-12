@@ -2343,6 +2343,15 @@ export const RealApp = ({
               inspectorHost={meetingInspectorHost}
               onInspectorOpen={() => setMeetingInspectorOpen(true)}
               onMeetingSelected={setSelectedMeetingId}
+              /* „Open Sources →" na prawym końcu nagłówka „Jamie results"
+                 (wpis #65). Ta sama droga, którą powłoka otwiera każdy inny
+                 odczyt Biblioteki, więc etykieta jest UCZCIWA: `library/
+                 LibraryShell.tsx` bramkuje czytelnię na `reading === "sources"`
+                 i to jest dokładnie ten odczyt. Precedens: `onOpenCalendar`
+                 na Dzisiaj (wpis #6). */
+              onOpenSources={() =>
+                openContext(libraryReadingContext("sources", "Library"))
+              }
             />
           </Suspense>
         </LazySurfaceBoundary>

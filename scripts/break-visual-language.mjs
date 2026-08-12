@@ -334,15 +334,28 @@ const outcome = runBreakTests({
       edit: (text) =>
         replaceOnce(
           text,
+          // IGŁA PRZEPISANA 2026-08-12 (lot D7) — BYŁA MARTWA OD DAWNA I NIE
+          // ZŁAMAŁ JEJ TEN LOT. Reguła `.surface-header` straciła
+          // `max-width` i zmieniła margines w jednym z lotów Fazy C/D,
+          // a `replaceOnce` RZUCA na nietrafionej igle, więc CAŁY ten
+          // harness padał na tym złamaniu i nie dojeżdżał do następnych.
+          // Sprawdzone przeciwko `git show HEAD:…` na czubku `b5130cf`:
+          // stary napis nie występował tam ani razu. Intencja złamania się
+          // nie zmienia — `display: flex` → `display: block` — zmienia się
+          // wyłącznie kotwica.
           `.surface-header {
-  max-width: var(--surface-measure, 58rem);
   min-height: var(--header-band-height);
-  margin: 0 auto var(--space-6);
+  margin: calc(-1 * var(--surface-band-lift, 0px))
+    calc(-1 * var(--surface-gutter, 0px)) var(--space-6);
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;`,
           `.surface-header {
-  max-width: var(--surface-measure, 58rem);
   min-height: var(--header-band-height);
-  margin: 0 auto var(--space-6);
+  margin: calc(-1 * var(--surface-band-lift, 0px))
+    calc(-1 * var(--surface-gutter, 0px)) var(--space-6);
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);
   display: block;`,
           "the surface header's row layout",
         ),
@@ -1778,6 +1791,298 @@ const outcome = runBreakTests({
 `,
           ``,
           "the composer's author mark",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE PIĄTE — SZYNA WRACA, CZYLI DWA PASY ZAMIAST
+      // DWÓCH SEKCJI JEDNA POD DRUGĄ (D7-01a, wpis #63).
+      //
+      // MODYFIKACJA SIATKI, NIE SKASOWANIE SEKCJI, i to jest cała różnica
+      // między dowodem wpisu a dowodem nieobecności. Obie sekcje dalej
+      // istnieją, dalej się rysują i dalej trafiają w swoje selektory —
+      // czerwień przychodzi z KSZTAŁTU, dokładnie tak, jak wpis go nazywa.
+      name: "put the rail back on Meetings: two lanes instead of two sections stacked in one column",
+      expectRedContains: ["D7-01a"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.meeting-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);`,
+          `.meeting-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);`,
+          "the meetings body grid",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE SZÓSTE — WYNIKI JAMIE ZNOWU NAD NADCHODZĄCYMI
+      // (D7-01b, druga połowa wpisu #63).
+      //
+      // JEDNA LINIJKA, I PO TO ISTNIEJĄ STAŁE `upcomingSection`
+      // / `completedSection`: kolejność, o którą chodzi rejestrowi, daje się
+      // odwrócić bez dotykania czegokolwiek w środku sekcji. NIC NIE ZNIKA —
+      // rusza się wyłącznie to, co wpis nazywa. Bez tego złamania D7-01a
+      // stałaby zielona nad jedną kolumną z odwróconą kolejnością.
+      name: "render Jamie results above Coming up again: one column, wrong order",
+      expectRedContains: ["D7-01b"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        {upcomingSection}
+        {completedSection}`,
+          `        {completedSection}
+        {upcomingSection}`,
+          "the order of the two meeting sections",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE SIÓDME — CHROM KARTY WRACA NA SEKCJĘ, A LISTA
+      // ZNOWU WPUSZCZONA (D7-02a i D7-02b, wpis #64).
+      //
+      // DWIE EDYCJE W JEDNYM ZŁAMANIU, bo to jest JEDNA wada: farba nie ma
+      // zniknąć, tylko wrócić na niewłaściwy element. Odtwarza to dzisiejszy
+      // stan ekranu co do deklaracji. Karta NIE JEST kasowana — zmienia się
+      // to, KTO nosi farbę, i dokładnie o tym jest wpis #64.
+      name: "give the meetings section back its raised chrome and sink the list inside it",
+      expectRedContains: ["D7-02a", "D7-02b"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          replaceOnce(
+            text,
+            `.meeting-upcoming,
+.meeting-completed {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}`,
+            `.meeting-upcoming,
+.meeting-completed {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.meeting-completed {
+  padding: var(--space-5);
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-xl);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-raised);
+}`,
+            "the raised chrome on the completed section",
+          ),
+          `  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
+}
+.meeting-result-list > li:not(:last-child) {`,
+          `  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-sm);
+}
+.meeting-result-list > li:not(:last-child) {`,
+          "the result list's own plane",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE ÓSME — NAGŁÓWEK ZNOWU JAKO KRESKA DZIAŁOWA
+      // KARTY (D7-03d, połowa wpisu #65).
+      //
+      // DOPISANIE, NIE SKASOWANIE: nagłówek dalej istnieje, dalej stoi tam,
+      // gdzie stał, i dalej trafia w swój selektor. Wraca wyłącznie ta jedna
+      // deklaracja, która trzymała go w środku pudełka.
+      name: "draw the meetings section head as the card's divider again",
+      expectRedContains: ["D7-03d"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.meeting-sec-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}`,
+          `.meeting-sec-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}`,
+          "the section head's divider rule",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĘĆDZIESIĄTE DZIEWIĄTE — PRAWY KONIEC NAGŁÓWKA ZNOWU PUSTY
+      // (D7-03c, druga połowa wpisu #65).
+      //
+      // TO JEDYNE ZŁAMANIE W TYM PLIKU, KTÓRE KASUJE SWÓJ PODMIOT, I JEST TO
+      // UPRAWNIONE DOKŁADNIE TUTAJ. Reguła tego harnessu brzmi: złamanie ma
+      // dowodzić WPISU, nie nieobecności — a zarejestrowaną wadą JEST tu
+      // nieobecność („nagłówek sekcji nie ma prawego końca"). Para czyta
+      // LICZBĘ (`expect: { kind: "count", equals: 1 }`), a `judgeVisualPair`
+      // rozstrzyga `count` ZANIM dojdzie do gałęzi „selektor nie trafił
+      // w nic", więc 1 → 0 wraca jako DIFFERS Z NAZWĄ PARY, a nie jako
+      // NOT_MEASURED ze zepsutego selektora. Sprawdzone w przyrządzie, nie
+      // założone.
+      name: "take the right-side affordance off the Jamie results head",
+      expectRedContains: ["D7-03c"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <button
+          type="button"
+          className="meeting-sec-more"
+          data-open-sources
+          onClick={onOpenSources}
+        >
+          Open Sources →
+        </button>
+`,
+          ``,
+          "the Open Sources exit in the Jamie results head",
+        ),
+    },
+    {
+      // ZŁAMANIE SZEŚĆDZIESIĄTE — WIERSZ NADCHODZĄCYCH ZNOWU W GEOMETRII SZYNY
+      // (D7-01d, czwarta strona wpisu #63).
+      //
+      // TO JEST DOKŁADNIE PÓŁSTAN, PRZED KTÓRYM OSTRZEGA REJESTR, i dlatego ma
+      // własne złamanie: sekcja stoi tam, gdzie ma stać, na pełnej szerokości
+      // i pierwsza, więc D7-01a, D7-01b i D7-01c wracają ZIELONE — czerwona
+      // jest wyłącznie para czytająca środek przeniesionego pudełka. Jedna
+      // kolumna to geometria zaprojektowana na 18-22 rem; nic nie znika.
+      name: "give the upcoming row back the single column it wore inside the rail",
+      expectRedContains: ["D7-01d"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.meeting-event {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;`,
+          `.meeting-event {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);`,
+          "the upcoming row's track count",
+        ),
+    },
+    {
+      // ZŁAMANIE SZEŚĆDZIESIĄTE PIERWSZE — DRABINA ODWRÓCONA O JEDEN SZCZEBEL
+      // NIŻEJ (D7-02e i D7-02f, sedno wpisu #64).
+      //
+      // DWIE EDYCJE, JEDNA WADA, ZAMIANA A NIE SKASOWANIE: karta bierze
+      // wypełnienie wiersza, wiersz bierze wypełnienie karty. Oba podmioty dalej
+      // istnieją i dalej trafiają w swoje selektory, a farba jest ta sama co
+      // była — siedzi tylko na niewłaściwym szczeblu. Bez tej pary złamanie
+      // z lotu („chrom karty wraca na sekcję") zostawiało nadchodzące
+      // nietknięte, bo mierzyła je wtedy WYŁĄCZNIE proza.
+      name: "swap the paint between the upcoming card and the row sunken inside it",
+      expectRedContains: ["D7-02e", "D7-02f"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          replaceOnce(
+            text,
+            `.meeting-upcoming-list {
+  display: grid;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);`,
+            `.meeting-upcoming-list {
+  display: grid;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);`,
+            "the upcoming card's plane",
+          ),
+          `  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+.meeting-event:last-child {`,
+          `  border-bottom: 1px solid var(--border-subtle);
+  background: var(--panel-reading-bg);
+}
+.meeting-event:last-child {`,
+          "the upcoming row's plane",
+        ),
+    },
+    {
+      // ZŁAMANIE SZEŚĆDZIESIĄTE DRUGIE — NAGŁÓWEK NADCHODZĄCYCH PRZESTAJE BYĆ
+      // TYM SAMYM NAGŁÓWKIEM (D7-03f, bliźniak z wpisu #65).
+      //
+      // ZMIANA KLASY, NIE SKASOWANIE ELEMENTU: nagłówek dalej się rysuje, dalej
+      // niesie tytuł, liczbę i kłódkę — przestaje tylko należeć do wspólnego
+      // wzorca „nagłówek nad kartą", czyli wraca do stanu, w którym ta sekcja
+      // miała własny nagłówek pod cudzą regułą. Złamanie jest ostre także
+      // w drugą stronę: D7-03e (stopień pisma, bez klasy sekcji) i D7-03g
+      // (kłódka, selektor potomka) zostają ZIELONE, więc czerwień nie może
+      // pochodzić z żadnej innej pary tej pozycji.
+      name: "let the upcoming head fall out of the shared section-head pattern",
+      expectRedContains: ["D7-03f"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `      <div className="meeting-sec-head">
+        <h2 id="upcoming-title">`,
+          `      <div className="meeting-upcoming-head">
+        <h2 id="upcoming-title">`,
+          "the class carrying the upcoming section head",
+        ),
+    },
+    {
+      // ZŁAMANIE SZEŚĆDZIESIĄTE TRZECIE — PRAWY KONIEC NAGŁÓWKA NADCHODZĄCYCH
+      // ZNOWU PUSTY (D7-03g, druga połowa wpisu #65 nad DRUGĄ sekcją).
+      //
+      // DRUGIE I OSTATNIE ZŁAMANIE W TYM PLIKU, KTÓRE KASUJE SWÓJ PODMIOT,
+      // z tym samym uprawnieniem co złamanie nad `[data-open-sources]`:
+      // zarejestrowaną wadą JEST tu nieobecność prawego końca, a para czyta
+      // LICZBĘ, którą `judgeVisualPair` rozstrzyga ZANIM dojdzie do gałęzi
+      // „selektor nie trafił w nic". 1 → 0 wraca więc jako DIFFERS z nazwą pary.
+      name: "take the lock badge off the Coming up head",
+      expectRedContains: ["D7-03g"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <span className="meeting-sec-lock">
+          <Icon name="lock" />
+          {surface.capability.provider === "eventkit"
+            ? "Apple Calendar"
+            : "Calendar"}
+        </span>
+`,
+          ``,
+          "the lock badge in the Coming up head",
+        ),
+    },
+    {
+      // ZŁAMANIE SZEŚĆDZIESIĄTE CZWARTE — KRESKA ŁAŃCUCHA ZNOWU WCHŁANIA CAŁĄ
+      // NADWYŻKĘ WIERSZA (D7-01e, regresja wprowadzona przez sam lot D7).
+      //
+      // COFNIĘCIE DO REGUŁY BAZOWEJ, NIE SKASOWANIE NADPISU DO ZERA: wartość,
+      // którą tu wpisujemy, jest DOKŁADNIE tą, którą element odziedziczyłby po
+      // `.evidence-thread i`, gdyby nadpisu nie było — czyli złamanie odtwarza
+      // stan, w którym ekran naprawdę stał po rekompozycji, a nie stan
+      // wymyślony. Nic nie znika: łańcuch dalej się rysuje, dalej ma trzy
+      // plakietki i dwie kreski, tylko kreski znowu rosną z wierszem.
+      name: "let the provenance connectors absorb the row's free width again",
+      expectRedContains: ["D7-01e"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.meeting-event .evidence-thread i {
+  flex: 0 0 1.5rem;
+}`,
+          `.meeting-event .evidence-thread i {
+  flex: 1 1 1.5rem;
+}`,
+          "the scoped connector width in the upcoming row",
         ),
     },
   ]),

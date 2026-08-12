@@ -158,6 +158,7 @@ const mountMeetings = async (): Promise<Mounted> => {
         inspectorHost,
         onInspectorOpen: () => undefined,
         onMeetingSelected: () => undefined,
+        onOpenSources: () => undefined,
       }),
     );
   });

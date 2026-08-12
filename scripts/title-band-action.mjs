@@ -133,7 +133,15 @@
 //     Dziś         pasmo 40    ← `p[data-capacity]` 16 WCHODZI  (rząd bez akcji)
 //     Skrzynka     pasmo 40    ← `section`     106,9  ODPADA   (to jest treść)
 //     Zadania      pasmo 40    ← `.viewbar`     88,6  ODPADA
-//     Spotkania    pasmo 40    ← `.lanes`      593,5  ODPADA
+//     Spotkania    pasmo 40    ← `.meeting-body` 611,9 ODPADA
+//
+// WIERSZ SPOTKAŃ PRZELICZONY 2026-08-12 PRZY LOCIE D7 i przepisany razem
+// z nazwą, bo `.meeting-lanes` przestało istnieć: rekompozycja ciała tego
+// ekranu (wpisy #63/#64/#65) zamieniła dwa pasy na jedną kolumnę
+// `.meeting-body`. Liczba z tego samego przelotu 1440×900 co reszta tabeli
+// nie jest — i to jest powiedziane, a nie przemilczane — ale werdykt się nie
+// zmienia i nie mógłby: sąsiad pasma jest kolumną treści, więc odpada
+// z powodu, który nie zależy od tego, ile dokładnie ma wysokości.
 //
 // WIERSZ „DZIŚ" ZMIENIŁ SIĘ Z `ODPADA` NA `WCHODZI` I TO JEST ZMIANA ZAKRESU
 // TEGO PRZYRZĄDU, a nie kosmetyka tabeli. Lot D2 wyprowadził akapit pojemności

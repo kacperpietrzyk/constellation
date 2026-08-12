@@ -5631,6 +5631,438 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "count", atLeast: 2 },
     status: "enforced",
   },
+  // ── LOT D7 — REKOMPOZYCJA CIAŁA SPOTKAŃ (wpisy #63, #64, #65) ─────────────
+  //
+  // TRZY WPISY, JEDNA ROBOTA, TRZY POZYCJE. Rejestr mówi wprost, że każdy z
+  // nich osobno zostawia ekran GORSZYM niż był, bo wszystkie trzy opisują
+  // jedno pudełko: farbę karty stojącą na SEKCJI zamiast na LIŚCIE w środku.
+  //
+  // CO FIKSTURA DOSIĘGA, ZMIERZONE, A NIE ZAŁOŻONE. Harness powłoki oddawał na
+  // tym ekranie odmowę dostawcy z pustymi tablicami, więc bramka nie rysowała
+  // ANI JEDNEGO wiersza. Ten lot dokłada mu pętlę spotkań w stanie
+  // `permission_required` z dwoma wynikami Jamie i pustymi nadchodzącymi —
+  // spójnym stanem domeny, który rysuje kartę wyników, pusty stan
+  // nadchodzących i kontrolkę uprawnienia naraz. Wiersz nadchodzących
+  // WPUSZCZONY w jaśniejszą kartę pozostaje niedosiężny tą fiksturą i stoi
+  // wypisany w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` z warunkiem wyjścia.
+  {
+    id: "D7-01a",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "the meetings body is one column, not a work lane beside a rail",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "11",
+      value:
+        "`.mt { max-width: 74rem; padding: var(--space-6) }` — jedna kolumna; zmierzone w przeglądarce przy 1440 px: OBIE sekcje x=264, w=1136, szyny nie ma",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-body",
+      why: "LICZBA ŚCIEŻEK, nie ich szerokość: `grid-template-columns` liczy się do pikseli zależnych od okna, więc literał pinowałby liczbę, która zmienia się z szerokością. Dwie ścieżki to szyna; jedna to wpis #63 oddany",
+      app: "packages/desktop-ui/src/styles.css (.meeting-body)",
+    },
+    read: { property: "gridTemplateColumns" },
+    expect: { kind: "tracks", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01b",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and Coming up is the FIRST section, not the demoted one",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "430-451",
+      value:
+        'dwie `<section class="mt-sec">` w pionie — „Coming up” PIERWSZA, „What is left of the ones that happened” druga',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-body > .meeting-upcoming:first-child",
+      why: "DRUGA para nad tą samą pozycją, i nie jest to druga własność pierwszej: jedna kolumna z odwróconą kolejnością przechodzi D7-01a zieloną, a rejestr mówi o KOLEJNOŚCI („pierwsza sekcja”), nie tylko o szerokości. `:first-child` jest tu całą treścią selektora",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (upcomingSection w .meeting-body)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01c",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and the context rail is gone from the page, not merely restyled",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "430-451",
+      value: "prototyp nie ma na tym ekranie ŻADNEGO trzeciego pojemnika",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-context-rail",
+      why:
+        'PARA NA ZERZE JEST TU POMIAREM, NIE CISZĄ, i to jest sprawdzone w przyrządzie, a nie założone: `judgeVisualPair` rozstrzyga `kind: "count"` ZANIM dojdzie do gałęzi „selektor nie trafił w nic”, więc zero dopasowań wraca jako `measured` z liczbą 0, a nie jako NOT_MEASURED. ' +
+        "Szyna zniknęła RAZEM ze swoją treścią — kontrolka uprawnienia przeniosła się do sekcji nadchodzących, a nie została skasowana; tego para pikselowa nie dosięga i pilnuje tego asercja źródłowa w `interaction-recovery-contract.test.ts`",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx + styles.css (klasa usunięta z obu)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01d",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and the row itself is composed for the width it was moved into",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "54-55",
+      value:
+        "`.mt-up { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto }` — kiedy, treść i akcja OBOK siebie",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event",
+      why: "CZWARTA para nad pozycją #63 i JEDYNA, która patrzy do ŚRODKA przeniesionego pudełka. Trzy pierwsze mierzą, GDZIE sekcja stoi; wiersz przeniesiony na 1136 px, ale wciąż noszący jedną kolumnę zaprojektowaną na szynę 18-22 rem, przechodzi wszystkie trzy zielone i jest dokładnie tym półstanem, o którym rejestr pisze, że zostawia ekran GORSZYM niż był. Liczba ścieżek, nie ich szerokość — piksele ścieżek zależą od okna",
+      app: "packages/desktop-ui/src/styles.css (.meeting-event)",
+    },
+    read: { property: "gridTemplateColumns" },
+    expect: { kind: "tracks", equals: 3 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01e",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and the provenance chain inside it stops absorbing the free width",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "54-55, 77",
+      value:
+        "łańcuch prowenancji siedzi u prototypu w ŚRODKOWEJ ścieżce wiersza (`.mt-up-main { min-width: 0; display: block }`), a nie na nadwyżce całego wiersza",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event .evidence-thread i",
+      why: "`flexGrow`, NIE szerokość, i to jest wybór z powodu: szerokość kreski jest funkcją okna, więc literał pinowałby liczbę zależną od widoku, a to, co ten lot zepsuł, jest DEKLARACJĄ — reguła bazowa `.evidence-thread i` daje `flex: 1 1 1.5rem`, czyli udział w całej nadwyżce. W szynie nie było czego wchłaniać; po przeniesieniu wiersza na 1136 px dwie kreski urosły do ~700 px każda, czyli łańcuch pochodzenia czytał się jak dwie długie linie z plakietkami na końcach. Selektor jest ZAWĘŻONY do wiersza spotkania, bo regułę bazową dzieli onboarding, gdzie rozciąganie jest zamierzone — para bez tego zawężenia żądałaby zmiany tam",
+      app: "packages/desktop-ui/src/styles.css (.meeting-event .evidence-thread i)",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02a",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "the card is the LIST, painted on the content plane",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "40-43",
+      value:
+        "`.mt-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-content); box-shadow: var(--shadow-sm) }`; zmierzone w przeglądarce: oklch(0.152 0.012 285), czyli JAŚNIEJ od kanwy oklch(0.062 0.008 285)",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-result-list",
+      why: "`--panel-reading-bg` rozwiązuje się do `var(--surface-content)` (tokens.css), więc ta para NIE odróżnia tych dwóch nazw — i nie musi, bo to jeden plan. Odróżnia natomiast plan treści od `--surface-sunken`, na którym ta lista stała",
+      app: "packages/desktop-ui/src/styles.css (.meeting-result-list)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--panel-reading-bg" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02b",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the section holding it stopped being a raised plane",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "13-14",
+      value:
+        "`.mt-sec { margin-bottom: var(--space-8) }` — sekcja niesie SAM margines",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed",
+      why: "LITERAŁ „none”, bo „przestała być planem podniesionym” jest NIEOBECNOŚCIĄ cienia, a `--elevation-raised` nie ma tokenu wyłączonego. Bez tej pary D7-02a przechodzi nad wersją, w której farbę mają OBA pudełka — a dwie karty jedna w drugiej to ta sama wada z drugiej strony",
+      app: "packages/desktop-ui/src/styles.css (.meeting-upcoming, .meeting-completed)",
+    },
+    read: { property: "boxShadow" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  // PARY NAD `.meeting-empty` TU NIE MA, I JEST TO ZAMIANA RAMIENIA, NIE
+  // ROZLUŹNIENIE. Stała tu D7-02c, czytająca przezroczystość stanu pustego
+  // nadchodzących; fikstura bramki rysuje odtąd DRUGIE ramię tego samego
+  // wyrażenia (`MeetingsSurface.tsx:880`) — kartę z wierszem — bo tamto ramię
+  // niosło jeden podmiot, a to niesie cztery (D7-01d, D7-02e, D7-02f oraz
+  // szerokość akcji wiersza). Suma `notCovered` idzie przy tym W DÓŁ, 15 → 14:
+  // dwa wpisy o wierszach nadchodzących zostały zamknięte, jeden o stanie
+  // pustym dopisany. Mechanizm i osiągalny warunek wyjścia stoją przy wpisie
+  // w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`.
+  {
+    id: "D7-02d",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the integration plate is a card, not a well sunk into the page",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "6-9",
+      value:
+        "„Nadchodzące są WPUSZCZONE: nie da się w nich nic zmienić. Odbyte stoją na `--surface-content`, bo to na nich się pracuje” — wpuszczenie jest wydane na ZNACZENIE",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-integration",
+      why: "TRZECI podmiot tej samej pozycji, bo `--surface-sunken` siedział w arkuszu w TRZECH miejscach, a rekompozycja wystawiła wszystkie trzy wprost na kanwę. Ta tafla jest formularzem, w który wpisuje się klucz — czyli dokładnym przeciwieństwem tego, na co prototyp wydaje wpuszczenie",
+      app: "packages/desktop-ui/src/styles.css (.meeting-integration)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--panel-reading-bg" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02e",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the upcoming list is a card on the same plane, not a well",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "40-43",
+      value:
+        "`.mt-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-content); box-shadow: var(--shadow-sm) }` — TEN SAM pojemnik obsługuje obie sekcje prototypu",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-upcoming-list",
+      why: 'BLIŹNIAK D7-02a, i stoi osobno, bo to INNA deklaracja w INNEJ regule — jeden wpis nad dwiema regułami jest w tym repozytorium nazwaną klasą defektu. Ta para była do lotu D7 wypisana jako niedosiężna; fikstura powłoki rysuje odtąd wiersze nadchodzących (`availability: "offline"`, `canRead: true`), więc pojemnik istnieje i odmowa pomiaru straciła podstawę',
+      app: "packages/desktop-ui/src/styles.css (.meeting-upcoming-list)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--panel-reading-bg" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02f",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the upcoming row is sunken INSIDE that lighter card",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "6-9",
+      value:
+        "„Nadchodzące są WPUSZCZONE (`--surface-sunken`): nie da się w nich nic zmienić, więc leżą pod planem treści” — a `.mt-up` (`meetings.css:54-59`) leży w `.mt-list` stojącej na `--surface-content`",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event",
+      why: 'TO JEST SEDNO WPISU #64, a nie jego przypis: drabina ma trzy szczeble (kanwa najciemniej, karta jaśniej, wiersz wpuszczony W KARCIE) i dopiero ta para odróżnia ją od wersji, w której wpuszczenie zeszło razem z odwróceniem. Do lotu D7 stała jako niedosiężna z powodem, który był NIEPRAWDĄ — rysowanie wierszy nie wymaga `available`, a fikstura nigdy nie rysowała gałęzi „Grant access”, bo deklarowała `platform: "other"`. Czytana razem z D7-02e, która pilnuje, że karta wokół jest JAŚNIEJSZA',
+      app: "packages/desktop-ui/src/styles.css (.meeting-event)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--surface-sunken" },
+    status: "enforced",
+  },
+  {
+    id: "D7-03a",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "the section head is a sibling of the card, standing on the canvas",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "15-18",
+      value:
+        "`.mt-sec-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3) }` — zmierzone w przeglądarce: `headInsideList: false`, x=264, ta sama lewa krawędź co lista, tło przezroczyste",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed > .meeting-sec-head",
+      why: "`>` jest tu całą treścią selektora: nagłówek musi być DZIECKIEM sekcji, a nie czymkolwiek w jej wnętrzu. Liczba, nie własność, bo wpis mówi o POŁOŻENIU w drzewie",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (.meeting-sec-head)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03b",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and no head is left inside the card it escaped",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "444-449",
+      value:
+        '`<div class="mt-sec-head">` (:445) stoi PRZED `${importedHtml}` (:449), poza pojemnikiem listy',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-result-list .meeting-sec-head",
+      why: "TA PARA JEST NIEPUSTA WYŁĄCZNIE DZIĘKI D7-02a: zero dopasowań znaczyłoby to samo, gdyby karty w ogóle nie było, a D7-02a pada głośno dokładnie wtedy. Same w sobie zero na nieistniejącym podmiocie jest zielenią bez treści — para bez tej drugiej nie miałaby wartości i to jest powód, dla którego stoją razem",
+      app: "packages/desktop-ui/src/styles.css (.meeting-result-list) + MeetingsSurface.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03c",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and the head has a right-side affordance, not an empty right end",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "447",
+      value:
+        '`<button class="more" data-mt-go=\'{"kind":"sources"}\'>Open Sources →</button>`, dosunięty regułą `.mt-sec-head .more { margin-left: auto }` (meetings.css:27-29)',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed .meeting-sec-head [data-open-sources]",
+      why: "LICZBA, NIE `marginLeft`, i to jest wzorzec D2-09 z podanego tam powodu: `margin-left: auto` rozwiązuje się do UŻYTEJ szerokości piksela, więc para czytająca margines mierzyłaby wolne miejsce, a nie deklarację. Wpis mówi o BRAKU slotu, a brak jest liczbą",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (.meeting-sec-more[data-open-sources]) + RealApp.tsx (onOpenSources)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03d",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and the head is not the card's divider rule",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "15-18",
+      value:
+        "`.mt-sec-head` nie deklaruje żadnej krawędzi; zmierzone w przeglądarce: 0 px dolnej kreski",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed > .meeting-sec-head",
+      why: "TEN SAM PODMIOT CO D7-03a, ale czytany WŁASNOŚCIĄ, a nie liczony — i to nie jest powtórka: nagłówek wyprowadzony z karty, który wciąż nosi jej kreskę działową, przechodzi D7-03a zieloną i dalej wygląda jak wieko pudełka. Kreska była tym, co trzymało go w środku",
+      app: "packages/desktop-ui/src/styles.css (.meeting-sec-head)",
+    },
+    read: { property: "borderBottomWidth" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D7-03e",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and it is set at the reference's step, not at the card's",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "19-22",
+      value:
+        "`.mt-sec-head h2 { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.012em }`",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-sec-head h2",
+      why: "bez klasy sekcji, bo TEN stopień należy do OBU nagłówków tego ekranu — para przypięta do jednej sekcji byłaby zielona nad połową poprawki, co jest w tym repo nazwaną klasą defektu (jeden kształt przepisany w kilku miejscach)",
+      app: "packages/desktop-ui/src/styles.css (.meeting-sec-head h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-md" },
+    status: "enforced",
+  },
+  {
+    id: "D7-03f",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and the upcoming section has that head too, not only its twin",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "436, 445",
+      value:
+        'OBIE sekcje prototypu otwiera `<div class="mt-sec-head">` — nadchodzące (:436) pod „Coming up”, odbyte (:445) pod „What is left of the ones that happened”',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-upcoming > .meeting-sec-head",
+      why: "BLIŹNIAK D7-03a, DOPISANY PRZY ODBIORZE, bo każda para pozycji 3 była przypięta do sekcji ODBYTYCH, a jedyna czytająca obie (D7-03e) czyta stopień pisma. Nagłówek nadchodzących dało się z tego ekranu USUNĄĆ i cały przelot zostawał zielony — bramka mierząca obecność dla jednego bliźniaka i nic dla drugiego jest w tym repozytorium nazwaną klasą defektu. Podmiot rysuje się niezależnie od `upcoming.length`, więc para stała otworem także przy poprzedniej fiksturze",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (upcomingSection > .meeting-sec-head)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03g",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and its right end carries the lock badge, not nothing",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "32-37",
+      value:
+        '`.mt-sec-lock { margin-left: auto; … border-radius: var(--radius-full) }`, wstawiona w `meetings.js:438-439` jako `${icon("lock")}Outlook`',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-upcoming .meeting-sec-lock",
+      why: "PRAWY KONIEC DRUGIEJ POŁOWY #65, mierzony tak samo jak pierwsza (D7-03c liczy `[data-open-sources]` u odbytych). Ta plakietka NIE JEST ozdobą: głębia wpuszczonego wiersza (D7-02f) jest nieczytelna dla każdego, kto jej nie widzi, a prototyp pisze wprost, że wpuszczenie „działa razem z kłódką i etykietą, nigdy samo” (`meetings.css:6-9`). Liczba, nie `marginLeft`, z powodu podanego przy D7-03c",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (.meeting-sec-lock) + styles.css",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
   // PARY NAD PLAKIETKĄ UCZESTNICTWA TU NIE MA, BO TA POŁOWA #29 NIE ZOSTAŁA
   // ODDANA. Para została napisana (`[data-people-surface] [class*="_part_"]
   // svg`, podłoga 3 — tyle plakietek rysuje ta fikstura) i ZDJĘTA razem
@@ -5715,16 +6147,62 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "v3/app.css:896-904 (`.helpb`), v3/screens/calendar.js:205, :207",
     app: "packages/desktop-ui/src/CalendarSurface.tsx (`.help-mark`, `[data-meeting-help]`)",
     why:
-      "Klient scenariuszowy ODMAWIA kalendarza (`client/scenario-client.ts:81-94`: " +
-      '`availability: "provider_unavailable"`, `canRead: false`, `upcoming: []`), a przycisk rysuje ' +
+      "Harness powłoki nie ma w kalendarzu ANI JEDNEGO spotkania, a przycisk rysuje " +
       "się wyłącznie nad tygodniem, w którym stoi jakieś spotkanie — i tak ma być, bo tydzień bez " +
-      "spotkań nie tłumaczy zachowania rzeczy, której nie ma na ekranie. Wyjściem jest DRUGI zestaw " +
+      "spotkań nie tłumaczy zachowania rzeczy, której nie ma na ekranie. " +
+      "PRZYCZYNA PRZEPISANA PRZY LOCIE D7, 2026-08-12, BO POPRZEDNIA PRZESTAŁA BYĆ PRAWDĄ: ten wpis " +
+      "powoływał się na domyślną odmowę `client/scenario-client.ts` (`provider_unavailable`, " +
+      "`canRead: false`), a harness powłoki podaje odtąd WŁASNĄ pętlę spotkań. Blokuje dalej to samo " +
+      "— `upcoming: []` w tej fiksturze — ale z innego powodu i pod innym adresem, a wpis cytujący " +
+      "to, czego nie robi, jest długiem, który ta gałąź spłacała już dwa razy. Wyjściem jest DRUGI zestaw " +
       "danych (klient scenariuszowy z czytelnym kalendarzem), nie linijka. Sam KSZTAŁT tej afordancji " +
       "jest zmierzony parami D2-03a i D2-03b na Dzisiaj — obie kontrolki biorą tę samą regułę " +
       "`.help-mark` — a to, że kontrolka Kalendarza NIĄ JEST, asertuje " +
       "`desktop-ui/test/calendar.interaction.test.tsx`.",
     greenWrong:
       "Kontrolka pomocy na Kalendarzu może wrócić do dowolnego ROZMIARU bez zmiany klasy i żaden przelot pikseli tego nie zobaczy.",
+  },
+  {
+    // WPIS #64, POŁOWA, KTÓREJ NIE DA SIĘ MIEĆ RAZEM Z DRUGĄ — I MECHANIZM
+    // JEST TU WYPISANY, BO POPRZEDNIE DWA WPISY W TYM MIEJSCU MIAŁY POWÓD
+    // NIEPRAWDZIWY. Stały tu dwa wpisy mówiące, że wiersze nadchodzących
+    // wymagają `availability: "available"`, a to wygasza gałąź „Grant access".
+    // Obie połowy tego zdania były fałszywe: napis „Grant access" wymaga
+    // `platform === "macos"` RAZEM z `permission_required`
+    // (`MeetingsSurface.tsx:603-608`), a tamta fikstura deklarowała
+    // `platform: "other"`, więc rysowała „Check again" i tej gałęzi nie miała
+    // ani przez chwilę; wiersze zaś rysują się przy KAŻDYM `canRead`, nie tylko
+    // przy `available`. Fikstura stoi odtąd na `offline` z jednym wierszem, oba
+    // tamte wpisy są zamknięte parami D7-02e i D7-02f, a NIEDOSIĘŻNY ZOSTAJE
+    // PODMIOT PO DRUGIEJ STRONIE TEGO SAMEGO WYRAŻENIA.
+    //
+    // MECHANIZM, NIE NASTRÓJ: `.meeting-empty` i `.meeting-upcoming-list` to
+    // dwa ramiona jednego wyrażenia warunkowego (`MeetingsSurface.tsx:880`),
+    // więc żadna pojedyncza fikstura nie narysuje obu; bramka chodzi po JEDNYM
+    // adresie (`verify-renderer-layout.mjs:116`), więc fikstura jest jedna.
+    // Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (D7-01d, D7-02e,
+    // D7-02f oraz szerokość akcji wiersza) przeciwko JEDNEMU. Zamiana ramion
+    // po stronie odbytych kosztowałaby DWA (D7-02a, D7-03b), więc `completed`
+    // zostaje niepuste.
+    lot: "D7",
+    position: 2,
+    scope: "połowa pozycji — przezroczystość stanu pustego nadchodzących",
+    title: "the empty upcoming state is not a well cut into the canvas",
+    prototype:
+      "v3/screens/meetings.css:45-49 (`.mt-none` — sama kreskowana obwódka, wypełnienia ŻADNEGO)",
+    app: "packages/desktop-ui/src/styles.css (.meeting-empty)",
+    why:
+      "`.meeting-empty` rysuje się WYŁĄCZNIE przy `upcoming.length === 0`, a `.meeting-upcoming-list` " +
+      "wyłącznie przy niezerowym — to są dwa ramiona jednego wyrażenia w `MeetingsSurface.tsx:880`, " +
+      "więc jedna fikstura rysuje dokładnie jedno z nich, a bramka ma jedną fiksturę, bo chodzi po " +
+      "jednym adresie. Ramię z wierszami wybrano, bo niesie cztery mierzalne podmioty przeciwko " +
+      "jednemu; przy poprzedniej fiksturze ta para (D7-02c) była zmierzona i to ona ustąpiła. " +
+      "WARUNEK WYJŚCIA JEST OSIĄGALNY I NIE JEST NIM „większa fikstura”: drugi adres harnessu " +
+      "z własną pętlą spotkań i pustym `upcoming`, do którego przelot dokłada przystanek. Sama " +
+      "deklaracja stoi w arkuszu obok trzech pozostałych podmiotów tej pozycji (D7-02a, D7-02b, " +
+      "D7-02d), które są mierzone dalej.",
+    greenWrong:
+      "Stan pusty nadchodzących może wrócić do wypełnienia `--surface-sunken` na kanwie i żaden przelot pikseli tego nie zobaczy.",
   },
   {
     lot: 2,
@@ -6085,7 +6563,31 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `auditRoutedMap` liczy jedno i drugie OSOBNO: przelot po samym dopisaniu
   // par rzucił OBA drifty naraz (`holds 131 routed pairs, declared 129`
   // i `lot D6: 13 carried, 11 declared`) i nie ocenił ani jednej pary.
-  pairs: 131,
+  //
+  // 131 → 143 PRZY LOCIE D7 FAZY D, 2026-08-12, I SĄ TO TRZY NOWE POZYCJE nad
+  // ekranem, który ta mapa mierzyła dotąd JEDNĄ parą (D1-05, glif akcji
+  // pasma). Rejestr niesie tu trzy wpisy — #63, #64, #65 — i mówi wprost, że
+  // każdy z nich osobno zostawia ekran GORSZYM niż był, bo wszystkie trzy są
+  // stronami jednego pudełka: farby karty stojącej na SEKCJI zamiast na
+  // LIŚCIE w środku. Dwanaście par, bo każde z tych trzech zdań psuje się na
+  // kilku niezależnych deklaracjach — jedna kolumna z odwróconą kolejnością,
+  // karta przemalowana przy sekcji dalej podniesionej, nagłówek wyprowadzony
+  // z pudełka, ale wciąż noszący jego kreskę.
+  //
+  // 143 → 148 PRZY ODBIORZE LOTU D7, 2026-08-12, I NIE JEST TO NOWA POZYCJA.
+  // Netto pięć, brutto sześć dopisanych i jedna zdjęta. Dopisane: D7-01d
+  // (liczba ścieżek WIERSZA — trzy pary pozycji 1 mierzyły, gdzie sekcja stoi,
+  // i wszystkie trzy przechodziły zielone nad wierszem wciąż noszącym geometrię
+  // szyny), D7-01e (`flexGrow` kreski łańcucha — to jest ta deklaracja, przez
+  // którą przeniesienie wiersza zostawiło ekran GORSZYM niż był, i sama liczba
+  // ścieżek jej nie widzi), D7-02e i D7-02f (karta nadchodzących i jej wpuszczony wiersz —
+  // wypisane wcześniej jako niedosiężne z powodem, który był nieprawdą),
+  // D7-03f i D7-03g (nagłówek nadchodzących i jego kłódka — pozycja 3 miała
+  // PIĘĆ par i wszystkie pięć czytały sekcję ODBYTYCH albo obie naraz, więc
+  // bliźniak dawał się z ekranu usunąć przy zielonym przelocie). Zdjęta:
+  // D7-02c, bo jej podmiot i podmiot D7-02e to dwa ramiona jednego wyrażenia
+  // i fikstura rysuje jedno z nich — powód przy wpisie i w `notCovered`.
+  pairs: 148,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -6097,7 +6599,21 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // Wykrzyknik „At risk" mieszka w `::after`, którego `read` tej mapy nie
   // widzi, a stanów `good` i `none` fikstura nie rysuje. Oddane w arkuszu,
   // niemierzalne tym przelotem — powody przy wpisie.
-  notCovered: 13,
+  //
+  // 13 → 15 PRZY LOCIE D7: dwie własności karty nadchodzących, których fikstura
+  // bramki NIE RYSUJE, bo rysowanie ich wymaga stanu `available`, a ten
+  // wygasza gałąź „Grant access". Powody i warunki wyjścia stoją przy wpisach.
+  //
+  // 15 → 14 PRZY ODBIORZE LOTU D7, 2026-08-12, I OBA TAMTE POWODY BYŁY
+  // NIEPRAWDĄ. Wiersze nadchodzących nie wymagają `available` (wystarczy
+  // `canRead`), a gałąź „Grant access" wymaga `platform === "macos"`, którego
+  // tamta fikstura nie deklarowała — rysowała „Check again", więc koszt,
+  // którym uzasadniono odmowę pomiaru, nigdy nie był płacony. Oba wpisy są
+  // zamknięte parami (D7-02e, D7-02f). W ich miejsce wchodzi JEDEN wpis —
+  // przezroczystość stanu PUSTEGO — i on ma mechanizm, którego tamte nie
+  // miały: to jest drugie ramię tego samego wyrażenia, więc jedna fikstura
+  // rysuje dokładnie jedno z dwojga.
+  notCovered: 14,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -6248,6 +6764,39 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       positionsInBrief: 4,
       pairs: 13,
       positionsWithPairs: 4, // 1, 2, 3, 4
+      positionsWithoutPairs: [],
+    },
+    D7: {
+      // Lot D7 niesie TRZY wpisy rejestru (#63, #64, #65) i każdy z nich jest
+      // osobną pozycją — a rejestr sam pisze, że oddanie któregokolwiek Z NICH
+      // OSOBNO zostawia ekran gorszym niż był, więc lot jest jeden i pozycje są
+      // trzy. Wszystkie trzy mają parę:
+      //   1. nadchodzące stoją PIERWSZE, na pełną szerokość, a szyny nie ma
+      //      (#63 — pięć par: liczba ścieżek ciała, kolejność, nieobecność
+      //      szyny, liczba ścieżek samego WIERSZA i `flexGrow` kreski łańcucha
+      //      prowenancji w jego środku);
+      //   2. drabina jasności przestaje być odwrócona (#64 — pięć par, bo
+      //      `--surface-sunken` siedział na kanwie w TRZECH miejscach, farba
+      //      karty musiała ZEJŚĆ z sekcji i WEJŚĆ na obie listy, a wpuszczenie
+      //      wiersza W KARCIE jest osobnym szczeblem drabiny);
+      //   3. nagłówek stoi na kanwie i ma prawy koniec (#65 — siedem par:
+      //      położenie w drzewie, nieobecność w karcie, obecność wyjścia, brak
+      //      kreski działowej, stopień pisma, oraz nagłówek i kłódka DRUGIEJ
+      //      sekcji, których nie mierzyło nic).
+      //
+      // 12 → 17 PRZY ODBIORZE, 2026-08-12: sześć par dopisanych, jedna zdjęta.
+      // Arytmetyka i powód każdej stoją przy sumie `pairs` tej mapy.
+      //
+      // JEDNA WŁASNOŚĆ POZYCJI 2 NIE MA PARY I STOI WYPISANA: przezroczystość
+      // stanu PUSTEGO nadchodzących. Nie jest to dług ani odmowa z nastroju —
+      // stan pusty i karta z wierszami to dwa ramiona jednego wyrażenia, więc
+      // jedna fikstura rysuje jedno z nich, a bramka ma jedną fiksturę.
+      // Wybrane jest ramię, które niesie cztery podmioty zamiast jednego;
+      // mechanizm i osiągalny warunek wyjścia stoją przy wpisie
+      // w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`.
+      positionsInBrief: 3,
+      pairs: 17,
+      positionsWithPairs: 3, // 1, 2, 3
       positionsWithoutPairs: [],
     },
     D4: {

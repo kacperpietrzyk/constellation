@@ -4665,14 +4665,18 @@ kbd {
    sondy jest od tamtej poprawki wyprowadzony z `id="surface-title"`, a nie
    z klasy nagłówka (`scripts/verify-renderer-layout.mjs`), więc ten ekran nie
    wypada z pomiaru ani przez tę zmianę, ani przez następną. */
+/* JEDEN KONSUMENT, ZMIERZONY PRZED ZMIANĄ: `calendar-capability` pisze
+   wyłącznie `MeetingsSurface.tsx`, więc reguła bazowa schodzi na tę samą
+   drabinę co reszta ekranu (`--radius-md` + `--shadow-sm`) zamiast dostawać
+   nadpis zakresowy. */
 .calendar-capability {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-rest);
+  box-shadow: var(--shadow-sm);
 }
 .calendar-capability strong {
   font-size: var(--text-sm);
@@ -4701,9 +4705,16 @@ kbd {
   color: var(--text-secondary);
   background: var(--status-success-bg);
 }
-.meeting-lanes {
+/* CIAŁO EKRANU SPOTKAŃ — JEDNA KOLUMNA, DWIE SEKCJE JEDNA POD DRUGĄ.
+   Wpis #63 rejestru. Nazwa zmieniona z `.meeting-lanes`, bo „pasy" nazywały
+   dwa pasy, których już nie ma — a klasa mówiąca o nieistniejącym układzie to
+   ten sam dług, co komentarz cytujący to, czego nie robi. Prototyp:
+   `v3/screens/meetings.css:11` (`.mt { max-width: 74rem; padding:
+   var(--space-6) }` — jedna kolumna) i `v3/screens/meetings.js:430-451`
+   (dwie `<section class="mt-sec">` w pionie, „Coming up" pierwsza). */
+.meeting-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
   align-items: start;
 }
@@ -4718,7 +4729,16 @@ kbd {
   padding: var(--space-5);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--surface-sunken);
+  /* WPIS #64, DRUGA POŁOWA — TAFLA INTEGRACJI PRZESTAJE BYĆ WPUSZCZONA.
+     Dopóki siedziała WEWNĄTRZ podniesionej karty „Jamie results", wpuszczenie
+     dawało jeden stopień w dół od tafli nad nią. Po rekompozycji jej sekcja
+     jest przezroczysta, więc `--surface-sunken` leżałby WPROST NA KANWIE —
+     a to jest dokładnie odwrócenie, które wpis nazywa.
+     I jest drugi powód, mocniejszy od geometrii: prototyp wydaje wpuszczenie
+     na znaczenie „nic tu nie da się zmienić" (`v3/screens/meetings.css:6-9`),
+     a to jest FORMULARZ, w który wpisuje się klucz. */
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
 }
 @container (max-width: 46rem) {
   .meeting-integration {
@@ -4798,75 +4818,132 @@ kbd {
 .meeting-integration-actions .quiet-button {
   min-height: 2.75rem;
 }
+/* SEKCJA JEST PRZEZROCZYSTA, KARTĄ JEST LISTA W ŚRODKU — wpisy #64 i #65
+   naraz. Farba, którą nosiła `.meeting-completed`, robiła trzy rzeczy jednym
+   pudełkiem: trzymała nagłówek w środku (#65), stała jako przeciwwaga
+   wpuszczonej szyny (#64) i zabierała szerokość, przez którą nadchodzące
+   zeszły do szyny (#63). Zdjęta z sekcji, założona na listę — prototyp:
+   `v3/screens/meetings.css:13-14` (`.mt-sec` niesie SAM margines) wobec
+   `:40-43` (`.mt-list` niesie obwódkę, promień, tło i cień). */
 .meeting-upcoming,
 .meeting-completed {
   display: grid;
   gap: var(--space-3);
   min-width: 0;
 }
-.meeting-completed {
-  padding: var(--space-5);
-  border: 1px solid var(--panel-reading-border);
-  border-radius: var(--radius-xl);
-  background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-raised);
-}
-.meeting-context-rail {
-  display: grid;
-  gap: var(--space-5);
-  min-width: 0;
-  padding: var(--space-5);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
-  box-shadow: inset 0 1px 0 var(--border-subtle);
-}
-.meeting-context-rail > header {
-  display: grid;
-  gap: var(--space-1);
-}
-.meeting-context-rail > header p {
-  margin: 0;
-}
-.meeting-context-rail > header h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-}
-.meeting-upcoming > header,
-.meeting-completed > header {
+/* NAGŁÓWEK SEKCJI STOI NA KANWIE — wpis #65. Bez wypełnienia i BEZ KRESKI
+   POD SPODEM: kreska, którą miał, była kreską działową karty, z której ten
+   nagłówek właśnie wyszedł (prototyp mierzy tu 0 px). Prawy koniec dosuwa
+   `margin-left: auto` na jedynym dalszym dziecku — plakietce albo wyjściu.
+   Prototyp: `v3/screens/meetings.css:15-38`. Ten sam kształt, który Dzisiaj
+   wozi od wpisu #2 (`today.module.css` — `.sectionHead`, też `<div>`). */
+.meeting-sec-head {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+  gap: var(--space-3);
 }
-.meeting-upcoming > header h2,
-.meeting-upcoming > header h3,
-.meeting-completed > header h2 {
+.meeting-sec-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.012em;
 }
-.meeting-upcoming > header span,
-.meeting-completed > header span {
+.meeting-sec-count {
   color: var(--text-quaternary);
   font-size: var(--text-xs);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.meeting-sec-more {
+  margin-left: auto;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transition: color var(--duration-fast);
+}
+.meeting-sec-more:hover {
+  color: var(--accent);
+}
+.meeting-sec-lock {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+/* WYMAGANE, NIE OZDOBNE: globalna reguła `svg { width: 1rem; height: 1rem }`
+   postawiłaby glif 16 px w plakietce składanej stopniem 11 px. Prototyp
+   podaje tę samą liczbę wprost (`v3/screens/meetings.css:38`). */
+.meeting-sec-lock svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+/* KARTA NADCHODZĄCYCH. `overflow: hidden` przycina wpuszczone wypełnienie
+   wierszy do zaokrąglonych rogów — wiersze są tu `<article>`, a jedyna
+   kontrolka w środku jest odsunięta od krawędzi wyściółką wiersza, więc
+   pierścień ogniska nie stoi na tej krawędzi. Lista wyników NIE dostaje tej
+   deklaracji i powód stoi przy niej. */
+.meeting-upcoming-list {
+  display: grid;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+/* WIERSZ WPUSZCZONY W JAŚNIEJSZĄ KARTĘ — I TO JEST CEL, NIE WADA.
+   Prototyp mówi to własnym arkuszem (`v3/screens/meetings.css:6-9, 52-62`):
+   nadchodzące leżą pod planem treści, bo nie da się w nich nic zmienić.
+   Odwróceniem, które wpis #64 nazywa, było `--surface-sunken` położony
+   WPROST NA KANWIE — czyli szyna, nie ten wiersz.
+   WYŚCIÓŁKA JEST TU WŁASNA: wiersz brał ją dotąd z karty, którą sekcja
+   przestała być.
+
+   TRZY ŚCIEŻKI, BO WIERSZ PRZESTAŁ MIESZKAĆ W SZYNIE. Jedna kolumna była
+   geometrią pudełka szerokiego na 18-22 rem i nigdzie indziej nie była
+   wystawiona na próbę. Przeniesienie wiersza na pełną szerokość bez
+   przeliczenia jego środka jest dokładnie tym półstanem, przed którym
+   ostrzega rejestr („każdy z tych trzech osobno zostawia ekran gorszym”):
+   godzina, treść i akcja rozjeżdżały się wtedy w pionie przez całe 1136 px.
+   Prototyp trzyma tu `7.5rem minmax(0, 1fr) auto` (`v3/screens/
+   meetings.css:54-55`, `.mt-up`) i nasze TRZY dzieci wiersza — `.meeting-time`,
+   `.meeting-event-body`, `.meeting-block-action` — siadają na te ścieżki
+   jeden do jednego. Zapytanie 47,5 rem niżej składa to z powrotem do jednej
+   kolumny. */
 .meeting-event {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: start;
-  padding: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
 }
+.meeting-event:last-child {
+  border-bottom: 0;
+}
+/* KIEDY, ZŁOŻONE W KOLUMNĘ — ścieżka ma 7,5 rem, a „Wed 09:00” obok „45 min”
+   w jednym wierszu zawijało się w niej na dwa wiersze o nierównej linii bazowej.
+   Prototypowe `.mt-up-when` (`v3/screens/meetings.css:70-73`) jest kolumną
+   z tego samego powodu. Zapytanie 47,5 rem przywraca układ poziomy, bo tam
+   ścieżka jest znowu pełną szerokością wiersza. */
 .meeting-time {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-top: 0.0625rem;
 }
 .meeting-time strong {
   font-size: var(--text-sm);
@@ -4923,6 +5000,33 @@ kbd {
   color: var(--text-quaternary);
   border-style: dashed;
 }
+/* ŁĄCZNIK O STAŁEJ DŁUGOŚCI — TYLKO W TYM WIERSZU, i to jest naprawa regresji,
+   którą ten lot sam wprowadził. Reguła bazowa wyżej daje łącznikowi `flex:
+   1 1 1.5rem`, czyli udział w CAŁEJ wolnej szerokości; do tej pory nigdy tego
+   nie robiła w wierszu spotkania, bo szyna nadpisywała cały motyw na pionowy
+   — własną, skasowaną razem z nią regułą nad `.evidence-thread`, w której
+   kreska miała 1×8 px. Po skasowaniu szyny dwie kreski zaczęły wchłaniać całą
+   nadwyżkę wiersza — zmierzone w oknie 1675 px: ~700 px na kreskę, czyli
+   łańcuch pochodzenia czytany jako dwie długie linie z trzema plakietkami na
+   końcach. Reguła bazowa ZOSTAJE NIETKNIĘTA, bo dzieli ją onboarding
+   (`OnboardingFlow.tsx:126-133`), gdzie rozciąganie jest zamierzone; ten
+   nadpis jest wąski jak wiersz, którego dotyczy. */
+.meeting-event .evidence-thread i {
+  flex: 0 0 1.5rem;
+}
+/* PARY „ETYKIETA — WARTOŚĆ” STOJĄ W DWÓCH ŚCIEŻKACH, nie jedna pod drugą.
+   Prototypowe `.mt-prep` jest kolumną pozycji (`v3/screens/meetings.css:107`),
+   ale każda POZYCJA jest siatką z osobną ścieżką klucza
+   (`meetings.css:108-112`, `13rem minmax(0, 1fr) auto`). Stos etykieta-nad-
+   wartością był drugą połową geometrii szyny: w wierszu na 1136 px zostawiał
+   „Orientation” samotnie w linii szerokiej na całą treść. Pojemnik zostaje
+   jedną kolumną, bo to jest `.mt-prep`.
+   ŚCIEŻKI SĄ DWIE, NIE TRZY, I TO JEST ADAPTACJA, NIE PRZEOCZENIE: trzecia
+   ścieżka prototypu (`auto`) niesie u niego znacznik na końcu pozycji, a nasza
+   para ma dokładnie dwoje dzieci — `<strong>` i `<span>`. Pusta ścieżka
+   zajmowałaby zero pikseli i nie zmieniała nic poza tym, że reguła obiecywałaby
+   miejsce, którego nikt nie zajmuje. Jedyne miejsce renderu: `MeetingsSurface
+   .tsx:934`, czyli wnętrze wiersza nadchodzących. */
 .meeting-brief {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -4930,7 +5034,9 @@ kbd {
 }
 .meeting-brief > div {
   display: grid;
-  gap: var(--space-1);
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
 }
 .meeting-brief strong {
   color: var(--text-tertiary);
@@ -4942,65 +5048,69 @@ kbd {
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
 }
+/* ZMIERZONE W PRZEGLĄDARCE, NIE WYWNIOSKOWANE Z DIFFA. Szyna nadpisywała tę
+   kontrolkę `justify-self: stretch`, a plan lotu D7 mówił, że skasowanie
+   nadpisu wystarczy, bo reguła bazowa jest poprawna na pełnej szerokości. NIE
+   BYŁA: `.meeting-event` jest siatką, a domyślne `justify-items: stretch`
+   rozciąga element siatki tak samo jak skasowany nadpis. Zmierzone po
+   rekompozycji w oknie 1675 px: przycisk 1470 px szerokości. Reguła bazowa
+   nigdy nie była wystawiona na próbę, bo ten wiersz istniał WYŁĄCZNIE w szynie.
+   POWÓD PRZEPISANY PRZY ODBIORZE, BO POPRZEDNI PRZESTAŁ BYĆ PRAWDĄ, I DRUGI
+   RAZ PO POMIARZE. Powoływał się na „jednokolumnowy wiersz, w którym akcja
+   stoi POD treścią”, a wiersz ma odtąd trzy ścieżki i akcja stoi OBOK niej,
+   w trzeciej. Powoływał się też na zapytanie 47,5 rem jako na miejsce, gdzie
+   ta deklaracja pracuje — nie pracuje tam: przycisk dostaje w nim własne
+   `width: 100%` niżej i jest to zamierzone, bo tam wiersz jest węższy od
+   napisu. Zmierzone po rekompozycji w oknie 1440 px: ścieżka trzecia
+   123,047 px przy przycisku 123 px, czyli tę wadę naprawia LICZBA ŚCIEŻEK,
+   a nie ta linijka. Zostaje jako pas bezpieczeństwa nad `justify-items:
+   stretch`, które jest wartością POCZĄTKOWĄ siatki i wraca samo, gdyby wiersz
+   kiedykolwiek stracił trzecią ścieżkę — czyli dokładnie w tej postaci, w
+   której zmierzono 1470 px. */
 .meeting-block-action {
+  justify-self: start;
   min-height: 2.75rem;
   white-space: nowrap;
 }
+/* CZWARTE DZIECKO SIATKI, WSTAWIONE Z RĘKI. To zdanie rysuje się dokładnie
+   wtedy, gdy przycisk obok jest wyłączony, a w siatce o trzech ścieżkach
+   auto-umieszczenie posadziłoby je w PIERWSZEJ kolumnie następnego wiersza —
+   czyli pod godziną, z dala od kontrolki, którą tłumaczy. `2 / -1` stawia je
+   pod treścią i akcją naraz. Selektor jest zawężony do wiersza spotkania, bo
+   wspólną deklarację wyglądu (niżej, razem z `.capture-undo-unavailable`)
+   dzieli z kontrolką, która w żadnej siatce nie siedzi. */
+.meeting-event > .meeting-block-unavailable {
+  grid-column: 2 / -1;
+}
+/* STAN PUSTY PRZESTAJE BYĆ WPUSZCZONY — druga połowa wpisu #64. Sekcje są
+   przezroczyste, więc ten kafel leży teraz WPROST NA KANWIE, a `--surface-
+   sunken` na kanwie jest właśnie tym odwróceniem, które wpis nazywa.
+   Prototypowe `.mt-none` (`v3/screens/meetings.css:45-49`) nie ma wypełnienia
+   ŻADNEGO: sama kreskowana obwódka, `--radius-md`, `--space-4`.
+   NADPISY SZYNY SĄ TU WŁOŻONE W BAZĘ, NIE COFNIĘTE. Bez nich stan pusty
+   wróciłby do `min-height: 16rem` i `--space-8` — a to jest dokładnie ten
+   jeden stan, który fikstura bramki układu naprawdę rysuje. */
 .meeting-empty {
   display: grid;
   justify-items: start;
   gap: var(--space-2);
-  min-height: 16rem;
-  align-content: center;
-  padding: var(--space-8);
-  border: 1px dashed var(--border-default);
-  border-radius: var(--radius-xl);
-  background: var(--surface-sunken);
-}
-.meeting-empty--compact {
-  min-height: 12rem;
-  padding: var(--space-6);
-}
-.meeting-context-rail .calendar-capability {
-  padding: var(--space-4);
-  background: var(--panel-reading-bg);
-}
-.meeting-context-rail .meeting-empty {
   min-height: 0;
-  padding: var(--space-5) var(--space-4);
-  border-radius: var(--radius-lg);
-}
-.meeting-context-rail .meeting-empty svg {
-  width: 2rem;
-}
-.meeting-context-rail .meeting-empty h4 {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-.meeting-context-rail .evidence-thread {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: var(--space-1);
-  overflow: visible;
-}
-.meeting-context-rail .evidence-thread i {
-  width: 1px;
-  min-width: 1px;
-  height: var(--space-2);
-  margin-left: var(--space-3);
-}
-.meeting-context-rail .evidence-node {
-  white-space: normal;
-}
-.meeting-context-rail .meeting-block-action {
-  justify-self: stretch;
+  align-content: center;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: none;
 }
 .meeting-empty svg {
-  width: 2.5rem;
+  width: 2rem;
   fill: none;
   stroke: var(--text-quaternary);
   stroke-width: 1.25;
+}
+.meeting-empty h4 {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
 }
 .meeting-empty h3 {
   margin: var(--space-2) 0 0;
@@ -5017,6 +5127,18 @@ kbd {
 .meeting-results-browser {
   min-width: 0;
 }
+/* KARTA WYNIKÓW — wpis #64. Plan treści, nie plan wpuszczony: to na nich się
+   pracuje (`v3/screens/meetings.css:6-9`, `:40-43` — `.mt-list { background:
+   var(--surface-content) }`). Chrom, który stał na sekcji, siedzi tutaj.
+
+   BEZ `overflow: hidden`, W ODRÓŻNIENIU OD KARTY NADCHODZĄCYCH, I TO JEST
+   POMIAR, NIE NIEDOPATRZENIE. Wiersz tej listy jest `<button>` na całą
+   szerokość karty, a jego ognisko rysuje `--focus-ring` — LISTĘ CIENI
+   ZEWNĘTRZNYCH (`tokens.css` — `0 0 0 0.0625rem var(--accent)` i dwa dalsze).
+   Przycięcie na przodku wycięłoby pierścień pierwszego i ostatniego wiersza
+   przy krawędzi karty. Rogi domykają zamiast tego same wiersze skrajne, niżej.
+   Precedens tej klasy wady stoi w break-teście 9 tego repozytorium: literał
+   `box-shadow` zabrał akcji głównej pierścień ogniska, a bramka była zielona. */
 .meeting-result-list {
   display: grid;
   align-content: start;
@@ -5024,11 +5146,22 @@ kbd {
   padding: 0;
   list-style: none;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
 }
 .meeting-result-list > li:not(:last-child) {
   border-bottom: 1px solid var(--border-subtle);
+}
+/* Wypełnienie zaznaczonego i naciśniętego wiersza kończy się na promieniu
+   karty zamiast wystawać za niego kwadratowym rogiem. */
+.meeting-result-list > li:first-child .meeting-result-row {
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
+}
+.meeting-result-list > li:last-child .meeting-result-row {
+  border-end-start-radius: var(--radius-md);
+  border-end-end-radius: var(--radius-md);
 }
 /* Long Jamie histories: rows outside the viewport skip layout and paint. */
 .meeting-result-list > li {
@@ -5413,12 +5546,13 @@ kbd {
   background: var(--status-warning-bg);
   color: var(--text-secondary);
 }
+/* Szkielet zapowiada UKŁAD, KTÓRY PRZYJEDZIE: jedna kolumna, dwie sekcje. */
 .meeting-skeleton {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 .meeting-skeleton div {
   min-height: 12rem;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-raised);
 }
 .meeting-consent-backdrop {
@@ -5493,16 +5627,8 @@ kbd {
 }
 
 @container (max-width: 68rem) {
-  .meeting-lanes {
-    grid-template-columns: 1fr;
-  }
-  .meeting-context-rail {
-    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.7fr);
-    align-items: start;
-  }
-  .meeting-context-rail > header {
-    grid-column: 1 / -1;
-  }
+  /* Trzy reguły szyny zniknęły stąd razem z nią. Ciało ekranu jest
+     jednokolumnowe przy KAŻDEJ szerokości, więc nie ma czego zwijać. */
   .meeting-result-row {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto auto;
@@ -5534,16 +5660,8 @@ kbd {
   .meeting-surface {
     --surface-gutter: var(--space-4);
   }
-  .meeting-completed,
-  .meeting-context-rail {
-    padding: var(--space-4);
-  }
-  .meeting-context-rail {
-    grid-template-columns: 1fr;
-  }
-  .meeting-context-rail > header {
-    grid-column: auto;
-  }
+  /* Wyściółka sekcji zniknęła stąd, bo zniknęła z sekcji: karta ma dziś
+     wyściółkę na wierszu, a nie na pudełku wokół nagłówka. */
   .meeting-integration--connected {
     align-items: stretch;
   }
@@ -5563,7 +5681,7 @@ kbd {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .meeting-upcoming > header {
+  .meeting-sec-head {
     align-items: flex-start;
     flex-wrap: wrap;
     gap: var(--space-2);
@@ -5596,14 +5714,24 @@ kbd {
     grid-template-columns: 1fr;
     gap: var(--space-3);
   }
+  /* POZIOMO, BO ŚCIEŻKA JEST TU CAŁYM WIERSZEM. Ta reguła deklarowała dotąd
+     `grid-template-columns` na pudełku, które jest `display: flex` — czyli
+     NIC, przez cały czas swojego istnienia. Kolumna 7,5 rem z bazy nie ma tu
+     sensu, więc składamy „kiedy” z powrotem w jedną linię. */
   .meeting-time {
-    grid-template-columns: auto 1fr;
+    flex-direction: row;
     align-items: baseline;
     gap: var(--space-2);
+    padding-top: 0;
   }
-  .meeting-block-action {
-    justify-self: start;
+  /* `2 / -1` z bazy w siatce o JEDNEJ ścieżce daje linię startu równą linii
+     końca, a to według specyfikacji zamienia się w `span 1` OD LINII 2 — czyli
+     w kolumnę niejawną dopisaną z prawej. Wąski tryb dostaje więc własne
+     `1 / -1`, zamiast dziedziczyć wartość, która tu znaczy co innego. */
+  .meeting-event > .meeting-block-unavailable {
+    grid-column: 1 / -1;
   }
+  .meeting-brief > div,
   .meeting-brief {
     grid-template-columns: 1fr;
   }
@@ -5671,6 +5799,7 @@ kbd {
   .calendar-capability,
   .meeting-integration,
   .meeting-empty,
+  .meeting-upcoming-list,
   .meeting-result-list,
   .meeting-result-detail,
   .meeting-result-transcript,

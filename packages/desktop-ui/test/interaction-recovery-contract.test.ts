@@ -511,23 +511,63 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("keeps Jamie results ahead of provider context in a raised work plane", () => {
-    const completedIndex = meetings.indexOf('className="meeting-completed"');
-    const contextIndex = meetings.indexOf('className="meeting-context-rail"');
-    assert.ok(completedIndex > -1, "Jamie result plane must exist");
-    assert.ok(contextIndex > completedIndex, "Provider context follows work");
+  // TEN TEST ASERTOWAŁ WADĘ JAKO KONTRAKT, więc rekompozycja ciała Spotkań
+  // (wpisy #63/#64/#65) przepisuje go razem z nazwą i uzasadnieniami, zamiast
+  // go łatać. Trzy zdania rejestru mówiły o jednym pudełku: nadchodzące
+  // zdegradowane do prawej szyny, drabina jasności odwrócona, nagłówek
+  // wciągnięty do środka karty.
+  it("stacks Coming up above Jamie results, each head on the canvas over its own list card", () => {
+    assert.ok(
+      meetings.includes('className="meeting-upcoming"'),
+      "Coming up must exist as its own section",
+    );
+    assert.ok(
+      meetings.includes('className="meeting-completed"'),
+      "Jamie results must exist as its own section",
+    );
+    // KOLEJNOŚĆ CZYTANA Z MIEJSCA MONTAŻU, NIE Z MIEJSCA DEKLARACJI, i to jest
+    // poprawka znaleziona przez break-test, a nie przy pisaniu. Pierwsza wersja
+    // tej asercji porównywała `indexOf('className="meeting-upcoming"')`
+    // z `indexOf('className="meeting-completed"')` — czyli kolejność, w jakiej
+    // stoją w pliku STAŁE, a nie kolejność, w jakiej powierzchnia je RENDERUJE.
+    // Złamanie zamieniające `{upcomingSection}` z `{completedSection}` wróciło
+    // przez to ZIELONE: czytelnik widział wyniki Jamie nad nadchodzącymi,
+    // a asercja tego nie widziała. Wpis #63 mówi o tym, co widzi czytelnik.
+    const body = meetings.indexOf('<div className="meeting-body">');
+    assert.ok(body > -1, "The meetings body must be one column");
+    const mounted = meetings.slice(body, body + 200);
+    const upcomingMountedAt = mounted.indexOf("{upcomingSection}");
+    const completedMountedAt = mounted.indexOf("{completedSection}");
+    assert.ok(upcomingMountedAt > -1, "Coming up must be mounted in the body");
+    assert.ok(
+      completedMountedAt > upcomingMountedAt,
+      "Coming up leads; Jamie results follow it in the same column",
+    );
     assert.match(meetings, /\{jamieConnection\}[\s\S]*meeting-results-browser/);
     assert.match(
       styles,
-      /\.meeting-lanes\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(18rem, 22rem\)/s,
+      /\.meeting-body\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
     );
+    // CHROM KARTY SIEDZI NA LIŚCIE, NIE NA SEKCJI — to jest cały ruch, który
+    // domyka trzy wpisy naraz.
     assert.match(
       styles,
-      /\.meeting-completed\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+      /\.meeting-result-list\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--shadow-sm\)/s,
     );
+    // Szyna znika z arkusza i z renderu. W arkuszu nie ma po niej ANI JEDNEGO
+    // znaku; w źródle powierzchni zostaje wyłącznie wzmianka historyczna
+    // w komentarzu, więc pytamy o UŻYCIE, nie o wyraz.
+    assert.doesNotMatch(styles, /\.meeting-context-rail/);
+    assert.doesNotMatch(meetings, /className="meeting-context-rail"/);
+    // KONTROLKA UPRAWNIENIA NIE MOŻE ZGINĄĆ RAZEM Z SZYNĄ, KTÓRA JĄ NIOSŁA.
+    // To jedyne miejsce w aplikacji wołające `requestCalendarAccess()` i jedyny
+    // „Grant access"/„Check again" na tym ekranie — a martwy przycisk
+    // uprawnienia przeszedł już przez cztery podpisane wydania (PR #143).
+    // Żadna para pikselowa tego nie dosięga: bramka mierzy stan, w którym
+    // wiersze nadchodzących się nie rysują.
     assert.match(
-      styles,
-      /\.meeting-context-rail\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+      meetings,
+      /<section className="meeting-upcoming"[\s\S]{0,3000}\{calendarCapability\}/s,
     );
     assert.doesNotMatch(
       meetings,

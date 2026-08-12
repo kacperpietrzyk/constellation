@@ -372,6 +372,7 @@ test("Meetings carries the attachment topic, and nothing hides in a title", asyn
           inspectorHost,
           onInspectorOpen: () => undefined,
           onMeetingSelected: () => undefined,
+          onOpenSources: () => undefined,
         }),
       );
     });

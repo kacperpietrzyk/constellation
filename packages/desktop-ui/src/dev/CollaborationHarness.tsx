@@ -10,6 +10,7 @@ import {
   PrincipalIdSchema,
   ProjectIdSchema,
   ProjectTemplateIdSchema,
+  type MeetingLoopSurface,
   StrategicRecordIdSchema,
   TaskAssignmentIdSchema,
   SpaceIdSchema,
@@ -95,11 +96,183 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
     },
   }) as unknown as RendererQueryResponse;
 
+/* SPOTKANIA W HARNESSIE POWŁOKI — FIKSTURA, KTÓREJ TU NIE BYŁO.
+ *
+ * `?surface=collaboration` jest JEDYNYM adresem, po którym chodzi bramka
+ * układu, a `getMeetingLoop` oddawał tu odmowę dostawcy z pustymi tablicami.
+ * Ekran Spotkań rysował więc dwa puste stany i nic więcej — a para nad kartą
+ * wyników wracałaby `NOT_MEASURED`, czyli jako awaria przyrządu nad poprawnym
+ * kodem. To jest w tym repozytorium nazwana klasa defektu („pusta fikstura
+ * chroni fałszywą asercję"), więc fikstura rośnie, a podłoga nie schodzi.
+ *
+ * DLACZEGO `offline` Z WIERSZAMI, A NIE `permission_required` Z PUSTYM
+ * `upcoming`. Ta fikstura stała przez jeden przebieg na drugim wariancie,
+ * a jego zapisany powód — „`available` wygasiłoby gałąź «Grant access»" —
+ * BYŁ NIEPRAWDĄ, i to sprawdzalną w dwóch linijkach. Napis na tym przycisku
+ * bierze się z `platform === "macos" && availability === "permission_required"`
+ * (`MeetingsSurface.tsx:603-608`); ta fikstura deklarowała `platform: "other"`,
+ * więc rysowała „Check again", a „Grant access" NIE POJAWIŁO SIĘ tu ani razu.
+ * Koszt, którym uzasadniono odmowę pomiaru, nigdy nie był płacony.
+ *
+ * `permission_required` Z WIERSZAMI TO STAN, KTÓREGO NIE PRODUKUJE NIC.
+ * Natywny czytnik macOS wydaje tę wartość WYŁĄCZNIE z `canRead: false`
+ * (`desktop-main/native/macos-calendar/main.swift:128-136`), a bez odczytu nie
+ * ma skąd wziąć wydarzeń. Dopisanie wierszy obok tej wartości byłoby fiksturą
+ * udającą stan aplikacji, który nie istnieje — czyli zielenią nad zmyśleniem.
+ *
+ * `offline` JEST DOKŁADNIE TYM STANEM, KTÓREGO TU BRAKOWAŁO, i ma na to własne
+ * zdanie w produkcie: „Calendar is offline. Showing the last safe data instead
+ * of pretending it is current." Odczyt działa (`canRead: true`), zapis nie,
+ * wydarzenia są ostatnie bezpieczne — a kontrolka uprawnienia STOI DALEJ, bo
+ * `MeetingsSurface` rysuje ją przy każdym `availability !== "available"`. To
+ * jest spełniony, wypisany wcześniej warunek wyjścia: „stan aplikacji, w którym
+ * wiersze się rysują, a kontrolka uprawnienia wciąż stoi".
+ *
+ * CO TA ZAMIANA KOSZTUJE, POWIEDZIANE WPROST. Nadchodzące rysują ALBO stan
+ * pusty, ALBO kartę z wierszami — to dwa ramiona jednego wyrażenia
+ * (`MeetingsSurface.tsx:880`), a bramka chodzi po JEDNYM adresie
+ * (`verify-renderer-layout.mjs:116`), więc jedna fikstura rysuje jedno ramię.
+ * Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (farba karty, farba
+ * wpuszczonego wiersza, jego trzy ścieżki, szerokość akcji) przeciwko JEDNEMU
+ * (przezroczystość stanu pustego). Ten jeden stoi wypisany w
+ * `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` z prawdziwym mechanizmem i prawdziwym
+ * warunkiem wyjścia. `completed` zostaje NIEPUSTE — wymiana ramion po tamtej
+ * stronie kosztowałaby dwie pary zamiast jednej.
+ *
+ * CZAS WYPROWADZONY Z ZEGARA, NIGDY WPISANY. Wpisana data położyła `main`
+ * tego repozytorium dwa razy, bez zmiany w kodzie. Dotyczy to tak samo
+ * wydarzenia w PRZYSZŁOŚCI: `hoursAhead` liczy od tego samego `now`.
+ */
+const meetingLoopFixture = (): MeetingLoopSurface => {
+  const now = Date.now();
+  const daysAgo = (days: number, hour: number) => {
+    const at = new Date(now - days * 86_400_000);
+    at.setHours(hour, 0, 0, 0);
+    return at.toISOString();
+  };
+  const hoursAhead = (hours: number) =>
+    new Date(now + hours * 3_600_000).toISOString();
+  const meeting = (
+    index: number,
+    title: string,
+    days: number,
+    summaryMarkdown: string,
+  ) => ({
+    id: `00000000-0000-4000-8000-00000000031${index}`,
+    workspaceId,
+    spaceId,
+    connectionId: "jamie-workspace",
+    externalMeetingId: `meeting-collaboration-${index}`,
+    title,
+    startedAt: daysAgo(days, 9),
+    endedAt: daysAgo(days, 10),
+    summaryMarkdown,
+    participants: [],
+    workItems: [],
+    contentHash: String(index).repeat(64),
+    triage: "ready" as const,
+    missingComponents: [],
+    version: 1,
+    updatedAt: daysAgo(days, 11),
+  });
+  return {
+    capability: {
+      platform: "macos",
+      provider: "eventkit",
+      availability: "offline",
+      canRead: true,
+      canWriteOwnedBlocks: false,
+      detailCode: "scenario_offline",
+    },
+    // JEDEN WIERSZ, NIE DWA. Drugi nie kupuje ANI JEDNEJ pary więcej — każdy
+    // podmiot tej sekcji jest czytany selektorem klasy albo liczony na jeden —
+    // a kosztowałby bajty w paczce, którą i tak trzeba trzymać uczciwie.
+    // `canWriteOwnedBlocks: false` jest tu wybrane, a nie odziedziczone: rysuje
+    // CZWARTE dziecko siatki wiersza (`.meeting-block-unavailable`), czyli
+    // jedyny stan, w którym widać, czy zostało ono w niej posadzone.
+    upcoming: [
+      {
+        event: {
+          provider: "fixture" as const,
+          calendarExternalId: "Praca",
+          eventExternalId: "event-collaboration-prep",
+          revision: "rev-1",
+          title: "Przegląd wdrożenia z zespołem klienta",
+          startsAt: hoursAhead(20),
+          endsAt: hoursAhead(21),
+          isAllDay: false,
+          location: "Google Meet",
+          attendees: [
+            {
+              name: "Kacper",
+              email: "kacper@example.com",
+              organizer: true,
+              response: "accepted" as const,
+            },
+            {
+              name: "Alex",
+              email: "alex@example.com",
+              organizer: false,
+              response: "accepted" as const,
+            },
+          ],
+        },
+        brief: {
+          eventExternalId: "event-collaboration-prep",
+          deterministic: true as const,
+          generatedAt: new Date(now).toISOString(),
+          orientation: [
+            {
+              kind: "project" as const,
+              recordId: "00000000-0000-4000-8000-000000000320",
+              spaceId,
+              label: "Wdrożenie Northstar",
+              fact: "Pilot wchodzi w przegląd wydania",
+              updatedAt: daysAgo(1, 9),
+            },
+          ],
+          openLoops: [
+            {
+              kind: "waiting" as const,
+              recordId: "00000000-0000-4000-8000-000000000321",
+              spaceId,
+              label: "Potwierdzenie właściciela wdrożenia",
+              fact: "Czeka na bezpieczeństwo",
+              updatedAt: daysAgo(2, 9),
+            },
+          ],
+          relevantSources: [],
+        },
+      },
+    ],
+    completed: [
+      meeting(
+        1,
+        "Decyzja o pilocie",
+        2,
+        "## Wynik\n\n- **Pilot pozostaje za flagą** do czasu potwierdzenia recovery.",
+      ),
+      meeting(
+        2,
+        "Tygodniowy przegląd wdrożenia i otwartych decyzji",
+        4,
+        "## Najważniejsze ustalenia\n\n1. Zespół zamyka etap przygotowania.\n2. Następny przegląd obejmie **ryzyko i termin**.",
+      ),
+    ],
+    // ZGODNE Z DEKLAROWANĄ ZDOLNOŚCIĄ, nie wpisane obok niej. `"partial"` przy
+    // kalendarzu, który sam o sobie mówi „offline", byłoby tą samą
+    // niespójnością, którą ta fikstura właśnie przestała nieść.
+    freshness: "offline",
+    generatedAt: new Date(now).toISOString(),
+  };
+};
+
 const client = createScenarioClient({
   documentState: (documentId) =>
     documentId === libraryDocumentIds.runbook
       ? libraryNoteState(taskId)
       : undefined,
+  meetingLoop: meetingLoopFixture(),
   executeCommand: (command): RendererCommandResponse => {
     if (
       command.commandName !== "attention.markRead" &&

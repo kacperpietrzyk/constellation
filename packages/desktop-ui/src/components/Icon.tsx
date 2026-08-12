@@ -73,7 +73,8 @@ export type IconName =
   | "panel"
   | "fields"
   | "folder"
-  | "folder-loose";
+  | "folder-loose"
+  | "lock";
 
 export const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
@@ -239,6 +240,31 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
         strokeDasharray="3.6 3"
         d="M3 6.3a1.5 1.5 0 0 1 1.5-1.5h4.35l1.8 2.4H19.5a1.5 1.5 0 0 1 1.5 1.5v9.6a1.5 1.5 0 0 1-1.5 1.5H4.5a1.5 1.5 0 0 1-1.5-1.5V6.3Z"
       />
+    ),
+    /* `v3/app.js:51`, scaled x1.5 like the whole set. THIRD OWNER, PHASE D LOT
+       D7 (2026-08-12), for registry entry #65: the „Coming up" section head
+       carries a pill saying what the reader is looking at and that none of it
+       can be edited from here (`v3/screens/meetings.js:437-438` — `<span
+       class="mt-sec-lock">${icon("lock")}Outlook</span>`).
+
+       THE GLYPH IS NOT DECORATION OF THE DEPTH — IT IS WHAT MAKES THE DEPTH
+       READABLE. The prototype spends `--surface-sunken` on the upcoming rows to
+       mean „nothing here can be changed" (`v3/screens/meetings.css:6-9`) and
+       says in the same breath that it works together with the lock and the
+       label, never alone. Depth alone is invisible to a reader who cannot see
+       it; the pill is the part that survives.
+
+       THE NUMBER, MEASURED ON THIS MACHINE 2026-08-12 AND NOT EXTRAPOLATED —
+       and it is a CEILING for the glyph, not the glyph's own share. Hot-path
+       JS went 634 768 → 635 003 B raw and 172 631 → 172 681 B gzip across the
+       whole lot, i.e. +50 B gzip; that build also carries `RealApp.tsx`'s new
+       `onOpenSources` closure, which is hot too. Nothing else in D7 touches
+       the hot path — `MeetingsSurface` is lazy and the harness files are dev
+       only. Reserve left on the tightest budget, hot-path gzip: 1 319 B of
+       174 000. The 2026-08-07 owner's ~33 B/glyph rate predicted the same
+       order; a lot needing the glyph alone must build the glyph alone. */
+    lock: (
+      <path d="M6.75 10.8V8.1a5.25 5.25 0 0 1 10.5 0v2.7M5.55 10.8h12.9a1.5 1.5 0 0 1 1.5 1.5v6.15a1.5 1.5 0 0 1-1.5 1.5H5.55a1.5 1.5 0 0 1-1.5-1.5V12.3a1.5 1.5 0 0 1 1.5-1.5Z" />
     ),
   } as const;
   return (
