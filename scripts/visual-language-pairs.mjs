@@ -350,7 +350,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     contract: ".ui-craft/tokens.md:85-92 (Spacing and density — dense rows)",
     prototype: {
       file: "v3/app.css",
-      lines: "198-204",
+      lines: "210-216",
       value: "`.nav-item { min-height: 1.75rem }`",
     },
     subject: {
@@ -371,7 +371,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
       ".ui-craft/tokens.md:85-92 (Spacing and density — 4/8/12px increments)",
     prototype: {
       file: "v3/app.css",
-      lines: "210-216",
+      lines: "197",
       value: "`.nav-section { margin-top: var(--space-3) }` — 0.75rem",
     },
     subject: {
@@ -480,7 +480,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     contract: ".ui-craft/tokens.md:110-136 (Shape — full radius for pills)",
     prototype: {
       file: "v3/app.css",
-      lines: "808",
+      lines: "804-810",
       value: "`.capture { border-radius: var(--radius-full) }`",
     },
     subject: {
@@ -1193,7 +1193,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     contract: ".ui-craft/tokens.md:94-108 (Type)",
     prototype: {
       file: "v3/app.css",
-      lines: "13",
+      lines: "7-13",
       value: "`body { -webkit-font-smoothing: antialiased }`",
     },
     subject: {
