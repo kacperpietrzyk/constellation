@@ -44,6 +44,28 @@ import {
 
 const KNOWN_TOPIC_IDS = new Set<string>(helpTopics.map((topic) => topic.id));
 
+/* ZAKRESEM JEST EKRAN, A NIE JEGO PRZEWIJANE PUDEŁKO — dwa ekrany CRM-owej
+ * listy noszą tu inny adres niż pozostałe i to nie jest niekonsekwencja.
+ *
+ * Lot D10 wyprowadził pasmo tytułu i pasek widoku POZA `.surface-scroll`, żeby
+ * były rodzeństwem przewijanego pudełka, jak w prototypie. Atrybuty
+ * `data-organizations-surface` i `data-people-surface` zostały NA PUDEŁKU, więc
+ * przestały być przodkami obu pasm — a znacznik pomocy Organizacji wisi właśnie
+ * w pasku widoku (`StrategicDepthSurface.tsx`, „HELP ON DEMAND (#35)"). Ten test
+ * zobaczył to jako zniknięcie tematu; test Ludzi, który spodziewa się PUSTEGO
+ * zbioru, przeszedł CICHO nad zakresem mniejszym o dwa pasma — czyli dokładnie
+ * ta połowa asercji, przed którą przestrzega nagłówek wyżej.
+ *
+ * Kotwicą jest więc deklaracja obejmująca oba pasma i treść pod nimi. `main`
+ * jest konieczne, bo ten sam atrybut niesie pozycja nawigacji; ta sama kotwica
+ * i z tego samego powodu stoi już w mapie par (`scripts/visual-language-pairs
+ * .mjs`, para `D6-04a`). Zamiatanie `title=` i „co jest przyciskiem" obejmuje
+ * odtąd również pasma — to jest zakres SZERSZY niż przed lotem D10, nie
+ * przywrócony.
+ */
+const organizationsScreen = 'main[data-surface="organizations"]';
+const peopleScreen = 'main[data-surface="people"]';
+
 /* The name a screen reader would give the control.
  *
  * `textContent` ALONE IS NOT THAT NAME, and the difference is the whole point
@@ -248,7 +270,7 @@ test("the client list carries the reading's topic, and nothing hides in a title"
     () => container.querySelector("[data-org-row]") !== null,
     "Organizations drew no client row, so its anchors were never on screen",
   );
-  assertHelpContract(surfaceNode("[data-organizations-surface]"), [
+  assertHelpContract(surfaceNode(organizationsScreen), [
     "relationship-reading",
   ]);
 });
@@ -303,7 +325,7 @@ test("People carries no help of its own, and still no title anywhere", async () 
     () => container.querySelector("[data-person-row]") !== null,
     "People drew no row, so the sweep below would have measured an empty screen",
   );
-  assertHelpContract(surfaceNode("[data-people-surface]"), []);
+  assertHelpContract(surfaceNode(peopleScreen), []);
 });
 
 test("the deal's own record carries no help, and no tooltip either", async () => {

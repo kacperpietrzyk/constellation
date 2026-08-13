@@ -804,7 +804,12 @@ test("no explanation anywhere on this screen survives as a `title`", async () =>
   await openOrganizations();
   await waitForCondition(() => rows().length > 0, "no client row");
 
-  const surface = container.querySelector("[data-organizations-surface]");
+  // CAŁY EKRAN, NIE JEGO PRZEWIJANE PUDEŁKO. Od lotu D10 pasmo tytułu i pasek
+  // widoku są RODZEŃSTWEM `.surface-scroll`, a `data-organizations-surface`
+  // został na pudełku — zamiatanie po tamtym adresie przestało widzieć oba
+  // pasma i zieleniło się nad zakresem mniejszym, niż głosi jego nazwa. Ta sama
+  // kotwica co w `topic-help.interaction.test.tsx`.
+  const surface = container.querySelector('main[data-surface="organizations"]');
   assert.ok(surface, "the surface is not mounted");
   // Compared as a BOOLEAN, not as the node: `assert.equal(node, null)` hands
   // vitest a DOM element to serialise for its diff and the worker dies without
@@ -820,7 +825,8 @@ test("no explanation anywhere on this screen survives as a `title`", async () =>
     "the Table layout drew no table",
   );
   assert.equal(
-    container.querySelector("[data-organizations-surface] [title]") === null,
+    container.querySelector('main[data-surface="organizations"] [title]') ===
+      null,
     true,
     "the Table layout put an explanation back into a `title`",
   );

@@ -882,7 +882,14 @@ export const MeetingsSurface = ({
           <svg aria-hidden="true" viewBox="0 0 48 48">
             <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
           </svg>
-          <h4>No events visible</h4>
+          {/* POZIOM TRZECI, BO GŁOWA SEKCJI ZJECHAŁA NA DRUGI (lot D7). Ten
+              nadpis stoi wprost pod `<h2 id="upcoming-title">`, więc `h4`
+              zostawiał w spisie treści dziurę h2→h4 — i to jest dokładnie ta
+              dziura, którą złapało zamiatanie paczkowanej alfy przy 320 px
+              (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [4]`).
+              Bliźniak po stronie odbytych (`meeting-completed`) stał na `h3` od
+              początku i dlatego nie miał tego defektu. */}
+          <h3>No events visible</h3>
           <p>
             {surface.capability.canRead
               ? "The calendar has no meetings in this window."
@@ -917,7 +924,13 @@ export const MeetingsSurface = ({
                 </span>
               </div>
               <div className="meeting-event-body">
-                <h4>{event.title}</h4>
+                {/* TEN SAM POZIOM, CO NADPIS PUSTEGO RAMIENIA WYŻEJ, i z tego
+                    samego powodu: tytuł wydarzenia jest dzieckiem sekcji
+                    „Coming up", a ta jest dziś `h2`. Ramię z wierszami rysuje
+                    fikstura bramki układu, a ramię puste — zamiatanie alfy;
+                    poprawka jednego bez drugiego zostawiłaby defekt w tym
+                    ramieniu, którego akurat NIE mierzy ten przyrząd. */}
+                <h3>{event.title}</h3>
                 <p>
                   {countLabel(event.attendees.length, "participant")}
                   {event.location ? ` · ${event.location}` : ""}

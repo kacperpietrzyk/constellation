@@ -5140,8 +5140,11 @@ kbd {
   gap: var(--space-3);
   min-width: 0;
 }
-.meeting-event-body h3,
-.meeting-event-body h4 {
+/* JEDEN SELEKTOR, BO JEST JEDEN NAGŁÓWEK. Para `h3, h4` niosła oba poziomy
+   przez czas, w którym tytuł wydarzenia zjeżdżał z jednego na drugi; dziś
+   `h4` w tym pudełku nie rysuje NIC, a martwe ramię selektora wygląda przy
+   następnym czytaniu jak deklaracja, że oba poziomy są tu dozwolone. */
+.meeting-event-body h3 {
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -5286,11 +5289,12 @@ kbd {
   stroke: var(--text-quaternary);
   stroke-width: 1.25;
 }
-.meeting-empty h4 {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
+/* OBA STANY PUSTE TEGO EKRANU SĄ DZIŚ BLIŹNIAKAMI I DOPIERO TERAZ TAK
+   WYGLĄDAJĄ. Nadchodzące niosły `h4` przy `--text-sm`, odbyte `h3` przy
+   `--text-md` — ta różnica brała się z poziomu nagłówka, nie z zamiaru, i
+   odeszła razem z nim. KONSEKWENCJA DO ZOBACZENIA NA OCZY: nadpis „No events
+   visible" jest o stopień większy niż był, i NIC TEGO NIE MIERZY — fikstura
+   bramki układu rysuje ramię z wierszami, nie to. */
 .meeting-empty h3 {
   margin: var(--space-2) 0 0;
   font-size: var(--text-md);
