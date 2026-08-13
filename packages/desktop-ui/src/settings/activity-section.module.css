@@ -391,3 +391,26 @@
 .stateDetail {
   min-width: 0;
 }
+
+/* `detail` w stanie odmowy to `activity.message` (`ActivitySection.tsx:135`),
+   a od chwili, gdy komunikat NAZYWA zapytanie i niesie kod odmowy
+   (`client/workflow.ts` — `activity.workspaceActivity was refused:
+   query.bridge_failed`), bywa w nim człon, w którym przeglądarka nie ma ANI
+   JEDNEJ okazji do złamania wiersza: kropkowany identyfikator jest jednym
+   słowem. `min-width: 0` wyżej pozwala pudełku się skurczyć, ale nie daje
+   tekstowi gdzie się złamać — i to jest różnica, którą bramka układu zmierzyła
+   na CI (przelot `macos-26`, PR #232): przy 320 px potomek wychodził poza
+   własne pudełko o 27 px, przy tekście 200% o 1 px.
+
+   `anywhere`, nie `break-word`: łamiemy WEWNĄTRZ identyfikatora, bo to on jest
+   za długi, a `break-word` nie zmienia wtedy nic. Ten sam wybór i z tego samego
+   powodu stoi już przy ośmiu podmiotach niosących treść użytkownika albo
+   identyfikator (`inbox.module.css:207`, `organization-context.css:169`,
+   `calendar.module.css:231`, `styles.css:2800`).
+
+   Skracanie komunikatu byłoby poprawką w złą stronę: kod odmowy jest jedynym
+   kanałem diagnostycznym, jaki został po tym, jak DevTools przestały się
+   otwierać w tym buildzie. */
+.stateDetail {
+  overflow-wrap: anywhere;
+}

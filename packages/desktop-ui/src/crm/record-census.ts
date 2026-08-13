@@ -42,9 +42,21 @@ type StrategicRecord = RelationshipWorkspaceProjection["records"][number];
  * Usunięty rekord ZOSTAJE w projekcji — o tym, czy jest, mówi `recordState` —
  * a czytanie ponad tym polem jest sposobem, w jaki skasowany klient dalej stoi
  * w sumie.
+ *
+ * BRAK POLA ZNACZY „ŻYWY", I TO NIE JEST ostrożność — to jest cała poprawka
+ * z PR #232: domena NIE STEMPLUJE `recordState` przy tworzeniu, więc predykat
+ * pytający o równość z `"active"` wyrzucał KAŻDY rekord, jaki produkt zapisał,
+ * i ekrany CRM rysowały pustkę. Wersja ścisła wróciła tu na chwilę przy scalaniu
+ * fali wizualnej z mainem — dwie nazwy tego samego zdania rozjechały się
+ * ZNACZENIEM, dokładnie tak, jak ostrzega akapit wyżej.
+ *
+ * Typ jest STRUKTURALNY, a nie `StrategicRecord`, żeby to samo zdanie obsłużyło
+ * oba wywołania (`countLiveRecords` tutaj i `recordIsLive` w odczycie relacji)
+ * i żeby nie było powodu napisać go po raz trzeci.
  */
-export const isLiveRecord = (record: StrategicRecord): boolean =>
-  record.recordState === "active";
+export const isLiveRecord = (record: {
+  readonly recordState?: "active" | "removed" | undefined;
+}): boolean => (record.recordState ?? "active") === "active";
 
 /** Ile żywych rekordów tego rodzaju niesie odczyt przestrzeni relacji. */
 export const countLiveRecords = (

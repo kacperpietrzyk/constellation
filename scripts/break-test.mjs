@@ -313,17 +313,42 @@ export const runBreakTests = ({
     if (restored) run({ ...build, cwd: root });
   };
 
+  /**
+   * BAZA JEST MIERZONA DLA KAŻDEGO SPRAWDZENIA, KTÓRE ZESTAW NAPRAWDĘ WOŁA.
+   *
+   * Złamanie z własnym `verify` (np. konformans w kernelu zamiast testu
+   * interakcyjnego) było dotąd porównywane z bazą zmierzoną na sprawdzeniu
+   * DOMYŚLNYM — a wiersz wyjścia i tak zaczynał się od zaszytego „baseline
+   * GREEN". Dwie liczby zmierzone i jedna wpisana, w skrypcie, którego własny
+   * komentarz obiecuje trzy obserwacje.
+   *
+   * Zestawy bez per-złamaniowego `verify` mierzą dokładnie jedną bazę, tak jak
+   * przedtem: mapa ma wtedy jeden klucz, a `throw` poniżej gwarantuje, że
+   * jedyną wartością, jaką da się z niej odczytać, jest „GREEN".
+   *
+   * Wolno to wołać tylko przy nietkniętym drzewie — czyli przed pierwszym
+   * złamaniem albo po przywróceniu, kiedy `dist` jest już przebudowany.
+   */
+  const baselines = new Map();
+  const baselineFor = (check, whose) => {
+    const key = JSON.stringify([check.command, check.args]);
+    const seen = baselines.get(key);
+    if (seen !== undefined) return seen;
+    const result = run({ ...check, cwd: root });
+    if (!result.ok)
+      throw new Error(
+        `baseline is not green before the first break${whose}; ` +
+          "a break-test loop starting from red proves nothing about any break in it",
+      );
+    baselines.set(key, "GREEN");
+    return "GREEN";
+  };
+
   const results = [];
   try {
     log("baseline: building and running the assertions before any break");
     run({ ...build, cwd: root });
-    const baseline = run({ ...verify, cwd: root });
-    if (!baseline.ok)
-      throw new Error(
-        "baseline is not green before the first break; a break-test loop " +
-          "starting from red proves nothing about any break in it",
-      );
-    log("baseline GREEN");
+    log(`baseline ${baselineFor(verify, "")}`);
 
     for (const entry of breaks) {
       const file = path.resolve(root, entry.file);
@@ -342,6 +367,12 @@ export const runBreakTests = ({
       // oprzyrządowania. Żeby to nie stało się furtką z powrotem do defektu,
       // rozstrzyga ROZSZERZENIE PLIKU, a nie deklaracja wołającego.
       const compiled = /\.(?:ts|tsx|mts|cts)$/u.test(file);
+      // NA NIETKNIĘTYM DRZEWIE, więc przed zapisem złamania: jeśli to złamanie
+      // niesie własne sprawdzenie, jego baza nie została jeszcze zmierzona.
+      const baselinePhase = baselineFor(
+        entry.verify ?? verify,
+        ` for the check \`${entry.name}\` brings of its own`,
+      );
       writeSourceNewerThanStamps(file, broken, stampFiles);
       const brokenBuild = rebuild(`${entry.name} (break)`, compiled);
       const expect = entry.expect ?? "assertion-fails";
@@ -365,37 +396,47 @@ export const runBreakTests = ({
       writeSourceNewerThanStamps(file, original, stampFiles);
       rebuild(`${entry.name} (restore)`, compiled);
       const restored = run({ ...(entry.verify ?? verify), cwd: root });
-      if (!restored.ok)
-        throw new Error(
-          `${entry.name}: the assertions are RED after the restore. Either ` +
-            "the restore did not reach dist, or an earlier break left it " +
-            "poisoned. Nothing after this point would mean anything.",
-        );
-      // TEKST WRACA BAJT W BAJT — sprawdzane NA KOŃCU obiegu, nie zaraz po
-      // zapisie. Zaraz po zapisie ta asercja nie umie paść na żadnym systemie
-      // plików, na którym to repozytorium chodzi, czyli byłaby ozdobą. Na
-      // końcu łapie realną rzecz: budowę albo weryfikację, która sama pisze po
-      // źródle (formater, generator), przez co następne złamanie startowałoby
-      // z innego tekstu, niż myśli, że startuje.
-      if (readBack(file) !== original)
-        throw new Error(
-          `${entry.name}: ${file} does not match the text it started with. ` +
-            "Something in this break's own loop wrote to it, so the next " +
-            "break would start from a different file than it believes.",
-        );
-
       // TRZY LICZBY, każda z tego, co naprawdę zaobserwowano — nie z werdyktu.
       // Para „baza/złamanie" nie widzi zatrucia, bo zatrucie zaczyna się przy
       // przywróceniu, więc trzecia liczba jest tą, dla której to się drukuje.
+      //
+      // DRUKOWANE PRZED PRZERWANIAMI PONIŻEJ, nie po nich: przebieg, który pada
+      // na czerwonym przywróceniu, jest dokładnie tym, w którym czytelnik
+      // potrzebuje zobaczyć „restore RED". Drukowane za `throw`, ta liczba
+      // umiała przyjąć tylko jedną wartość i była literałem w przebraniu.
       const brokenPhase = !brokenBuild.ok
         ? "BUILD REFUSED"
         : verifyResult.ok
           ? "GREEN"
           : "RED";
       log(
-        `${entry.name}: baseline GREEN → break ${brokenPhase} → restore GREEN` +
+        `${entry.name}: baseline ${baselinePhase} → break ${brokenPhase} →` +
+          ` restore ${restored.ok ? "GREEN" : "RED"}` +
           ` — ${outcome.verdict.toUpperCase()} (${outcome.reason})`,
       );
+      // TEKST WRACA BAJT W BAJT — sprawdzane NA KOŃCU obiegu, nie zaraz po
+      // zapisie. Zaraz po zapisie ta asercja nie umie paść na żadnym systemie
+      // plików, na którym to repozytorium chodzi, czyli byłaby ozdobą. Na
+      // końcu łapie realną rzecz: budowę albo weryfikację, która sama pisze po
+      // źródle (formater, generator), przez co następne złamanie startowałoby
+      // z innego tekstu, niż myśli, że startuje.
+      //
+      // PRZED PRZERWANIEM O CZERWONYM PRZYWRÓCENIU, bo weryfikacja pisząca po
+      // źródle jest jedną z przyczyn takiej czerwieni — a wtedy diagnoza
+      // „przywrócenie nie doszło do dist" wskazuje nie tam, gdzie trzeba.
+      if (readBack(file) !== original)
+        throw new Error(
+          `${entry.name}: ${file} does not match the text it started with. ` +
+            "Something in this break's own loop wrote to it, so the next " +
+            "break would start from a different file than it believes.",
+        );
+      if (!restored.ok)
+        throw new Error(
+          `${entry.name}: the assertions are RED after the restore. Either ` +
+            "the restore did not reach dist, or an earlier break left it " +
+            "poisoned. Nothing after this point would mean anything.",
+        );
+
       if (outcome.verdict === "aborted")
         throw new Error(`${entry.name}: ${outcome.reason}`);
       results.push({ name: entry.name, ...outcome });

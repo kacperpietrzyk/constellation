@@ -109,6 +109,23 @@ export const commentTargetId = (target: CommentTarget): string =>
 export type ManagedAttachment =
   TaskListProjection["items"][number]["attachments"][number];
 
+/**
+ * One slice of a snapshot: the data, or the reason it is not there.
+ *
+ * `message` is written for the READER and always names the query and the cause
+ * — the four arms of `queryProjection` below compose it (`contract_rejected`,
+ * a refused outcome, a projection of the wrong kind, and a bridge that threw),
+ * each through `ProjectionUnavailable`, which carries the pair.
+ *
+ * `diagnosticCode` is the same fact in a form an assertion can hold, which is
+ * why every failure on this path sets it rather than leaving it to whoever
+ * remembers: a field nothing ever writes is indistinguishable from a field
+ * nothing needs, and this one was declared and never written for four releases.
+ * `projection-honesty.interaction.test.tsx` holds it on a slice, which is what
+ * keeps that sentence true; a name in these comments that resolves to nothing
+ * in the repository is how the previous version of this docblock sent a reader
+ * looking for a `projectionFailureMessage` that has never existed.
+ */
 export type DataSlice<T> =
   | { readonly kind: "ready"; readonly data: T }
   | {
@@ -124,21 +141,34 @@ export type DataSlice<T> =
  * screen ends up rendering an empty list where the honest answer is "this
  * view's data is unavailable right now".
  *
- * `message` stays in the type on purpose, so dropping it is awkward. Render it.
- * `StrategicDepthSurface.tsx:246-266` is the pattern to copy: it prints the
- * slice's own message and offers a retry. `TasksSurface.tsx:357-368` is the
- * one NOT to copy — it prints a fixed sentence, discards the message, and
- * offers no retry despite holding `onReload`.
+ * `message` stays in the type on purpose, so dropping it is awkward. RENDER IT.
+ * `StrategicDepthSurface.tsx:697-716` is the pattern to copy — a `role="status"`
+ * section holding a heading, the slice's own message under a
+ * `data-organizations-unavailable` hook, and a "Try again" button wired to
+ * `onReload`. Each surface keeps its own heading and its own hook, because five
+ * interaction tests find these panels by that attribute BY NAME; there is no
+ * shared component and extracting one would put those five assertions in play
+ * for no reader-visible gain.
  *
  *   const records = readSlice(snapshot.relationships);
- *   if (!records.available) {
- *     return <SurfaceUnavailable message={records.message} onRetry={onReload} />;
- *   }
+ *   if (!records.available)
+ *     return (
+ *       <section role="status">
+ *         <h2>Organizations are unavailable</h2>
+ *         <p data-organizations-unavailable>{records.message}</p>
+ *         <button onClick={() => void onReload()} type="button">Try again</button>
+ *       </section>
+ *     );
  *   const offers = records.data.records.filter((r) => r.kind === "offer");
  *
  * A zero, an empty list or a green reading in place of that message is the
  * defect this exists to prevent: it says the answer is "nothing" when the
- * answer is "we could not ask".
+ * answer is "we could not ask". A FIXED SENTENCE in place of it is the same
+ * defect one step milder — the screen admits it could not ask and then throws
+ * away the only part a reader could act on. Worse still is a fixed sentence
+ * that NAMES a cause: `optionalProjection` catches every failure alike, so a
+ * panel claiming to know which one happened is asserting what the code cannot
+ * know.
  */
 export type SliceReading<T> =
   | { readonly available: true; readonly data: T }
@@ -211,19 +241,78 @@ export type MutationFailure =
 export type MutationResult<T> =
   { readonly kind: "success"; readonly data: T } | MutationFailure;
 
+/**
+ * A read that failed, carrying WHICH read and WHY.
+ *
+ * WHY THIS TYPE EXISTS. `optionalProjection` turns any failure into a slice
+ * whose `message` is the only channel a reader has — this build does not open
+ * DevTools on `⌘⌥I`, so a sentence on screen is not the nicest diagnosis, it is
+ * the ONLY one. Three fixed sentences stood here before, and all three
+ * discarded everything that distinguishes one failure from another: which query
+ * was asked, and whether the kernel REFUSED it (authorization, availability,
+ * consistency), whether the app's own envelope was malformed, or whether the
+ * answer never crossed the bridge at all. A reader looking at "This view's data
+ * is unavailable right now" learns that a screen is empty, which they could
+ * already see.
+ *
+ * The four arms below are the four ways a read ends without a projection, and
+ * they are genuinely different repairs: `contract.invalid` is our bug in the
+ * request, `query.*` is the kernel declining to answer, `query.bridge_failed`
+ * is anything that threw between the two — including a result the kernel could
+ * not serialise, which is exactly the class no channel here reported before.
+ */
+class ProjectionUnavailable extends Error {
+  public readonly diagnosticCode: string;
+  public constructor(diagnosticCode: string, message: string) {
+    super(message);
+    this.name = "ProjectionUnavailable";
+    this.diagnosticCode = diagnosticCode;
+  }
+}
+
+/**
+ * The reason, in the order a reader needs it: the cause first, the advice last.
+ * Long messages are clipped by the panels that print them, and the half worth
+ * keeping is the half that names the query.
+ */
 const queryProjection = async <Kind extends QueryProjection["kind"]>(
   client: ConstellationRendererClient,
   query: Parameters<ConstellationRendererClient["runQuery"]>[0],
   kind: Kind,
 ): Promise<Projection<Kind>> => {
-  const response: RendererQueryResponse = await client.runQuery(query);
+  let response: RendererQueryResponse;
+  try {
+    response = await client.runQuery(query);
+  } catch (error) {
+    // Nothing came back. A kernel that threw while ASSEMBLING the answer lands
+    // here too — the exception escapes `ipcMain.handle` and Electron rejects
+    // the invoke — so this arm is the one that finally says something when a
+    // projection fails to build or fails to serialise.
+    throw new ProjectionUnavailable(
+      "query.bridge_failed",
+      `${query.queryName} could not be read: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
   if (response.kind === "contract_rejected")
-    throw new Error("The app refused an invalid query. Refresh and try again.");
+    throw new ProjectionUnavailable(
+      response.diagnosticCode,
+      // The sentence stays word for word: two interaction tests find this
+      // failure by it. What follows it is the part that was missing.
+      `The app refused an invalid query. Refresh and try again. (${query.queryName}: ${response.issues
+        .map((issue) => `${issue.path} ${issue.code}`)
+        .join(", ")})`,
+    );
   if (response.result.outcome !== "success")
-    throw new Error("This view's data is unavailable right now. Try again.");
+    throw new ProjectionUnavailable(
+      response.result.diagnosticCode,
+      `${query.queryName} was refused: ${response.result.diagnosticCode}. This view's data is unavailable right now. Try again.`,
+    );
   if (response.result.projection.kind !== kind)
-    throw new Error(
-      `Unexpected projection: ${response.result.projection.kind}`,
+    throw new ProjectionUnavailable(
+      "query.projection_mismatch",
+      `${query.queryName} answered with ${response.result.projection.kind}, not ${kind}.`,
     );
   return response.result.projection as Projection<Kind>;
 };
@@ -234,11 +323,24 @@ const optionalProjection = async <Kind extends QueryProjection["kind"]>(
   try {
     return { kind: "ready", data: await promise };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "This view's data is unavailable right now.";
-    return { kind: "unavailable", message };
+    // Every arm of `queryProjection` arrives already named. Anything else is a
+    // failure this file did not anticipate, and saying so is more honest than
+    // filing it under a code that would send a reader looking in the wrong
+    // place.
+    if (error instanceof ProjectionUnavailable)
+      return {
+        kind: "unavailable",
+        message: error.message,
+        diagnosticCode: error.diagnosticCode,
+      };
+    return {
+      kind: "unavailable",
+      message:
+        error instanceof Error
+          ? error.message
+          : "This view's data is unavailable right now.",
+      diagnosticCode: "query.unknown_failure",
+    };
   }
 };
 
@@ -473,11 +575,19 @@ export const loadDesktopSnapshot = async (
           })),
         },
       };
-    } catch {
+    } catch (error) {
+      // THE CAUGHT ERROR USED TO BE DROPPED and replaced by a sentence naming
+      // one cause — "the gateway is not responding" — over a `try` that also
+      // covers the whole mapping below it. A plain `TypeError` in that mapping
+      // reported to the reader as a Hub that was down, which is the same defect
+      // the panels above this were fixed for: a fixed sentence claiming to know
+      // which failure happened.
       agentAccess = {
         kind: "unavailable",
-        message:
-          "The remote MCP gateway is not responding. Agent access returns once the Hub is back.",
+        message: `agent.remote_grants could not be read: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        diagnosticCode: "agent.remote_grants_failed",
       };
     }
   }

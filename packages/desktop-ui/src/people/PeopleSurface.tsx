@@ -124,7 +124,7 @@ const PersonRow = ({
   readonly onOpen: (reading: PersonReading) => void;
 }) => {
   const nav = itemProps(index);
-  const wait = reading.waiting[0];
+  const wait = reading.waiting?.[0];
   return (
     <div
       {...nav}
@@ -147,7 +147,15 @@ const PersonRow = ({
         {/* The one claim this row makes about somebody else's behaviour, so it
             carries its own proof: the task. A count with no task behind it is
             the silent control this screen exists to remove. */}
-        {wait === undefined ? (
+        {reading.waiting === undefined ? (
+          // THE WORK PLANE WAS NOT READ, so this slot may not fall back to the
+          // company name: that fallback is what the row draws when there is
+          // nothing to wait for, and drawing it here states an all-clear the
+          // screen never checked. The reason itself is in the panel above.
+          <span className={styles.why} data-person-waiting-unknown>
+            Waiting unknown — the work plane could not be read
+          </span>
+        ) : wait === undefined ? (
           <span className={styles.why}>
             {reading.organization?.name ?? NO_ORGANIZATION_GROUP}
           </span>
@@ -626,6 +634,27 @@ export const PeopleSurface = ({
         </span>
       </div>
       <div className={`surface-scroll ${styles.people}`} data-people-surface>
+        {/* THE SECOND PROJECTION THIS SCREEN READS (PR #232). People come from
+            `relationship.workspace` and are on screen; what is being waited on
+            comes from the work plane, and when THAT read fails the rows can
+            still be drawn — they just may not say anything about waiting. The
+            reason belongs here, once, rather than repeated on every row.
+
+            W PRZEWIJANYM PUDEŁKU, NIE MIĘDZY PASMAMI: od lotu R3 pasma są
+            rodzeństwem tego pudełka i niosą chrom ekranu, a to jest komunikat
+            o DANYCH — przewija się razem z listą, której dotyczy. */}
+        {snapshot.work.kind === "unavailable" && (
+          <div className="inline-error" role="status">
+            <p data-people-work-unavailable>{snapshot.work.message}</p>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </div>
+        )}
         {/* FORMULARZ TWORZENIA ZJECHAŁ POD PASEK WIDOKU, i to jest skutek
             układu, a nie osobna decyzja o kolejności. Do tego lotu stał MIĘDZY
             pasmami — czyli rozpychał chrom w stanie tworzenia, a `.surface-header

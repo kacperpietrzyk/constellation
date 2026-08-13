@@ -394,8 +394,12 @@ export const SourcesReading = ({
             <h2 id="sources-title">Everything you collected</h2>
             <TopicHelp topic="sources" />
           </div>
-          <span className={`library-count ${styles.count}`}>
-            {sources.length}
+          {/* NOT A ZERO OVER A READ THAT NEVER HAPPENED. The panel below prints
+              the refusal `knowledge.list` came back with; this pill sat above
+              it printing `0` from the same unread projection, which is the
+              louder of the two and the one a reader believes. */}
+          <span className={`library-count ${styles.count}`} data-sources-count>
+            {snapshot.knowledge.kind === "ready" ? sources.length : "—"}
           </span>
         </header>
 
@@ -472,7 +476,16 @@ export const SourcesReading = ({
 
         {snapshot.knowledge.kind === "unavailable" ? (
           <div className="inline-error" role="status">
-            Source metadata is unavailable right now.
+            {/* The slice's own reason and a way back, in place of a sentence
+                that said only what the empty list already showed. */}
+            <p data-sources-unavailable>{snapshot.knowledge.message}</p>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
           </div>
         ) : (
           <div

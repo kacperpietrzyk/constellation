@@ -40,6 +40,7 @@ import type { DesktopSnapshot } from "../client/workflow.js";
 import {
   isOpenDeal,
   opportunityValueInput,
+  recordIsLive,
   renewalLead,
   type CrmProse,
   type OpportunityRecord,
@@ -328,7 +329,7 @@ export const dealsByRenewal = (
   const amendments = new Map<string, AmendmentReading[]>();
   const renewing = new Map<string, OpportunityRecord[]>();
   for (const record of records) {
-    if (record.recordState !== "active") continue;
+    if (!recordIsLive(record)) continue;
     if (record.kind !== "work_link") continue;
     if (record.state !== "active") continue;
     if (record.linkType !== AMENDS && record.linkType !== RENEWS) continue;

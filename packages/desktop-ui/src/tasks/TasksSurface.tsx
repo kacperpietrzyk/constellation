@@ -362,12 +362,31 @@ export const TasksSurface = ({
       // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
       // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
       // powiedzieć, że czegoś nie dało się przeczytać.
+      //
+      // Pasmo rysuje `SurfaceTitleBand`, a nie gołe `<header>`: to jest ta sama
+      // deklaracja, którą czyta `.work-surface:has(> .surface-header)`, i ten
+      // sam komponent, co na wszystkich pozostałych ekranach fali.
       <>
         <SurfaceTitleBand title="Tasks" />
         <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
-          <p className={styles.unavailable}>
-            Tasks are unavailable while the work plane cannot be read.
+          {/* The slice's OWN reason, not a sentence about the work plane in
+              general (PR #232). `optionalProjection` names the query and the
+              cause (`client/workflow.ts` — refusal code, contract issue, or the
+              bridge failing), and that naming is the only diagnosis this build
+              offers: `⌘⌥I` does not open DevTools here. A fixed sentence in its
+              place throws away the whole of it. */}
+          <p className={styles.unavailable} data-tasks-unavailable>
+            {work.message}
           </p>
+          {onReload !== undefined && (
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          )}
         </div>
       </>
     );
