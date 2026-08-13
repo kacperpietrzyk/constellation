@@ -73,6 +73,35 @@
   text-wrap: balance;
 }
 
+/* SLOT AKCJI PASMA (Faza C, lot C2). Zero własnego układu poza tym, że ma
+   ISTNIEĆ jako drugie dziecko pasma: `justify-content: space-between` w regule
+   `.header` wyżej odpycha go wtedy do prawego końca, dokładnie tak, jak
+   `.crumbbar .spacer { flex: 1 }` odpycha drugi argument crumbbara prototypu
+   (`v3/app.css:293`). Węzeł stoi tu ZAWSZE, także dla odczytu bez akcji: pusty
+   `<div>` o zerowej szerokości nie zmienia tego pasma, a cel portalu, który raz
+   jest, a raz go nie ma, zmuszałby odczyt do sprawdzania, czy ma gdzie się
+   wstrzyknąć. */
+.headerAction {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* ZŁAPANE PRZEZ BRAMKĘ, NIE PRZEWIDZIANE: przy 300% tekstu ten slot wystawał
+     42 px poza własne pudełko na odczycie Źródeł. Przyczyna nie jest w slocie,
+     tylko w wyzwalaczu: `.inline-popover-trigger` deklaruje `white-space:
+     nowrap` (`styles.css`), co jest właściwe dla pigułki stojącej w treści
+     i przestaje być właściwe dla akcji w paśmie, które przy 300% ma na siebie
+     kilkanaście znaków szerokości. Element flex domyślnie nie schodzi poniżej
+     swojej treści (`min-width: auto`), więc bez tych trzech deklaracji pasmo
+     rosło w bok zamiast złamać etykietę. */
+  min-inline-size: 0;
+}
+
+.headerAction :global(.inline-popover-trigger) {
+  min-inline-size: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* LOT 5 #11 — the target's own counter stops being an outlined pill, the same
    way the other three do (two panel heads in `notes.module.css`, the Sources
    list head in `sources.module.css` — four consumers in all). The reference
@@ -81,10 +110,15 @@
    taken from it, and the divergence is written out at the same rule in
    `sources.module.css`. The GLOBAL `.library-count` rule in `styles.css` is
    untouched: it is shared with `.section-heading-row > span`, which lives on two
-   surfaces outside this one, and the brief forbids moving it. `.header .count`
+   surfaces outside this one, and the brief forbids moving it. `.viewbar .count`
    rather than a bare `.count` so the winner is decided by specificity and not by
-   the order two stylesheets happened to be injected in. */
-.header .count {
+   the order two stylesheets happened to be injected in.
+
+   PRZENIESIONE Z `.header` DO `.viewbar` W LOCIE C2, razem z samym licznikiem:
+   selektor zostawiony na `.header` byłby regułą bez podmiotu, a licznik wróciłby
+   do domyślnej obwódkowej pigułki `.library-count` — czyli dokładnie do wady,
+   którą lot 5 tu zamknął. */
+.viewbar .count {
   display: inline;
   min-width: 0;
   min-height: 0;

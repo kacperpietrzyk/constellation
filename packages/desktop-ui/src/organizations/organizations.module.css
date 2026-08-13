@@ -7,8 +7,9 @@
 
    THE WHOLE SHEET IS WRITTEN AGAINST ONE GATE — the packaged text-scaling check
    at `scripts/run-packaged-alpha-smoke.mjs:786-795`, which fails a surface when
-   `scrollWidth > clientWidth` at 200% root font-size. `styles.css:4404-4407`
-   centres each surface child with `margin-inline: auto`; an auto inline margin
+   `scrollWidth > clientWidth` at 200% root font-size. The reading column rule
+   in `styles.css` gives each surface child an auto inline END margin; an auto
+   inline margin
    turns off stretch and sizes the child `fit-content`, and `fit-content` is
    clamped BELOW by `min-content`. So a child whose min-content exceeds the
    surface content box SETS a width instead of taking one: it fits itself
@@ -19,23 +20,33 @@
    INSIDE each cell. */
 
 .organizations {
+  /* ODSTĘP KOLUMNY, I OD LOTU D10 JUŻ TYLKO TYLE. Nota, która tu stała,
+     mówiła: „ta zmienna ma nazwę, bo pasma nad listą go odejmują" — i przestała
+     być prawdą o tym ekranie. Pasma są dziś RODZEŃSTWEM tego pudełka, a nie
+     jego dziećmi (`styles.css`, `.work-surface:has(> .surface-header)`), więc
+     `gap` w ogóle ich nie dotyczy i nie ma czego odejmować. Właśnie ten
+     nieodejmowany `gap` między paskiem widoku a listą BYŁ ostatnimi 12 px
+     wpisu #22.
+
+     NAZWA ZOSTAJE, bo `.surface-header + .view-band` w arkuszu powłoki dalej ją
+     czyta — na ośmiu ekranach, na których pasma siedzą w środku nośnika. Zdjęcie
+     jej tutaj byłoby zdjęciem uczestnictwa w kształcie, który nadal istnieje,
+     a nie sprzątaniem. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
-/* WRAPS. A non-wrapping flex row's min-content is the sum of its children;
-   a wrapping row's is its widest single child, which is a number that stays
-   inside the surface at any text size. */
-.crumbbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-4);
-}
+/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2. Prototyp nie układa nad płótnem pasma
+   tytułu I osobnego paska akcji: `crumbbar(crumbs, actions)`
+   (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu i akcję,
+   a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) odpycha akcję
+   do jego prawego końca. Akcja tego ekranu stoi teraz w `SurfaceTitleBand`,
+   a reguła, która trzymała ją rzędem niżej, nie ma już konsumenta i została
+   skasowana zamiast osierocona. */
 
 .create {
   display: flex;
@@ -71,12 +82,9 @@
 
 /* The view bar holds a layout switch, a filter group and a live count. Three
    groups that must not sit on one unbreakable line. */
+/* Kształt pasma jest w `.view-band` (`styles.css`); tu zostaje treść. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-3);
-  padding-inline: var(--space-4);
 }
 
 .switcher {
@@ -92,11 +100,41 @@
 /* The pressed layout carries a FILL and a stronger border, not only a warmer
    text colour: which layout is on has to survive a screen with no colour. */
 .switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   padding: 0.125rem 0.625rem;
   border-radius: var(--radius-full);
   border: 1px solid transparent;
+}
+
+/* POZYCJA #21, DRUGA POŁOWA. Farbę zamknęła Faza C (reset przycisku); został
+   glif wiodący, którego prototyp rysuje przy OBU segmentach. Montaż:
+   `v3/screens/crm.js:376` składa `${icon(ico)}${label}` w przycisku wewnątrz
+   `<div class="segmented">` otwartego na `:373`. Rozmiar: `v3/app.css:348`,
+   `.segmented button svg { width: 0.8125rem; height: 0.8125rem }` — i to jest
+   CAŁA tamta reguła, bez wygaszenia.
+
+   POPRAWIONE 2026-08-12. Pierwsza wersja niosła 0,6875 rem i `opacity: 0.75`,
+   czyli komplet czterech wartości z `v3/screens/crm.css:162`
+   (`.crm-part svg`) — reguły PLAKIETKI UCZESTNICTWA, czyli dokładnie tego
+   glifu, którego lot D6 świadomie NIE oddał. Prototyp ma trzy stopnie
+   wielkości znaku: 1 rem globalnie (`v3/app.css:20`), 0,8125 rem w chromie
+   paska widoku (`:348`), 0,6875 rem w treści wiersza (`crm.css:162`); tamta
+   wersja zjeżdżała chrom do wielkości treści. Cytat też był fałszywy —
+   `crm.js:203` i `crm.css:141` są LINIAMI PUSTYMI.
+
+   Wymiar jest w `rem`, nie w pikselach, bo przeloty bramki chodzą też przy 200%
+   i 300% — znak przybity pikselem przestałby wtedy być znakiem tej samej
+   wielkości co pismo obok. `flex: none` prototypu tu nie ma, ale pas widoku
+   kurczy się przy 320 px i znak, który da się ścisnąć, zwęziłby się zamiast
+   zostać znakiem. */
+.switch svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: none;
 }
 
 .switch[aria-selected="true"] {
@@ -355,10 +393,69 @@
   color: var(--text-secondary);
 }
 
+/* POZYCJA #20 — ZNACZNIK JEST RYSOWANY, NIE PISANY.
+   Prototyp: `v3/app.css:389-409` (`.health` i cztery modyfikatory), wybierane
+   przez `healthDot` w `v3/app.js:116` i wstawiane do sygnału relacji przez
+   `v3/screens/crm.js:193-194`. Kontrakt: `.ui-craft/tokens.md` „Status and
+   accessibility" żąda, żeby kolor był PODWOJONY kształtem, a „Type" rezerwuje
+   krój pisma dla słów — znak ▲ z kroju czytelnika nie jest ani jednym, ani
+   drugim: rysuje się w wielkości i wadze, których ten arkusz nie ustawia.
+
+   CZTERY KSZTAŁTY, NIE CZTERY KOLORY, i to jest sedno pozycji: pełny („On
+   track"), ukośne półwypełnienie („Watch"), pełny z wyciętym wykrzyknikiem
+   („At risk"), kreskowana obwódka („Dormant"). Bliźniak stoi w
+   `people/people.module.css` — ten sam kształt na dwóch ekranach, bo rejestr
+   zgłosił go dwa razy (#20 i #30) jako jedną wadę. */
 .signalMark {
   flex: none;
-  font-size: var(--text-2xs);
-  line-height: 1;
+  position: relative;
+  width: 0.8125rem;
+  height: 0.8125rem;
+  border-radius: 2px;
+  border: 1.5px solid var(--text-disabled);
+}
+
+.signalMark_good {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+
+.signalMark_watch {
+  border-color: var(--status-warning);
+  background: linear-gradient(
+    135deg,
+    var(--status-warning) 50%,
+    transparent 50%
+  );
+}
+
+.signalMark_risk {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+
+/* Wykrzyknik jest WYCIĘTY z wypełnienia płótnem, a nie dorysowany — tak samo
+   jak `v3/app.css:396-399`. Dzięki temu znak nie wnosi ani jednego nowego
+   koloru i czyta się w obu motywach. */
+.signalMark_risk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--surface-canvas);
+  clip-path: polygon(
+    44% 18%,
+    56% 18%,
+    54% 58%,
+    46% 58%,
+    44% 74%,
+    56% 74%,
+    56% 84%,
+    44% 84%
+  );
+}
+
+.signalMark_none {
+  border-style: dashed;
 }
 
 .signal_risk {
@@ -395,8 +492,24 @@
   border-color: var(--border-strong);
 }
 
+/* POZYCJA #19 — „Prospect" NALEŻY DO AKCENTU, nie do informacji.
+   Prototyp: `v3/screens/crm.css:33` — `.crm-state-prospect { color: var(--accent);
+   border-color: var(--accent-edge); background: var(--accent-quieter) }`.
+   Kontrakt `.ui-craft/tokens.md` „What the accent is allowed to mean" oddaje
+   akcentowi to, co jest ZAPOWIEDZIĄ pracy; `--status-info` mówi „to jest
+   komunikat", a to jest inne zdanie — i mówi je ta sama plakietka na dwóch
+   ekranach, więc rozjazd był REGUŁĄ, nie przypadkiem.
+
+   ZMIERZONE PRZED EDYCJĄ, bo repo ma dwie bramki kontrastu i próg 4,5 nie jest
+   ruchomy: `--accent` na `--accent-quieter` złożonym na płótnie i na
+   powierzchni treści daje 5,31 / 5,02 w motywie ciemnym i 4,62 / 4,86
+   w jasnym. Dla porządku: `--accent-quiet` (mocniejszy laserunek) daje 4,25
+   w jasnym i NIE PRZESZEDŁBY — prototyp używa `quieter` i dlatego ta reguła
+   też. */
 .state_prospect {
-  color: var(--status-info);
+  color: var(--accent);
+  border-color: var(--accent-edge);
+  background: var(--accent-quieter);
 }
 
 .state_inactive {

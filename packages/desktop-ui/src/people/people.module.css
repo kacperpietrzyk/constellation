@@ -7,28 +7,35 @@
    screen loses nothing. */
 
 .people {
+  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the list ───────────────────────────────────────────── */
 
-/* WRAPPING IS NOT DECORATION HERE, it is what keeps the surface inside itself.
-   `.surface-scroll > *` centres every child with `margin-inline: auto`
-   (`styles.css:4404-4407`), so a child is sized `fit-content` — and
-   `fit-content` is clamped BELOW by min-content. A non-wrapping flex row's
-   min-content is the sum of its children, so at 200% text this bar stops being
-   able to fit the surface's content box and the surface overflows itself, with
-   no single descendant overflowing anything. A wrapping row's min-content is
-   its widest single child instead, which is a number that stays inside. */
-.crumbbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-4);
-}
+/* WRAPPING IS NOT DECORATION ON THIS SURFACE, it is what keeps it inside
+   itself, and it binds every bar below. `.surface-scroll > *` gives every
+   child an auto inline END margin (`styles.css`), so a child is sized
+   `fit-content` — and `fit-content` is clamped BELOW by min-content. A
+   non-wrapping flex row's min-content is the sum of its children, so at 200%
+   text such a bar stops fitting the surface's content box and the surface
+   overflows itself, with no single descendant overflowing anything. A wrapping
+   row's min-content is its widest single child instead, which is a number that
+   stays inside.
+
+   PAS AKCJI, PRZY KTÓRYM TO NAJPIERW STAŁO, ZNIKNĄŁ WRAZ Z LOTEM C2 — ale
+   uzasadnienie zostaje, bo wiąże `.create` i `.filter` tak samo. Prototyp nie
+   układa nad płótnem pasma tytułu I osobnego paska akcji: `crumbbar(crumbs,
+   actions)` (`v3/app.js:677-683`) jest JEDNYM pasmem, które niesie nazwę ekranu
+   i akcję, a rozpychacz `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`)
+   odpycha ją do prawego końca. Akcja tego ekranu stoi teraz
+   w `SurfaceTitleBand`, którego pasmo zawija z tego samego powodu
+   (`styles.css`, `.surface-header { flex-wrap: wrap }`), a reguła, która
+   trzymała ją rzędem niżej, nie ma już konsumenta i została skasowana zamiast
+   osierocona. */
 
 .create {
   display: flex;
@@ -62,12 +69,9 @@
   letter-spacing: normal;
 }
 
+/* Kształt pasma jest w `.view-band` (`styles.css`); tu zostaje treść. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-3);
-  padding-inline: var(--space-4);
 }
 
 .switcher {
@@ -83,11 +87,32 @@
 /* The pressed layout carries a FILL and a stronger border, not only a warmer
    text colour: which layout is on has to survive a screen with no colour. */
 .switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   padding: 0.125rem 0.625rem;
   border-radius: var(--radius-full);
   border: 1px solid transparent;
+}
+
+/* POZYCJA #29, POŁOWA O SEGMENTACH — budynek przy „By organization", kolumny
+   przy „Table". Literał układów: `v3/screens/crm.js:216`. Montaż glifu:
+   `v3/screens/crm.js:545`, wewnątrz `<div class="segmented">` otwartego na
+   `:542`. Rozmiar: `v3/app.css:348` (`.segmented button svg`), 0,8125 rem bez
+   wygaszenia.
+
+   POPRAWIONE 2026-08-12, tak jak bliźniak w `organizations.module.css`:
+   pierwsza wersja przepisała tu komplet z `v3/screens/crm.css:162`
+   (0,6875 rem + `opacity: 0.75`) — regułę PLAKIETKI UCZESTNICTWA, której
+   glifu ten lot nie oddał — i powoływała się na `crm.css:141`, linię PUSTĄ.
+
+   Rozmiar w `rem`, bo bramka chodzi też przy 200% i 300%. */
+.switch svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: none;
 }
 
 .switch[aria-selected="true"] {
@@ -163,6 +188,18 @@
   white-space: nowrap;
 }
 
+/* POZYCJA #26, DRUGA POŁOWA — glif budynku przed nazwą organizacji.
+   `v3/screens/crm.css:191`: `.crm-ghead-name svg { width: 0.8125rem; height:
+   0.8125rem; opacity: 0.7 }`. `flex: none` jest tu nośne, a nie porządkowe:
+   nagłówek grupy skraca się elipsą (`overflow: hidden` wyżej), a znak, który
+   dałby się ścisnąć, zwężałby się razem z nazwą zamiast zniknąć razem z nią. */
+.groupName svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: none;
+  opacity: 0.7;
+}
+
 .groupName:hover {
   color: var(--text-link);
 }
@@ -222,9 +259,60 @@
   color: var(--text-secondary);
 }
 
+/* POZYCJA #30 — ZNACZNIK JEST RYSOWANY, NIE PISANY. Bliźniak reguły
+   z `organizations/organizations.module.css`: rejestr zgłosił ten sam kształt
+   dwa razy (#20 na Organizacjach, #30 na Ludziach), więc jest to jedna
+   poprawka w dwóch arkuszach. Prototyp: `v3/app.css:389-409`, wybierane przez
+   `healthDot` (`v3/app.js:116`). Cztery ROZRÓŻNIALNE KSZTAŁTY, nie cztery
+   kolory — kontrakt `.ui-craft/tokens.md` „Status and accessibility" żąda, żeby
+   kolor był podwojony czymś, co widać bez koloru. */
 .signalMark {
-  font-size: var(--text-2xs);
-  line-height: 1;
+  flex: none;
+  position: relative;
+  width: 0.8125rem;
+  height: 0.8125rem;
+  border-radius: 2px;
+  border: 1.5px solid var(--text-disabled);
+}
+
+.signalMark_good {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+
+.signalMark_watch {
+  border-color: var(--status-warning);
+  background: linear-gradient(
+    135deg,
+    var(--status-warning) 50%,
+    transparent 50%
+  );
+}
+
+.signalMark_risk {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+
+.signalMark_risk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--surface-canvas);
+  clip-path: polygon(
+    44% 18%,
+    56% 18%,
+    54% 58%,
+    46% 58%,
+    44% 74%,
+    56% 74%,
+    56% 84%,
+    44% 84%
+  );
+}
+
+.signalMark_none {
+  border-style: dashed;
 }
 
 .signal_risk {
@@ -261,8 +349,15 @@
   border-color: var(--border-strong);
 }
 
+/* POZYCJA #19, DRUGI Z DWÓCH EKRANÓW. Ta sama plakietka była niebieska tu i na
+   Organizacjach, i właśnie dlatego rejestr nazwał to REGUŁĄ, a nie przypadkiem.
+   Prototyp: `v3/screens/crm.css:33`. Kontrast zmierzony przed edycją, w obu
+   motywach i na obu planach czytania: 5,31 / 5,02 (ciemny), 4,62 / 4,86
+   (jasny) przy progu 4,5. */
 .state_prospect {
-  color: var(--status-info);
+  color: var(--accent);
+  border-color: var(--accent-edge);
+  background: var(--accent-quieter);
 }
 
 .state_inactive {
@@ -279,9 +374,91 @@
      not, so above 200% the four cells stop fitting the row and the surface
      overflows itself. Ratios always sum to the row at any text size and carry
      the same intent: the name gets the most room, the date the least, and the
-     avatar — a glyph, not text — is the one thing that must not shrink. */
+     avatar — a glyph, not text — is the one thing that must not shrink.
+
+     TRZECI TOR MA DÓŁ `min-content` I TO JEST JEDYNY WYJĄTEK OD ZDANIA WYŻEJ —
+     wyjątek o tej samej treści, nie wbrew niej. Wszystkie pozostałe komórki
+     tego wiersza UMIEJĄ ustąpić: nazwa, rola, powód, mail i data niosą
+     `overflow: hidden; text-overflow: ellipsis`, więc węższy tor daje w nich
+     wcześniejszy wielokropek. Plakietka uczestnictwa nie umie: `.part` jest
+     `white-space: nowrap` i bez wielokropka, bo „3 dea…" nie jest liczbą, tylko
+     liczbą wyglądającą na inną liczbę. Tor `minmax(0, 1fr)` kazał więc RZECZY
+     NIEŚCIŚLIWEJ ustępować pierwszej, a ściśliwym stać — i wynikiem było
+     przepełnienie toru mierzone przez `descendant-overflow.mjs` (25 px przy
+     tekście 200%, 21 px w oknie 320 px), czyli dług zapisany na wątku
+     skalowania za defekt, który jest tutaj i jest strukturalny.
+     `minmax(min-content, 1fr)` odwraca kolejność ustępowania na właściwą:
+     plakietka bierze dokładnie tyle, ile ma treści, a resztę wiersza dzielą
+     komórki, które potrafią się skrócić.
+
+     GÓRA ZOSTAJE `1fr`, więc przy 1440 px NIC SIĘ NIE ZMIENIA: zmierzone —
+     udział 1fr (259 px) jest tam większy niż `min-content` plakietki (54 px),
+     a algorytm siatki bierze wtedy udział. Zmiana działa wyłącznie tam, gdzie
+     wiersz jest ciasny, i nie kupuje szerokości kosztem 1440 px.
+
+     TRZY CENY, WSZYSTKIE NAZWANE LICZBĄ, bo strażnik bez wypowiedzianej
+     granicy czyta się jak strażnik bez granicy.
+
+     (1) TORY PRZESTAJĄ BYĆ IDENTYCZNE W KAŻDYM WIERSZU przy ciasnej szerokości.
+     Każdy `.row` jest własną siatką, a `min-content` zależy od treści TEGO
+     wiersza, więc przy 200% zmierzone tory nazwy to 59,7 / 66,2 / 83,6 px
+     zamiast trzech równych. Przy 1440 px wszystkie trzy wiersze mają dalej
+     259 px, więc lista wygląda jak tabela tam, gdzie produkt naprawdę stoi.
+     Kupione za to: plakietka przestaje się rysować PO WIERZCHU kolumny
+     kontaktu — `.parts` nie ma `overflow: hidden`, więc 25 px przepełnienia
+     przy 200% było 25 px tekstu na tekście.
+
+     (2) WIERSZ MA TERAZ DÓŁ ZALEŻNY OD TREŚCI, więc dostatecznie szeroka
+     plakietka przestanie mieścić się w wierszu, zamiast wystawać z toru — a to
+     jest inny werdykt bramki (`div._row` na People nie ma wpisu w rejestrze
+     `descendant-overflow.mjs`, więc byłaby to ŚWIEŻA porażka, nie dług).
+     Granica jest zmierzona i wynosi ok. 130 px na najszerszej plakietce
+     w oknie 320 px: wiersz ma tam 236 px, a reszta wkładu `min-content`
+     zajmuje ok. 105 px. Dzisiejsza najszersza plakietka („3 meetings" z glifem)
+     ma 89,4 px, czyli zapasu jest ~40 px. Kto dopisuje do tego pasa trzecią
+     plakietkę albo dłuższy napis, sprawdza tę liczbę.
+
+     (3) ROLA NIE MA CZYM SIĘ NARYSOWAĆ PRZY 200% ANI PRZY 320 px, I NIE JEST
+     TO REGRESJA TEJ ZMIANY — akapit przepisany po przeglądzie fali, bo jego
+     pierwsza wersja twierdziła coś, czego nikt nie zmierzył, i przegląd
+     zgłosił na tej podstawie „lot D9 zapadł rolę" jako defekt blokujący.
+     Twierdziła, że przed zmianą rola „wychodziła o 237 px jako `contained`,
+     czyli była skrócona wielokropkiem". 237 px było PRZEPEŁNIENIEM, a nie
+     szerokością widocznego napisu.
+
+     ZMIERZONE W PRZEGLĄDARCE NA OBU WERSJACH TORU, trzy wiersze fikstury,
+     szerokość wewnętrzna `.role`:
+
+       przelot           | minmax(0, 1fr) | minmax(min-content, 1fr)
+       tekst 200% (1024) |  0 / 2,3 / 0   |  0 / 0 / 0
+       okno 320 px       |  0 / 0 / 0     |  0 / 0 / 0
+       760 px            |       —        |  43,8 / 130,7 / 77,6
+       1440 px           |       —        |  176,3 / 131,7 / 145,1
+
+     Czyli rola była zapadnięta W OBU WĄSKICH PRZELOTACH JUŻ PRZED tą zmianą;
+     ta zmiana zabrała jej 2,3 px na jednym wierszu. Przy 760 px — czyli przy
+     WŁASNYM MINIMUM OKNA produktu (`BrowserWindow minWidth: 760`) — i przy
+     1440 px rola czyta się w obu wersjach. Zapadnięcie należy do wątku
+     „skalowanie interfejsu (R3-5)", jest starsze od tego lotu i nie jest
+     robione tutaj; prawdziwym lekarstwem jest KOLEJNOŚĆ ZWIJANIA (rola schodzi
+     pod nazwę albo wypada jawnie).
+
+     CENA, KTÓRĄ TA ZMIANA NAPRAWDĘ ZAPŁACIŁA, jest inna i mniejsza: przy 200%
+     nazwa spada z 88,9 / 86,7 / 88,9 px na 45,7 / 52,2 / 69,6 px, bo tor
+     plakietki bierze swoje `min-content`. Nazwa dalej się rysuje i dalej niesie
+     wielokropek, plakietka przestaje rysować się po wierzchu sąsiedniej
+     kolumny.
+
+     I NIE JEST TO JUŻ CENA, KTÓREJ BRAMKA NIE WIDZI — to zdanie było prawdziwe,
+     kiedy je napisano, i przestało być. Przelotka przepełnień faktycznie pomija
+     wszystko z `clientWidth <= 1` (tym samym filtrem, którym odsiewa pudełka
+     „tylko dla czytnika ekranu"), więc komórka znikała z raportu dokładnie
+     wtedy, gdy znikała z ekranu. Tę ślepą plamkę mierzy od tego przeglądu
+     `KNOWN_COLLAPSED_TEXT` w `scripts/descendant-overflow.mjs`: `people` /
+     `span._role` jest tam wpisem z wymienionymi DWOMA wąskimi przelotami,
+     więc zapadnięcie roli przy 760 px albo 1440 px pada jak każde nowe. */
   grid-template-columns:
-    1.5rem minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)
+    1.5rem minmax(0, 1.4fr) minmax(min-content, 1fr) minmax(0, 1fr)
     minmax(0, 0.6fr);
   align-items: center;
   gap: var(--space-3);
@@ -341,7 +518,16 @@
    doubles with the text and becomes a width the cell cannot go under, which is
    how a row stops fitting its own grid track at 200% — the same defect as the
    bars above, one level down. The role gives up its room four times faster,
-   which is the same priority without the floor. */
+   which is the same priority without the floor.
+
+   „OSTATNIA" ZNACZY OSTATNIA WŚRÓD RZECZY, KTÓRE UMIEJĄ USTĄPIĆ, i to zdanie
+   jest tu od lotu D9, bo bez niego zdanie wyżej jest już nieprawdziwe. Wobec
+   plakietki uczestnictwa nazwa oddaje miejsce PIERWSZA, i jest to wybór, nie
+   regresja: plakietka jest `white-space: nowrap` bez wielokropka, więc jej
+   „ustąpienie" nie jest skróceniem, tylko rysowaniem po wierzchu sąsiedniej
+   kolumny — co ten wiersz robił przy 200% przez całą falę D. Nazwa skraca się
+   z wielokropkiem, czyli mówi, że jest dłuższa; plakietka przycięta kłamie
+   o liczbie. Kolejność ustępowania stoi w `.row` przy trzecim torze. */
 .name {
   flex: 0 1 auto;
   flex-shrink: 1;
@@ -413,6 +599,41 @@
   white-space: nowrap;
 }
 
+/* GLIF W PLAKIETCE — DOSTARCZONY W LOCIE D9, PO DWÓCH ODMOWACH.
+   Prototyp: `v3/screens/crm.css:162` — `.crm-part svg { width: 0.6875rem;
+   height: 0.6875rem; opacity: 0.75 }`, przy odstępie 0,25 rem z `.crm-part`
+   (`:157`). Otwarte i sprawdzone pod tymi numerami.
+
+   DLACZEGO WRACA DOPIERO TERAZ, bo to jest lekcja, nie kronika. Lot D6 dołożył
+   ten sam glif i bramka wróciła czerwona; lot D9 zaczął od zmierzenia, CZEMU.
+   Odpowiedź nie brzmiała „glif jest za szeroki" — brzmiała „tor jest za wąski
+   i to tor nieściśliwej treści". Przy tekście 200% (okno 1024 px, korzeń 32 px)
+   tor plakietki miał 73,5 px, sama plakietka „3 deals" 99,0 px, a z glifem
+   129,0 px. Żadna z tych trzech liczb nie mieści się w torze — przepełnienie
+   25 px istniało PRZED glifem i było zapisane jako dług cudzego wątku.
+   Poprawka siedzi w `.row` (`minmax(min-content, 1fr)`) i zdejmuje przyczynę,
+   a nie objaw: po niej przepełnienie schodzi do zera w KAŻDYM przelocie, więc
+   wpis rejestru został SPŁACONY I SKASOWANY, a nie podniesiony.
+
+   CZEGO ŚWIADOMIE NIE ZROBIONO: nie ruszono sufitów 25 px / 24 px (należą do
+   wątku „skalowanie interfejsu R3-5" i podniesienie ich pod własną dostawę
+   byłoby przepisaniem przyrządu); nie skrócono treści plakietki, bo prototyp
+   pisze pełne słowo (`v3/screens/crm.js:420-422` — `pjPlural(n, "deal",
+   "deals")`), więc „samą liczbą przy znaku" byłoby rozjazdem z prototypem,
+   nie wiernością; nie dołożono `overflow-x: hidden` na `.parts`, bo to
+   przekwalifikowuje werdykt bez zmiany geometrii i po cichu ucina licznik;
+   i nie zdjęto `white-space: nowrap` z `.part`, żeby plakietka mogła się zawijać
+   — prototyp deklaruje je wprost (`v3/screens/crm.css:160`, otwarte i sprawdzone
+   pod tym numerem), a zawinięta plakietka rysuje DWA wiersze w wierszu
+   o `min-height: 3rem`, czyli kupuje szerokość za wysokość, której ten wiersz
+   nie ma. */
+.part svg {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  flex: none;
+  opacity: 0.75;
+}
+
 .contact {
   min-width: 0;
 }
@@ -442,11 +663,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* TE TRZY DEKLARACJE SĄ DOPISANE W LOCIE D9 I MAJĄ POWÓD, KTÓRY WARTO ZAPISAĆ,
+   BO WYGLĄDAJĄ NA ODWROTNOŚĆ DECYZJI PODJĘTEJ DWADZIEŚCIA LINII WYŻEJ.
+
+   Do lotu D9 ta fikstura nie miała ANI JEDNEGO spotkania, więc `lastMetAt` był
+   wszędzie `undefined` i ta komórka rysowała wyłącznie gałąź „Never met".
+   Zasianie spotkań włączyło gałąź z DATĄ — stan czysto produkcyjny, którego ta
+   bramka nigdy nie widziała — i `b` z datą wyszedł ze swojego toru o 34 px przy
+   tekście 200% i 22 px w oknie 320 px, jako ŚWIEŻE naruszenie. Przyczyna: ta
+   komórka była jedyną tekstową w wierszu bez skracania; sześć sąsiednich
+   (`.name`, `.role`, `.why`, `.clip`, `.mail`, `.sub`) niosło te same trzy
+   deklaracje od początku.
+
+   DLACZEGO TO NIE JEST TA SAMA RZECZ, KTÓREJ ODMÓWIONO PLAKIETCE. Bramka czyta
+   `overflow-x: hidden` jako werdykt „contained", czyli „wielokropek JEST tu
+   zamierzonym potraktowaniem" — i dla daty oraz dla zdania „Never met" jest,
+   bo skrócony napis MÓWI, że jest dłuższy. Dla licznika nie jest: „3 dea…" to
+   nie jest liczba wyglądająca na uciętą, tylko liczba wyglądająca na inną
+   liczbę. Dlatego pas uczestnictwa dostał WIĘCEJ MIEJSCA (`.row`, trzeci tor),
+   a ta komórka dostaje wielokropek. Dwie różne odpowiedzi, bo dwa różne
+   rodzaje treści — nie dwie miary tej samej. */
 .met b {
   display: block;
   font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* An absence that MEANS something says so in words. A dash rendered as densely

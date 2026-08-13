@@ -433,10 +433,25 @@
      podstawienie ich tutaj zagęściłoby miękki spadek 2,3× — zmiana CIĘŻARU
      wizualnego, czyli dokładnie to, czego zabrania ograniczenie z 2026-07-12.
      Skreślone: wcześniejszy zapis dodawał, że są „zestrojone dla podbarwień".
-     Policzone grepem po całym śledzonym drzewie: `--accent-quiet` i
-     `--accent-glow` mają dziś ZERO odwołań, a więc zero podbarwień, pod które
-     mogłyby być zestrojone. Argument z liczby alfy stoi; argument z roli nie
-     miał podmiotu. */
+     Policzone (2026-08-10, `var(--nazwa)` po `git ls-files` bez `dist/`
+     i `build/`, z komentarzami wyciętymi z liczenia): `--accent-quiet` ma dziś
+     ZERO odwołań, a `--accent-glow` CZTERECH KONSUMENTÓW, wszystkich
+     w `styles.css` — znak aplikacji (`.brand-mark`), przełącznik przestrzeni
+     (`.workspace-switcher`), dok przechwytywania pod kursorem
+     (`.capture-dock:hover`) i poświatę szyny aktywnej nawigacji
+     (`.nav-item.active::before`, dopisaną w Fazie C za `v3/app.css:226`).
+     TA SAMA METODA ZWRACA PIĘĆ WYSTĄPIEŃ, i różnica jest treścią, nie
+     zaokrągleniem: piąte stoi w `scripts/visual-language-pairs.mjs`, w polu
+     `prototype.value` pary C1-01a, czyli w CYTACIE z prototypu, nie
+     w deklaracji, którą przeglądarka rozwiązuje. Kto liczy konsumentów, liczy
+     `packages/`; kto liczy wystąpienia, dostanie o jedno więcej.
+     POPRAWKA WPISANA 2026-08-10: pierwsza wersja tego akapitu mówiła „dokładnie
+     JEDNO" i podawała to jako pomiar; trzy z tych czterech istniały już przed
+     lotem C1, więc liczba była fałszywa w chwili zapisu. Wniosek stoi na alfie,
+     nie na liczbie odwołań, więc się nie ruszył: ani jedno z tych dwóch nie
+     jest podbarwieniem, pod które ten pierścień mógłby być zestrojony.
+     Argument z liczby alfy stoi; argument z roli nie miał podmiotu i dalej
+     go nie ma. */
   --focus-ring:
     inset 0 0 0 0.0625rem oklch(100% 0 0 / 0.7), 0 0 0 0.0625rem var(--accent),
     0 0 0 0.1875rem oklch(64% 0.2 295 / 0.12),
@@ -471,71 +486,94 @@
      powłoka, a prototyp jej nie ma.
 
      ── TOKENY BEZ KONSUMENTA ───────────────────────────────────────────────
-     DWADZIEŚCIA OSIEM nazw z tego pliku nie ma dziś ANI JEDNEGO odwołania
-     w całym śledzonym drzewie. Wcześniejszy zapis mówił „trzynaście" i wymieniał
-     trzynaście — liczba dotyczyła JEDNEJ GRUPY, a zdanie mówiło o pliku; drugi
-     mówił „dwadzieścia siedem" i gubił `--ease-in`, bo liczył granicą słowa,
-     a `\b` po `--ease-in` dopasowuje się WEWNĄTRZ `--ease-in-out`. Ta sama
-     klasa, o którą chodzi w całej tej fali: przyrząd zwrócił liczbę, nie
-     zmierzywszy jednej pozycji, i nic nie krzyknęło.
-     Policzone 2026-08-06 skryptem po `git ls-files` (bez `dist/` i `build/`),
-     z komentarzami wyciętymi z liczenia i z granicą `var(` zamiast `\b`, na
-     drzewie PO zmianach tego lotu; ta sama metoda daje 182 zadeklarowane
-     tokeny. Pełna lista, w grupach:
+     OSIEMNAŚCIE nazw z tego pliku nie ma dziś ANI JEDNEGO odwołania w całym
+     śledzonym drzewie; zadeklarowanych jest 184.
 
-     (1) DOŁOŻONE POD KONKRETNE FAZY — trzynaście, i to jest ZAMIERZONE, a nie
+     TA LICZBA KŁAMAŁA TU JUŻ TRZY RAZY, ZA KAŻDYM RAZEM INACZEJ, i dlatego ta
+     wersja zaczyna od metody, a nie od sumy. Pierwszy zapis mówił „trzynaście"
+     i wymieniał trzynaście — liczba dotyczyła JEDNEJ GRUPY, a zdanie mówiło
+     o pliku. Drugi mówił „dwadzieścia siedem" i gubił `--ease-in`, bo liczył
+     granicą słowa, a `\b` po `--ease-in` dopasowuje się WEWNĄTRZ
+     `--ease-in-out`. Trzeci (Faza C, lot C1) przeliczył „28 → 27" na fałszywej
+     przesłance, że `--accent-glow` zszedł z tej listy przez szynę nawigacji —
+     ten token miał TRZECH konsumentów już przed tamtym lotem i nigdy do tej
+     listy nie należał. Wszystkie trzy to jedna klasa: suma wpisana w prozę
+     gnije w milczeniu, bo `css-token-lint` łapie odwołanie BEZ definicji,
+     a NIGDY definicji bez odwołania.
+
+     METODA, ODTWARZALNA JEDNYM POLECENIEM: po `git ls-files` (bez `dist/`
+     i `build/`), z komentarzami wyciętymi z liczenia, licząc `var(--nazwa)`
+     zamiast granicy słowa. Zmierzone 2026-08-10, na drzewie PO naprawie lotu
+     C1. Kto rusza tę listę, ma przeliczyć CAŁOŚĆ tą metodą — nie dopisać ani
+     skreślić jednej nazwy — bo osiem z dawnej listy zeszło z niej po cichu
+     przez trzy loty Fazy 3 i nikt tego nie zauważył.
+
+     (1) DOŁOŻONE POD KONKRETNE FAZY — SZEŚĆ, i to jest ZAMIERZONE, a nie
      zaległość. Stoją tu, bo plan
      `docs/plans/2026-08-06-adopcja-jezyka-wizualnego/plan.md` (Faza 1, akapit
      „Tokeny potrzebne dalszym fazom") kazał położyć warstwę tokenów RAZ,
      zamiast dokładać ją po kawałku przy każdym locie Faz 2-3:
 
        --shadow-drag                       przeciąganie kart (Faza 3)
-       --edge-top                          górna krawędź materiału (Faza 3)
-       --grain, --grain-opacity            ziarno okna (Faza 3)
        --ease-spring, --duration-exit      ruch (Faza 3)
-       --row-height, --sidebar-rail        gęstość powłoki (Faza 3)
-       --text-3xl                          skala po zdjęciu stopnia display (Faza 3)
-       --surface-elevated, --surface-sidebar  czwarty plan (Faza 3)
+       --text-3xl                          skala po zdjęciu stopnia display
        --neutral-925, --a-300              pełne rampy, bez dziur
 
-     (2) TRZY TOKENY AKCENTU Z FAZY 1, których poprzednia lista nie wymieniała
-     wcale — i to nie jest arytmetyka, bo nota pierścienia wyżej UZASADNIAŁA
-     nimi swoje literały:
+     SIEDEM NAZW Z TEJ GRUPY DOSTAŁO KONSUMENTA W FAZIE 3 i lista ich do
+     2026-08-10 nie odnotowała: `--edge-top` (`styles.css`, `notes.module.css`),
+     `--grain` i `--grain-opacity` (ziarno okna), `--row-height`
+     (`commercial-defaults-section.module.css`, szkielet listy),
+     `--sidebar-rail` (tryb szyny ikon), `--surface-elevated`
+     (`notes.module.css`, `pipeline.module.css`) oraz `--surface-sidebar`
+     (plan lewej kolumny, dopisany w Fazie C). Grupa spełniła się dokładnie
+     tak, jak zapowiadał plan — nikt tylko liczby nie przeliczył.
 
-       --accent-hover, --accent-quiet, --accent-glow
+     (2) TOKEN AKCENTU Z FAZY 1 — JEDEN, nie dwa:
 
-     `--accent-hover` czeka na Fazę 2 (żaden hover nie niesie dziś akcentu),
-     a dwa pozostałe są podbarwieniami bez podbarwionej powierzchni. Argument
-     „są zestrojone dla podbarwień" został przy pierścieniu skreślony właśnie
-     dlatego.
+       --accent-quiet                      podbarwienie bez podbarwionej
+                                           powierzchni
 
-     (3) BEZ KONSUMENTA — dwanaście zastanych i jeden dołożony niżej:
+     `--accent-hover` ZSZEDŁ Z TEJ LISTY, i nie w Fazie C: niesie go
+     `renewals/renewals.module.css:670`. Wpis „czeka na Fazę 2, żaden hover nie
+     niesie dziś akcentu" był nieprawdziwy w chwili, gdy go czytano.
+     `--accent-glow` NIGDY na tej liście nie stał — patrz nota przy
+     `--focus-ring` wyżej.
 
-       --neutral-100, --neutral-200, --neutral-500, --neutral-800  stopnie rampy
-       --white-a02, --white-a20                                    stopnie alfy
+     (3) BEZ KONSUMENTA — JEDENAŚCIE:
+
+       --neutral-200, --neutral-500, --neutral-800  stopnie rampy
+       --white-a02, --white-a20                     stopnie alfy
        --shell-inspector-bg                     powłoka bierze szkło wprost
        --context-seam                           szew materiału kontekstu
        --radius-2xl, --z-base                   skrajne stopnie skal
        --ease-in                                krzywa wejścia; używana jest
                                                 wyłącznie `--ease-in-out`
+       --edge-specular                          zdjęty z obwódki doku w Fazie 3
 
-     DOPISANY 2026-08-07 PRZEZ LOT POWŁOKI, i to jest ubytek, nie zastany stan:
      `--edge-specular` był malowany DOKŁADNIE w jednym miejscu poza tą warstwą —
-     na obwódce doku przechwytywania pod kursorem — a pozycja 10 tego lotu
-     zamienia ją na `--accent-edge` za prototypem (`v3/app.css:815-816`). Token
-     zostaje zdefiniowany w obu motywach i bez ani jednego odwołania; kto go
-     kasuje albo daje mu konsumenta, ma tu przyczynę. Lista ma więc dziś
-     TRZYNAŚCIE nazw, nie dwanaście.
+     na obwódce doku przechwytywania pod kursorem — a pozycja 10 lotu powłoki
+     (2026-08-07) zamieniła ją na `--accent-edge` za prototypem
+     (`v3/app.css:815-816`). Token zostaje zdefiniowany w obu motywach i bez ani
+     jednego odwołania; kto go kasuje albo daje mu konsumenta, ma tu przyczynę.
 
-     `--neutral-500` DOŁĄCZYŁ DO TEJ LISTY W TYM LOCIE: był stopniem dwóch
-     tokenów tekstu, które zeszły z rampy na literały wyliczone (patrz noty przy
-     `--text-quaternary` i przy jasnym `--text-disabled`).
+     `--neutral-500` DOŁĄCZYŁ DO TEJ LISTY W LOCIE PIERŚCIENIA: był stopniem
+     dwóch tokenów tekstu, które zeszły z rampy na literały wyliczone (patrz
+     noty przy `--text-quaternary` i przy jasnym `--text-disabled`).
+
+     `--neutral-100` Z NIEJ ZSZEDŁ, ale POZORNIE: jedyne `var(--neutral-100)`
+     w drzewie stoi w `scripts/break-visual-language.mjs`, czyli w łańcuchu
+     ZŁAMANIA, nie w produkcie. Metoda liczy całe śledzone drzewo i dlatego go
+     nie widzi jako sieroty; licząc samo `packages/` sierot jest DZIEWIĘTNAŚCIE.
+     Obie liczby są prawdziwe o czym innym i tu stoją obie, żeby następna nie
+     musiała zgadywać, którą mierzono.
 
      I DLATEGO TA GRUPA MA WŁASNĄ NOTĘ: `css-token-lint` łapie odwołanie BEZ
      definicji, ale NIGDY definicji bez odwołania. Literówka w tej grupie
      (`--sidebar-rall`, `--shadow-drg`) przeleży więc cicho aż do dnia, w którym
      ktoś jej użyje — i wyjdzie wtedy jako „token rozwiązał się do niczego",
-     czyli w miejscu odległym od przyczyny. Trzynaście nazw z GRUPY (1) zostało
+     czyli w miejscu odległym od przyczyny. Trzynaście nazw, które GRUPA (1)
+     miała 2026-08-06 (sześć dzisiejszych plus siedem, które od tamtej pory
+     dostały konsumenta), zostało
      sprawdzonych LITEROWO przeciw `v3/tokens.css` (2026-08-06, przez porównanie
      rozwiniętych wartości, nie wzrokiem): wszystkie zgadzają się co do znaku,
      przy dwóch podstawieniach nazewniczych, które ta aplikacja robi świadomie
@@ -640,6 +678,12 @@
        --a-700  46%   7,60:1   AA        ← hover akcji
        literał  38%  10,56:1   AA        ← stan wciśnięty akcji
 
+     TA TABELA MÓWI O TOKENACH, NIE O ZAKAZIE. Od lotu D8 istnieje dokładnie
+     JEDEN podmiot, który niesie tekst na `--a-400` i `--a-500` mimo tych liczb:
+     spoczynek `.primary-button`, pod nazwanym zwolnieniem opisanym niżej.
+     Kolejny taki podmiot wymaga kolejnej decyzji człowieka — tabela nie jest
+     dla niego furtką.
+
      Próg przecina rampę przy ~58,3% jasności, więc PRZECHODZĄ TYLKO DWA
      STOPNIE — i dlatego rola ma dokładnie JEDEN stopień do wydania na rzecz
      bez stanów: `--a-600`. Gdyby plakietka miała stać o stopień jaśniej „bo
@@ -652,13 +696,30 @@
      `:active` jako stanu osobnego, a `:active` przychodzi NA hoverze — trzy
      z nich nie mają przy tym żadnej innej różnicy niż kolor.
 
-     ODSTĘPSTWO OD v3, NAZWANE: prototyp maluje akcję główną gradientem
-     `--a-400 → --a-500 → --a-600` z hoverem `--a-300 → --a-400 → --a-500`
-     (`v3/app.css:321-331`) i tym samym prawie białym tekstem. Zmierzone na tej
-     samej matematyce: górny stopień spoczynku 2,57:1, górny stopień hovera
-     1,88:1 — czyli wartość prototypu NIE PRZECHODZI, i to nie o włos. Zostaje
-     wartość wyliczona, dokładnie jak przy statusach motywu jasnego wyżej.
+     ODSTĘPSTWO OD v3, PRZEPOŁOWIONE 2026-08-12 (lot D8) — i przepołowione
+     DECYZJĄ, nie pomiarem, bo pomiar się nie zmienił. Prototyp maluje akcję
+     główną gradientem `--a-400 → --a-500 → --a-600` z hoverem
+     `--a-300 → --a-400 → --a-500` (`v3/app.css:321-331`) i tym samym prawie
+     białym tekstem. Zmierzone na tej samej matematyce: górny stopień spoczynku
+     2,57:1, górny stopień hovera 1,88:1 — czyli wartość prototypu NIE
+     PRZECHODZI, i to nie o włos.
+
+     SPOCZYNEK: gradient prototypu WCHODZI 1:1, na kontrolce `.primary-button`
+     w `styles.css`, jako świadomy dług dostępnościowy przyjęty przez Kacpra
+     (zwolnienie `ACCENT_GRADIENT_EXEMPTIONS` w
+     `scripts/consumer-contrast.test.mjs` — nazwane, policzone, wypisywane
+     w każdym przebiegu i pilnowane break-testami). Próg 4,5:1 stoi
+     NIETKNIĘTY; zwolnienie zdejmuje asercję, nie pomiar, i nie sięga ani
+     o linijkę dalej niż ta jedna para.
+
+     HOVER I STAN WCIŚNIĘTY: bez zmian, wartość wyliczona zostaje. Prototypowy
+     hover to DRUGI gradient i wymagałby DRUGIEJ decyzji; nikt jej nie podjął.
      Progu nie wolno obniżyć; to zamieniłoby pomiar z powrotem w deklarację.
+
+     TOKEN ZOSTAJE PŁASKI, i to jest granica zakresu, nie przeoczenie:
+     `--action-primary-bg` czytają jako tło także inne reguły, więc gradient
+     w tokenie wciągnąłby je wszystkie pod jedno zwolnienie wydane na jedną
+     kontrolkę. Wypełnienie gradientem siedzi na regule `.primary-button`.
 
      DRUGIE ODSTĘPSTWO, NAZWANE: zbocze idzie MONOTONICZNIE CIEMNIEJ w OBU
      motywach, więc w ciemnym hover POGŁĘBIA zamiast rozjaśniać. To jest
@@ -694,17 +755,19 @@
   --input-text: var(--text-primary);
   --input-placeholder: var(--text-quaternary);
   /* AKTYWNA NAWIGACJA niesie akcent — najcichszy jego stopień jako wypełnienie
-     (`v3/app.css:218-220`) i krawędź jako obramowanie. Zwykłe zaznaczenie
-     wiersza i hover ZOSTAJĄ neutralne (`--surface-selected`, `--surface-hover`):
-     akcent na hoverze albo na każdym zaznaczeniu łamie regułę małej
-     powierzchni. */
+     (`v3/app.css:218-220`), a od Fazy C tusz pełnej mocy idzie na SZYNĘ przy
+     lewej krawędzi kolumny, nie na obramowanie wiersza (`v3/app.css:222-226`,
+     `.ui-craft/tokens.md:291-296`, sekcja „Wash rarely travels alone").
+     Zwykłe zaznaczenie wiersza i hover ZOSTAJĄ
+     neutralne (`--surface-selected`, `--surface-hover`): akcent na hoverze albo
+     na każdym zaznaczeniu łamie regułę małej powierzchni. */
   --nav-active-bg: var(--accent-quieter);
   --nav-active-text: var(--text-primary);
-  /* KRAWĘDŹ NIESIE STAN „ta pozycja jest aktywna", a stan komponentu jest
+  /* KRAWĘDŹ NIESIE STAN „ta pozycja jest bieżąca", a stan komponentu jest
      w WCAG 1.4.11 wymieniony wprost — więc wiąże ją próg 3:1, tak samo jak
      pierścień ogniska. `--accent-edge` (0,42 w ciemnym, 0,40 w jasnym) go NIE
      ZDAWAŁ i nie zdawał w żadnym z czterech sąsiedztw. Zmierzone
-     (`scripts/status-contrast.test.mjs`, część „krawędź aktywnej nawigacji"):
+     (`scripts/status-contrast.test.mjs`, część „krawędź stanu bieżącego"):
 
        sąsiedztwo                          --accent-edge   var(--accent)
        ciemny, plan okna                       1,80             5,70
@@ -722,11 +785,21 @@
      3,0–3,1, czyli na włosku — i kosztuje osobny literał per motyw. `--accent`
      jest jednym aliasem, remapowanym w bloku jasnym, i zdaje z zapasem w obu.
 
-     JEST TO ZGODNE Z v3, choć v3 nie ma tu krawędzi w ogóle: prototyp znaczy
-     pozycję aktywną podbarwieniem `--accent-quieter`, tekstem pierwszorzędnym,
-     wagą 500 i SZYNKĄ `::before` o wypełnieniu `var(--accent)`, czyli akcentem
-     o pełnym kryciu (`v3/app.css:218-226`). Ta aplikacja wydaje tę samą pełną
-     wartość na krawędź zamiast na szynkę.
+     KOGO TEN TOKEN DZIŚ MALUJE — i to zdanie zmieniło się w Fazie C, bo zmienił
+     się jego podmiot. NAWIGACJA JUŻ NIE: `.nav-item.active` wzięła szynę
+     prototypu (`v3/app.css:222-226`) i nie deklaruje `border-color` w ogóle.
+     Zostają DWA konsumenty, oba stanem „to jest bieżące", oba w tym samym
+     arkuszu: wynik wyszukiwania pod kursorem klawiatury (`styles.css`,
+     `.search-results button.active`) i otwarta przestrzeń robocza
+     (`.workspace-registry-list > button.workspace-current`). Pomiar wyżej wiąże
+     je dalej, CO DO WARTOŚCI — próg 3:1 dotyczy koloru na tle, nie kształtu,
+     a `var(--accent)` przeszedł go w każdym z ośmiu sąsiedztw.
+
+     TA SAMA WARTOŚĆ NIESIE TERAZ SZYNĘ, więc pomiar przeniósł się razem z nią
+     i nie trzeba go powtarzać: `.nav-item.active::before` wypełnia się
+     `var(--accent)` bez alfy, czyli dokładnie tą kolumną tabeli, która zdaje.
+     Skreślone zdanie, prawdziwe do Fazy C i już nie: „ta aplikacja wydaje tę
+     samą pełną wartość na krawędź zamiast na szynkę".
 
      `--accent-edge` ZOSTAJE NIETKNIĘTY, i powód jest JEDEN: to literał v3 co do
      znaku (`v3/tokens.css:154`, `:209`). Odrzucone uzasadnienie drugie, żeby nie

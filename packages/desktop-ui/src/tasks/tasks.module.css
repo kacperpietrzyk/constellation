@@ -2,9 +2,13 @@
    własny arkusz — tutaj jest wyłącznie to, co wspólne dla wszystkich pięciu. */
 
 .tasks {
+  /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`: odstęp kolumny
+     jest nazwany, bo pasmo tytułu i pasek widoku go odejmują, żeby stanąć na
+     sobie tak, jak stoją w prototypie. */
+  --surface-stack-gap: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--surface-stack-gap);
   min-block-size: 0;
   /* Scaled text must not make the PAGE scroll sideways. Anything genuinely
      wider than the window — a board of columns, a table of eight — scrolls
@@ -21,7 +25,7 @@
      neither `visible` nor `clip`, and `hidden` on ONE axis computes the other
      axis to `auto` — which made THIS box the scrollport for everything under
      it. It never scrolls: its height is not constrained, and the pane above it
-     (`styles.css:1426-1435`, `.work-surface { overflow: auto }`) is what
+     (`styles.css:2095-2105`, `.work-surface { overflow: auto }` — conditional since lot D10: `.work-surface:has(> .surface-header)` makes the carrier a non-scrolling flex column, and Tasks is a screen that lot deliberately did NOT migrate) is what
      actually moves. A task opened as a record renders inside this same wrapper
      (`TasksSurface.tsx:381-383`), so on the task record alone the bar pinned
      to a box that stands still. Measured 2026-08-07: `projects › record` held
@@ -45,13 +49,9 @@
   overflow-x: clip;
 }
 
+/* Kształt pasma jest w `.view-band` (`styles.css`); tu zostaje treść. */
 .viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-3);
-  padding-block-end: var(--space-2);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .switcher {

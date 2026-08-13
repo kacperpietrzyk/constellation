@@ -10,6 +10,7 @@ import {
   PrincipalIdSchema,
   ProjectIdSchema,
   ProjectTemplateIdSchema,
+  type MeetingLoopSurface,
   StrategicRecordIdSchema,
   TaskAssignmentIdSchema,
   SpaceIdSchema,
@@ -23,6 +24,7 @@ import type {
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
 
+import { dateKeyInZone } from "../i18n.js";
 import { RealApp } from "../RealApp.js";
 import { createScenarioClient } from "../client/scenario-client.js";
 import { crmRecords } from "./crm-fixture.js";
@@ -57,6 +59,22 @@ const agentPrincipalId = PrincipalIdSchema.parse(
   "00000000-0000-4000-8000-0000000000f2",
 );
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000006");
+
+// STREFA WORKSPACE'U JAKO STAŁA, A NIE JAKO POWTÓRZONY NAPIS. Dzień „dzisiaj"
+// liczy się niżej DOKŁADNIE w tej strefie, którą `workspace.bootstrapContext`
+// oddaje jako strefę workspace'u — bo `plannedForDay` porównuje `startAt`
+// z kluczem dnia W TEJ strefie (`today-plan.ts:163-164`). Fikstura licząca
+// dzień w innej strefie niż deklaruje, rysuje pusty plan przez kilka godzin na
+// dobę i nikt nie umie powiedzieć dlaczego.
+const harnessTimeZone = "Europe/Warsaw";
+// WYPROWADZONE Z ZEGARA, NIGDY WPISANE. Wpisana data w fiksturze położyła
+// `main` tego repozytorium dwa razy — asercja przestaje mierzyć to, co mierzyła,
+// nie dlatego, że ktoś zmienił kod, tylko dlatego, że minął dzień. Południe UTC
+// leży tego samego dnia w Warszawie przy obu przesunięciach (+1 i +2), więc ten
+// instant jest „dziś" bez rozróżniania czasu letniego.
+const todayKey = dateKeyInZone(Date.now(), harnessTimeZone);
+const plannedStartAt = `${todayKey}T12:00:00.000Z`;
+const plannedByAt = `${todayKey}T06:00:00.000Z`;
 // Jedno źródło tytułu zadania i identyfikatora projektu, bo od tego PR-a
 // fikstura Library niesie ODWOŁANIA do obu i musi nazywać je tak samo, jak
 // nazywają się w swoich własnych projekcjach — grupa `Record` z tytułem, który
@@ -95,11 +113,183 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
     },
   }) as unknown as RendererQueryResponse;
 
+/* SPOTKANIA W HARNESSIE POWŁOKI — FIKSTURA, KTÓREJ TU NIE BYŁO.
+ *
+ * `?surface=collaboration` jest JEDYNYM adresem, po którym chodzi bramka
+ * układu, a `getMeetingLoop` oddawał tu odmowę dostawcy z pustymi tablicami.
+ * Ekran Spotkań rysował więc dwa puste stany i nic więcej — a para nad kartą
+ * wyników wracałaby `NOT_MEASURED`, czyli jako awaria przyrządu nad poprawnym
+ * kodem. To jest w tym repozytorium nazwana klasa defektu („pusta fikstura
+ * chroni fałszywą asercję"), więc fikstura rośnie, a podłoga nie schodzi.
+ *
+ * DLACZEGO `offline` Z WIERSZAMI, A NIE `permission_required` Z PUSTYM
+ * `upcoming`. Ta fikstura stała przez jeden przebieg na drugim wariancie,
+ * a jego zapisany powód — „`available` wygasiłoby gałąź «Grant access»" —
+ * BYŁ NIEPRAWDĄ, i to sprawdzalną w dwóch linijkach. Napis na tym przycisku
+ * bierze się z `platform === "macos" && availability === "permission_required"`
+ * (`MeetingsSurface.tsx:603-608`); ta fikstura deklarowała `platform: "other"`,
+ * więc rysowała „Check again", a „Grant access" NIE POJAWIŁO SIĘ tu ani razu.
+ * Koszt, którym uzasadniono odmowę pomiaru, nigdy nie był płacony.
+ *
+ * `permission_required` Z WIERSZAMI TO STAN, KTÓREGO NIE PRODUKUJE NIC.
+ * Natywny czytnik macOS wydaje tę wartość WYŁĄCZNIE z `canRead: false`
+ * (`desktop-main/native/macos-calendar/main.swift:128-136`), a bez odczytu nie
+ * ma skąd wziąć wydarzeń. Dopisanie wierszy obok tej wartości byłoby fiksturą
+ * udającą stan aplikacji, który nie istnieje — czyli zielenią nad zmyśleniem.
+ *
+ * `offline` JEST DOKŁADNIE TYM STANEM, KTÓREGO TU BRAKOWAŁO, i ma na to własne
+ * zdanie w produkcie: „Calendar is offline. Showing the last safe data instead
+ * of pretending it is current." Odczyt działa (`canRead: true`), zapis nie,
+ * wydarzenia są ostatnie bezpieczne — a kontrolka uprawnienia STOI DALEJ, bo
+ * `MeetingsSurface` rysuje ją przy każdym `availability !== "available"`. To
+ * jest spełniony, wypisany wcześniej warunek wyjścia: „stan aplikacji, w którym
+ * wiersze się rysują, a kontrolka uprawnienia wciąż stoi".
+ *
+ * CO TA ZAMIANA KOSZTUJE, POWIEDZIANE WPROST. Nadchodzące rysują ALBO stan
+ * pusty, ALBO kartę z wierszami — to dwa ramiona jednego wyrażenia
+ * (`MeetingsSurface.tsx:880`), a bramka chodzi po JEDNYM adresie
+ * (`verify-renderer-layout.mjs:116`), więc jedna fikstura rysuje jedno ramię.
+ * Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (farba karty, farba
+ * wpuszczonego wiersza, jego trzy ścieżki, szerokość akcji) przeciwko JEDNEMU
+ * (przezroczystość stanu pustego). Ten jeden stoi wypisany w
+ * `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` z prawdziwym mechanizmem i prawdziwym
+ * warunkiem wyjścia. `completed` zostaje NIEPUSTE — wymiana ramion po tamtej
+ * stronie kosztowałaby dwie pary zamiast jednej.
+ *
+ * CZAS WYPROWADZONY Z ZEGARA, NIGDY WPISANY. Wpisana data położyła `main`
+ * tego repozytorium dwa razy, bez zmiany w kodzie. Dotyczy to tak samo
+ * wydarzenia w PRZYSZŁOŚCI: `hoursAhead` liczy od tego samego `now`.
+ */
+const meetingLoopFixture = (): MeetingLoopSurface => {
+  const now = Date.now();
+  const daysAgo = (days: number, hour: number) => {
+    const at = new Date(now - days * 86_400_000);
+    at.setHours(hour, 0, 0, 0);
+    return at.toISOString();
+  };
+  const hoursAhead = (hours: number) =>
+    new Date(now + hours * 3_600_000).toISOString();
+  const meeting = (
+    index: number,
+    title: string,
+    days: number,
+    summaryMarkdown: string,
+  ) => ({
+    id: `00000000-0000-4000-8000-00000000031${index}`,
+    workspaceId,
+    spaceId,
+    connectionId: "jamie-workspace",
+    externalMeetingId: `meeting-collaboration-${index}`,
+    title,
+    startedAt: daysAgo(days, 9),
+    endedAt: daysAgo(days, 10),
+    summaryMarkdown,
+    participants: [],
+    workItems: [],
+    contentHash: String(index).repeat(64),
+    triage: "ready" as const,
+    missingComponents: [],
+    version: 1,
+    updatedAt: daysAgo(days, 11),
+  });
+  return {
+    capability: {
+      platform: "macos",
+      provider: "eventkit",
+      availability: "offline",
+      canRead: true,
+      canWriteOwnedBlocks: false,
+      detailCode: "scenario_offline",
+    },
+    // JEDEN WIERSZ, NIE DWA. Drugi nie kupuje ANI JEDNEJ pary więcej — każdy
+    // podmiot tej sekcji jest czytany selektorem klasy albo liczony na jeden —
+    // a kosztowałby bajty w paczce, którą i tak trzeba trzymać uczciwie.
+    // `canWriteOwnedBlocks: false` jest tu wybrane, a nie odziedziczone: rysuje
+    // CZWARTE dziecko siatki wiersza (`.meeting-block-unavailable`), czyli
+    // jedyny stan, w którym widać, czy zostało ono w niej posadzone.
+    upcoming: [
+      {
+        event: {
+          provider: "fixture" as const,
+          calendarExternalId: "Praca",
+          eventExternalId: "event-collaboration-prep",
+          revision: "rev-1",
+          title: "Przegląd wdrożenia z zespołem klienta",
+          startsAt: hoursAhead(20),
+          endsAt: hoursAhead(21),
+          isAllDay: false,
+          location: "Google Meet",
+          attendees: [
+            {
+              name: "Kacper",
+              email: "kacper@example.com",
+              organizer: true,
+              response: "accepted" as const,
+            },
+            {
+              name: "Alex",
+              email: "alex@example.com",
+              organizer: false,
+              response: "accepted" as const,
+            },
+          ],
+        },
+        brief: {
+          eventExternalId: "event-collaboration-prep",
+          deterministic: true as const,
+          generatedAt: new Date(now).toISOString(),
+          orientation: [
+            {
+              kind: "project" as const,
+              recordId: "00000000-0000-4000-8000-000000000320",
+              spaceId,
+              label: "Wdrożenie Northstar",
+              fact: "Pilot wchodzi w przegląd wydania",
+              updatedAt: daysAgo(1, 9),
+            },
+          ],
+          openLoops: [
+            {
+              kind: "waiting" as const,
+              recordId: "00000000-0000-4000-8000-000000000321",
+              spaceId,
+              label: "Potwierdzenie właściciela wdrożenia",
+              fact: "Czeka na bezpieczeństwo",
+              updatedAt: daysAgo(2, 9),
+            },
+          ],
+          relevantSources: [],
+        },
+      },
+    ],
+    completed: [
+      meeting(
+        1,
+        "Decyzja o pilocie",
+        2,
+        "## Wynik\n\n- **Pilot pozostaje za flagą** do czasu potwierdzenia recovery.",
+      ),
+      meeting(
+        2,
+        "Tygodniowy przegląd wdrożenia i otwartych decyzji",
+        4,
+        "## Najważniejsze ustalenia\n\n1. Zespół zamyka etap przygotowania.\n2. Następny przegląd obejmie **ryzyko i termin**.",
+      ),
+    ],
+    // ZGODNE Z DEKLAROWANĄ ZDOLNOŚCIĄ, nie wpisane obok niej. `"partial"` przy
+    // kalendarzu, który sam o sobie mówi „offline", byłoby tą samą
+    // niespójnością, którą ta fikstura właśnie przestała nieść.
+    freshness: "offline",
+    generatedAt: new Date(now).toISOString(),
+  };
+};
+
 const client = createScenarioClient({
   documentState: (documentId) =>
     documentId === libraryDocumentIds.runbook
       ? libraryNoteState(taskId)
       : undefined,
+  meetingLoop: meetingLoopFixture(),
   executeCommand: (command): RendererCommandResponse => {
     if (
       command.commandName !== "attention.markRead" &&
@@ -140,7 +330,7 @@ const client = createScenarioClient({
       workspace: {
         id: workspaceId,
         name: "Praca",
-        timezone: "Europe/Warsaw",
+        timezone: harnessTimeZone,
         defaultTaskStatusId: statusId,
         voiceAudioRetentionPolicy: "delete_after_transcript",
         // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
@@ -171,6 +361,13 @@ const client = createScenarioClient({
           version: 1,
         },
       ],
+      // DWA SZABLONY, NIE JEDEN, I TO JEST WYMÓG POMIARU (lot D11). Panel
+      // dymka „Apply template" to LISTA przycisków; przy jednym szablonie
+      // bramka mierzyłaby listę, która nie ma jeszcze geometrii listy —
+      // odstępu między pozycjami, chodzenia strzałkami, sufitu szerokości nad
+      // dwiema różnej długości nazwami. Drugi wpis kosztuje zero wysłanych
+      // bajtów (`import.meta.env.DEV`) i jest jedyną drogą do stanu, w którym
+      // to, co lot oddał, w ogóle się rysuje.
       projectTemplates: [
         {
           id: ProjectTemplateIdSchema.parse(
@@ -180,6 +377,16 @@ const client = createScenarioClient({
           taskTitles: ["Kickoff", "Plan wdrożenia", "Retro"],
           fieldIds: [],
           position: 0,
+          version: 1,
+        },
+        {
+          id: ProjectTemplateIdSchema.parse(
+            "00000000-0000-4000-8000-0000000000c2",
+          ),
+          name: "Odnowienie umowy wsparcia",
+          taskTitles: ["Zebranie warunków", "Wycena", "Podpis"],
+          fieldIds: [],
+          position: 1,
           version: 1,
         },
       ],
@@ -197,6 +404,31 @@ const client = createScenarioClient({
             operationalSemantics: "actionable",
           },
           completionState: "open",
+          // ── DWA POLA, KTÓRE DAJĄ PLAKIETCE AUTORSTWA STAN DO NARYSOWANIA ──
+          // Wpis #6 był oddany w kodzie od lotu D2 i NIEMIERZALNY, bo ta
+          // fikstura nie rysowała ANI JEDNEGO `[data-planned-row]` — ekran stał
+          // na „Nothing is planned for today", więc warunek plakietki
+          // (`TodaySurface.tsx:191-197`: którykolwiek dzisiejszy wiersz planu
+          // z `plannedBy.principalKind === "agent"`) nie miał jak być spełniony.
+          // To nie było „za trudne do zmierzenia", tylko „nie ma czego mierzyć",
+          // a rozwiązaniem jest fikstura, nie niższy próg.
+          //
+          // `calendarBlock` ŚWIADOMIE NIE JEST DOKŁADANY. Wiersz rysuje wtedy
+          // „No time" klasą `.loose`, a `dayCapacity.reservedMinutes` zostaje
+          // zerem (`today-plan.ts:133-137` czyta wyłącznie `calendarBlock`) —
+          // czyli plakietka dostaje stan bez przestawiania drugiej liczby na
+          // tym samym ekranie.
+          startAt: plannedStartAt,
+          // Ten sam `agentPrincipalId`, którym stoi grant „Orbit Runner"
+          // w `agent.access` niżej: `principalName` rozwiązuje imię właśnie po
+          // grancie (`TodaySurface.tsx:61-67`), więc inny identyfikator dałby
+          // ogólne „An agent" i plakietka mierzyłaby gałąź zapasową zamiast
+          // właściwej.
+          plannedBy: {
+            principalId: agentPrincipalId,
+            principalKind: "agent" as const,
+            at: plannedByAt,
+          },
           // THE WRITTEN CONTEXT, and the only projection that carries it. The
           // record screen reads `description` off THIS capped list
           // (`TaskRecordScreen.tsx:386` — `snapshot.tasks.find(...)`), never off
@@ -238,6 +470,29 @@ const client = createScenarioClient({
       ],
       nextCursor: null,
     }),
+    // `startAt` NIE JEST TU POWTÓRZONY, i jest to wybór, nie przeoczenie. Ta
+    // sama praca jest w tej fiksturze ZAPLANOWANA w `task.list` (co daje ekranowi
+    // Dziś wiersz planu i plakietkę autorstwa) i NIEZAPLANOWANA w `work.overview`,
+    // bo `planStateOf` czyta wyłącznie `startAt` (`tasks/task-view.ts:246-251`):
+    // dopisanie go tutaj przestawiłoby znacznik na ekranie Zadań z „unplanned"
+    // na „planned", wpis rejestru `tasks|span._plan._plan_unplanned`
+    // (`descendant-overflow.mjs:96-103`) przestałby się dopasowywać, a
+    // `unusedRegistryEntries` robi z niedopasowanego wpisu BŁĄD, nie ciszę.
+    // Czyli: zaspokojenie jednej pary skasowałoby pomiar drugiej. Dwie projekcje
+    // mówią tu o tym samym zadaniu dwie różne rzeczy — świadomie.
+    //
+    // CO TA ŚWIADOMOŚĆ KOSZTUJE, dopisane po przeglądzie fali, bo sam powód nie
+    // jest jeszcze zapisem długu. Ta fikstura modeluje dziś workspace, którego
+    // produkt nie umie wytworzyć: jedno zadanie zaplanowane w jednej projekcji
+    // i niezaplanowane w drugiej. Póki tak stoi, REGRESJA, w której planowanie
+    // dociera do jednej projekcji, a do drugiej nie, jest tutaj NIEOBSERWOWALNA
+    // — obie bramki widzą dokładnie ten stan i uznają go za poprawny.
+    // WYJŚCIE, i jest tanie: zasiać DRUGIE zadanie, żeby jedno było zaplanowane
+    // w OBU projekcjach, a drugie niezaplanowane w OBU. To zaspokaja plakietkę
+    // autorstwa, próg `todayPlannedRows` i wpis rejestru
+    // `tasks|span._plan._plan_unplanned` naraz, bez rekordu sprzecznego ze sobą.
+    // Nie robione w tym przeglądzie, bo drugie zadanie przestawia liczniki
+    // wierszy na dwóch ekranach, a ten przegląd naprawia przyrządy, nie fikstury.
     "work.overview": result({
       kind: "work.overview",
       tasks: [

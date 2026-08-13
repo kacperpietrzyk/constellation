@@ -57,7 +57,7 @@ export const TaskRemovalSection = ({
         <div className="task-removal-actions">
           <button
             type="button"
-            className="status-danger"
+            className="secondary-button status-danger"
             disabled={busy}
             onClick={() => {
               setBusy(true);

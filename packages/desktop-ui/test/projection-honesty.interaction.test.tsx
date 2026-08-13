@@ -294,6 +294,12 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
   await act(async () => {
     root.render(
       createElement(NotesReading, {
+        // `actionHost` STAŁ SIĘ WYMAGANY W FALI WIZUALNEJ: akcja tych czytelni
+        // wyszła z ich własnego chromu do pasma tytułu, więc komponent musi
+        // dostać węzeł, w który ją wstrzyknie. `null` jest tu poprawną
+        // odpowiedzią, nie zaślepką — ten test montuje SAMĄ czytelnię, bez
+        // powłoki, więc pasma do wstrzyknięcia nie ma, a typ dopuszcza brak.
+        actionHost: null,
         client: undefined,
         snapshot: {
           ...workHarnessSnapshot,
@@ -404,6 +410,9 @@ test("with the note list unread, the Library withdraws its counts instead of pri
   await act(async () => {
     root.render(
       createElement(NotesReading, {
+        // Patrz nota przy pierwszym montażu: `actionHost` jest wymagany od fali
+        // wizualnej, a `null` jest poprawną odpowiedzią dla montażu bez powłoki.
+        actionHost: null,
         client: undefined,
         snapshot: {
           ...workHarnessSnapshot,
@@ -523,6 +532,12 @@ test("Sources prints the reason its metadata could not be read", async () => {
   await act(async () => {
     root.render(
       createElement(SourcesReading, {
+        // `actionHost` STAŁ SIĘ WYMAGANY W FALI WIZUALNEJ: akcja tych czytelni
+        // wyszła z ich własnego chromu do pasma tytułu, więc komponent musi
+        // dostać węzeł, w który ją wstrzyknie. `null` jest tu poprawną
+        // odpowiedzią, nie zaślepką — ten test montuje SAMĄ czytelnię, bez
+        // powłoki, więc pasma do wstrzyknięcia nie ma, a typ dopuszcza brak.
+        actionHost: null,
         client: undefined,
         snapshot: {
           ...workHarnessSnapshot,

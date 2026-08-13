@@ -1071,12 +1071,22 @@ test("pierścień ogniska jest widoczny NA TYM, NA CZYM SIEDZI (WCAG 1.4.11)", (
   );
 });
 
-// ─── KRAWĘDŹ AKTYWNEJ NAWIGACJI ────────────────────────────────────────────
+// ─── KRAWĘDŹ STANU BIEŻĄCEGO ───────────────────────────────────────────────
 //
-// `--nav-active-border` niesie STAN „ta pozycja jest aktywna", a stan kontrolki
-// jest wymieniony w 1.4.11 wprost. Krawędź siada na planie okna albo szyny
+// `--nav-active-border` niesie STAN „to jest bieżące", a stan kontrolki jest
+// wymieniony w 1.4.11 wprost. Krawędź siada na planie okna albo szyny
 // (`--surface-window`, `--surface-sidebar`) i graniczy też z własnym
 // podbarwieniem `--nav-active-bg`. Mierzone są wszystkie trzy sąsiedztwa.
+//
+// NAZWA RODZINY JEST SZERSZA NIŻ JEJ DZISIEJSI KONSUMENCI, i tak zostaje.
+// Do Fazy C token malował obwódkę aktywnej pozycji nawigacji — ta wzięła szynę
+// prototypu (`v3/app.css:222-226`) i nie deklaruje już `border-color`. Zostają
+// dwaj konsumenci, oba tym samym stanem: wynik wyszukiwania pod kursorem
+// klawiatury i otwarta przestrzeń robocza. Pomiar jest o WARTOŚCI na tle, nie
+// o kształcie, więc wiąże ich tak samo — i wiąże też szynę, która wypełnia się
+// tą samą wartością bez alfy. Nazwy tokenu ten lot NIE zmienia: przemianowanie
+// rodziny `--nav-active-*` ruszyłoby `--nav-active-bg`, którego nawigacja dalej
+// używa, i rozjechałoby trzy przeloty bramki układu czytające go po nazwie.
 const navMeasurements = [];
 const navUnmeasurable = [];
 const NAV_BASES = ["--surface-window", "--surface-sidebar"];

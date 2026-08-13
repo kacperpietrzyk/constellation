@@ -5,6 +5,7 @@ import {
   DocumentRevisionIdSchema,
   type DocumentId,
   LOCAL_ONLY_PROVIDER_ID,
+  type MeetingLoopSurface,
   WorkspaceIdSchema,
   type QueryEnvelope,
 } from "@constellation/contracts";
@@ -29,6 +30,20 @@ export interface ScenarioFixtures {
    * więc scenariusz nie mierzy innej ścieżki niż aplikacja.
    */
   readonly documentState?: (documentId: DocumentId) => Uint8Array | undefined;
+  /**
+   * Pętla spotkań, od której zaczyna ekran Spotkań. Domyślnie jej NIE MA
+   * i domyślną odpowiedzią zostaje ODMOWA dostawcy — dokładnie ta, którą ten
+   * klient oddawał od zawsze i którą siedem pozostałych harnessów ogląda dalej
+   * co do bajtu.
+   *
+   * Pole istnieje, bo pusta fikstura nie tylko NIE MIERZY — ona CHOWA.
+   * Harness `?surface=collaboration` (jedyny, po którym chodzi bramka układu)
+   * rysował ZERO wierszy `.meeting-event` i ZERO `.meeting-result-row`, więc
+   * każda para nad kartą tego ekranu wracałaby `NOT_MEASURED`, czyli jako
+   * awaria przyrządu nad poprawnym kodem. Fikstura rośnie; podłoga asercji
+   * nie schodzi.
+   */
+  readonly meetingLoop?: MeetingLoopSurface;
 }
 
 /** Deterministic UI fixture adapter. It returns scripted contract outcomes only. */
@@ -78,20 +93,21 @@ export const createScenarioClient = (
   editMeetingWorkItem: async () => false,
   correctMeetingWorkItemResponsibility: async () => false,
   addMeetingWorkItem: async () => false,
-  getMeetingLoop: async () => ({
-    capability: {
-      platform: "other",
-      provider: "unconfigured",
-      availability: "provider_unavailable",
-      canRead: false,
-      canWriteOwnedBlocks: false,
-      detailCode: "scenario_unconfigured",
+  getMeetingLoop: async () =>
+    fixtures.meetingLoop ?? {
+      capability: {
+        platform: "other",
+        provider: "unconfigured",
+        availability: "provider_unavailable",
+        canRead: false,
+        canWriteOwnedBlocks: false,
+        detailCode: "scenario_unconfigured",
+      },
+      upcoming: [],
+      completed: [],
+      freshness: "partial",
+      generatedAt: "2026-07-15T10:00:00.000Z",
     },
-    upcoming: [],
-    completed: [],
-    freshness: "partial",
-    generatedAt: "2026-07-15T10:00:00.000Z",
-  }),
   previewCalendarBlocks: async () => undefined,
   confirmCalendarBlocks: async () => ({
     outcome: "rejected",

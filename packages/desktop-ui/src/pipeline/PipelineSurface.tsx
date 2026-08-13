@@ -38,6 +38,7 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
   type ListNavigationItemProps,
@@ -776,14 +777,13 @@ export const PipelineSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        Pipeline
-      </h1>
-    </header>
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="Pipeline" />
   );
 
+  // R3 × #232: ten blok stał u mnie PRZED strażnikiem dostępności, a jego
+  // kolejność jest własnością POPRAWNOŚCI, nie układu — więc wygrywa wersja
+  // z maina, a przepięcie pasm dostaje ją niżej, tam gdzie teraz stoi.
   // THE AVAILABILITY GUARD RUNS FIRST, AHEAD OF THE RECORD SLOT, and the order
   // is the whole point. A deal opened as a record is drawn from the SAME slice
   // as the board: `RealApp.tsx:2109-2121` only looks the opportunity up when
@@ -795,173 +795,131 @@ export const PipelineSurface = ({
   // retry, and a claim about the product where the truth was a failure.
   if (!relationships.available)
     return (
-      <div
-        className={`surface-scroll ${styles.pipeline}`}
-        data-pipeline-surface
-      >
-        {header}
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>The pipeline is unavailable</h2>
-            {/* The slice's own reason. A fixed sentence names nothing a reader
-                can act on, and an empty board would read as "no deals". */}
-            <p data-pipeline-unavailable>{relationships.message}</p>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
-      </div>
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także w stanie awaryjnym —
+      // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
+      // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
+      // powiedzieć, że czegoś nie dało się przeczytać.
+      <>
+        {header()}
+        <div
+          className={`surface-scroll ${styles.pipeline}`}
+          data-pipeline-surface
+        >
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>The pipeline is unavailable</h2>
+              {/* The slice's own reason. A fixed sentence names nothing a reader
+                  can act on, and an empty board would read as "no deals". */}
+              <p data-pipeline-unavailable>{relationships.message}</p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </section>
+        </div>
+      </>
     );
 
   if (activeOpportunityId !== undefined)
-    return (
-      <div
-        className={`surface-scroll ${styles.pipeline}`}
-        data-pipeline-surface
-      >
-        {renderRecordScreen === undefined ? (
-          <>
-            {header}
-            <section className={styles.emptyState} role="status">
-              <div>
-                <h2>This deal is not in the pipeline</h2>
-                {/* Past the guard above, the slice READ FINE and this deal is
+    // TYLKO RAMIĘ Z PASMEM WYNOSI PASMO. Drugie ramię oddaje ekran rekordu,
+    // który rysuje WŁASNY chrom — objęcie go tym fragmentem postawiłoby pasmo
+    // ekranu Lejka nad pasmem rekordu, czyli dwa pasma jedno pod drugim.
+    //
+    // `header()` Z NAWIASAMI: na mainie `header` był WARTOŚCIĄ, w tej fali jest
+    // FUNKCJĄ przyjmującą akcję pasma. Przeniesione `{header}` wyrenderowałoby
+    // funkcję jako dziecko, czyli nie wyrenderowałoby pasma w ogóle.
+    return renderRecordScreen === undefined ? (
+      <>
+        {header()}
+        <div
+          className={`surface-scroll ${styles.pipeline}`}
+          data-pipeline-surface
+        >
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>This deal is not in the pipeline</h2>
+              {/* Past the guard above, the slice READ FINE and this deal is
                     not in it — a context restored from device state naming a
                     record removed since, or one belonging to a Space this
                     session cannot see (`RealApp.tsx:2113-2116` anticipates
                     exactly that). Saying "no record screen yet" here described
                     a gap in the product that was closed releases ago, and said
                     it about data. */}
-                <p data-pipeline-record-missing>
-                  The deal this view was opened for is no longer among the ones
-                  you can read here. It may have been removed, or it may live in
-                  a Space you do not have.
-                </p>
-              </div>
-            </section>
-          </>
-        ) : (
-          renderRecordScreen()
-        )}
+              <p data-pipeline-record-missing>
+                The deal this view was opened for is no longer among the ones
+                you can read here. It may have been removed, or it may live in a
+                Space you do not have.
+              </p>
+            </div>
+          </section>
+        </div>
+      </>
+    ) : (
+      <div
+        className={`surface-scroll ${styles.pipeline}`}
+        data-pipeline-surface
+      >
+        {renderRecordScreen()}
       </div>
     );
 
   return (
-    <div className={`surface-scroll ${styles.pipeline}`} data-pipeline-surface>
-      {header}
-      <div className={styles.crumbbar}>
-        {/* THE ACTION OF THE SCREEN, AT THE END OF THE BAR. The prototype draws
-            it as the primary action and pushes it right
-            (`v3/screens/pipeline.js:409-410` through `v3/app.css:293`,
-            `:321-332`); the contract calls the primary action one per view and
-            the largest solid-accent object a view may hold (`.ui-craft/tokens.md`,
-            "Usage constraints" 3). ONE PER VIEW IS THE WHOLE PROBLEM HERE, and
-            it is why this is a conditional rather than a class: the form's own
-            "Add opportunity" (below) is already primary, so a toggle that
-            stayed primary would put two of them on one screen the moment the
-            form opened. The toggle steps down to secondary while the form is
-            open, and what it means steps down with it — once the form is on
-            screen the thing to press is inside it, and this button only closes
-            it again. There is never a state with two. */}
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, a przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest tu WARUNKIEM, a nie stylem: pasma muszą
+    // być bezpośrednimi dziećmi `.work-surface`, więc żaden dodatkowy element
+    // nie może stanąć między nimi a nośnikiem.
+    <>
+      {header(
+        /* THE ACTION OF THE SCREEN, AT THE END OF ITS TITLE BAND. The prototype
+           draws it as the primary action and pushes it right
+           (`v3/screens/pipeline.js:409-410` through `v3/app.css:293`,
+           `:321-332`); the contract calls the primary action one per container
+           that owns one and the largest solid-accent object a view may hold
+           (`.ui-craft/tokens.md`, "Usage constraints" 3).
+
+           THE CONDITIONAL IS NOT FORCED BY THAT RULE, and saying it was is what
+           this comment got wrong until 2026-08-11. One per CONTAINER is the
+           wording, and the create form is its own container — a sibling of the
+           band, not a second action inside it — so the contract licenses the
+           form's "Add opportunity" and a filled band action at the same time.
+           The toggle steps down to secondary anyway, as a choice about MEANING:
+           once the form is on screen the thing to press is inside it, and this
+           button only closes it again. It is a deliberate divergence from the
+           prototype, whose `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) has
+           no state in which the band action goes grey. The same paragraph stands
+           on People, Organizations and Renewals.
+
+           PHASE C, LOT C2 — IT USED TO STAND A ROW LOWER, IN ITS OWN
+           `.crumbbar`. The prototype has no second bar: `crumbbar(crumbs,
+           actions)` (`v3/app.js:677-683`) is ONE band carrying the screen's name
+           and its action. Measured before the fix
+           (`dowody/c2-czerwien-poziom.txt`): 74.1 px below the title row against
+           a tolerance of 18. Horizontally it was already at the end — 16 px
+           short against a tolerance of 16, i.e. exactly the crumb bar's own
+           inline padding — which is why the horizontal axis reported it as
+           FLUSH_END and why that reading sat on the boundary rather than in the
+           clear. Inside the band the same action ends flush with the band's
+           content box. */
         <button
           aria-expanded={creating}
-          className={`${styles.createToggle} ${creating ? "secondary-button" : "primary-button"}`}
+          className={creating ? "secondary-button" : "primary-button"}
           onClick={() => setCreating((open) => !open)}
           type="button"
         >
           <Icon name="capture" />
           New opportunity
-        </button>
-      </div>
-      {creating && (
-        <form
-          aria-label="New opportunity"
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitDeal();
-          }}
-        >
-          <label className={styles.field}>
-            Client
-            <select
-              onChange={(event) => setDraftOrganizationId(event.target.value)}
-              required
-              value={draftOrganizationId}
-            >
-              <option value="">Choose a client</option>
-              {index.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            Title
-            <input
-              onChange={(event) => setDraftTitle(event.target.value)}
-              required
-              value={draftTitle}
-            />
-          </label>
-          <label className={styles.field}>
-            Need
-            <input
-              onChange={(event) => setDraftNeed(event.target.value)}
-              value={draftNeed}
-            />
-          </label>
-          <label className={styles.field}>
-            Next step
-            <input
-              onChange={(event) => setDraftNextAction(event.target.value)}
-              value={draftNextAction}
-            />
-          </label>
-          <label className={styles.field}>
-            Estimate
-            <input
-              inputMode="decimal"
-              onChange={(event) => setDraftEstimate(event.target.value)}
-              value={draftEstimate}
-            />
-          </label>
-          <label className={styles.field}>
-            Currency
-            <select
-              onChange={(event) =>
-                setDraftCurrency(event.target.value as Currency)
-              }
-              value={draftCurrency ?? preferredCurrency}
-            >
-              {/* The workspace's own list, never a third copy of the currency
-                  union written out by hand. `money.ts` defines the vocabulary,
-                  the workspace says which of it a picker offers. */}
-              {offeredCurrencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="primary-button"
-            disabled={
-              busy || draftTitle.trim() === "" || draftOrganizationId === ""
-            }
-            type="submit"
-          >
-            {busy ? "Adding…" : "Add opportunity"}
-          </button>
-        </form>
+        </button>,
       )}
-      <div className={styles.viewbar}>
+      <div className={`view-band ${styles.viewbar}`}>
         {/* The control IS the statement that stages are configurable. The
             paragraph that used to say so is gone and this is where it went. */}
         <button
@@ -1001,165 +959,262 @@ export const PipelineSurface = ({
         <TopicHelp topic="price-basis" />
         <TopicHelp topic="stage-sums" />
       </div>
-      {selected !== undefined && (
-        // OUTSIDE the board. Every control the deal needs, in one place, so the
-        // listbox holds nothing but options and the board keeps its single Tab
-        // stop. `M` lands the focus on the first stage the deal is not already
-        // standing on, which is the first control it can actually press.
-        <section
-          aria-label={`Selected deal: ${selected.opportunity.title}`}
-          className={styles.dealPanel}
-          data-pipeline-deal-panel={selected.opportunity.id}
-          onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
-            // A control you cannot get out of is worse than no control. Escape
-            // closes the move panel and returns the focus to the card it was
-            // opened from, rather than dropping it at the top of the document.
-            if (event.key !== "Escape" || moveFor === undefined) return;
-            event.preventDefault();
-            const card = document.querySelector<HTMLElement>(
-              `[data-pipeline-card="${moveFor}"]`,
-            );
-            setMoveFor(undefined);
-            card?.focus();
-          }}
-        >
-          <div className={styles.dealPanelHead}>
-            <span className={styles.dealPanelTitle}>
-              {selected.opportunity.title}
-            </span>
-            {selected.organization !== undefined && (
-              <ClientLink
-                onOpen={onOpenOrganization}
-                organization={selected.organization}
-              />
-            )}
-            {selected.opportunity.stageEnteredAt !== undefined && (
-              <span className={styles.dealPanelSub}>
-                {`in this stage since ${formatDate(selected.opportunity.stageEnteredAt, timeZone)}`}
-              </span>
-            )}
-          </div>
-          <div
-            aria-label="Move this deal to a stage"
-            className={styles.moveGroup}
-            role="group"
+      <div
+        className={`surface-scroll ${styles.pipeline}`}
+        data-pipeline-surface
+      >
+        {/* FORMULARZ TWORZENIA ZJECHAŁ POD PASEK WIDOKU, i to jest skutek układu,
+          a nie osobna decyzja o kolejności. Do tego lotu stał MIĘDZY pasmami —
+          czyli rozpychał chrom w stanie tworzenia, a `.surface-header +
+          .view-band` przestawało wtedy trafiać i pasma się rozjeżdżały. Prototyp
+          układa dwa pasma jedno na drugim i dopiero pod nimi treść
+          (`v3/app.css:278-303`), a formularz jest treścią: przewija się razem
+          z listą, którą uzupełnia. */}
+        {creating && (
+          <form
+            aria-label="New opportunity"
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitDeal();
+            }}
           >
-            {stages.map((stage) => (
-              <button
-                aria-current={selected.opportunity.stage === stage.id}
-                className={styles.moveButton}
-                data-pipeline-move={stage.id}
-                disabled={busy || selected.opportunity.stage === stage.id}
-                key={stage.id}
-                onClick={() => move(selected, stage.id)}
-                // The first stage the deal is not already standing on. Focusing
-                // by position would land on a DISABLED button whenever the deal
-                // stands on the first stage, and `.focus()` on a disabled
-                // control is a silent no-op — which would make `M` do nothing
-                // for exactly the deals the funnel starts with.
-                ref={stage.id === firstMoveTargetId ? moveRef : undefined}
-                type="button"
+            <label className={styles.field}>
+              Client
+              <select
+                onChange={(event) => setDraftOrganizationId(event.target.value)}
+                required
+                value={draftOrganizationId}
               >
-                {stage.label}
-              </button>
-            ))}
-          </div>
-          {selected.offer !== undefined && (
-            <div className={styles.priceControls}>
-              {selected.offer.price.basis === "confirmed" ? (
-                // Un-confirming CLEARS the stored amount rather than leaving one
-                // behind a card that reads as derived, which is why this is a
-                // command and not a local toggle.
+                <option value="">Choose a client</option>
+                {index.organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              Title
+              <input
+                onChange={(event) => setDraftTitle(event.target.value)}
+                required
+                value={draftTitle}
+              />
+            </label>
+            <label className={styles.field}>
+              Need
+              <input
+                onChange={(event) => setDraftNeed(event.target.value)}
+                value={draftNeed}
+              />
+            </label>
+            <label className={styles.field}>
+              Next step
+              <input
+                onChange={(event) => setDraftNextAction(event.target.value)}
+                value={draftNextAction}
+              />
+            </label>
+            <label className={styles.field}>
+              Estimate
+              <input
+                inputMode="decimal"
+                onChange={(event) => setDraftEstimate(event.target.value)}
+                value={draftEstimate}
+              />
+            </label>
+            <label className={styles.field}>
+              Currency
+              <select
+                onChange={(event) =>
+                  setDraftCurrency(event.target.value as Currency)
+                }
+                value={draftCurrency ?? preferredCurrency}
+              >
+                {/* The workspace's own list, never a third copy of the currency
+                  union written out by hand. `money.ts` defines the vocabulary,
+                  the workspace says which of it a picker offers. */}
+                {offeredCurrencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              disabled={
+                busy || draftTitle.trim() === "" || draftOrganizationId === ""
+              }
+              type="submit"
+            >
+              {busy ? "Adding…" : "Add opportunity"}
+            </button>
+          </form>
+        )}
+        {selected !== undefined && (
+          // OUTSIDE the board. Every control the deal needs, in one place, so the
+          // listbox holds nothing but options and the board keeps its single Tab
+          // stop. `M` lands the focus on the first stage the deal is not already
+          // standing on, which is the first control it can actually press.
+          <section
+            aria-label={`Selected deal: ${selected.opportunity.title}`}
+            className={styles.dealPanel}
+            data-pipeline-deal-panel={selected.opportunity.id}
+            onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
+              // A control you cannot get out of is worse than no control. Escape
+              // closes the move panel and returns the focus to the card it was
+              // opened from, rather than dropping it at the top of the document.
+              if (event.key !== "Escape" || moveFor === undefined) return;
+              event.preventDefault();
+              const card = document.querySelector<HTMLElement>(
+                `[data-pipeline-card="${moveFor}"]`,
+              );
+              setMoveFor(undefined);
+              card?.focus();
+            }}
+          >
+            <div className={styles.dealPanelHead}>
+              <span className={styles.dealPanelTitle}>
+                {selected.opportunity.title}
+              </span>
+              {selected.organization !== undefined && (
+                <ClientLink
+                  onOpen={onOpenOrganization}
+                  organization={selected.organization}
+                />
+              )}
+              {selected.opportunity.stageEnteredAt !== undefined && (
+                <span className={styles.dealPanelSub}>
+                  {`in this stage since ${formatDate(selected.opportunity.stageEnteredAt, timeZone)}`}
+                </span>
+              )}
+            </div>
+            <div
+              aria-label="Move this deal to a stage"
+              className={styles.moveGroup}
+              role="group"
+            >
+              {stages.map((stage) => (
                 <button
-                  className="secondary-button"
-                  data-pipeline-underive
-                  disabled={busy}
-                  onClick={() => writePrice(selected, { basis: "derived" })}
+                  aria-current={selected.opportunity.stage === stage.id}
+                  className={styles.moveButton}
+                  data-pipeline-move={stage.id}
+                  disabled={busy || selected.opportunity.stage === stage.id}
+                  key={stage.id}
+                  onClick={() => move(selected, stage.id)}
+                  // The first stage the deal is not already standing on. Focusing
+                  // by position would land on a DISABLED button whenever the deal
+                  // stands on the first stage, and `.focus()` on a disabled
+                  // control is a silent no-op — which would make `M` do nothing
+                  // for exactly the deals the funnel starts with.
+                  ref={stage.id === firstMoveTargetId ? moveRef : undefined}
                   type="button"
                 >
-                  Use the derived price
+                  {stage.label}
                 </button>
-              ) : null}
-              <label className={styles.field}>
-                Confirmed price
-                <input
-                  data-pipeline-price-input
-                  inputMode="decimal"
-                  onChange={(event) => setPriceDraft(event.target.value)}
-                  value={priceDraft}
-                />
-              </label>
-              <button
-                className="secondary-button"
-                data-pipeline-confirm-price
-                disabled={busy || priceMinorFromMajor(priceDraft) === undefined}
-                onClick={() => {
-                  const amountMinor = priceMinorFromMajor(priceDraft);
-                  if (amountMinor === undefined) return;
-                  writePrice(selected, {
-                    basis: "confirmed",
-                    price: {
-                      amountMinor,
-                      currency: settings.homeCurrency,
-                    },
-                  });
-                }}
-                type="button"
-              >
-                {`Confirm price in ${settings.homeCurrency}`}
-              </button>
+              ))}
             </div>
-          )}
-        </section>
-      )}
-      {/* The horizontal overflow lives HERE and nowhere above it. The packaged
+            {selected.offer !== undefined && (
+              <div className={styles.priceControls}>
+                {selected.offer.price.basis === "confirmed" ? (
+                  // Un-confirming CLEARS the stored amount rather than leaving one
+                  // behind a card that reads as derived, which is why this is a
+                  // command and not a local toggle.
+                  <button
+                    className="secondary-button"
+                    data-pipeline-underive
+                    disabled={busy}
+                    onClick={() => writePrice(selected, { basis: "derived" })}
+                    type="button"
+                  >
+                    Use the derived price
+                  </button>
+                ) : null}
+                <label className={styles.field}>
+                  Confirmed price
+                  <input
+                    data-pipeline-price-input
+                    inputMode="decimal"
+                    onChange={(event) => setPriceDraft(event.target.value)}
+                    value={priceDraft}
+                  />
+                </label>
+                <button
+                  className="secondary-button"
+                  data-pipeline-confirm-price
+                  disabled={
+                    busy || priceMinorFromMajor(priceDraft) === undefined
+                  }
+                  onClick={() => {
+                    const amountMinor = priceMinorFromMajor(priceDraft);
+                    if (amountMinor === undefined) return;
+                    writePrice(selected, {
+                      basis: "confirmed",
+                      price: {
+                        amountMinor,
+                        currency: settings.homeCurrency,
+                      },
+                    });
+                  }}
+                  type="button"
+                >
+                  {`Confirm price in ${settings.homeCurrency}`}
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+        {/* The horizontal overflow lives HERE and nowhere above it. The packaged
           text-scaling gate measures the first visible child of the work plane
           against its own client width, so a board wider than the window has to
           be held by a scroll container that is itself exactly as wide as the
           surface. */}
-      {/* Deklaracja dla przeglądu układu potomków: ten region przewija się
+        {/* Deklaracja dla przeglądu układu potomków: ten region przewija się
           w poziomie Z ZAŁOŻENIA. Dopóki go o tym nie powie, „powłoka to
           wchłonie" jest wymówką, a nie projektem. */}
-      <div className={styles.scroller} data-scrolls-horizontally>
-        <div className={styles.board} data-pipeline-board>
-          {board.columns.map((column) => (
-            <BoardColumn
-              column={column}
-              homeCurrency={settings.homeCurrency}
-              indexOf={(id) => order.get(id) ?? 0}
-              itemProps={itemProps}
-              key={column.id}
-              markupPct={settings.markupPct}
-              meterMax={board.meterMax}
-              onDragEnd={() => {
-                dragged.current = undefined;
-                markDropTarget(null);
-              }}
-              onDragStart={(card) => {
-                dragged.current = card.opportunity.id;
-              }}
-              onDropInto={(stageId) => {
-                const card = cards.find(
-                  (candidate) => candidate.opportunity.id === dragged.current,
-                );
-                dragged.current = undefined;
-                // The same call the keyboard makes. One path, so the gesture
-                // that can be driven in a test is the gesture that ships.
-                if (card !== undefined) move(card, stageId);
-              }}
-              onDropTarget={markDropTarget}
-              onMoveRequest={(card) => {
-                setMoveFor(card.opportunity.id);
-                setMovePending(true);
-              }}
-              onOpen={openDeal}
-              onSelect={onSelectRecord}
-              selectedRecordId={selectedRecordId}
-              timeZone={timeZone}
-            />
-          ))}
+        <div className={styles.scroller} data-scrolls-horizontally>
+          <div className={styles.board} data-pipeline-board>
+            {board.columns.map((column) => (
+              <BoardColumn
+                column={column}
+                homeCurrency={settings.homeCurrency}
+                indexOf={(id) => order.get(id) ?? 0}
+                itemProps={itemProps}
+                key={column.id}
+                markupPct={settings.markupPct}
+                meterMax={board.meterMax}
+                onDragEnd={() => {
+                  dragged.current = undefined;
+                  markDropTarget(null);
+                }}
+                onDragStart={(card) => {
+                  dragged.current = card.opportunity.id;
+                }}
+                onDropInto={(stageId) => {
+                  const card = cards.find(
+                    (candidate) => candidate.opportunity.id === dragged.current,
+                  );
+                  dragged.current = undefined;
+                  // The same call the keyboard makes. One path, so the gesture
+                  // that can be driven in a test is the gesture that ships.
+                  if (card !== undefined) move(card, stageId);
+                }}
+                onDropTarget={markDropTarget}
+                onMoveRequest={(card) => {
+                  setMoveFor(card.opportunity.id);
+                  setMovePending(true);
+                }}
+                onOpen={openDeal}
+                onSelect={onSelectRecord}
+                selectedRecordId={selectedRecordId}
+                timeZone={timeZone}
+              />
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };

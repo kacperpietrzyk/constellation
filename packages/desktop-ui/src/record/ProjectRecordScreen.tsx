@@ -15,6 +15,7 @@ import type {
   DataSlice,
   ProjectOverviewProjection,
 } from "../client/workflow.js";
+import { Icon } from "../components/Icon.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
 import {
   readProject,
@@ -161,6 +162,10 @@ export interface ProjectRecordScreenProps {
    *  their own, which is why this and `currentPrincipalId` travel together. */
   readonly canResolve: boolean;
   readonly currentPrincipalId: PrincipalId | undefined;
+  /** Nazwa czytelnika, wyłącznie dla znacznika autora w kompozytorze
+   *  komentarzy (rejestr, wpis #58). Może być pusta i wtedy znacznik rysuje
+   *  glif osoby zamiast zmyślonych inicjałów. */
+  readonly currentDisplayName: string | undefined;
   readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: string) => string;
   readonly mentionCandidates: readonly MentionCandidate[];
@@ -227,6 +232,7 @@ export const ProjectRecordScreen = ({
   canComment,
   canResolve,
   currentPrincipalId,
+  currentDisplayName,
   actorOf,
   mentionNameOf,
   mentionCandidates,
@@ -301,9 +307,40 @@ export const ProjectRecordScreen = ({
         <button className={styles.back} onClick={onBack} type="button">
           <span aria-hidden="true">‹</span> Projects
         </button>
-        {actions !== undefined && (
-          <div className={styles.actions}>{actions}</div>
-        )}
+        {/* THE ONE ACCENT-FILLED ACTION OF THIS STRIP (Phase C, lot C4).
+            The reference draws exactly this button in exactly this place:
+            `v3/screens/record.js:429-433` is
+            `crumbbar(trail, btn("New task", { cls: "primary", icon: "plus",
+            act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)` — the
+            filled action in the crumb bar, the record's own title in the NEXT
+            band. Painted at `v3/app.css:321-332`. The contract licenses one such
+            fill per container that owns a main action, and names the screen's
+            action bar as one of the three (`.ui-craft/tokens.md`, "Usage
+            constraints" 3, rewritten 2026-08-07).
+
+            WHAT THE DIVERGENCE ACTUALLY WAS. The registry logs this screen and
+            its comments tab as "in the action strip ABOVE THE TITLE there is not
+            one accent surface" — it calls the strip's POSITION normal and
+            complains only about paint, which is why the plan counts both entries
+            under cause C4 and not C2. Every verb here was `secondary-button
+            compact` or `ghost-button`, and "Close project" was left impersonating
+            the primary one with a heavier weight.
+
+            IT IS NOT A NEW CAPABILITY. `onNewTask` already existed and was
+            reachable from exactly one place — the empty state of the tasks panel
+            (`RecordTasksPanel.tsx:194-200`), under this same label. A record with
+            three tasks in it had no way to reach it at all. */}
+        <div className={styles.actions}>
+          <button
+            className="primary-button compact"
+            onClick={onNewTask}
+            type="button"
+          >
+            <Icon name="capture" />
+            New task
+          </button>
+          {actions}
+        </div>
       </div>
 
       <ProjectRecordHeader
@@ -326,23 +363,22 @@ export const ProjectRecordScreen = ({
         tabs={PROJECT_TABS}
       >
         {selected === "overview" && (
-          <>
-            <ProjectRecordOverview
-              clientLinking={clientLinking}
-              onOpenClient={(organization) =>
-                onOpenRelationship(organization.id as StrategicRecordId)
-              }
-              onOpenDecision={(id) =>
-                onOpenRelationship(id as StrategicRecordId)
-              }
-              onOpenMeeting={(id) => onOpenMeeting(id as StrategicRecordId)}
-              onWriteOutcome={onWriteOutcome}
-              outcomeEditor={outcomeEditor}
-              overview={overview}
-              reading={reading}
-            />
-            {body}
-          </>
+          // Dokument idzie do KOLUMNY tekstu Overview, nie obok siatki
+          // (rejestr, wpis #47) — powód i odniesienie przy propie `body`
+          // w `ProjectRecordOverview.tsx`.
+          <ProjectRecordOverview
+            body={body}
+            clientLinking={clientLinking}
+            onOpenClient={(organization) =>
+              onOpenRelationship(organization.id as StrategicRecordId)
+            }
+            onOpenDecision={(id) => onOpenRelationship(id as StrategicRecordId)}
+            onOpenMeeting={(id) => onOpenMeeting(id as StrategicRecordId)}
+            onWriteOutcome={onWriteOutcome}
+            outcomeEditor={outcomeEditor}
+            overview={overview}
+            reading={reading}
+          />
         )}
 
         {selected === "tasks" && (
@@ -396,6 +432,7 @@ export const ProjectRecordScreen = ({
               canComment={canComment}
               canResolve={canResolve}
               currentPrincipalId={currentPrincipalId}
+              currentDisplayName={currentDisplayName}
               mentionCandidates={mentionCandidates}
               mentionNameOf={(principalId) => mentionNameOf(principalId)}
               onEdit={onEditComment}

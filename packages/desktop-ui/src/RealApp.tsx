@@ -80,6 +80,7 @@ import {
 import { TodaySurface } from "./TodaySurface.js";
 import { InboxSurface } from "./InboxSurface.js";
 import { inboxWaitingCount } from "./inbox-triage.js";
+import { countLiveRecords } from "./crm/record-census.js";
 import { ProjectsSurface, SearchOverlay, UndoDialog } from "./Wave2Surfaces.js";
 import { TasksSurface } from "./tasks/TasksSurface.js";
 import {
@@ -191,7 +192,7 @@ import {
 } from "./client/shell-navigation.js";
 import { subscribeToAgentWrites } from "./client/agent-write-reload.js";
 import {
-  settingsCategories,
+  settingsCategoryGroups,
   settingsCategoryElementId,
   settingsPanes,
   type SettingsCategoryId,
@@ -430,6 +431,12 @@ export const RealApp = ({
   const captureRestoreFocusPendingRef = useRef(false);
   const activeContext = activeShellContext(navigation);
   const surface = activeContext.surface;
+  // JEDNO ZDANIE „JESTEŚMY W TRYBIE USTAWIEŃ" DLA CZTERECH CZYTAJĄCYCH — karty
+  // przestrzeni, wyszukiwarki, dwóch grup skrótów i samego spisu sekcji.
+  // Powtórzony `surface === "settings"` przy każdym z nich byłby piątą kopią
+  // tego samego warunku i pierwszy cel dopisany do trybu rozjechałby je po
+  // cichu: kolumna zostałaby podmieniona w połowie.
+  const settingsMode = surface === "settings";
   // Bound to a const so the "an Organization is open" narrowing survives into
   // the callbacks below: a property access is not narrowed inside a closure,
   // and the client-link handlers need the id after the check, not before it.
@@ -1832,10 +1839,65 @@ export const RealApp = ({
   // sidebar said "100" beside a screen saying "157 tasks" on a real workspace —
   // one number, two answers, a finger apart. `work.overview` is whole-Space and
   // uncapped, which is exactly why the Tasks screen stands on it.
-  const taskCount =
-    state.snapshot.work.kind === "ready"
-      ? state.snapshot.work.data.tasks.length
-      : tasks.length;
+  // WPISY #50 I #66 REJESTRU — PRAWA KRAWĘDŹ WIERSZA NAWIGACJI NIESIE LICZBĘ.
+  //
+  // Prototyp stawia prawostronnie wyrównaną liczbę przy prawie każdym module
+  // (`v3/app.js:580-591`); tu stała przy DOKŁADNIE dwóch celach, i rejestr
+  // dowiódł, że to nie jest chowanie zer — pod „Projects" widać zagnieżdżony
+  // projekt, a wiersz „Projects" był pusty.
+  //
+  // TRZY REGUŁY, KTÓRE TA MAPA TRZYMA:
+  //
+  // 1. ŹRÓDŁO JEST TO SAMO, CO ŹRÓDŁO EKRANU POD CELEM. Projekty biorą
+  //    `snapshot.projects` — ten sam odczyt, z którego rysuje się kolekcja
+  //    i drugi poziom nawigacji. Cztery cele CRM biorą `snapshot.relationships`
+  //    przez `countLiveRecords`, dzielący predykat z `indexRelationships`,
+  //    czyli z indeksem, na którym stoją wszystkie cztery ekrany. Biblioteka
+  //    bierze te same dwie długości, co `LibraryShell.tsx:77-84`.
+  // 2. NIEDOSTĘPNY ODCZYT NIE JEST ZEREM. Brak klucza znaczy „nie wiem" i wiersz
+  //    nie rysuje wtedy NICZEGO. Zero w tym miejscu byłoby odpowiedzią „nie ma
+  //    ani jednego" na pytanie, którego nie dało się zadać — to jest defekt,
+  //    dla którego istnieje `readSlice` w `client/workflow.ts`.
+  //    REGUŁA OBEJMUJE TEŻ `tasks`, I DOPIERO OD NAPRAWY PO PRZEGLĄDZIE. Wpis
+  //    wypisany jako pierwszy był bezwarunkowy: przy niegotowym `work` schodził
+  //    na `snapshot.tasks.length`, czyli na odczyt PRZYCIĘTY do stu, opisany
+  //    w akapicie nad tą mapą jako sto obok stu pięćdziesięciu siedmiu. Wiersz
+  //    podawał wtedy złą liczbę OBOK ekranu Zadań, który w tym samym stanie
+  //    mówi, że nie dało się zapytać — czyli zdanie tej reguły było nieprawdą
+  //    o kodzie pod nią, a kod przywracał wadę, przeciw której ta reguła stoi.
+  // 3. `meetings` NIE MA TU WPISU I TO JEST ODMOWA Z POWODEM, nie przeoczenie.
+  //    Spotkania nie są w migawce: stan kalendarza jest świadomie lokalny dla
+  //    urządzenia i schodzi przez `client.getMeetingLoop`, z własną odmową
+  //    uprawnienia. Licznik przy tym celu wymagałby odczytu kalendarza przy
+  //    starcie okna, dla wszystkich, także dla tych, którzy dostępu nie dali.
+  const strategicRecords =
+    state.snapshot.relationships.kind === "ready"
+      ? state.snapshot.relationships.data.records
+      : undefined;
+  const navCounts: Partial<Record<SurfaceId, number>> = {
+    ...(state.snapshot.work.kind === "ready"
+      ? { tasks: state.snapshot.work.data.tasks.length }
+      : {}),
+    ...(state.snapshot.projects.kind === "ready"
+      ? { projects: state.snapshot.projects.data.items.length }
+      : {}),
+    ...(strategicRecords === undefined
+      ? {}
+      : {
+          pipeline: countLiveRecords(strategicRecords, "opportunity"),
+          organizations: countLiveRecords(strategicRecords, "organization"),
+          people: countLiveRecords(strategicRecords, "person"),
+          renewals: countLiveRecords(strategicRecords, "renewal"),
+        }),
+    ...(state.snapshot.documents.kind === "ready" &&
+    state.snapshot.knowledge.kind === "ready"
+      ? {
+          library:
+            state.snapshot.documents.data.items.length +
+            state.snapshot.knowledge.data.sources.length,
+        }
+      : {}),
+  };
   const isPreview = build.channel === "developer-preview";
   const coordinatedDataHome =
     state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
@@ -1910,6 +1972,18 @@ export const RealApp = ({
       (project) => project.id === openProjectId,
     );
   const currentNavId = openProjectHasNavChild ? undefined : surface;
+  // DRUGI NOŚNIK STANU „TU JESTEŚ" MA JEDNO ŹRÓDŁO, TAK SAMO JAK PIERWSZY.
+  // Pierwsza wersja tego lotu wpisywała warunek `data-nav-open` WPROST
+  // w `navEntry`, więc wiersz grupy dostawał podbarwienie, szynę i akcentowany
+  // glif, a ulubiony skrót do tego samego celu jeden blok wyżej nie dostawał
+  // niczego — czyli dokładnie ten nieoznaczony wiersz bieżący, który ten lot
+  // istnieje, żeby zamknąć, odtworzony o sekcję wyżej. Oba nośniki czytają
+  // teraz tę samą nazwę. UWAGA DLA NASTĘPNEGO: harness bramki układu NIE
+  // zasiewa `constellation.favorites`, więc pas ulubionych nie rysuje się tam
+  // ani razu i tej połowy poprawki NIE MIERZY ani jedna para.
+  const navOpenId: SurfaceId | undefined = openProjectHasNavChild
+    ? "projects"
+    : undefined;
   const navEntry = (item: (typeof navItems)[number]) => {
     const shortcutHint = surfaceShortcutHint(item);
     // DECYZJA #35, W JEDNEJ LINII: skrót przestaje istnieć WYŁĄCZNIE w tooltipie.
@@ -1922,16 +1996,31 @@ export const RealApp = ({
       shortcutHint.kind === "direct"
         ? shortcutHint.keys
         : `through the palette, ${shortcutHint.keys}`;
+    // NAZWA DOSTĘPNA NIESIE TĘ SAMĄ LICZBĘ, CO WIERSZ. Meta wiersza jest
+    // `aria-hidden`, więc bez tego czytnik ekranu nie dowiaduje się o liczniku
+    // NICZEGO — tak było przez cztery fale dla wszystkiego poza Zadaniami.
+    const navCount = navCounts[item.id];
     const itemName =
-      item.id === "tasks"
-        ? `${item.label} · ${taskCount}`
-        : item.id === "inbox" && inboxWaiting > 0
-          ? `${item.label} · ${inboxWaiting} waiting`
-          : item.label;
+      item.id === "inbox" && inboxWaiting > 0
+        ? `${item.label} · ${inboxWaiting} waiting`
+        : navCount === undefined
+          ? item.label
+          : `${item.label} · ${navCount}`;
     return (
       <div className="nav-entry" key={item.id}>
         <button
           data-surface={item.id}
+          // CEL NADRZĘDNY OTWARTEGO REKORDU DALEJ MÓWI „TU JESTEŚ", TYLKO NIE
+          // BIERZE NA TO `aria-current`. Prototyp stawia bieżącą stronę na
+          // obu wierszach naraz (`v3/app.js:573` — trasa `project` zapala też
+          // cel `projects`), więc pod otwartym projektem świecą tam rodzic
+          // i dziecko. Rozstrzygnięcie niżej — jedno `aria-current` w jednej
+          // nawigacji — ZOSTAJE, bo dotyczy tego, co czyta czytnik ekranu.
+          // Rozjeżdżała się z prototypem sama FARBA, i to ona dostaje tu
+          // własny nośnik: `styles.css` maluje `[data-nav-open]` dokładnie tak
+          // jak `.active`, z tą samą wagą, więc rodzic dziedziczy wszystkie
+          // remisy tej kolumny (hover, wciśnięcie) bez własnych wyjątków.
+          data-nav-open={navOpenId === item.id ? "" : undefined}
           // MALOWANIE IDZIE ZA `currentNavId`, PRZYSTANEK TAB ZA `surface`,
           // i ten rozjazd jest zamierzony. Przy otwartym rekordzie projektu
           // wiersz potomny przejmuje bieżącą stronę, więc rodzic przestaje
@@ -1966,13 +2055,15 @@ export const RealApp = ({
           <Icon name={item.icon} />
           <span>{item.label}</span>
           <span className="nav-item-meta" aria-hidden="true">
-            {item.id === "tasks" ? (
-              <span className="nav-count">{taskCount}</span>
-            ) : item.id === "inbox" && inboxWaiting > 0 ? (
+            {item.id === "inbox" && inboxWaiting > 0 ? (
               <span className="nav-count nav-count--attention">
                 {inboxWaiting}
               </span>
-            ) : null}
+            ) : navCount === undefined ? null : (
+              <span className="nav-count" data-nav-count>
+                {navCount}
+              </span>
+            )}
             <kbd
               className={
                 shortcutHint.kind === "palette"
@@ -2149,6 +2240,16 @@ export const RealApp = ({
           (candidate) => candidate.principalId !== currentPrincipalId,
         )
       : [];
+  // Ta sama projekcja PRZED odsianiem czytelnika — znacznik autora
+  // w kompozytorze potrzebuje dokładnie tego, co odsiewa linijka wyżej
+  // (rejestr, wpis #58). Nazwa jest tu prawdziwa albo jej nie ma; nic się
+  // nie zmyśla.
+  const currentDisplayName =
+    state.snapshot.mentionCandidates.kind === "ready"
+      ? state.snapshot.mentionCandidates.data.candidates.find(
+          (candidate) => candidate.principalId === currentPrincipalId,
+        )?.displayName
+      : undefined;
 
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
@@ -2162,6 +2263,13 @@ export const RealApp = ({
           openContext(taskContext(id, task?.title ?? "Task"));
         }}
         onSelectTask={selectTaskInInspector}
+        // Prawy koniec nagłówka sekcji terminów (wpis #6) prowadzi tam, gdzie
+        // prowadzi prototyp — do Kalendarza. Ta sama droga, co pozycja
+        // nawigacji: jeden `destinationContext`, więc otwarcie z Dzisiaj
+        // podmienia tę samą zakładkę, co kliknięcie w lewej kolumnie.
+        onOpenCalendar={() =>
+          openContext(destinationContext("calendar", "Calendar"))
+        }
         onPlanForToday={(id) => {
           const task = tasks.find((item) => item.id === id);
           if (!client || !task) return;
@@ -2235,6 +2343,15 @@ export const RealApp = ({
               inspectorHost={meetingInspectorHost}
               onInspectorOpen={() => setMeetingInspectorOpen(true)}
               onMeetingSelected={setSelectedMeetingId}
+              /* „Open Sources →" na prawym końcu nagłówka „Jamie results"
+                 (wpis #65). Ta sama droga, którą powłoka otwiera każdy inny
+                 odczyt Biblioteki, więc etykieta jest UCZCIWA: `library/
+                 LibraryShell.tsx` bramkuje czytelnię na `reading === "sources"`
+                 i to jest dokładnie ten odczyt. Precedens: `onOpenCalendar`
+                 na Dzisiaj (wpis #6). */
+              onOpenSources={() =>
+                openContext(libraryReadingContext("sources", "Library"))
+              }
             />
           </Suspense>
         </LazySurfaceBoundary>
@@ -2495,6 +2612,7 @@ export const RealApp = ({
                       recordTaskCommentsMatch ? comments : COMMENTS_PENDING
                     }
                     currentPrincipalId={currentPrincipalId}
+                    currentDisplayName={currentDisplayName}
                     mentionCandidates={commentMentionCandidates}
                     mentionNameOf={mentionNameOf}
                     onAddComment={(
@@ -2801,6 +2919,7 @@ export const RealApp = ({
                 >
                   <ProjectRecordScreen
                     actions={slots.actions}
+                    currentDisplayName={currentDisplayName}
                     activity={state.snapshot.activity}
                     body={slots.body}
                     busy={projectBusy}
@@ -3292,78 +3411,130 @@ export const RealApp = ({
         </div>
       </div>
       <aside
-        className="sidebar"
+        className={`sidebar${settingsMode ? " sidebar-settings-mode" : ""}`}
         id="workspace-sidebar"
-        aria-label="Workspace and navigation"
+        // TRZY PUNKTY ORIENTACYJNE, TRZY RÓŻNE NAZWY — poprawka po przeglądzie.
+        // Ta kolumna, nawigacja w środku i `nav.settings-mode-column` są
+        // zagnieżdżone jedno w drugim, a w trybie Ustawień wszystkie trzy
+        // nazywały się „Settings sections": czytnik ekranu wypisywał trzy
+        // nieodróżnialne regiony, w tym dwa tej samej roli `navigation`, zamiast
+        // jednego spisu sekcji. Nazwa spisu należy do listy i tam zostaje
+        // (prototyp trzyma ją wyłącznie na `.st-nav-list`,
+        // `v3/screens/settings.js:995`); kolumna nazywa SIEBIE.
+        aria-label={settingsMode ? "Settings" : "Workspace and navigation"}
       >
-        <button
-          type="button"
-          className="workspace-switcher"
-          // CO TEN PRZYCISK ROBI, W JEGO NAZWIE — a nie w dymku obok niej.
-          // Widoczna treść to nazwa przestrzeni, więc czynność („otwiera
-          // ustawienia") nie stała nigdzie poza `title`. W trybie podglądu
-          // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
-          // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
-          // najeżdżającą myszą.
-          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
-            isPreview
-              ? "opens workspace settings"
-              : coordinatedDataHome
-                ? "opens coordinated workspace settings"
-                : "opens workspace settings and switching"
-          }`}
-          disabled={isPreview}
-          onClick={() =>
-            openContext(destinationContext("settings", "Settings"))
-          }
-        >
-          {/* Kafel niósł WPISANĄ literę „I" — nie inicjał, nie skrót, literał,
+        {/* USTAWIENIA SĄ TRYBEM, WIĘC WEJŚCIE PODMIENIA KOLUMNĘ, A NIE DOKŁADA
+        SIĘ POD NIĄ (`v3/screens/settings.css:6-27` — prototyp zeruje szerokość
+        prawdziwego paska i rysuje `.st-nav`, czyli pasmo „‹ Settings" i sam
+        pogrupowany spis sekcji; `.ui-craft/patterns.md` — „Pattern: Application
+        shell", jedna kolumna nawigacji naraz).
+
+        POWŁOKA PRACY ZOSTAWAŁA NAD SPISEM: karta przestrzeni, wyszukiwarka
+        i grupy „Favorites"/„Recent" renderowały się BEZWARUNKOWO, a kolumna
+        trybu doklejała się dopiero pod nimi — zmierzone przed poprawką przy
+        1440 px: pierwsza pozycja spisu zaczynała się na y=215,9, czyli 176 px
+        pod górną krawędzią kolumny.
+
+        WARUNEK, NIE UKRYCIE STYLEM — tak samo jak przy samym spisie sekcji
+        niżej: element schowany `visibility` zostaje w kolejności Tab albo
+        w drzewie dostępności zależnie od reguły, a element, który się nie
+        renderuje, nie zostaje nigdzie. Prototyp musiał sięgnąć po `visibility`,
+        bo jego `renderSidebar()` nie znał trybu i sam nazywa to OBEJŚCIEM
+        (`:24-25`); tutaj kolumnę rysuje ten sam komponent, co tryb, więc
+        warunek jest do napisania wprost.
+
+        CZEGO TA POPRAWKA NIE ZDEJMUJE, i to jest rozstrzygnięcie, nie
+        przeoczenie: stopka tożsamości (`.preview-identity`) zostaje. Prototyp
+        nie ma jej w ŻADNYM trybie, więc jej obecność nie jest rozjazdem
+        TRYBU USTAWIEŃ — jest osobnym zdaniem o powłoce, którego rejestr
+        Fazy 4 nie postawił, a lot ekranowy nie zamyka wpisów, których nie
+        dostał.
+
+        WYSZUKIWANIA TO NIE ZABIERA: `⌘K` wisi na nasłuchu okna
+        (`RealApp.tsx`, gałąź `event.code === "KeyK"`), a nie na tym przycisku
+        — sprawdzone przed skasowaniem go z tej gałęzi. */}
+        {!settingsMode && (
+          <>
+            <button
+              type="button"
+              className="workspace-switcher"
+              // CO TEN PRZYCISK ROBI, W JEGO NAZWIE — a nie w dymku obok niej.
+              // Widoczna treść to nazwa przestrzeni, więc czynność („otwiera
+              // ustawienia") nie stała nigdzie poza `title`. W trybie podglądu
+              // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
+              // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
+              // najeżdżającą myszą.
+              aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
+                isPreview
+                  ? "opens workspace settings"
+                  : coordinatedDataHome
+                    ? "opens coordinated workspace settings"
+                    : "opens workspace settings and switching"
+              }`}
+              disabled={isPreview}
+              onClick={() =>
+                openContext(destinationContext("settings", "Settings"))
+              }
+            >
+              {/* Kafel niósł WPISANĄ literę „I" — nie inicjał, nie skrót, literał,
           i tak było w każdej przestrzeni od co najmniej trzech fal. Rozbicie
           przez `[...]` zamiast `charAt(0)`, bo nazwa zaczynająca się emoji
           rozpada się w połowie pary surogatów. */}
-          <span className="workspace-avatar">
-            {[...bootstrap.workspace.name.trim()][0]?.toUpperCase() ?? "·"}
-          </span>
-          <span>
-            <strong>{bootstrap.workspace.name}</strong>
-            <small>
-              {state.snapshot.dataHome?.availability === "available"
-                ? dataHomeLabel
-                : "Data Home needs attention"}
-            </small>
-          </span>
-          {!isPreview && <span className="workspace-switcher-action">•••</span>}
-        </button>
-        <button
-          className="search-control"
-          aria-label={`Search · ${modifierLabel}K`}
-          onFocus={(event) =>
-            showRailTip(event.currentTarget, "Search", {
-              keys: `${modifierLabel}K`,
-              kind: "direct",
-            })
-          }
-          onBlur={hideRailTip}
-          onMouseEnter={(event) =>
-            showRailTip(event.currentTarget, "Search", {
-              keys: `${modifierLabel}K`,
-              kind: "direct",
-            })
-          }
-          onMouseLeave={hideRailTip}
-          onClick={() => setSearchOpen(true)}
-        >
-          <Icon name="search" />
-          <span>Search</span>
-          {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
+              <span className="workspace-avatar">
+                {[...bootstrap.workspace.name.trim()][0]?.toUpperCase() ?? "·"}
+              </span>
+              <span>
+                <strong>{bootstrap.workspace.name}</strong>
+                <small>
+                  {state.snapshot.dataHome?.availability === "available"
+                    ? dataHomeLabel
+                    : "Data Home needs attention"}
+                </small>
+              </span>
+              {!isPreview && (
+                <span className="workspace-switcher-action">•••</span>
+              )}
+            </button>
+            <button
+              className="search-control"
+              aria-label={`Search · ${modifierLabel}K`}
+              onFocus={(event) =>
+                showRailTip(event.currentTarget, "Search", {
+                  keys: `${modifierLabel}K`,
+                  kind: "direct",
+                })
+              }
+              onBlur={hideRailTip}
+              onMouseEnter={(event) =>
+                showRailTip(event.currentTarget, "Search", {
+                  keys: `${modifierLabel}K`,
+                  kind: "direct",
+                })
+              }
+              onMouseLeave={hideRailTip}
+              onClick={() => setSearchOpen(true)}
+            >
+              <Icon name="search" />
+              <span>Search</span>
+              {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
           w tym arkuszu obwódkę, tło i promień, czyli rysunek klawiatury —
           a to jest jedna kontrolka, nie ściągawka. Znaczenie „to jest skrót"
           zostaje w `aria-label` przycisku, gdzie i tak było jedynym miejscem
           docierającym do czytnika ekranu. */}
-          <span className="search-shortcut">{modifierLabel}K</span>
-        </button>
-        <nav ref={navRef} aria-label="Main navigation" onKeyDown={navKeyDown}>
-          {favorites.length > 0 && (
+              <span className="search-shortcut">{modifierLabel}K</span>
+            </button>
+          </>
+        )}
+        <nav
+          ref={navRef}
+          // Nazwa BEZ WARUNKU: to jest ta sama nawigacja w obu trybach — nosi
+          // `navRef` i obsługę klawiszy, więc w trybie Ustawień to ona wodzi
+          // ognisko po pozycjach spisu. „Settings sections" należy do listy
+          // w środku i byłoby tu drugą kopią tej samej nazwy.
+          aria-label="Main navigation"
+          onKeyDown={navKeyDown}
+        >
+          {!settingsMode && favorites.length > 0 && (
             <>
               <p className="nav-label">Favorites</p>
               {favorites.map((favorite) => {
@@ -3373,8 +3544,11 @@ export const RealApp = ({
                     key={`favorite:${item.id}`}
                     // Malowanie i bieżąca strona z JEDNEGO źródła, tak samo jak
                     // w `navEntry` — ulubiony skrót do Projektów rozjeżdżałby
-                    // się przy otwartym rekordzie dokładnie tak samo.
+                    // się przy otwartym rekordzie dokładnie tak samo. Dotyczy
+                    // to OBU nośników: `data-nav-open` czyta tu tę samą nazwę,
+                    // co wiersz grupy.
                     className={`nav-item nav-favorite ${currentNavId === item.id ? "active" : ""}`}
+                    data-nav-open={navOpenId === item.id ? "" : undefined}
                     tabIndex={-1}
                     aria-current={currentNavId === item.id ? "page" : undefined}
                     onFocus={() => preloadSurface(item.id)}
@@ -3389,7 +3563,7 @@ export const RealApp = ({
               })}
             </>
           )}
-          {recentContexts.length > 0 && (
+          {!settingsMode && recentContexts.length > 0 && (
             <>
               <p className="nav-label">Recent</p>
               {recentContexts.map((recent) => {
@@ -3417,61 +3591,101 @@ export const RealApp = ({
               i staje się spisem sekcji. Nawigacja nie jest ukrywana stylem —
               po prostu się nie renderuje, więc nie zostaje osiągalna Tabem
               w miejscu, którego nie widać. */}
-          {surface === "settings" ? (
+          {settingsMode ? (
             <nav
               className="settings-mode-column"
               aria-label="Settings sections"
             >
-              <button
-                type="button"
-                className="nav-item settings-mode-back"
-                data-settings-back="true"
-                // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
-                // rule `.nav-item > span { display: none }` (styles.css:3599)
-                // takes BOTH children out of the accessibility tree, and the
-                // only way out of settings mode was left announcing itself as
-                // „‹". The label is now on the button, so it survives the
-                // width at which the text disappears.
-                aria-label="Leave settings"
-                onClick={leaveSettings}
-              >
-                <span aria-hidden="true">‹</span>
-                <span>Settings</span>
-              </button>
-              {settingsCategories.map((category) => (
+              {/* PASMO, NIE PIERWSZY WIERSZ LISTY (`v3/screens/settings.css:40-43`
+              — `.st-nav-head` ma `min-height: var(--header-band-height)`
+              i własną dolną krawędź, a spis zaczyna się dopiero POD nią).
+              Wyjście z trybu stało dotąd w tej samej kolumnie co sekcje, więc
+              czytało się jak siódma sekcja. */}
+              <div className="settings-mode-head">
                 <button
-                  key={category.id}
                   type="button"
-                  className="nav-item settings-mode-section"
-                  data-settings-section={category.id}
-                  // CO TA POZYCJA STEROWANIE — przeprowadzone razem ze
-                  // znacznikiem. Skasowany nawigator w treści ekranu niósł
-                  // `aria-controls`; ten niósł tylko atrybut danych, czyli
-                  // adres dla testu, a nie dla czytnika ekranu.
-                  aria-controls={settingsCategoryElementId(category.id)}
-                  // JEDEN NAWIGATOR USTAWIEŃ, I TO JEST TEN
-                  // (`v3/screens/settings.css:36-80`, `:76-80`). Do fali E
-                  // stały trzy: ta kolumna, drugi nawigator w treści ekranu
-                  // i natywna kontrolka wąskiego okna. Kolumna była jedyną,
-                  // która NIE mówiła, gdzie czytelnik jest — a jest jedyną,
-                  // która stoi tam, gdzie prototyp trzyma spis sekcji.
-                  aria-current={
-                    settingsCategory === category.id ? "location" : undefined
-                  }
-                  onClick={() => {
-                    // Stan ustawiony OD RAZU, a nie dopiero z obserwatora
-                    // przecięć na ekranie: ostatnia sekcja bywa krótsza niż
-                    // okno i przewinięcie do niej nie zawsze przesuwa próg,
-                    // więc znacznik zostawał na poprzedniej. Obserwator
-                    // poprawia tę wartość przy każdym dalszym przewinięciu.
-                    setSettingsCategory(category.id);
-                    document
-                      .getElementById(settingsCategoryElementId(category.id))
-                      ?.scrollIntoView({ block: "start", behavior: "auto" });
-                  }}
+                  className="nav-item settings-mode-back"
+                  data-settings-back="true"
+                  // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
+                  // rule `.nav-item > span { display: none }` (styles.css:3599)
+                  // takes BOTH children out of the accessibility tree, and the
+                  // only way out of settings mode was left announcing itself as
+                  // „‹". The label is now on the button, so it survives the
+                  // width at which the text disappears.
+                  aria-label="Leave settings"
+                  onClick={leaveSettings}
                 >
-                  <span>{category.label}</span>
+                  <span aria-hidden="true">‹</span>
+                  <span>Settings</span>
                 </button>
+              </div>
+              {/* SPIS DZIELI SIĘ NA NAZWANE GRUPY I KAŻDA POZYCJA MA GLIF
+              (`v3/screens/settings.css:57-60` — `.st-nav-glabel`, wersaliki
+              `--text-2xs` z rozstrzeleniem 0,06em w kolorze czwartorzędnym;
+              `:61-71` — `.st-navitem` z torem ikony `.ico` przed etykietą;
+              złożone w `v3/screens/settings.js:996-1000`).
+
+              GRUPY SĄ WYPROWADZONE Z JEDNEJ LISTY, nie zadeklarowane obok niej
+              — `settingsCategoryGroups` skleja SĄSIADUJĄCE kategorie o tej
+              samej nazwie grupy. Druga lista wypisująca „które kategorie są
+              w której grupie" byłaby ręczną listą obok zamkniętego słownika,
+              czyli klasą defektu, którą to repo przegrywa od kilku fal:
+              kategoria dopisana do słownika i nieprzepisana do tamtej listy
+              zniknęłaby ze spisu bez ani jednego błędu. Tutaj kategoria bez
+              grupy nie kompiluje się. */}
+              {settingsCategoryGroups.map((group) => (
+                <div className="settings-mode-group" key={group.label}>
+                  {/* `aria-hidden`, tak jak w prototypie (`settings.js:998`):
+                  nagłówek grupy jest podziałem WZROKOWYM, a czytnik ekranu ma
+                  tę samą listę już opisaną nazwą `nav`. Wypowiedziany byłby
+                  szóstym powtórzeniem tej samej informacji. */}
+                  <p className="settings-mode-group-label" aria-hidden="true">
+                    {group.label}
+                  </p>
+                  {group.categories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className="nav-item settings-mode-section"
+                      data-settings-section={category.id}
+                      // CO TA POZYCJA STEROWANIE — przeprowadzone razem ze
+                      // znacznikiem. Skasowany nawigator w treści ekranu niósł
+                      // `aria-controls`; ten niósł tylko atrybut danych, czyli
+                      // adres dla testu, a nie dla czytnika ekranu.
+                      aria-controls={settingsCategoryElementId(category.id)}
+                      // JEDEN NAWIGATOR USTAWIEŃ, I TO JEST TEN
+                      // (`v3/screens/settings.css:36-80`, `:76-80`). Do fali E
+                      // stały trzy: ta kolumna, drugi nawigator w treści ekranu
+                      // i natywna kontrolka wąskiego okna. Kolumna była jedyną,
+                      // która NIE mówiła, gdzie czytelnik jest — a jest jedyną,
+                      // która stoi tam, gdzie prototyp trzyma spis sekcji.
+                      aria-current={
+                        settingsCategory === category.id
+                          ? "location"
+                          : undefined
+                      }
+                      onClick={() => {
+                        // Stan ustawiony OD RAZU, a nie dopiero z obserwatora
+                        // przecięć na ekranie: ostatnia sekcja bywa krótsza niż
+                        // okno i przewinięcie do niej nie zawsze przesuwa próg,
+                        // więc znacznik zostawał na poprzedniej. Obserwator
+                        // poprawia tę wartość przy każdym dalszym przewinięciu.
+                        setSettingsCategory(category.id);
+                        document
+                          .getElementById(
+                            settingsCategoryElementId(category.id),
+                          )
+                          ?.scrollIntoView({
+                            block: "start",
+                            behavior: "auto",
+                          });
+                      }}
+                    >
+                      <Icon name={category.icon} />
+                      <span>{category.label}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </nav>
           ) : (
@@ -3534,14 +3748,21 @@ export const RealApp = ({
                         }
                         onClick={() => toggleNavigationGroup(group)}
                       >
-                        <span>{group}</span>
-                        {activeGroupItem !== undefined && !expanded && (
-                          <small>{activeGroupItem.label}</small>
-                        )}
+                        {/* DASZEK JEST PIERWSZYM DZIECKIEM, tak jak
+                        w prototypie (`v3/app.js:599` — `icon("chevDown")`
+                        przed `<span>` z nazwą modułu). Kolejność w JSX-ie JEST
+                        tu układem: siatka `.nav-group-toggle` przypisuje tory
+                        po kolejności dzieci, więc zostawienie tego elementu na
+                        końcu przy zmienionych torach postawiłoby daszek pod
+                        etykietą, a nie przed nią. */}
                         <span
                           className="nav-group-chevron"
                           aria-hidden="true"
                         />
+                        <span>{group}</span>
+                        {activeGroupItem !== undefined && !expanded && (
+                          <small>{activeGroupItem.label}</small>
+                        )}
                       </button>
                     )}
                     <div
@@ -4595,6 +4816,7 @@ export const RealApp = ({
                     canComment={canComment}
                     canResolve={canResolveComments}
                     currentPrincipalId={currentPrincipalId}
+                    currentDisplayName={currentDisplayName}
                     mentionCandidates={commentMentionCandidates}
                     mentionNameOf={(principalId) => mentionNameOf(principalId)}
                     onAttach={stageCommentAttachment}
@@ -4725,6 +4947,7 @@ export const RealApp = ({
                   canComment={canComment}
                   canResolve={canResolveComments}
                   currentPrincipalId={currentPrincipalId}
+                  currentDisplayName={currentDisplayName}
                   mentionCandidates={commentMentionCandidates}
                   mentionNameOf={(principalId) => mentionNameOf(principalId)}
                   onAttach={stageCommentAttachment}

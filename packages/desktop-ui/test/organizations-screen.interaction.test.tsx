@@ -804,7 +804,12 @@ test("no explanation anywhere on this screen survives as a `title`", async () =>
   await openOrganizations();
   await waitForCondition(() => rows().length > 0, "no client row");
 
-  const surface = container.querySelector("[data-organizations-surface]");
+  // CAŁY EKRAN, NIE JEGO PRZEWIJANE PUDEŁKO. Od lotu D10 pasmo tytułu i pasek
+  // widoku są RODZEŃSTWEM `.surface-scroll`, a `data-organizations-surface`
+  // został na pudełku — zamiatanie po tamtym adresie przestało widzieć oba
+  // pasma i zieleniło się nad zakresem mniejszym, niż głosi jego nazwa. Ta sama
+  // kotwica co w `topic-help.interaction.test.tsx`.
+  const surface = container.querySelector('main[data-surface="organizations"]');
   assert.ok(surface, "the surface is not mounted");
   // Compared as a BOOLEAN, not as the node: `assert.equal(node, null)` hands
   // vitest a DOM element to serialise for its diff and the worker dies without
@@ -820,7 +825,8 @@ test("no explanation anywhere on this screen survives as a `title`", async () =>
     "the Table layout drew no table",
   );
   assert.equal(
-    container.querySelector("[data-organizations-surface] [title]") === null,
+    container.querySelector('main[data-surface="organizations"] [title]') ===
+      null,
     true,
     "the Table layout put an explanation back into a `title`",
   );
@@ -1081,8 +1087,8 @@ const declarationsOf = (selector: string): string => {
 
 test("the Organizations sheet keeps the declarations that stop the surface sizing itself", () => {
   // 1. Inline-size containment makes an element's own intrinsic width ignore its
-  //    contents. `.surface-scroll > *` centres every child with
-  //    `margin-inline: auto`, which turns off stretch, so a contained list
+  //    contents. `.surface-scroll > *` gives every child an auto inline end
+  //    margin, which turns off stretch, so a contained list
   //    resolves to a fit-content width of ZERO and every row inside it overflows
   //    a box with no width.
   assert.equal(
@@ -1112,13 +1118,33 @@ test("the Organizations sheet keeps the declarations that stop the surface sizin
   );
   // 4. Every bar wraps. A non-wrapping flex row's min-content is the sum of its
   //    children, which is a number nothing can shrink.
-  for (const bar of [".crumbbar", ".viewbar", ".filter"]) {
+  // `.crumbbar` ZSZEDŁ Z TEJ LISTY W LOCIE C2, bo zszedł z ekranu: akcja
+  // przeniosła się do pasma tytułu, a pusty rząd został skasowany. Pasmo, które
+  // ją teraz niesie, deklaruje `flex-wrap: wrap` w `styles.css` przy
+  // `.surface-header`, z tego samego powodu i z własnym uzasadnieniem — nie
+  // w tym arkuszu, więc nie w tej pętli.
+  // `.viewbar` ZSZEDŁ Z TEJ PĘTLI W LOCIE D1 FAZY D, TĄ SAMĄ DROGĄ CO
+  // `.crumbbar` i z tego samego powodu: deklaracja nie zniknęła, tylko przestała
+  // być W TYM ARKUSZU. Kształt paska widoku — wysokość pasma, rynna, włoskowa
+  // kreska i właśnie zawijanie — stoi teraz raz, w `styles.css` przy
+  // `.view-band`, bo był przepisany w siedmiu arkuszach modułowych i w każdym
+  // inaczej. Gwarancja nie może przez to zniknąć, więc jest asertowana NIŻEJ,
+  // na arkuszu, w którym naprawdę mieszka.
+  for (const bar of [".filter"]) {
     assert.match(
       declarationsOf(bar),
       /flex-wrap: wrap/u,
       `${bar} stopped wrapping — its min-content becomes the sum of its children and the surface overflows itself at 200% text`,
     );
   }
+  assert.match(
+    readFileSync(path.join(packageRoot, "src", "styles.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//gu,
+      "",
+    ),
+    /\.view-band\s*\{[^}]*flex-wrap:\s*wrap/su,
+    "the shared view band stopped wrapping — its min-content becomes the sum of its children and every screen that draws one overflows itself at 200% text",
+  );
   // 5. And the list declares a definite width rather than taking one from the
   //    rows, which for a grid is the sum of its tracks.
   assert.match(

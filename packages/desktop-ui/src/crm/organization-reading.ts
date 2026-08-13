@@ -44,6 +44,7 @@ import type { RelationshipWorkspaceProjection } from "../client/workflow.js";
 
 import { countLabel, formatDate } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
+import { isLiveRecord } from "./record-census.js";
 import {
   fmtMoney,
   opportunityValue,
@@ -240,9 +241,17 @@ export interface RelationshipIndex {
  * silent in the compiler, and silent in the fixtures — `dev/crm-fixture.ts:171`
  * stamps `recordState: "active"` on all 21 records, so no gate could see it.
  */
-export const recordIsLive = (record: {
-  readonly recordState?: "active" | "removed" | undefined;
-}): boolean => (record.recordState ?? "active") === "active";
+/**
+ * Ta sama funkcja, co `isLiveRecord` — nie druga jej kopia.
+ *
+ * PR #232 zapisał to zdanie tutaj, fala wizualna zapisała je w
+ * `record-census.ts` (module, na który stać ścieżkę gorącą), i przy scalaniu
+ * okazało się, że NIE ZNACZĄ TEGO SAMEGO: tamta wersja pytała o równość
+ * z `"active"`, czyli wyrzucała każdy rekord bez stempla — wprost defekt,
+ * który #232 naprawiał. Zostaje JEDNA definicja i drugie IMIĘ dla niej, żeby
+ * konsumenci #232 (`renewals-view.ts`) nie musieli się przepisywać.
+ */
+export const recordIsLive = isLiveRecord;
 
 const push = <T>(map: Map<string, T[]>, key: string, value: T): void => {
   const bucket = map.get(key);
@@ -268,8 +277,10 @@ export const indexRelationships = (
   for (const record of records) {
     // A removed record is still in the projection: `recordState` is what says
     // whether it counts, and reading past it is how a deleted client keeps
-    // appearing in a total. Absent means active — see `recordIsLive`.
-    if (!recordIsLive(record)) continue;
+    // appearing in a total. Absent means active, and the predicate itself lives
+    // in `record-census.ts` because the sidebar counter needs the SAME sentence
+    // and cannot afford this module — see the header there.
+    if (!isLiveRecord(record)) continue;
     switch (record.kind) {
       case "organization":
         organizations.push(record);

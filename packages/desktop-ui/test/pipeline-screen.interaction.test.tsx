@@ -853,8 +853,16 @@ test("nothing on this screen explains itself in a tooltip", async () => {
   // Compared as a BOOLEAN, not as the node: handing vitest a DOM element to
   // serialise for its diff kills the worker without reporting anything, which
   // this repository has already paid for once.
+  // CAŁY EKRAN, NIE JEGO PRZEWIJANE PUDEŁKO. Od lotu R3 pasmo tytułu i pasek
+  // widoku są RODZEŃSTWEM `.surface-scroll`, a `data-pipeline-surface` został na
+  // pudełku — zamiatanie po tamtym adresie przestało widzieć oba pasma i byłoby
+  // zielone nad `title=` postawionym w którymkolwiek z nich. Ten plik montuje na
+  // dwa sposoby (powłoka i sam ekran), więc zakres rozstrzyga się w locie.
+  const screen =
+    container.querySelector<HTMLElement>('main[data-surface="pipeline"]') ??
+    container;
   assert.equal(
-    container.querySelector("[data-pipeline-surface] [title]") === null,
+    screen.querySelector("[title]") === null,
     true,
     "an explanation survived as a `title` attribute",
   );
@@ -1034,18 +1042,29 @@ test("the Pipeline sheet keeps the declarations that hold a scrolling board insi
   );
   // 3. Every bar ABOVE the board wraps. A non-wrapping flex row's min-content is
   //    the sum of its children, and at 200% text that sum stops fitting.
-  for (const bar of [
-    ".crumbbar,\n.viewbar",
-    ".create",
-    ".dealPanel",
-    ".moveGroup,\n.priceControls",
-  ]) {
+  // `.crumbbar` ZNIKNĄŁ Z TEGO SELEKTORA W LOCIE C2 razem z samym rzędem: akcja
+  // Lejka stoi teraz w paśmie tytułu, a blok, który wymieniał obie klasy, został
+  // przepisany na jedną, żeby nie zostawić w nim martwej nazwy.
+  // `.viewbar` ZSZEDŁ Z TEJ PĘTLI W LOCIE D1 FAZY D, tak jak `.crumbbar` zszedł
+  // w C2, i z powodu tej samej rodziny: deklaracja nie zniknęła, tylko przestała
+  // być W TYM ARKUSZU. Kształt paska widoku stoi teraz raz, w `styles.css` przy
+  // `.view-band` — był przepisany w siedmiu arkuszach modułowych i w każdym
+  // inaczej. Gwarancja jest asertowana niżej, na arkuszu, w którym mieszka.
+  for (const bar of [".create", ".dealPanel", ".moveGroup,\n.priceControls"]) {
     assert.match(
       declarationsOf(bar),
       /flex-wrap:\s*wrap/u,
       `${bar} stopped wrapping — at 200% root font-size its min-content is the sum of its children and it sets a width the surface cannot hold`,
     );
   }
+  assert.match(
+    readFileSync(path.join(packageRoot, "src", "styles.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//gu,
+      "",
+    ),
+    /\.view-band\s*\{[^}]*flex-wrap:\s*wrap/su,
+    "the shared view band stopped wrapping — at 200% root font-size its min-content is the sum of its children and every screen that draws one sets a width its surface cannot hold",
+  );
   // 4. Only the column is capped in rem, and it is inside the scroller.
   assert.match(
     declarationsOf(".column"),

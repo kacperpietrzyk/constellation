@@ -8,14 +8,16 @@
    at all, and the card's accessible name carries it a fourth time, in prose.
 
    THE WINDOWS TEXT-SCALING TRAP, and where it is designed out. `.surface-scroll
-   > *` centres every child with `margin-inline: auto` (`styles.css:4404-4407`),
+   > *` gives every child an auto inline END margin (`styles.css` — the reading
+   column rule; the start margin is 0 since the D1 repair pass, so free space
+   goes to the end instead of both sides),
    which turns off stretch and sizes the child `fit-content` — and `fit-content`
    is clamped BELOW by `min-content`. A non-wrapping flex row's min-content is
    the SUM of its children, so at 200% root font-size such a row sets a width
    instead of taking one and the surface overflows itself with no descendant
    overflowing anything. Three rules follow, and none of them is decoration:
 
-     1. every bar above the board wraps (`.crumbbar`, `.viewbar`, `.create`,
+     1. every bar above the board wraps (`.viewbar`, `.create`,
         `.dealPanel`, `.moveGroup`, `.priceControls`);
      2. the board — which really is a non-wrapping row, because a kanban board
         that wraps is not a board — is held by `.scroller`, whose `overflow-x`
@@ -53,32 +55,36 @@
         `PipelineSurface.tsx` and is older than this pass. */
 
 .pipeline {
+  /* ODSTĘP KOLUMNY NAZWANY, ŻEBY PASMA MOGŁY GO ODJĄĆ. `gap` działa MIĘDZY
+     dziećmi niezależnie od marginesów, więc pasmo tytułu i pasek widoku nie
+     dadzą się skleić dopóty, dopóki ta liczba jest anonimowa. Jedna definicja,
+     dwóch konsumentów — patrz `.view-band` w `styles.css`. */
+  --surface-stack-gap: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--surface-stack-gap);
 }
 
 /* ── Chrome above the board ──────────────────────────────────────────── */
 
-.crumbbar,
-.viewbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-4);
-}
+/* PAS AKCJI ZNIKNĄŁ WRAZ Z LOTEM C2, a `.viewbar` zostaje. Selektor wymieniał
+   obie klasy w jednym bloku, więc skasowanie samego `.crumbbar` zostawiłoby
+   w nim martwą nazwę — dlatego blok jest przepisany na jedną klasę, a nie
+   okrojony z jednego wiersza.
 
-/* THE SCREEN'S ACTION STANDS AT THE END OF THE BAR, NOT AT ITS HEAD
-   (`v3/screens/pipeline.js:409-410`, drawn into the crumb bar behind
-   `v3/app.css:293` — `.crumbbar .spacer { flex: 1 }`). The auto margin does the
-   work of that spacer without adding a second child: the pair map reads
-   `[class*="_crumbbar_"] button` and says the row holds exactly one button, so
-   a spacer element that happened to be a button would turn a measurement into
-   "several different values". Which button it is — primary or secondary — is
-   decided in `PipelineSurface.tsx`, where the reason lives. */
-.createToggle {
-  margin-inline-start: auto;
+   Prototyp nie układa nad płótnem pasma tytułu I osobnego paska akcji:
+   `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) jest JEDNYM pasmem, które
+   niesie nazwę ekranu i akcję, a rozpychacz `.crumbbar .spacer { flex: 1 }`
+   (`v3/app.css:293`) odpycha ją do prawego końca. Akcja Lejka stoi teraz
+   w `SurfaceTitleBand`, gdzie tę samą robotę robi `justify-content:
+   space-between` pasma — czyli reguła, która w `styles.css` stała martwa,
+   odkąd pasmo miało jedno dziecko. */
+/* KSZTAŁT PASMA ODSZEDŁ DO `.view-band` W `styles.css` (Faza D, lot D1) —
+   wysokość, rynna i włoskowa kreska były tu przepisane siódmy raz i w tym
+   arkuszu brakowało dwóch z tych trzech. Zostaje TREŚĆ: co ten pasek trzyma
+   i jak się to układa, gdy się nie mieści. */
+.viewbar {
+  gap: var(--space-2);
 }
 
 .create {
@@ -273,11 +279,19 @@
 
 /* ── The board ───────────────────────────────────────────────────────── */
 
+/* TRZECIA LEWA KRAWĘDŹ NAD TABLICĄ ZNIKA TUTAJ (wpis #11 rejestru Fazy 4).
+   Rejestr zmierzył trzy: tusz tytułu na 41 CSS, pigułkę „Stages" na 56 i kartę
+   kolumny na 57,5 — a w prototypie tytuł i karta kolumny padają na tę samą
+   liczbę (13 CSS), bo `crumbbar`, `viewbar` i `.pp-board` mają w nim JEDNĄ
+   wyściółkę `var(--space-3)`. U nas tę rolę pełni rynna nośnika
+   (`--surface-gutter`), którą pasmo tytułu i pasek widoku już biorą; ta
+   wyściółka była czwartym, lokalnym wcięciem NA TEJ SAMEJ osi i przez to
+   przesuwała karty o 16 px w prawo względem wszystkiego nad nimi.
+   Wyściółka pionowa zostaje — ona nie jest krawędzią. */
 .scroller {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
-  padding-inline: var(--space-4);
 }
 
 .board {
@@ -343,7 +357,7 @@
    overflow: auto` inside a bounded column (`v3/app.css:303`, `:279`), so it has
    a height of its own and really does scroll vertically.
    This shell scrolls the WHOLE surface instead: `.work-surface`
-   (`styles.css:1426-1435`) is the vertical scroll port, and `.scroller` below
+   (`styles.css:2095-2105`) is the vertical scroll port ON THIS SCREEN — lot D10 made that conditional (`.work-surface:has(> .surface-header)` turns the carrier into a non-scrolling flex column), and Pipeline is one of the screens it deliberately did NOT migrate, and `.scroller` below
    declares `overflow-x: auto` — which makes the used `overflow-y` `auto` too,
    so `.scroller` becomes this head's nearest scroll port and never scrolls
    vertically. A top-sticky element in a box whose scroll top is always zero

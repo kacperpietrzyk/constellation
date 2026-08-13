@@ -12,6 +12,7 @@ import type {
   MutationFailure,
   SavedWorkViewFilterChange,
 } from "../client/workflow.js";
+import { Icon } from "../components/Icon.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
 import { useSurfaceDensity } from "../hooks/useSurfaceDensity.js";
 import { countLabel, dateKeyInZone } from "../i18n.js";
@@ -19,6 +20,7 @@ import {
   LazySurfaceBoundary,
   SurfaceLoadingState,
 } from "../SurfaceLifecycleStates.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import { TaskListLayout } from "./TaskListLayout.js";
 import type { TaskColumnKey } from "./task-columns.js";
 import { matchesSavedView, matchesSearch } from "./task-filters.js";
@@ -356,31 +358,37 @@ export const TasksSurface = ({
 
   if (work.kind !== "ready")
     return (
-      <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
-        <header className="surface-header">
-          <h1 id="surface-title" tabIndex={-1}>
-            Tasks
-          </h1>
-        </header>
-        {/* The slice's OWN reason, not a sentence about the work plane in
-            general. `optionalProjection` names the query and the cause
-            (`client/workflow.ts` — refusal code, contract issue, or the bridge
-            failing), and that naming is the only diagnosis this build offers:
-            `⌘⌥I` does not open DevTools here. A fixed sentence in its place
-            throws away the whole of it. */}
-        <p className={styles.unavailable} data-tasks-unavailable>
-          {work.message}
-        </p>
-        {onReload !== undefined && (
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        )}
-      </div>
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także w stanie awaryjnym —
+      // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
+      // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
+      // powiedzieć, że czegoś nie dało się przeczytać.
+      //
+      // Pasmo rysuje `SurfaceTitleBand`, a nie gołe `<header>`: to jest ta sama
+      // deklaracja, którą czyta `.work-surface:has(> .surface-header)`, i ten
+      // sam komponent, co na wszystkich pozostałych ekranach fali.
+      <>
+        <SurfaceTitleBand title="Tasks" />
+        <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+          {/* The slice's OWN reason, not a sentence about the work plane in
+              general (PR #232). `optionalProjection` names the query and the
+              cause (`client/workflow.ts` — refusal code, contract issue, or the
+              bridge failing), and that naming is the only diagnosis this build
+              offers: `⌘⌥I` does not open DevTools here. A fixed sentence in its
+              place throws away the whole of it. */}
+          <p className={styles.unavailable} data-tasks-unavailable>
+            {work.message}
+          </p>
+          {onReload !== undefined && (
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      </>
     );
 
   // A task OPENED as a record takes the whole surface. The record brings its own
@@ -394,29 +402,28 @@ export const TasksSurface = ({
   // way: they are how the shell scrolls this plane and how the packaged smoke
   // finds it.
   if (activeTaskId !== undefined)
-    return (
+    // TYLKO RAMIĘ Z PASMEM WYNOSI PASMO. Drugie ramię oddaje ekran rekordu,
+    // który rysuje WŁASNY chrom — objęcie go tym fragmentem postawiłoby pasmo
+    // ekranu Zadań nad pasmem rekordu, czyli dwa pasma jedno pod drugim.
+    return renderRecordScreen === undefined ? (
+      // The record could not be assembled — the opened task is not in the
+      // work projection, so there is nothing to read it from. Said plainly
+      // rather than degraded into a thinner record: a screen missing half
+      // its reading still looks like a screen. The heading carries the id
+      // the record would have carried, because the failure case is exactly
+      // when a work plane with no name and no focus target is worst.
+      <>
+        <SurfaceTitleBand title="This task could not be opened" />
+        <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+          <p className={styles.unavailable}>
+            It is not in the work projection for this Space. Reload, or go back
+            to the task list.
+          </p>
+        </div>
+      </>
+    ) : (
       <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
-        {renderRecordScreen === undefined ? (
-          // The record could not be assembled — the opened task is not in the
-          // work projection, so there is nothing to read it from. Said plainly
-          // rather than degraded into a thinner record: a screen missing half
-          // its reading still looks like a screen. The heading carries the id
-          // the record would have carried, because the failure case is exactly
-          // when a work plane with no name and no focus target is worst.
-          <>
-            <header className="surface-header">
-              <h1 id="surface-title" tabIndex={-1}>
-                This task could not be opened
-              </h1>
-            </header>
-            <p className={styles.unavailable}>
-              It is not in the work projection for this Space. Reload, or go
-              back to the task list.
-            </p>
-          </>
-        ) : (
-          renderRecordScreen()
-        )}
+        {renderRecordScreen()}
       </div>
     );
 
@@ -467,17 +474,58 @@ export const TasksSurface = ({
         : TASK_GROUPING_LABELS[grouping];
 
   return (
-    <div
-      className={`surface-scroll ${styles.tasks}`}
-      data-density={density}
-      data-tasks-surface
-    >
-      <header className="surface-header">
-        <h1 id="surface-title" tabIndex={-1}>
-          Tasks
-        </h1>
-      </header>
-      <div className={styles.viewbar}>
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, a przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest tu WARUNKIEM, a nie stylem: pasma muszą
+    // być bezpośrednimi dziećmi `.work-surface`, więc żaden dodatkowy element
+    // nie może stanąć między nimi a nośnikiem.
+    //
+    // `data-density` ZOSTAJE NA PUDEŁKU, i to jest pomiar, nie odruch: czytają
+    // go wyłącznie wiersze listy i komórki tabeli
+    // (`task-list.module.css:237`, `task-table.module.css:388-389`), a te
+    // wszystkie mieszkają w przewijanym pudełku. Na paśmie nie miałby czego
+    // opisać.
+    <>
+      <SurfaceTitleBand
+        action={
+          /* THE SCREEN'S ACTION, WHICH THIS BAND DID NOT HAVE AT ALL (Phase C,
+             lot C2). The prototype puts one here — `v3/screens/tasks.js:507-513`
+             is `btn("New task", { cls: "primary", icon: "plus", act:
+             "new-task" })` as the second argument of `crumbbar(crumbs, actions)`
+             (`v3/app.js:677-683`), pushed to the band's end by
+             `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) and filled with
+             the accent gradient (`v3/app.css:321-332`). The contract licenses
+             exactly this: `.ui-craft/tokens.md`, "Accent rule" job 2 and "Usage
+             constraints" 3 — the screen's action bar is a container that may own
+             one accent-filled action.
+
+             THIS SCREEN WAS THE ONE SUBJECT THE DIVERGENCE REGISTRY DID NOT
+             HAVE. The title-band census found it on its own: the prototype's
+             Tasks band carries "+ New task" and ours carried nothing, because
+             creating a task went only through `addToGroup` below — an
+             affordance that lives per group and names the group it lands in.
+             That path stays; it answers a different question ("a task in THIS
+             bucket") from the one the band answers ("a task on this screen").
+
+             THE TITLE IS THE ONE THE GROUPED PATH ALREADY WRITES, minus the
+             group: `addToGroup` sends "New task in <group label>" and there is
+             no group here to name. */
+          <button
+            className="primary-button"
+            onClick={() => void onCreateTask("New task")}
+            type="button"
+          >
+            <Icon name="capture" />
+            New task
+          </button>
+        }
+        title="Tasks"
+      />
+      <div className={`view-band ${styles.viewbar}`}>
         <div
           className={styles.switcher}
           role="tablist"
@@ -639,79 +687,85 @@ export const TasksSurface = ({
         </p>
       </div>
 
-      {activeLayout === "list" ? (
-        <TaskListLayout
-          firstRowIndexOfGroup={firstRowIndexOfGroup}
-          groups={groups}
-          itemProps={itemProps}
-          onAddToGroup={addToGroup}
-          onOpen={onOpenTask}
-          onSelect={onSelectTask}
-          onToggleCompleted={onSetCompleted}
-          prose={prose}
-          selectedTaskId={selectedTaskId}
-        />
-      ) : (
-        <LazySurfaceBoundary label={TASK_LAYOUT_LABELS[activeLayout]}>
-          <Suspense
-            fallback={
-              <SurfaceLoadingState label={TASK_LAYOUT_LABELS[activeLayout]} />
-            }
-          >
-            {activeLayout === "board" ? (
-              <TaskBoardLayout
-                firstRowIndexOfGroup={firstRowIndexOfGroup}
-                groupingLabel={boardGroupingLabel}
-                groups={groups}
-                itemProps={itemProps}
-                onAddToGroup={addToGroup}
-                onMoveToStatus={onSetStatus}
-                onOpen={onOpenTask}
-                onSelect={onSelectTask}
-                prose={prose}
-                selectedTaskId={selectedTaskId}
-                // A field grouping is an object and never equals "project", so
-                // the test the board used to make on the union reads correctly
-                // on the wider type without narrowing it first.
-                showProjects={grouping !== "project"}
-              />
-            ) : activeLayout === "table" ? (
-              <TaskTableLayout
-                chosenColumns={chosenColumns}
-                fields={taskFields}
-                itemProps={itemProps}
-                onOpen={onOpenTask}
-                onSelect={onSelectTask}
-                prose={prose}
-                rows={rows}
-                selectedTaskId={selectedTaskId}
-                viewKey={activeView?.id ?? "all"}
-              />
-            ) : activeLayout === "timeline" ? (
-              <TaskTimelineLayout
-                itemProps={itemProps}
-                onOpen={onOpenTask}
-                onPlanOnDay={onPlanOnDay}
-                onSelect={onSelectTask}
-                prose={prose}
-                rows={rows}
-                selectedTaskId={selectedTaskId}
-              />
-            ) : activeLayout === "calendar" ? (
-              <TaskCalendarLayout
-                itemProps={itemProps}
-                onOpen={onOpenTask}
-                onOpenCalendarDestination={onOpenCalendar}
-                onPlanOnDay={onPlanOnDay}
-                onSelect={onSelectTask}
-                prose={prose}
-                rows={rows}
-                selectedTaskId={selectedTaskId}
-              />
-            ) : null}
-          </Suspense>
-        </LazySurfaceBoundary>
-      )}
-    </div>
+      <div
+        className={`surface-scroll ${styles.tasks}`}
+        data-density={density}
+        data-tasks-surface
+      >
+        {activeLayout === "list" ? (
+          <TaskListLayout
+            firstRowIndexOfGroup={firstRowIndexOfGroup}
+            groups={groups}
+            itemProps={itemProps}
+            onAddToGroup={addToGroup}
+            onOpen={onOpenTask}
+            onSelect={onSelectTask}
+            onToggleCompleted={onSetCompleted}
+            prose={prose}
+            selectedTaskId={selectedTaskId}
+          />
+        ) : (
+          <LazySurfaceBoundary label={TASK_LAYOUT_LABELS[activeLayout]}>
+            <Suspense
+              fallback={
+                <SurfaceLoadingState label={TASK_LAYOUT_LABELS[activeLayout]} />
+              }
+            >
+              {activeLayout === "board" ? (
+                <TaskBoardLayout
+                  firstRowIndexOfGroup={firstRowIndexOfGroup}
+                  groupingLabel={boardGroupingLabel}
+                  groups={groups}
+                  itemProps={itemProps}
+                  onAddToGroup={addToGroup}
+                  onMoveToStatus={onSetStatus}
+                  onOpen={onOpenTask}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  selectedTaskId={selectedTaskId}
+                  // A field grouping is an object and never equals "project", so
+                  // the test the board used to make on the union reads correctly
+                  // on the wider type without narrowing it first.
+                  showProjects={grouping !== "project"}
+                />
+              ) : activeLayout === "table" ? (
+                <TaskTableLayout
+                  chosenColumns={chosenColumns}
+                  fields={taskFields}
+                  itemProps={itemProps}
+                  onOpen={onOpenTask}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  rows={rows}
+                  selectedTaskId={selectedTaskId}
+                  viewKey={activeView?.id ?? "all"}
+                />
+              ) : activeLayout === "timeline" ? (
+                <TaskTimelineLayout
+                  itemProps={itemProps}
+                  onOpen={onOpenTask}
+                  onPlanOnDay={onPlanOnDay}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  rows={rows}
+                  selectedTaskId={selectedTaskId}
+                />
+              ) : activeLayout === "calendar" ? (
+                <TaskCalendarLayout
+                  itemProps={itemProps}
+                  onOpen={onOpenTask}
+                  onOpenCalendarDestination={onOpenCalendar}
+                  onPlanOnDay={onPlanOnDay}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  rows={rows}
+                  selectedTaskId={selectedTaskId}
+                />
+              ) : null}
+            </Suspense>
+          </LazySurfaceBoundary>
+        )}
+      </div>
+    </>
   );
 };

@@ -37,9 +37,29 @@ import { fileURLToPath } from "node:url";
 
 import { parseColor, srgbToOklch } from "./color-contrast.mjs";
 import {
+  CONTROL_PAINT_ARMED,
+  CONTROL_PAINT_SHELL,
+  CONTROL_PAINT_STATUS,
+  CONTROL_PAINT_TAGS,
+  CSS_MODULE_HASH_PATTERN,
+  KNOWN_CONTROL_PAINT,
+  classifyControlPaint,
+  classifyControlPaintCensus,
+  classifyControlPaintWitnesses,
+  controlPaintVerdictThrows,
+  isRegisteredControlPaint,
+  unmetControlPaintEntries,
+} from "./control-paint.mjs";
+import {
+  COLLAPSED_CLIENT_WIDTH_PX,
+  COLLAPSED_TEXT_ENFORCED_SURFACES,
   HORIZONTAL_SCROLL_ATTRIBUTE,
+  KNOWN_COLLAPSED_TEXT,
   KNOWN_DESCENDANT_OVERFLOWS,
+  classifyCollapsedText,
   classifyDescendantOverflow,
+  collapsedTextEnforced,
+  unusedCollapsedEntries,
   unusedRegistryEntries,
 } from "./descendant-overflow.mjs";
 import {
@@ -56,6 +76,23 @@ import {
   classifyHeightBoundScreen,
   classifyHeightBoundSweep,
 } from "./surface-height-bound.mjs";
+import {
+  TITLE_BAND_ACTION_ARMED,
+  TITLE_BAND_ACTION_CLASSES,
+  TITLE_BAND_ACTION_STATUS,
+  TITLE_BAND_DIVERGENCES,
+  TITLE_BAND_ROWS,
+  // Ten sam wzorzec co w spisie farby, i JEST TO OSOBNY EKSPORT, nie wspólny
+  // import: dwa przyrządy dzielące jedną stałą przez trzeci plik dostają
+  // krawędź, której żaden z nich nie potrzebuje, a pierwsza rozbieżność
+  // w normalizacji klasy byłaby wtedy rozbieżnością MIĘDZY przyrządami.
+  CSS_MODULE_HASH_PATTERN as TITLE_BAND_HASH_PATTERN,
+  classifyTitleBandAction,
+  classifyTitleBandCensus,
+  classifyTitleBandInline,
+  isTitleBandDivergence,
+  titleBandVerdictThrows,
+} from "./title-band-action.mjs";
 import {
   RECORD_TITLE_BAND_OWNER,
   VISUAL_LANGUAGE_EXPECTED,
@@ -417,6 +454,18 @@ const MINIMUM_ROWS = {
   // STRUKTURY ekranu, nie do zawartości fikstury.
   pipelineCards: { floor: 4, needs: "pipeline" },
   renewalRows: { floor: 2, needs: "renewals" },
+  // ── DZISIAJ: WIERSZ PLANU ─────────────────────────────────────────────────
+  // Liczony jest WIERSZ, nie plakietka, i ta różnica jest cała treść progu.
+  // Nieobecność plakietki ma już swojego strażnika — para `D2-09b` żąda
+  // dokładnie jednego `[data-planned-by-agent]`. Czego nikt nie pilnował, to
+  // STANU, w którym plakietka w ogóle może się pojawić: przez całą falę D
+  // fikstura nie rysowała ani jednego `[data-planned-row]`, sekcja stała na
+  // „Nothing is planned for today", a bramka nie miała jak tego nazwać — to
+  // ta sama dziura, przez którą cztery ekrany CRM przejechały falę bez pomiaru.
+  //
+  // Próg 1, nie 2, bo pilnuje „sekcja planu opustoszała", a nie zawartości
+  // fikstury; fikstura niesie dziś dokładnie jedno zaplanowane zadanie.
+  todayPlannedRows: { floor: 1, needs: "today" },
 };
 
 // Tryb raportu: wypisz KAŻDE przepełnienie z werdyktem i nie przerywaj. Tak
@@ -460,6 +509,54 @@ const DECLARED_HEIGHT_BOUND = derive("data-height-bound");
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
 // się w swoim pudełku, a dokument w oknie. Zwracamy WSZYSTKIE przewinienia, nie
 // pierwsze — inaczej naprawa jednego ekranu ukrywa drugi.
+
+// ── KTÓRE WIERSZE SĄ DRZWIAMI DO EKRANU REKORDU ──────────────────────────────
+// Trzy atrybuty (`data-project-row`, `data-task-row`, `data-pipeline-card`)
+// rysuje SZEŚĆ komponentów, a znaczenie podwójnego kliknięcia jest własnością
+// MIEJSCA, nie atrybutu. Ta tabela wypowiada to rozróżnienie zamiast go zakładać.
+//
+//   "opens"      — wiersz promuje rekord na własny ekran; przelot ma prawo żądać
+//                  `[data-record-kind]` po dwukliku i zmierzyć ten ekran.
+//   "navigates"  — wiersz ZABIERA DO rekordu w jego kolekcji i nie otwiera nic;
+//                  żądanie ekranu byłoby tu żądaniem zachowania, którego produkt
+//                  świadomie nie ma (`RealApp.tsx:2702-2704`).
+//
+// STRAŻNIK WYCZERPANIA JEST CZĘŚCIĄ TABELI, nie dodatkiem: powierzchnia, która
+// narysowała taki wiersz i nie stoi tutaj, wywala przelot z własną nazwą. Bez
+// niego to jest ręczna lista obok zamkniętego słownika — nazwana klasa defektu
+// tego repozytorium, trafiona sześć razy w żywych miejscach i trzy razy w jednej
+// fali.
+//
+// STRAŻNIK DZIAŁA W OBIE STRONY OD PRZEGLĄDU FALI. Wpis BRAKUJĄCY pada niżej
+// po nazwie („drew a row this sweep knows how to double-click, and RECORD_DOORS
+// does not say…"); wpis ZBĘDNY — opisujący powierzchnię, która przestała rysować
+// otwieralny wiersz, bo opustoszała jej fikstura albo zniknął atrybut — pada
+// przy podsumowaniu przebiegu, tak samo jak `unusedRegistryEntries` w rejestrze
+// przepełnień. Do tego przeglądu ta strona była zapisanym brakiem, a materiał
+// na nią leżał gotowy w `openAttempts`.
+//
+// DLACZEGO AKURAT `navigates` JEST TU NAJGROŹNIEJSZY: taka powierzchnia nie
+// dostaje dwukliku W OGÓLE, więc nie zostawia po sobie ŻADNEJ obserwacji.
+// Deklaracja nieaktualna wygląda dokładnie tak samo jak aktualna, a różnicę
+// robi wyłącznie to, czy ktokolwiek narysował tam wiersz — czyli dokładnie to,
+// co pilnuje teraz kontrola przy podsumowaniu.
+//
+// BRAK, KTÓRY ZOSTAJE: `navigates` jest DEKLARACJĄ INTENCJI, nie pomiarem.
+// Nikt nie sprawdza, czy dwuklik naprawdę DOKĄDŚ zabiera — czy powłoka wylądowała
+// na kolekcji z zaznaczonym rekordem. Zdanie „to nie są drzwi" jest tu
+// weryfikowane, zdanie „to jest przejście" nie jest.
+const RECORD_DOORS = {
+  // `taskContext(id, title, { record: true })` — `RealApp.tsx:2705-2708`.
+  tasks: "opens",
+  // `projectContext` — kolekcja Projektów promuje projekt na jego ekran.
+  projects: "opens",
+  // Jedyne drzwi do rekordu szansy, potwierdzone przy zdjęciu `[data-renewal-row]`.
+  pipeline: "opens",
+  // `taskContext(id, title)` BEZ `{ record: true }` — `RealApp.tsx:2307-2310`.
+  // Wiersz istnieje na tym ekranie dopiero od fikstury lotu D9.
+  calendar: "navigates",
+};
+
 const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   // DWIE listy, bo to dwa różne rodzaje złej wiadomości. `failures` to awarie
@@ -482,6 +579,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       SETTINGS_SURFACE,
       titleSelector,
       recordScreenSelector,
+      RECORD_DOORS,
     }) => {
       const frame = () =>
         new Promise((resolve) =>
@@ -537,6 +635,9 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           : surfaces.filter((id) => !all.includes(id));
       const results = [];
       const descendants = [];
+      // Ślepa plamka przelotki przepełnień, zbierana osobno — patrz komentarz
+      // przy `sweepCollapsedText`.
+      const collapsed = [];
       const recordScreens = [];
       const heightBound = [];
       // Ile wierszy i kart NADAJĄCYCH SIĘ DO OTWARCIA narysował każdy cel.
@@ -562,6 +663,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         libraryNoteBody: 0,
         pipelineCards: 0,
         renewalRows: 0,
+        todayPlannedRows: 0,
       };
       let recordPanels = 0;
       let lensesDeclared = 0;
@@ -687,6 +789,13 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           // zdaniem w środku — zawsze przepełnione i NIGDY widoczne. Odsiewane
           // po KSZTAŁCIE (pudełko nie ma wymiaru), nie po nazwie klasy, żeby
           // reguła nie była listą nazw, która rozjedzie się z arkuszem.
+          //
+          // TEN FILTR MA ŚLEPĄ PLAMKĘ I MA JĄ ŚWIADOMIE: komórka tekstowa
+          // ściśnięta do zera wypada tędy razem z narzędziami czytnika ekranu,
+          // czyli przestaje być raportowana dokładnie wtedy, kiedy przestaje być
+          // widoczna. Filtr zostaje (bez niego rejestr długu zalałyby pudełka
+          // 1×1 px), a plamkę mierzy `sweepCollapsedText` niżej — osobną
+          // przelotką i osobnym rejestrem, bo to inna awaria i inna wiadomość.
           if (element.clientWidth <= 1 || element.clientHeight <= 1) continue;
           // Pole tekstowe przewija SWOJĄ TREŚĆ z natury: `scrollWidth` mówi tu
           // o długości wpisanego napisu, nie o tym, że kontrolka nie mieści się
@@ -740,6 +849,56 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         }
         descendants.push(...widest.values());
       };
+      // ── ŚLEPA PLAMKA PRZELOTKI WYŻEJ, ZMIERZONA OSOBNO ────────────────────
+      //
+      // Zbiera dokładnie to, co tamta odrzuca: elementy NIOSĄCE TEKST, których
+      // pudełko nie ma szerokości. Warunki są trzy i każdy odcina inny rodzaj
+      // fałszywego trafienia:
+      //   * `getClientRects().length > 0` — element w układzie, nie `display:
+      //     none` i nie schowana zakładka. Bez tego zebrałoby się pół powłoki.
+      //   * tekst WŁASNY, liczony bez potomków z elementami — inaczej każdy
+      //     przodek zapadniętej komórki melduje się z jej treścią i jeden defekt
+      //     zajmuje kolumnę wpisów, czyli ta sama choroba, którą tamta przelotka
+      //     leczy filtrem „tylko najgłębszy".
+      //   * `clientHeight > 0` — pudełko zwinięte w PIONIE to inna awaria
+      //     (i zwykle zamierzona: zwinięta sekcja), a ten rejestr mówi o tym,
+      //     że napis nie ma się gdzie zmieścić w POZIOMIE.
+      const sweepCollapsedText = (drawn, label) => {
+        if (drawn === undefined) return;
+        // JEDEN WPIS NA SYGNATURĘ, z NAJDŁUŻSZĄ treścią — trzy wiersze listy
+        // dają trzy identyczne sygnatury, a rejestr długu, w którym jeden defekt
+        // zajmuje tyle wierszy, ile narysowała fikstura, jest nie do
+        // przeczytania i zmienia się przy każdej zmianie fikstury.
+        const worst = new Map();
+        for (const element of drawn.querySelectorAll("*")) {
+          if (element.clientWidth >= 1) continue;
+          if (element.clientHeight < 1) continue;
+          if (element.getClientRects().length === 0) continue;
+          if (
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement
+          )
+            continue;
+          const ownText = [...element.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent ?? "")
+            .join("")
+            .trim();
+          if (ownText === "") continue;
+          const name = signature(element);
+          const previous = worst.get(name);
+          if (previous !== undefined && previous.textLength >= ownText.length)
+            continue;
+          worst.set(name, {
+            surface: label,
+            signature: name,
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            textLength: ownText.length,
+          });
+        }
+        collapsed.push(...worst.values());
+      };
       for (const id of ids) {
         // Settings is a MODE: entering it replaces the left column, so the nav
         // item for the next destination is not there to click. Without leaving
@@ -785,11 +944,53 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // replaces the drawn element, so a stale reference would report the
         // geometry of the layout that just left.
         const measure = (label) => {
-          const drawn = [...(work?.children ?? [])].find(
+          // POWIERZCHNIA MOŻE MIEĆ WIĘCEJ NIŻ JEDEN KORZEŃ, i to jest poprawka
+          // przyrządu z lotu D10, nie kosmetyka.
+          //
+          // CO TU STAŁO I DLACZEGO KŁAMAŁO. Ta linia brała PIERWSZE widoczne
+          // dziecko `#main-content` i nazywała je „powierzchnią". Twierdzenie
+          // było prawdziwe wyłącznie dopóki każdy ekran rysował JEDEN korzeń.
+          // Lot D10 przepiął Organizacje i Odnowienia na układ prototypu, gdzie
+          // pasmo tytułu, pasek widoku i przewijane pudełko są TROJGIEM
+          // rodzeństwa — i pierwszym widocznym dzieckiem stało się PASMO. Skutek
+          // zmierzony: `sweepDescendants`, `sweepRecordScreens`,
+          // `sweepHeightBound` i wszystkie liczniki wierszy chodziły po samym
+          // pasmie, więc `renewalRows` spadło do ZERA, a wpis rejestru
+          // `organizations / span._nameLine` przestał być spotykany w każdym
+          // z pięciu przelotów. Bramka mierzyła 40-pikselowy pasek i meldowała
+          // o ekranie.
+          //
+          // ZŁAPAŁY TO WYŁĄCZNIE PODŁOGI WIERSZY. Same przelotki przepełnienia
+          // wróciłyby ZIELONE — nad poddrzewem, w którym nie ma czego przepełnić.
+          // To jest dokładnie ta klasa, którą to repozytorium ma już nazwaną
+          // („pusta fikstura nie tylko nie mierzy, ona CHOWA"), tyle że tym razem
+          // pustkę zrobił nie brak danych, lecz zawężony podmiot.
+          //
+          // JEDNO DZIECKO CZY TROJE — reguła jest teraz jedna i nie pyta o nazwę
+          // ekranu: korzeniami są WSZYSTKIE widoczne dzieci nośnika poza chromem
+          // powłoki. Na jedenastu ekranach z jednym korzeniem daje to dokładnie
+          // to samo, co dawała poprzednia linia.
+          const roots = [...(work?.children ?? [])].filter(
             (element) =>
               element.getClientRects().length > 0 &&
               !element.classList.contains("shell-tabbar") &&
               !element.classList.contains("capture-dock"),
+          );
+          // WIERSZ „czy powierzchnia przepełnia SAMĄ SIEBIE w poziomie" zostaje
+          // JEDEN na etykietę, więc musi wskazać jeden korzeń — i wskazuje ten,
+          // który przepełnia się NAJMOCNIEJ. Porównanie jest ostre, więc przy
+          // remisie (w tym przy zerze, czyli gdy nic nie wystaje) wygrywa
+          // pierwszy: na ekranie o jednym korzeniu ten wybór jest tożsamy
+          // z poprzednim zachowaniem, a na ekranie o trzech nie da się schować
+          // przepełnienia w korzeniu, którego wiersz akurat nie opisuje.
+          const drawn = roots.reduce(
+            (worst, element) =>
+              worst === undefined ||
+              element.scrollWidth - element.clientWidth >
+                worst.scrollWidth - worst.clientWidth
+                ? element
+                : worst,
+            undefined,
           );
           results.push({
             surface: label,
@@ -846,9 +1047,16 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
               });
             }
           }
-          sweepDescendants(drawn, label);
-          sweepRecordScreens(drawn, label);
-          sweepHeightBound(drawn, label);
+          // PO KAŻDYM KORZENIU, nie po wybranym: wybór wyżej służy JEDNEMU
+          // wierszowi raportu, a przelotki mają obejść cały ekran. Pasmo
+          // wystające poza nośnik jest defektem tak samo jak wiersz wystający
+          // poza listę — i przy jednym korzeniu ta pętla wykonuje się raz.
+          for (const root of roots) {
+            sweepDescendants(root, label);
+            sweepCollapsedText(root, label);
+            sweepRecordScreens(root, label);
+            sweepHeightBound(root, label);
+          }
           // Ile wierszy NAPRAWDĘ się narysowało. Bez tego fikstura może się
           // opróżnić, a bramka dalej melduje „brak przepełnienia" — nad
           // geometrią, której nie ma.
@@ -862,8 +1070,15 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           // `library`: historia przechwyceń przenosi się do Library w tej fali,
           // a strażnik przywiązany do nazwy celu przestałby wtedy liczyć,
           // niczego nie zgłaszając.
+          // SUMOWANE PO KORZENIACH, bo korzenie są rozłącznymi poddrzewami.
+          // Liczone na `roots`, a nie na `work`, żeby nie wciągnąć chromu
+          // powłoki, i nie na `drawn`, bo `drawn` jest JEDNYM korzeniem —
+          // dokładnie ta wąskość wyzerowała `renewalRows` w locie D10.
           const count = (selector) =>
-            drawn?.querySelectorAll(selector).length ?? 0;
+            roots.reduce(
+              (total, root) => total + root.querySelectorAll(selector).length,
+              0,
+            );
           rowCounts.libraryDocuments = Math.max(
             rowCounts.libraryDocuments,
             count(".knowledge-document-list > li"),
@@ -895,6 +1110,22 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           rowCounts.renewalRows = Math.max(
             rowCounts.renewalRows,
             count("[data-renewal-row]"),
+          );
+          // ZAWĘŻONY DO EKRANU DZIŚ, I TO JEST CAŁA TREŚĆ TEGO SELEKTORA.
+          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:404`
+          // i `CalendarSurface.tsx:217` — a te liczniki idą `Math.max` po
+          // WSZYSTKICH powierzchniach przelotu. Selektor po samym atrybucie
+          // byłby więc spełniony kopią z Kalendarza także wtedy, gdy sekcja
+          // planu na Dziś opustoszeje do zera: próg spełniony przez NIE TEN
+          // podmiot, czyli dokładnie ta porażka, o której ten plik pisze przy
+          // `renewalRows` („próg musi umieć powiedzieć, KTÓRY podmiot
+          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:396`)
+          // — jedyne wystąpienie w `src`, sprawdzone grepem — a nie zahaszowana
+          // nazwa klasy modułu, która zeruje licznik po cichu przy pierwszym
+          // przebudowaniu arkusza.
+          rowCounts.todayPlannedRows = Math.max(
+            rowCounts.todayPlannedRows,
+            count('[aria-label="Planned for today"] [data-planned-row]'),
           );
         };
         measure(id);
@@ -998,13 +1229,50 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // collision, and neither is a mistake of the lot that wrote it: both
         // are instruments that could not be exercised in the state the repo was
         // in at the time. Removing the selector deletes a claim, not coverage.
+        //
+        // ── I TO SAMO ZDARZYŁO SIĘ DRUGI RAZ, JEDNO ROŚNIĘCIE FIKSTURY PÓŹNIEJ
+        // Ten sam blok, ta sama lista selektorów, ta sama przyczyna. Zdanie
+        // „`[data-task-row]` otwiera rekord zadania" jest PRAWDZIWE O EKRANIE
+        // ZADAŃ i FAŁSZYWE O KALENDARZU, a przez całą falę D nie dało się tego
+        // zobaczyć, bo fikstura nie kładła na Kalendarzu ani jednego wiersza:
+        // `taskContext(id, title)` BEZ `{ record: true }` niesie
+        // `surface: "tasks"` i żadnej flagi rekordu
+        // (`client/shell-navigation.ts:494-504`), więc podwójne kliknięcie
+        // wiersza Kalendarza ZABIERA DO zadania w jego kolekcji, zamiast
+        // promować je na własny ekran. Nie jest to defekt produktu, tylko jego
+        // zapisane rozstrzygnięcie: `RealApp.tsx:2702-2704` mówi wprost „the
+        // ONE place a list promotes a task to its own screen", a Kalendarz
+        // (`:2307-2310`) i Dziś (`:2261-2264`) świadomie nie są tym miejscem.
+        //
+        // DRUGA POŁOWA TEGO DEFEKTU BYŁA GORSZA OD CZERWIENI, KTÓRA GO ODKRYŁA.
+        // `measure(`${id}:${kind}`)` niżej podstawia „record", kiedy nic się nie
+        // otworzyło — więc przelot zapisywał geometrię pod etykietą
+        // `calendar:record`, mając NA EKRANIE kolekcję Zadań, do której właśnie
+        // przeszedł. Cichy fałszywy pomiar, nie cisza. Dlatego powierzchnia,
+        // która nie jest drzwiami, NIE DOSTAJE dziś podwójnego kliknięcia
+        // w ogóle: nie ma jak skłamać etykietą o czymś, czego się nie zrobiło.
+        //
+        // TABELA, NIE ZAWĘŻONY SELEKTOR, i tabela ze STRAŻNIKIEM WYCZERPANIA.
+        // Zdjęcie `[data-task-row]` z listy skasowałoby ŻYWE pokrycie ekranu
+        // Zadań — inaczej niż przy `[data-renewal-row]`, gdzie rekordu nie ma
+        // w ogóle. Ręczna lista obok zamkniętego słownika jest w tym repozytorium
+        // nazwaną klasą defektu, więc lista bez strażnika nie wchodzi w grę:
+        // powierzchnia, która narysowała wiersz i NIE JEST tu wymieniona,
+        // wywala przelot z nazwą, zamiast po cichu wypaść z pomiaru.
+        const door = RECORD_DOORS[id];
         const row =
           window.innerWidth >= 760
             ? work?.querySelector(
                 "[data-project-row], [data-task-row], [data-pipeline-card]",
               )
             : null;
-        if (row instanceof HTMLElement) {
+        if (row instanceof HTMLElement && door !== "opens") {
+          // Wiersz jest, drzwi nie ma. Zgłoszone JAWNIE — z werdyktem, którego
+          // ten przelot użył — żeby „nie mierzone" nigdy nie było nie do
+          // odróżnienia od „zmierzone i w porządku".
+          openAttempts.push({ surface: id, kind: null, door: door ?? null });
+        }
+        if (row instanceof HTMLElement && door === "opens") {
           row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
           await frame();
           await new Promise((resolve) => setTimeout(resolve, 900));
@@ -1013,6 +1281,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
           openAttempts.push({
             surface: id,
             kind: opened?.getAttribute("data-record-kind") ?? null,
+            door: "opens",
           });
           const kind = opened?.getAttribute("data-record-kind") ?? "record";
           measure(`${id}:${kind}`);
@@ -1041,6 +1310,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         missing,
         results,
         descendants,
+        collapsed,
         recordScreens,
         heightBound,
         openableRows,
@@ -1066,6 +1336,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       SETTINGS_SURFACE,
       titleSelector: TITLE_SELECTOR,
       recordScreenSelector: RECORD_SCREEN_SELECTOR,
+      RECORD_DOORS,
     },
   );
 
@@ -1163,7 +1434,44 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
   // double-click did nothing, so a screen stopped opening. This is what the
   // hand-written pair was really guarding, and it now guards it by observation
   // rather than by naming two kinds it happened to know about.
+  //
+  // TRZY WERDYKTY, NIE DWA, i różnicę między nimi robi TABELA `RECORD_DOORS`,
+  // a nie obserwacja: przelot nie ma jak odróżnić „dwuklik się zepsuł" od
+  // „dwuklik nigdy tu nie promował rekordu", bo w obu przypadkach po nim NIE MA
+  // `[data-record-kind]`. Do lotu D9 gate zakładał pierwsze o każdym wierszu
+  // i przez całą falę D nie mógł się na tym przewrócić, bo fikstura nie kładła
+  // wiersza na żadnej powierzchni z drugiej grupy.
+  // KTÓRE DRZWI TEN PRZELOT NAPRAWDĘ SPRAWDZIŁ. Dopisane po przeglądzie fali,
+  // który zauważył, że strażnik tej tabeli działa w JEDNĄ stronę: powierzchnia
+  // nieopisana pada po nazwie, ale wpis OPISUJĄCY POWIERZCHNIĘ, KTÓRA NIC NIE
+  // RYSUJE, jest ciszą. Groźniejszy jest wpis `navigates`: taka powierzchnia nie
+  // dostaje nawet dwukliku, więc stara albo błędna deklaracja czyta się DOKŁADNIE
+  // jak pokrycie. Rejestr przepełnień ma na to `unusedRegistryEntries` i to jest
+  // ta sama kontrola, przeniesiona na tę tabelę.
+  const exercisedDoors = new Set();
   for (const attempt of recordsExpected ? measured.openAttempts : []) {
+    if (attempt.door !== null) exercisedDoors.add(attempt.surface);
+    if (attempt.door === null) {
+      failures.push({
+        surface: attempt.surface,
+        reason:
+          `${attempt.surface} drew a row this sweep knows how to double-click, and RECORD_DOORS does not say ` +
+          `whether that row OPENS a record screen or merely NAVIGATES to the record in its collection. ` +
+          `Declare it — an undeclared destination is one that quietly falls out of the record measurement`,
+      });
+      continue;
+    }
+    if (attempt.door === "navigates") {
+      // WYPISANE PRZY KAŻDYM PRZEBIEGU, także idealnym. „Nie otwierano" i „w
+      // porządku" to dwa różne zdania, a odstępstwo, którego nie widać
+      // w wyjściu, jest nieodróżnialne od pokrycia.
+      console.log(
+        `${label}\t${attempt.surface}: drew an openable row but is declared "navigates" — its double-click ` +
+          `takes the reader to the record in its collection (taskContext without { record: true }), so no ` +
+          `record screen is opened OR measured here, by decision rather than by defect`,
+      );
+      continue;
+    }
     if (attempt.kind === null)
       failures.push({
         surface: attempt.surface,
@@ -1390,6 +1698,52 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         `Otherwise it is a layout defect`,
     });
   }
+  // ── TREŚĆ ZAPADNIĘTA DO ZERA ────────────────────────────────────────────
+  // Ta sama księgowość co wyżej, nad drugim rejestrem. Werdykt `known` jest
+  // KSIĘGOWANY, a nie tylko przemilczany — inaczej `unusedCollapsedEntries`
+  // uznałby spłacony i niespłacony dług za to samo.
+  const matchedCollapsedEntries = new Set();
+  for (const reading of measured.collapsed) {
+    const decision = classifyCollapsedText({ ...reading, pass: label });
+    if (REPORT_ONLY) {
+      console.log(
+        `${label}\t${reading.surface}\t${reading.signature}\tclientWidth ${reading.clientWidth}px\ttext ${reading.textLength} chars\t${decision.verdict}`,
+      );
+    }
+    if (decision.verdict === "known") {
+      matchedCollapsedEntries.add(
+        `${reading.surface.split(":")[0]}|${reading.signature}`,
+      );
+      continue;
+    }
+    if (decision.verdict !== "violation") continue;
+    // POZA ZAKRESEM EGZEKWOWANIA — WYPISANE, NIE PRZEMILCZANE. Uzasadnienie
+    // zakresu stoi przy `COLLAPSED_TEXT_ENFORCED_SURFACES`; tutaj liczy się
+    // jedno: liczby wychodzą w KAŻDYM przebiegu, więc „nie egzekwowane" nigdy
+    // nie jest nie do odróżnienia od „nie ma czego egzekwować".
+    if (!collapsedTextEnforced(reading.surface)) {
+      console.log(
+        `${label}\t${reading.surface}: ${reading.signature} carries ${reading.textLength} characters in ` +
+          `${reading.clientWidth} px of inner width (content ${reading.scrollWidth} px) — COLLECTED, NOT ENFORCED. ` +
+          `The collapsed-text gate is armed for ${COLLAPSED_TEXT_ENFORCED_SURFACES.join(", ")} only; ` +
+          `this surface is pre-existing debt nobody has taken`,
+      );
+      continue;
+    }
+    layoutProblems.push({
+      surface: reading.surface,
+      reason:
+        `${reading.signature} carries ${reading.textLength} characters and has NO inner width ` +
+        `(clientWidth ${reading.clientWidth} px, content ${reading.scrollWidth} px), so it draws nothing. ` +
+        `The overflow sweep cannot say this — it skips every box under ${COLLAPSED_CLIENT_WIDTH_PX} px wide — ` +
+        `which is why a collapse reads as an improvement in its report. Either give the cell a ` +
+        `collapse order that keeps a character of it, or record the debt in KNOWN_COLLAPSED_TEXT ` +
+        `with the thread that owns it` +
+        (decision.thread === undefined
+          ? ""
+          : `. It IS registered, but not for this pass — the entry says it does not collapse here (owner: ${decision.thread})`),
+    });
+  }
   for (const entry of measured.results) {
     if (!entry.present) {
       failures.push({ surface: entry.surface, reason: "rendered no surface" });
@@ -1530,7 +1884,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       });
   }
   await page.close();
-  return { failures, layoutProblems, matchedRegistryEntries, titleProblems };
+  return {
+    failures,
+    layoutProblems,
+    matchedRegistryEntries,
+    matchedCollapsedEntries,
+    exercisedDoors,
+    titleProblems,
+  };
 };
 
 // ── SONDA WIERNOŚCI WIZUALNEJ ────────────────────────────────────────────────
@@ -2820,7 +3181,13 @@ const measureTheme = async (
   // podmioty SONDZIE AKCENTU i zamienia jej dzisiejszy wynik w inny — czerwień
   // o czymś, o co ten werdykt nie pyta. Brak jest więc NAZWANY, a przed cichym
   // zniknięciem chroni go podłoga liczby przystanków wyżej.
-  const uncoveredSubjects = ["primary-button", "secondary-button"].filter(
+  //
+  // `.primary-button` WYSZŁO Z TEJ LISTY 2026-08-11, i nie przez skreślenie:
+  // niżej stoi SONDA KIEROWANA, która dochodzi do akcji głównej pasma na
+  // osobnym ekranie i osądza jej ognisko. Nazwanie dziury okazało się za mało —
+  // lot C2 zabrał tej kontrolce pierścień, a bramka wróciła zielona. Zostaje
+  // `.secondary-button`, i zostaje jako brak, nie jako werdykt.
+  const uncoveredSubjects = ["secondary-button"].filter(
     (name) => !focusSubjects.some((stop) => stop.signature.includes(name)),
   );
   report(
@@ -2876,6 +3243,201 @@ const measureTheme = async (
           "so because the paint here is not the ring. It is a keyboard user unable to tell where " +
           "focus is. WCAG 2.4.7.",
       );
+  }
+
+  // ── SONDA KIEROWANA: AKCJA GŁÓWNA PASMA ──────────────────────────────────
+  // POWSTAŁA, BO JEJ BRAK PRZEPUŚCIŁ WADĘ. Akapit wyżej NAZYWAŁ `.primary-button`
+  // jako niepokrytą przez spacer lądowania i uznawał nazwanie za wystarczające.
+  // Nie było: lot C2 dał akcji głównej własny `box-shadow` literałem
+  // o swoistości (0,1,0) w `styles.css`, czyli w pliku wczytywanym PO
+  // `tokens.css`, i ZABRAŁ JEJ PIERŚCIEŃ OGNISKA w obu zwykłych motywach —
+  // a cała bramka wróciła zielona, łącznie z tym przelotem. Nazwana dziura
+  // w pokryciu jest lepsza od ukrytej i gorsza od pomiaru.
+  //
+  // DLACZEGO OSOBNY SPACER, A NIE WIĘKSZY BUDŻET TABÓW: powód z akapitu wyżej
+  // dalej obowiązuje — `stops` karmi też sondę akcentu, więc głębszy spacer
+  // dołożyłby jej podmiotów i zamienił jej wynik w inny. Ten spacer NIE dopisuje
+  // do `stops` ani jednego przystanku, więc `painting` i podłoga liczby
+  // przystanków zostają dokładnie tym, czym były.
+  //
+  // CHODZI PO CELU, BO NA LĄDOWANIU AKCJI GŁÓWNEJ PASMA NIE MA. Kliknięcie
+  // przestawia `activeElement`, i dlatego stoi TUTAJ, po wszystkich werdyktach
+  // spaceru lądowania — nie przed nimi.
+  const bandActionSurface = "people";
+  const bandActionSelector = ".surface-header .primary-button";
+  const navigated = await page.evaluate(async (surface) => {
+    const frame = () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      );
+    const nav = document.querySelector(`.nav-item[data-surface="${surface}"]`);
+    if (nav === null) return false;
+    nav.click();
+    await frame();
+    return true;
+  }, bandActionSurface);
+  if (!navigated)
+    failures.push(
+      `VISUAL_PROBE_BAND_ACTION_UNREACHABLE (${theme}): the left column has no ` +
+        `.nav-item[data-surface="${bandActionSurface}"], so this probe could not walk to a screen ` +
+        "carrying a band primary action. Nothing was measured about the focus ring on " +
+        "`.primary-button` — instrument failure, not a verdict.",
+    );
+  else {
+    // CZEKAMY NA PODMIOT, NIE NA ZEGAR — i to jest poprawka przyrządu, który
+    // NAPRAWDĘ SKŁAMAŁ, a nie ostrożność na zapas.
+    //
+    // Stało tu `waitForTimeout(400)`. Ludzie są ekranem LENIWYM, a zastępka
+    // `Suspense` (`SurfaceLifecycleStates.tsx`, `SurfaceLoadingState`) nie
+    // rysuje ŻADNEGO `.surface-header` — więc dopóki paczka się nie doniesie,
+    // `.surface-header .primary-button` nie istnieje. Sonda czytała to jako
+    // „pasmo zgubiło akcję" i kładła bramkę zdaniem o produkcie nad stanem,
+    // który był stanem ŁADOWANIA. Każdy motyw dostaje ŚWIEŻY kontekst
+    // przeglądarki (nota przy `THEME_ORDER`), więc obie paczki lecą z zimnego
+    // cache'u i 400 ms jest tam progiem, nie zapasem: na tym runnerze CI
+    // przeszło, na runnerze CI padło JEDNO z dwóch przejść — czyli dokładnie
+    // ten kształt, w którym zegar rozstrzyga zamiast kodu.
+    //
+    // SUFIT ZOSTAJE I DALEJ KŁADZIE BRAMKĘ. Zmienia się to, CO wtedy mówi:
+    // „nie doniosło się w N ms, ekran nadal ładował" to inna awaria niż „ekran
+    // stoi gotowy i nie ma w paśmie akcji", a jedno zdanie na oba wysyłało
+    // następnego czytelnika w złą stronę.
+    const arrival = await page.evaluate(
+      async ({ selector, budgetMs }) => {
+        const started = performance.now();
+        const loading = () =>
+          document.querySelector(
+            '#main-content [data-surface-state="loading"]',
+          ) !== null;
+        while (performance.now() - started < budgetMs) {
+          if (!loading() && document.querySelector(selector) !== null)
+            return {
+              present: true,
+              stillLoading: false,
+              waitedMs: Math.round(performance.now() - started),
+            };
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return {
+          present: document.querySelector(selector) !== null,
+          stillLoading: loading(),
+          waitedMs: Math.round(performance.now() - started),
+        };
+      },
+      { selector: bandActionSelector, budgetMs: 5000 },
+    );
+    // ZDJĘCIE SPOCZYNKOWE ROBIONE PO NAWIGACJI, bo ta kontrolka montuje się
+    // dopiero teraz — zdjęcie sprzed pętli Tabów jej NIE MA. Przystanek bez
+    // wartości spoczynkowej jest w tej sondzie awarią przyrządu, nie werdyktem,
+    // i dokładnie tak samo jest tutaj.
+    const resting = await page.evaluate((selector) => {
+      const element = document.querySelector(selector);
+      if (element === null) return null;
+      const paint = window.__focusProbeRingPaint(element);
+      return {
+        boxShadow: paint.boxShadow,
+        outline: window.__focusProbeOutline(paint),
+        border: paint.border,
+        background: paint.background,
+      };
+    }, bandActionSelector);
+    if (resting === null)
+      failures.push(
+        arrival.stillLoading
+          ? `VISUAL_PROBE_BAND_ACTION_NEVER_ARRIVED (${theme}): ${bandActionSurface} was STILL LOADING after ` +
+              `${arrival.waitedMs} ms — its lazy chunk had not resolved, so \`${bandActionSelector}\` could not ` +
+              "exist yet and nothing was measured. This says nothing about the band: it is the probe's budget " +
+              "against this machine, and the number to look at is the wait, not the paint."
+          : `VISUAL_PROBE_BAND_ACTION_ABSENT (${theme}): ${bandActionSurface} finished loading in ` +
+              `${arrival.waitedMs} ms and STILL drew no \`${bandActionSelector}\`, so the accent action this ` +
+              "probe exists to measure was not on screen. The screen is settled, so this is the band or the " +
+              "fixture — instrument failure, nothing measured.",
+      );
+    else {
+      // BUDŻET JEST POMIAREM, NIE ŻYCZENIEM: liczba naciśnięć potrzebna, żeby
+      // dojść od klikniętej pozycji nawigacji do akcji pasma, jest wypisywana
+      // niżej — kto ją podniesie, ma powiedzieć, co się przesunęło.
+      const budget = 40;
+      let reached = null;
+      for (let index = 0; index < budget; index += 1) {
+        await page.keyboard.press("Tab");
+        const stop = await page.evaluate((selector) => {
+          const element = document.activeElement;
+          if (element === null || !element.matches(selector)) return null;
+          const paint = window.__focusProbeRingPaint(element);
+          return {
+            // PRAWDZIWY TAB, NIE `element.focus()` — i sprawdzane wprost, tak
+            // samo jak w spacerze lądowania, bo bez modalności klawiaturowej
+            // `:focus-visible` się nie uzbraja i sonda mierzyłaby spoczynek.
+            focusVisible: element.matches(":focus-visible"),
+            paint,
+            focusedOutline: window.__focusProbeOutline(paint),
+          };
+        }, bandActionSelector);
+        if (stop !== null) {
+          reached = { presses: index + 1, ...stop };
+          break;
+        }
+      }
+      if (reached === null)
+        failures.push(
+          `VISUAL_PROBE_BAND_ACTION_NOT_A_TAB_STOP (${theme}): ${budget} Tab presses on ` +
+            `${bandActionSurface} never landed on \`${bandActionSelector}\`. The band's primary ` +
+            "action is either not reachable by keyboard at all — a defect in its own right — or it " +
+            "sits deeper in the order than this budget. Nothing was measured about its ring.",
+        );
+      else if (!reached.focusVisible)
+        failures.push(
+          `VISUAL_PROBE_BAND_ACTION_NOT_ARMED (${theme}): focus reached ` +
+            `\`${bandActionSelector}\` after ${reached.presses} Tab press(es) and it did NOT match ` +
+            ":focus-visible. That is the probe failing to reach keyboard modality, not the button " +
+            "missing a ring — fix the probe, do not weaken this.",
+        );
+      else {
+        const judged = judgeFocusVisibility({
+          resting,
+          paint: reached.paint,
+          focusedOutline: reached.focusedOutline,
+        });
+        for (const arm of judged.arms)
+          report(
+            `focus visibility\tband action (${bandActionSurface}, ${reached.presses} tab press(es))\t` +
+              `${bandActionSelector}\t${arm.name}\trest: ${arm.rest}\tfocused: ${arm.focused}\t` +
+              `${arm.changed ? "CHANGES VISIBLY" : "no visible change"}`,
+          );
+        report(
+          `focus visibility\tband action (${bandActionSurface})\t${bandActionSelector}\tVERDICT\t` +
+            `${judged.visible ? "focus is visible" : "FOCUS LOOKS IDENTICAL TO REST"}`,
+        );
+        if (!judged.visible)
+          layoutProblems.push(
+            `focus on the band's primary action (${bandActionSurface}, \`${bandActionSelector}\`) ` +
+              `draws NOTHING a person can see: ${judged.arms
+                .map(
+                  (arm) =>
+                    `${arm.name} ${
+                      arm.changed
+                        ? "changes visibly"
+                        : arm.rest === arm.focused
+                          ? "is identical to rest"
+                          : "changes to something that draws nothing"
+                    }`,
+                )
+                .join(", ")}. ` +
+              (resting.boxShadow === "none"
+                ? ""
+                : "This control carries its own box-shadow at rest. If that shadow is declared as a " +
+                  "LITERAL on a class selector it wins over the global ring — the ring rule is " +
+                  "`:where(button, a, …):focus-visible`, specificity (0,1,0), and styles.css loads " +
+                  "after tokens.css. The remedy is the shadow ROLE, not a rule on the control: " +
+                  "declare the material as a custom property with a `-resting` twin and add it to " +
+                  "the `:focus-visible` remap, so the ring composes IN FRONT of the material " +
+                  "instead of being replaced by it. ") +
+              "This is the accent action of six screens, and it is a keyboard user unable to tell " +
+              "where focus is. WCAG 2.4.7.",
+          );
+      }
+    }
   }
 
   // ── AKCJA GŁÓWNA, AKTYWNA NAWIGACJA I TYTUŁ — NA KAŻDYM CELU ──────────────
@@ -3737,6 +4299,39 @@ const measureVisualLanguageInPage = async ({
       const rect = element.getBoundingClientRect();
       return `${Math.round(rect.left * 100) / 100}px`;
     }
+    // ILE PASMO WYSTAJE POZA NAJCIAŚNIEJSZĄ KRAWĘDŹ PRZYCIĘCIA NAD SOBĄ, jedną
+    // liczbą ze znakiem — i to jest jedyny odczyt, który odróżnia PASMO od
+    // podkreślenia ORAZ od pasma obciętego. `getBoundingClientRect` oddaje
+    // pudełko UKŁADU, więc para czytająca samą szerokość jest ślepa na
+    // przycięcie: element z symetrycznym ujemnym marginesem MIERZY się na pełną
+    // szerokość kolumny i jednocześnie jest ścinany przez przewijalnego
+    // przodka, którego krawędź przycięcia leży bliżej.
+    //
+    // Dodatnia liczba = ścinane; zero = dobiega dokładnie do krawędzi; ujemna =
+    // kończy się przed nią, czyli podkreślenie zamiast pasma.
+    //
+    // NAJCIAŚNIEJSZY, A NIE NAJBLIŻSZY PRZODEK: przewijalne pudełka bywają
+    // zagnieżdżone (spis sekcji Ustawień siedzi w nawigacji powłoki), a poprawka
+    // zrobiona o jeden poziom za nisko zostawiłaby przycięcie piętro wyżej —
+    // czyli parę zieloną nad wadą, którą opisuje.
+    if (read.property === "rect.clipGapRight") {
+      let node = element.parentElement;
+      let clipRight = Number.POSITIVE_INFINITY;
+      while (node !== null) {
+        if (node.matches(read.clip)) {
+          const box = node.getBoundingClientRect();
+          clipRight = Math.min(
+            clipRight,
+            box.left + node.clientLeft + node.clientWidth,
+          );
+        }
+        node = node.parentElement;
+      }
+      if (!Number.isFinite(clipRight))
+        return `no ancestor matches „${read.clip}"`;
+      const gap = element.getBoundingClientRect().right - clipRight;
+      return `${Math.round(gap * 100) / 100}px`;
+    }
     return window.getComputedStyle(element)[read.property] ?? "";
   };
 
@@ -4018,6 +4613,1107 @@ const visualLanguagePairs = async (browser) => {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// B1 — SPIS POWSZECHNY FARBY KONTROLEK
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Reguła, paleta i cała arytmetyka werdyktu siedzą w `scripts/control-paint.mjs`
+// — tutaj jest wyłącznie to, czego bez przeglądarki zrobić się nie da: spacer
+// po celach i odczyt wyliczonej farby. Powód podziału i powód istnienia obu
+// części stoi w nagłówku tamtego pliku i nie jest tu powtarzany.
+//
+// OSOBNY PRZELOT, NIE DOPISEK DO `sweep`. Farba wymaga DWÓCH MOTYWÓW, a
+// przeloty geometrii chodzą po jednym; wpięcie spisu w `sweep` znaczyłoby albo
+// pięć przelotów × dwa motywy (pięciokrotny koszt za zero pomiaru — barwa nie
+// zmienia się od szerokości okna), albo spis mierzący jeden motyw i milczący
+// o drugim.
+//
+// LISTA CELÓW POCHODZI Z ŻYWEGO DOM-u, tą samą drogą co w `sweep`
+// (`.nav-item[data-surface]` + `[data-settings-entry]`), a NIE z mapy tras
+// `ROUTED_ARRIVAL`. To jest różnica, która rozstrzyga o zasięgu tego przyrządu:
+// mapa tras nie ma dziś ani jednego przystanku na Organizacjach i na Ludziach,
+// a tam siedzą CZTERY z dziesięciu znanych miejsc. Spis widzi je w dniu,
+// w którym są pozycją nawigacji.
+
+/**
+ * Ile spis czeka na to, aż powłoka dojedzie na kliknięty cel.
+ *
+ * PRZYBYCIE JEST ZDARZENIEM, NIE CZASEM — i dlatego to jest limit oczekiwania,
+ * a nie długość snu. Asercja postawiona po stałym `settle` zamieniałaby
+ * drgnięcie maszyny w czerwoną bramkę („flake wymaga powtórzeń"), a ten
+ * strażnik ma paść wyłącznie wtedy, gdy nawigacja NAPRAWDĘ nie zadziałała.
+ *
+ * SKĄD TA LICZBA, uczciwie: NIE JEST WYPROWADZONA Z POMIARU CZASU PRZEJŚCIA —
+ * nikt takiego pomiaru nie zrobił i wpisanie tu „dziesięciokrotności
+ * zmierzonego" byłoby liczbą udającą pomiar, czyli tą samą wadą, którą ten lot
+ * naprawia gdzie indziej. Jedyny zapisany budżet to `settle(700)` sprzed tego
+ * lotu, przy którym cały spacer działał; trzy sekundy dają nad nim czterokrotny
+ * zapas. Wolna maszyna CZEKA, a nie pada — bo to jest odpytywanie zdarzenia,
+ * nie sen — więc ta liczba ogranicza wyłącznie czas do zgłoszenia AWARII.
+ */
+const CONTROL_PAINT_ARRIVAL_TIMEOUT_MS = 3000;
+
+const measureControlPaintInPage = async ({
+  tags,
+  wantedTheme,
+  settingsSurface,
+  shellSurface,
+  classHashPattern,
+  arrivalTimeoutMs,
+}) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  const settle = async (ms) => {
+    await frame();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await frame();
+  };
+  document.documentElement.dataset.theme = wantedTheme;
+  await settle(200);
+
+  // Sonda rozwiązuje TĘ SAMĄ właściwość, którą czyta podmiot — inaczej obie
+  // strony porównania przeszłyby przez inną normalizację przeglądarki
+  // i „oklch(…)" nigdy nie zrównałoby się z „rgb(…)". Kopia idiomu
+  // z `measureVisualLanguageInPage`; nie da się jej zaimportować, bo Playwright
+  // serializuje ŹRÓDŁO tej funkcji, nie jej domknięcie.
+  const resolveBackground = (value) => {
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.left = "-9999px";
+    probe.style.top = "0";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    probe.style.backgroundColor = value;
+    document.body.append(probe);
+    const resolved = window.getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return resolved ?? "";
+  };
+
+  // PALETA BIERZE SIĘ Z ŻYWEGO KORZENIA, nie z arkusza. `scripts/css-tokens.mjs`
+  // umie to samo po stronie budowania, ale ŚWIADOMIE nie obsługuje
+  // `var(--x, zapas)` — a arkusze powierzchni zapasów używają. Enumeracja
+  // wyliczonego stylu widzi to, co przeglądarka NAPRAWDĘ rozwiązała.
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const names = [];
+  for (let index = 0; index < rootStyle.length; index += 1) {
+    const name = rootStyle.item(index);
+    if (name.startsWith("--")) names.push(name);
+  }
+  // Wartość, którą przeglądarka daje TŁU, którego nikt nie ustawił. Token
+  // niebędący kolorem (`--space-3: 0.75rem`) jest przy `background-color`
+  // nieprawidłowy w czasie wyliczania i spada dokładnie tutaj — więc to jest
+  // filtr „to nie jest kolor", a nie wpisana lista nazw tokenów.
+  const unset = resolveBackground("var(--constellation-no-such-token)");
+  const palette = [];
+  for (const name of names) {
+    const resolved = resolveBackground(`var(${name})`);
+    if (resolved === "" || resolved === unset) continue;
+    if (palette.includes(resolved)) continue;
+    palette.push(resolved);
+  }
+
+  // Farba, którą TA przeglądarka daje GOŁEJ kontrolce tego rodzaju w TYM
+  // motywie. Nie wchodzi do werdyktu — rozdziela dwie klasy znaleziska
+  // w raporcie i jest jedynym powodem, dla którego ten przyrząd umie napisać
+  // „no rule of this stylesheet set it" zamiast „nie znam tej wartości".
+  // SONDA SIEDZI W SHADOW ROOCIE, i to nie jest ostrożność, tylko poprawka
+  // zmierzonej wady: sonda wstawiona wprost do dokumentu łapie REGUŁY TYPOWE
+  // tego arkusza — `styles.css:513-519` daje `select` tło z tokenu — więc
+  // przyrząd drukował własny token aplikacji jako „farbę tej przeglądarki",
+  // a strażnik przezroczystości sądził dla `select` token zamiast silnika.
+  // Selektory dokumentu nie sięgają do shadow roota, a `color-scheme` sięga
+  // (jest dziedziczona), więc motyw zostaje zachowany — czego `all: revert`
+  // by nie dał, bo zdjąłby również `color-scheme`.
+  const uaPaints = {};
+  const probeHost = document.createElement("div");
+  probeHost.style.position = "absolute";
+  probeHost.style.left = "-9999px";
+  probeHost.style.top = "0";
+  probeHost.style.visibility = "hidden";
+  probeHost.style.pointerEvents = "none";
+  document.body.append(probeHost);
+  const probeRoot = probeHost.attachShadow({ mode: "open" });
+  for (const tag of tags) {
+    const probe = document.createElement(tag);
+    probeRoot.append(probe);
+    uaPaints[tag] = window.getComputedStyle(probe).backgroundColor ?? "";
+    probe.remove();
+  }
+  probeHost.remove();
+
+  const classHash = new RegExp(classHashPattern, "u");
+  const normaliseClass = (token) => {
+    const match = classHash.exec(token);
+    return match === null ? token : `_${match[1]}`;
+  };
+  // KONTROLKA BEZ KLASY DOSTAJE TOŻSAMOŚĆ Z ATRYBUTU, NIE Z BRAKU KLASY.
+  // „input[no class]" nie jest identyfikatorem, tylko dziką kartą na całą
+  // rodzinę: rejestr dopasowuje po podpisie, więc KAŻDY przyszły bezklasowy
+  // `<input>` na tym ekranie trafiałby w cudzy wpis i przechodził jako znany
+  // dług. `name` i `type` są pisane w kodzie i przeżywają rebuild; `id` nie —
+  // te pola biorą `useId()` (`_r_s_-rename`), czyli napis zmienny między
+  // wersjami Reacta i przy zmianie kolejności renderu.
+  const identity = (element) => {
+    const parts = [];
+    for (const attribute of ["name", "type"]) {
+      const value = element.getAttribute(attribute);
+      if (value !== null && value !== "") parts.push(`${attribute}=${value}`);
+    }
+    return parts.length === 0 ? "[no class]" : `[${parts.join("][")}]`;
+  };
+  const signature = (element) => {
+    const tag = element.tagName.toLowerCase();
+    const classes = [...element.classList].map(normaliseClass).join(".");
+    return classes === "" ? `${tag}${identity(element)}` : `${tag}.${classes}`;
+  };
+  const rendered = (element) => {
+    const style = window.getComputedStyle(element);
+    if (style.display === "none") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const groups = new Map();
+  const examined = {};
+  // DWA POZIOMY ODLICZENIA, i to jest cała treść tej pary zbiorów. `collect`
+  // woła się na jednym celu WIELE RAZY — raz po dojeździe i raz na każdy stan
+  // soczewki — więc bez pamięci o tym, co już policzono, ten sam węzeł DOM
+  // wchodził do sumy po jednym razie na przelot i raport podawał liczby
+  // PRZELICZONE (osiem elementów `button._switch` w Bibliotece przy jednym na
+  // Ludziach: różnica jest w liczbie soczewek, nie w produkcie).
+  //
+  // ODLICZENIE JEDNYM ZBIOREM BYŁOBY GORSZE OD WADY, którą naprawia: kontrolka
+  // soczewki wybranej maluje się INACZEJ niż niewybranej, czyli ta sama
+  // kontrolka w dwóch stanach to dwie różne obserwacje — i dokładnie ta para
+  // jest podmiotem tego przyrządu. Dlatego `examined` liczy RÓŻNE ELEMENTY na
+  // celu, a `count` grupy różne elementy W TEJ GRUPIE (czyli przy tej farbie).
+  // Powtórzenie znika, zmiana stanu zostaje.
+  const countedOnSurface = new Map();
+  const countedInGroup = new Map();
+  const collect = (root, surface, exclude) => {
+    const found = [...(root?.querySelectorAll(tags.join(", ")) ?? [])].filter(
+      (element) =>
+        (exclude === undefined || !exclude.contains(element)) &&
+        rendered(element),
+    );
+    let surfaceSeen = countedOnSurface.get(surface);
+    if (surfaceSeen === undefined) {
+      surfaceSeen = new WeakSet();
+      countedOnSurface.set(surface, surfaceSeen);
+      examined[surface] = examined[surface] ?? 0;
+    }
+    for (const element of found) {
+      if (surfaceSeen.has(element)) continue;
+      surfaceSeen.add(element);
+      examined[surface] += 1;
+    }
+    for (const element of found) {
+      const style = window.getComputedStyle(element);
+      const key = [
+        surface,
+        signature(element),
+        style.backgroundColor,
+        style.backgroundImage,
+      ].join("\t");
+      let inGroup = countedInGroup.get(key);
+      if (inGroup === undefined) {
+        inGroup = new WeakSet();
+        countedInGroup.set(key, inGroup);
+      }
+      const repeat = inGroup.has(element);
+      inGroup.add(element);
+      const seen = groups.get(key);
+      if (seen === undefined)
+        groups.set(key, {
+          surface,
+          signature: signature(element),
+          tag: element.tagName.toLowerCase(),
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+          count: 1,
+          // CZYM TO JEST DLA CZŁOWIEKA. Napis wystarcza na przycisku, ale
+          // kontrolka BEZ KLASY i bez napisu — a takich jest w tym drzewie sto
+          // pięć — zostawiłaby w rejestrze wpis „input[no class]" i nikogo,
+          // kto by wiedział, o które pole chodzi. Atrybuty tożsamości są
+          // zapasem, nie ozdobą.
+          sample:
+            (element.textContent ?? "").trim().slice(0, 28) ||
+            [
+              element.getAttribute("type"),
+              element.getAttribute("id"),
+              element.getAttribute("name"),
+              element.getAttribute("placeholder"),
+              element.getAttribute("aria-label"),
+            ]
+              .filter((value) => value !== null && value !== "")
+              .join(" ")
+              .slice(0, 48),
+        });
+      else if (!repeat) seen.count += 1;
+    }
+  };
+
+  // POWŁOKA OSOBNO, RAZ. Pasek boczny, tabbar i dok przechwytywania rysują się
+  // na KAŻDYM celu; policzone pod każdym z nich zrobiłyby z rejestru dwanaście
+  // kopii jednego długu i pierwsza poprawka zostawiłaby jedenaście martwych
+  // wpisów.
+  const work = () => document.querySelector('#main-content[role="tabpanel"]');
+  collect(document.body, shellSurface, work() ?? undefined);
+
+  const navIds = [...document.querySelectorAll(".nav-item[data-surface]")].map(
+    (item) => item.dataset.surface,
+  );
+  const all = [];
+  for (const id of navIds) if (!all.includes(id)) all.push(id);
+  const settingsEntry =
+    document.querySelector("[data-settings-entry]") !== null;
+  if (settingsEntry && !all.includes(settingsSurface))
+    all.push(settingsSurface);
+  // ZADEKLAROWANE PRZYSTANKI, wypisane z żywego DOM-u i oddane na zewnątrz.
+  // Bez tego przelot nie ma z czym porównać tego, co obejrzał: cel, który nie
+  // dał się kliknąć, ZOSTAWIAŁ ZERO w księgowości tylko wtedy, gdy ktoś o nim
+  // wiedział — a Ustawienia, których koło zębate zniknęło, nie zostawiały nawet
+  // klucza, więc strażnik „zero kontrolek" nie miał po czym iterować.
+  const declared = [shellSurface, ...all];
+  // KTÓRY CEL DOJECHAŁ. Powłoka stempluje aktywny cel na planie roboczym
+  // (`RealApp.tsx:3669`), więc przybycie jest OBSERWOWALNE — a kliknięcie,
+  // które po cichu nie zadziała, kazałoby spisowi policzyć ten sam panel pod
+  // trzynastoma nazwami i wszystkie byłyby niezerowe.
+  const arrivals = [];
+  // CZEKANIE NA ZDARZENIE, NIE NA CZAS. Twarda asercja po stałym `settle`
+  // zamienia drgnięcie czasu w czerwoną bramkę — a to jest przyrząd, który ma
+  // wołać o pomoc dopiero wtedy, gdy powłoka NAPRAWDĘ nie dojechała.
+  const arrived = async (id) => {
+    const surfaceOf = () =>
+      document
+        .querySelector("main[data-surface]")
+        ?.getAttribute("data-surface") ?? "";
+    const deadline = Date.now() + arrivalTimeoutMs;
+    while (Date.now() < deadline) {
+      if (surfaceOf() === id) return id;
+      await settle(100);
+    }
+    return surfaceOf();
+  };
+  let lensesDeclared = 0;
+  let lensesMeasured = 0;
+
+  for (const id of all) {
+    // Ustawienia są TRYBEM: wejście w nie podmienia lewą kolumnę, więc pozycja
+    // następnego celu nie ma czego kliknąć. Ta sama poprawka co w `sweep`.
+    const back = document.querySelector("[data-settings-back]");
+    if (back instanceof HTMLElement) {
+      back.click();
+      await settle(400);
+    }
+    const target =
+      id === settingsSurface
+        ? (document.querySelector("[data-settings-entry]") ??
+          document.querySelector(`.nav-item[data-surface="${id}"]`))
+        : document.querySelector(`.nav-item[data-surface="${id}"]`);
+    if (!(target instanceof HTMLElement)) {
+      examined[id] = examined[id] ?? 0;
+      // BRAK AFORDANCJI TO INNE ZDANIE NIŻ „NIE DOJECHAŁ", więc `seen` jest
+      // tu `null`, a nie napisem wstawionym w komunikat o `data-surface`:
+      // panel nie „czyta data-surface=«nie było w co kliknąć»".
+      arrivals.push({ id, seen: null });
+      continue;
+    }
+    target.click();
+    arrivals.push({ id, seen: await arrived(id) });
+    // PRZYBYCIE TO NIE JEST NARYSOWANIE, i to kosztowało jeden przebieg bramki:
+    // stempel `data-surface` przestawia się NATYCHMIAST, a zawartość celu
+    // dojeżdża później. Spis, który zbierał zaraz po potwierdzeniu przybycia,
+    // zobaczył na Kalendarzu, Lejku, Ludziach i Spotkaniach ZERO kontrolek,
+    // a na Zadaniach siedemnaście zamiast osiemdziesięciu czterech — czyli
+    // czekanie na zdarzenie NIE ZASTĘPUJE budżetu na render, tylko go poprzedza.
+    // (Wykryły to podłogi i strażnik zera z tego samego lotu, na własnym
+    // przyrządzie, zanim ktokolwiek zdążył w to uwierzyć.)
+    await settle(700);
+    collect(work(), id);
+    // Cel niesie kilka SOCZEWEK nad tymi samymi rekordami, a kontrolka
+    // wybranej soczewki maluje się inaczej niż niewybranej — czyli dokładnie
+    // ta para, o którą tu chodzi. Spis po samej soczewce domyślnej meldowałby
+    // przejście nad farbą, której nikt nie obejrzał.
+    const lenses = [...(work()?.querySelectorAll("[data-layout]") ?? [])];
+    lensesDeclared += lenses.length;
+    for (const lens of lenses) {
+      if (!(lens instanceof HTMLElement)) continue;
+      lens.click();
+      await settle(600);
+      collect(work(), id);
+      lensesMeasured += 1;
+    }
+    const first = lenses[0];
+    if (lenses.length > 0 && first instanceof HTMLElement) {
+      first.click();
+      await settle(500);
+    }
+  }
+
+  return {
+    applied: document.documentElement.dataset.theme ?? "",
+    palette,
+    // ILE WŁASNOŚCI W OGÓLE ENUMEROWANO, a nie ile ich zostało po deduplikacji.
+    // Pierwsza wersja tej linii drukowała „55 wartości z 55 własności", bo obie
+    // liczby były tą samą liczbą — para, która nie umie się rozjechać, nie
+    // niesie żadnej informacji i wygląda przy tym na potwierdzenie.
+    customProperties: names.length,
+    uaPaints,
+    groups: [...groups.values()],
+    examined,
+    declared,
+    settingsEntry,
+    arrivals,
+    lensesDeclared,
+    lensesMeasured,
+  };
+};
+
+const controlPaintCensus = async (browser) => {
+  const failures = [];
+  const verdicts = [];
+  const reported = [];
+  const met = new Set();
+  const palettesByTheme = {};
+  const uaPaints = {};
+  // JEDEN WPIS NA MOTYW, NIGDY SUMA. Suma po motywach nie umie powiedzieć, że
+  // w jednym z nich spacer padł: drugi wypełnia klucze za niego, każda podłoga
+  // jest spełniona, a wiersz podsumowania pisze „in 2 theme(s)" nad przebiegiem,
+  // który zmierzył jeden. Ten sam powód dla KONTROLI DODATNICH niżej.
+  const walks = [];
+  const started = Date.now();
+  let judged = 0;
+  let flagged = 0;
+  let flaggedElements = 0;
+
+  for (const theme of THEME_ORDER) {
+    const report = (line) => console.log(`control paint\t${theme}\t${line}`);
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+      colorScheme: theme,
+    });
+    page.on("pageerror", (error) =>
+      failures.push(`CONTROL_PAINT_PAGE_ERROR (${theme}): ${String(error)}`),
+    );
+    await page.goto(HARNESS, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+
+    const collected = await page.evaluate(measureControlPaintInPage, {
+      tags: CONTROL_PAINT_TAGS,
+      wantedTheme: theme,
+      settingsSurface: SETTINGS_SURFACE,
+      shellSurface: CONTROL_PAINT_SHELL,
+      // WZORZEC PRZECHODZI ARGUMENTEM, nie wklejką: Playwright serializuje
+      // źródło funkcji mierzącej, więc importu tam nie ma — ale napis wolno
+      // podać, a wtedy obie strony mają dosłownie ten sam wzorzec i rozjazd
+      // między nimi jest niewykonalny.
+      classHashPattern: CSS_MODULE_HASH_PATTERN,
+      arrivalTimeoutMs: CONTROL_PAINT_ARRIVAL_TIMEOUT_MS,
+    });
+    if (collected.applied !== theme)
+      failures.push(
+        `CONTROL_PAINT_THEME_NOT_STAMPED: this pass set data-theme="${theme}" and read back ` +
+          `„${collected.applied}". Instrument failure — nothing below describes the theme this ` +
+          "pass chose.",
+      );
+    palettesByTheme[theme] = collected.palette;
+    for (const [tag, paint] of Object.entries(collected.uaPaints))
+      uaPaints[`${theme}/${tag}`] = paint;
+
+    // WARTOŚĆ SONDY DRUKOWANA W OBU MOTYWACH, i to nie jest ozdoba: bez niej
+    // pierwsza czerwień na CI (inny system, inny `ButtonFace`) byłaby
+    // nieodróżnialna od awarii przyrządu.
+    report(
+      `theme stamped\tdata-theme=${collected.applied}\t` +
+        `${collected.palette.length} distinct token colour(s) out of ` +
+        `${collected.customProperties} custom propert(ies) on the root\t` +
+        `bare-control paint ${Object.entries(collected.uaPaints)
+          .map(([tag, paint]) => `<${tag}> ${paint}`)
+          .join(", ")}`,
+    );
+
+    const states = {};
+    // Podpis → stany, w jakich go osądzono, i ile elementów zliczono, W TYM
+    // MOTYWIE. To jest materiał dla KONTROLI DODATNICH: bez niego przyrząd wie
+    // tylko o tym, co zaczerwienił, czyli nie umie udowodnić, że potrafi
+    // cokolwiek przepuścić.
+    const observed = {};
+    for (const group of collected.groups) {
+      const decision = classifyControlPaint({
+        group,
+        palette: collected.palette,
+        uaPaint: collected.uaPaints[group.tag],
+      });
+      judged += 1;
+      states[decision.state] = (states[decision.state] ?? 0) + 1;
+      const witness = (observed[group.signature] ??= {
+        states: [],
+        count: 0,
+      });
+      if (!witness.states.includes(decision.state))
+        witness.states.push(decision.state);
+      witness.count += group.count;
+      if (decision.state === "UNREADABLE") {
+        failures.push(
+          `CONTROL_PAINT_UNREADABLE (${theme}): ${decision.reason}`,
+        );
+        continue;
+      }
+      if (decision.state !== "UA_DEFAULT" && decision.state !== "OFF_PALETTE")
+        continue;
+      flagged += 1;
+      flaggedElements += group.count;
+      const key = `${group.surface}\t${group.signature}`;
+      // PO STANIE TEŻ, nie po samym kształcie: kontrolka z rejestru, która
+      // zmieniła RODZAJ wady (`UA_DEFAULT` → `OFF_PALETTE`), jest podmiotem,
+      // o którym rejestr nie wydał zdania.
+      const registered = isRegisteredControlPaint({
+        surface: group.surface,
+        signature: group.signature,
+        state: decision.state,
+      });
+      if (registered) met.add(key);
+      const line =
+        `${group.surface}\t${decision.state}\t${group.signature}\t` +
+        `${group.count} element(s)\t${group.backgroundColor}\t` +
+        `„${group.sample}"`;
+      report(line);
+      if (controlPaintVerdictThrows({ registered, armed: CONTROL_PAINT_ARMED }))
+        verdicts.push(`${theme} theme — ${decision.reason}`);
+      else reported.push(`${theme} theme — ${line}`);
+    }
+    // HISTOGRAM STANÓW, i to jest zdanie, którego nie da się przeczytać
+    // odwrotnie. „Zero znalezisk" nad przyrządem, który osądził zero grup,
+    // wygląda identycznie jak sukces — a rozkład, w którym są kontrolki
+    // legalne, jest jedynym dowodem, że osąd w ogóle się odbył.
+    report(
+      `summary\t${collected.groups.length} control group(s) judged\t` +
+        `${Object.values(collected.examined).reduce((sum, n) => sum + n, 0)} rendered control(s)\t` +
+        `across ${Object.keys(collected.examined).length} destination(s)\t` +
+        `${Object.entries(states)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([state, count]) => `${state} ${count}`)
+          .join(", ")}`,
+    );
+    for (const [surface, count] of Object.entries(collected.examined))
+      report(`examined\t${surface}\t${count} rendered control(s)`);
+    report(
+      `walked\t${collected.declared.length} declared destination(s)\t` +
+        `${collected.arrivals.filter((arrival) => arrival.seen === arrival.id).length} of ` +
+        `${collected.arrivals.length} arrival(s) confirmed\t` +
+        `${collected.lensesMeasured} of ${collected.lensesDeclared} declared lens state(s) opened\t` +
+        `settings entry ${collected.settingsEntry ? "found" : "MISSING"}`,
+    );
+    walks.push({
+      theme,
+      declared: collected.declared,
+      examined: collected.examined,
+      settingsEntry: collected.settingsEntry,
+      arrivals: collected.arrivals,
+      lensesDeclared: collected.lensesDeclared,
+      lensesMeasured: collected.lensesMeasured,
+    });
+    // KONTROLE DODATNIE SĄDZONE OSOBNO W KAŻDYM MOTYWIE — świadek nienarysowany
+    // w jednym z nich jest niewidoczny w mapie zlanej z obu.
+    const witnesses = classifyControlPaintWitnesses({ observed, theme });
+    failures.push(...witnesses.failures);
+    for (const line of witnesses.lines) console.log(`control paint\t${line}`);
+    await page.close();
+  }
+
+  failures.push(
+    ...classifyControlPaintCensus({ walks, uaPaints, palettesByTheme }),
+  );
+  for (const entry of unmetControlPaintEntries(met))
+    failures.push(
+      `CONTROL_PAINT_REGISTRY_UNMET — ${entry.surface}: ${entry.signature} was never met in ` +
+        `either theme (${entry.why}). Either the lot that fixed it left the entry behind, or ` +
+        "this census stopped seeing that screen.",
+    );
+
+  return {
+    failures,
+    verdicts,
+    reported,
+    judged,
+    flagged,
+    flaggedElements,
+    // KSIĘGOWOŚĆ PER MOTYW ODDANA NA ZEWNĄTRZ, bo wiersz podsumowania nie ma
+    // prawa pisać „in 2 theme(s)", jeżeli nie umie powiedzieć, ILE każdy z nich
+    // obejrzał. Zdanie o dwóch motywach nad przebiegiem, w którym jeden zmierzył
+    // zero celów, jest kłamstwem, którego nikt by nie zauważył.
+    perTheme: walks.map(
+      (walk) =>
+        `${walk.theme} ${Object.keys(walk.examined).length} destination(s)/` +
+        `${Object.values(walk.examined).reduce((sum, n) => sum + n, 0)} control(s)`,
+    ),
+    elapsedMs: Date.now() - started,
+  };
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// POZYCJA AKCJI GŁÓWNEJ W PAŚMIE TYTUŁU — FAZA B, LOT B2
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Cała reguła, tabela ekranów i powód każdej decyzji stoją w
+// `scripts/title-band-action.mjs`. Tutaj jest WYŁĄCZNIE to, co wymaga
+// przeglądarki: spacer po celach, otwarcie rekordów i odczyt czterech liczb
+// z każdego pudełka.
+//
+// OSIE SĄ DWIE OD LOTU C2: pion (środek akcji względem rzędu tytułu) i poziom
+// (prawa krawędź akcji względem końca TREŚCI pasma). Przeglądarkowa część
+// drugiej osi to dwa dodatkowe odczyty z `getComputedStyle` pasma — wyściółka
+// i `column-gap` — i ani jednej dodatkowej wizyty.
+//
+// JEDEN MOTYW, i to jest wybór, nie oszczędność: `getBoundingClientRect()` nie
+// jest funkcją farby, więc drugi motyw dałby dwa razy te same liczby i drugi
+// raz ten sam czas bramki. Ten sam argument, który w `routedVisualLanguage`
+// każe mierzyć przyklejenie raz, a pary dwa razy.
+//
+// JEDNA SZEROKOŚĆ — 1440×900, jak pary i jak spis farby. Przy 320 px i przy
+// 200% tekstu akcja LEGALNIE stoi wiersz niżej: `.surface-header` ma
+// `flex-wrap: wrap` postawione świadomie (`styles.css:1826-1831`), więc
+// asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
+// przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
+// „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
+// przyklejenia (`:4949`).
+
+const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
+
+// Rekordy otwierają się wyłącznie w oknie, którego system nie odmówi
+// (`BrowserWindow` ma `minWidth: 760`), a ten przelot chodzi po 1440 — więc
+// próg jest tu spełniony z zapasem i stoi wypisany tylko po to, żeby zmiana
+// szerokości tego przelotu nie zabrała trzech ekranów po cichu.
+const TITLE_BAND_RECORD_MIN_WIDTH = 760;
+
+const measureTitleBandActionInPage = async ({
+  actionClasses,
+  settingsSurface,
+  classHashPattern,
+  arrivalTimeoutMs,
+  recordMinWidth,
+}) => {
+  const frame = () =>
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  const settle = async (ms) => {
+    await frame();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await frame();
+  };
+
+  const classHash = new RegExp(classHashPattern, "u");
+  const normaliseClass = (token) => {
+    const match = classHash.exec(token);
+    return match === null ? token : `_${match[1]}`;
+  };
+  const signature = (element) => {
+    const tag = element.tagName.toLowerCase();
+    const classes = [...element.classList].map(normaliseClass).join(".");
+    return classes === "" ? tag : `${tag}.${classes}`;
+  };
+  // WIDOCZNOŚĆ MIERZONA TAK SAMO JAK W RESZCIE TEGO PLIKU, i to jest poprawka,
+  // nie ozdoba. „Szerokość i wysokość > 0" przepuszcza element 1×1 przycięty
+  // `clip: rect(0,0,0,0)` — a dokładnie tak wygląda `#surface-title` w stanie
+  // ładowania Spotkań (`MeetingsSurface.tsx:484` + `.sr-only`,
+  // `styles.css:661-668`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
+  // całego werdyktu: środek w rogu kadru, tolerancja pół piksela. Dziś ratuje
+  // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
+  // więc pada głośno jako `TITLE_BAND_NOT_MEASURED`) — czyli przypadek, nie
+  // reguła. Kryterium jest teraz to samo co przy `parkedOutOfFrame`
+  // (`:2944-2954`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
+  // kadrem znaczą „niewidoczne", a „poniżej zgięcia" NIE — tamto jest zwykłym
+  // układem, to jest ukryciem.
+  const rendered = (element) => {
+    const style = window.getComputedStyle(element);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.opacity === "0"
+    )
+      return false;
+    const rect = element.getBoundingClientRect();
+    if (rect.width * rect.height <= 4) return false;
+    return !(
+      rect.bottom <= 0 ||
+      rect.right <= 0 ||
+      rect.left >= window.innerWidth
+    );
+  };
+  const round = (value) => Math.round(value * 10) / 10;
+  const box = (element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: round(rect.top),
+      bottom: round(rect.bottom),
+      left: round(rect.left),
+      right: round(rect.right),
+      height: round(rect.height),
+    };
+  };
+  const isAction = (element) =>
+    actionClasses.some((name) => element.classList.contains(name));
+
+  const work = () => document.querySelector('#main-content[role="tabpanel"]');
+
+  // JEDEN EKRAN → JEDEN WIERSZ. Wszystko, czego reguła potrzebuje, i ani jednej
+  // rzeczy więcej: cztery liczby o tytule, cztery o każdej akcji, oraz to, co
+  // pozwala odróżnić „ekran bez akcji" od „pasma, którego nie było".
+  const snap = (id) => {
+    const titles = [...document.querySelectorAll("#surface-title")].filter(
+      (element) => rendered(element),
+    );
+    const title = titles[0];
+    const band = title?.closest("header") ?? null;
+    if (titles.length !== 1 || band === null)
+      return {
+        id,
+        titles: titles.length,
+        title: null,
+        band: null,
+        neighbourhood: [],
+        actions: [],
+      };
+    const bandBox = box(band);
+    const titleBox = box(title);
+
+    // KONIEC PASMA JEST KRAWĘDZIĄ TREŚCI, NIE KRAWĘDZIĄ RAMKI, i ta różnica jest
+    // całą poprawnością osi poziomej: `justify-content: flex-end` stawia ostatnie
+    // dziecko przy krawędzi PUDEŁKA TREŚCI, więc pasmo z wyściółką dawałoby
+    // przy odczycie `rect.right` stały, fałszywy odstęp równy tej wyściółce —
+    // czyli rozjazd nad ekranem, którego nikt nie zepsuł. Biblioteka ma
+    // `padding-inline: var(--space-6)` (`library.module.css`), więc ten przypadek
+    // jest dziś na wystawie, a nie hipotetyczny.
+    //
+    // TOLERANCJĄ JEST `column-gap` TEGO pasma — jedyna poziomia odległość, którą
+    // pasmo samo o sobie deklaruje. `normal` (czyli brak deklaracji) rozwiązuje
+    // się do NaN i reguła w `title-band-action.mjs` czyta to jako zero.
+    const bandStyle = window.getComputedStyle(band);
+    const bandEdge = (name) => Number.parseFloat(bandStyle[name]) || 0;
+    const bandInline = {
+      contentRight: round(
+        bandBox.right - bandEdge("paddingRight") - bandEdge("borderRightWidth"),
+      ),
+      columnGap: Number.parseFloat(bandStyle.columnGap),
+      paddingRight: round(bandEdge("paddingRight")),
+    };
+
+    // OBSZAR TYTUŁU: pasmo plus rodzeństwo BEZPOŚREDNIE, ale wyłącznie takie,
+    // które NIE JEST WYŻSZE od samego pasma. Powód, liczby i zadeklarowana
+    // ślepa plama tej granicy stoją w nagłówku `title-band-action.mjs`;
+    // w skrócie: rząd chromu jest rzędem, obszar treści jest wysoki, a bez tej
+    // granicy pierwsza sekcja treści Dziś i Skrzynki wchodziłaby do pomiaru
+    // razem z przyciskami swoich wierszy.
+    //
+    // SUFIT JEST WYPISYWANY W RAPORCIE, bo jest wysokością PASMA, a pasma
+    // rekordu bywają siedem razy wyższe od rzędu chromu (285,1 px). Sufit,
+    // którego nie widać w wyjściu, nie daje się sprawdzić przy odbiorze.
+    const ceiling = bandBox.height;
+    const neighbourhood = [{ offset: 0, node: band, box: bandBox }];
+    const dropped = [];
+    const siblings = [...(band.parentElement?.children ?? [])];
+    const index = siblings.indexOf(band);
+    for (const offset of [-1, 1]) {
+      const node = siblings[index + offset];
+      if (!(node instanceof HTMLElement) || !rendered(node)) continue;
+      const nodeBox = box(node);
+      if (nodeBox.height > ceiling) {
+        dropped.push({ offset, node, box: nodeBox });
+        continue;
+      }
+      neighbourhood.push({ offset, node, box: nodeBox });
+    }
+
+    const actions = [];
+    for (const entry of neighbourhood)
+      for (const element of entry.node.querySelectorAll("button")) {
+        if (!isAction(element) || !rendered(element)) continue;
+        actions.push({
+          where:
+            entry.offset === 0 ? "band" : entry.offset < 0 ? "before" : "after",
+          signature: signature(element),
+          sample: (element.textContent ?? "").trim().slice(0, 32),
+          ...box(element),
+        });
+      }
+
+    return {
+      id,
+      titles: titles.length,
+      title: {
+        signature: signature(title),
+        sample: (title.textContent ?? "").trim().slice(0, 32),
+        ...titleBox,
+      },
+      band: { signature: signature(band), ...bandBox, ...bandInline },
+      ceiling,
+      neighbourhood: neighbourhood.map((entry) => ({
+        offset: entry.offset,
+        signature: signature(entry.node),
+        height: entry.box.height,
+      })),
+      // KTÓRE RODZEŃSTWO ODRZUCIŁA GRANICA WYSOKOŚCI, z nazwą i wysokością.
+      // Bez tego „brak akcji" nad ekranem, którego sąsiad właśnie urósł ponad
+      // pasmo, czyta się identycznie jak brak akcji nad ekranem, który jej nie
+      // ma — a sama LICZBA odrzuconych rzędów nie mówi, czy odrzucono pasek
+      // widoku, czy całą kolumnę treści.
+      dropped: dropped.map((entry) => ({
+        offset: entry.offset,
+        signature: signature(entry.node),
+        height: entry.box.height,
+      })),
+      actions,
+    };
+  };
+
+  const navIds = [...document.querySelectorAll(".nav-item[data-surface]")].map(
+    (item) => item.dataset.surface,
+  );
+  const all = [];
+  for (const id of navIds) if (!all.includes(id)) all.push(id);
+  const settingsEntry =
+    document.querySelector("[data-settings-entry]") !== null;
+  if (settingsEntry && !all.includes(settingsSurface))
+    all.push(settingsSurface);
+
+  const arrivals = [];
+  // CZEKANIE NA ZDARZENIE, NIE NA CZAS — ta sama umowa co w spisie farby:
+  // twarda asercja po stałym `settle` zamienia drgnięcie maszyny w czerwoną
+  // bramkę, a ten strażnik ma wołać dopiero wtedy, gdy powłoka NAPRAWDĘ nie
+  // dojechała.
+  const arrived = async (id) => {
+    const surfaceOf = () =>
+      document
+        .querySelector("main[data-surface]")
+        ?.getAttribute("data-surface") ?? "";
+    const deadline = Date.now() + arrivalTimeoutMs;
+    while (Date.now() < deadline) {
+      if (surfaceOf() === id) return id;
+      await settle(100);
+    }
+    return surfaceOf();
+  };
+
+  const measured = [];
+  for (const id of all) {
+    // Ustawienia są TRYBEM: wejście w nie podmienia lewą kolumnę, więc pozycja
+    // następnego celu nie ma czego kliknąć. Ta sama poprawka co w `sweep`.
+    const back = document.querySelector("[data-settings-back]");
+    if (back instanceof HTMLElement) {
+      back.click();
+      await settle(400);
+    }
+    const target =
+      id === settingsSurface
+        ? (document.querySelector("[data-settings-entry]") ??
+          document.querySelector(`.nav-item[data-surface="${id}"]`))
+        : document.querySelector(`.nav-item[data-surface="${id}"]`);
+    if (!(target instanceof HTMLElement)) {
+      arrivals.push({ id, seen: null });
+      continue;
+    }
+    target.click();
+    arrivals.push({ id, seen: await arrived(id) });
+    // PRZYBYCIE TO NIE JEST NARYSOWANIE. Stempel `data-surface` przestawia się
+    // natychmiast, a zawartość celu dojeżdża później — zmierzone na spisie
+    // farby, gdzie zbieranie zaraz po przybyciu dawało ZERO kontrolek na
+    // czterech ekranach naraz.
+    await settle(700);
+    measured.push(snap(id));
+
+    // EKRAN REKORDU JEST OSOBNYM PASMEM, nie zakładką tego samego. Trzeci
+    // kształt rozjazdu — akcje NAD tytułem — żyje wyłącznie tutaj, więc
+    // przelot, który rekordów nie otwiera, nie ma o nim nic do powiedzenia.
+    //
+    // ZAKŁADEK SIĘ NIE OBCHODZI, i to jest pomiar, nie skrót: `.crumbs`
+    // z `.actions` renderuje `ProjectRecordScreen` POZA panelem zakładki
+    // (`:300-306` wobec `:308`), więc każda zakładka pokazuje TE SAME
+    // elementy w tych samych miejscach. Rejestr rozjazdów liczy je dwa razy,
+    // bo porównywał dwa zrzuty; ten przelot liczy je RAZ, bo mierzy elementy.
+    const row =
+      window.innerWidth >= recordMinWidth
+        ? work()?.querySelector(
+            "[data-project-row], [data-task-row], [data-pipeline-card]",
+          )
+        : null;
+    if (row instanceof HTMLElement) {
+      row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      await settle(900);
+      const kind =
+        work()
+          ?.querySelector("[data-record-kind]")
+          ?.getAttribute("data-record-kind") ?? "";
+      if (kind !== "") measured.push(snap(`${id}/record:${kind}`));
+    }
+  }
+
+  return {
+    declared: all,
+    settingsEntry,
+    arrivals,
+    measured,
+    rootFontSizePx: Number.parseFloat(
+      window.getComputedStyle(document.documentElement).fontSize,
+    ),
+  };
+};
+
+const titleBandActionCensus = async (browser) => {
+  const failures = [];
+  const verdicts = [];
+  const reported = [];
+  const started = Date.now();
+  const report = (line) => console.log(`title band\t${line}`);
+
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    colorScheme: THEME_ORDER[0],
+  });
+  page.on("pageerror", (error) =>
+    failures.push(`TITLE_BAND_PAGE_ERROR: ${String(error)}`),
+  );
+  await page.goto(HARNESS, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+
+  const collected = await page.evaluate(measureTitleBandActionInPage, {
+    actionClasses: TITLE_BAND_ACTION_CLASSES,
+    settingsSurface: SETTINGS_SURFACE,
+    classHashPattern: TITLE_BAND_HASH_PATTERN,
+    arrivalTimeoutMs: TITLE_BAND_ARRIVAL_TIMEOUT_MS,
+    recordMinWidth: TITLE_BAND_RECORD_MIN_WIDTH,
+  });
+  await page.close();
+
+  const byId = new Map(TITLE_BAND_ROWS.map((row) => [row.id, row]));
+  const judged = [];
+  let divergent = 0;
+  let held = 0;
+  // TRZECI LICZNIK, ZAMIAST DOLICZANIA GO DO ZGODNYCH. Ekran, którego prototyp
+  // NIE MA (rekord szansy), nie ma się z czym zgadzać — wliczony do „agree with
+  // the prototype" zawyżałby pokrycie o podmiot, o którym ten przyrząd świadomie
+  // nie ma zdania.
+  let notComparable = 0;
+  // DWA LICZNIKI POD JEDNYM ROZJAZDEM, bo „osiem ekranów stawia akcję poza
+  // rzędem" po dołożeniu drugiej osi przestało być jednym zdaniem. Ekran może
+  // być rozjazdem przez pion, przez poziom albo przez oba — a podsumowanie,
+  // które nie mówi który, każe odbierającemu wrócić do wierszy.
+  let displacedRow = 0;
+  let displacedInline = 0;
+
+  report(
+    `walked\t${collected.declared.length} declared destination(s)\t` +
+      `${collected.arrivals.filter((arrival) => arrival.seen === arrival.id).length} of ` +
+      `${collected.arrivals.length} arrival(s) confirmed\t` +
+      `settings entry ${collected.settingsEntry ? "found" : "MISSING"}\t` +
+      `root font size ${collected.rootFontSizePx}px`,
+  );
+
+  for (const entry of collected.measured) {
+    // Pasmo NIEROZSTRZYGNIĘTE jest awarią przyrządu i wchodzi do księgowości
+    // przez `classifyTitleBandCensus` — tutaj nie wolno go osądzić, bo werdykt
+    // bez tytułu byłby zgadywaniem wpisanym w raport.
+    //
+    // `band` IDZIE DALEJ NIETKNIĘTE, i to nie jest przepisywanie pola. Bez
+    // niego księgowość widziałaby wyłącznie `titles`, więc ekran z JEDNYM
+    // `#surface-title` bez przodka `<header>` — tytuł jest, pasma nie ma —
+    // trafiałby tu jako `NOT_MEASURED` i NIE ZAPALAŁ ani jednej awarii niżej,
+    // bo `entry.band` byłoby `undefined`, a nie `null`. Cichy `NOT_MEASURED`
+    // jest dokładnie tym, przed czym stoi punkt o niezmierzonym ekranie.
+    if (entry.titles !== 1 || entry.band === null) {
+      judged.push({
+        id: entry.id,
+        state: "NOT_MEASURED",
+        inlineState: "NOT_MEASURED",
+        titles: entry.titles,
+        band: entry.band,
+      });
+      report(
+        `${entry.id}\tNOT_MEASURED\t„#surface-title" matched ${entry.titles} element(s), ` +
+          `band ${entry.band === null ? "has no ancestor <header>" : "unresolved"}`,
+      );
+      continue;
+    }
+    const decision = classifyTitleBandAction({
+      title: entry.title,
+      actions: entry.actions,
+    });
+    // OŚ POZIOMA OSĄDZA TEN SAM ZBIÓR AKCJI, co pionowa, i to jest wymóg: dwie
+    // osie nad dwoma różnymi zbiorami dawałyby dwa zdania o dwóch różnych
+    // rzeczach pod jedną nazwą ekranu.
+    const inline = classifyTitleBandInline({
+      band: entry.band,
+      actions: entry.actions,
+    });
+    const inlineById = new Map(
+      inline.judged.map((action) => [
+        `${action.signature}|${action.left}|${action.top}`,
+        action,
+      ]),
+    );
+    judged.push({
+      id: entry.id,
+      state: decision.state,
+      inlineState: inline.inlineState,
+      titles: entry.titles,
+      band: entry.band,
+    });
+    const row = byId.get(entry.id);
+    // PRZEWIDZIANY ZNACZY PRZEWIDZIANY NA OBU OSIACH. Koniunkcja, nie sama
+    // kolumna pionowa: akcja przesunięta w POZIOMIE i nigdzie nie zapisana
+    // przechodziłaby inaczej po cichu, czyli druga oś nie pilnowałaby niczego.
+    const predicted =
+      row !== undefined &&
+      row.today === decision.state &&
+      row.todayInline === inline.inlineState;
+    // „BRAK AKCJI" MUSI POWIEDZIEĆ, GDZIE SZUKANO. Samo zdanie „nie znalazłem"
+    // nad ekranem, którego sąsiad właśnie urósł ponad pasmo, czyta się
+    // identycznie jak nad ekranem, który akcji nie ma — a to są dwie różne
+    // rzeczy i dwie różne roboty. Wiersz niesie więc PRZESZUKANY obszar
+    // z wysokościami i liczbę rzędów, które granica wysokości odrzuciła.
+    //
+    // PUDEŁKA IDĄ DO RAPORTU SUROWE, i to jest wymóg prowieniencji, nie ozdoba:
+    // fikstury testu jednostkowego mają być ODCZYTANE z tego wyjścia, a raport,
+    // który drukuje sam dryf, pozwala odtworzyć pudełko WSTECZ — z dowolną
+    // wysokością, byle środek się zgadzał. Tak właśnie do tego pliku trafiła
+    // fikstura Projektów o wysokości, której ta aplikacja nigdy nie narysowała.
+    //
+    // `x` JEST DRUKOWANY, CHOĆ WERDYKT GO NIE CZYTA — to zadeklarowana ślepa
+    // plama miary (patrz nagłówek `title-band-action.mjs`). Bez tych dwóch liczb
+    // „akcja przy prawym końcu pasma" i „akcja tuż za tytułem" mają w raporcie
+    // identyczny zapis.
+    const span = (item) =>
+      `y ${item.top}–${item.bottom} h=${item.height} x ${item.left}–${item.right}`;
+    // PRZESZUKANY OBSZAR DRUKUJE SIĘ ZAWSZE, nie tylko nad ekranem bez akcji.
+    // Sufit widoczny wyłącznie w wierszach „nic nie znalazłem" nie daje się
+    // sprawdzić tam, gdzie właśnie zdecydował — a to wiersze rekordu, w których
+    // wynosi 285,1 px. Ta sama linia jest jedynym miejscem, z którego da się
+    // odczytać wysokości rzędów cytowane w tabeli nagłówka `title-band-action.mjs`.
+    const searched =
+      `[searched, ceiling h≤${entry.ceiling}: ` +
+      entry.neighbourhood
+        .map((near) => `${near.signature} h=${near.height}`)
+        .join(", ") +
+      "]" +
+      (entry.dropped.length > 0
+        ? ` (taller than the ceiling, left out: ${entry.dropped
+            .map((near) => `${near.signature} h=${near.height}`)
+            .join(", ")})`
+        : "");
+    const where =
+      decision.judged.length === 0
+        ? `no action-class button in the title row's neighbourhood ${searched}`
+        : `${searched} ` +
+          decision.judged
+            .map((action) => {
+              // JEDNO PUDEŁKO, DWA WERDYKTY, JEDNA LINIA. Rozdzielenie osi na
+              // dwie linie raportu zmusiłoby czytającego do sparowania ich po
+              // nazwie przycisku — a na ekranie rekordu projektu przyciski są
+              // dwa i stoją w tym samym rzędzie.
+              const across = inlineById.get(
+                `${action.signature}|${action.left}|${action.top}`,
+              );
+              return (
+                `${action.signature} „${action.sample}" ${action.where} ${span(action)} ` +
+                `drift ${action.drift}px vs tolerance ${action.tolerance}px → ${action.state}` +
+                (across === undefined
+                  ? ""
+                  : ` | end gap ${across.endGap}px vs tolerance ${across.inlineTolerance}px → ` +
+                    `${across.inlineState}`)
+              );
+            })
+            .join(" | ");
+    const line =
+      `${entry.id}\t${decision.state}/${inline.inlineState}\t` +
+      `${row === undefined ? "UNDECLARED" : `prototype ${row.prototype}, table says ${row.today}/${row.todayInline}`}\t` +
+      // KONIEC TREŚCI PASMA I JEGO ODSTĘP DRUKUJĄ SIĘ ZAWSZE, z tego samego
+      // powodu, z którego drukuje się sufit sąsiedztwa: bez nich „end gap
+      // 954,6" nie daje się sprawdzić przy odbiorze, bo nie widać, od czego
+      // liczony, ani ile wynosiła wyściółka, którą odjęto.
+      `band ${entry.band.signature} h=${entry.band.height} content ends x=${entry.band.contentRight} ` +
+      `(right x=${entry.band.right} − padding ${entry.band.paddingRight}) column-gap ${entry.band.columnGap}\t` +
+      `title „${entry.title.sample}" ${span(entry.title)}\t${where}`;
+    report(line);
+
+    if (row === undefined) continue;
+
+    // KSIĘGOWOŚĆ NAJPIERW, WERDYKT POTEM, i to nie jest kolejność estetyczna:
+    // gałąź werdyktu kończy się `continue`, więc licząc po niej dostalibyśmy po
+    // uzbrojeniu podsumowanie „0 ekranów stawia akcję poza rzędem tytułu" obok
+    // ośmiu padających werdyktów — raport wewnętrznie sprzeczny, czyli ta sama
+    // klasa, którą ten przelot ma zamykać.
+    const divergentRow = isTitleBandDivergence(row);
+    if (divergentRow) {
+      divergent += 1;
+      // PORÓWNANIE Z KOLUMNAMI PROTOTYPU, NIE ZE STAŁYMI: prototyp stawia akcję
+      // w rzędzie tytułu na powierzchniach i RZĄD WYŻEJ na ekranach rekordu
+      // (`title-band-action.mjs`, nota przy `prototypeRow`). Literał liczyłby
+      // rekord jako przesunięty nad ekranem, który prototyp odtwarza wiernie.
+      if (row.today !== row.prototypeRow) displacedRow += 1;
+      if (row.todayInline !== row.prototypeInline) displacedInline += 1;
+    } else if (row.prototype === "no-screen") notComparable += 1;
+    else held += 1;
+
+    if (
+      titleBandVerdictThrows({
+        predicted,
+        divergent: divergentRow,
+        armed: TITLE_BAND_ACTION_ARMED,
+      })
+    ) {
+      // KTÓRY WARUNEK PADŁ, TAKIE ZDANIE. „Ktoś przesunął akcję i nie zapisał"
+      // jest fałszem, kiedy pada uzbrojony ROZJAZD: tam nic nie dryfowało,
+      // tylko pozycja przestała być długiem i zaczęła być wymaganiem.
+      verdicts.push(
+        predicted
+          ? `${entry.id}: the title-band position is ENFORCED and this screen does not put its ` +
+              `primary action in the title row AND at the band's end (measured ` +
+              `${decision.state}/${inline.inlineState}). The prototype puts one there — ` +
+              `${row.cite}. Measured: ${where}. App: ${row.app}.`
+          : `${entry.id}: this pass measured ${decision.state}/${inline.inlineState} and the ` +
+              `canonical screen list says ${row.today}/${row.todayInline} (prototype: ` +
+              `${row.prototype} — ${row.cite}). Either the primary action moved and nobody wrote ` +
+              "it down, or lot C2 delivered the fix and left the row behind. " +
+              `Measured: ${where}. App: ${row.app}.`,
+      );
+      continue;
+    }
+    if (divergentRow)
+      reported.push(
+        `${entry.id}\t${decision.state}/${inline.inlineState}\tprototype puts an action in this ` +
+          `band, at its end — ${row.cite}\t${where}`,
+      );
+  }
+
+  failures.push(
+    ...classifyTitleBandCensus({
+      walk: {
+        declared: collected.declared,
+        settingsEntry: collected.settingsEntry,
+        arrivals: collected.arrivals,
+      },
+      measured: judged,
+    }),
+  );
+
+  return {
+    failures,
+    verdicts,
+    reported,
+    judged: judged.length,
+    divergent,
+    displacedRow,
+    displacedInline,
+    held,
+    notComparable,
+    elapsedMs: Date.now() - started,
+  };
+};
+
+// ════════════════════════════════════════════════════════════════════════════
 // PRZELOT TRAS — PARY LOTÓW 2-6 I PRZYRZĄD P7 (POZYCJA PO PRZEWINIĘCIU)
 // ════════════════════════════════════════════════════════════════════════════
 //
@@ -4058,6 +5754,33 @@ const ROUTED_ARRIVAL = {
   // Biblioteka: przełącznik soczewek (LibraryShell.tsx:111). Ten sam znacznik,
   // po którym przelot geometrii wylicza obiektywy.
   library: "#main-content [data-layout]",
+  // Spotkania: `MeetingsSurface.tsx:779` — korzeń ekranu, ta sama klasa, którą
+  // arkusz obsługuje jako nośnik rynny. Dopisane przy naprawie po przeglądzie
+  // lotu D1: pierwsza para tej mapy nad Spotkaniami potrzebowała przystanku,
+  // a ekran jest osiągalny dla obu spisów (B1 i B2 mierzą go od lotu D1), więc
+  // marker jest jedyną brakującą częścią. `.meeting-skeleton` i `state-panel`
+  // niosą tę samą klasę w stanach ładowania i błędu — dlatego marker musi
+  // zostać potwierdzony jako NARYSOWANY, co `walkRouteInPage` robi dla
+  // każdego przystanku.
+  meetings: "#main-content .meeting-surface",
+  // Organizacje i Ludzie, dopisane przez lot D6 — pierwsze pary tej mapy nad
+  // ekranami CRM-owej listy. MARKEREM JEST WIERSZ, A NIE KORZEŃ EKRANU, i to
+  // jest wybór, nie skrót: `[data-organizations-surface]` /
+  // `[data-people-surface]` niesie także gałąź ODMOWY (`StrategicDepthSurface
+  // .tsx:739`, `PeopleSurface.tsx:530`), więc ekran, który nie umiał zapytać
+  // o dane, potwierdziłby przyjazd i wpuściłby cały lot w `NOT_MEASURED`
+  // z przyczyną wyglądającą jak zły selektor. Wiersza w tym stanie nie ma.
+  organizations: "#main-content [data-org-row]",
+  people: "#main-content [data-person-row]",
+  // KALENDARZA TU NIE MA, I JEST TO POMIAR, NIE PRZEOCZENIE. Naprawa po
+  // przeglądzie lotu D2 dopisała ten przystanek razem z parą na bliźniaka
+  // znacznika pomocy i OBA PRZELOTY WRÓCIŁY `NOT_MEASURED`: klient scenariuszowy
+  // ODMAWIA kalendarza (`client/scenario-client.ts:81-94` —
+  // `availability: "provider_unavailable"`, `canRead: false`, `upcoming: []`),
+  // a przycisk rysuje się tylko nad tygodniem, w którym jakieś spotkanie stoi
+  // (`CalendarSurface.tsx`). Przystanek, na którym nie ma czego zmierzyć, to
+  // czas przelotu bez werdyktu — więc go nie ma, a bliźniak jest asertowany tam,
+  // gdzie fikstura go dosięga: `desktop-ui/test/calendar.interaction.test.tsx`.
 };
 
 // RODZAJ REKORDU, KTÓREGO SIĘ SPODZIEWAMY PO TYCH DRZWIACH. Trzy drzwi, trzy
@@ -4088,6 +5811,14 @@ const ROUTED_RECORD_KIND = {
 // an open note. Left out of the key, that stop would collapse into
 // „library | notes | - | -" and the pair riding it would measure the OTHER
 // state's elements, which is the shape of a green pair that proves nothing.
+//
+// `openPopover` JEST CZĘŚCIĄ KLUCZA Z TEGO SAMEGO POWODU CO `treeKey`, i to
+// jest dopisek lotu D11. Otwarty dymek to inny STAN tego samego ekranu: panel
+// jest portalowany do `<body>`, więc przed kliknięciem wyzwalacza nie ma go
+// w drzewie WCALE, a nie „jest, tylko niewidoczny". Para czytająca cokolwiek
+// w panelu na przystanku bez tego kroku wracałaby NOT_MEASURED, czyli awarią
+// przyrządu — a wrzucona do wspólnego klucza mierzyłaby drugą połowę par tego
+// przystanku w stanie, w którym one nie są napisane.
 const routeKey = (route) =>
   route.settingsMode === true
     ? "settings"
@@ -4097,6 +5828,7 @@ const routeKey = (route) =>
         route.treeKey ?? "-",
         route.openRecord ?? "-",
         route.recordTab ?? "-",
+        route.openPopover ?? "-",
       ].join(" | ");
 
 const routeLabel = (route) =>
@@ -4110,6 +5842,9 @@ const routeLabel = (route) =>
           ? null
           : `record via ${route.openRecord}`,
         route.recordTab === undefined ? null : `tab ${route.recordTab}`,
+        route.openPopover === undefined
+          ? null
+          : `popover via ${route.openPopover}`,
       ]
         .filter((part) => part !== null && part !== undefined)
         .join(" › ");
@@ -4322,6 +6057,28 @@ const SELECTION_UNDER_CURSOR_SUBJECTS = [
       "here" +
       '" went to `--surface-hover` whenever the pointer crossed it',
   },
+  {
+    // CZWARTY NOŚNIK STANU „TU JESTEŚ" W TEJ KOLUMNIE, dopisany razem z nim.
+    // Obie pary lotu C1 czytają SPOCZYNEK — dokładnie ta pułapka, którą nazywa
+    // nota P8-02 wyżej. Zachowanie jest dziś poprawne, bo `[data-nav-open]`
+    // trafił do listy wykluczeń reguły hovera, ale wykluczenie po NAZWIE jest
+    // rzeczą, którą następny lot skasuje przy pierwszym porządkowaniu tego
+    // selektora — i żadna para tego nie zobaczy.
+    id: "P8-04",
+    title:
+      "the destination above an open project record keeps its wash under the cursor",
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    arm: null,
+    selector: ".nav-item[data-nav-open]",
+    read: ["backgroundColor", "color"],
+    restIs: { property: "backgroundColor", token: "--nav-active-bg" },
+    app: "packages/desktop-ui/src/styles.css (.nav-item[data-nav-open])",
+    why:
+      "the carrier is new and its exclusion from the hover rule is by name, not by structure: " +
+      "`.nav-item:not(:disabled, .active, [aria-current], [data-nav-open]):hover` weighs (0,3,0) " +
+      "and would outweigh the (0,2,0) paint rule the moment the name is dropped — the same " +
+      "defect that was live on `.nav-item.active` for a whole wave",
+  },
 ];
 
 // PODŁOGA, NIE SUMA: podmiot, który przestaje się rysować, ma zaczerwienić tę
@@ -4329,8 +6086,8 @@ const SELECTION_UNDER_CURSOR_SUBJECTS = [
 // `STICKY_EXPECTED.liveExercised`, i z tego samego powodu — bramka mierząca
 // OBECNOŚĆ nigdy nie mierzy JAKOŚCI, a bramka, której podmioty wyparowały,
 // mierzy zero i wygląda identycznie jak bramka, która przeszła.
-// 3 podmioty × 2 motywy = 6.
-const SELECTION_UNDER_CURSOR_EXPECTED = { judged: 6 };
+// 4 podmioty × 2 motywy = 8.
+const SELECTION_UNDER_CURSOR_EXPECTED = { judged: 8 };
 
 // ── ILE REGUŁ PRZYKLEJENIA ISTNIEJE, A ILE TEN SPACER OSĄDZIŁ ────────────────
 // Bez tej liczby raport P7 czyta się jako „przyklejenie jest zmierzone", a mówi
@@ -4805,6 +6562,61 @@ const walkRouteInPage = async ({ route, arrival, recordKind }) => {
         reason: `the tab „${route.recordTab}" was clicked and reads aria-selected="${selected}".`,
       };
     steps.push(`tab ${route.recordTab}`);
+  }
+
+  // ── OTWARCIE DYMKA ───────────────────────────────────────────────────────
+  // TRZECI KROK, KTÓRY ZMIENIA STAN, A NIE MIEJSCE (po `treeKey` i `recordTab`)
+  // — dopisany w locie D11, bo panel dymka jest PORTALOWANY do `<body>`
+  // (`components/InlinePopover.tsx`) i przed kliknięciem wyzwalacza nie istnieje
+  // w drzewie w ogóle. Bez tego kroku każda para nad zawartością panelu wracała
+  // z NOT_MEASURED, czyli z awarią przyrządu, a nie z werdyktem o kodzie.
+  //
+  // WYZWALACZ BYWA LENIWY, więc ten krok GO WYCZEKUJE, zamiast raz spytać
+  // i uznać nieobecność za awarię trasy: `ApplyTemplatePopover` jedzie osobnym
+  // chunkiem (budżet ścieżki gorącej), a `<Suspense fallback={null}>` znaczy,
+  // że przez pierwsze klatki po otwarciu rekordu w paśmie nie ma nic. Awarią
+  // jest dopiero brak po całym oknie — i wtedy jest głośna, z nazwą selektora.
+  //
+  // WARUNEK DOJŚCIA JEST PODWÓJNY, i to nie jest ostrożność: sam `[role=
+  // "dialog"]` byłby spełniony przez KAŻDY inny otwarty dymek tej strony,
+  // a sam `aria-expanded` przez wyzwalacz, którego panel się nie narysował.
+  if (route.openPopover !== undefined) {
+    const deadline = Date.now() + 4000;
+    let trigger = null;
+    for (;;) {
+      const candidate = document.querySelector(route.openPopover);
+      if (candidate instanceof HTMLElement && rendered(candidate)) {
+        trigger = candidate;
+        break;
+      }
+      if (Date.now() > deadline) break;
+      await settle(120);
+    }
+    if (trigger === null)
+      return {
+        ok: false,
+        steps,
+        step: `popover via ${route.openPopover}`,
+        reason:
+          `„${route.openPopover}" matched no rendered element within 4 s — the disclosure ` +
+          "trigger is absent (or its lazy chunk never arrived), so nothing could be opened.",
+      };
+    trigger.click();
+    await settle(400);
+    const expanded = trigger.getAttribute("aria-expanded");
+    const panel = document.querySelector('[role="dialog"].inline-popover');
+    if (expanded !== "true" || !rendered(panel))
+      return {
+        ok: false,
+        steps,
+        step: `popover via ${route.openPopover}`,
+        reason:
+          `the trigger was clicked and reads aria-expanded="${expanded}", while ` +
+          `[role="dialog"].inline-popover is ${panel === null ? "absent" : "present but not rendered"}. ` +
+          "The panel did not open, so anything measured here would be a statement about the " +
+          "screen underneath it.",
+      };
+    steps.push(`popover ${route.openPopover}`);
   }
 
   return { ok: true, steps };
@@ -5643,11 +7455,21 @@ const passes = [
 
 const problems = [];
 const matchedRegistry = new Set();
+const matchedCollapsed = new Set();
+const doorsExercised = new Set();
 try {
   for (const pass of passes) {
-    const { failures, layoutProblems, matchedRegistryEntries, titleProblems } =
-      await sweep(browser, pass);
+    const {
+      failures,
+      layoutProblems,
+      matchedRegistryEntries,
+      matchedCollapsedEntries,
+      exercisedDoors,
+      titleProblems,
+    } = await sweep(browser, pass);
     for (const entry of matchedRegistryEntries) matchedRegistry.add(entry);
+    for (const entry of matchedCollapsedEntries) matchedCollapsed.add(entry);
+    for (const entry of exercisedDoors) doorsExercised.add(entry);
     for (const failure of failures) {
       problems.push(`${pass.label} — ${failure.surface}: ${failure.reason}`);
     }
@@ -5777,6 +7599,62 @@ try {
         : `${language.failures.length} instrument failure(s), ${language.verdicts.length} verdict(s)`
     }`,
   );
+  // ── B1: SPIS POWSZECHNY FARBY KONTROLEK ─────────────────────────────────
+  // TRYB RAPORTUJĄCY, i to jest odpowiedź na jedyne trudne pytanie tego
+  // przyrządu: jest CZERWONY na dzisiejszym drzewie i CI ma być zielone. Reguła
+  // tego repozytorium rozstrzyga to bez kompromisu — pozycja NIEODDANA
+  // raportuje, rzuca dopiero to, co ODDANE i ZEPSUTE. Znany dług Fazy C stoi
+  // wypisany w `KNOWN_CONTROL_PAINT` i tylko się drukuje; kontrolka SPOZA tego
+  // rejestru jest regresją i pada zawsze. Awarie przyrządu padają bezwarunkowo,
+  // tak samo jak w sondzie wierności i w mapie par, i z tego samego powodu:
+  // `REPORT_ONLY` ma w tym pliku JEDEN nazwany zakres — rejestr przepełnień —
+  // a ten spis ma własny.
+  const controlPaint = await controlPaintCensus(browser);
+  for (const failure of controlPaint.failures) {
+    problems.push(`control paint — instrument: ${failure}`);
+  }
+  for (const verdict of controlPaint.verdicts) {
+    problems.push(`control paint — ${verdict}`);
+  }
+  for (const line of controlPaint.reported)
+    console.log(`control paint\treported\t${line}`);
+  console.log(
+    `control paint: ${CONTROL_PAINT_STATUS} — ` +
+      `${CONTROL_PAINT_ARMED ? "ENFORCED (a verdict fails this run)" : "PENDING (known debt is reported, a control OUTSIDE the registry still fails)"}\t` +
+      `${controlPaint.judged} control group(s) judged, per theme: ${controlPaint.perTheme.join(", ")}\t` +
+      `${controlPaint.flagged} group(s) / ${controlPaint.flaggedElements} rendered element(s) ` +
+      `paint a background this stylesheet did not set\t` +
+      `${KNOWN_CONTROL_PAINT.length} registry entr(ies)\t` +
+      `${controlPaint.verdicts.length} verdict(s) thrown, ${controlPaint.reported.length} reported\t` +
+      `${controlPaint.elapsedMs} ms wall clock`,
+  );
+  // ── POZYCJA AKCJI GŁÓWNEJ W PAŚMIE TYTUŁU (FAZA B, LOT B2) ───────────────
+  // Ta sama umowa co wyżej, i z tego samego powodu: ekran zmierzony ZGODNIE
+  // z kanoniczną listą jest opisem znanego długu Fazy C i tylko się drukuje;
+  // ekran, który się od niej ROZJECHAŁ, pada zawsze. Awarie przyrządu —
+  // pasmo, którego nie było, cel, na który spacer nie dojechał, wiersz listy,
+  // którego nikt nie dotknął — padają bezwarunkowo.
+  const titleBand = await titleBandActionCensus(browser);
+  for (const failure of titleBand.failures) {
+    problems.push(`title band — instrument: ${failure}`);
+  }
+  for (const verdict of titleBand.verdicts) {
+    problems.push(`title band — ${verdict}`);
+  }
+  for (const line of titleBand.reported)
+    console.log(`title band\treported\t${line}`);
+  console.log(
+    `title band: ${TITLE_BAND_ACTION_STATUS} — ` +
+      `${TITLE_BAND_ACTION_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
+      `${titleBand.judged} of ${TITLE_BAND_ROWS.length} declared screen(s) judged\t` +
+      `${titleBand.divergent} screen(s) place the primary action outside the title row or away ` +
+      `from the band's end (${titleBand.displacedRow} vertical, ${titleBand.displacedInline} horizontal), ` +
+      `${titleBand.held} agree with the prototype, ` +
+      `${titleBand.notComparable} have no prototype counterpart\t` +
+      `${TITLE_BAND_DIVERGENCES.length} divergence(s) on the canonical list\t` +
+      `${titleBand.verdicts.length} verdict(s) thrown, ${titleBand.reported.length} reported\t` +
+      `${titleBand.elapsedMs} ms wall clock`,
+  );
   // ── P7 + PARY LOTÓW 2-6: PRZELOT TRAS ───────────────────────────────────
   // OSOBNY PRZELOT OD `visualLanguagePairs`, i to nie jest podział estetyczny:
   // tamten chodzi po POWŁOCE LĄDOWANIA i mierzy pary lotu 1 bez jednego
@@ -5822,6 +7700,35 @@ try {
     // pisał, że niczego nie egzekwuje.
     if (REPORT_ONLY) console.log(`report: ${line}`);
     else problems.push(line);
+  }
+  // Ta sama kontrola nad drugim rejestrem, i to nie jest kopia dla symetrii:
+  // wpis o zapadniętej treści jest jeszcze łatwiejszy do przeżycia niż wpis
+  // o przepełnieniu, bo jego przedmiot jest NIEWIDOCZNY — nikt go nie zauważy
+  // ani na zrzucie, ani w raporcie przepełnień, który go z definicji pomija.
+  for (const entry of unusedCollapsedEntries(matchedCollapsed)) {
+    const line =
+      `the collapsed-text registry — ${entry.surface}: ${entry.signature} never collapsed in any pass. ` +
+      `Either the collapse order was fixed and the entry goes, or this gate stopped seeing that screen.`;
+    if (REPORT_ONLY) console.log(`report: ${line}`);
+    else problems.push(line);
+  }
+  console.log(
+    `collapsed text: ${KNOWN_COLLAPSED_TEXT.length} registered debt(s), ` +
+      `${matchedCollapsed.size} met; enforced on ${COLLAPSED_TEXT_ENFORCED_SURFACES.join(", ")}, ` +
+      `collected and printed everywhere else`,
+  );
+  // Ta sama kontrola nad tabelą drzwi rekordu. Wpis, którego żaden przelot nie
+  // wykonał, opisuje powierzchnię, która przestała rysować otwieralny wiersz —
+  // i wtedy zdanie tej tabeli o niej jest zdaniem o niczym. Przy `navigates`
+  // jest to szczególnie ciche, bo taki wpis SAM WYŁĄCZA dwuklik: nie ma czego
+  // zaobserwować, więc nieaktualna deklaracja wygląda tak samo jak aktualna.
+  for (const surface of Object.keys(RECORD_DOORS)) {
+    if (doorsExercised.has(surface)) continue;
+    problems.push(
+      `the record-door table — ${surface}: declared "${RECORD_DOORS[surface]}" but drew no openable row in any pass. ` +
+        `Either the destination stopped drawing one (and the entry goes), or the fixture stopped reaching it — ` +
+        `and a "navigates" entry that nothing exercises is indistinguishable from coverage.`,
+    );
   }
 } finally {
   await browser.close();

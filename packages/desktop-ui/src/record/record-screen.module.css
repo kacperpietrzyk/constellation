@@ -67,6 +67,31 @@
   margin-inline-start: auto;
 }
 
+/* ── W TYM PAŚMIE NIE STOI JUŻ ŻADNA KONTROLKA FORMULARZA (Faza D, lot D11) ──
+   Do 2026-08-12 stała tu reguła `.actions select` z lotu C5 i cała jej proza:
+   pas akcji otwartego projektu niósł `<select>` „Apply template…" i osobny
+   przycisk „Apply", a reguła nadawała kontrolce metrykę przycisków obok niej
+   (`max-inline-size: 16rem`, `padding-inline: var(--space-3)`,
+   `border-radius: var(--radius-md)`, `font-size: var(--text-sm)`).
+
+   ODESZŁA RAZEM ZE SWOIM PODMIOTEM, A NIE ZAMIAST NIEGO. `<select>` zastąpił
+   dymek (`projects/ApplyTemplatePopover.tsx`), którego wyzwalacz JEST
+   przyciskiem — niesie `secondary-button compact`, tak samo jak „Close
+   project" obok. Metryki nie trzeba już przepisywać na kontrolkę wyboru, bo
+   kontrolki wyboru w tym paśmie nie ma; zdanie prototypu, którego lot C5
+   bronił („kontrolka stoi jak przycisk obok niej"), jest teraz spełnione przez
+   to, że to JEST przycisk. Prototyp mówi to samo z drugiej strony: w żadnym
+   z czternastu jego ekranów nie ma ani jednego `<select>`, `<input>` ani
+   `<textarea>` w paśmie tytułu, a wybór jednej rzeczy z listy robi u niego
+   przycisk otwierający menu (`popover()`, `v3/app.js:1921-1961`, zawieszony na
+   `.btn`, np. `v3/app.js:1571`).
+
+   CO PILNUJE, ŻE TO SIĘ NIE COFNIE: pary C5-01a i C5-01b mierzą dziś stopień
+   pisma i promień WYZWALACZA (przepięte w tym locie), a para D11-01 liczy
+   `<select>` w tym paśmie i żąda ZERA — bez niej ktoś mógłby dostawić drugą
+   kontrolkę obok dymka przy zielonym przelocie. Powody stoją przy wpisach
+   w `scripts/visual-language-pairs.mjs`. */
+
 /* A slice that did not land says so where its panel would have been. Told
    apart from an empty panel on purpose: "nothing here" and "we could not read
    it" are different facts, and the second is worth retrying. */

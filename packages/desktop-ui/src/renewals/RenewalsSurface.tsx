@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { StrategicRecordId, TaskId } from "@constellation/contracts";
 
@@ -21,6 +21,7 @@ import { TopicHelp } from "../help/TopicHelp.js";
 import { indexRelationships } from "../crm/organization-reading.js";
 import { fmtApprox, fmtMoney, fmtUplift } from "../crm/money.js";
 import { Icon } from "../components/Icon.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
   type ListNavigationItemProps,
@@ -731,39 +732,41 @@ export const RenewalsSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        Renewals
-      </h1>
-    </header>
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="Renewals" />
   );
 
   if (!relationships.available)
     return (
-      <div
-        className={`surface-scroll ${styles.renewals}`}
-        data-renewals-surface
-      >
-        {header}
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>Renewals are unavailable</h2>
-            {/* The slice's own reason. The three section headings do NOT render
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także tutaj — patrz nota
+      // przy głównym zwrocie niżej. Gdyby stan awaryjny trzymał stary układ,
+      // chrom skakałby o 12 px dokładnie wtedy, gdy ekran mówi, że czegoś nie
+      // dało się przeczytać.
+      <>
+        {header()}
+        <div
+          className={`surface-scroll ${styles.renewals}`}
+          data-renewals-surface
+        >
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>Renewals are unavailable</h2>
+              {/* The slice's own reason. The three section headings do NOT render
                 behind this: an empty "Time to start" is an answer computed from
                 the watching set, and printing it over a failed read would say
                 "nothing to do" when the truth is "nothing could be asked". */}
-            <p data-renewals-unavailable>{relationships.message}</p>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
-      </div>
+              <p data-renewals-unavailable>{relationships.message}</p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </section>
+        </div>
+      </>
     );
 
   const renderRows = (
@@ -805,22 +808,48 @@ export const RenewalsSurface = ({
   );
 
   return (
-    <div className={`surface-scroll ${styles.renewals}`} data-renewals-surface>
-      {header}
-      {/* POSITION 6 — THE SCREEN'S OWN ACTION IS PAINTED AS THE PRIMARY ONE.
-          This is ruling R2, taken once for five surfaces and not decided here:
-          the reference gives this control `.btn.primary`
-          (`v3/screens/renewals.js:217`, painted at `v3/app.css:321-332`), and
-          `.ui-craft/tokens.md` "Accent rule" job 2 licenses exactly one primary
-          action per view.
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest WARUNKIEM, nie stylem: pasma muszą być
+    // bezpośrednimi dziećmi `.work-surface`, więc nic nie może stanąć między
+    // nimi a nośnikiem.
+    <>
+      {header(
+        /* POSITION 6 — THE SCREEN'S OWN ACTION IS PAINTED AS THE PRIMARY ONE.
+           This is ruling R2, taken once for five surfaces and not decided here:
+           the reference gives this control `.btn.primary`
+           (`v3/screens/renewals.js:217`, painted at `v3/app.css:321-332`), and
+           `.ui-craft/tokens.md` "Accent rule" job 2 licenses exactly one primary
+           action per container that owns one.
 
-          IT IS A TOGGLE, SO IT DEMOTES ITSELF. The counter-argument the ruling
-          weighed is real — with the create form open, "Open the amendment" and
-          the form's own submit are the primary things on this canvas, and two
-          filled accents in one view is the one thing the rule forbids by
-          counting. Painting the trigger primary only while it is CLOSED keeps
-          the promise of "one per view" true in both states. */}
-      <div className={styles.crumbbar}>
+           IT IS A TOGGLE, SO IT DEMOTES ITSELF — AND THE RULE DOES NOT MAKE IT.
+           Corrected 2026-08-11 after review: what "Usage constraints" 3 forbids
+           by counting is two accent fills inside ONE CONTAINER, not two in one
+           view. The rule was rewritten on 2026-08-07 precisely to stop saying
+           "one per view" (`.ui-craft/tokens.md`: "one per container that owns a
+           main action, not one per view"). Checked rather than assumed: the
+           create form is a SIBLING of the band, its own element below in this
+           file, so the contract licenses both fills outright.
+
+           It stays as a choice about MEANING: once the form is on screen the
+           thing to press is inside it, and this button only closes it again.
+           That is a deliberate divergence from the prototype, whose
+           `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) has no state in
+           which the band action goes grey. The same paragraph stands on People,
+           Organizations and Pipeline.
+
+           PHASE C, LOT C2 — THE BAR IT STOOD IN IS GONE, AND THE ACTION MOVED
+           INTO THE TITLE BAND. The prototype does not stack a title band and an
+           action bar: `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) is ONE
+           band carrying the screen's name and its action, with the action pushed
+           to the end by `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`).
+           Measured before the fix (`dowody/c2-czerwien-poziom.txt`): 74.1 px
+           below the title row against a tolerance of 18, and 986.2 px short of
+           the band's end against a tolerance of 16. */
         <button
           aria-expanded={creating}
           className={creating ? "secondary-button" : "primary-button"}
@@ -829,311 +858,318 @@ export const RenewalsSurface = ({
         >
           <Icon name="capture" />
           New renewal
-        </button>
-      </div>
+        </button>,
+      )}
       {/* POSITION 7 — the reading of the list stands in its own band, under the
           row that acts on it (`v3/app.css:295-301`,
           `v3/screens/renewals.js:218-221`). */}
-      <div className={styles.viewbar}>
+      <div className={`view-band ${styles.viewbar}`}>
         <span aria-live="polite" className={styles.count} role="status">
           {`${countLabel(sections.openCount, "contract")} open · ${sections.closed.length} closed this cycle`}
         </span>
       </div>
 
-      {creating && (
-        <form
-          aria-label="New renewal"
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitRenewal();
-          }}
-        >
-          <label className={styles.field}>
-            Client
-            <select
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  organizationId: event.target.value,
-                }))
-              }
-              required
-              value={draft.organizationId}
-            >
-              <option value="">Choose a client</option>
-              {index.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            Contract
-            <input
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              required
-              value={draft.title}
-            />
-          </label>
-          <label className={styles.field}>
-            Scope
-            <input
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  scope: event.target.value,
-                }))
-              }
-              required
-              value={draft.scope}
-            />
-          </label>
-          <label className={styles.field}>
-            Expires
-            <input
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  expiresAt: event.target.value,
-                }))
-              }
-              required
-              type="date"
-              value={draft.expiresAt}
-            />
-          </label>
-          {/* What the contract is worth per term. It is the number the NEXT
+      <div
+        className={`surface-scroll ${styles.renewals}`}
+        data-renewals-surface
+      >
+        {creating && (
+          <form
+            aria-label="New renewal"
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitRenewal();
+            }}
+          >
+            <label className={styles.field}>
+              Client
+              <select
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    organizationId: event.target.value,
+                  }))
+                }
+                required
+                value={draft.organizationId}
+              >
+                <option value="">Choose a client</option>
+                {index.organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              Contract
+              <input
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                required
+                value={draft.title}
+              />
+            </label>
+            <label className={styles.field}>
+              Scope
+              <input
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    scope: event.target.value,
+                  }))
+                }
+                required
+                value={draft.scope}
+              />
+            </label>
+            <label className={styles.field}>
+              Expires
+              <input
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    expiresAt: event.target.value,
+                  }))
+                }
+                required
+                type="date"
+                value={draft.expiresAt}
+              />
+            </label>
+            {/* What the contract is worth per term. It is the number the NEXT
               term is projected from, so without it the row can only say
               "nothing to project from" — and until this field existed there
               was no way to put one on a contract from the product at all. */}
-          <label className={styles.field}>
-            Worth per term
-            <input
-              inputMode="decimal"
-              // The command bounds the amount to non-negative
-              // (`MoneyInputSchema`), so the control refuses a negative here
-              // rather than letting it travel and come back as a toast about a
-              // rejected command. `step` admits the minor unit: the row prints
-              // whole major units, but a contract may be worth 195 000,50.
-              min={0}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  value: event.target.value,
-                }))
+            <label className={styles.field}>
+              Worth per term
+              <input
+                inputMode="decimal"
+                // The command bounds the amount to non-negative
+                // (`MoneyInputSchema`), so the control refuses a negative here
+                // rather than letting it travel and come back as a toast about a
+                // rejected command. `step` admits the minor unit: the row prints
+                // whole major units, but a contract may be worth 195 000,50.
+                min={0}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    value: event.target.value,
+                  }))
+                }
+                step="0.01"
+                type="number"
+                value={draft.value}
+              />
+            </label>
+            <label className={styles.field}>
+              Currency
+              <select
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    currency: event.target.value,
+                  }))
+                }
+                value={
+                  draft.currency === ""
+                    ? (defaultCurrency ?? "")
+                    : draft.currency
+                }
+              >
+                {currencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                draft.organizationId === "" ||
+                draft.title.trim() === "" ||
+                draft.scope.trim() === "" ||
+                draft.expiresAt === ""
               }
-              step="0.01"
-              type="number"
-              value={draft.value}
-            />
-          </label>
-          <label className={styles.field}>
-            Currency
-            <select
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  currency: event.target.value,
-                }))
-              }
-              value={
-                draft.currency === "" ? (defaultCurrency ?? "") : draft.currency
-              }
+              type="submit"
             >
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="primary-button"
-            disabled={
-              busy ||
-              draft.organizationId === "" ||
-              draft.title.trim() === "" ||
-              draft.scope.trim() === "" ||
-              draft.expiresAt === ""
-            }
-            type="submit"
-          >
-            {busy ? "Adding…" : "Add contract"}
-          </button>
-        </form>
-      )}
+              {busy ? "Adding…" : "Add contract"}
+            </button>
+          </form>
+        )}
 
-      {amendTarget !== undefined && (
-        <form
-          // The form NAMES the contract it will write to. It opens above the
-          // sections rather than inside the row, so with more than one contract
-          // under watch an unnamed form is a form pointing at whichever one you
-          // last pressed — and it writes a sale.
-          aria-label={`Add to ${amendTarget.renewal.title}`}
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            amend(amendTarget);
-          }}
-        >
-          <p className={styles.formTitle}>
-            Add to <b>{amendTarget.renewal.title}</b>
-            {amendTarget.organization === undefined
-              ? ""
-              : ` · ${amendTarget.organization.name}`}
-          </p>
-          <label className={styles.field}>
-            What is being added
-            <input
-              onChange={(event) =>
-                setAmendment((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              required
-              value={amendment.title}
-            />
-          </label>
-          <label className={styles.field}>
-            Why
-            <input
-              onChange={(event) =>
-                setAmendment((current) => ({
-                  ...current,
-                  need: event.target.value,
-                }))
-              }
-              required
-              value={amendment.need}
-            />
-          </label>
-          <label className={styles.field}>
-            Next step
-            <input
-              onChange={(event) =>
-                setAmendment((current) => ({
-                  ...current,
-                  nextAction: event.target.value,
-                }))
-              }
-              required
-              value={amendment.nextAction}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={
-              busy ||
-              amendment.title.trim() === "" ||
-              amendment.need.trim() === "" ||
-              amendment.nextAction.trim() === ""
-            }
-            type="submit"
+        {amendTarget !== undefined && (
+          <form
+            // The form NAMES the contract it will write to. It opens above the
+            // sections rather than inside the row, so with more than one contract
+            // under watch an unnamed form is a form pointing at whichever one you
+            // last pressed — and it writes a sale.
+            aria-label={`Add to ${amendTarget.renewal.title}`}
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              amend(amendTarget);
+            }}
           >
-            {busy ? "Opening…" : "Open the amendment"}
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => setAmending(undefined)}
-            type="button"
-          >
-            Cancel
-          </button>
-        </form>
-      )}
+            <p className={styles.formTitle}>
+              Add to <b>{amendTarget.renewal.title}</b>
+              {amendTarget.organization === undefined
+                ? ""
+                : ` · ${amendTarget.organization.name}`}
+            </p>
+            <label className={styles.field}>
+              What is being added
+              <input
+                onChange={(event) =>
+                  setAmendment((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                required
+                value={amendment.title}
+              />
+            </label>
+            <label className={styles.field}>
+              Why
+              <input
+                onChange={(event) =>
+                  setAmendment((current) => ({
+                    ...current,
+                    need: event.target.value,
+                  }))
+                }
+                required
+                value={amendment.need}
+              />
+            </label>
+            <label className={styles.field}>
+              Next step
+              <input
+                onChange={(event) =>
+                  setAmendment((current) => ({
+                    ...current,
+                    nextAction: event.target.value,
+                  }))
+                }
+                required
+                value={amendment.nextAction}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                amendment.title.trim() === "" ||
+                amendment.need.trim() === "" ||
+                amendment.nextAction.trim() === ""
+              }
+              type="submit"
+            >
+              {busy ? "Opening…" : "Open the amendment"}
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => setAmending(undefined)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </form>
+        )}
 
-      <section className={styles.section} data-renewal-section="due">
-        <div className={styles.sectionHead}>
-          <h2>
-            Time to start{" "}
-            <span className={styles.n}>{sections.due.length}</span>
-          </h2>
-          {/* The section, not the expiry date, organises this screen — so the
+        <section className={styles.section} data-renewal-section="due">
+          <div className={styles.sectionHead}>
+            <h2>
+              Time to start{" "}
+              <span className={styles.n}>{sections.due.length}</span>
+            </h2>
+            {/* The section, not the expiry date, organises this screen — so the
               question "what is a lead time" belongs at the section heading and
               nowhere else (#35). */}
-          <TopicHelp topic="lead-time" />
-        </div>
-        {sections.due.length === 0 ? (
-          // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the
-          // watching set, which is why this can be said at all.
-          <div
-            className={styles.computedEmpty}
-            data-renewal-empty
-            role="status"
-          >
-            <p>
-              <b>No contract has entered its lead time.</b>
-            </p>
-            <p className={styles.sub}>
-              {sections.nextLead === undefined
-                ? "Nothing is being watched."
-                : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens ${dayDistance(sections.nextLead.days, "elapsed")}, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
-            </p>
+            <TopicHelp topic="lead-time" />
           </div>
-        ) : (
-          renderRows(sections.due, "due", 0, "Time to start")
-        )}
-      </section>
+          {sections.due.length === 0 ? (
+            // AN ANSWER, NOT AN ABSENCE. Both numbers below are computed from the
+            // watching set, which is why this can be said at all.
+            <div
+              className={styles.computedEmpty}
+              data-renewal-empty
+              role="status"
+            >
+              <p>
+                <b>No contract has entered its lead time.</b>
+              </p>
+              <p className={styles.sub}>
+                {sections.nextLead === undefined
+                  ? "Nothing is being watched."
+                  : `${countLabel(sections.watching.length, "contract")} under watch — the nearest lead opens ${dayDistance(sections.nextLead.days, "elapsed")}, on ${formatDayKey(sections.nextLead.onDayKey)}.`}
+              </p>
+            </div>
+          ) : (
+            renderRows(sections.due, "due", 0, "Time to start")
+          )}
+        </section>
 
-      <section className={styles.section} data-renewal-section="watching">
-        <div className={styles.sectionHead}>
-          <h2>
-            Watching{" "}
-            <span className={styles.n}>{sections.watching.length}</span>
-          </h2>
-        </div>
-        {sections.watching.length === 0 ? (
-          <p className={styles.none}>Nothing is waiting for its lead time.</p>
-        ) : (
-          renderRows(
-            sections.watching,
-            "watching",
-            sections.due.length,
-            "Watching",
-          )
-        )}
-      </section>
+        <section className={styles.section} data-renewal-section="watching">
+          <div className={styles.sectionHead}>
+            <h2>
+              Watching{" "}
+              <span className={styles.n}>{sections.watching.length}</span>
+            </h2>
+          </div>
+          {sections.watching.length === 0 ? (
+            <p className={styles.none}>Nothing is waiting for its lead time.</p>
+          ) : (
+            renderRows(
+              sections.watching,
+              "watching",
+              sections.due.length,
+              "Watching",
+            )
+          )}
+        </section>
 
-      <section className={styles.section} data-renewal-section="closed">
-        <div className={styles.sectionHead}>
-          <h2>
-            Closed this cycle{" "}
-            <span className={styles.n}>{sections.closed.length}</span>
-          </h2>
-          <button
-            aria-expanded={showClosed}
-            className={styles.more}
-            onClick={() => setShowClosed((open) => !open)}
-            type="button"
-          >
-            {showClosed ? "Hide" : "Show"}
-            {/* The state the button announces is now also a state the button
+        <section className={styles.section} data-renewal-section="closed">
+          <div className={styles.sectionHead}>
+            <h2>
+              Closed this cycle{" "}
+              <span className={styles.n}>{sections.closed.length}</span>
+            </h2>
+            <button
+              aria-expanded={showClosed}
+              className={styles.more}
+              onClick={() => setShowClosed((open) => !open)}
+              type="button"
+            >
+              {showClosed ? "Hide" : "Show"}
+              {/* The state the button announces is now also a state the button
                 SHOWS: the chevron turns on `aria-expanded="true"`
                 (`v3/screens/renewals.css:31-32`,
                 `v3/screens/renewals.js:237-238`). */}
-            <Icon name="chevron-down" />
-          </button>
-        </div>
-        {showClosed &&
-          (sections.closed.length === 0 ? (
-            <p className={styles.none}>Nothing has closed this cycle.</p>
-          ) : (
-            renderRows(
-              sections.closed,
-              "closed",
-              sections.due.length + sections.watching.length,
-              "Closed this cycle",
-            )
-          ))}
-      </section>
-    </div>
+              <Icon name="chevron-down" />
+            </button>
+          </div>
+          {showClosed &&
+            (sections.closed.length === 0 ? (
+              <p className={styles.none}>Nothing has closed this cycle.</p>
+            ) : (
+              renderRows(
+                sections.closed,
+                "closed",
+                sections.due.length + sections.watching.length,
+                "Closed this cycle",
+              )
+            ))}
+        </section>
+      </div>
+    </>
   );
 };

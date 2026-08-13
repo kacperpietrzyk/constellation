@@ -8,6 +8,47 @@
 // `v3/app.css`. Lista rozsiana po asercjach byłaby tym samym brakiem napisanym
 // inaczej: nie dałoby się jej przeczytać ani policzyć.
 //
+// ── NUMERY LINII W `contract` GNIJĄ, I TO JEST WŁASNOŚĆ, NIE WYPADEK ─────────
+// `.ui-craft/` jest GITIGNOROWANY (`.gitignore:5`) i przepisywany w tym samym
+// przebiegu, w którym prototyp wygrywa z kontraktem — więc każdy zakres linii
+// w polu `contract` opisuje treść, której historia nie pilnuje. Zmierzone przy
+// naprawie po przeglądzie lotu D2, 2026-08-11: DZIEWIĘĆDZIESIĄT PIĘĆ cytatów
+// w tym pliku wskazywało na inne sekcje, niż nazywał ich własny nawias — dwa
+// najczęstsze zakresy (22 × „Spacing and density", 26 × „Component layer")
+// pokazywały wtedy na rampę kolorów i na motyw ciemny. Lot D2 nie wymyślił tej
+// wady, tylko powielił zastaną konwencję — i dlatego zamknięcie jej dziewięciu
+// własnych par byłoby zostawieniem w jednym pliku dwóch sprzecznych adresów tej
+// samej sekcji.
+//
+// OBOWIĄZEK NASTĘPNEGO LOTU, KTÓRY PRZEPISZE `.ui-craft/`: przeliczyć te zakresy
+// JEDNYM przebiegiem po całym pliku, nie po własnych parach. NAZWA SEKCJI
+// W NAWIASIE JEST CZĘŚCIĄ CYTATU WAŻNIEJSZĄ NIŻ LICZBY — to po niej odnajduje
+// się sekcję, kiedy liczby już nie trafiają. Numery stanu na 2026-08-11:
+// Spacing and density 85, Type 94, Shape/motion/depth 110, Dark theme 140,
+// Component layer 202, Form first 321, What the accent is allowed to mean 353.
+//
+// PRZELICZONE TRZECI RAZ PRZEZ LOT D6, 2026-08-11, i znowu z tej samej
+// przyczyny: „prototyp wygrywa z kontraktem" kazało dopisać dwie reguły,
+// których `tokens.md` nie miał — rysowany znacznik stanu (do `### Status and
+// accessibility`, 18 linii) i szósta praca akcentu (do `### What the accent is
+// allowed to mean`, 17 linii). Pierwsza wstawka przesunęła W DÓŁ wszystko od
+// `## Component layer`: 184 → 202, 303 → 321, 335 → 353. Sekcje NAD nią stoją
+// nietknięte, i to jest cała różnica między przeliczeniem a zgadywaniem.
+//
+// ZAKRESY LINII W POLACH `contract` PONIŻEJ TYCH WSTAWEK PRZESUNĘŁY SIĘ O TYLE
+// SAMO i NIE zostały przepisane jeden po drugim — to jest ta sama rot, którą
+// akapit wyżej nazywa, i przepisywanie dziewięćdziesięciu cytatów pod plik,
+// którego historia nie pilnuje, kupiłoby jeden dzień celności. Pary lotu D6
+// cytują SAMĄ NAZWĘ SEKCJI, bez liczb, i to jest konwencja, którą ten nagłówek
+// poleca.
+//
+// TEN SAM PRZEBIEG PRZELICZYŁ JE DRUGI RAZ, i to jest dowód, jak tanio ta rot
+// wraca: para D2-02d potrzebowała reguły o cyfrach tabularnych, `tokens.md` jej
+// NIE MIAŁ, więc zgodnie z zasadą „prototyp wygrywa z kontraktem" reguła weszła
+// do `### Type` — dziewięć linii, po których WSZYSTKIE zakresy od `### Shape`
+// w dół przesunęły się o dziewięć i musiały zostać przeliczone ponownie. Liczby
+// wyżej są już po tej poprawce.
+//
 // ── DLACZEGO PARA „PENDING" MUSI NIE PASOWAĆ ─────────────────────────────────
 // Wpis o pozycji, której lot jeszcze nie oddał, jest asercją NA DZISIEJSZYM
 // DRZEWIE: „ta właściwość NIE ma jeszcze wartości z prototypu". Gdyby taki wpis
@@ -71,7 +112,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 1,
     title: "the sidebar drops the glass blur",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "155-160",
@@ -91,7 +132,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 1,
     title: "the sidebar takes the sidebar plane",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "155-160",
@@ -113,8 +154,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 2,
     title: "the left column grows a second level",
-    contract:
-      ".ui-craft/tokens.md:127-140 (Component layer — shell-*, nav-active-*)",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*, nav-active-*)",
     prototype: {
       file: "v3/app.css",
       lines: "240-260",
@@ -145,7 +185,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 3,
     title: "the active tab is underlined with the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "where the reader is")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "where the reader is")',
     prototype: {
       file: "v3/app.css",
       lines: "119-122",
@@ -166,8 +206,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 3,
     title: "the active tab takes the material's top edge",
-    contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/app.css",
       lines: "117-118",
@@ -190,7 +229,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 4,
     title: "the workspace mark is an accent tile",
-    contract: ".ui-craft/tokens.md:183-211 (Form first — ink and wash)",
+    contract: ".ui-craft/tokens.md (Form first — ink and wash)",
     prototype: {
       file: "v3/app.css",
       lines: "169-175",
@@ -211,7 +250,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 4,
     title: 'the workspace mark stops saying "I" on every workspace',
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "169-175",
@@ -232,7 +271,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 4,
     title: "the brand row carries an accent-painted mark",
-    contract: ".ui-craft/tokens.md:183-211 (Form first — ink and wash)",
+    contract: ".ui-craft/tokens.md (Form first — ink and wash)",
     prototype: {
       file: "v3/app.css",
       lines: "98-103",
@@ -259,7 +298,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 5,
     title: "the active destination's icon takes the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "where the reader is")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "where the reader is")',
     prototype: {
       file: "v3/app.css",
       lines: "221",
@@ -283,7 +322,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 6,
     title: "the shortcut stays quiet on rows that are not current",
     contract:
-      ".ui-craft/tokens.md:64-70 (Type — mono only for time, shortcuts, versions, IDs)",
+      ".ui-craft/tokens.md (Type — mono only for time, shortcuts, versions, IDs)",
     prototype: {
       file: "v3/app.css",
       lines: "229-234",
@@ -306,10 +345,10 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 7,
     title: "the navigation row is 1.75rem, not 2.125rem",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density — dense rows)",
+    contract: ".ui-craft/tokens.md (Spacing and density — dense rows)",
     prototype: {
       file: "v3/app.css",
-      lines: "198-204",
+      lines: "210-216",
       value: "`.nav-item { min-height: 1.75rem }`",
     },
     subject: {
@@ -326,11 +365,10 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 7,
     title: "the group heading sits space-3 from what precedes it",
-    contract:
-      ".ui-craft/tokens.md:55-63 (Spacing and density — 4/8/12px increments)",
+    contract: ".ui-craft/tokens.md (Spacing and density — 4/8/12px increments)",
     prototype: {
       file: "v3/app.css",
-      lines: "210-216",
+      lines: "197",
       value: "`.nav-section { margin-top: var(--space-3) }` — 0.75rem",
     },
     subject: {
@@ -349,7 +387,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 8,
     title: "the window carries grain",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — material, not texture)",
+    contract: ".ui-craft/tokens.md (Dark theme — material, not texture)",
     prototype: {
       file: "v3/app.css",
       lines: "79-82",
@@ -370,7 +408,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 8,
     title: "the grain layer does not take the click",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth — Z roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — Z roles)",
     prototype: {
       file: "v3/app.css",
       lines: "80",
@@ -392,7 +430,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 9,
     title: "the search control is not dimmed as a whole",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — input-*)",
+    contract: ".ui-craft/tokens.md (Component layer — input-*)",
     prototype: {
       file: "v3/app.css",
       lines: "183-194",
@@ -413,7 +451,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 9,
     title: "the search control drops the keycap",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — input-*)",
+    contract: ".ui-craft/tokens.md (Component layer — input-*)",
     prototype: {
       file: "v3/app.css",
       lines: "183-194",
@@ -435,10 +473,10 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 10,
     title: "the capture dock is a pill",
-    contract: ".ui-craft/tokens.md:71-80 (Shape — full radius for pills)",
+    contract: ".ui-craft/tokens.md (Shape — full radius for pills)",
     prototype: {
       file: "v3/app.css",
-      lines: "808",
+      lines: "804-810",
       value: "`.capture { border-radius: var(--radius-full) }`",
     },
     subject: {
@@ -455,7 +493,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 10,
     title: "the capture dock takes the prototype's vertical padding",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/app.css",
       lines: "807",
@@ -479,7 +517,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     // deklaruje wysokości w ogóle, więc jej 34 px jest SKUTKIEM paddingu
     // i interlinii i nie da się go zacytować jako wartości. Ta para mierzy to,
     // co v3 NAPRAWDĘ mówi: żadnego `min-height`.
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/app.css",
       lines: "804-816",
@@ -501,7 +539,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 11,
     title: "the title band spans the window, not the work column",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "84-90",
@@ -528,7 +566,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 13,
     title: "the left column can be collapsed on purpose",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "152",
@@ -575,7 +613,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 14,
     title: "the right end of the tab strip is a glyph, not a word",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "135-143",
@@ -595,7 +633,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 14,
     title: "and it is square, so no label can be hiding inside it",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
     prototype: {
       file: "v3/app.css",
       lines: "135-143",
@@ -632,7 +670,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     // świeżych w Bibliotece i jednym NOWYM na `tasks:calendar`. Pełny rozpis
     // stoi przy samym tokenie (`packages/desktop-ui/src/tokens.css`), żeby nie
     // było go w dwóch miejscach.
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
       lines: "103",
@@ -652,7 +690,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 15,
     title: "the titlebar band is 2.5rem",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
       lines: "106",
@@ -676,7 +714,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     lot: 1,
     position: 15,
     title: "the header band is 2.5rem",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/tokens.css",
       lines: "107",
@@ -713,7 +751,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     position: 12,
     title: "the Inbox badge takes the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is on the books")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "what is on the books")',
     prototype: {
       file: "v3/app.css",
       lines: "235-239",
@@ -729,6 +767,645 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "accent" },
     status: "enforced",
   },
+
+  // ══ FAZA C, LOT C1 — SZYNA ZAMIAST RAMKI ══════════════════════════════════
+  // NOWA PRZESTRZEŃ NAZW, I TO JEST ŚWIADOME. Ta pozycja NIE STOI w briefie
+  // Fazy 3 — piętnaście wierszy Lotu 1 mówi o ikonie aktywnej pozycji
+  // (`v3/app.css:221`), a o nośniku samego stanu nie mówi ani jeden. Rozjazd
+  // wypisała dopiero Faza 4, sześcioma wpisami rejestru
+  // (`faza-4-porownanie-ekranow.md`, wpisy today #1, renewals #11, orgs #17,
+  // people #22 oraz oba wpisy powłokowe z ekranów projektu). Wpisanie tych par
+  // jako „lot 1, pozycja 5" kosztowałoby dokładnie tyle, ile kosztuje każde
+  // kłamstwo o proweniencji w tym pliku: następny czytelnik szukałby ich
+  // uzasadnienia w tabeli, w której go nie ma.
+  //
+  // POZYCJI JEST DWIE, BO MIERZALNOŚĆ ROZCINA JĄ NA DWIE. Pozycja 1 (wiersz
+  // bieżący) rysuje się na powłoce lądowania i mierzy ją TEN przelot; pozycja 2
+  // (cel NADRZĘDNY otwartego rekordu projektu) wymaga otwarcia rekordu, więc
+  // mierzy ją mapa trasowana niżej. Obie deklaracje mówią o tym samym w obie
+  // strony: `positionsWithoutPairs` każdej z map wskazuje na pozycję drugiej.
+  {
+    id: "C1-01a",
+    lot: "C1",
+    position: 1,
+    title: "the current destination is marked with a rail, not a frame",
+    contract:
+      '.ui-craft/tokens.md, sekcja „Form first — ink and wash" („Ink is confined to … a 2–2.5 px rail (v3/app.css:485-487, :222-226)") oraz :328-333, „Wash rarely travels alone" („where the reference washes an object it also inks one edge of it")',
+    prototype: {
+      file: "v3/app.css",
+      lines: "222-226",
+      value:
+        '`.nav-item[aria-current="page"]::before { width: 2.5px; height: 1rem; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow) }`',
+    },
+    subject: {
+      // DEKLARACJA, NIE KLASA: `aria-current="page"` stoi na wierszu bieżącym
+      // od `RealApp.tsx` i jest tym samym podmiotem, który czyta L1-05.
+      selector: '.nav-item[aria-current="page"]',
+      why: "the rail is a generated layer, so the pair reads ::before — a rule that never generated it comes back as PSEUDO_ABSENT, which this pass files as DIFFERS rather than as a broken instrument",
+      app: "packages/desktop-ui/src/styles.css (.nav-item.active::before)",
+    },
+    read: { pseudo: "::before", property: "backgroundColor" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    // FORMA TUSZU, NIE TYLKO JEGO KOLOR. Pierwsza wersja tego lotu miała na
+    // szynę JEDNĄ asercję — kolor `::before` — a oddawała geometrię przepisaną
+    // z prototypu co do liczby. Zamiana 2,5 px na 12 px zrobiłaby z szyny pasek
+    // wypełniający wiersz, czyli dokładnie to, czego zabrania kontrakt („Ink
+    // may not fill a row"), i wróciłaby ZIELONA. Kontrakt podaje formę liczbą,
+    // więc para też podaje ją liczbą.
+    id: "C1-01c",
+    lot: "C1",
+    position: 1,
+    title: "and the ink stays a rail: 2.5 px, not a bar filling the row",
+    contract:
+      '.ui-craft/tokens.md, sekcja „Form first — ink and wash" („Ink is confined to a mark, a rail … a 2–2.5 px rail (v3/app.css:485-487, :222-226)"; „Ink may not fill a row, a card, a column, a panel, or a plane")',
+    prototype: {
+      file: "v3/app.css",
+      lines: "222-226",
+      value:
+        "`width: 2.5px` — ta sama liczba, którą kontrakt podaje jako sufit",
+    },
+    subject: {
+      selector: '.nav-item[aria-current="page"]',
+      why: "same generated layer as C1-01a; the colour pair says the ink is the accent, this one says the ink is a rail — a rule that keeps the accent and widens the layer passes the first and fails this one",
+      app: "packages/desktop-ui/src/styles.css (.nav-item.active::before)",
+    },
+    read: { pseudo: "::before", property: "width" },
+    expect: { kind: "literal", value: "2.5px" },
+    status: "enforced",
+  },
+  {
+    id: "C1-01b",
+    lot: "C1",
+    position: 1,
+    title: "and it stops framing the row with a full accent border",
+    contract:
+      '.ui-craft/tokens.md, sekcja „Form first — ink and wash" (Ink may not fill a row … a one-pixel accent edge around a PANEL is the named exception, and a navigation row is not one)',
+    prototype: {
+      file: "v3/app.css",
+      lines: "218-220",
+      value:
+        '`.nav-item[aria-current="page"] { background: var(--accent-quieter); color: var(--text-primary); font-weight: 500 }` — ani jednej deklaracji obramowania',
+    },
+    subject: {
+      selector: '.nav-item[aria-current="page"]',
+      why: "same subject as C1-01a; the base rule keeps `border: 1px solid transparent` so the state never moves the layout, which is why the delivered value is the transparent literal and not `0px`",
+      app: "packages/desktop-ui/src/styles.css (.nav-item.active), tokens.css (--nav-active-border)",
+    },
+    read: { property: "borderTopColor" },
+    // NIE `kind: "not"` NA WARTOŚCI AKCENTU, i to jest różnica między asercją
+    // o dostawie a asercją o nieobecności starej wady: „cokolwiek innego niż
+    // fiolet" jest prawdą także o wierszu, któremu ktoś dał obwódkę szarą.
+    // Literał przezroczystości mówi, co ma tam być.
+    expect: { kind: "literal", value: "rgba(0, 0, 0, 0)" },
+    status: "enforced",
+  },
+
+  // ══ LOT D2 FAZY D — DZISIAJ I OGON POWŁOKI ═══════════════════════════════
+  //
+  // WSZYSTKIE PARY TEGO LOTU SĄ W MAPIE POWŁOKI, A NIE W TRASOWANEJ, i to jest
+  // fakt o przelocie, nie wygoda: `HARNESS` (`?surface=collaboration`) ląduje
+  // na DZISIAJ, więc pasmo tego ekranu, jego nagłówki sekcji i jego znacznik
+  // pomocy stoją w drzewie bez ani jednego kliknięcia — tak samo jak pasek
+  // zakładek, nagłówki modułów i wiersze nawigacji. Dopisanie ich do mapy
+  // trasowanej kosztowałoby przystanek, który już jest.
+
+  // ── POZYCJA 1 (wpis #2) — nagłówek sekcji przestaje krzyczeć głośniej niż
+  //    tytuł ekranu nad nim ────────────────────────────────────────────────
+  {
+    id: "D2-01a",
+    lot: "D2",
+    position: 1,
+    title: "the section heading takes the prototype's size",
+    contract: ".ui-craft/tokens.md (Type — scale)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "42-45",
+      value:
+        "`.td-sec-head h3 { font-size: var(--text-sm); font-weight: 600 }` — ta sama para liczb, którą `styles.css` daje TYTUŁOWI ekranu (`.surface-header h1`), więc nagłówek sekcji jest tytułowi RÓWNY, nie podporządkowany",
+    },
+    subject: {
+      // NAZWA Z MODUŁU CSS, znormalizowana tym samym wyrażeniem, co reszta
+      // przelotu. Trzy nagłówki sekcji Dzisiaj rysują się naraz i wszystkie
+      // biorą tę samą regułę — przelot wymaga JEDNEJ wartości na wszystkich
+      // dopasowaniach, więc rozjazd między sekcjami byłby tu czerwony.
+      selector: '[class*="_sectionHead_"] h2',
+      why: "the landing surface is Today; its three section heads share one rule and one value",
+      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-sm" },
+    status: "enforced",
+  },
+  {
+    id: "D2-01b",
+    lot: "D2",
+    position: 1,
+    title: "and its weight, instead of being bigger and lighter",
+    contract: ".ui-craft/tokens.md (Type — scale)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "42-45",
+      value: "`font-weight: 600`",
+    },
+    subject: {
+      selector: '[class*="_sectionHead_"] h2',
+      why: "same subject as D2-01a",
+      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2)",
+    },
+    // WAGA OSOBNO OD STOPNIA, BO PSUJE SIĘ OSOBNO: wpis rejestru mówi „większe
+    // I LŻEJSZE", czyli o dwóch liczbach naraz (16 px wagą 560). Para czytająca
+    // sam stopień byłaby zielona nad nagłówkiem 13 px wagą 560, czyli nad
+    // połową tej samej wady.
+    read: { property: "fontWeight" },
+    expect: { kind: "literal", value: "600" },
+    status: "enforced",
+  },
+  {
+    // DOPISANE PRZY NAPRAWIE PO PRZEGLĄDZIE TEGO LOTU. Dwie pary wyżej pilnują
+    // NAGŁÓWKA, a wpis #2 jest o RELACJI: dowód rejestru cytuje
+    // `v3/screens/today.css:42-49`, czyli nagłówek RAZEM z licznikiem, a lot
+    // zawęził cytat do `42-45`. Skutek był mierzalny i niemierzony — nagłówek
+    // zszedł z 1 rem na 0,8125, licznik został na 0,8125, więc dopisek zrównał
+    // się z rzeczą, do której jest dopiskiem. Para na sam nagłówek jest nad tą
+    // wadą ZIELONA, bo nagłówek ma dokładnie tę wartość, której się od niego
+    // chce.
+    id: "D2-01c",
+    lot: "D2",
+    position: 1,
+    title: "and the count beside it stays one step quieter than the heading",
+    contract: ".ui-craft/tokens.md (Type — scale)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "46-49",
+      value:
+        "`.td-sec-head .n { font-size: var(--text-xs); color: var(--text-quaternary); font-weight: 500 }` — stopień NIŻEJ niż `h3` w tym samym wierszu (`:42-45`); to samo rozstrzygnięcie niesie drugie pasmo prototypu, `v3/app.css:692`",
+    },
+    subject: {
+      // ZAGNIEŻDŻENIE, NIE SAMA KLASA: `.count` jest nazwą modułu i mogłaby
+      // kiedyś stanąć poza wierszem nagłówka. Para pyta o licznik STOJĄCY
+      // W NAGŁÓWKU, bo to jest relacja, którą wpis rejestru opisuje.
+      selector: '[class*="_sectionHead_"] [class*="_count_"]',
+      why: "two of the three section heads on the landing surface draw one (TodaySurface.tsx:367, :439) and both take the same rule",
+      app: "packages/desktop-ui/src/today.module.css (.count)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-xs" },
+    status: "enforced",
+  },
+  {
+    // WAGA OSOBNO OD STOPNIA, Z TEGO SAMEGO POWODU, CO PRZY D2-01a/D2-01b
+    // trzydzieści linii wyżej — i dopisane dlatego, że pierwsza wersja tej
+    // naprawy ruszyła OBIE liczby (`400` → `500`), a napisała parę tylko na
+    // jedną. Reguła własnego pliku, zastosowana do własnej dostawy.
+    id: "D2-01d",
+    lot: "D2",
+    position: 1,
+    title: "and it is a footnote's weight, not body text dropped in",
+    contract: ".ui-craft/tokens.md (Type — headings and body weights)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "46-49",
+      value: "`font-weight: 500`",
+    },
+    subject: {
+      selector: '[class*="_sectionHead_"] [class*="_count_"]',
+      why: "same subject as D2-01c",
+      app: "packages/desktop-ui/src/today.module.css (.count)",
+    },
+    read: { property: "fontWeight" },
+    expect: { kind: "literal", value: "500" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 2 (wpis #3) — data i pojemność zamieniają się miejscami ──────
+  {
+    id: "D2-02a",
+    lot: "D2",
+    position: 2,
+    title: "the date stands at the band's end, quiet and sentence-cased",
+    contract: ".ui-craft/tokens.md (Type — scale)",
+    prototype: {
+      file: "v3/screens/today.js",
+      lines: "129-130",
+      value:
+        "`crumbbar('<span class=\"cur\">Today</span>', '<span class=\"when\">Monday, 27 July 2026</span>')`, a `.when` (`v3/app.css:441`) to `--text-xs` w kolorze trzeciorzędnym",
+    },
+    subject: {
+      selector: ".surface-header [data-band-date]",
+      why: "declared attribute, not a module hash: the band's right end is the position this entry is about",
+      app: "packages/desktop-ui/src/TodaySurface.tsx, today.module.css (.bandDate)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-xs" },
+    status: "enforced",
+  },
+  {
+    id: "D2-02b",
+    lot: "D2",
+    position: 2,
+    title: "the uppercase date badge above the title is gone",
+    contract: ".ui-craft/brief.md (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/screens/today.js",
+      lines: "129-136",
+      value:
+        "prototyp NIE MA na tym ekranie wersalikowej plakietki daty w ogóle — ani w paśmie, ani nad tytułem",
+    },
+    subject: {
+      selector: ".surface-header .eyebrow",
+      why: "hand-written class in styles.css, shared with .nav-label/.section-label; this pair asks only whether the BAND still carries one",
+      app: "packages/desktop-ui/src/styles.css (.eyebrow), TodaySurface.tsx",
+    },
+    read: { property: null },
+    // `equals: 0`, A NIE `atLeast`: „nie ma ani jednej" jest całą treścią tego
+    // pół-wpisu. Reguła `.eyebrow` ZOSTAJE w arkuszu — mają ją inne pasma —
+    // więc para czytająca arkusz zamiast drzewa nic by tu nie zmierzyła.
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D2-02c",
+    lot: "D2",
+    position: 2,
+    title: "and the capacity line has left the band's right end",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band" (licznik idzie do paska widoku, nigdy na prawy koniec pasma)',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "12-17",
+      value:
+        "`.td-capacity { font-size: var(--text-sm); color: var(--text-tertiary) }` — pojemność leży POD tytułem, w `.td-head`, a nie w `crumbbar`",
+    },
+    subject: {
+      selector: ".surface-header [data-capacity]",
+      why: "the same declared attribute the surface already carried, read INSIDE the band: this half of the entry is about where the line stands, not what it says",
+      app: "packages/desktop-ui/src/TodaySurface.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    // DOPISANE PRZY NAPRAWIE PO PRZEGLĄDZIE TEGO LOTU. Lot przepisał `.capacity`
+    // z cytatem na `v3/screens/today.css:12-15` i wziął z tamtej reguły DWIE
+    // deklaracje z trzech — stopień i kolor — a zostawił cyfry tabularne, mimo
+    // że trzydzieści linii wyżej wziął tę samą deklarację dla `.bandDate`.
+    //
+    // ORAZ: DO TEJ PARY ŻADNA W TYM PLIKU NIE CZYTAŁA `fontVariantNumeric`,
+    // więc zdanie „przelot tę własność widzi" było domysłem o przyrządzie,
+    // a nie jego pomiarem. Teraz jest pomiarem.
+    id: "D2-02d",
+    lot: "D2",
+    position: 2,
+    title: "and its numbers stop shifting as the day is recounted",
+    // KONTRAKT DOPISANY W TYM SAMYM PRZEBIEGU, bo pierwsza wersja tej pary
+    // cytowała `### Type` pod nawiasem „mono only for time…", czyli regułę
+    // o PIŚMIE MASZYNOWYM — a to jest dokładnie ta wada, którą ten commit
+    // zamyka gdzie indziej: nawias nazywający treść, której nie ma pod adresem.
+    // Prototyp regułę MIAŁ, kontrakt jej nie miał, więc zgodnie z zasadą
+    // „prototyp wygrywa z kontraktem" reguła weszła do `tokens.md`, a nie
+    // cytat został naciągnięty.
+    contract:
+      ".ui-craft/tokens.md (Type — a row of recounted numbers takes tabular figures)",
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "12-15",
+      value:
+        "`.td-capacity { font-size: var(--text-sm); color: var(--text-tertiary); margin-bottom: var(--space-5); font-variant-numeric: tabular-nums }` — trzy deklaracje, nie dwie",
+    },
+    subject: {
+      // BEZ ZAKRESU `.surface-header`, ODWROTNIE NIŻ D2-02c: tamta para pyta,
+      // czy wiersza NIE MA w paśmie, ta — jak jest złożony tam, gdzie stoi.
+      selector: "[data-capacity]",
+      why: "the same declared attribute, read where the line actually stands: this is the only row on the surface made entirely of numbers that change through the day",
+      app: "packages/desktop-ui/src/today.module.css (.capacity)",
+    },
+    read: { property: "fontVariantNumeric" },
+    expect: { kind: "literal", value: "tabular-nums" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 3 (wpis #4) — pomoc na żądanie jest przypisem ────────────────
+  {
+    id: "D2-03a",
+    lot: "D2",
+    position: 3,
+    title: "help on demand is a round mark smaller than the label it stands by",
+    contract: ".ui-craft/surfaces/contextual-concept-help.md (Visual contract)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "896-904",
+      value:
+        "`.helpb { width: 1.125rem; height: 1.125rem; border-radius: var(--radius-full); font-size: var(--text-2xs) }`",
+    },
+    subject: {
+      selector: ".help-mark",
+      why: "hand-written class in styles.css; the landing surface draws exactly one of these",
+      app: "packages/desktop-ui/src/styles.css (.help-mark), TodaySurface.tsx",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 1.125 },
+    status: "enforced",
+  },
+  {
+    id: "D2-03b",
+    lot: "D2",
+    position: 3,
+    title: "and it is round, not a rounded rectangle with a word in it",
+    contract: ".ui-craft/surfaces/contextual-concept-help.md (Visual contract)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "896-904",
+      value: "`border-radius: var(--radius-full)`",
+    },
+    subject: {
+      selector: ".help-mark",
+      why: "same subject as D2-03a",
+      app: "packages/desktop-ui/src/styles.css (.help-mark)",
+    },
+    // PROMIEŃ OSOBNO OD SZEROKOŚCI, BO WPIS MÓWI O KSZTAŁCIE, NIE O ROZMIARZE:
+    // kwadrat 1,125 rem spełniłby samą szerokość, a rejestr skarży się na
+    // „słowny przycisk" wobec „okrągłego znacznika".
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-full" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 4 (wpis #5) — zakładka obejmuje własną etykietę ──────────────
+  {
+    id: "D2-04a",
+    lot: "D2",
+    position: 4,
+    title: "the shell tab stops growing into the free space of the strip",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "107-115",
+      value:
+        "`.tab` deklaruje `max-width: 13rem` i `min-width: 0`, i NIE deklaruje `flex` ani szerokości — szerokość zakładki jest funkcją jej treści",
+    },
+    subject: {
+      selector: ".shell-tab",
+      why: "hand-written class in styles.css; both screenshots the register compared drew exactly one tab, so this is not a function of how many are open",
+      app: "packages/desktop-ui/src/styles.css (.shell-tab)",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+  {
+    id: "D2-04b",
+    lot: "D2",
+    position: 4,
+    title: "and its floor stops being wider than a short label",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "107-115",
+      value: "`min-width: 0`",
+    },
+    subject: {
+      selector: ".shell-tab",
+      why: "same subject as D2-04a",
+      app: "packages/desktop-ui/src/styles.css (.shell-tab)",
+    },
+    // DRUGA DEKLARACJA, BO WYSTARCZY JEDNA Z DWÓCH, ŻEBY WADA WRÓCIŁA:
+    // `flex-grow: 0` przy podłodze 7 rem dalej daje płytę szerszą od napisu
+    // „Today", i to był dokładnie zmierzony stan sprzed tego lotu.
+    read: { property: "minWidth" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 5 (wpis #12) — pismo rysuje się tą samą kreską, co w prototypie
+  {
+    id: "D2-05",
+    lot: "D2",
+    position: 5,
+    title: "the window smooths its type the way the reference does",
+    contract: ".ui-craft/tokens.md (Type)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "7-13",
+      value: "`body { -webkit-font-smoothing: antialiased }`",
+    },
+    subject: {
+      selector: "body",
+      why: "the element the prototype declares it on; the app had NO declaration of this property anywhere in packages/desktop-ui/src",
+      app: "packages/desktop-ui/src/styles.css (body)",
+    },
+    // WŁASNOŚĆ, KTÓREJ NIE DA SIĘ ZOBACZYĆ W ARKUSZU, A DA SIĘ W SILNIKU.
+    // Rejestr postawił ten wpis na pomiarze TUSZU (o 24% więcej pikseli >120
+    // przy identycznej szerokości napisu), a `getComputedStyle` zwraca tę
+    // deklarację wprost — więc dowodem jest przyrząd, nie grep.
+    read: { property: "webkitFontSmoothing" },
+    expect: { kind: "literal", value: "antialiased" },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 6 (wpisy #13 i #54) — daszek zwijania stoi przed etykietą ────
+  {
+    id: "D2-06",
+    lot: "D2",
+    position: 6,
+    title: "the module chevron stands before the label, not at the far edge",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "599",
+      value:
+        '`<button class="nav-head" …>${icon("chevDown", "chev")}<span>${title}</span></button>` — znak zwijania jest PIERWSZYM dzieckiem wiersza',
+    },
+    subject: {
+      // POŁOŻENIE JAKO STRUKTURA, NIE JAKO PIKSEL. `gridTemplateColumns`
+      // rozwiązuje się do pikseli, a te zależą od długości nazwy modułu i od
+      // skali pisma — asercja na nich gniłaby przy pierwszej nowej grupie.
+      // „Daszek jest pierwszym dzieckiem" jest zdaniem, które psuje się
+      // dokładnie wtedy, kiedy wraca wada.
+      selector: ".nav-group-toggle > .nav-group-chevron:first-child",
+      why: "hand-written classes in styles.css; the position is asserted as structure so the pair does not rot on label length or text scale",
+      app: "packages/desktop-ui/src/RealApp.tsx, styles.css (.nav-group-toggle)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 7 (wpisy #24 i #31) — dwa cele nawigacji, dwa różne znaki ────
+  {
+    id: "D2-07a",
+    lot: "D2",
+    position: 7,
+    title: "Today carries a clock",
+    contract: ".ui-craft/brief.md (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "16",
+      value: '`today: "M8 2v3 … M2.5 8a5.5 5.5 0 1 0 11 0 …"` — zegar',
+    },
+    subject: {
+      // PREFIKS ŚCIEŻKI, BO GLIF JEST RYSUNKIEM, A NIE WŁASNOŚCIĄ STYLU.
+      // Przelot nie czyta atrybutów, ale selektor atrybutowy je widzi. Prefiks
+      // to pierwsza komenda prototypowego zegara przeskalowana ×1,5 — czyli
+      // ta sama liczba, którą niesie `Icon.tsx`. Świadoma cena: przerysowanie
+      // glifu wymaga poprawienia tej pary, i tak ma być, bo para pilnuje
+      // KTÓRY rysunek stoi przy tym celu.
+      selector: '[data-surface="today"] svg path[d^="M12 6.75V12"]',
+      why: "the glyph itself, reached by its own path data: two destinations carrying the same drawing is what this entry is about",
+      app: "packages/desktop-preload/src/surface-registry.ts, components/Icon.tsx (clock)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D2-07b",
+    lot: "D2",
+    position: 7,
+    title: "and Calendar a calendar page, so the two rows differ",
+    contract: ".ui-craft/brief.md (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "37",
+      value:
+        '`calendar: "M2.5 4.5a1 1 0 0 1 1-1h9 … M2.5 7h11M5.5 2.5v2M10.5 2.5v2"` — kartka z podziałką miesiąca',
+    },
+    subject: {
+      selector: '[data-surface="calendar"] svg path[d^="M3.75 6.75"]',
+      why: "same reasoning as D2-07a; both destinations stood in the navigation carrying `cockpit`, the four-cell grid",
+      app: "packages/desktop-preload/src/surface-registry.ts, components/Icon.tsx (calendar)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D2-07c",
+    lot: "D2",
+    position: 7,
+    title: "and Organizations a building, not a second pair of silhouettes",
+    contract: ".ui-craft/brief.md (Meaning earns color — form first)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "20",
+      value:
+        '`org: "M3 13.5V4.2a1 1 0 0 1 1-1h4.5 … M5.2 6h1.6M5.2 8.6h1.6M5.2 11.2h1.6"` — budynek z oknami',
+    },
+    subject: {
+      selector: '[data-surface="organizations"] svg path[d^="M4.5 20.25"]',
+      why: "the register measured this at 3x zoom: `relationships` and `people` differ by a connector stroke invisible at 16px, and both stood in the CRM group",
+      app: "packages/desktop-preload/src/surface-registry.ts, components/Icon.tsx (organization)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 8 (wpisy #50 i #66) — prawa krawędź wiersza niesie liczbę ────
+  {
+    id: "D2-08",
+    lot: "D2",
+    position: 8,
+    title: "navigation rows carry counts beyond Tasks and Inbox",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
+    prototype: {
+      file: "v3/app.js",
+      lines: "580-591",
+      value:
+        '`d.id === "projects" ? <span class="n">…</span> : d.id === "pipeline" ? … : d.id === "library" ? …` — liczba przy prawie każdym module',
+    },
+    subject: {
+      // `atLeast: 6`, A NIE DOKŁADNA LICZBA CELÓW — i ta liczba jest wybrana
+      // ZŁAMANIEM, nie okiem. Rachunek z fikstury: Zadania miały licznik przed
+      // tym lotem, a Projekty, Lejek, Organizacje, Ludzie, Odnowienia
+      // i Biblioteka dostają go w nim — czyli siedem (zmierzone: „7 element(s)
+      // match"). Dokładna siódemka byłaby asercją o LICZBIE CELÓW W REJESTRZE,
+      // nie o dostawie: ósmy cel z licznikiem położyłby parę na zielonej
+      // robocie. Podłoga 3 z pierwszej wersji tej pary była z kolei ZA NISKA —
+      // złamanie „zdejmij liczniki CRM" zostawia trzy (Zadania, Projekty,
+      // Biblioteka) i wracało ZIELONE. Sześć pada na utracie któregokolwiek
+      // z dwóch odczytów, na których ten lot stoi.
+      selector: ".sidebar [data-nav-count]",
+      why: "declared attribute on the count element; Inbox keeps its own badge class, so this selector counts the plain tabular numbers only",
+      app: "packages/desktop-ui/src/RealApp.tsx (navCounts), crm/record-census.ts",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 6 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 9 (wpis #6) — wiersz nagłówka sekcji ma prawy koniec ─────────
+  {
+    id: "D2-09",
+    lot: "D2",
+    position: 9,
+    title: "the section heading row has a right end, with something in it",
+    contract: ".ui-craft/tokens.md (Component layer)",
+    prototype: {
+      file: "v3/screens/today.js",
+      // Otwarte i sprawdzone pod tym numerem: 150 niesie `<button class="more"
+      // …>Open Calendar →</button>`. Wpisane tu wcześniej „152" nie niosło nic
+      // — cytat wskazywał dwie linie za element, który cytuje.
+      lines: "150",
+      value:
+        '`<button class="more" data-go=\'{"kind":"calendar"}\'>Open Calendar →</button>`, dosunięty regułą `.td-sec-head .more { margin-left: auto }` (`v3/screens/today.css:50`)',
+    },
+    subject: {
+      // OBECNOŚĆ, NIE `marginLeft`. `margin-left: auto` rozwiązuje się
+      // w `getComputedStyle` do WARTOŚCI UŻYTEJ w pikselach, więc para
+      // czytająca tę własność mierzyłaby szerokość wolnego miejsca w wierszu,
+      // a nie deklarację. Wpis rejestru mówi o SLOCIE Z TREŚCIĄ — pusty slot
+      // nie jest dostawą — więc mierzona jest treść.
+      selector: '[class*="_sectionHead_"] [data-open-calendar]',
+      why: "declared attribute inside the module-hashed head; this is the half of the entry the harness fixture can draw",
+      app: "packages/desktop-ui/src/TodaySurface.tsx, today.module.css (.sectionMore)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+
+  // ── POZYCJA 9b (wpis #6) — DRUGI prawy koniec: kto ułożył plan ────────────
+  // TA PARA BYŁA WPISEM `VISUAL_LANGUAGE_NOT_COVERED`, i to jest różnica
+  // między „nie da się zmierzyć" a „nie ma czego mierzyć". Plakietka była
+  // oddana w kodzie od lotu D2; niemierzalna była dlatego, że fikstura harnessu
+  // nie rysowała ani jednego `[data-planned-row]`. Warunek wyjścia zapisany
+  // przy tamtym wpisie — „zaplanowane na dziś zadanie z autorem-agentem
+  // w `dev/CollaborationHarness.tsx`" — jest spełniony, więc wpis znika,
+  // a jego miejsce zajmuje asercja. Zostawienie obu dałoby bliźniaka, który
+  // twierdzi, że tego nie widać, obok pomiaru, który to widzi.
+  {
+    id: "D2-09b",
+    lot: "D2",
+    position: 9,
+    title: "the planned section's right end names who laid the day out",
+    contract: ".ui-craft/tokens.md (Component layer)",
+    prototype: {
+      file: "v3/screens/today.js",
+      // Otwarte i sprawdzone: 141 to warunek (`planned.some(… kind ===
+      // "agent")`), 142 to sam element. Poprzedni cytat („148-150") wskazywał
+      // nagłówek SĄSIEDNIEJ sekcji — tej z „Open Calendar →" — czyli parę obok.
+      lines: "141-142",
+      value:
+        '`<span class="td-agent">${icon("spark")}laid out by Hermes</span>`, dosunięty `margin-left: auto` (`v3/screens/today.css:51-54`)',
+    },
+    subject: {
+      // OBECNOŚĆ, z tego samego powodu co przy D2-09: `margin-left: auto`
+      // rozwiązuje się do pikseli wolnego miejsca, a wpis rejestru mówi
+      // o SLOCIE Z TREŚCIĄ. Selektor jest przywiązany do atrybutu, nie do
+      // zahaszowanej nazwy klasy modułu — nazwa klasy zeruje ten licznik po
+      // cichu przy pierwszym przebudowaniu.
+      selector: '[class*="_sectionHead_"] [data-planned-by-agent]',
+      why: "the badge draws only when a planned row for TODAY carries plannedBy.principalKind === 'agent'; the count is what proves the state exists, not just the code path",
+      app: "packages/desktop-ui/src/TodaySurface.tsx (:378-382), today.module.css (.sectionAgent)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
 ];
 
 /**
@@ -738,6 +1415,34 @@ export const VISUAL_LANGUAGE_PAIRS = [
  * na zielono.
  */
 export const VISUAL_LANGUAGE_NOT_COVERED = [
+  {
+    lot: "D2",
+    position: 8,
+    title: "the Meetings row carries a count",
+    prototype: {
+      file: "v3/app.js",
+      lines: "590",
+      value:
+        '`d.id === "meetings" ? <span class="n">${MEETINGS.length}</span>`',
+    },
+    // NIE „NIE ZDĄŻYLIŚMY", TYLKO „NIE MA SKĄD". Spotkania nie są w migawce:
+    // stan kalendarza jest świadomie lokalny dla urządzenia i schodzi przez
+    // `client.getMeetingLoop`, z własną odmową uprawnienia
+    // (`client/calendar-reservation.ts`). Licznik przy tym celu wymagałby
+    // odczytu kalendarza przy KAŻDYM otwarciu okna, także u kogoś, kto dostępu
+    // nie dał — i pokazywałby wtedy albo zero, albo pustkę, czyli odpowiedź na
+    // pytanie, którego nie dało się zadać.
+    why: "meetings live outside the snapshot, behind a per-device calendar permission; a count there would need a calendar read at window open for everyone",
+  },
+  // ── SPŁACONY I SKASOWANY: „plakietka autorstwa planu", 2026-08-12 ─────────
+  // Stał tu wpis `D2`/pozycja 9 z powodem „fikstura harnessu nie rysuje ani
+  // jednego `[data-planned-row]`, więc plakietka nie ma stanu, w którym mogłaby
+  // się pojawić", i z warunkiem wyjścia „zaplanowane na dziś zadanie z autorem-
+  // agentem w `dev/CollaborationHarness.tsx`". Lot D9 ten warunek SPEŁNIŁ —
+  // pojedyncza pozycja `task.list` niesie od tej zmiany `startAt` wyprowadzony
+  // z zegara i `plannedBy` wskazujący na grant agenta — więc wpis ustępuje
+  // miejsca parze `D2-09b` wyżej. Bliźniak zostawiony obok pary twierdziłby,
+  // że tego nie widać, dokładnie tam, gdzie asercja to widzi.
   {
     lot: 1,
     position: 10,
@@ -753,6 +1458,37 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
       "się powiedzieć, która padła. To jest zakres przyrządu P6, nie tego.",
     greenWrong:
       "Hover doku może zostać neutralny albo dostać dowolny inny kolor.",
+  },
+  {
+    lot: "C1",
+    position: 1,
+    title:
+      "the rail is VISIBLE — that it stands at the column's edge and is not clipped to zero pixels",
+    prototype:
+      'v3/app.css:222-226 (`.nav-item[aria-current="page"]::before { left: -0.5rem }` — szyna wychodzi POZA pudełko wiersza, a rysuje się, bo `.nav` prototypu nie ma wcięcia)',
+    app: "packages/desktop-ui/src/styles.css (.sidebar nav — `margin-left: calc(-1 * var(--nav-gutter))` z dopełnieniem tej samej wartości)",
+    // PODMIOTEM SONDY JEST GOSPODARZ, NIE PSEUDOELEMENT: `querySelectorAll` nie
+    // umie dopasować `::before`, więc selektor z pseudoelementem wróciłby „0
+    // elementów na powłoce lądowania" i czytałby się jako „tego tu nie ma".
+    // Sonda liczy wiersze, których ta luka dotyczy.
+    probe: '.nav-item[aria-current="page"]',
+    why:
+      "TRZY PARY TEJ POZYCJI (C1-01a farba, C1-01c szerokość, C1-02 farba rodzica) CZYTAJĄ " +
+      '`getComputedStyle(element, "::before")`, a styl WYLICZONY nie wie o przycięciu. ' +
+      "`.sidebar nav` niesie `overflow-y: auto`, więc przeglądarka wylicza `overflow-x` też na " +
+      "`auto` i element przycina po obu osiach na swoim pudełku dopełnienia; szyna stoi POZA " +
+      "lewą krawędzią wiersza, więc bez ujemnego marginesu listy leży poza obszarem przycięcia. " +
+      "Skasowanie tego marginesu zostawia `::before` wygenerowany, `left` wyliczone na -13px " +
+      "i `backgroundColor` na akcencie — WSZYSTKIE TRZY PARY WRACAJĄ ZIELONE nad kolumną bez " +
+      "ani jednego piksela tuszu. Zmierzone, nie przypuszczone. Domknięcie wymaga odczytu " +
+      "prostokąta granicznego, a `getBoundingClientRect` NIE MA formy dla pseudoelementu — " +
+      "czyli nowej warstwy w runnerze (zastępczy element mierzalny albo zrzut piksela), " +
+      "a to jest lot, nie poprawka. Z tego samego powodu NIE MA złamania na ten margines: " +
+      "wróciłoby ZIELONE i byłoby złamaniem udającym uzbrojenie.",
+    greenWrong:
+      "Szyna może być przycięta do zera pikseli na każdym ekranie naraz — wiersz bieżący " +
+      "zostaje wtedy z samym podbarwieniem 0,08 alfy, czyli w stanie połowicznym, który lot C1 " +
+      "istnieje, żeby zamknąć. Zielone C1-01a NIE JEST dowodem, że szynę widać.",
   },
 ];
 
@@ -776,12 +1512,83 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
  * it pending". Odwrotność — zostawić 25 par jako oczekujące — byłaby bramką
  * czerwoną na KAŻDEJ oddanej pozycji.
  */
+/*
+ * 27 → 29 PRZY LOCIE C1 FAZY C, 2026-08-10. Przyrost to DWIE nowe pary
+ * w nowej przestrzeni nazw („C1"), nie zaostrzenie istniejących: nośnik stanu
+ * bieżącego w nawigacji nie miał w tym pliku ANI JEDNEJ pary — L1-05 mierzy
+ * glif, nie wiersz — więc przemalowanie ramki na szynę przechodziło tu do tej
+ * pory bez śladu. Ani jedno `expect` z Lotu 1 nie zostało tknięte, a `pending`
+ * zostaje przy 1 (L1-15a).
+ *
+ * 29 → 30 I 1 → 2 PRZY NAPRAWIE LOTU C1, tego samego dnia, po przeglądzie.
+ * Para C1-01c pinuje SZEROKOŚĆ szyny, bo trzy pary czytające farbę nie mówiły
+ * nic o formie tuszu, a kontrakt podaje formę liczbą. Wpis w `NOT_COVERED`
+ * nazywa to, czego ŻADNA z tych par nie widzi: szynę przyciętą do zera pikseli.
+ * Obie zmiany są dopisaniem asercji i deklaracji, nie poluzowaniem żadnej.
+ */
 export const VISUAL_LANGUAGE_EXPECTED = {
-  pairs: 27,
-  enforced: 26,
+  // 30 → 46 PRZY LOCIE D2 FAZY D, 2026-08-11. Szesnaście par na dziewięciu
+  // pozycjach, i wszystkie w TEJ mapie, a nie w trasowanej: `HARNESS` ląduje
+  // na Dzisiaj, więc pasmo tego ekranu, jego trzy nagłówki sekcji i jego
+  // znacznik pomocy stoją w drzewie bez ani jednego kliknięcia — tak samo jak
+  // pasek zakładek, nagłówki modułów i wiersze nawigacji.
+  //
+  // 2 → 4 W `notCovered`, i oba przyrosty są ODMOWAMI Z POWODEM, nie długiem
+  // bez adresu: licznik przy Spotkaniach nie ma źródła w migawce, a plakietka
+  // autorstwa planu nie ma STANU w fiksturze. Pierwszy wpis mówi, czego
+  // brakuje w produkcie, drugi — czego brakuje w przyrządzie, i drugi niesie
+  // swój warunek wyjścia.
+  // 46 → 47 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D2, 2026-08-11, I NIE JEST TO ANI
+  // nowa pozycja, ani rozpad istniejącej: to POŁOWA POZYCJI 1, która pojechała
+  // bez pomiaru. Lot zdjął nagłówkowi sekcji stopień i tym samym ZRÓWNAŁ go
+  // z jego własnym licznikiem, który został na `--text-sm` — a rejestr cytuje
+  // w dowodzie wpisu #2 zakres `v3/screens/today.css:42-49`, czyli nagłówek
+  // RAZEM z licznikiem. Regresję wywołał sam lot, w tej samej rodzinie
+  // selektorów, i nie mierzyła jej ani jedna para. `positionsWithPairs` się nie
+  // rusza — pozycja była objęta, tylko połową.
+  //
+  // 47 → 48 W TEJ SAMEJ NAPRAWIE I Z TEGO SAMEGO POWODU, na pozycji 2: lot
+  // przepisał `.capacity` z cytatem na regułę prototypu i wziął z niej dwie
+  // deklaracje z trzech. `positionsWithPairs` znowu bez zmian.
+  //
+  // 48 → 49 W TEJ SAMEJ NAPRAWIE: `.count` zszedł z wagi 400 na 500 razem ze
+  // stopniem, a para była napisana tylko na stopień. Ten plik trzyma trzydzieści
+  // linii wyżej regułę „waga osobno od stopnia, bo psuje się osobno" i naprawa
+  // złamała ją na własnej dostawie.
+  //
+  // 49 → 50 PRZY LOCIE D9 FAZY D, 2026-08-12, I `notCovered` 4 → 3 W TYM SAMYM
+  // RUCHU — bo to jest jedna rzecz, nie dwie: wpis „plakietka autorstwa planu"
+  // przestał być odmową i stał się asercją (`D2-09b`). Warunek wyjścia, który
+  // tamten wpis niósł od lotu D2, brzmiał „zaplanowane na dziś zadanie
+  // z autorem-agentem w `dev/CollaborationHarness.tsx`" i został spełniony
+  // ROŚNIĘCIEM FIKSTURY, a nie obniżeniem progu — plakietka rysowała się
+  // poprawnie od D2, brakowało stanu, w którym mogłaby to zrobić.
+  // `positionsWithPairs` się nie rusza: pozycja 9 miała parę na swoją drugą
+  // połowę (`Open Calendar →`) już wtedy.
+  pairs: 50,
+  enforced: 49,
   pending: 1,
-  notCovered: 1,
+  notCovered: 3,
   lots: {
+    D2: {
+      // Dziewięć pozycji, wszystkie z parą. Rachunek pozycji jest rachunkiem
+      // ZDAŃ rejestru, nie wpisów: #13 i #54 to jedno zdanie o daszku (pozycja
+      // 6), #24 i #31 to jedno zdanie o rozróżnialności glifów (pozycja 7),
+      // a #50 i #66 to jedno zdanie o licznikach (pozycja 8).
+      positionsInBrief: 9,
+      positionsWithPairs: 9,
+      positionsWithoutPairs: [],
+    },
+    C1: {
+      // Rejestr Fazy 4 (`faza-4-porownanie-ekranow.md`) jest briefem tej fazy.
+      // Sześć jego wpisów ma tę JEDNĄ przyczynę, a lot rozcina ją na dwie
+      // pozycje po tym, CO DA SIĘ ZMIERZYĆ I GDZIE: wiersz bieżący (pozycja 1,
+      // powłoka lądowania, tutaj) i cel nadrzędny otwartego rekordu (pozycja 2,
+      // za nawigacją — mapa trasowana).
+      positionsInBrief: 2,
+      positionsWithPairs: 1,
+      positionsWithoutPairs: [2],
+    },
     1: {
       // Pozycje briefu Lotu 1 (`docs/plans/2026-08-06-adopcja-jezyka-wizualnego/
       // faza-3-build-brief.md:180-196`).
@@ -874,7 +1681,7 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 // modułu jest unikalna w SWOIM arkuszu, nie w dokumencie, a przelot pyta cały
 // dokument. Zliczenie nazw w `packages/desktop-ui/dist/assets/*.css` dało:
 // `_row_` — 20 różnych klas, `_count_` — 16, `_rowSelected_` — 8, `_mark_` — 6,
-// `_section_` — 5, `_bar_` — 5, `_why_` — 6, `_action_` — 4, `_crumbbar_` — 4,
+// `_section_` — 5, `_bar_` — 5, `_why_` — 6, `_action_` — 4,
 // `_avatar_` — 6. Dlatego każdy podmiot modułowy o nazwie ogólnej ma tu
 // PRZEDROSTEK Z DEKLARACJI (`[data-pipeline-surface]`, `[data-pipeline-card]`,
 // `[data-pipeline-column]`, `[data-renewals-surface]`, `[data-renewal-row]`,
@@ -947,7 +1754,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the stage meter is painted with the indigo ramp",
-    contract: ".ui-craft/tokens.md:183-211 (Form first — ink and wash)",
+    contract: ".ui-craft/tokens.md (Form first — ink and wash)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "80-84",
@@ -994,7 +1801,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the stage meter animates its width",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "83",
@@ -1045,8 +1852,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "restyle",
     title: "the card carries a resting shadow",
-    contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "98-102",
@@ -1068,7 +1874,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "restyle",
     title: "the stale day badge is filled, not only tinted",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md (Component layer — status-*)",
     prototype: {
       file: "v3/app.css",
       lines: "426",
@@ -1094,7 +1900,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "prescribed",
     title: "the stale day badge carries a clock",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/pipeline.js",
       lines: "326",
@@ -1116,7 +1922,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 6,
     kind: "restyle",
     title: "the column heading sticks while the column scrolls",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth — Z roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — Z roles)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "58-65",
@@ -1154,7 +1960,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the owner avatar takes the elevated plane",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "431-436",
@@ -1179,7 +1985,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the owner avatar takes an edge",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme)",
+    contract: ".ui-craft/tokens.md (Dark theme)",
     prototype: {
       file: "v3/app.css",
       lines: "431-436",
@@ -1202,7 +2008,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the create toggle is painted as the primary action",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is primary")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "what is primary")',
     prototype: {
       file: "v3/app.css",
       lines: "321-332",
@@ -1211,9 +2017,22 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "pipeline" },
     subject: {
-      selector: '[data-pipeline-surface] [class*="_crumbbar_"] button',
-      why: "R2 — one ruling for five surfaces; the row holds exactly one button, which today is `secondary-button`",
-      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:739-749",
+      // PODMIOT PRZEPIĘTY W LOCIE C2, i to jest przepięcie WYMUSZONE, nie
+      // kosmetyczne: ten lot przeniósł akcję Lejka z `.crumbbar` do pasma
+      // tytułu, a rząd, który po niej został, był pusty i został skasowany.
+      // Selektor zostawiony na `_crumbbar_` wróciłby jako ROUTED_NOT_MEASURED,
+      // co czyta się jak zepsuty przyrząd, a nie jak dowieziona poprawka.
+      // Podmiotem jest ten SAM przycisk w tym samym stanie — zmieniło się
+      // wyłącznie pasmo, w którym stoi.
+      // PRZEPIĘTE W LOCIE R3 z tego samego powodu, co para `D6-04a` na
+      // Organizacjach: pasmo wyszło z przewijanego pudełka, więc
+      // `[data-pipeline-surface]` — atrybut TEGO pudełka — przestał być jego
+      // przodkiem. Kotwicą jest `main[data-surface]`, deklaracja obejmująca oba
+      // pasma i treść pod nimi; `main` konieczne, bo ten sam atrybut niesie
+      // pozycja nawigacji.
+      selector: 'main[data-surface="pipeline"] .surface-header button',
+      why: "R2 — one ruling for five surfaces; the title band holds exactly one button, which at rest is `primary-button`",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:840-872",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -1225,7 +2044,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "prescribed",
     title: "the next step carries a glyph",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "196-202",
@@ -1247,7 +2066,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "prescribed",
     title: "the waiting note carries a glyph",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "186-194",
@@ -1269,7 +2088,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 10,
     kind: "restyle",
     title: "the Stages control stops being permanently outlined",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — quiet controls)",
+    contract: ".ui-craft/tokens.md (Component layer — quiet controls)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "8-16",
@@ -1278,7 +2097,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "pipeline" },
     subject: {
-      selector: '[data-pipeline-surface] [class*="_stagesLink_"]',
+      // Ta sama zmiana kotwicy co wyżej: kontrolka „Stages" stoi w PASKU
+      // WIDOKU, a ten jest od lotu R3 rodzeństwem przewijanego pudełka.
+      selector: 'main[data-surface="pipeline"] [class*="_stagesLink_"]',
       why: "CSS Module class; the app declares 1px solid var(--border-subtle) at rest",
       app: "packages/desktop-ui/src/pipeline/pipeline.module.css:80-94",
     },
@@ -1294,7 +2115,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 11,
     kind: "restyle",
     title: "the card declares a transition",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/pipeline.css",
       lines: "103-107",
@@ -1365,7 +2186,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "a section boundary reads louder than a row boundary",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "11",
@@ -1387,7 +2208,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 3,
     kind: "prescribed",
     title: "the row mark is drawn, not typed",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "52-55",
@@ -1409,7 +2230,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "prescribed",
     title: "the row buttons carry glyphs",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/renewals.js",
       lines: "84-85, 97, 175",
@@ -1432,7 +2253,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "prescribed",
     title: "a mid-term change carries its own mark",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md (Component layer — status-*)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "170",
@@ -1455,7 +2276,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the create toggle is painted as the primary action",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is primary")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "what is primary")',
     prototype: {
       file: "v3/app.css",
       lines: "321-332",
@@ -1463,9 +2284,21 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "renewals" },
     subject: {
-      selector: '[data-renewals-surface] [class*="_crumbbar_"] button',
-      why: "R2, the same ruling as L2-08; on this screen the crumb bar holds exactly one button",
-      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:777-785",
+      // PRZEPIĘTE W LOCIE C2 razem z L2-08 i z tego samego powodu: `.crumbbar`
+      // tego ekranu przestał istnieć, kiedy akcja weszła do pasma tytułu.
+      //
+      // PRZEPIĘTE PONOWNIE W LOCIE D10, i tym razem zmienił się PRZODEK, nie
+      // podmiot. `data-renewals-surface` siedzi na PRZEWIJANYM PUDEŁKU, a pasmo
+      // tytułu przestało być jego dzieckiem — jest jego rodzeństwem. Selektor
+      // wracał przez to `NOT_MEASURED` nad ekranem, który rysuje ten przycisk
+      // dokładnie tak jak wcześniej. Zakotwiczone w `main[data-surface]`
+      // (`RealApp.tsx`) — deklaracji, która obejmuje OBA pasma i pudełko pod
+      // nimi, i którą nagłówek tego pliku wymienia wprost jako stabilną.
+      // `main` jest w selektorze konieczne: `.nav-item` w lewej kolumnie niesie
+      // ten sam atrybut.
+      selector: 'main[data-surface="renewals"] .surface-header button',
+      why: "R2, the same ruling as L2-08; on this screen the title band holds exactly one button",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:806-835",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -1477,7 +2310,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "prescribed",
     title: "the count leaves the button row",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell bands)",
+    contract: ".ui-craft/tokens.md (Component layer — shell bands)",
     prototype: {
       file: "v3/app.css",
       lines: "295-301",
@@ -1489,18 +2322,49 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // LICZBA NA NIEOBECNOŚĆ, nie selektor na nowy węzeł: mapa nie wie, jak lot
       // nazwie własne pasmo, i nie ma prawa mu tego narzucać. Wie natomiast, co
       // ma z tego rzędu ZNIKNĄĆ.
+      // PRZEPIĘTE W LOCIE C2 NA PASMO TYTUŁU, i to nie jest to samo, co
+      // zostawienie go na `_crumbbar_`. Rząd, o którym ta para mówiła „licznik
+      // ma z niego wyjść", ZNIKNĄŁ — akcja przeniosła się do pasma tytułu.
+      // Selektor pod nieistniejącym rodzicem liczyłby zero ZAWSZE i przestałby
+      // cokolwiek pilnować, a nota niżej opisuje dokładnie ten mechanizm.
+      // Pytanie zostaje to samo, o rząd, w którym akcja stoi DZIŚ.
+      // PRZEPIĘTE W LOCIE D10 RAZEM Z L3-06, I TO JEST WAŻNIEJSZE TUTAJ NIŻ
+      // TAM. Ta para oczekuje ZERA, więc przetrwałaby przepięcie pasm w ciszy —
+      // liczba zero nad przodkiem, który przestał zawierać pasmo, jest zerem
+      // z NIE TEGO powodu, czyli zielenią nad pustym dowodem. Kotwica ta sama
+      // co u sąsiadki, żeby oba odczyty dalej mówiły o tym samym rzędzie.
       selector:
-        '[data-renewals-surface] [class*="_crumbbar_"] [class*="_count_"]',
-      why: "counted at zero: the position is that the counter must leave the button row, and any selector for the NEW band would prescribe markup the lot chooses",
+        'main[data-surface="renewals"] .surface-header [class*="_count_"]',
+      why: "counted at zero: the position is that the counter must leave the row the screen's action stands in, and any selector for the NEW band would prescribe markup the lot chooses",
       app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:786-788",
     },
     read: { property: null },
     // LICZBA ZERO SAMA NIE ODRÓŻNIA „licznik wyszedł" OD „cały rząd zniknął",
     // i przy odbiorze 2026-08-07 to rozróżnienie zrobiła para sąsiednia, a nie
-    // ta: L3-06 czyta `[class*="_crumbbar_"] button` NA TYM SAMYM przystanku
-    // i wróciła MATCH z osądzonym malowaniem, czyli rząd stoi i ma w sobie
+    // ta: L3-06 czyta `.surface-header button` NA TYM SAMYM przystanku
+    // i wraca MATCH z osądzonym malowaniem, czyli rząd stoi i ma w sobie
     // przycisk. Dopiero te dwa odczyty razem znaczą „licznik go opuścił".
     // Kto kiedyś usunie L3-06, zabiera tej parze jej jedyny kontrapunkt.
+    //
+    // I DOKŁADNIE TO WYDARZYŁO SIĘ W LOCIE C2, tylko o rząd wyżej: rzędem,
+    // z którego licznik miał wyjść, był wtedy `.crumbbar`, a lot C2 skasował
+    // go w całości. Obie pary przeszły więc na pasmo tytułu RAZEM — gdyby
+    // przeszła sama L3-07, jej zero opisywałoby nieistniejącego rodzica.
+    //
+    // CZEGO TA PARA ZACZĘŁA KOSZTOWAĆ MNIEJ PO LOCIE C2 — dopisane 2026-08-11
+    // po przeglądzie, żeby następny lot wiedział, co zabiera, ruszając wspólny
+    // komponent. Jej podmiotem nie jest już rząd pisany z palca na tym ekranie,
+    // do którego ktokolwiek mógł dopisać węzeł, tylko `SurfaceTitleBand` —
+    // komponent renderujący DOKŁADNIE `<header className="surface-header">`
+    // z tytułem i slotem akcji. Zero jest przy takim rodzicu bliskie
+    // automatycznemu i NIE jest już świadectwem o niczyjej dyscyplinie.
+    // Falsyfikowalna zostaje mimo to, i dlatego zostaje przy zerze: slot akcji
+    // przyjmuje dowolny `ReactNode` WEWNĄTRZ `.surface-header`, więc regresja
+    // wkładająca licznik do slotu akcji dalej wraca czerwienią. Kto da
+    // `SurfaceTitleBand` trzecie dziecko albo pozwoli mu owinąć treść ekranu,
+    // ma tę parę przepiąć na miejsce, w którym licznik ma STAĆ
+    // (`[data-renewals-surface] [class*="_viewbar_"] [class*="_count_"]`,
+    // `equals: 1`) — asercja na obecność nie ogląda się na cudzy kształt.
     expect: { kind: "count", equals: 0 },
     status: "enforced",
   },
@@ -1510,7 +2374,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 8,
     kind: "prescribed",
     title: "Show/Hide draws its own chevron",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "31-32",
@@ -1533,7 +2397,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the row takes the prototype's vertical padding",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "40",
@@ -1555,7 +2419,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the section heading declares tracking",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/renewals.css",
       lines: "17",
@@ -1585,7 +2449,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 1,
     kind: "restyle",
     title: "the project record title is --text-xl",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "651-652",
@@ -1607,7 +2471,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 1,
     kind: "restyle",
     title: "the task record title is --text-xl",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "651-652",
@@ -1635,7 +2499,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // „oczekująca, a pasuje". Waga 620 kontra 600 jest jawnie POZA zakresem
     // lotu („nie rusza wag pisma 580/590/620"). Zostaje tracking: v3 deklaruje
     // -0.022em, aplikacja nie deklaruje nic.
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/app.css",
       lines: "651",
@@ -1657,7 +2521,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the plan and the deadline are two cells, not one sentence",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "214-251",
@@ -1679,7 +2543,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the operational signal gets a band",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md (Component layer — status-*)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "203-211",
@@ -1704,7 +2568,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the agent's comment is marked with the accent, not with blue",
     // ROZSTRZYGNIĘCIE R1 ODWRACA TĘ POZYCJĘ. Brief składano przy „kontrakt
-    // trzyma" i tam stoi NIE, z powołaniem na `.ui-craft/brief.md:13`
+    // trzyma" i tam stoi NIE, z powołaniem na `.ui-craft/brief.md`
     // („collaboration identity keeps its own hue"). `decisions.md`, wpis R1
     // z 2026-08-07, mówi wprost: „zdanie, które ją wyjmowało, jest właśnie tym,
     // co rozstrzygnięcie uchyla". Zakodowanie tu starego oczekiwania zrobiłoby
@@ -1763,7 +2627,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "restyle",
     title: "every comment is a card, not only the agent's",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "368-371",
@@ -1790,7 +2654,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "restyle",
     title: "the decision number steps up a size",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "55-62",
@@ -1813,7 +2677,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 6,
     kind: "restyle",
     title: "the task's micro-heading is --text-2xs like every other one",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "89-92",
@@ -1835,7 +2699,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the exit rail hangs on a negative indent",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "107-112",
@@ -1858,7 +2722,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 8,
     kind: "restyle",
     title: "the record tab bar sticks",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth — Z roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — Z roles)",
     prototype: {
       file: "v3/app.css",
       lines: "655-658",
@@ -1898,7 +2762,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the open record tab is underlined with the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "where the reader is")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "where the reader is")',
     prototype: {
       file: "v3/app.css",
       lines: "666",
@@ -1921,7 +2785,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the offers are subordinate rows, not equal cards",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "343",
@@ -1965,7 +2829,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 10,
     kind: "restyle",
     title: "a list on a record has a container",
-    contract: ".ui-craft/tokens.md:71-80 (Shape, motion, depth)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "142",
@@ -2025,7 +2889,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 11,
     kind: "restyle",
     title: "the composition bar is 5px, not 8px",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/projects.css",
       lines: "25-28",
@@ -2076,7 +2940,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 12,
     kind: "restyle",
     title: "the record family has ONE reading measure",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/record.css",
       lines: "93",
@@ -2167,8 +3031,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 1,
     kind: "restyle",
     title: "the selected note row stops painting a literal shadow",
-    contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "145-150",
@@ -2240,7 +3103,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "restyle",
     title: "the note row is laid out as a grid",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "138-143",
@@ -2276,7 +3139,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "prescribed",
     title: "the date has its own lane instead of sharing the context string",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "175-178",
@@ -2301,7 +3164,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     title: "the knowledge welcome heading declares a size",
     // TO JEST DOKŁADNIE TA WADA, DLA KTÓREJ ZBUDOWANO SONDĘ TYTUŁU — i obie
     // siedzą poza jej podmiotem, bo `TITLE_SELECTOR` to `#surface-title`.
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "242-245",
@@ -2361,7 +3224,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 3,
     kind: "restyle",
     title: "the sources welcome heading declares a size",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "242-245",
@@ -2399,7 +3262,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 4,
     kind: "restyle",
     title: "the panel heading declares a weight",
-    contract: ".ui-craft/tokens.md:64-70 (Type)",
+    contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "92-97",
@@ -2455,7 +3318,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 6,
     kind: "prescribed",
     title: '"What rests on this" says what kind of record each line is',
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "409-414",
@@ -2487,7 +3350,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 7,
     kind: "restyle",
     title: "the arrangement switcher gets a sunken track",
-    contract: ".ui-craft/tokens.md:83-98 (Dark theme — four surface planes)",
+    contract: ".ui-craft/tokens.md (Dark theme — four surface planes)",
     prototype: {
       file: "v3/app.css",
       lines: "336-339",
@@ -2521,7 +3384,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 8,
     kind: "prescribed",
     title: "the folder tree draws folders",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer)",
+    contract: ".ui-craft/tokens.md (Component layer)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "52-53",
@@ -2550,8 +3413,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 9,
     kind: "restyle",
     title: "the selected source row stops painting a literal shadow",
-    contract:
-      ".ui-craft/tokens.md:71-80 (Shape, motion, depth — elevation roles)",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth — elevation roles)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "145-150",
@@ -2616,7 +3478,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // TA POZYCJA JEST PRZYKŁADEM Z SEKCJI P5 BRIEFU: konsument używa POŁOWY pary
     // status-*, a komentarz nad nim twierdzi, że używa całej. Bramka kontrastu
     // mierzy pary TOKENÓW, więc jest na to ślepa.
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — status-*)",
+    contract: ".ui-craft/tokens.md (Component layer — status-*)",
     prototype: {
       file: "v3/screens/knowledge.css",
       lines: "444",
@@ -2656,7 +3518,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 2,
     kind: "prescribed",
     title: "the second settings navigator is gone",
-    contract: ".ui-craft/tokens.md:127-140 (Component layer — shell-*)",
+    contract: ".ui-craft/tokens.md (Component layer — shell-*)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "36-80",
@@ -2690,7 +3552,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "and the one that stays says where the reader is",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is active")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "what is active")',
     prototype: {
       file: "v3/screens/settings.css",
       lines: "74-80",
@@ -2718,7 +3580,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // ANI JEDNEJ reguły — sprawdzone grepem — więc etykieta dziedziczy siatkę
     // `.nav-item` z torem ikony, a `nowrap` celuje w `nth-child(2)`, którego ta
     // kolumna nie renderuje.
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "61-80",
@@ -2761,22 +3623,33 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     lot: 6,
     position: 3,
     kind: "restyle",
-    title: "and the label gets a track of its own instead of the icon track",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    title: "and the label gets a track of its own beside the glyph's",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
     prototype: {
       file: "v3/screens/settings.css",
       lines: "61-71",
       value:
-        "`.st-navitem .lbl { flex: 1; min-width: 0 }` — etykieta zajmuje CAŁY wpis, bo wpis nie ma toru ikony",
+        "`.st-navitem` — tor glifu (`.ico`, 0,9375 rem) i etykieta obok niego (`.lbl { flex: 1; min-width: 0 }`), czyli DWA tory, nie jeden i nie trzy",
     },
     route: { settingsMode: true },
     subject: {
       selector: ".settings-mode-column .settings-mode-section",
-      why: "the entry itself, not its label: the three-track grid is declared on the entry, so the entry is where the defect resolves",
-      app: "packages/desktop-ui/src/styles.css:1387-1395, :1227-1240 (the shared three-track .nav-item grid it overrides)",
+      why: "the entry itself, not its label: the grid is declared on the entry, so the entry is where the defect resolves",
+      app: "packages/desktop-ui/src/styles.css (.settings-mode-column .nav-item)",
     },
     read: { property: "gridTemplateColumns" },
-    expect: { kind: "tracks", equals: 1 },
+    // 1 → 2 PRZY LOCIE D5 FAZY D, I JEST TO POPRAWKA ASERCJI, NIE ROZLUŹNIENIE.
+    // Ta para powstała przy locie 6 Fazy 3 nad wpisem, który renderował JEDNO
+    // dziecko: etykieta lądowała wtedy w torze IKONY (zmierzone: tor 17,59 px,
+    // trzy pozycje po 51 px wysokości), a jedyny tor był lekarstwem, bo ikony
+    // nie było. Cytat pod parą mówił nawet „bo wpis nie ma toru ikony" — i to
+    // zdanie było prawdą O APLIKACJI, a nie o prototypie: `.st-navitem` rysuje
+    // `icon(s.icon, "ico")` PRZED etykietą (`v3/screens/settings.js:983`).
+    // Wpis #69 rejestru („spis sekcji bez ikon") żąda dokładnie tego glifu,
+    // więc zostawienie `equals: 1` znaczyłoby, że bramka zabrania oddać wpis.
+    // Prototyp wygrywa z asercją napisaną wobec jego braku; to, czego ta para
+    // pilnuje, nie zmienia się — etykieta ma SWÓJ tor, nie tor glifu.
+    expect: { kind: "tracks", equals: 2 },
     status: "enforced",
   },
   {
@@ -2786,7 +3659,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     kind: "restyle",
     title: "the two named settings actions are filled with the accent",
     contract:
-      '.ui-craft/tokens.md:212-252 (What the accent is allowed to mean — "what is primary")',
+      '.ui-craft/tokens.md (What the accent is allowed to mean — "what is primary")',
     prototype: {
       file: "v3/app.css",
       lines: "321-332",
@@ -2860,7 +3733,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     position: 5,
     kind: "restyle",
     title: "the explanation takes a reading measure instead of a column",
-    contract: ".ui-craft/tokens.md:55-63 (Spacing and density)",
+    contract: ".ui-craft/tokens.md (Spacing and density)",
     prototype: {
       file: "v3/screens/settings.css",
       lines: "199-204",
@@ -2885,6 +3758,2726 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // kolejność.
     status: "enforced",
   },
+
+  // ══ FAZA C, LOT C1 — CEL NADRZĘDNY OTWARTEGO REKORDU ══════════════════════
+  // Druga połowa pozycji, której pierwsza połowa stoi w mapie powłoki
+  // (C1-01a/b). Tutaj, bo podmiot rysuje się WYŁĄCZNIE po otwarciu rekordu
+  // projektu — na powłoce lądowania nie ma go w DOM-ie w ogóle, a para na
+  // nieobecny podmiot wraca NOT_MEASURED, czyli awarią przyrządu w obu
+  // statusach.
+  {
+    id: "C1-02",
+    lot: "C1",
+    position: 2,
+    kind: "restyle",
+    title: "the destination above an open project record is marked too",
+    contract:
+      '.ui-craft/tokens.md, sekcja „What the accent is allowed to mean" („1. Where the reader is. The current destination, tab, saved view, folder or day")',
+    prototype: {
+      file: "v3/app.js",
+      lines: "573",
+      value:
+        '`route().kind === d.id || (d.id === "projects" && route().kind === "project")` — trasa rekordu zapala `aria-current="page"` RÓWNIEŻ na celu nadrzędnym, więc pod otwartym projektem prototyp świeci dwa wiersze: rodzica i dziecko',
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // NOŚNIKIEM JEST DEKLARACJA, NIE KLASA, i jest to deklaracja WŁASNA tej
+      // aplikacji: `aria-current` zostaje na jednym wierszu (rozstrzygnięcie
+      // `RealApp.tsx`), więc farbę rodzica niesie `data-nav-open`. Para czyta
+      // szynę, nie samo podbarwienie — podbarwienie bez szyny jest dokładnie
+      // tym stanem połowicznym, który ten lot zamyka.
+      selector: ".nav-item[data-nav-open]",
+      why: "declaration stamped by RealApp.tsx when the open project record has its own child row; before this lot the parent row carried no mark at all and the register logged it twice (project-record, project-comments)",
+      app: "packages/desktop-ui/src/styles.css (.nav-item[data-nav-open]::before)",
+    },
+    read: { pseudo: "::before", property: "backgroundColor" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+
+  // ══ FAZA C, LOT C5 — KONTROLKA WYBORU W PASIE AKCJI ═══════════════════════
+  // Tutaj, a nie w mapie powłoki, z tego samego powodu co C1-02: podmiot
+  // rysuje się WYŁĄCZNIE po otwarciu rekordu projektu.
+  //
+  // ┌ PRZEPIĘCIE W LOCIE D11 (Faza D), 2026-08-12 — CZYTAJ TO PRZED RESZTĄ ──┐
+  // │ PODMIOT C5-01a/b/c ZMIENIŁ SIĘ, BO ZMIENIŁA SIĘ KONTROLKA. Pas akcji  │
+  // │ otwartego projektu nie niesie już `<select>` „Apply template…" ani     │
+  // │ przycisku „Apply": wybór szablonu robi dymek                           │
+  // │ (`projects/ApplyTemplatePopover.tsx`), którego wyzwalacz jest          │
+  // │ PRZYCISKIEM o klasach `secondary-button compact`. To jest wpis #51     │
+  // │ rejestru (i jego duplikat #55): w prototypie NIE MA ani jednego        │
+  // │ `<select>`, `<input>` czy `<textarea>` w paśmie tytułu na żadnym       │
+  // │ z czternastu ekranów, a wybór jednej rzeczy z listy robi u niego       │
+  // │ przycisk otwierający menu — `popover()` (`v3/app.js:1921-1961`)        │
+  // │ zawieszony na `.btn` (`v3/app.js:1571`), panel `.pop`                  │
+  // │ (`v3/app.css:886-892`).                                                │
+  // │                                                                        │
+  // │ DLACZEGO PRZEPIĘCIE, A NIE WYCOFANIE TYCH PAR. Zdanie, którego lot C5  │
+  // │ bronił — „kontrolka w paśmie stoi tak jak przycisk obok niej" — nie    │
+  // │ zniknęło razem z `<select>`; ono się PRZENIOSŁO na wyzwalacz i jest    │
+  // │ tam ŁAMLIWE, bo `.inline-popover-trigger` deklaruje własne             │
+  // │ `font-size: var(--text-2xs)` i `border-radius: var(--radius-full)`     │
+  // │ (`styles.css`, blok „Shared inline popover"). Wygrywa                  │
+  // │ `.primary-button, .secondary-button` WYŁĄCZNIE kolejnością w tym samym │
+  // │ arkuszu, przy równej swoistości (0,1,0). Kaskada rozstrzygana          │
+  // │ kolejnością jest dokładnie tym, co zmienia jedna przeniesiona reguła — │
+  // │ i złamanie w harnessie robi jej dokładnie to.                          │
+  // │                                                                        │
+  // │ ZMIERZONE, NIE WYWNIOSKOWANE: obie wartości odczytane na wyzwalaczu    │
+  // │ w otwartym rekordzie projektu przez `verify-renderer-layout.mjs`       │
+  // │ (`LAYOUT_PORT=5447`) — wiersze C5-01a i C5-01b w raporcie lotu D11.    │
+  // └────────────────────────────────────────────────────────────────────────┘
+  //
+  // JEDNO ZDANIE PROTOTYPU, SZEŚĆ PAR. `.st-select`
+  // (`v3/screens/settings.css:190-194`) i `.btn` (`v3/app.css:306-314`) mają co
+  // do wartości TĘ SAMĄ geometrię — wysokość 1,75 rem, wyściółka 0,5 rem,
+  // `--radius-sm`, `--text-sm` — i ani jedno, ani drugie nie deklaruje
+  // szerokości. Prototyp ma dokładnie JEDEN `<select>` w całym drzewie, więc to
+  // jest cała jego wypowiedź o kontrolkach wyboru i brzmi ona: kontrolka stoi
+  // tak jak przycisk obok niej. Ta aplikacja ma inne metryki przycisku niż
+  // prototyp (`--radius-md`, 2 rem), więc PRZENOSI SIĘ RELACJA, a nie liczby —
+  // dokładnie tak, jak przy `.compact` w locie C2.
+  //
+  // DLACZEGO DWIE, A NIE JEDNA. Rozmiar pisma i promień to dwie różne reguły
+  // w dwóch różnych miejscach kaskady: stopień pisma schodził z `body` przez
+  // `font: inherit` grupowego resetu (`styles.css:526-532`), a promień
+  // deklarowała goła reguła `select` (`:599-606`). Jedna para pilnowałaby
+  // jednej z nich i milczała o drugiej — a lot oddaje obie.
+  //
+  // CO Z SZEROKOŚCI JEST WYRAŻALNE, A CO NIE — i to jest SPROSTOWANIE, bo do
+  // 2026-08-11 stała tu nieprawda o przyrządzie, a nieprawda zakomitowana
+  // w przyrządzie czyta się dla następnego lotu jak ustalona niemożliwość.
+  //
+  // NIEWYRAŻALNA jest wyłącznie UŻYTA szerokość: `<select>` bierze szerokość
+  // najszerszej OPCJI, więc `width` zależy od fikstury, a nie od arkusza,
+  // i asercja na niej gniłaby przy pierwszej zmianie danych (zmierzone:
+  // pięć kontrolek Ustawień liczy 66,8 / 88,8 / 94,8 / 111,8 / 256 px,
+  // każda od swojej najdłuższej opcji).
+  //
+  // WYRAŻALNE — i od tej naprawy ZMIERZONE — jest wszystko, co lot naprawdę
+  // zadeklarował: `max-inline-size` liczy się do `256px` niezależnie od opcji
+  // (C5-01c), `flex-grow` do „0" (C5-02b, C5-03), `align-self` do „start"
+  // (C5-02a).
+  //
+  // DWA POWODY, KTÓRE TU DAWNIEJ STAŁY, BYŁY SPRZECZNE Z KODEM RUNNERA:
+  //   * „ponad pół tuzina dopasowań, czyli NOT_MEASURED" — runner wraca
+  //     `not-measured` przy wielu dopasowaniach WYŁĄCZNIE wtedy, gdy liczą one
+  //     RÓŻNE wartości (`verify-renderer-layout.mjs:4034-4045`, `distinct
+  //     .length > 1`). Zmierzone w Ustawieniach na 1440 px: sześć narysowanych
+  //     kontrolek, `flex-grow` = „0" we WSZYSTKICH sześciu i `max-width`
+  //     = „256px" we wszystkich sześciu, czyli jedna wartość i pomiar.
+  //   * „podmioty nie są DOSIĘGALNE tym spacerem" — Ustawienia są pełnoprawnym
+  //     przystankiem przez `route: { settingsMode: true }`
+  //     (`verify-renderer-layout.mjs:5928-5951`, wyjęte spod `ROUTED_ARRIVAL`
+  //     w `:5746`), i sześć par L6-* mierzy tam od Fazy 3. `.railSelect` też
+  //     się rysuje: zmierzone na otwartym rekordzie projektu w tym harnessie —
+  //     jedna narysowana kontrolka, `flex-grow` „0", `max-width` „256px”,
+  //     szerokość 251 px. Warunek „niepusta lista kandydatów" jest w tej
+  //     fiksturze spełniony, więc `blind` byłoby tu wyciszeniem bez powodu.
+  {
+    id: "C5-01a",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "the template chooser in the record's action strip takes the type size of the buttons beside it",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Control size", dopisany w locie C5 (kontrakt milczał o geometrii kontrolki wyboru; prototyp nie)',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        '`.btn { font-size: var(--text-sm) }` — a wyborem jednej rzeczy z listy jest w prototypie WŁAŚNIE `.btn` otwierający menu (`v3/app.js:1571` zawiesza `popover()` na `<button class="btn bordered">`), więc stopień pisma tej kontrolki to stopień pisma przycisku',
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      openPopover: '[class*="_crumbs_"] .inline-popover-trigger',
+    },
+    subject: {
+      // `_crumbs_` JEST TU JEDYNĄ NAZWĄ BEZ KOLIZJI, i to jest sprawdzone,
+      // a nie założone: `.actions` deklarują TRZY moduły (`inbox.module.css`,
+      // `tasks/saved-view-filters.module.css`, `record/record-comments.module.css`)
+      // obok tego, więc `[class*="_actions_"]` mogłoby złapać cudzy pas na tym
+      // samym ekranie. `.crumbs` deklaruje w całym drzewie wyłącznie
+      // `record/record-screen.module.css:31`.
+      //
+      // `.inline-popover-trigger` DOPRECYZOWUJE, a nie zawęża do wygody: w tym
+      // paśmie stoją jeszcze „New task", „Close project" i „Edit outcome",
+      // które metrykę przycisku mają Z DEFINICJI. Podmiotem jest ten JEDEN
+      // przycisk, który metryki przycisku mógłby nie mieć.
+      selector:
+        '[data-record-kind="project"] [class*="_crumbs_"] .inline-popover-trigger',
+      why: "the only control in this strip whose own class declares a DIFFERENT type size (`--text-2xs`) than the buttons standing next to it — it reads as a button only because `.primary-button, .secondary-button` sits later in the same sheet at equal specificity",
+      app: "packages/desktop-ui/src/projects/ApplyTemplatePopover.tsx (triggerClassName), styles.css (.inline-popover-trigger ↔ .primary-button, .secondary-button)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-sm" },
+    status: "enforced",
+  },
+  {
+    id: "C5-01b",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title: "and the same corner as the buttons beside it",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "`.btn { border-radius: var(--radius-sm) }` — ten sam `.btn`, na którym prototyp zawiesza swoje menu; przenosi się RELACJA (kontrolka stoi jak przycisk obok niej), bo przycisk tej aplikacji bierze `--radius-md`, nie `--radius-sm`",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      openPopover: '[class*="_crumbs_"] .inline-popover-trigger',
+    },
+    subject: {
+      selector:
+        '[data-record-kind="project"] [class*="_crumbs_"] .inline-popover-trigger',
+      why: "same subject as C5-01a — and the corner is the second, independent place the chip metric could win back, because `.inline-popover-trigger` declares `--radius-full` for it",
+      app: "packages/desktop-ui/src/styles.css (.inline-popover-trigger ↔ .primary-button, .secondary-button)",
+    },
+    read: { property: "borderTopLeftRadius" },
+    expect: { kind: "token", token: "--radius-md" },
+    status: "enforced",
+  },
+  {
+    id: "C5-01c",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "and the panel that now carries the template names stops at a ceiling instead of running as wide as the longest one",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Control size", „Bounded, not unbounded"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "886-892",
+      value:
+        "`.pop` — panel menu prototypu — jest PUDEŁKIEM OGRANICZONYM i mówi to wprost: `min-width: 13rem`, `max-height: 22rem`, `overflow-y: auto`. Sufit w osi poziomej jest tłumaczeniem tego samego zdania na dane, których prototyp nie ma: jego menu niosą krótkie etykiety stanu i pola, a ten niesie NAZWY SZABLONÓW, czyli treść rekordu",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      openPopover: '[class*="_crumbs_"] .inline-popover-trigger',
+    },
+    subject: {
+      // NIE POD `[data-record-kind="project"]`, i to jest różnica strukturalna,
+      // nie stylistyczna: panel jest PORTALOWANY do `<body>`
+      // (`components/InlinePopover.tsx`), więc potomkiem ekranu rekordu NIE
+      // JEST. Trasa tego przystanku otwiera go krokiem `openPopover`, a naraz
+      // otwarty jest zawsze co najwyżej jeden (stan `open` trzyma rodzic).
+      selector: ".inline-popover",
+      why: "the panel is where the template names live now, so it is where record content can run wide; the trigger's own label is static copy and has nothing left to bound",
+      app: "packages/desktop-ui/src/styles.css (.inline-popover)",
+    },
+    // `max-width` JEST TU JEDYNĄ WŁASNOŚCIĄ SZEROKOŚCI, KTÓRA NIE ZALEŻY OD
+    // FIKSTURY, i dlatego czyta się ją, a nie `width`. Zadeklarowana długość
+    // liczy się do 24 rem przy każdej liście szablonów; użyta szerokość zależy
+    // od tego, ile znaków ma najdłuższa nazwa.
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 24 },
+    status: "enforced",
+  },
+  {
+    id: "C5-02a",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "the settings select stops being stretched to the panel's width by its column",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Control size", „Width is `flex`, height is `align-self`"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "190-194",
+      value:
+        "to samo jedno zdanie, co przy C5-01a, w miejscu, w którym prototyp je WYPOWIADA: wpis ustawień (`.st-presetpick`, `v3/screens/settings.js:329-334`) stawia etykietę, kontrolkę i notkę obok siebie, a kontrolka jest w nim tak szeroka, jak jej treść",
+    },
+    route: { settingsMode: true },
+    subject: {
+      // DZIECKO WPROST, i to jest cała różnica między tą parą a C5-02b:
+      // `.settings-control` jest kolumną o `align-items: stretch`, więc
+      // rozpina dziecko na całą taflę i tylko `align-self: start` to cofa.
+      // Zmierzone: jeden narysowany podmiot (`#voice-audio-retention`,
+      // `SettingsSurface.tsx:1898-1911`), 124,8 px przy tafli 1098 px.
+      selector: ".settings-control > select",
+      why: "the only <select> that is a DIRECT child of the column, so it is the only one the column's `align-items: stretch` could reach",
+      app: "packages/desktop-ui/src/styles.css (.settings-control > select)",
+    },
+    read: { property: "alignSelf" },
+    expect: { kind: "literal", value: "start" },
+    status: "enforced",
+  },
+  {
+    id: "C5-02b",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title: "and stops eating the free space of the row it stands in",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "`.btn` nie deklaruje szerokości ani `flex`, a `.st-select` (`v3/screens/settings.css:190-194`) też nie — rośnięcie do wolnego miejsca jest właściwością POLA TEKSTOWEGO, nie kontrolki wyboru o skończonym zbiorze opcji",
+    },
+    route: { settingsMode: true },
+    subject: {
+      // POTOMEK, NIE DZIECKO WPROST: te kontrolki stoją w rzędach, których
+      // rodzicem jest `form.status-create` albo `label`, a nie
+      // `.settings-control > div`. Zmierzone na 1440 px: sześć narysowanych
+      // dopasowań, `flex-grow` = „0" we wszystkich sześciu, więc runner ma
+      // JEDNĄ wartość i pomiar (`verify-renderer-layout.mjs:4034-4045`).
+      selector: ".settings-control select",
+      why: "every rendered select of the settings surface at once — the rule this pair judges is written for all of them and they compute one value",
+      app: "packages/desktop-ui/src/styles.css (.settings-control select)",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+  {
+    id: "C5-03",
+    lot: "C5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "the client-linking select on the project record takes its own width too",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "ta sama relacja, co w paśmie akcji: kontrolka stoi jak przycisk obok niej („Link client”), a `.btn` nie deklaruje ani szerokości, ani `flex`",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // TEN SAM PRZYSTANEK, CO C5-01a/b, więc para nie dokłada spaceru.
+      // Zmierzone: jedna narysowana kontrolka, 251 px, `max-width` 256 px —
+      // czyli fikstura RYSUJE listę kandydatów i `blind` byłoby wyciszeniem
+      // stanu, który ten harness ma.
+      selector: '[data-record-kind="project"] [class*="_railSelect_"]',
+      why: "CSS Module class declared exactly once in the tree (project-record.module.css:611), and the only <select> in the record's rail",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.railSelect), ProjectRecordOverview.tsx:302-310",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+
+  // ── LOT D11 FAZY D — W PAŚMIE AKCJI NIE STOI ŻADNA KONTROLKA FORMULARZA ───
+  //
+  // WPIS #51 REJESTRU I JEGO DUPLIKAT #55. Zmierzone na prototypie: czternaście
+  // ekranów, TRZYNAŚCIE pasm tytułu, ZERO `<select>`, ZERO `<input>`, ZERO
+  // `<textarea>` w którymkolwiek z nich. Wybór jednej rzeczy z listy robi tam
+  // przycisk otwierający menu (`popover()`, `v3/app.js:1921-1961`).
+  //
+  // DLACZEGO OSOBNA PARA, SKORO C5-01a/b MIERZĄ WYZWALACZ. Bo one mierzą to,
+  // CO STOI, a ten wpis mówi, czego stać NIE MA. Obie te rzeczy da się złamać
+  // niezależnie: kontrolka dostawiona OBOK dymka zostawia C5-01a/b zielone co
+  // do joty, a jest dokładnie tą regresją, którą lot zamyka. Odwrotnie też —
+  // gdyby ktoś skasował wyzwalacz, ta para dalej liczyłaby zero, a C5-01a/b
+  // wróciłyby NOT_MEASURED. Dopiero we dwoje opisują pasmo.
+  //
+  // TA PARA LICZY ZERO, I TO JEST ŚWIADOME RYZYKO Z DOMKNIĘCIEM. Asercja
+  // o nieobecności jest spełniona także przez ekran, który się nie narysował —
+  // dlatego jedzie na PRZYSTANKU, na którym stoi jeszcze piętnaście innych par
+  // czytających ten sam otwarty rekord: nienarysowany ekran rekordu przewraca
+  // je wszystkie naraz, zanim zdąży uspokoić tę.
+  {
+    id: "D11-01",
+    lot: "D11",
+    position: 1,
+    kind: "restructure",
+    title:
+      "no form control stands in the record's action strip — picking a template is a disclosure, not a field",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "429-432",
+      value:
+        '`crumbbar(trail, btn("New task", { cls: "primary", icon: "plus", act: "new-task" }))` — pas rekordu prototypu niesie ŚLAD i PRZYCISKI, i nic poza tym; w żadnym z czternastu ekranów nie stoi w paśmie ani jeden `<select>`, `<input>` czy `<textarea>`',
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[data-record-kind="project"] [class*="_crumbs_"] select',
+      why: "the exact selector this strip's select rule used to style — if a form control comes back into the crumb bar, it comes back here",
+      app: "packages/desktop-ui/src/Wave2Surfaces.tsx (the project record's action slot), record/record-screen.module.css (.actions)",
+    },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+
+  // ── LOT D1 FAZY D — PASMO NA CAŁĄ SZEROKOŚĆ, ZAMKNIĘTE WŁOSKOWĄ KRESKĄ ─────
+  //
+  // JEDNA POZYCJA, PIĘĆ PAR, i podział jest podziałem DEKLARACJI, nie ozdobą:
+  // „pasmo" jest w tym rejestrze jednym zdaniem złożonym z trzech osobnych
+  // rzeczy — własnej dolnej krawędzi, wysokości pasma i szerokości płótna —
+  // a każda z nich psuje się osobno. Para czytająca samą kreskę byłaby zielona
+  // nad pasmem wciętym w kolumnę czytania, czyli nad dokładnie tą wadą, którą
+  // ten lot zamyka.
+  //
+  // MIERZONE NA LEJKU, bo to jedyny ekran, na którym rejestr zmierzył WSZYSTKIE
+  // TRZY krawędzie (wpis #11: tusz tytułu 41 CSS, pigułka „Stages" 56, karta
+  // kolumny 57,5) — więc jeden przystanek niesie i pasmo, i pasek widoku, i tor
+  // tablicy pod nimi.
+  {
+    id: "D1-01a",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "the title band closes with a hairline of its own",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "282-286",
+      value:
+        "`.crumbbar { … border-bottom: 1px solid var(--border-subtle) }` — pasmo ma własną dolną krawędź, a nie jest blokiem tekstu nad treścią",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: ".surface-header",
+      why: "class written by hand in styles.css, one band per screen; the census resolves the same element from `#surface-title`.closest('header')",
+      app: "packages/desktop-ui/src/styles.css (.surface-header)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D1-01b",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "and stops being clamped to the reading column",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "282-293",
+      value:
+        "`.crumbbar` nie deklaruje ŻADNEGO `max-width`; jedyne `--surface-measure` w prototypie stoi na `.record` (`v3/app.css:650`), czyli na TREŚCI, nie na paśmie",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: ".surface-header",
+      why: "same subject as D1-01a",
+      app: "packages/desktop-ui/src/styles.css (.surface-header)",
+    },
+    read: { property: "maxWidth" },
+    // `none`, A NIE LICZBA: sufit czytelności zdjęty, a nie podniesiony. Para
+    // czytająca „więcej niż 72rem" byłaby zielona także nad pasmem, któremu
+    // ktoś dołożył szerszy sufit, czyli nad tą samą wadą o innej liczbie.
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    id: "D1-02a",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "the view bar under it is a band, not a loose row",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "295-299",
+      value:
+        "`.viewbar { min-height: var(--header-band-height); … border-bottom: 1px solid var(--border-subtle) }` — drugie pasmo o tej samej wysokości i z tą samą krawędzią co `crumbbar`",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: '[class*="_viewbar_"]',
+      why: "the pipeline stop draws exactly one view bar; the module hash is normalised by the same expression the paint census uses",
+      app: "packages/desktop-ui/src/styles.css (.view-band) + pipeline/pipeline.module.css (.viewbar)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D1-02b",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "and stands as tall as the band token says",
+    contract: '.ui-craft/tokens.md — „Spacing and density"',
+    prototype: {
+      file: "v3/tokens.css",
+      lines: "107",
+      value: "--header-band-height: 2.5rem",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: '[class*="_viewbar_"]',
+      why: "same subject as D1-02a",
+      app: "packages/desktop-ui/src/styles.css (.view-band)",
+    },
+    // `rem`, NIE PIKSEL: przeloty chodzą też przy 200% i 300% pisma, a pasmo ma
+    // wtedy rosnąć razem z nim — dlatego arkusz mówi `min-height`, a nie
+    // `height`, i dlatego ta para liczy od żywego korzenia.
+    read: { property: "minHeight" },
+    expect: { kind: "rem", value: 2.5 },
+    status: "enforced",
+  },
+  {
+    id: "D1-03",
+    lot: "D1",
+    position: 1,
+    kind: "restyle",
+    title: "and the board under both starts on the same left edge",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/screens/pipeline.css",
+      lines: "24-27",
+      value:
+        "`.pp-board { … padding: var(--space-3) }` — ta sama liczba, co wyściółka `crumbbar` i `viewbar` (`v3/app.css:284`, `:297`), więc tytuł i karta kolumny padają w prototypie na JEDNĄ krawędź (zmierzone: 13 CSS oba)",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: "[data-scrolls-horizontally]",
+      why: "declared attribute, not a class: the horizontal scroller of the board is the element that carried the fourth, local indent on this axis",
+      app: "packages/desktop-ui/src/pipeline/pipeline.module.css (.scroller)",
+    },
+    read: { property: "paddingLeft" },
+    // ZERO, BO RYNNĘ NIESIE JUŻ NOŚNIK. Tablica siedzi w `.surface-scroll`,
+    // którego wyściółka JEST rynną kanwy; własna wyściółka scrollera dokładała
+    // do niej 16 px i robiła z jednej krawędzi trzy.
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D1-04",
+    lot: "D1",
+    position: 2,
+    kind: "restyle",
+    title: "the band's primary action is as tall as the reference's button",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "306-314",
+      value:
+        "`.btn { … height: 1.75rem }` — jedna wysokość dla WSZYSTKICH wariantów (`primary`, `bordered`, `quiet` zmieniają wyłącznie farbę)",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: ".surface-header .primary-button",
+      why: "the one accent-filled action of this screen, reached through the band class written by hand in styles.css",
+      app: "packages/desktop-ui/src/styles.css (.primary-button, .secondary-button)",
+    },
+    // WYSOKOŚĆ NARYSOWANA, nie zadeklarowana `min-height`: arkusz mówi
+    // `min-height`, więc treść wyższa od pasma podniosłaby przycisk, a para
+    // czytająca deklarację byłaby wtedy zielona nad kontrolką, która urosła.
+    read: { property: "height" },
+    expect: { kind: "rem", value: 1.75 },
+    status: "enforced",
+  },
+  {
+    id: "D1-05",
+    lot: "D1",
+    position: 3,
+    kind: "restyle",
+    title: "the Meetings band action carries the glyph its collapse depends on",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "431-433",
+      value:
+        '`btn("Import from Jamie", { cls: "bordered", icon: "arrow" })` — trzeci argument tego wywołania JEST ikoną, a `btn` (`v3/app.js:683-687`) rysuje ją PRZED etykietą',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      // GLIF, NIE PRZYCISK. Ta para istnieje, bo poniżej 50 rem okna arkusz
+      // gasi etykietę akcji pasma (`font-size: 0`) i zostawia sam glif —
+      // reguła jest pisana pod akcję Z IKONĄ. Akcja bez `svg` była w tym trybie
+      // PUSTYM prostokątem, a bramka wracała zielona, bo mierzy PRZEPEŁNIENIE,
+      // nie pustkę. Para czytająca sam przycisk byłaby zielona nad tą wadą.
+      //
+      // MIERZONE PRZY 1440 px, GDZIE ZWIJANIE NIE DZIAŁA — i to jest wybór, nie
+      // przeoczenie: para pyta o OBECNOŚĆ glifu, a jego brak jest tu awarią
+      // przyrządu (selektor bez dopasowania → NOT_MEASURED, czyli czerwień),
+      // nie rozjazdem liczby. Szerokość 1 rem pochodzi z reguły bazowej
+      // (`styles.css` — `svg { width: 1rem }`), więc drugie zdanie tej pary
+      // brzmi „glif jest glifem tej aplikacji, a nie obrazkiem o własnym
+      // rozmiarze".
+      selector: ".surface-header .secondary-button svg",
+      why: "the Meetings stop draws exactly one band action and that action carries exactly one glyph",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (bandAction)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 1 },
+    status: "enforced",
+  },
+  // ── LOT D3 (FAZA D) — BIBLIOTEKA: NOTATKI I ŹRÓDŁA ──────────────────────────
+  //
+  // Jedenaście wpisów rejestru, TRZY pozycje wyrażalne selektorem nad
+  // przystankami, do których ta mapa umie dojechać: głowa kolumny listy (#34,
+  // #42), wiersz listy i jego siatka (#35, #41, #45) oraz czytelnia (#36, #37,
+  // #38, #43, #44, #46). Kontrakt dostał w tym samym przebiegu dwa nowe wzorce
+  // („Reading list column", „Reading surface"), bo NIE MIAŁ o tym obiekcie ani
+  // jednego zdania — a zasada mówi, że prototyp wygrywa z kontraktem i że
+  // rozjazd przepisuje się w tym samym locie.
+  {
+    id: "D3-01a",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "the notes column head drops to the reference's micro-label step",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "92-97",
+      value:
+        "`.kn-side-head { padding: 0.5rem var(--space-4); font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.04em }` — głowa kolumny jest mikroetykietą, nie tytułem ekranu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_panelHead_"] h2',
+      why: "the same subject L5-04 reads for weight; this pair reads the step, which is what made the head two lines tall",
+      app: "packages/desktop-ui/src/library/notes.module.css (.panelHead h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-2xs" },
+    // WERSALIKÓW TA PARA NIE ASERTUJE, I TO JEST ZAPISANE, NIE PRZEOCZONE.
+    // Prototyp daje `text-transform: uppercase`; ten element niesie ŚCIEŻKĘ
+    // FOLDERU czytelnika, a nie napis stały, więc rozjazd jest świadomy
+    // i wypisany przy regule oraz w ograniczeniach wzorca. Bliźniacza głowa
+    // Źródeł, gdzie napis JEST stały, wersaliki dostała i asertuje je D3-04b.
+    status: "enforced",
+  },
+  {
+    id: "D3-01b",
+    lot: "D3",
+    position: 1,
+    kind: "prescribed",
+    title: "and the help trigger stands in that same row instead of its own",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.js",
+      lines: "807-815",
+      value:
+        '`<div class="kn-side-head">…${helpBtn("folders")}</div>` — wyzwalacz pomocy jest DZIECKIEM głowy kolumny, a nie osobnym piętrem pod przełącznikiem',
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_panelHead_"] [data-help-topic="note-arrangement"]',
+      why: "`data-help-topic` is TopicHelp's own declaration and is what the route assertion already counts; the class around it is a module name",
+      app: "packages/desktop-ui/src/library/NotesReading.tsx (panelTitle)",
+    },
+    read: { property: null },
+    // LICZBA, NIE POŁOŻENIE, I JEST TO CELOWE ZAWĘŻENIE. Selektor jest
+    // POTOMKIEM głowy kolumny, więc „1" znaczy „ten wyzwalacz stoi w tej
+    // głowie". Para czytająca `getBoundingClientRect().top` byłaby zielona nad
+    // wyzwalaczem, który wrócił do paska narzędzi w chwili, gdy ten pasek
+    // przypadkiem stanął w tej samej linii.
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D3-01c",
+    lot: "D3",
+    position: 1,
+    kind: "prescribed",
+    title: "and the tier above the head is gone entirely",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "92-102",
+      value:
+        "cała głowa to JEDEN rząd — `.kn-side-head` z `.kn-n` odepchniętym `margin-left: auto`; prototyp nie ma nad nim żadnej drugiej etykiety",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_panelEyebrow_"]',
+      why: "the micro-label tier this lot deleted; a module class that no longer exists in the sheet resolves to no element",
+      app: "packages/desktop-ui/src/library/notes.module.css (usunięte)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D3-02",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "the group head stops carrying the browser's own heading margin",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "196-203",
+      value:
+        "`.kn-group-head` deklaruje wyłącznie `padding`, siada wprost na wierszach i wprost pod przełącznikiem — między grupami nie ma ani odstępu, ani marginesu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '[class*="_groupHead_"]',
+      why: "an <h3> in a package with no heading reset; it took the user-agent 1em block margin on both sides",
+      app: "packages/desktop-ui/src/library/notes.module.css (.groupHead)",
+    },
+    read: { property: "marginTop" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D3-03a",
+    lot: "D3",
+    position: 2,
+    kind: "prescribed",
+    title: "a note row's reference is an outlined pill, not a bare string",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "182-189",
+      value:
+        "`.kn-row-in { border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 0.0625rem 0.4375rem 0.0625rem 0.3125rem }`",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-row-ref",
+      why: "hand-written class in styles.css; three of the harness's notes carry references, so the subject is drawn on this stop",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-row-ref)",
+    },
+    read: { property: null },
+    // PODŁOGA TRZY, NIE JEDEN, I TA LICZBA JEST WYNIKIEM SPISU FIKSTURY:
+    // `documentReferences` w `dev/library-fixture.ts` ma DOKŁADNIE trzy wpisy
+    // (runbook 1, network 2, handover 1), a `librarySummaries` daje pozostałym
+    // notatkom pustą tablicę — więc trzy jest tu i podłogą, i całą populacją;
+    // przelot potwierdza to obserwacją („3 element(s) match"). Lot dołożył do
+    // tej fikstury dwa ŹRÓDŁA i ani jednej referencji notatki, więc ta liczba
+    // się nie ruszyła. Podłoga „1" byłaby zielona nad zmianą, która przestała
+    // rysować pigułkę wszędzie poza jednym wierszem — a pierwszy wiersz tej
+    // listy referencji NIE MA, więc para patrząca tylko na niego mierzyłaby
+    // gałąź `roleCopy`.
+    expect: { kind: "count", atLeast: 3 },
+    status: "enforced",
+  },
+  {
+    id: "D3-03b",
+    lot: "D3",
+    position: 2,
+    kind: "restyle",
+    title: "and its glyph is the accent",
+    contract: ".ui-craft/tokens.md (What the accent is allowed to mean)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "188",
+      value: "`.kn-row-in .kn-glyph { color: var(--accent); opacity: 0.85 }`",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-row-ref svg",
+      why: "the glyph inside the pill; the app drew no glyph at all before this lot",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-row-ref svg)",
+    },
+    read: { property: "color" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "D3-04a",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "the sources column head is one micro-label row too",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "92-97",
+      value:
+        "ta sama reguła, co przy D3-01a — obie kolumny list Biblioteki są w prototypie tym samym obiektem (`v3/screens/knowledge.js:812` i `:971`)",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_listTitle_"] h2',
+      why: "CSS Module class; the app drew a --text-md sentence title that pushed the help trigger onto a second line",
+      app: "packages/desktop-ui/src/library/sources.module.css (.listTitle h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-2xs" },
+    status: "enforced",
+  },
+  {
+    id: "D3-04b",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "and it takes the reference's case, because its words are fixed",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "95",
+      value: "`.kn-side-head { text-transform: uppercase }`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_listTitle_"] h2',
+      why: "same subject as D3-04a; this is the half of the reference rule the twin head on Notes deliberately does not take",
+      app: "packages/desktop-ui/src/library/sources.module.css (.listTitle h2)",
+    },
+    read: { property: "textTransform" },
+    expect: { kind: "literal", value: "uppercase" },
+    status: "enforced",
+  },
+  {
+    id: "D3-04c",
+    lot: "D3",
+    position: 1,
+    kind: "restyle",
+    title: "and a group head starts on the same left edge as the rows under it",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "198",
+      value:
+        "`.kn-group-head { padding: 0.4375rem var(--space-4) 0.25rem }` przeciw `.kn-row { padding: 0.5625rem var(--space-4) }` (`:139`) — jedna para reguł, JEDNA wyściółka pozioma dla obu",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_groupHead_"]',
+      // Selektor jest ogólny, ale przystanek NIE jest: na tej trasie rysuje się
+      // wyłącznie moduł Źródeł, a bliźniak z Notatek ma własny przystanek i
+      // własną parę (D3-02). Ta sama para na trasie `notes` byłaby dwuznaczna.
+      why: "CSS Module class on the sources column; the head kept var(--space-3) after the row went to var(--space-4), so the two left edges drifted 6 px apart",
+      app: "packages/desktop-ui/src/library/sources.module.css (.groupHead)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "token", token: "--space-4" },
+    status: "enforced",
+  },
+  {
+    id: "D3-05a",
+    lot: "D3",
+    position: 2,
+    kind: "restyle",
+    title: "a source row is square-cornered, flush to the column",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "138-143",
+      value:
+        "`.kn-row { padding: 0.5625rem var(--space-4); border-bottom: 1px solid var(--border-subtle); border-left: 2px solid transparent }` — ŻADNEGO promienia",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[role="option"][class*="_row_"]',
+      why: "declaration-based (`role=option`) plus the module class; the app drew a --radius-md card inset from both column edges",
+      app: "packages/desktop-ui/src/library/sources.module.css (.row)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D3-05b",
+    lot: "D3",
+    position: 2,
+    kind: "restyle",
+    title: "and rows are told apart by a hairline instead of by a gap",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading list column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "140",
+      value: "`.kn-row { border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      // SELEKTOR ZAWĘŻONY PRZY PIERWSZYM PRZELOCIE, I ZAWĘZIŁ GO PRZYRZĄD,
+      // NIE GUST. Napisany jako `[role="option"][class*="_row_"]` — czyli tak
+      // samo jak D3-05a — wrócił NOT_MEASURED: sześć wierszy dawało DWIE
+      // wartości `borderBottomColor`, bo ostatni wiersz KAŻDEJ grupy kreski nie
+      // niesie i jego `border-bottom-color` spada do `color` elementu. Para
+      // czytająca „którąś z dwóch" nie umiałaby powiedzieć, którą osądziła.
+      // Podmiotem jest więc wiersz, POD którym stoi następny wiersz — czyli
+      // dokładnie ten, dla którego zdanie „wiersze rozdziela kreska" jest
+      // zdaniem.
+      selector: '[class*="_rowItem_"]:not(:last-child) [role="option"]',
+      why: "same subject as D3-05a on the other channel: the separator the gap replaced. A radius pair alone would be green over rows that lost their corners and kept their gaps",
+      app: "packages/desktop-ui/src/library/sources.module.css (.row)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D3-06",
+    lot: "D3",
+    position: 2,
+    kind: "prescribed",
+    title: "the date in a source row has its own lane at the row's end",
+    contract: ".ui-craft/tokens.md (Type)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "175-178",
+      value:
+        "`.kn-row-when { margin-left: auto; flex: none; font-variant-numeric: tabular-nums }` — zmierzone na prototypie: prawe krawędzie czterech kolejnych dat na jednej linii (559 px)",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[role="option"] time[class*="_rowWhen_"]',
+      why: "the element did not exist before this lot — the date was a bare text node sharing a lane with the dependants count, so no probe could reach it",
+      app: "packages/desktop-ui/src/library/SourcesReading.tsx (SourceRow)",
+    },
+    read: { property: null },
+    // OSIEM, BO TYLE JEST ŹRÓDEŁ W FIKSTURZE, I TA LICZBA JEST PODANA ZE SWOIM
+    // SPISEM. Napisana najpierw jako sześć — tyle, ile fikstura miała przed tym
+    // lotem — i podniesiona przy odbiorze, bo ten sam lot dołożył dwa źródła
+    // (`dev/library-fixture.ts`, wpisy `sourceId("07")` i `("08")`), żeby lista
+    // dalej przewijała się w swoim panelu. Podłoga niższa od populacji jest
+    // dokładnie tą wadą, którą to repozytorium zbiera falami: byłaby ZIELONA
+    // nad zmianą, po której dwa wiersze przestały rysować datę, a komentarz
+    // powoływałby się na liczbę, której nikt nie przeliczył.
+    //
+    // SPIS: `librarySources()` zwraca dziś osiem wpisów (`sourceId("01")` …
+    // `("08")`), a odczyt rysuje wiersz dla każdego z nich w grupie jego
+    // rodzaju — przelot potwierdza to samą obserwacją („8 element(s) match").
+    // Podłoga, a nie równość: pusta grupa rysuje zdanie zamiast wiersza, więc
+    // liczba wierszy jest funkcją populacji, nie słownika rodzajów.
+    expect: { kind: "count", atLeast: 8 },
+    status: "enforced",
+  },
+  {
+    id: "D3-07",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "a section heading in the reader is a sentence, not a micro-label",
+    contract: ".ui-craft/tokens.md (Type)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "389-392",
+      value:
+        "`.kn-sec-head { font-size: var(--text-sm); font-weight: 600; letter-spacing: -0.005em }` — zmierzone na prototypie: 13 px, 600, `text-transform: none`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_sectionHead_"]',
+      why: "the class this lot split off `.sectionLabel`; the field label of the rename form KEEPS the micro-label treatment and is deliberately not this subject",
+      app: "packages/desktop-ui/src/library/sources.module.css (.sectionHead)",
+    },
+    read: { property: "textTransform" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    id: "D3-08",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: '"What rests on this" gets its bordered plate back',
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "397-407",
+      value:
+        "`.kn-refs { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden }` + `.kn-ref-row { border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_restsList_"]',
+      why: "the same subject L5-06 counts glyphs inside; this pair reads the plate the register says the block lost",
+      app: "packages/desktop-ui/src/library/sources.module.css (.restsList)",
+    },
+    read: { property: "borderTopColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D3-09",
+    lot: "D3",
+    position: 3,
+    kind: "prescribed",
+    title: "the two dates collapse into one line of small print",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "246-249",
+      value:
+        "`.kn-reader-meta` — plakietka, „observed …" +
+        " i „added …" +
+        " w JEDNYM rzędzie `--text-xs`, rozdzielone `.kn-dot` (`v3/screens/knowledge.js:912-916`)",
+    },
+    route: { surface: "library", layout: "sources" },
+    subject: {
+      selector: '[class*="_dates_"]',
+      why: "the `dl` block this lot replaced; a class no rule declares any more resolves to no element",
+      app: "packages/desktop-ui/src/library/sources.module.css (usunięte)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D3-10a",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "the note body stops being a raised card on a second plane",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "282",
+      value:
+        "`.kn-body { padding-top: var(--space-5) }` i nic więcej — zmierzone na prototypie: `border-top-width: 0px`, tło `rgba(0,0,0,0)`, `box-shadow: none`",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-writing-plane .document-canvas",
+      why: "hand-written classes in styles.css; the selector is scoped because the SAME canvas class carries the project record's document card, which belongs to another lot",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-writing-plane .document-canvas)",
+    },
+    read: { property: "boxShadow" },
+    // CIEŃ, PROMIEŃ I TŁO PSUJĄ SIĘ OSOBNO — ta para czyta cień, D3-10b promień.
+    // Sama nieobecność cienia byłaby zdaniem prawdziwym także o karcie, której
+    // ktoś zdjął wyłącznie uniesienie i zostawił obwódkę z promieniem.
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    id: "D3-10b",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "and it loses the corner that made it a card",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "282",
+      value: "`.kn-body` nie deklaruje ani `border-radius`, ani obwódki",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-writing-plane .document-canvas",
+      why: "same subject as D3-10a on the other channel",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-writing-plane .document-canvas)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D3-10c",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "and no heading inside it reaches the step of the title above it",
+    contract: ".ui-craft/tokens.md (Type)",
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "283-287",
+      value:
+        "`.kn-h2 { font-size: var(--text-lg) }` pod `.kn-reader-title { font-size: var(--text-xl) }` (`:242-245`) — największy śródtytuł jest MNIEJSZY od tytułu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".knowledge-writing-plane .document-canvas h1",
+      why: "the body's own top heading, which computed 37.76 px against a 22 px title before this lot — the inversion the register names",
+      app: "packages/desktop-ui/src/styles.css (.knowledge-writing-plane .document-canvas h1)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-lg" },
+    status: "enforced",
+  },
+  {
+    id: "D3-11a",
+    lot: "D3",
+    position: 3,
+    kind: "restyle",
+    title: "the reader's actions stand in one row of pills",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "253",
+      value:
+        "`.kn-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3) }` — zmierzone na prototypie: 28 px wysokości",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".document-editor-actions",
+      why: "hand-written class in styles.css; it declared `display: grid; justify-items: end`, i.e. one action per row, and measured 187 px tall",
+      app: "packages/desktop-ui/src/styles.css (.document-editor-actions)",
+    },
+    read: { property: "display" },
+    expect: { kind: "literal", value: "flex" },
+    status: "enforced",
+  },
+  {
+    id: "D3-11b",
+    lot: "D3",
+    position: 3,
+    kind: "prescribed",
+    title: "and the head under the title says when and where",
+    contract: '.ui-craft/patterns.md — „Pattern: Reading surface"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "246-249",
+      value:
+        "`.kn-reader-meta` — jeden przygaszony wiersz pod tytułem czytanej notatki (`v3/screens/knowledge.js:747-753`)",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: ".document-editor-meta time",
+      why: "the timestamp inside the metadata line; counting the line alone would be green over a line that draws only the folder",
+      app: "packages/desktop-ui/src/library/KnowledgeEditor.tsx (document-editor-meta)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    // KOGO ta linia NIE MÓWI: `document.list`
+    // (`packages/contracts/src/query.ts:1718-1733`) nie niesie autora, więc
+    // prototypowy awatar z inicjałami nie ma z czego powstać. Zgłoszone jako
+    // pozycja nieoddana lotu, nie zamknięte cicho.
+    status: "enforced",
+  },
+
+  // ── LOT D4: EKRAN REKORDU PROJEKTU I KOMENTARZE ───────────────────────────
+  {
+    id: "D4-01a",
+    lot: "D4",
+    position: 1,
+    kind: "restructure",
+    title: "the project document sits INSIDE the reading column",
+    contract: '.ui-craft/patterns.md — „Pattern: Record body and its rail"',
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "454-460",
+      value:
+        '`${doc}` idzie do `<div class="rc-doc">` WEWNĄTRZ `<div class="rc-body">` — dokument jest dzieckiem kolumny tekstu, nie rodzeństwem siatki',
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // PARA JEST O ZAWIERANIU, WIĘC MIERZY ZAWIERANIE. Selektor potomka
+      // czyta dokładnie zdanie wpisu: „karta stoi w kolumnie tekstu".
+      // Odczyt geometrii (prawa krawędź karty) byłby o JEDEN krok dalej od
+      // przyczyny i zieleniałby przy każdej szerokości, przy której karta
+      // akurat się mieści.
+      selector: '[class*="_doc_"] .project-rich-body',
+      why: "containment is the defect: the card was a SIBLING of the grid, so it ran the full 1092 px and passed under the rail",
+      app: "packages/desktop-ui/src/record/ProjectRecordOverview.tsx (prop `body`), ProjectRecordScreen.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D4-01b",
+    lot: "D4",
+    position: 1,
+    kind: "restyle",
+    title: "and the rail's hairline runs the whole height of the body",
+    contract: '.ui-craft/patterns.md — „Pattern: Record body and its rail"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "101",
+      value:
+        "`.rc-rail { border-left: 1px solid var(--border-subtle) }` — krawędź KOLUMNY; w prototypie pas jest kolumną wyższą, więc biegnie do dna ciała rekordu",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      // DRUGI KANAŁ TEJ SAMEJ POZYCJI. Sama para D4-01a byłaby zielona nad
+      // ekranem, na którym karta wróciła do kolumny, a włoskowa krawędź
+      // dalej urywa się w połowie dokumentu — czyli nad połową poprawki.
+      selector: '[class*="_rail_"]',
+      why: "with align-items: start the rail's box stops at its content; measured after the move, the edge ended 525.5 px above the column's floor",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.rail)",
+    },
+    read: { property: "alignSelf" },
+    expect: { kind: "literal", value: "stretch" },
+    status: "enforced",
+  },
+  {
+    id: "D4-02",
+    lot: "D4",
+    position: 2,
+    kind: "restyle",
+    title: "a metadata chip is a soft rectangle, not a capsule",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "356-362",
+      value:
+        "`.chip { border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--surface-raised) }`",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[class*="_chipDashed_"]',
+      why: "the empty-state chip is the one the fixture draws (no client, no deadline); it shares the radius with `.chip` because the prototype makes `dashed` a MODIFIER over the same rule",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.chip, .chipDashed)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-sm" },
+    status: "enforced",
+  },
+  {
+    id: "D4-03",
+    lot: "D4",
+    position: 3,
+    kind: "restyle",
+    title: "a legend swatch is a miniature of the bar's segment",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
+    prototype: {
+      file: "v3/screens/projects.css",
+      lines: "238",
+      value:
+        "`.pj-legend .pj-seg { width: 0.625rem; height: 0.625rem; border-radius: 2px }`",
+    },
+    route: { surface: "projects", openRecord: "[data-project-row]" },
+    subject: {
+      selector: '[class*="_swatch_"]',
+      why: "`--radius-sm` is 0.375rem on a 0.625rem swatch — a radius of 60% of the side, which reads as a dot and stops referring to the bar above it",
+      app: "packages/desktop-ui/src/record/project-record.module.css (.swatch)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "2px" },
+    status: "enforced",
+  },
+  {
+    id: "D4-04",
+    lot: "D4",
+    position: 4,
+    kind: "restyle",
+    title: "the agent's role is a pill with a dashed accent edge",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "169-175",
+      value:
+        "`.rc-kind { border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 0.0625rem 0.4375rem }` + `.rc-kind-agent { color: var(--accent); border-color: var(--accent-edge); border-style: dashed }`",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      selector: '[class*="_kind_"]',
+      why: "the role line was colour and size only; the STYLE of the border is what the accent is doubled by, so a colour-only pair would stay green over a solid edge",
+      app: "packages/desktop-ui/src/record/record-comments.module.css (.kind)",
+    },
+    read: { property: "borderStyle" },
+    expect: { kind: "literal", value: "dashed" },
+    status: "enforced",
+  },
+  {
+    id: "D4-05",
+    lot: "D4",
+    position: 5,
+    kind: "restyle",
+    title: "the human author's mark has an edge, like the agent's",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "382-387",
+      value:
+        "`.rc-mark { border: 1px solid var(--border-default); background: var(--surface-raised) }` — obwódka jest w BAZIE, wariant agenta ją tylko podmienia",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      // PODMIOTEM JEST ZNACZNIK CZŁOWIEKA, nie „któryś znacznik": wariant
+      // agenta niósł obwódkę od lotu 4 fazy 3, więc para nad wspólną klasą
+      // mogłaby osądzić kółko agenta i wrócić zielona nad płaskim „AN".
+      // SELEKTOR ZAWĘŻONY PRZEZ PRZYRZĄD, NIE PRZEZ GUST. Napisany jako
+      // `[class*="_mark_"]:not([class*="_markAgent_"])` wrócił NOT_MEASURED:
+      // trafiał w TRZY narysowane elementy o DWÓCH wartościach (0px | 1px), bo
+      // `_mark_` nosi też znacznik zdrowia w nagłówku rekordu projektu
+      // (`project-record.module.css`), który stoi nad zakładkami i nie ma
+      // z komentarzami nic wspólnego. Podmiotem jest znacznik autora W KARCIE
+      // KOMENTARZA, i to karcie NIE-agenta — wariant agenta niósł obwódkę od
+      // lotu 4 Fazy 3, więc para nad wspólną klasą mogła osądzić jego kółko
+      // i wrócić zielona nad płaskim „AN".
+      selector:
+        '[class*="_entry_"]:not([class*="_entryAgent_"]) [class*="_mark_"]',
+      why: "the fixture draws one human root (Ada Nowak) and one agent reply, so this selector has a subject and it is the one the register complains about",
+      app: "packages/desktop-ui/src/record/record-comments.module.css (.mark)",
+    },
+    read: { property: "borderTopWidth" },
+    expect: { kind: "literal", value: "1px" },
+    status: "enforced",
+  },
+  {
+    id: "D4-06a",
+    lot: "D4",
+    position: 6,
+    kind: "restructure",
+    title: "the send control stands INSIDE the composer's frame",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "206-212",
+      value:
+        "`.rc-composer-foot` z przyciskiem siedzi WEWNĄTRZ `.rc-composer-field`, a `margin-left: auto` dosuwa go do prawego dolnego rogu ramki",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      // LICZYMY PRZYCISKI POZA RAMKĄ, NIE W NIEJ, i zdecydował o tym przelot.
+      // Wersja licząca trafienia WEWNĄTRZ ramki asertowała `equals: 1`
+      // i wróciła DIFFERS na dwóch — bo zamknięty inspektor trzyma DRUGI,
+      // kompletny panel komentarzy tego samego rekordu (`ASIDE.inspector`,
+      // `offsetParent === null`), a `count` czyta `querySelectorAll` BEZ filtra
+      // narysowania (w odróżnieniu od odczytu właściwości, który filtruje).
+      // Wpisanie tam dwójki zaszyłoby w mapie liczbę MONTOWAŃ panelu, którą
+      // zmieni pierwszy lot dotykający inspektora. Zdanie „żadna wysyłka nie
+      // stoi poza ramką" jest tym samym zdaniem wpisu i jest niewrażliwe na to,
+      // ile razy panel jest zamontowany.
+      selector: '[class*="_submit_"]:not([class*="_composerField_"] *)',
+      why: "containment is the entry: while the textarea drew its own border there was no interior for the button, and it sat two rows below the box it belongs to",
+      app: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx, record-comments.module.css (.composerField)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  // ── LOT D5 FAZY D — USTAWIENIA STAJĄ SIĘ TRYBEM ─────────────────────────
+  // Wszystkie pary tego lotu jadą jednym krokiem `settingsMode: true`, czyli
+  // klikiem w koło zębate. Ekran Ustawień jest w chunku LENIWYM, ale kolumna
+  // trybu należy do `RealApp.tsx`, więc pozycja #67 mierzy powłokę, a #68/#70
+  // treść — z tego samego przystanku.
+  {
+    id: "D5-01a",
+    lot: "D5",
+    position: 1,
+    kind: "prescribed",
+    title: "entering settings takes the workspace card out of the column",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "6-27",
+      value:
+        "`.body:has(#canvas .st-mode) { --sidebar-width: 0px }` — wejście w tryb ZERUJE kolumnę powłoki pracy; karty przestrzeni nie ma tam w ogóle",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".sidebar .workspace-switcher",
+      why: "counted at zero: the register names this control by name as the first of three things that stayed above the section list",
+      app: "packages/desktop-ui/src/RealApp.tsx (gałąź `!settingsMode`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D5-01b",
+    lot: "D5",
+    position: 1,
+    kind: "prescribed",
+    title: "and the search control with it",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.js",
+      lines: "987-1002",
+      value:
+        "`.st-nav` ma DOKŁADNIE dwoje dzieci — `.st-nav-head` i `.st-nav-list`; wyszukiwarki nie ma w tym drzewie",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".sidebar .search-control",
+      why: "DRUGA para, nie druga własność tej samej: karta przestrzeni i wyszukiwarka to dwa osobne warunki w JSX-ie, więc jedna para byłaby zielona nad połową poprawki",
+      app: "packages/desktop-ui/src/RealApp.tsx (gałąź `!settingsMode`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D5-01c",
+    lot: "D5",
+    position: 1,
+    kind: "restyle",
+    title: "and the way out becomes a band with its own hairline",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "40-43",
+      value:
+        "`.st-nav-head { min-height: var(--header-band-height); border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-head",
+      why: "the band itself — the two counts above say what is GONE, and a column emptied without a band would pass both of them",
+      app: "packages/desktop-ui/src/styles.css (.settings-mode-head)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    // CZWARTA PARA POZYCJI 1, DOPISANA PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D5.
+    // Trzy pary wyżej mówią, CZEGO NIE MA, i że kreska pasma jest we właściwym
+    // tokenie — a żadna z nich nie ma zdania o tym, dokąd to pasmo SIĘGA.
+    // Wada, którą przegląd znalazł odczytem, była dokładnie tam: margines
+    // ujemny pasma jest symetryczny, a nawigacja odtwarzała rynnę tylko po
+    // LEWEJ, więc prawe 12 px pasma leżało poza jej pudełkiem przycięcia i było
+    // ścinane. Pomiar lotu przy 760 px („wystawanie w prawo 0 px") był
+    // PRAWDZIWY i ślepy: `getBoundingClientRect` oddaje pudełko UKŁADU.
+    id: "D5-01d",
+    lot: "D5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "and that band runs the full width of the column instead of being cut by it",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "36-43",
+      value:
+        "`.st-nav` nie ma wyściółki poziomej w ogóle, a `.st-nav-head` niesie własną — więc pasmo prototypu z natury dobiega do OBU krawędzi kolumny, a przewijalna jest dopiero `.st-nav-list` pod nim",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-head",
+      why: "ta sama kontrolka co D5-01c, ale czytana na osi, na której się psuje: kolor kreski jest identyczny w paśmie pełnej szerokości, w paśmie obciętym o rynnę i w podkreśleniu kończącym się przed krawędzią",
+      app: "packages/desktop-ui/src/styles.css (.sidebar-settings-mode nav)",
+    },
+    read: { property: "rect.clipGapRight", clip: ".sidebar nav" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D5-02a",
+    lot: "D5",
+    position: 2,
+    kind: "prescribed",
+    title: "the section list is cut into named groups",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "57-60",
+      value:
+        "`.st-nav-glabel` — wersaliki `--text-2xs` z rozstrzeleniem 0,06em w kolorze czwartorzędnym, po jednej na grupę (`v3/screens/settings.js:996-1000`)",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-group-label",
+      why: "exactly three, and the number is a fact about the shape rather than about the fixture: the groups are derived from a six-entry dictionary compiled into the bundle, not from workspace data",
+      app: "packages/desktop-ui/src/settings-categories.ts (settingsCategoryGroups)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 3 },
+    status: "enforced",
+  },
+  {
+    id: "D5-02b",
+    lot: "D5",
+    position: 2,
+    kind: "prescribed",
+    title: "and every section carries a glyph",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.js",
+      lines: "983",
+      value:
+        '`${icon(s.icon, "ico")}<span class="lbl">…` — glif jest PIERWSZYM dzieckiem pozycji, przed etykietą',
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-section svg",
+      why: "one per section and six sections; `equals`, not `atLeast`, because a floor would pass a list where a single category kept its glyph",
+      app: "packages/desktop-ui/src/settings-categories.ts (pole `icon`), RealApp.tsx (`<Icon name={category.icon} />`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 6 },
+    status: "enforced",
+  },
+  {
+    id: "D5-03a",
+    lot: "D5",
+    position: 3,
+    kind: "restyle",
+    title: "a settings list is one plate instead of a stack of cards",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "109-112",
+      value:
+        "`.st-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden }` — obwódka należy do LISTY",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".status-list",
+      why: "the list element the register names first; the plate is what it lacked",
+      app: "packages/desktop-ui/src/styles.css (.status-list)",
+    },
+    read: { property: "borderTopColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D5-03b",
+    lot: "D5",
+    position: 3,
+    kind: "restyle",
+    title: "and its row stops being a card of its own",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "113-118",
+      value:
+        "`.st-row` niesie WYŁĄCZNIE `border-bottom`, zdejmowany na `:last-child` — bez promienia i bez własnego tła",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".status-list li",
+      why: "the row, read on its RADIUS rather than on its separator, and that is a decision forced by the fixture: this harness gives every status list exactly ONE row, so every row is `:last-child` and the hairline the rule adds is never drawn here. A pair on the separator would be measuring a lane that does not exist — the twin on the stage list below reads the hairline where there are two rows to separate.",
+      app: "packages/desktop-ui/src/styles.css (.status-list li)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D5-03c",
+    lot: "D5",
+    position: 3,
+    kind: "restyle",
+    title: "and the stage rows are told apart by a hairline, not by gaps",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "113-120",
+      value:
+        "`.st-row { border-bottom: 1px solid var(--border-subtle) }` nad `.st-list` bez `gap` — wiersze rozdziela linia, nie przerwa",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector:
+        '[class*="_stageList_"] li:not(:last-child) [class*="_stageRow_"]',
+      why:
+        "the register named BOTH files under one entry; this is the list that actually has more " +
+        "than one row in the harness, so the separator is measurable here and only here. THE " +
+        'SELECTOR EXCLUDES THE LAST ROW ON PURPOSE, and the first draft did not: `[class*="_stageRow_"]` ' +
+        "matched six rendered rows computing TWO values, because the closing row's hairline is " +
+        "removed by design — the pair came back NOT_MEASURED, i.e. as an instrument failure, and " +
+        "widening the expectation to accept both values would have made it green over a list with " +
+        "no separators at all.",
+      app: "packages/desktop-ui/src/settings/commercial-defaults-section.module.css (.stageRow)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    id: "D5-04a",
+    lot: "D5",
+    position: 4,
+    kind: "restyle",
+    title: "each settings section becomes its own card",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "235-241",
+      value:
+        "`.st-grant { border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-content); overflow: hidden }` — obrys należy do SEKCJI",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-category > section",
+      why: "the section that used to be a band inside somebody else's outline",
+      app: "packages/desktop-ui/src/styles.css (.settings-category > section)",
+    },
+    read: { property: "borderTopColor" },
+    expect: { kind: "token", token: "--panel-reading-border" },
+    status: "enforced",
+  },
+  {
+    id: "D5-04b",
+    lot: "D5",
+    position: 4,
+    kind: "restyle",
+    title: "and its heading gets a band closed by a hairline",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "239",
+      value:
+        "`.st-grant-head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle) }`",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-category > section > .settings-copy",
+      why: "DRUGA para, bo obrys sekcji i pasmo jej nagłówka psują się osobno: karta bez pasma przechodzi D5-04a i dalej daje nagłówkowi wyściółkę ciała, czyli dokładnie ten kształt, który rejestr zgłosił",
+      app: "packages/desktop-ui/src/styles.css (.settings-category > section > .settings-copy)",
+    },
+    read: { property: "borderBottomColor" },
+    expect: { kind: "token", token: "--border-subtle" },
+    status: "enforced",
+  },
+  {
+    // TRZECIA PARA POZYCJI 4, DOPISANA PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D5.
+    // Obie pary wyżej mają PODMIOT `.settings-category > section`, czyli
+    // dokładnie ten zbiór, który wpis #70 obdarował kartą — i są ślepe na
+    // dziecko kategorii, które `section` NIE JEST. Takie dziecko było: korzeń
+    // `AccessSection` zwracał `<div>`, więc jako jedyne w sześciu kategoriach
+    // nie dostawało ani obrysu, ani przeniesienia wyściółki, i zostawało przy
+    // własnej kresce górnej wiszącej w przerwie siatki. Bliźniaczy
+    // `ActivitySection` zwraca `<section>` i wpadł poprawnie — różnił je
+    // WYŁĄCZNIE tag, czyli jedyna rzecz, której tamte pary nie czytają.
+    //
+    // LICZBA, NIE WŁASNOŚĆ, i to jest cała treść tej pary: para przypięta do
+    // drugiego dziecka jednej kategorii byłaby zielona przy siódmym komponencie
+    // dopisanym tą samą drogą. Zero dzieci spoza zbioru podmiotów znaczy, że
+    // zbiór podmiotów obu par wyżej JEST kompletem kart tego ekranu.
+    id: "D5-04c",
+    lot: "D5",
+    position: 4,
+    kind: "prescribed",
+    title: "and no block of a category sits outside that set of cards",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "235-241",
+      value:
+        "`.st-grant` — w prototypie KAŻDY blok kategorii niesie obwódkę, promień i przycięcie; bloku bez karty nie ma tam ani jednego",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-category > *:not(section)",
+      why: "policzone nad WSZYSTKIMI sześcioma kategoriami naraz — jedno dziecko spoza zbioru podmiotów D5-04a/b to jedna karta, której nikt nie narysował, a obie tamte pary zostają nad tym zielone",
+      app: "packages/desktop-ui/src/settings/AccessSection.tsx (korzeń komponentu)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D5-05",
+    lot: "D5",
+    position: 5,
+    kind: "restyle",
+    title: "the add bar's select stops being a panel row",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "181-194",
+      value:
+        "`.st-input` i `.st-select` — obie kontrolki paska akcji mają `height: 1.75rem`, tę samą wyściółkę i ten sam stopień",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-control .status-create select",
+      why: "WYSOKOŚĆ NARYSOWANA, nie zadeklarowana podłoga — ta sama ostrożność co przy D1-04: para czytająca `min-height` byłaby zielona nad kontrolką, którą wyściółka podniosła z powrotem. Zmierzone przed poprawką: 44 px przy polu obok o 34,2 px.",
+      app: "packages/desktop-ui/src/styles.css (.settings-control .status-create …)",
+    },
+    // 1,8 → 1,75 PRZY NAPRAWIE PO PRZEGLĄDZIE: para CYTOWAŁA `height: 1.75rem`
+    // z prototypu i pilnowała 1,8 rem, a nigdzie — ani przy regule, ani tutaj,
+    // ani we wzorcu — nie stało zdania, że to świadome odstępstwo. Wartość
+    // „mniej więcej jak w prototypie" nie jest wartością z prototypu; reguła
+    // zeszła na 1,75 rem razem z tą liczbą.
+    read: { property: "height" },
+    expect: { kind: "rem", value: 1.75 },
+    status: "enforced",
+  },
+  {
+    // TRZECIA POŁOWA WPISU #58 — ZNACZNIK AUTORA W KOMPOZYTORZE. Litera idzie
+    // za WPISEM rejestru, nie za pozycją (tak samo jak przy `D4-06a`): #58 ma
+    // trzy zdania i to jest pierwsze z nich, czyli nagłówek wiersza —
+    // „kompozytor: brak awatara". Do naprawy po przeglądzie lotu D4 nie
+    // mierzyło go NIC: `D4-06a` liczy wysyłki poza ramką, `D4-06b` czyta
+    // `resize` pola, a `D4-05` ma podmiot zawężony do znacznika W KARCIE
+    // komentarza (`[class*="_entry_"] …`), więc znacznik stojący w `<form>`
+    // kompozytora jest poza jego zasięgiem z definicji.
+    id: "D4-06c",
+    lot: "D4",
+    position: 6,
+    kind: "restyle",
+    title: "and the composer is stamped by the same author mark as the thread",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "410-411",
+      value:
+        "`.rc-composer { display: grid; grid-template-columns: 1.125rem minmax(0, 1fr) }` + `.rc-mark-me { margin-top: 0.4375rem }` — pierwszą kolumną kompozytora JEST znacznik autora (`v3/screens/record.js:205`), a jego margines opuszcza go do pierwszego wiersza tekstu",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      // ODCZYT WŁAŚCIWOŚCI, NIE `count`, I DECYDUJE O TYM TEN SAM FAKT, co
+      // przy `D4-06a`: zamknięty inspektor trzyma DRUGI, kompletny panel
+      // komentarzy tego samego rekordu, a `count` czyta `querySelectorAll`
+      // BEZ filtra narysowania. `equals: 1` wróciłoby DIFFERS na dwóch,
+      // `equals: 2` zaszyłoby w mapie liczbę montowań panelu, a zliczanie
+      // DOPEŁNIENIA („żaden znacznik kompozytora nie stoi poza kompozytorem")
+      // byłoby ZIELONE nad skasowanym znacznikiem — czyli nad tą właśnie wadą.
+      // Odczyt właściwości filtruje do narysowanych i wymaga JEDNEJ wartości,
+      // więc skasowanie znacznika wraca jako `NOT_MEASURED` z tym id, a nie
+      // jako cisza.
+      selector: '[class*="_composerMark_"]',
+      why: "the composer had no author mark at all: the thread stamped every comment with initials and the box the reader writes in was stamped with nothing",
+      app: "packages/desktop-ui/src/record/RecordCommentsPanel.tsx (styles.composerMark), record-comments.module.css (.composerMark)",
+    },
+    read: { property: "marginTop" },
+    expect: { kind: "rem", value: 0.4375 },
+    status: "enforced",
+  },
+  {
+    id: "D4-06b",
+    lot: "D4",
+    // POZYCJA 7, NIE 6, BO TA PARA CZYTA `resize` — czyli zdanie wpisu #61,
+    // a nie zdanie wpisu #58 o kształcie kompozytora. Para przypisana do
+    // pozycji, której NIE mierzy, jest bramką zapalającą się z powodu,
+    // którego nikt nie umie odczytać z powrotem (ta sama zasada, co przy
+    // `RECORD_TITLE_BAND_OWNER` na dole tego pliku). Przezroczystość pola —
+    // druga połowa tej samej reguły — jest dowodzona spisem farby B1, gdzie
+    // stan `TRANSPARENT` jest jawnie dopuszczony.
+    position: 7,
+    kind: "restyle",
+    title: "and the composer's field offers no native resize handle",
+    contract: '.ui-craft/patterns.md — „Pattern: Comment author and composer"',
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "417-419",
+      value:
+        "`.rc-composer textarea { border: 0; background: none; resize: none }` — ramkę niesie oprawa, nie pole",
+    },
+    route: {
+      surface: "projects",
+      openRecord: "[data-project-row]",
+      recordTab: "comments",
+    },
+    subject: {
+      selector: '[class*="_composerText_"]',
+      why: "the wrapper can only be the visible frame if the control inside it stops drawing a second one; B1 reads this as TRANSPARENT, the state `.ghost-button` declares",
+      app: "packages/desktop-ui/src/record/record-comments.module.css (.composerText)",
+    },
+    read: { property: "resize" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+
+  // ── LOT D6 — OGON CRM (Organizacje i Ludzie) ──────────────────────────────
+  //
+  // PIERWSZE PARY TEJ MAPY NAD DWOMA EKRANAMI CRM-owej listy; markery przybycia
+  // (`ROUTED_ARRIVAL.organizations`, `.people`) dopisane razem z nimi.
+  //
+  // CO FIKSTURA DOSIĘGA, ZMIERZONE PRZED NAPISANIEM PAR, A NIE PO. Sonda przy
+  // 1440 px na obu przystankach zwróciła DWA z czterech stanów sygnału — `risk`
+  // i `watch` — oraz dwa z trzech stanów relacji (`active`, `prospect`). Pary
+  // niżej czytają WYŁĄCZNIE to, co ta fikstura rysuje: para nad zielonym
+  // kwadratem („On track") albo nad kreskowaną obwódką („Dormant") wróciłaby
+  // NOT_MEASURED, czyli jako awaria przyrządu nad poprawnym kodem. To jest
+  // w tym repo nazwana klasa defektu („pusta fikstura chroni fałszywą
+  // asercję") i dlatego stoi tu pomiar, a nie założenie.
+  {
+    id: "D6-01a",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "the relationship mark is a drawn box, not a typed character",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "389-392",
+      value:
+        "`.health { width: 0.8125rem; height: 0.8125rem; border-radius: 2px; border: 1.5px solid var(--text-disabled) }` — kwadrat wielkości wersalika, wstawiany przez `healthDot` (v3/app.js:116)",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_signalMark_"]',
+      why: "szerokość, bo to ona rozstrzyga spór wpisu: znak pisma bierze wymiar z KROJU czytelnika (▲ przy --text-2xs mierzyło ~7 px i było MNIEJSZE od tekstu obok), a pudełko bierze go z tego arkusza",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-01b",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "and „Watch” is told apart by a SHAPE, not by a second colour",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "394",
+      value:
+        "`.health.watch { background: linear-gradient(135deg, var(--status-warning) 50%, transparent 50%) }` — ukośne półwypełnienie",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-relationship-signal="watch"] [class*="_signalMark_"]',
+      why: "SEDNEM wpisu jest „cztery kształty, nie cztery kolory” — para czytająca kolor stałaby zielona nad czterema jednakowymi kwadratami w czterech odcieniach, czyli nad wersją nieczytelną bez koloru. `watch` jest jednym z dwóch stanów, które fikstura rysuje",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark_watch)",
+    },
+    read: { property: "backgroundImage" },
+    expect: { kind: "contains", value: "linear-gradient" },
+    status: "enforced",
+  },
+  {
+    id: "D6-01c",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "and „At risk” is a FILLED box, not an outlined one",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "395",
+      value:
+        "`.health.risk { border-color: var(--status-error); background: var(--status-error) }` — wypełnione, w odróżnieniu od `.health.none` (:409), które jest samą kreskowaną obwódką",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-relationship-signal="risk"] [class*="_signalMark_"]',
+      why:
+        "drugi ze stanów dosięgniętych przez fiksturę, czytany INNĄ własnością niż `watch`: wypełnienie kontra sama obwódka jest różnicą KSZTAŁTU, nie odcienia, i to ona dzieli cztery stany na wypełnione (`ok`, `risk`) i niewypełnione (`watch` w połowie, `none` wcale). " +
+        "TA PARA NIE MIERZY WYKRZYKNIKA — cięcie siedzi w `::after`, którego `read` tej mapy nie widzi, i stoi wypisane w VISUAL_LANGUAGE_ROUTED_NOT_COVERED. " +
+        "GRUBOŚCI OBWÓDKI TEŻ NIE, i to jest pomiar, nie rezygnacja: arkusz deklaruje `1.5px` za prototypem, a `getComputedStyle` w tym przelocie oddaje `1px` — Chromium przycina krawędź do piksela urządzenia przy DPR 1. Para na literale „1.5px” byłaby czerwona nad poprawnym arkuszem, a para na „1px” asertowałaby artefakt zaokrąglenia, który zniknie na ekranie o innej gęstości.",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark_risk)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--status-error" },
+    status: "enforced",
+  },
+  {
+    id: "D6-02a",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "the same mark is drawn on People, not typed there either",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "389-392",
+      value:
+        "ten sam `.health` — prototyp ma JEDNĄ definicję kształtu dla wszystkich miejsc (`v3/screens/crm.css:7-8` mówi to wprost)",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_signalMark_"]',
+      why: "DRUGA para, nie druga własność pierwszej: rejestr zgłosił ten kształt dwa razy (#20, #30), bo mieszka w DWÓCH arkuszach modułowych — jedna para byłaby zielona nad połową poprawki",
+      app: "packages/desktop-ui/src/people/people.module.css (.signalMark)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-02b",
+    lot: "D6",
+    position: 1,
+    kind: "prescribed",
+    title: "and „Watch” keeps its shape on People too",
+    contract: '.ui-craft/tokens.md — „Status and accessibility"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "394",
+      value: "`.health.watch` — ukośne półwypełnienie, ta sama jedna definicja",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-relationship-signal="watch"] [class*="_signalMark_"]',
+      why: "bliźniak D6-01b na drugim arkuszu; podmiot jest tu jednoznaczny, bo przystanek rysuje wyłącznie ekran Ludzi",
+      app: "packages/desktop-ui/src/people/people.module.css (.signalMark_watch)",
+    },
+    read: { property: "backgroundImage" },
+    expect: { kind: "contains", value: "linear-gradient" },
+    status: "enforced",
+  },
+  {
+    id: "D6-03a",
+    lot: "D6",
+    position: 2,
+    kind: "restyle",
+    title: "„Prospect” belongs to the accent, not to information",
+    contract: '.ui-craft/tokens.md — „What the accent is allowed to mean"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "33",
+      value:
+        "`.crm-state-prospect { color: var(--accent); border-color: var(--accent-edge); background: var(--accent-quieter) }`",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_state_prospect_"]',
+      why: "tu odcień JEST pozycją (rejestr: „niebieska, nie indygo-fioletowa”), więc para czyta go wprost — tym samym osądem, którym sonda osądza akcję główną, czyli niezależnie od motywu",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.state_prospect)",
+    },
+    read: { property: "color" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "D6-03b",
+    lot: "D6",
+    position: 2,
+    kind: "restyle",
+    title: "and it sits on its own tint, not on the row",
+    contract: '.ui-craft/tokens.md — „What the accent is allowed to mean"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "33",
+      value: "`background: var(--accent-quieter)` na tej samej plakietce",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: '[data-organizations-surface] [class*="_state_prospect_"]',
+      why: "sam tusz przemalowany bez laserunku przechodzi D6-03a, a prototyp niesie OBIE deklaracje; laserunek jest też tym, co bramka kontrastu mierzy — 4,62:1 najciaśniej, w motywie jasnym na płótnie",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.state_prospect)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--accent-quieter" },
+    status: "enforced",
+  },
+  {
+    id: "D6-03c",
+    lot: "D6",
+    position: 2,
+    kind: "restyle",
+    title: "and the same pill says the same thing on People",
+    contract: '.ui-craft/tokens.md — „What the accent is allowed to mean"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "33",
+      value: "jedna reguła prototypu na oba ekrany",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_state_prospect_"]',
+      why: "rejestr nazwał ten rozjazd REGUŁĄ właśnie dlatego, że ta sama plakietka była niebieska na dwóch ekranach; dwa arkusze, więc dwie pary",
+      app: "packages/desktop-ui/src/people/people.module.css (.state_prospect)",
+    },
+    read: { property: "color" },
+    expect: { kind: "accent" },
+    status: "enforced",
+  },
+  {
+    id: "D6-04a",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title: "both layout segments open with a glyph",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "214",
+      value:
+        '`[["list", "List", "list"], ["table", "Table", "table"]]` — trzeci człon to nazwa znaku, składana przed etykietą w :376 (`${icon(ico)}${label}`; do 2026-08-12 stało tu :203, linia PUSTA)',
+    },
+    route: { surface: "organizations" },
+    subject: {
+      // PRZEPIĘTE W LOCIE D10: pasek widoku wyszedł z przewijanego pudełka,
+      // więc `[data-organizations-surface]` — atrybut TEGO pudełka — przestał
+      // być jego przodkiem. Kotwicą jest `main[data-surface]`, deklaracja
+      // obejmująca oba pasma i treść pod nimi; `main` konieczne, bo ten sam
+      // atrybut niesie pozycja nawigacji.
+      selector: 'main[data-surface="organizations"] [class*="_switch_"] svg',
+      why: "liczone, a nie czytane własnością: pozycja jest o OBECNOŚCI znaku. Podłoga 2, bo prototyp rysuje go przy OBU segmentach, a podłoga 1 byłaby zielona nad wersją, w której glif dostał tylko wybrany",
+      app: "packages/desktop-ui/src/StrategicDepthSurface.tsx (LAYOUTS) + organizations.module.css (.switch svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  {
+    id: "D6-04b",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title: "and so do the two on People",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "216",
+      value:
+        '`[["orgs", "By organization", "org"], ["table", "Table", "table"]]` — budynek przy grupowaniu, siatka przy tabeli',
+    },
+    route: { surface: "people" },
+    subject: {
+      // PRZEPIĘTE W LOCIE R3, jak `D6-04a` na Organizacjach: przełącznik układu
+      // stoi w PASKU WIDOKU, a ten wyszedł z przewijanego pudełka, więc
+      // `[data-people-surface]` przestał być jego przodkiem.
+      selector: 'main[data-surface="people"] [class*="_switch_"] svg',
+      why: "drugi arkusz i drugi literał LAYOUTS — jedna para nad Organizacjami nie mówi nic o tym ekranie",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx (LAYOUTS) + people.module.css (.switch svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  // DWIE PARY NIŻEJ SĄ DOPISANE 2026-08-12, PO PRZEGLĄDZIE LOTU D6, I ISTNIEJĄ
+  // Z POWODU, KTÓRY WARTO ZAPAMIĘTAĆ. D6-04a/b liczą ELEMENTY (`property: null`,
+  // `count`), więc mówią wyłącznie o OBECNOŚCI znaku. Nad tą podłogą przeszła
+  // wersja, w której glif segmentu miał 0,6875 rem i `opacity: 0.75` — komplet
+  // przepisany z `v3/screens/crm.css:162`, czyli z reguły PLAKIETKI
+  // UCZESTNICTWA, której lot D6 świadomie nie oddał. Prototypowa reguła tego
+  // znaku to `v3/app.css:348` i mówi 0,8125 rem bez wygaszenia. Bramka była
+  // zielona nad niewłaściwą liczbą, bo żadna para nie czytała WYMIARU — to jest
+  // nazwana w tym repo klasa („bramka mierząca OBECNOŚĆ nigdy nie mierzy
+  // JAKOŚCI"), a nie przeoczenie jednego lotu.
+  {
+    id: "D6-04c",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title:
+      "and the segment glyph is view-bar chrome size, not row-content size",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "348",
+      value:
+        "`.segmented button svg { width: 0.8125rem; height: 0.8125rem; }` — CAŁA reguła, bez `opacity`. Prototyp trzyma trzy stopnie wielkości znaku: 1 rem globalnie (`v3/app.css:20`), 0,8125 rem w chromie paska widoku (`:348`), 0,6875 rem w treści wiersza (`v3/screens/crm.css:162`)",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      // Przepięte w locie D10, ten sam powód co przy D6-04a.
+      selector: 'main[data-surface="organizations"] [class*="_switch_"] svg',
+      why: "ten sam podmiot co D6-04a, ale czytany WŁASNOŚCIĄ, a nie liczony: podłoga 2 nad liczbą elementów jest zielona przy KAŻDYM wymiarze, więc para licząca nie umie odróżnić chromu paska od treści wiersza. Wymiar rozstrzyga, z której reguły prototypu ten znak pochodzi",
+      app: "packages/desktop-ui/src/organizations/organizations.module.css (.switch svg)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-04d",
+    lot: "D6",
+    position: 3,
+    kind: "prescribed",
+    title: "and the People twin is the same size, from the same rule",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "348",
+      value:
+        'ta sama jedna reguła — prototyp rysuje oba paski widoku tym samym `<div class="segmented">` (`v3/screens/crm.js:373` i `:542`), więc rozmiar znaku ma JEDNO źródło',
+    },
+    route: { surface: "people" },
+    subject: {
+      // PRZEPIĘTE W LOCIE R3, jak `D6-04a` na Organizacjach: przełącznik układu
+      // stoi w PASKU WIDOKU, a ten wyszedł z przewijanego pudełka, więc
+      // `[data-people-surface]` przestał być jego przodkiem.
+      selector: 'main[data-surface="people"] [class*="_switch_"] svg',
+      why: "DRUGA para, nie druga własność pierwszej — dokładnie z powodu, dla którego istnieje D6-02a: reguła mieszka w drugim arkuszu modułowym, a jedna para stałaby zielona nad połową poprawki. Obie połowy naprawdę rozjechały się razem i razem zostały poprawione",
+      app: "packages/desktop-ui/src/people/people.module.css (.switch svg)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.8125 },
+    status: "enforced",
+  },
+  {
+    id: "D6-05a",
+    lot: "D6",
+    position: 4,
+    kind: "prescribed",
+    title: "the organization in a group heading opens with a building",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "471",
+      value:
+        '`<button class="crm-ghead-name">${icon("org")}${esc(o.name)}</button>` — glif PRZED nazwą. Do 2026-08-12 stało tu :481, czyli `<span class="crm-ghead-sig">` — plakietka sygnału, nie przycisk nazwy',
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: '[data-people-surface] [class*="_groupName_"] svg',
+      why: "podłoga 2, bo tyle nagłówków grup rysuje ta fikstura (zmierzone: Northwind i Helio) — podłoga 1 przeszłaby nad wersją, w której glif dostał tylko pierwszy nagłówek. Grupa „No organization recorded” celowo nie dostaje znaku i prototyp też jej go nie daje",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx (GroupHead) + people.module.css (.groupName svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  // ── LOT D9 — GLIF PLAKIETKI UCZESTNICTWA (druga połowa wpisu #29) ─────────
+  //
+  // DWIE PARY, OBECNOŚĆ I WYMIAR, i podział jest DOKŁADNIE ten, który wymusiły
+  // D6-04c/d trzydzieści linii wyżej: para licząca elementy jest zielona przy
+  // KAŻDYM rozmiarze znaku, a ten znak ma w prototypie własny, TRZECI stopień —
+  // 0,6875 rem treści wiersza, nie 0,8125 rem chromu paska. Bez pary czytającej
+  // wymiar ten glif mógłby wejść w rozmiarze paska widoku i bramka nie miałaby
+  // jak tego powiedzieć.
+  //
+  // PODMIOT STOI NA `data-part`, nie na zahaszowanej klasie modułu: `_part_`
+  // i `_parts_` różnią się jedną literą przed skrótem, a selektor
+  // `[class*="_part_"]` łapie OBA. Atrybut nazywa też, KTÓRA to plakietka,
+  // więc para nad spotkaniami nie może być zaspokojona plakietką dealów.
+  {
+    id: "D9-01a",
+    lot: "D9",
+    position: 1,
+    kind: "prescribed",
+    title: "the participation badge opens with a glyph",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      // 420 to plakietka dealów, 421 — spotkań. 422 rysuje plakietkę NOTATEK,
+      // której ta aplikacja nie ma, więc zakres kończy się na 421: cytat ma
+      // wskazywać to, co się cytuje, a nie sąsiada.
+      lines: "420-421",
+      value:
+        '`<span class="crm-part">${icon("pipeline")}${pjPlural(r.deals.length, "deal", "deals")}</span>` i bliźniak z `icon("meeting")` — glif PRZED pełnym słowem',
+    },
+    route: { surface: "people" },
+    subject: {
+      // JEDNA PARA NA KAŻDĄ PLAKIETKĘ, I JEST TO POPRAWKA PO WŁASNYM
+      // BREAK-TEŚCIE, nie ostrożność z góry. Ta para stała najpierw na
+      // `[data-part] svg` z podłogą 2 i uzasadnieniem „dwa, bo fikstura rysuje
+      // plakietkę dealów i plakietkę spotkań". Arytmetyka tego uzasadnienia
+      // była błędna: fikstura rysuje PIĘĆ znaków (trzy plakietki dealów, dwie
+      // spotkań), więc zdjęcie glifu z CAŁEJ połowy dealowej zostawiało 2 i para
+      // wracała ZIELONA. Złamanie zgłosiło to jako `FAILED (the assertion stayed
+      // green on broken code)` — czyli przyrząd sam powiedział, że jego podłoga
+      // jest spełnialna przez nie ten podmiot. Rozdzielone atrybutem, który
+      // wiersz i tak deklaruje.
+      selector: '[data-people-surface] [data-part="deals"] svg',
+      why: "the glyph on the DEALS badge, counted on the declared attribute rather than on a module hash; a floor over both badges together is satisfiable by either one alone",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx (.part) + people.module.css (.part svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D9-01b",
+    lot: "D9",
+    position: 1,
+    kind: "prescribed",
+    title: "and it is row-content size, not view-bar chrome size",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "162",
+      value:
+        "`.crm-part svg { width: 0.6875rem; height: 0.6875rem; opacity: 0.75; }` — trzeci stopień wielkości znaku w prototypie, osobny od 0,8125 rem paska widoku (`v3/app.css:348`) i od 1 rem globalnego (`v3/app.css:20`)",
+    },
+    route: { surface: "people" },
+    subject: {
+      // TU podmiot ZOSTAJE nierozdzielony, i jest to różnica, nie niekonsekwencja:
+      // rozmiar pochodzi z JEDNEJ reguły (`.part svg`), więc rozdzielenie dałoby
+      // dwie pary nad tą samą deklaracją. Rozdzielona jest OBECNOŚĆ, bo ona
+      // pochodzi z dwóch osobnych montaży w JSX i każdy da się skasować osobno.
+      selector: "[data-people-surface] [data-part] svg",
+      why: "the same glyphs as D9-01a/c but read by property rather than counted — a count floor is green at every size, and this glyph's size is what says which of the prototype's three rules it came from",
+      app: "packages/desktop-ui/src/people/people.module.css (.part svg)",
+    },
+    read: { property: "width" },
+    expect: { kind: "rem", value: 0.6875 },
+    status: "enforced",
+  },
+  {
+    id: "D9-01c",
+    lot: "D9",
+    position: 1,
+    kind: "prescribed",
+    title: "and the meetings half opens with its own",
+    contract: '.ui-craft/tokens.md — „Component layer"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "421",
+      value:
+        '`<span class="crm-part">${icon("meeting")}${pjPlural(r.meetings.length, "meeting", "meetings")}</span>` — drugi montaż, własny glif',
+    },
+    route: { surface: "people" },
+    subject: {
+      // DRUGA PARA, NIE DRUGA WŁASNOŚĆ PIERWSZEJ — dokładnie ten sam powód, dla
+      // którego istnieje D6-04b obok D6-04a. Ta plakietka nie narysowała się
+      // w tym harnessie ANI RAZU do lotu D9: fikstura CRM nie miała żadnego
+      // rekordu `meeting`, więc jej gałąź była nieodróżnialna od poprawnej.
+      selector: '[data-people-surface] [data-part="meetings"] svg',
+      why: "the glyph on the MEETINGS badge — a separate mount in the JSX, deletable on its own, and a branch this fixture could not draw at all before lot D9 seeded meeting records",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx (.part) + people.module.css (.part svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+
+  // ── LOT D10 — PASMA JAKO RODZEŃSTWO PRZEWIJANEGO PUDEŁKA (wpis #22) ───────
+  //
+  // OSTATNIE 12 px WPISU #22. Lot D1 zamknął ten wpis na własnym roszczeniu
+  // (chrom nad listą Organizacji 139 → 92 px), zostawiając JAWNIE nieoddane
+  // ostatnie 12 px: prototyp ma 80 px chromu, my mieliśmy 92. Różnicą był
+  // `gap` kolumny nośnika, który dzieli PASMO od TREŚCI dokładnie dlatego, że
+  // pasmo i treść są u nas rodzeństwem w jednym pudełku. W prototypie nie są.
+  //
+  // CO MIERZĄ TE CZTERY PARY, powiedziane wprost, bo mierzą UKŁAD, a nie
+  // piksel: sam pomiar „120 zamiast 132" jest geometrią, a geometria bez
+  // zadeklarowanej przyczyny zieleniałaby też nad ekranem, któremu ktoś zdjął
+  // odstęp jedną deklaracją i zostawił pasma jadące z treścią. Pary czytają
+  // więc TRZY deklaracje, z których ta liczba wynika — kto przewija
+  // (D10-01a/b) i czyimi dziećmi są pasma (D10-01c/d) — po jednej na oba
+  // przepięte ekrany, żeby żaden nie dał się cofnąć przy zielonym przelocie.
+  //
+  // CZEGO TA MAPA NIE ZOBACZY: że pasmo NAPRAWDĘ stoi przy przewijaniu.
+  // Spacer nie ma kroku „przewiń", więc zachowanie jest zmierzone sondą lotu,
+  // nie tą mapą — przed: `scrollTop 60` zabierał pasmo tytułu z y=40 na y=-20;
+  // po: zostaje na y=40. Zapisane w raporcie lotu, bo tu byłoby nieodróżnialne
+  // od zieleni.
+  {
+    id: "D10-01a",
+    lot: "D10",
+    position: 1,
+    kind: "restructure",
+    title: "the screen's carrier stops being the box that scrolls",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      // Otwarte i sprawdzone przy tych liniach: 278-281 to `.canvas` (kolumna
+      // `flex`), 282-285 `.crumbbar`, 295-299 `.viewbar`, 303 `.scroller`
+      // z `overflow: auto`. Kanwa NIE deklaruje `overflow` w ogóle — przewija
+      // wyłącznie trzecie dziecko. Trzy noty w arkuszu aplikacji cytowały
+      // dotąd `281-293`, zakres bez `.canvas` i bez `.scroller`, czyli bez obu
+      // reguł, na których to zdanie stoi.
+      lines: "278-303",
+      value:
+        "`.canvas { display: flex; flex-direction: column }` bez własnego `overflow`, a `.scroller { flex: 1; min-height: 0; overflow: auto }` — przewija się TRZECIE dziecko, nie pojemnik",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      // NOŚNIK JEST JEDEN NA CAŁĄ POWŁOKĘ i nosi ręcznie pisaną nazwę
+      // z `styles.css`, nie skrót modułu — więc selektor nie zgnije przy
+      // przebudowie arkusza. `overflow-y` jest tu WŁAŚCIWĄ własnością do
+      // odczytu, bo to ona rozstrzyga, które pudełko jest portem przewijania,
+      // a nie to, które akurat ma dość treści, żeby się przewinąć.
+      selector: ".work-surface",
+      why: "the carrier declared `overflow: auto` and therefore scrolled the bands with the content; the whole entry is that it stops doing so",
+      app: "packages/desktop-ui/src/styles.css (.work-surface:has(> .surface-header)), RealApp.tsx (#main-content)",
+    },
+    read: { property: "overflowY" },
+    expect: { kind: "literal", value: "hidden" },
+    status: "enforced",
+  },
+  {
+    id: "D10-01b",
+    lot: "D10",
+    position: 1,
+    kind: "restructure",
+    title: "and the box below the bands takes the scrolling instead",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "303",
+      value:
+        "`.scroller { flex: 1; min-height: 0; overflow: auto; scroll-padding-block: 3rem 5rem }` — jedyne dziecko kanwy z własnym przewijaniem",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      // DZIECKO BEZPOŚREDNIE, nie potomek: para o tym, KTÓRE pudełko przewija,
+      // przepuszczałaby przy selektorze potomka dowolny zagnieżdżony scroller
+      // (Lejek ma własny, `_scroller_` w module) i mówiłaby wtedy co innego,
+      // niż mówi jej tytuł.
+      selector: ".work-surface > .surface-scroll",
+      why: "before this lot it computed `overflow-y: visible` on every surface — the scrolling lived one box higher, which is exactly why the bands travelled",
+      app: "packages/desktop-ui/src/styles.css (.work-surface:has(> .surface-header) > .surface-scroll)",
+    },
+    read: { property: "overflowY" },
+    expect: { kind: "literal", value: "auto" },
+    status: "enforced",
+  },
+  {
+    id: "D10-01c",
+    lot: "D10",
+    position: 1,
+    kind: "restructure",
+    title: "the title band is a sibling of that box, not a child of it",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "282-285",
+      value:
+        "`.crumbbar { flex: none; min-height: var(--header-band-height) … }` — deklarowane jako DZIECKO `.canvas`, rodzeństwo `.scroller`, i `flex: none` jest tym, co znaczy „nie jedzie z treścią”",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      // POŁOŻENIE, NIE WYGLĄD. Dwie pary wyżej czytają `overflow`, więc same
+      // w sobie byłyby spełnione także wtedy, gdyby pasmo zostało w środku
+      // przewijanego pudełka — a wtedy jechałoby z treścią przy zielonym
+      // przelocie. Ta para mówi zdanie wpisu dosłownie.
+      selector: ".work-surface > .surface-header",
+      why: "the arrangement IS the entry: a band inside the scrolling box travels with the content no matter what that box declares",
+      app: "packages/desktop-ui/src/StrategicDepthSurface.tsx (fragment zamiast pojemnika)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D10-01d",
+    lot: "D10",
+    position: 1,
+    kind: "restructure",
+    title: "and so is the view bar, on the second migrated screen",
+    contract: '.ui-craft/patterns.md — „Pattern: Surface title band"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "295-299",
+      value:
+        "`.viewbar { flex: none; min-height: var(--header-band-height) … }` — drugie pasmo, deklarowane obok pierwszego jako dziecko `.canvas`",
+    },
+    route: { surface: "renewals" },
+    subject: {
+      // DRUGI EKRAN I DRUGIE PASMO NARAZ, świadomie. Lot przepiął DWA ekrany,
+      // a para stojąca wyłącznie nad Organizacjami zostawiłaby Odnowienia do
+      // cofnięcia przy zielonym przelocie — dokładnie ta klasa dziury, którą
+      // ten plik ma nazwaną przy D7-03f.
+      selector: ".work-surface > .view-band",
+      why: "the second band is a separate mount in a separate file; the first band's pair says nothing about it",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx (fragment zamiast pojemnika)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+
+  // ── LOT D7 — REKOMPOZYCJA CIAŁA SPOTKAŃ (wpisy #63, #64, #65) ─────────────
+  //
+  // TRZY WPISY, JEDNA ROBOTA, TRZY POZYCJE. Rejestr mówi wprost, że każdy z
+  // nich osobno zostawia ekran GORSZYM niż był, bo wszystkie trzy opisują
+  // jedno pudełko: farbę karty stojącą na SEKCJI zamiast na LIŚCIE w środku.
+  //
+  // CO FIKSTURA DOSIĘGA, ZMIERZONE, A NIE ZAŁOŻONE. Harness powłoki oddawał na
+  // tym ekranie odmowę dostawcy z pustymi tablicami, więc bramka nie rysowała
+  // ANI JEDNEGO wiersza. Ten lot dokłada mu pętlę spotkań w stanie
+  // `permission_required` z dwoma wynikami Jamie i pustymi nadchodzącymi —
+  // spójnym stanem domeny, który rysuje kartę wyników, pusty stan
+  // nadchodzących i kontrolkę uprawnienia naraz. Wiersz nadchodzących
+  // WPUSZCZONY w jaśniejszą kartę pozostaje niedosiężny tą fiksturą i stoi
+  // wypisany w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` z warunkiem wyjścia.
+  {
+    id: "D7-01a",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "the meetings body is one column, not a work lane beside a rail",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "11",
+      value:
+        "`.mt { max-width: 74rem; padding: var(--space-6) }` — jedna kolumna; zmierzone w przeglądarce przy 1440 px: OBIE sekcje x=264, w=1136, szyny nie ma",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-body",
+      why: "LICZBA ŚCIEŻEK, nie ich szerokość: `grid-template-columns` liczy się do pikseli zależnych od okna, więc literał pinowałby liczbę, która zmienia się z szerokością. Dwie ścieżki to szyna; jedna to wpis #63 oddany",
+      app: "packages/desktop-ui/src/styles.css (.meeting-body)",
+    },
+    read: { property: "gridTemplateColumns" },
+    expect: { kind: "tracks", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01b",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and Coming up is the FIRST section, not the demoted one",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "430-451",
+      value:
+        'dwie `<section class="mt-sec">` w pionie — „Coming up” PIERWSZA, „What is left of the ones that happened” druga',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-body > .meeting-upcoming:first-child",
+      why: "DRUGA para nad tą samą pozycją, i nie jest to druga własność pierwszej: jedna kolumna z odwróconą kolejnością przechodzi D7-01a zieloną, a rejestr mówi o KOLEJNOŚCI („pierwsza sekcja”), nie tylko o szerokości. `:first-child` jest tu całą treścią selektora",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (upcomingSection w .meeting-body)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01c",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and the context rail is gone from the page, not merely restyled",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "430-451",
+      value: "prototyp nie ma na tym ekranie ŻADNEGO trzeciego pojemnika",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-context-rail",
+      why:
+        'PARA NA ZERZE JEST TU POMIAREM, NIE CISZĄ, i to jest sprawdzone w przyrządzie, a nie założone: `judgeVisualPair` rozstrzyga `kind: "count"` ZANIM dojdzie do gałęzi „selektor nie trafił w nic”, więc zero dopasowań wraca jako `measured` z liczbą 0, a nie jako NOT_MEASURED. ' +
+        "Szyna zniknęła RAZEM ze swoją treścią — kontrolka uprawnienia przeniosła się do sekcji nadchodzących, a nie została skasowana; tego para pikselowa nie dosięga i pilnuje tego asercja źródłowa w `interaction-recovery-contract.test.ts`",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx + styles.css (klasa usunięta z obu)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01d",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and the row itself is composed for the width it was moved into",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "54-55",
+      value:
+        "`.mt-up { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto }` — kiedy, treść i akcja OBOK siebie",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event",
+      why: "CZWARTA para nad pozycją #63 i JEDYNA, która patrzy do ŚRODKA przeniesionego pudełka. Trzy pierwsze mierzą, GDZIE sekcja stoi; wiersz przeniesiony na 1136 px, ale wciąż noszący jedną kolumnę zaprojektowaną na szynę 18-22 rem, przechodzi wszystkie trzy zielone i jest dokładnie tym półstanem, o którym rejestr pisze, że zostawia ekran GORSZYM niż był. Liczba ścieżek, nie ich szerokość — piksele ścieżek zależą od okna",
+      app: "packages/desktop-ui/src/styles.css (.meeting-event)",
+    },
+    read: { property: "gridTemplateColumns" },
+    expect: { kind: "tracks", equals: 3 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01e",
+    lot: "D7",
+    position: 1,
+    kind: "prescribed",
+    title: "and the provenance chain inside it stops absorbing the free width",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "54-55, 77",
+      value:
+        "łańcuch prowenancji siedzi u prototypu w ŚRODKOWEJ ścieżce wiersza (`.mt-up-main { min-width: 0; display: block }`), a nie na nadwyżce całego wiersza",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event .evidence-thread i",
+      why: "`flexGrow`, NIE szerokość, i to jest wybór z powodu: szerokość kreski jest funkcją okna, więc literał pinowałby liczbę zależną od widoku, a to, co ten lot zepsuł, jest DEKLARACJĄ — reguła bazowa `.evidence-thread i` daje `flex: 1 1 1.5rem`, czyli udział w całej nadwyżce. W szynie nie było czego wchłaniać; po przeniesieniu wiersza na 1136 px dwie kreski urosły do ~700 px każda, czyli łańcuch pochodzenia czytał się jak dwie długie linie z plakietkami na końcach. Selektor jest ZAWĘŻONY do wiersza spotkania, bo regułę bazową dzieli onboarding, gdzie rozciąganie jest zamierzone — para bez tego zawężenia żądałaby zmiany tam",
+      app: "packages/desktop-ui/src/styles.css (.meeting-event .evidence-thread i)",
+    },
+    read: { property: "flexGrow" },
+    expect: { kind: "literal", value: "0" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02a",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "the card is the LIST, painted on the content plane",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "40-43",
+      value:
+        "`.mt-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-content); box-shadow: var(--shadow-sm) }`; zmierzone w przeglądarce: oklch(0.152 0.012 285), czyli JAŚNIEJ od kanwy oklch(0.062 0.008 285)",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-result-list",
+      why: "`--panel-reading-bg` rozwiązuje się do `var(--surface-content)` (tokens.css), więc ta para NIE odróżnia tych dwóch nazw — i nie musi, bo to jeden plan. Odróżnia natomiast plan treści od `--surface-sunken`, na którym ta lista stała",
+      app: "packages/desktop-ui/src/styles.css (.meeting-result-list)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--panel-reading-bg" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02b",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the section holding it stopped being a raised plane",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "13-14",
+      value:
+        "`.mt-sec { margin-bottom: var(--space-8) }` — sekcja niesie SAM margines",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed",
+      why: "LITERAŁ „none”, bo „przestała być planem podniesionym” jest NIEOBECNOŚCIĄ cienia, a `--elevation-raised` nie ma tokenu wyłączonego. Bez tej pary D7-02a przechodzi nad wersją, w której farbę mają OBA pudełka — a dwie karty jedna w drugiej to ta sama wada z drugiej strony",
+      app: "packages/desktop-ui/src/styles.css (.meeting-upcoming, .meeting-completed)",
+    },
+    read: { property: "boxShadow" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  // PARY NAD `.meeting-empty` TU NIE MA, I JEST TO ZAMIANA RAMIENIA, NIE
+  // ROZLUŹNIENIE. Stała tu D7-02c, czytająca przezroczystość stanu pustego
+  // nadchodzących; fikstura bramki rysuje odtąd DRUGIE ramię tego samego
+  // wyrażenia (`MeetingsSurface.tsx:880`) — kartę z wierszem — bo tamto ramię
+  // niosło jeden podmiot, a to niesie cztery (D7-01d, D7-02e, D7-02f oraz
+  // szerokość akcji wiersza). Suma `notCovered` idzie przy tym W DÓŁ, 15 → 14:
+  // dwa wpisy o wierszach nadchodzących zostały zamknięte, jeden o stanie
+  // pustym dopisany. Mechanizm i osiągalny warunek wyjścia stoją przy wpisie
+  // w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`.
+  {
+    id: "D7-02d",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the integration plate is a card, not a well sunk into the page",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "6-9",
+      value:
+        "„Nadchodzące są WPUSZCZONE: nie da się w nich nic zmienić. Odbyte stoją na `--surface-content`, bo to na nich się pracuje” — wpuszczenie jest wydane na ZNACZENIE",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-integration",
+      why: "TRZECI podmiot tej samej pozycji, bo `--surface-sunken` siedział w arkuszu w TRZECH miejscach, a rekompozycja wystawiła wszystkie trzy wprost na kanwę. Ta tafla jest formularzem, w który wpisuje się klucz — czyli dokładnym przeciwieństwem tego, na co prototyp wydaje wpuszczenie",
+      app: "packages/desktop-ui/src/styles.css (.meeting-integration)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--panel-reading-bg" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02e",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the upcoming list is a card on the same plane, not a well",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "40-43",
+      value:
+        "`.mt-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-content); box-shadow: var(--shadow-sm) }` — TEN SAM pojemnik obsługuje obie sekcje prototypu",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-upcoming-list",
+      why: 'BLIŹNIAK D7-02a, i stoi osobno, bo to INNA deklaracja w INNEJ regule — jeden wpis nad dwiema regułami jest w tym repozytorium nazwaną klasą defektu. Ta para była do lotu D7 wypisana jako niedosiężna; fikstura powłoki rysuje odtąd wiersze nadchodzących (`availability: "offline"`, `canRead: true`), więc pojemnik istnieje i odmowa pomiaru straciła podstawę',
+      app: "packages/desktop-ui/src/styles.css (.meeting-upcoming-list)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--panel-reading-bg" },
+    status: "enforced",
+  },
+  {
+    id: "D7-02f",
+    lot: "D7",
+    position: 2,
+    kind: "prescribed",
+    title: "and the upcoming row is sunken INSIDE that lighter card",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "6-9",
+      value:
+        "„Nadchodzące są WPUSZCZONE (`--surface-sunken`): nie da się w nich nic zmienić, więc leżą pod planem treści” — a `.mt-up` (`meetings.css:54-59`) leży w `.mt-list` stojącej na `--surface-content`",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event",
+      why: 'TO JEST SEDNO WPISU #64, a nie jego przypis: drabina ma trzy szczeble (kanwa najciemniej, karta jaśniej, wiersz wpuszczony W KARCIE) i dopiero ta para odróżnia ją od wersji, w której wpuszczenie zeszło razem z odwróceniem. Do lotu D7 stała jako niedosiężna z powodem, który był NIEPRAWDĄ — rysowanie wierszy nie wymaga `available`, a fikstura nigdy nie rysowała gałęzi „Grant access”, bo deklarowała `platform: "other"`. Czytana razem z D7-02e, która pilnuje, że karta wokół jest JAŚNIEJSZA',
+      app: "packages/desktop-ui/src/styles.css (.meeting-event)",
+    },
+    read: { property: "backgroundColor" },
+    expect: { kind: "token", token: "--surface-sunken" },
+    status: "enforced",
+  },
+  {
+    id: "D7-03a",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "the section head is a sibling of the card, standing on the canvas",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "15-18",
+      value:
+        "`.mt-sec-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3) }` — zmierzone w przeglądarce: `headInsideList: false`, x=264, ta sama lewa krawędź co lista, tło przezroczyste",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed > .meeting-sec-head",
+      why: "`>` jest tu całą treścią selektora: nagłówek musi być DZIECKIEM sekcji, a nie czymkolwiek w jej wnętrzu. Liczba, nie własność, bo wpis mówi o POŁOŻENIU w drzewie",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (.meeting-sec-head)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03b",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and no head is left inside the card it escaped",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "444-449",
+      value:
+        '`<div class="mt-sec-head">` (:445) stoi PRZED `${importedHtml}` (:449), poza pojemnikiem listy',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-result-list .meeting-sec-head",
+      why: "TA PARA JEST NIEPUSTA WYŁĄCZNIE DZIĘKI D7-02a: zero dopasowań znaczyłoby to samo, gdyby karty w ogóle nie było, a D7-02a pada głośno dokładnie wtedy. Same w sobie zero na nieistniejącym podmiocie jest zielenią bez treści — para bez tej drugiej nie miałaby wartości i to jest powód, dla którego stoją razem",
+      app: "packages/desktop-ui/src/styles.css (.meeting-result-list) + MeetingsSurface.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03c",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and the head has a right-side affordance, not an empty right end",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "447",
+      value:
+        '`<button class="more" data-mt-go=\'{"kind":"sources"}\'>Open Sources →</button>`, dosunięty regułą `.mt-sec-head .more { margin-left: auto }` (meetings.css:27-29)',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed .meeting-sec-head [data-open-sources]",
+      why: "LICZBA, NIE `marginLeft`, i to jest wzorzec D2-09 z podanego tam powodu: `margin-left: auto` rozwiązuje się do UŻYTEJ szerokości piksela, więc para czytająca margines mierzyłaby wolne miejsce, a nie deklarację. Wpis mówi o BRAKU slotu, a brak jest liczbą",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (.meeting-sec-more[data-open-sources]) + RealApp.tsx (onOpenSources)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03d",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and the head is not the card's divider rule",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "15-18",
+      value:
+        "`.mt-sec-head` nie deklaruje żadnej krawędzi; zmierzone w przeglądarce: 0 px dolnej kreski",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-completed > .meeting-sec-head",
+      why: "TEN SAM PODMIOT CO D7-03a, ale czytany WŁASNOŚCIĄ, a nie liczony — i to nie jest powtórka: nagłówek wyprowadzony z karty, który wciąż nosi jej kreskę działową, przechodzi D7-03a zieloną i dalej wygląda jak wieko pudełka. Kreska była tym, co trzymało go w środku",
+      app: "packages/desktop-ui/src/styles.css (.meeting-sec-head)",
+    },
+    read: { property: "borderBottomWidth" },
+    expect: { kind: "literal", value: "0px" },
+    status: "enforced",
+  },
+  {
+    id: "D7-03e",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and it is set at the reference's step, not at the card's",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "19-22",
+      value:
+        "`.mt-sec-head h2 { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.012em }`",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-sec-head h2",
+      why: "bez klasy sekcji, bo TEN stopień należy do OBU nagłówków tego ekranu — para przypięta do jednej sekcji byłaby zielona nad połową poprawki, co jest w tym repo nazwaną klasą defektu (jeden kształt przepisany w kilku miejscach)",
+      app: "packages/desktop-ui/src/styles.css (.meeting-sec-head h2)",
+    },
+    read: { property: "fontSize" },
+    expect: { kind: "token", token: "--text-md" },
+    status: "enforced",
+  },
+  {
+    id: "D7-03f",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and the upcoming section has that head too, not only its twin",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "436, 445",
+      value:
+        'OBIE sekcje prototypu otwiera `<div class="mt-sec-head">` — nadchodzące (:436) pod „Coming up”, odbyte (:445) pod „What is left of the ones that happened”',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-upcoming > .meeting-sec-head",
+      why: "BLIŹNIAK D7-03a, DOPISANY PRZY ODBIORZE, bo każda para pozycji 3 była przypięta do sekcji ODBYTYCH, a jedyna czytająca obie (D7-03e) czyta stopień pisma. Nagłówek nadchodzących dało się z tego ekranu USUNĄĆ i cały przelot zostawał zielony — bramka mierząca obecność dla jednego bliźniaka i nic dla drugiego jest w tym repozytorium nazwaną klasą defektu. Podmiot rysuje się niezależnie od `upcoming.length`, więc para stała otworem także przy poprzedniej fiksturze",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (upcomingSection > .meeting-sec-head)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-03g",
+    lot: "D7",
+    position: 3,
+    kind: "prescribed",
+    title: "and its right end carries the lock badge, not nothing",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "32-37",
+      value:
+        '`.mt-sec-lock { margin-left: auto; … border-radius: var(--radius-full) }`, wstawiona w `meetings.js:438-439` jako `${icon("lock")}Outlook`',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-upcoming .meeting-sec-lock",
+      why: "PRAWY KONIEC DRUGIEJ POŁOWY #65, mierzony tak samo jak pierwsza (D7-03c liczy `[data-open-sources]` u odbytych). Ta plakietka NIE JEST ozdobą: głębia wpuszczonego wiersza (D7-02f) jest nieczytelna dla każdego, kto jej nie widzi, a prototyp pisze wprost, że wpuszczenie „działa razem z kłódką i etykietą, nigdy samo” (`meetings.css:6-9`). Liczba, nie `marginLeft`, z powodu podanego przy D7-03c",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (.meeting-sec-lock) + styles.css",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 1 },
+    status: "enforced",
+  },
+  // PARY NAD PLAKIETKĄ UCZESTNICTWA TU NIE MA, BO TA POŁOWA #29 NIE ZOSTAŁA
+  // ODDANA. Para została napisana (`[data-people-surface] [class*="_part_"]
+  // svg`, podłoga 3 — tyle plakietek rysuje ta fikstura) i ZDJĘTA razem
+  // z glifem, kiedy bramka układu wróciła czerwona na `span._parts`: 55 px
+  // przepełnienia przy tekście 200% wobec sufitu 25 px i 36 px w oknie 320 px
+  // wobec 24. Zostawienie samej pary byłoby wiecznym czerwonym wierszem nad
+  // świadomą odmową; powód i arytmetyka stoją w `people/PeopleSurface.tsx`
+  // przy pasie uczestnictwa, a pozycja jest w raporcie lotu w `notDelivered`.
 ];
 
 /**
@@ -2892,6 +6485,132 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
  * lotom, GDZIE nie ma dowodu, i mówi to ZANIM lot odda robotę.
  */
 export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
+  {
+    // POŁOWA WPISU #61, WYPISANA ZAMIAST ZAMKNIĘTA DEKLARACJĄ. `resize: none`
+    // stoi dziś na OBU polach komentarza — na `.composerText` (pisanie nowego,
+    // mierzone parą D4-06b) i na `.field` (poprawianie istniejącego). Drugiego
+    // nie mierzy NIC i nie da się tego naprawić selektorem: pole edycji
+    // powstaje dopiero po kliknięciu „Edit" na cudzym komentarzu, a `route`
+    // tej mapy zna kroki `surface`, `layout`, `treeKey`, `openRecord`
+    // i `recordTab` — żadnego „naciśnij kontrolkę w wierszu i mierz to, co się
+    // rozwinie".
+    //
+    // PARA NAD TYM POLEM ZOSTAŁA NAPISANA I ZDJĘTA W TYM SAMYM PRZELOCIE, i to
+    // jest powód, dla którego ten wpis brzmi tak stanowczo: wróciła
+    // NOT_MEASURED („[class*=\"_field_\"] matched NO element"), czyli jako
+    // awaria przyrządu, nie jako czerwień do naprawienia kodem. Wyjściem jest
+    // krok trasy naciskający kontrolkę wiersza — przebudowa przelotu, nie
+    // pozycja ekranowa.
+    lot: "D4",
+    position: 7,
+    scope: "drugie pole komentarza — edycja istniejącego, nie kompozytor",
+    title: "the edit-in-place textarea's resize handle has no measurement",
+    prototype:
+      "v3/screens/record.css:419 (`.rc-composer textarea { resize: none }`)",
+    app: "packages/desktop-ui/src/record/record-comments.module.css (.field), RecordCommentsPanel.tsx:633 (styles.editField)",
+    why:
+      "Pole edycji nie istnieje w DOM-ie, dopóki czytelnik nie otworzy edytora na konkretnym komentarzu, " +
+      "a ta mapa nie ma kroku, który by to zrobił. Zmiana JEST oddana i widać ją w odczycie kodu — jedna " +
+      "deklaracja w regule `.field`, ta sama co w `.composerText` — ale dowodem jest tu źródło, nie piksel.",
+  },
+  {
+    // NIEODDANE PRZEZ NAPRAWĘ PO PRZEGLĄDZIE LOTU D2, WYPISANE ZAMIAST
+    // ZAMKNIĘTE. Prototyp ma DOKŁADNIE JEDNĄ formę kontekstowego wyzwalacza
+    // pomocy i stawia ją dwanaście razy przez jedną funkcję (`v3/app.js:2001`
+    // → `class="helpb"`, `v3/app.css:896-904`). Ta aplikacja ma dziś DWIE:
+    // okrągły znacznik `.help-mark` na Dzisiaj i na Kalendarzu (dwa miejsca,
+    // objęte parami D2-03a/b/c) oraz dzielony komponent `help/TopicHelp.tsx`
+    // — słowny wyzwalacz z kropkowanym podkreśleniem, bez ramki i bez okręgu
+    // (`help/topic-help.module.css:21-29`) — zamontowany w dziesięciu
+    // miejscach na siedmiu ekranach.
+    lot: "D2",
+    position: 3,
+    scope: "trzecia forma tego samego wyzwalacza — dziesięć montaży TopicHelp",
+    title: "on-demand help has one shape in the reference and two in the app",
+    prototype:
+      "v3/app.css:896-904 (`.helpb`), wywołania m.in. v3/screens/calendar.js:205, screens/inbox.js:292, screens/meetings.js:439",
+    app: "packages/desktop-ui/src/help/TopicHelp.tsx:21-51 + help/topic-help.module.css:21-29 (StrategicDepthSurface.tsx:897, MeetingsSurface.tsx:1457, pipeline/PipelineSurface.tsx:980, :1001, :1002, library/NotesReading.tsx:362, library/SourcesReading.tsx:162, :371, renewals/RenewalsSurface.tsx:443, :1076)",
+    why:
+      "Przepięcie `TopicHelp` na okrągły znacznik nie jest zmianą klasy: jego etykietą JEST całe pytanie " +
+      "(„What do these three states mean?”), które przy tej formie musiałoby zejść do `aria-label`, " +
+      "a reguła `white-space: normal` w tym module powstała z POMIARU — 181 px nadmiaru w czytelni Źródeł " +
+      "przy 300% tekstu. Zmiana dotyka siedmiu ekranów i dwóch bramek szerokości naraz, więc jest LOTEM, " +
+      "nie naprawą po przeglądzie. Kontrakt " +
+      "(`.ui-craft/surfaces/contextual-concept-help.md`) mówi o tym wprost, zamiast deklarować formę, " +
+      "której app nie ma w dziesięciu na dwanaście miejsc.",
+    greenWrong:
+      "Jedenasty montaż `TopicHelp` może dołożyć trzecią formę pomocy i żaden przelot tego nie zobaczy.",
+  },
+  {
+    // ZMIERZONE, NIE ZAŁOŻONE: naprawa po przeglądzie lotu D2 NAPISAŁA tę parę
+    // (`[data-meeting-help]`, `width` = 1,125 rem) razem z markerem przybycia
+    // Kalendarza, przeleciała bramkę i dostała `NOT_MEASURED` w OBU motywach.
+    // Dopiero ten przelot powiedział, dlaczego.
+    lot: "D2",
+    position: 3,
+    scope: "połowa pozycji — piksel bliźniaka na Kalendarzu",
+    title: "the Calendar twin of the help mark has no pixel measurement",
+    prototype:
+      "v3/app.css:896-904 (`.helpb`), v3/screens/calendar.js:205, :207",
+    app: "packages/desktop-ui/src/CalendarSurface.tsx (`.help-mark`, `[data-meeting-help]`)",
+    why:
+      "Harness powłoki nie ma w kalendarzu ANI JEDNEGO spotkania, a przycisk rysuje " +
+      "się wyłącznie nad tygodniem, w którym stoi jakieś spotkanie — i tak ma być, bo tydzień bez " +
+      "spotkań nie tłumaczy zachowania rzeczy, której nie ma na ekranie. " +
+      "PRZYCZYNA PRZEPISANA PRZY LOCIE D7, 2026-08-12, BO POPRZEDNIA PRZESTAŁA BYĆ PRAWDĄ: ten wpis " +
+      "powoływał się na domyślną odmowę `client/scenario-client.ts` (`provider_unavailable`, " +
+      "`canRead: false`), a harness powłoki podaje odtąd WŁASNĄ pętlę spotkań. Blokuje dalej to samo " +
+      "— `upcoming: []` w tej fiksturze — ale z innego powodu i pod innym adresem, a wpis cytujący " +
+      "to, czego nie robi, jest długiem, który ta gałąź spłacała już dwa razy. Wyjściem jest DRUGI zestaw " +
+      "danych (klient scenariuszowy z czytelnym kalendarzem), nie linijka. Sam KSZTAŁT tej afordancji " +
+      "jest zmierzony parami D2-03a i D2-03b na Dzisiaj — obie kontrolki biorą tę samą regułę " +
+      "`.help-mark` — a to, że kontrolka Kalendarza NIĄ JEST, asertuje " +
+      "`desktop-ui/test/calendar.interaction.test.tsx`.",
+    greenWrong:
+      "Kontrolka pomocy na Kalendarzu może wrócić do dowolnego ROZMIARU bez zmiany klasy i żaden przelot pikseli tego nie zobaczy.",
+  },
+  {
+    // WPIS #64, POŁOWA, KTÓREJ NIE DA SIĘ MIEĆ RAZEM Z DRUGĄ — I MECHANIZM
+    // JEST TU WYPISANY, BO POPRZEDNIE DWA WPISY W TYM MIEJSCU MIAŁY POWÓD
+    // NIEPRAWDZIWY. Stały tu dwa wpisy mówiące, że wiersze nadchodzących
+    // wymagają `availability: "available"`, a to wygasza gałąź „Grant access".
+    // Obie połowy tego zdania były fałszywe: napis „Grant access" wymaga
+    // `platform === "macos"` RAZEM z `permission_required`
+    // (`MeetingsSurface.tsx:603-608`), a tamta fikstura deklarowała
+    // `platform: "other"`, więc rysowała „Check again" i tej gałęzi nie miała
+    // ani przez chwilę; wiersze zaś rysują się przy KAŻDYM `canRead`, nie tylko
+    // przy `available`. Fikstura stoi odtąd na `offline` z jednym wierszem, oba
+    // tamte wpisy są zamknięte parami D7-02e i D7-02f, a NIEDOSIĘŻNY ZOSTAJE
+    // PODMIOT PO DRUGIEJ STRONIE TEGO SAMEGO WYRAŻENIA.
+    //
+    // MECHANIZM, NIE NASTRÓJ: `.meeting-empty` i `.meeting-upcoming-list` to
+    // dwa ramiona jednego wyrażenia warunkowego (`MeetingsSurface.tsx:880`),
+    // więc żadna pojedyncza fikstura nie narysuje obu; bramka chodzi po JEDNYM
+    // adresie (`verify-renderer-layout.mjs:116`), więc fikstura jest jedna.
+    // Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (D7-01d, D7-02e,
+    // D7-02f oraz szerokość akcji wiersza) przeciwko JEDNEMU. Zamiana ramion
+    // po stronie odbytych kosztowałaby DWA (D7-02a, D7-03b), więc `completed`
+    // zostaje niepuste.
+    lot: "D7",
+    position: 2,
+    scope: "połowa pozycji — przezroczystość stanu pustego nadchodzących",
+    title: "the empty upcoming state is not a well cut into the canvas",
+    prototype:
+      "v3/screens/meetings.css:45-49 (`.mt-none` — sama kreskowana obwódka, wypełnienia ŻADNEGO)",
+    app: "packages/desktop-ui/src/styles.css (.meeting-empty)",
+    why:
+      "`.meeting-empty` rysuje się WYŁĄCZNIE przy `upcoming.length === 0`, a `.meeting-upcoming-list` " +
+      "wyłącznie przy niezerowym — to są dwa ramiona jednego wyrażenia w `MeetingsSurface.tsx:880`, " +
+      "więc jedna fikstura rysuje dokładnie jedno z nich, a bramka ma jedną fiksturę, bo chodzi po " +
+      "jednym adresie. Ramię z wierszami wybrano, bo niesie cztery mierzalne podmioty przeciwko " +
+      "jednemu; przy poprzedniej fiksturze ta para (D7-02c) była zmierzona i to ona ustąpiła. " +
+      "WARUNEK WYJŚCIA JEST OSIĄGALNY I NIE JEST NIM „większa fikstura”: drugi adres harnessu " +
+      "z własną pętlą spotkań i pustym `upcoming`, do którego przelot dokłada przystanek. Sama " +
+      "deklaracja stoi w arkuszu obok trzech pozostałych podmiotów tej pozycji (D7-02a, D7-02b, " +
+      "D7-02d), które są mierzone dalej.",
+    greenWrong:
+      "Stan pusty nadchodzących może wrócić do wypełnienia `--surface-sunken` na kanwie i żaden przelot pikseli tego nie zobaczy.",
+  },
   {
     lot: 2,
     position: 1,
@@ -3038,6 +6757,39 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     greenWrong:
       "Konsument może odwoływać się do liczby zamiast do tokenu, albo zniknąć razem z regułą.",
   },
+  {
+    // CZWARTY KSZTAŁT ZNACZNIKA SYGNAŁU, WYPISANY ZAMIAST ZAMKNIĘTY
+    // DEKLARACJĄ. Wpisy #20/#30 żądają CZTERECH rozróżnialnych kształtów,
+    // a lot D6 dowiózł wszystkie cztery w arkuszu. Zmierzone parami są dwa
+    // („Watch” — ukośne półwypełnienie, „At risk” — obwódka wypełnionego
+    // pudełka), i to nie z wyboru: wykrzyknik jest WYCIĘTY z wypełnienia
+    // pseudoelementem (`::after` + `clip-path`), a słownik `read` tej mapy zna
+    // wyłącznie `getComputedStyle(element)` — bez drugiego argumentu, więc bez
+    // pseudoelementów. Para napisana na samym elemencie wróciłaby z `clipPath:
+    // none` i była zielona nad kodem, w którym wykrzyknika nie ma.
+    //
+    // DRUGI, NIEZALEŻNY POWÓD, DLA KTÓREGO POŁOWA TEJ POZYCJI NIE MA DOWODU:
+    // fikstura harnessu rysuje DWA z czterech stanów (`risk`, `watch`).
+    // Zielony kwadrat („On track”) i kreskowana obwódka („Dormant") nie mają
+    // gdzie się narysować, więc pary nad nimi byłyby NOT_MEASURED — awarią
+    // przyrządu nad poprawnym kodem, nie czerwienią do naprawienia.
+    lot: "D6",
+    position: 1,
+    scope:
+      "dwa z czterech kształtów — wycięty wykrzyknik („At risk”) i dwa stany, których fikstura nie rysuje",
+    title: "the exclamation cut out of the risk mark has no measurement",
+    prototype:
+      "v3/app.css:396-399 (`.health.risk::after { background: var(--surface-canvas); clip-path: polygon(…) }`), :393 (`.health.ok`), :409 (`.health.none { border-style: dashed }`)",
+    app: "packages/desktop-ui/src/organizations/organizations.module.css (.signalMark_risk::after, .signalMark_good, .signalMark_none) + bliźniak w people/people.module.css",
+    why:
+      "Dwie przyczyny, obie o PRZYRZĄDZIE, nie o kodzie. (1) `read` tej mapy czyta styl ELEMENTU; " +
+      "`clip-path` wykrzyknika siedzi na `::after`, którego ta ścieżka nie widzi. (2) Fikstura harnessu " +
+      "dosięga stanów `risk` i `watch` — zmierzone sondą na obu przystankach przed napisaniem par — " +
+      "więc `good` i `none` nie mają gdzie się narysować. Wyjściem dla (1) jest drugi argument " +
+      "`getComputedStyle` w przelocie, czyli przebudowa przyrządu; dla (2) druga organizacja w fiksturze.",
+    greenWrong:
+      "Wykrzyknik może zniknąć z „At risk”, a zielony kwadrat i kreskowana obwódka mogą nigdy nie powstać — cztery kształty zredukowałyby się wtedy do dwóch i żaden przelot by tego nie zobaczył.",
+  },
 ];
 
 /**
@@ -3080,8 +6832,225 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `--nav-active-bg` na oznaczonej pozycji kolumny trybu, L6-03b liczy TORY
   // siatki wpisu. Pozycje briefu się nie zmieniły, więc rośnie tylko `pairs`
   // tutaj i `lots.6.pairs` niżej — `positionsWithPairs` zostaje 4.
-  pairs: 62,
-  notCovered: 9,
+  //
+  // 62 → 63 PRZY LOCIE C1 FAZY C, 2026-08-10, i JEST TO NOWA POZYCJA, nie
+  // rozpad istniejącej — pierwsza w tej mapie spoza briefu Fazy 3. Cel
+  // nadrzędny otwartego rekordu projektu nie był mierzony przez nic: rejestr
+  // Fazy 4 zgłosił go dwa razy (ekran rekordu, komentarze na projekcie),
+  // a mapa powłoki go nie dosięga, bo podmiot rysuje się dopiero za nawigacją.
+  //
+  // 63 → 65 PRZY LOCIE C5 FAZY C, 2026-08-11, i znowu jest to NOWA POZYCJA,
+  // nie rozpad istniejącej. Kontrolki wyboru nie mierzyło w tej fali NIC:
+  // spis B1 czyta ich TŁO i deklaruje wprost, że natywna strzałka do niego
+  // nie należy (`scripts/control-paint.mjs:117-118`), a spis B2 szuka
+  // w paśmie PRZYCISKU o klasie akcji, więc goły `<select>` stojący w tym
+  // samym paśmie jest dla niego niewidoczny. Dwie pary, bo jedno zdanie
+  // prototypu („kontrolka stoi jak przycisk obok niej") schodzi tu z dwóch
+  // różnych miejsc kaskady — powód stoi przy wpisach.
+  //
+  // 65 → 69 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU C5, 2026-08-11, i to NIE JEST ani
+  // nowa pozycja, ani rozpad istniejącej: to POŁOWA LOTU, która pojechała bez
+  // dowodu. Lot ruszył szerokość kontrolki wyboru w TRZECH miejscach
+  // (`.actions select`, `.settings-control select`, `.railSelect`) i nie napisał
+  // na to ani jednej pary, uzasadniając to dwiema rzeczami, które są sprzeczne
+  // z kodem runnera — sprostowanie stoi przy wpisach C5. Zmierzone przed
+  // napisaniem par, nie po: `max-width` = „256px" na kontrolce pasma i na
+  // sześciu kontrolkach Ustawień, `flex-grow` = „0" na wszystkich sześciu
+  // i na `.railSelect`, `align-self` = „start" na jedynym dziecku wprost.
+  // Pozycja briefu dalej JEDNA, więc `positionsWithPairs` się nie rusza —
+  // rośnie tylko `pairs` tutaj i `lots.C5.pairs` niżej.
+  //
+  // 69 → 74 PRZY LOCIE D1 FAZY D, 2026-08-11, i jest to NOWA POZYCJA. Pasma nad
+  // płótnem nie mierzyła w tej mapie ani jedna para: spis B2 czyta POŁOŻENIE
+  // AKCJI w paśmie i nie ma zdania o tym, czy pasmo w ogóle jest pasmem —
+  // jego własna dolna krawędź, wysokość i szerokość były poza każdym pomiarem
+  // tej fali. Pięć par, bo jedno zdanie rejestru („pasma zamknięte włoskową
+  // kreską na całą szerokość") składa się z trzech deklaracji na dwóch
+  // elementach plus krawędzi tablicy pod nimi, a każda psuje się osobno.
+  //
+  // 74 → 75 W TYM SAMYM LOCIE, I JEST TO DRUGA POZYCJA, nie rozpad pierwszej.
+  // Lot D1 domyka też drugą połowę wpisu #10 rejestru — WYSOKOŚĆ akcji głównej
+  // (33 CSS wobec prototypowych 28) — a tego nie mierzyła ani ta mapa, ani spis
+  // B2, który czyta POŁOŻENIE akcji i nie ma zdania o jej rozmiarze.
+  //
+  // 75 → 76 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D1, 2026-08-11, I JEST TO TRZECIA
+  // POZYCJA. Wpis #62 rejestru — akcja pasma Spotkań — był w tym locie mierzony
+  // WYŁĄCZNIE spisem B2, a spis czyta POŁOŻENIE akcji i nie ma zdania o tym,
+  // z czego ta akcja jest zrobiona. Lot przeniósł z prototypu etykietę
+  // i modyfikator, a pominął `icon`, przez co poniżej 50 rem okna — gdzie
+  // arkusz gasi etykietę i zostawia glif — pasmo Spotkań rysowało PUSTE
+  // pudełko. Zielone były wtedy wszystkie przyrządy naraz. Ta para jest
+  // pierwszym przystankiem tej mapy na Spotkaniach; marker przybycia dopisany
+  // razem z nią (`ROUTED_ARRIVAL.meetings`).
+  //
+  // 76 ZOSTAJE 76 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D2, 2026-08-11, I TA LICZBA
+  // JEST WYNIKIEM POMIARU, NIE REZYGNACJI. Naprawa dopisała siedemdziesiątą
+  // siódmą parę — bliźniak znacznika pomocy na Kalendarzu — razem z markerem
+  // przybycia dla tego ekranu, i OBA PRZELOTY (dark, light) wróciły
+  // `NOT_MEASURED`: klient scenariuszowy odmawia kalendarza
+  // (`client/scenario-client.ts:81-94`), a przycisk rysuje się tylko nad
+  // tygodniem ze spotkaniem. Para i przystanek zostały ZDJĘTE zamiast wyciszone
+  // polem `blind` — przystanek bez ani jednego werdyktu to czas przelotu
+  // udający pokrycie. Bliźniak jest asertowany tam, gdzie fikstura go dosięga
+  // (`desktop-ui/test/calendar.interaction.test.tsx`), a brak pomiaru
+  // PIKSELOWEGO stoi wypisany niżej, w `notCovered`.
+  //
+  // 76 → 95 PRZY LOCIE D3 FAZY D, 2026-08-11, I SĄ TO TRZY NOWE POZYCJE. Kolumny
+  // list Biblioteki i czytelnia notatki nie były w tej mapie mierzone przez nic
+  // poza farbą wiersza (L5-01a/b) i deklaracją siatki (L5-02a): ani GŁOWA
+  // kolumny, ani jej wysokość, ani kształt wiersza, ani cokolwiek w czytelni
+  // powyżej treści. Dziewiętnaście par, bo rejestr niesie tu jedenaście wpisów
+  // składających się na trzy zdania („głowa kolumny jest jednym paskiem",
+  // „wiersz jest wierszem, nie kartą", „czytelnia jest jednym planem"),
+  // a każde z nich psuje się na kilku niezależnych deklaracjach — cień bez
+  // promienia, promień bez kreski, kreska bez pasa daty.
+  //
+  // 95 → 96 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D3, 2026-08-11, I NIE JEST TO ANI
+  // nowa pozycja, ani rozpad istniejącej: to POŁOWA WPISU #41, która pojechała
+  // bez dowodu. Lot dociągnął wiersz Źródeł do krawędzi kolumny
+  // (`var(--space-3)` → `var(--space-4)`) i zostawił głowę grupy nad nim na
+  // starej liczbie, przez co lewe krawędzie tekstu rozjechały się z 2 px na
+  // 6 px. Prototyp daje obu TĘ SAMĄ wyściółkę poziomą jedną parą reguł
+  // (`v3/screens/knowledge.css:198` i `:139`), a w tej mapie nie czytała jej
+  // ŻADNA para: D3-05a czyta promień wiersza, D3-05b kolor jego kreski,
+  // a D3-02 mierzy bliźniaka z Notatek na INNYM przystanku. Pozycja briefu
+  // dalej ta sama, więc `positionsWithPairs` się nie rusza — rośnie tylko
+  // `pairs` tutaj i `lots.D3.pairs` niżej.
+  //
+  // 96 → 104 PRZY LOCIE D4 FAZY D, 2026-08-11, I SĄ TO SIEDEM NOWYCH POZYCJI —
+  // ekran rekordu projektu i zakładka Komentarzy. Żadna z nich nie była dotąd
+  // mierzona przez tę mapę: dwie pary rekordu (D4-01a/b) czytają ZAWIERANIE
+  // i rozciągnięcie pasa, bo wpis #47 jest o tym, czyim dzieckiem jest karta
+  // dokumentu, a nie o jej kolorze; cztery pary Komentarzy jadą tu przez krok
+  // `recordTab`, który mapa umiała robić od Fazy 3 i którego żaden lot Fazy D
+  // dotąd nie użył.
+  //
+  // 104 → 105 PO NAPRAWIE PO PRZEGLĄDZIE LOTU D4, i NIE JEST TO nowa pozycja:
+  // `lots.D4.pairs` urosło wtedy 8 → 9 (trzecia połowa wpisu #58, para
+  // `D4-06c`), a TA suma nie urosła razem z nim. Drzewo zastane przez lot D5
+  // było przez to CZERWONE — `auditRoutedMap` liczy jedno i drugie osobno
+  // i rzucał `ROUTED_COUNT_DRIFT` („holds 105 routed pairs, declared 104")
+  // zanim zdążył ocenić choćby jedną parę. Liczba pozycji się nie zmienia,
+  // bo pozycja 6 lotu D4 była już liczona jako pokryta.
+  //
+  // 105 → 116 PRZY LOCIE D5 FAZY D, 2026-08-11, I SĄ TO PIĘĆ NOWYCH POZYCJI —
+  // tryb Ustawień. Cztery z nich nie były mierzone przez tę mapę nigdy: sama
+  // powłoka w trybie (#67, trzy pary — dwie liczące, CZEGO NIE MA, i jedna
+  // czytająca pasmo, bez którego pusta kolumna przeszłaby obie), spis sekcji
+  // (#69), plaster listy (#68) i karta sekcji (#70). Piąta (#71) miała już parę
+  // na SZEROKOŚCI od lotu C5 i dostaje drugą na wysokości.
+  //
+  // 116 → 118 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D5, 2026-08-11, i NIE JEST TO
+  // ani nowa pozycja, ani rozpad istniejącej: dwie osie tych samych pozycji,
+  // na których lot pojechał bez dowodu. Pozycja 1 miała trzy pary i żadna nie
+  // czytała, DOKĄD pasmo sięga — a sięgało o rynnę za daleko i było ścinane
+  // przez przewijalnego przodka (D5-01d, odczyt świadomy przycięcia, bo pudełko
+  // układu jest na to ślepe). Pozycja 4 miała dwie pary i obie brały za podmiot
+  // `.settings-category > section`, więc dziecko kategorii, które `section` nie
+  // jest, leżało poza pomiarem — a takie było (D5-04c, licząca je nad
+  // wszystkimi sześcioma kategoriami). `positionsWithPairs` się nie rusza.
+  //
+  // 118 → 129 PRZY LOCIE D6 FAZY D, 2026-08-11, I SĄ TO CZTERY NOWE POZYCJE —
+  // ogon CRM. Organizacji i Ludzi nie mierzyła w tej mapie ANI JEDNA para:
+  // oba ekrany dojechały tu razem z markerami przybycia dopisanymi przez ten
+  // lot. Jedenaście par na cztery pozycje, i rozdrobnienie ma dwie przyczyny,
+  // obie policzalne. Po pierwsze, każdy z tych kształtów mieszka w DWÓCH
+  // arkuszach modułowych (`organizations.module.css` i `people.module.css`),
+  // bo rejestr zgłosił je jako pary bliźniaków (#20/#30, #19 dwa razy,
+  // #21/#29) — jedna para byłaby zielona nad połową poprawki. Po drugie,
+  // pozycja 1 („znacznik jest rysowany”) rozpada się na WYMIAR pudełka
+  // i na KSZTAŁT stanu: para nad samym wymiarem stałaby zielona nad czterema
+  // jednakowymi kwadratami w czterech odcieniach, czyli nad wersją, której
+  // nie da się przeczytać bez koloru — a to jest dokładnie ta wada, którą
+  // wpis nazywa.
+  //
+  // 129 → 131 PO PRZEGLĄDZIE LOTU D6, 2026-08-12, i nie jest to nowa pozycja:
+  // `lots.D6.pairs` rośnie 11 → 13 o dwie pary czytające WYMIAR glifu segmentu
+  // (D6-04c/D6-04d) — powód stoi tam. Ta suma rośnie razem z nim, bo
+  // `auditRoutedMap` liczy jedno i drugie OSOBNO: przelot po samym dopisaniu
+  // par rzucił OBA drifty naraz (`holds 131 routed pairs, declared 129`
+  // i `lot D6: 13 carried, 11 declared`) i nie ocenił ani jednej pary.
+  //
+  // 131 → 143 PRZY LOCIE D7 FAZY D, 2026-08-12, I SĄ TO TRZY NOWE POZYCJE nad
+  // ekranem, który ta mapa mierzyła dotąd JEDNĄ parą (D1-05, glif akcji
+  // pasma). Rejestr niesie tu trzy wpisy — #63, #64, #65 — i mówi wprost, że
+  // każdy z nich osobno zostawia ekran GORSZYM niż był, bo wszystkie trzy są
+  // stronami jednego pudełka: farby karty stojącej na SEKCJI zamiast na
+  // LIŚCIE w środku. Dwanaście par, bo każde z tych trzech zdań psuje się na
+  // kilku niezależnych deklaracjach — jedna kolumna z odwróconą kolejnością,
+  // karta przemalowana przy sekcji dalej podniesionej, nagłówek wyprowadzony
+  // z pudełka, ale wciąż noszący jego kreskę.
+  //
+  // 143 → 148 PRZY ODBIORZE LOTU D7, 2026-08-12, I NIE JEST TO NOWA POZYCJA.
+  // Netto pięć, brutto sześć dopisanych i jedna zdjęta. Dopisane: D7-01d
+  // (liczba ścieżek WIERSZA — trzy pary pozycji 1 mierzyły, gdzie sekcja stoi,
+  // i wszystkie trzy przechodziły zielone nad wierszem wciąż noszącym geometrię
+  // szyny), D7-01e (`flexGrow` kreski łańcucha — to jest ta deklaracja, przez
+  // którą przeniesienie wiersza zostawiło ekran GORSZYM niż był, i sama liczba
+  // ścieżek jej nie widzi), D7-02e i D7-02f (karta nadchodzących i jej wpuszczony wiersz —
+  // wypisane wcześniej jako niedosiężne z powodem, który był nieprawdą),
+  // D7-03f i D7-03g (nagłówek nadchodzących i jego kłódka — pozycja 3 miała
+  // PIĘĆ par i wszystkie pięć czytały sekcję ODBYTYCH albo obie naraz, więc
+  // bliźniak dawał się z ekranu usunąć przy zielonym przelocie). Zdjęta:
+  // D7-02c, bo jej podmiot i podmiot D7-02e to dwa ramiona jednego wyrażenia
+  // i fikstura rysuje jedno z nich — powód przy wpisie i w `notCovered`.
+  //
+  // 148 → 150 PRZY LOCIE D9 FAZY D, 2026-08-12, i JEST TO NOWA POZYCJA, nie
+  // rozpad istniejącej: druga połowa wpisu #29 — glif wiodący plakietki
+  // uczestnictwa — była do dziś oddana ZERO RAZY, a jej dwie poprzednie odmowy
+  // (loty D6 i D2) opierały się na sufitach przepełnienia, nie na parze. Dwie
+  // pary z tego samego powodu, dla którego istnieją D6-04c/d: para licząca jest
+  // zielona przy każdym rozmiarze znaku, a ten znak ma w prototypie osobny,
+  // trzeci stopień wielkości.
+  //
+  // 150 → 151 W TYM SAMYM LOCIE, PO WŁASNYM BREAK-TEŚCIE: para obecności
+  // rozpadła się na dwie (deale i spotkania osobno), bo jedna podłoga nad
+  // obiema plakietkami była spełnialna przez którąkolwiek z nich samą.
+  // `positionsWithPairs` się nie rusza — pozycja dalej JEDNA.
+  //
+  // 151 → 155 PRZY LOCIE D10 FAZY D, 2026-08-12, i NIE jest to nowa pozycja:
+  // to ostatnie 12 px wpisu #22, którego lot D1 nie oddał i powiedział o tym
+  // wprost. Cztery pary, bo zdanie wpisu składa się z dwóch niezależnych
+  // deklaracji na dwóch ekranach: kto przewija (`overflow` na nośniku i na
+  // pudełku pod pasmami) i czyimi dziećmi są pasma (liczność bezpośrednich
+  // dzieci nośnika). Para nad samą geometrią byłaby zielona nad ekranem,
+  // któremu ktoś tylko zdjął odstęp, zostawiając pasma jadące z treścią.
+  //
+  // 155 → 156 PRZY LOCIE D11 FAZY D, 2026-08-12, i JEST TO NOWA POZYCJA:
+  // wpis #51 rejestru (z duplikatem #55) — kontrolka formularza stojąca
+  // w paśmie akcji rekordu. JEDNA para, bo trzy pozostałe pary tej pozycji
+  // (C5-01a/b/c) już istniały i zostały PRZEPIĘTE na nowy podmiot zamiast
+  // dopisane: zdanie, którego broniły, przeniosło się z `<select>` na
+  // wyzwalacz dymka i na jego panel. Nowa jest wyłącznie ta, która mówi, czego
+  // w paśmie stać NIE MA — i której przed tym lotem nie było czym napisać, bo
+  // kontrolka wtedy tam stała.
+  pairs: 156,
+  // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
+  // bliźniaka na Kalendarzu. Powody przy wpisach.
+  //
+  // 11 → 12 PRZY LOCIE D4: druga połowa wpisu #61 (uchwyt zmiany rozmiaru
+  // w polu EDYCJI komentarza). Oddana w kodzie, niemierzalna przez tę mapę —
+  // pole powstaje dopiero po kliknięciu „Edit", a `route` nie ma takiego kroku.
+  //
+  // 12 → 13 PRZY LOCIE D6: dwa z czterech kształtów znacznika sygnału.
+  // Wykrzyknik „At risk" mieszka w `::after`, którego `read` tej mapy nie
+  // widzi, a stanów `good` i `none` fikstura nie rysuje. Oddane w arkuszu,
+  // niemierzalne tym przelotem — powody przy wpisie.
+  //
+  // 13 → 15 PRZY LOCIE D7: dwie własności karty nadchodzących, których fikstura
+  // bramki NIE RYSUJE, bo rysowanie ich wymaga stanu `available`, a ten
+  // wygasza gałąź „Grant access". Powody i warunki wyjścia stoją przy wpisach.
+  //
+  // 15 → 14 PRZY ODBIORZE LOTU D7, 2026-08-12, I OBA TAMTE POWODY BYŁY
+  // NIEPRAWDĄ. Wiersze nadchodzących nie wymagają `available` (wystarczy
+  // `canRead`), a gałąź „Grant access" wymaga `platform === "macos"`, którego
+  // tamta fikstura nie deklarowała — rysowała „Check again", więc koszt,
+  // którym uzasadniono odmowę pomiaru, nigdy nie był płacony. Oba wpisy są
+  // zamknięte parami (D7-02e, D7-02f). W ich miejsce wchodzi JEDEN wpis —
+  // przezroczystość stanu PUSTEGO — i on ma mechanizm, którego tamte nie
+  // miały: to jest drugie ramię tego samego wyrażenia, więc jedna fikstura
+  // rysuje dokładnie jedno z dwojga.
+  notCovered: 14,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -3121,6 +7090,253 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // dziś wyłącznie pikseli, nie deklaracji.
   blind: 1,
   lots: {
+    C1: {
+      // Ta sama arytmetyka co w mapie powłoki, widziana z drugiej strony: lot
+      // ma DWIE pozycje, ta mapa dowozi drugą, a pierwsza stoi jako jawnie
+      // nieobjęta TĄ mapą — jest w mapie powłoki, bo tam da się ją zmierzyć.
+      positionsInBrief: 2,
+      pairs: 1,
+      positionsWithPairs: 1, // 2
+      positionsWithoutPairs: [1],
+    },
+    C5: {
+      // Lot C5 ma w swoim zadaniu JEDNĄ pozycję — kontrolkę wyboru z systemową
+      // strzałką w paśmie nagłówka — i ta jedna pozycja jest tu objęta parą
+      // (sześcioma). Trafień lot naliczył trzy, ale trafienie to MIEJSCE, nie
+      // pozycja: wszystkie trzy niosą to samo zdanie prototypu, a rachunek
+      // pozycji jest rachunkiem ZDAŃ.
+      //
+      // 2 → 6 PRZY NAPRAWIE PO PRZEGLĄDZIE, 2026-08-11: dwie pary opisywały
+      // WYŁĄCZNIE stopień pisma i promień w jednym z trzech miejsc, a połowa
+      // lotu — szerokość we wszystkich trzech — nie miała dowodu. Powód
+      // i pomiary stoją przy wpisach C5-01c, C5-02a/b i C5-03.
+      positionsInBrief: 1,
+      pairs: 6,
+      positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    D3: {
+      // Lot D3 niesie JEDENAŚCIE wpisów rejestru, a rejestr sam grupuje je
+      // w trzy rodziny, i to one są tu pozycjami: głowa kolumny listy (#34,
+      // #42), wiersz listy i jego siatka (#35, #41, #45), czytelnia (#36, #37,
+      // #38, #43, #44, #46). Wszystkie trzy są wyrażalne selektorem nad
+      // przystankami, do których ta mapa dojeżdża, więc `positionsWithoutPairs`
+      // jest puste — co NIE znaczy, że lot oddał wszystko: awatar inicjałowy
+      // z wpisu #36 nie ma pola w projekcji i stoi w `notDelivered` raportu,
+      // a nie tutaj, bo ta lista mierzy POKRYCIE pozycji, nie ich dostawę.
+      //
+      // 19 → 20 PRZY NAPRAWIE PO PRZEGLĄDZIE: D3-04c, wyściółka pozioma głowy
+      // grupy Źródeł. Powód i pomiar stoją przy `pairs` na górze tej mapy;
+      // pozycja jest ta sama (wiersz listy i jego siatka), więc rośnie tylko ta
+      // liczba.
+      positionsInBrief: 3,
+      pairs: 20,
+      positionsWithPairs: 3, // 1, 2, 3
+      positionsWithoutPairs: [],
+    },
+    D5: {
+      // Lot D5 niesie PIĘĆ wpisów rejestru (#67-#71) i każdy z nich jest osobną
+      // pozycją — żaden nie jest duplikatem innego. Wszystkie pięć mają parę.
+      //
+      // JEDENAŚCIE PAR NA PIĘĆ POZYCJI, i rozdrobnienie ma wszędzie ten sam
+      // powód: para czytająca NIEOBECNOŚĆ starej wady jest zdaniem prawdziwym
+      // także o ekranie, na którym nikt nie dowiózł nowego kształtu. Pozycja 1
+      // liczy zniknięcie karty przestrzeni i wyszukiwarki OSOBNO (dwa warunki
+      // w JSX-ie, jedna para byłaby zielona nad połową poprawki), a trzecia
+      // czyta pasmo, którego pusta kolumna by nie miała. Pozycja 3 czyta plaster
+      // listy, promień wiersza i kreskę rozdzielającą — tę ostatnią na LIŚCIE
+      // ETAPÓW, bo fikstura harnessu daje każdej `.status-list` dokładnie jeden
+      // wiersz, czyli pas, na którym kreska nigdy się nie rysuje. Pozycja 4
+      // czyta obrys sekcji i pasmo jej nagłówka, bo karta bez pasma przechodzi
+      // pierwszą z nich.
+      //
+      // 11 → 13 PRZY NAPRAWIE PO PRZEGLĄDZIE: po jednej parze na pozycje 1 i 4,
+      // obie na osiach, których lot nie zmierzył — zasięg pasma (D5-01d)
+      // i komplet kart kategorii (D5-04c). Powody stoją przy wpisach.
+      positionsInBrief: 5,
+      pairs: 13,
+      positionsWithPairs: 5, // 1, 2, 3, 4, 5
+      positionsWithoutPairs: [],
+    },
+    D6: {
+      // Lot D6 niesie SZEŚĆ wpisów rejestru (#19, #20, #21, #26, #29, #30),
+      // a POZYCJI — czyli zdań prototypu — jest cztery, i rachunek jest tu
+      // rachunkiem zdań, nie miejsc:
+      //   1. znacznik sygnału jest rysowany, nie pisany (#20 + #30 — jedna
+      //      wada zgłoszona dwa razy, bo mieszka w dwóch arkuszach);
+      //   2. „Prospect” należy do akcentu, nie do informacji (#19 — jedna
+      //      plakietka na dwóch ekranach, i to właśnie z tego rejestr wywnioskował,
+      //      że rozjazd jest REGUŁĄ);
+      //   3. segmenty układu otwierają się glifem (druga połowa #21 na
+      //      Organizacjach i połowa #29 o segmentach na Ludziach);
+      //   4. glif wiodący przy nazwie organizacji i w plakietkach uczestnictwa
+      //      (druga połowa #26 i druga połowa #29).
+      // Pozycje 3 i 4 są POŁÓWKAMI wpisów, których farbę zamknęła Faza C
+      // (`5d4f2c2`, reset przycisku) — ten lot dowozi wyłącznie brakującą
+      // połowę i nie udaje, że rusza tamtą.
+      //
+      // WSZYSTKIE CZTERY MAJĄ PARĘ, ale DWIE Z NICH MAJĄ JĄ NAD POŁOWĄ, i te
+      // dwie połowy są różnymi rzeczami:
+      //   - pozycja 1 dostała parę nad DWOMA z czterech kształtów, i to jest
+      //     ograniczenie PRZYRZĄDU nad oddanym kodem (pseudoelement + zasięg
+      //     fikstury) — wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`;
+      //   - pozycja 4 dostała parę nad nagłówkiem grupy, a NIE nad plakietką
+      //     uczestnictwa, bo tej połowy LOT NIE ODDAŁ: glif wiodący pchał
+      //     `span._parts` 55 px poza tor przy tekście 200% wobec sufitu 25 px
+      //     z `descendant-overflow.mjs`. To jest brak DOSTAWY, nie brak
+      //     pomiaru, więc stoi w `notDelivered` raportu, a nie na liście
+      //     nieobjętych.
+      //
+      // 11 → 13 PO PRZEGLĄDZIE LOTU D6, 2026-08-12, I NIE JEST TO NOWA POZYCJA:
+      // to druga WŁASNOŚĆ pozycji 3, na której lot pojechał bez dowodu. D6-04a/b
+      // liczą ELEMENTY (`property: null`, `count`, podłoga 2), więc mówią
+      // wyłącznie o OBECNOŚCI znaku — a oddany znak miał 0,6875 rem
+      // i `opacity: 0.75`, czyli komplet przepisany z `v3/screens/crm.css:162`
+      // (plakietka uczestnictwa, której lot świadomie NIE oddał) zamiast
+      // z `v3/app.css:348` (0,8125 rem, bez wygaszenia), rządzącej tym znakiem.
+      // Bramka stała zielona nad niewłaściwą liczbą. D6-04c i D6-04d czytają
+      // WYMIAR — dwie, nie jedna, bo reguła mieszka w dwóch arkuszach
+      // modułowych, tak samo jak w pozycji 1. `positionsWithPairs` się nie
+      // rusza.
+      positionsInBrief: 4,
+      pairs: 13,
+      positionsWithPairs: 4, // 1, 2, 3, 4
+      positionsWithoutPairs: [],
+    },
+    D7: {
+      // Lot D7 niesie TRZY wpisy rejestru (#63, #64, #65) i każdy z nich jest
+      // osobną pozycją — a rejestr sam pisze, że oddanie któregokolwiek Z NICH
+      // OSOBNO zostawia ekran gorszym niż był, więc lot jest jeden i pozycje są
+      // trzy. Wszystkie trzy mają parę:
+      //   1. nadchodzące stoją PIERWSZE, na pełną szerokość, a szyny nie ma
+      //      (#63 — pięć par: liczba ścieżek ciała, kolejność, nieobecność
+      //      szyny, liczba ścieżek samego WIERSZA i `flexGrow` kreski łańcucha
+      //      prowenancji w jego środku);
+      //   2. drabina jasności przestaje być odwrócona (#64 — pięć par, bo
+      //      `--surface-sunken` siedział na kanwie w TRZECH miejscach, farba
+      //      karty musiała ZEJŚĆ z sekcji i WEJŚĆ na obie listy, a wpuszczenie
+      //      wiersza W KARCIE jest osobnym szczeblem drabiny);
+      //   3. nagłówek stoi na kanwie i ma prawy koniec (#65 — siedem par:
+      //      położenie w drzewie, nieobecność w karcie, obecność wyjścia, brak
+      //      kreski działowej, stopień pisma, oraz nagłówek i kłódka DRUGIEJ
+      //      sekcji, których nie mierzyło nic).
+      //
+      // 12 → 17 PRZY ODBIORZE, 2026-08-12: sześć par dopisanych, jedna zdjęta.
+      // Arytmetyka i powód każdej stoją przy sumie `pairs` tej mapy.
+      //
+      // JEDNA WŁASNOŚĆ POZYCJI 2 NIE MA PARY I STOI WYPISANA: przezroczystość
+      // stanu PUSTEGO nadchodzących. Nie jest to dług ani odmowa z nastroju —
+      // stan pusty i karta z wierszami to dwa ramiona jednego wyrażenia, więc
+      // jedna fikstura rysuje jedno z nich, a bramka ma jedną fiksturę.
+      // Wybrane jest ramię, które niesie cztery podmioty zamiast jednego;
+      // mechanizm i osiągalny warunek wyjścia stoją przy wpisie
+      // w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`.
+      positionsInBrief: 3,
+      pairs: 17,
+      positionsWithPairs: 3, // 1, 2, 3
+      positionsWithoutPairs: [],
+    },
+    D9: {
+      // JEDNA POZYCJA, i jest nią DRUGA POŁOWA wpisu #29. Pierwsza połowa —
+      // glify w segmentach paska widoku — została oddana i zmierzona przez lot
+      // D6 (D6-04b, D6-04d), więc nie liczy się tutaj: rachunek pozycji jest
+      // rachunkiem ZDAŃ rejestru, a to zdanie mówi o plakietce uczestnictwa.
+      positionsInBrief: 1,
+      pairs: 3,
+      positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    D10: {
+      // JEDNA POZYCJA — wpis #22, i to jego OSTATNIE 12 px. Wpis został
+      // zamknięty przez lot D1 na własnym roszczeniu (chrom 139 → 92 px), a te
+      // 12 px zostały tam wypisane jako świadomie nieoddane: prototyp ma 80 px,
+      // my mieliśmy 92. Rachunek pozycji jest rachunkiem ZDAŃ rejestru, więc
+      // wpis liczy się raz, mimo dwóch lotów.
+      positionsInBrief: 1,
+      pairs: 4,
+      positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    D11: {
+      // JEDNA POZYCJA — wpis #51 rejestru wraz z jawnym duplikatem #55: żadna
+      // kontrolka formularza nie stoi w paśmie akcji rekordu. Ta sama pozycja
+      // stoi w rachunku lotu D4 jako NIEPOKRYTA i tam ZOSTAJE, bo tamten
+      // rachunek jest rachunkiem tego, co oddał LOT D4 — a D4 tej pozycji nie
+      // oddał i powiedział o tym wprost. Ten sam podwójny zapis niesie już para
+      // D1/D10 nad wpisem #22.
+      //
+      // JEDNA PARA, choć pozycję opisują CZTERY: trzy pozostałe (C5-01a/b/c)
+      // istniały przed tym lotem nad `<select>`, który odszedł, i zostały
+      // PRZEPIĘTE na wyzwalacz dymka i jego panel — więc dalej liczą się
+      // w locie C5, gdzie je napisano. Nowa jest wyłącznie ta, która mówi,
+      // czego w paśmie stać NIE MA.
+      positionsInBrief: 1,
+      pairs: 1,
+      positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    D4: {
+      // Lot D4 niesie DZIEWIĘĆ wpisów rejestru, z których #55 jest jawnym
+      // duplikatem #51 (ten sam `<select>`, ten sam wspólny pas nagłówka obu
+      // zakładek), więc POZYCJI jest osiem, nie dziewięć. Siedem z nich ma
+      // parę: dokument w kolumnie tekstu wraz z krawędzią pasa (#47), plakietki
+      // metadanych (#52), próbka legendy (#53), plakietka roli agenta (#56),
+      // znacznik autora-człowieka (#59), kompozytor (#58) i uchwyt zmiany
+      // rozmiaru w edycji komentarza (#61).
+      //
+      // ÓSMA POZYCJA — #51/#55 — NIE MA PARY W TYM LOCIE, BO LOT D4 JEJ NIE
+      // ODDAŁ, i ta linijka zostaje jako fakt o locie D4. Wpis został oddany
+      // 2026-08-12 przez LOT D11 i tam ma swoją parę (D11-01) oraz trzy
+      // przepięte (C5-01a/b/c); ten sam podwójny zapis niesie już wpis #22
+      // między lotami D1 i D10.
+      //
+      // POWÓD, KTÓRY TU DAWNIEJ STAŁ, BYŁ PRAWDĄ O INNYM KSZTAŁCIE. Stało tu:
+      // „statyczny import `InlinePopover` do gorącego `Wave2Surfaces.tsx`
+      // kosztuje +1 158 B gzip ścieżki gorącej". Liczba była poprawna i dotyczy
+      // ARMU STATYCZNEGO; lot D11 poszedł arm LENIWYM — `lazy()` na poziomie
+      // modułu, komponent biorący wyłącznie propsy — i ścieżka gorąca nie
+      // drgnęła (pomiary w raporcie lotu D11). Kosztem nie był popover, tylko
+      // sposób jego wpięcia.
+      //
+      // SIÓDMA POZYCJA (#61) MA PARĘ TYLKO W POŁOWIE, i ta połowa jest wypisana
+      // w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`: uchwyt zmiany rozmiaru zniknął
+      // z OBU pól, ale mierzalne jest tylko pole kompozytora (D4-06b). Pole
+      // EDYCJI istniejącego komentarza rysuje się dopiero po kliknięciu „Edit",
+      // a ta mapa nie ma kroku, który by je otworzył — para nad nim wróciła
+      // NOT_MEASURED („matched NO element"), czyli jako AWARIA PRZYRZĄDU, i
+      // została zdjęta zamiast zostawiona jako wieczna czerwień.
+      //
+      // SZÓSTA POZYCJA (#58) MA TRZY POŁOWY I DO NAPRAWY PO PRZEGLĄDZIE MIAŁA
+      // PARĘ NAD JEDNĄ. Pozycja liczyła się jako pokryta, bo `D4-06a` mierzy
+      // wysyłkę wewnątrz ramki — a nagłówek wiersza rejestru brzmi „kompozytor:
+      // BRAK AWATARA" i tego nie mierzyło nic. Trzecia para (`D4-06c`) czyta
+      // znacznik autora w kompozytorze; liczba par rośnie 8 → 9, liczba
+      // POKRYTYCH POZYCJI się nie zmienia, bo pozycja 6 była już liczona.
+      positionsInBrief: 8,
+      pairs: 9,
+      positionsWithPairs: 7, // 1, 2, 3, 4, 5, 6, 7
+      positionsWithoutPairs: [8],
+    },
+    D1: {
+      // Lot D1 niesie DZIEWIĘĆ wpisów rejestru, ale tylko JEDNO zdanie
+      // wyrażalne selektorem nad ekranem, do którego ta mapa umie dojechać:
+      // pasmo na całą szerokość z własną kreską (#9, #11, #16, #22 — cztery
+      // wpisy, jedna robota, jedna pozycja). Reszta lotu to albo pomiar
+      // spisu B2 (#62 — Spotkania, mierzone TAMTĄD, nie parą), albo pozycje
+      // oddane jako niezrobione i wypisane w raporcie lotu. Drugą pozycją jest
+      // wysokość akcji głównej (#10), wyrażalna selektorem i dlatego z parą.
+      //
+      // TRZECIA POZYCJA PRZY NAPRAWIE PO PRZEGLĄDZIE: #62 (akcja pasma Spotkań)
+      // stał tu jako „mierzony TAMTĄD, nie parą" i to zdanie było prawdziwe
+      // wyłącznie o POŁOŻENIU akcji. Brakujący glif — bez którego zwijanie
+      // akcji w wąskim oknie daje puste pudełko — nie był mierzony ani przez
+      // spis B2, ani przez tę mapę, ani przez bramkę układu. Pozycja przestaje
+      // być wyłączna dla spisu i dostaje własną parę (D1-05).
+      positionsInBrief: 3,
+      pairs: 7,
+      positionsWithPairs: 3, // 1, 2, 3
+      positionsWithoutPairs: [],
+    },
     2: {
       // faza-3-build-brief.md:230-241
       positionsInBrief: 11,

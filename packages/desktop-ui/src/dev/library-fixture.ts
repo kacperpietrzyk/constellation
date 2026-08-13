@@ -503,6 +503,55 @@ export const librarySources = () => [
     referencedBy: [],
     referencedByCount: 0,
   },
+  // ── DWA ŹRÓDŁA DOŁOŻONE PRZEZ LOT D3 (FAZA D), 2026-08-11 ──────────────────
+  // NIE PO TO, ŻEBY BYŁO WIĘCEJ DANYCH, tylko dlatego, że przyrząd zażądał ich
+  // wprost — i to jest cena poprawki #41, nie jej wada.
+  //
+  // Lot ściągnął z kolumny list Źródeł 234 px chromu (wiersze wsunięte jako
+  // karty z odstępami → wiersze dociągnięte do krawędzi, rozdzielone kreską).
+  // Po tej zmianie CAŁA lista sześciu źródeł mieści się w panelu bez
+  // przewijania, a sonda przyklejenia P7 poprosiła `aside._listPanel`
+  // o 78,4 px i dostała ZERO — przystanek „library › lens sources" spadł
+  // z `HELD` na `NOT_EXERCISED`, a bramka wróciła CZERWONA z liczbą 3 przy
+  // podłodze 4. Komunikat tej awarii nazywa oba wyjścia i to jest drugie
+  // z nich: „its list got too short to demonstrate stickiness and the fixture
+  // has to grow".
+  //
+  // Podłoga NIE ZOSTAŁA obniżona — obniżenie progu pod nowy stan jest właśnie
+  // tym, przed czym ta podłoga stoi. Dwa wiersze wystarczają: zmierzone,
+  // wiersz źródła ma tu ~76 px, a do przewinięcia poza pin brakowało ~90 px.
+  //
+  // Oba wpisy trafiają do grup, które MAJĄ już członka — testy ekranu Źródeł
+  // wyliczają wszystko z tej listy (`rows.length === sources.length`,
+  // `groupHeads()` z `sourceKindRenderOrder`), a jedyny test o pustej grupie
+  // sam odfiltrowuje `screenshot` i `excerpt`, więc żaden z nich nie zależy od
+  // liczby sześć.
+  {
+    id: sourceId("07"),
+    sourceKind: "screenshot" as const,
+    title:
+      "Zrzut panelu operatora z licznikiem sesji w godzinie szczytu, zrobiony w dniu odbioru",
+    availability: "available" as const,
+    observedAt: "2026-07-17T16:40:00.000Z",
+    createdAt: "2026-07-17T16:41:00.000Z",
+    version: 1,
+    updatedAt: "2026-07-17T16:40:00.000Z",
+    referencedBy: [],
+    referencedByCount: 0,
+  },
+  {
+    id: sourceId("08"),
+    sourceKind: "excerpt" as const,
+    title:
+      "Fragment protokołu odbioru: warunki uznania testów akceptacyjnych za zaliczone",
+    availability: "available" as const,
+    observedAt: "2026-07-15T10:05:00.000Z",
+    createdAt: "2026-07-15T10:06:00.000Z",
+    version: 1,
+    updatedAt: "2026-07-15T10:05:00.000Z",
+    referencedBy: [],
+    referencedByCount: 0,
+  },
 ];
 
 /** Skróty, które Library czyta obok listy dokumentów. */

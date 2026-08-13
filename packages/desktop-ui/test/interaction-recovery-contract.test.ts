@@ -373,9 +373,18 @@ describe("interaction recovery contracts", () => {
       /className="ghost-button"[\s\S]{0,200}?onClick=\{\(\) => setConfirmingId\(project\.id\)\}/,
     );
     assert.match(strategicSurface, /confirmingId === project\.id \? \(/);
+    // The guarantee is that the detach is the DESTRUCTIVE variant of a real
+    // button, so the pattern pins `secondary-button` and `status-danger` and
+    // deliberately tolerates whatever sits between them. Phase C moved the
+    // variant from a container rule (`.task-removal-actions .status-danger`,
+    // which painted a border on a reset that has `border: 0`) onto the action
+    // class, and then gave this row's confirm the `compact` size its siblings
+    // already carry. Both are material decisions the surrounding row owns; a
+    // literal string here would make this assertion red on each of them while
+    // saying nothing about the wiring it exists to judge.
     assert.match(
       strategicSurface,
-      /className="status-danger"[\s\S]{0,300}?onUnlink\(project\.id\)/,
+      /className="secondary-button[^"]*status-danger"[\s\S]{0,300}?onUnlink\(project\.id\)/,
     );
     // Copy again, for the same reason as its twin: `activeProjects` unions two
     // reaches, so a delivery an opportunity also names stays listed and a
@@ -502,23 +511,63 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("keeps Jamie results ahead of provider context in a raised work plane", () => {
-    const completedIndex = meetings.indexOf('className="meeting-completed"');
-    const contextIndex = meetings.indexOf('className="meeting-context-rail"');
-    assert.ok(completedIndex > -1, "Jamie result plane must exist");
-    assert.ok(contextIndex > completedIndex, "Provider context follows work");
+  // TEN TEST ASERTOWAŁ WADĘ JAKO KONTRAKT, więc rekompozycja ciała Spotkań
+  // (wpisy #63/#64/#65) przepisuje go razem z nazwą i uzasadnieniami, zamiast
+  // go łatać. Trzy zdania rejestru mówiły o jednym pudełku: nadchodzące
+  // zdegradowane do prawej szyny, drabina jasności odwrócona, nagłówek
+  // wciągnięty do środka karty.
+  it("stacks Coming up above Jamie results, each head on the canvas over its own list card", () => {
+    assert.ok(
+      meetings.includes('className="meeting-upcoming"'),
+      "Coming up must exist as its own section",
+    );
+    assert.ok(
+      meetings.includes('className="meeting-completed"'),
+      "Jamie results must exist as its own section",
+    );
+    // KOLEJNOŚĆ CZYTANA Z MIEJSCA MONTAŻU, NIE Z MIEJSCA DEKLARACJI, i to jest
+    // poprawka znaleziona przez break-test, a nie przy pisaniu. Pierwsza wersja
+    // tej asercji porównywała `indexOf('className="meeting-upcoming"')`
+    // z `indexOf('className="meeting-completed"')` — czyli kolejność, w jakiej
+    // stoją w pliku STAŁE, a nie kolejność, w jakiej powierzchnia je RENDERUJE.
+    // Złamanie zamieniające `{upcomingSection}` z `{completedSection}` wróciło
+    // przez to ZIELONE: czytelnik widział wyniki Jamie nad nadchodzącymi,
+    // a asercja tego nie widziała. Wpis #63 mówi o tym, co widzi czytelnik.
+    const body = meetings.indexOf('<div className="meeting-body">');
+    assert.ok(body > -1, "The meetings body must be one column");
+    const mounted = meetings.slice(body, body + 200);
+    const upcomingMountedAt = mounted.indexOf("{upcomingSection}");
+    const completedMountedAt = mounted.indexOf("{completedSection}");
+    assert.ok(upcomingMountedAt > -1, "Coming up must be mounted in the body");
+    assert.ok(
+      completedMountedAt > upcomingMountedAt,
+      "Coming up leads; Jamie results follow it in the same column",
+    );
     assert.match(meetings, /\{jamieConnection\}[\s\S]*meeting-results-browser/);
     assert.match(
       styles,
-      /\.meeting-lanes\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(18rem, 22rem\)/s,
+      /\.meeting-body\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
     );
+    // CHROM KARTY SIEDZI NA LIŚCIE, NIE NA SEKCJI — to jest cały ruch, który
+    // domyka trzy wpisy naraz.
     assert.match(
       styles,
-      /\.meeting-completed\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+      /\.meeting-result-list\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--shadow-sm\)/s,
     );
+    // Szyna znika z arkusza i z renderu. W arkuszu nie ma po niej ANI JEDNEGO
+    // znaku; w źródle powierzchni zostaje wyłącznie wzmianka historyczna
+    // w komentarzu, więc pytamy o UŻYCIE, nie o wyraz.
+    assert.doesNotMatch(styles, /\.meeting-context-rail/);
+    assert.doesNotMatch(meetings, /className="meeting-context-rail"/);
+    // KONTROLKA UPRAWNIENIA NIE MOŻE ZGINĄĆ RAZEM Z SZYNĄ, KTÓRA JĄ NIOSŁA.
+    // To jedyne miejsce w aplikacji wołające `requestCalendarAccess()` i jedyny
+    // „Grant access"/„Check again" na tym ekranie — a martwy przycisk
+    // uprawnienia przeszedł już przez cztery podpisane wydania (PR #143).
+    // Żadna para pikselowa tego nie dosięga: bramka mierzy stan, w którym
+    // wiersze nadchodzących się nie rysują.
     assert.match(
-      styles,
-      /\.meeting-context-rail\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+      meetings,
+      /<section className="meeting-upcoming"[\s\S]{0,3000}\{calendarCapability\}/s,
     );
     assert.doesNotMatch(
       meetings,
@@ -621,13 +670,30 @@ describe("interaction recovery contracts", () => {
   });
 
   it("maps ghost actions to the accepted quiet-button target contract", () => {
+    // 2,25 rem → 1,75 rem W LOCIE D1 FAZY D, i to jest zmiana ROZMIARU, nie
+    // rozluźnienie CELU DOTYKU. Prototyp daje wszystkim swoim przyciskom jedną
+    // wysokość (`v3/app.css:307` — `.btn { height: 1.75rem }`, `quiet` zmienia
+    // sam kolor), a lot D1 zszedł na nią z akcją główną, zamykając drugą połowę
+    // wpisu #10 rejestru Fazy 4. Zostawienie tych dwóch klas wyżej dałoby ekran,
+    // na którym przycisk poboczny jest WYŻSZY od akcji obok niego.
+    //
+    // CEL DOTYKU JEST DRUGĄ ASERCJĄ NIŻEJ I NIE ZOSTAŁ TKNIĘTY: przy oknie do
+    // 50 rem te same dwie klasy dalej żądają 2,75 rem, czyli 44 px przy korzeniu
+    // 16 px. To ta reguła — a nie 2,25 rem — jest kontraktem celu, i dlatego
+    // pierwsza liczba mogła się ruszyć, a druga nie.
     assert.match(
       styles,
-      /\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.25rem/s,
+      /\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*1\.75rem/s,
     );
+    // PODŁOGA WĄSKIEGO OKNA OBEJMUJE CAŁY PAS AKCJI, NIE POŁOWĘ PARY (naprawa
+    // po przeglądzie lotu D1). Ta asercja pilnowała dotąd `quiet`/`ghost`,
+    // a `primary`/`secondary` zostawały na 1,75 rem — czyli przy oknie do 50 rem
+    // akcja główna stała 28 px obok przycisku pobocznego 44 px, dokładnie
+    // odwracając inwersję, przed którą broni się nota wyżej. Asercja mierząca
+    // jedną klasę z pary nie umie zobaczyć rozjazdu MIĘDZY nimi.
     assert.match(
       styles,
-      /@media \(max-width: 50rem\)[\s\S]*?\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.75rem/s,
+      /@media \(max-width: 50rem\)[\s\S]*?\.primary-button,\s*\.secondary-button,\s*\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.75rem/s,
     );
   });
 
@@ -791,25 +857,63 @@ describe("interaction recovery contracts", () => {
   });
 
   it("keeps Document creation progressive and the editor on a distinct reading plane", () => {
+    // 2026-08-11, repair after the C2 review: this assertion named a CLASS, and
+    // the class is gone. Phase C moved both create affordances into the shared
+    // title band through a portal, so the host is now a bare
+    // `<div aria-label="Create in the library">` and the three
+    // `.knowledge-create-bar` rules it used to select — a two-column grid with
+    // its own padding and bottom border — were deleted rather than dragged into
+    // a band they would have fought. What this test is FOR survives the move:
+    // the create path must stay reachable and named. So the accessible name is
+    // what is asserted, and it is asserted as the thing that carries the
+    // affordance, not as a styling hook.
     for (const reading of [notesReading, sourcesReading]) {
-      assert.match(
-        reading,
-        /className="knowledge-create-bar"\s+aria-label="Create in the library"/,
-      );
+      assert.match(reading, /aria-label="Create in the library"/);
     }
     // The two create paths are separately discoverable by name; the accessible
     // name is what makes each one findable, so it is asserted as one. They now
     // live on their own reading — one target, three readings — so each is
     // asserted where it stands.
-    assert.match(sourcesReading, /label="Add source"/);
-    assert.match(notesReading, /label="New content"/);
+    //
+    // The two labels follow the prototype, which is what moved them: it draws
+    // "Add a source" and "New note" (`v3/screens/knowledge.js:802-804`,
+    // `:967-968`), not "Add source" and "New content". The assertion moved with
+    // the product because the product moved toward the reference.
+    assert.match(sourcesReading, /label="Add a source"/);
+    assert.match(notesReading, /label="New note"/);
     assert.match(
       styles,
       /\.knowledge-library\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
+    // 2026-08-11, FAZA D, LOT D3 — TA ASERCJA NAZYWA TERAZ SWÓJ EKRAN, bo od
+    // dziś jej podmiot jest prawdą o JEDNYM z dwóch, a nie o obu.
+    //
+    // `.document-canvas` ma dwóch konsumentów: notatkę w Bibliotece
+    // (`KnowledgeEditor.tsx:505`) i dokument na rekordzie projektu
+    // (`ProjectRichBody.tsx:129`, przez `.project-editor-shell >
+    // .project-document-canvas`). Wpis #38 rejestru Fazy 4 mówi o PIERWSZYM
+    // z nich, że treść notatki leży w zagnieżdżonej, uniesionej karcie tam,
+    // gdzie prototyp ma jeden plan (`v3/screens/knowledge.css:282`, `.kn-body`
+    // — sam `padding`, bez obwódki, tła i cienia). Lot D3 zdjął tę kartę
+    // WYŁĄCZNIE w płaszczyźnie Biblioteki, dwiema klasami przeciw jednej,
+    // i nie ruszył reguły bazowej, bo karta rekordu projektu ma własny,
+    // otwarty wpis rejestru (#47) i należy do innego lotu tej fazy.
+    //
+    // Gdyby ta asercja została napisana jak przedtem — jako zdanie o regule
+    // bazowej pod tytułem „the editor on a distinct reading plane" — byłaby
+    // ZIELONA nad stanem, w którym jej własny tytuł przestał być prawdą
+    // o edytorze Biblioteki. Dlatego jest tu podzielona na dwa zdania i oba
+    // mówią, o którym planie są. Płaszczyzna Biblioteki jest dodatkowo
+    // mierzona parami D3-10a/D3-10b w przelocie bramki układu.
     assert.match(
       styles,
       /\.document-canvas\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
+      "the record's document canvas lost the raised plane it still wants",
+    );
+    assert.match(
+      styles,
+      /\.knowledge-writing-plane \.document-canvas\s*\{[^}]*border:\s*0;[^}]*background:\s*none;[^}]*box-shadow:\s*none/s,
+      "the Library's note body took the raised card back — register entry #38 says the reference has one plane there, not three",
     );
     assert.match(
       styles,

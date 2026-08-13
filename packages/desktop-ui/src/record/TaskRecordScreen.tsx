@@ -270,6 +270,10 @@ export interface TaskRecordScreenProps {
    *  their own, which is why this and `currentPrincipalId` travel together. */
   readonly canResolve: boolean;
   readonly currentPrincipalId: PrincipalId | undefined;
+  /** Nazwa czytelnika, wyłącznie dla znacznika autora w kompozytorze
+   *  komentarzy (rejestr, wpis #58). Może być pusta i wtedy znacznik rysuje
+   *  glif osoby zamiast zmyślonych inicjałów. */
+  readonly currentDisplayName: string | undefined;
   readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: string) => string;
   readonly mentionCandidates: readonly MentionCandidate[];
@@ -327,6 +331,7 @@ export const TaskRecordScreen = ({
   canComment,
   canResolve,
   currentPrincipalId,
+  currentDisplayName,
   actorOf,
   mentionNameOf,
   mentionCandidates,
@@ -878,6 +883,7 @@ export const TaskRecordScreen = ({
               canComment={canComment}
               canResolve={canResolve}
               currentPrincipalId={currentPrincipalId}
+              currentDisplayName={currentDisplayName}
               mentionCandidates={mentionCandidates}
               mentionNameOf={(principalId) => mentionNameOf(principalId)}
               onAttach={onAttachToComment}

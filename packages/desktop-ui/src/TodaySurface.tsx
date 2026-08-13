@@ -98,6 +98,7 @@ export const TodaySurface = ({
   onSelectTask,
   onOpenTask,
   onPlanForToday,
+  onOpenCalendar,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -106,6 +107,8 @@ export const TodaySurface = ({
   readonly onSelectTask: (id: TaskId) => void;
   readonly onOpenTask: (id: TaskId) => void;
   readonly onPlanForToday: (id: TaskId) => void;
+  /** Dokąd prowadzi prawy koniec nagłówka sekcji terminów (wpis #6). */
+  readonly onOpenCalendar: () => void;
 }) => {
   const timezone = snapshot.bootstrap.workspace.timezone;
   const workingDay = snapshot.bootstrap.workspace.workingDay;
@@ -180,6 +183,18 @@ export const TodaySurface = ({
     dayKey,
     timeZone: timezone,
   });
+  // Kto ułożył dzisiejszy plan, jeżeli nie człowiek (wpis #6, prawy koniec
+  // nagłówka sekcji planu). Nazwa idzie tym samym `plannerLabel`, którym idzie
+  // atrybucja przy WIERSZU — dwa liczenia tej samej rzeczy rozjeżdżają się przy
+  // pierwszej zmianie któregokolwiek, a ta klasa defektu ma w tym repozytorium
+  // nazwę. `find`, nie `some`, bo plakietka mówi KTO, a nie „ktoś".
+  const agentPlan = planned.find(
+    (task) => task.plannedBy?.principalKind === "agent",
+  );
+  const plannedByAgent =
+    agentPlan?.plannedBy === undefined
+      ? undefined
+      : plannerLabel(snapshot, agentPlan.plannedBy);
 
   const plannedNav = useListNavigation({
     itemCount: planned.length,
@@ -206,60 +221,102 @@ export const TodaySurface = ({
 
   return (
     <div className={`surface-scroll ${styles.today}`}>
+      {/* WPIS #3 REJESTRU — TE SAME TRZY RZECZY, ROZŁOŻONE JAK W PROTOTYPIE.
+          Rejestr nie zgłasza tu braku ani nadmiaru, tylko inne rozłożenie:
+          data, tytuł i pojemność są w obu produktach, a stoją gdzie indziej.
+
+          DATA: było `p.eyebrow` NAD tytułem — wersalikowa, rozstrzelona
+          plakietka „AUG 9, 2026". Prototyp stawia ją po PRAWEJ stronie pasma,
+          zdaniowo i wyciszoną (`v3/screens/today.js:129-130` — `crumbbar(…,
+          '<span class="when">Monday, 27 July 2026</span>')`, a `.when`
+          (`v3/app.css:441`) to `--text-xs` w kolorze trzeciorzędnym z cyframi
+          tabularnymi). Plakietki wersalikowej prototyp na tym ekranie NIE MA
+          w ogóle.
+
+          POJEMNOŚĆ: stała na prawym końcu pasma, złożona pismem większym
+          i jaśniejszym niż cokolwiek w rzędzie. Prototyp kładzie ją POD
+          tytułem, przy lewej krawędzi kolumny, drobnym pismem trzeciorzędnym
+          (`v3/screens/today.css:12-17`, `.td-capacity`) — a nasz własny
+          kontrakt zabrania liczby u prawego końca pasma. To jest więc jedna
+          zamiana, nie dwie poprawki: gdyby pojemność została w paśmie, ekran
+          dalej łamałby regułę, którą lot D1 cytował, zamykając swoje pasma.
+
+          `.eyebrow` ZOSTAJE W ARKUSZU I NIE JEST RUSZANA: to reguła wspólna
+          (`styles.css` — `.eyebrow, .nav-label, .section-label`), a Dzisiaj
+          przestaje jej UŻYWAĆ. Skasowanie reguły z powodu jednego ekranu
+          ruszyłoby powierzchnie, których ten lot nie mierzy. */}
       <header className="surface-header">
-        <div>
-          <p className="eyebrow">{formatDate(new Date(), timezone)}</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Today
-          </h1>
-        </div>
-        {/* Pojemność policzona bez kalendarza to nie pojemność: gdy spotkania
-            nie są przeczytane, `dayCapacity` dostaje pustą listę i „8h wolnego"
-            stoi tuż nad paskiem z odmową. Dzień mówi więc, czego nie wie,
-            zamiast podawać liczbę, wokół której ktoś ułoży sobie dzień. */}
-        <p
-          className={styles.capacity}
-          data-capacity
-          data-capacity-known={
-            meetingsState.kind === "ready" ? "true" : "false"
-          }
-        >
-          {!capacity.isWorkingDay ? (
-            <strong>Outside the working week</strong>
-          ) : meetingsState.kind !== "ready" ? (
-            <strong>Free time unknown without the calendar</strong>
-          ) : (
-            <>
-              <strong>{formatSpan(capacity.freeMinutes)} free</strong>
-              <span className={styles.separator}>·</span>
-              <span>
-                {countLabel(capacity.meetingCount, "meeting")},{" "}
-                {formatSpan(capacity.meetingMinutes)}
-              </span>
-              {capacity.reservedMinutes > 0 ? (
-                <>
-                  <span className={styles.separator}>·</span>
-                  <span>{formatSpan(capacity.reservedMinutes)} reserved</span>
-                </>
-              ) : null}
-            </>
-          )}
-        </p>
+        <h1 id="surface-title" tabIndex={-1}>
+          Today
+        </h1>
+        {/* `<span>`, NIE `<p>`, I ZDECYDOWAŁ O TYM POMIAR, NIE GUST. Pierwsza
+            wersja tego lotu dała tu akapit z klasą modułu — para D2-02a wróciła
+            CZERWONA z 13 px zamiast 12: reguła powłokowa `.surface-header
+            p:not(.eyebrow)` (`styles.css`) ma swoistość (0,2,1) i bije klasę
+            modułu (0,1,0), więc stopień szedł z niej, nie z arkusza tego
+            ekranu. Podniesienie swoistości u siebie albo poprawka w regule
+            powłokowej ruszyłyby pasma dziesięciu innych ekranów, których ten
+            lot nie mierzy. Prototyp niesie tam `<span class="when">`
+            (`v3/screens/today.js:130`) — element, którego tamten selektor NIE
+            dopasowuje — więc zgodność z prototypem i wyjście z kolizji są tym
+            samym ruchem. */}
+        <span className={styles.bandDate} data-band-date>
+          {formatDate(new Date(), timezone)}
+        </span>
       </header>
+
+      {/* Pojemność policzona bez kalendarza to nie pojemność: gdy spotkania
+          nie są przeczytane, `dayCapacity` dostaje pustą listę i „8h wolnego"
+          stoi tuż nad paskiem z odmową. Dzień mówi więc, czego nie wie,
+          zamiast podawać liczbę, wokół której ktoś ułoży sobie dzień. */}
+      <p
+        className={styles.capacity}
+        data-capacity
+        data-capacity-known={meetingsState.kind === "ready" ? "true" : "false"}
+      >
+        {!capacity.isWorkingDay ? (
+          <strong>Outside the working week</strong>
+        ) : meetingsState.kind !== "ready" ? (
+          <strong>Free time unknown without the calendar</strong>
+        ) : (
+          <>
+            <strong>{formatSpan(capacity.freeMinutes)} free</strong>
+            <span className={styles.separator}>·</span>
+            <span>
+              {countLabel(capacity.meetingCount, "meeting")},{" "}
+              {formatSpan(capacity.meetingMinutes)}
+            </span>
+            {capacity.reservedMinutes > 0 ? (
+              <>
+                <span className={styles.separator}>·</span>
+                <span>{formatSpan(capacity.reservedMinutes)} reserved</span>
+              </>
+            ) : null}
+          </>
+        )}
+      </p>
 
       <section className={styles.section} aria-labelledby="today-meetings">
         <div className={styles.sectionHead}>
           <h2 id="today-meetings">In the calendar</h2>
           {/* Powód, dla którego spotkania są nieruchome, jest pomocą NA ŻĄDANIE
               (#35): prawdziwy przycisk otwierający okno, nigdy `title=`
-              i nigdy akapit pod nagłówkiem (#21). */}
+              i nigdy akapit pod nagłówkiem (#21).
+
+              WPIS #4 REJESTRU — KSZTAŁT TEJ AFORDANCJI, NIE JEJ ISTNIENIE.
+              Prototyp rysuje pomoc jako okrągły znacznik „?" MNIEJSZY od
+              etykiety, przy której stoi (`v3/app.css:896-904`, `.helpb`
+              — 1,125 rem, `--radius-full`, `--text-2xs`), a treść zostaje
+              w oknie. Etykieta wchodzi do `aria-label`, bo znak „?" sam nie
+              mówi czytnikowi ekranu, o co pyta. */}
           <button
             type="button"
-            className="ghost-button compact"
+            className="help-mark"
             aria-haspopup="dialog"
+            aria-label="Why the calendar is read-only"
             onClick={() => setHelpTopic("calendar-meetings")}
           >
-            Why read-only?
+            ?
           </button>
         </div>
         {meetingsState.kind === "loading" ? (
@@ -309,6 +366,21 @@ export const TodaySurface = ({
             Planned for today{" "}
             <span className={styles.count}>{planned.length}</span>
           </h2>
+          {/* WPIS #6, PIERWSZY Z DWÓCH KOŃCÓW. Prototyp dosuwa tu plakietkę
+              autorstwa planu (`v3/screens/today.js:141-142` — `laid out by
+              Hermes`, gdy którykolwiek wiersz położył agent; „148-150"
+              wskazywało nagłówek SĄSIEDNIEJ sekcji). Warunek jest
+              przepisany, nie zgadnięty: `plannedBy.principalKind === "agent"`
+              to ta sama własność, którą wiersz niżej pokazuje jako `data-
+              planned-by`. Glifu `spark` z prototypu ta plakietka NIE niesie —
+              każdy nowy glif jest płacony przy otwarciu okna (`Icon.tsx`),
+              a etykieta i tak nazywa, kto to zrobił, więc akcent nie zostaje
+              tu sam z sobą. */}
+          {plannedByAgent === undefined ? null : (
+            <span className={styles.sectionAgent} data-planned-by-agent>
+              laid out by {plannedByAgent}
+            </span>
+          )}
         </div>
         {planned.length === 0 ? (
           <div className={styles.emptyState} data-today-empty>
@@ -367,6 +439,21 @@ export const TodaySurface = ({
             Deadline approaching, nobody planned it{" "}
             <span className={styles.count}>{approaching.length}</span>
           </h2>
+          {/* WPIS #6, DRUGI KONIEC — I TEN JEST BEZWARUNKOWY. Prototyp:
+              `v3/screens/today.js:150` — `<button class="more" data-go='
+              {"kind":"calendar"}'>Open Calendar →</button>`, dosunięty regułą
+              `.td-sec-head .more { margin-left: auto }`
+              (`v3/screens/today.css:50`). Cel istnieje w rejestrze powierzchni
+              tej aplikacji, więc nie jest to prototyp wyprzedzający domenę;
+              brakowało wyłącznie drogi z tego ekranu. */}
+          <button
+            type="button"
+            className={styles.sectionMore}
+            data-open-calendar
+            onClick={onOpenCalendar}
+          >
+            Open Calendar →
+          </button>
         </div>
         {approaching.length === 0 ? (
           <p className={styles.quiet}>Nothing is approaching unplanned.</p>

@@ -18,6 +18,20 @@
    One owner adds glyphs, once, and publishes that number; screen lots only
    consume names. Reserve left on the tightest budget, hot-path gzip: 2 522 B.
 
+   SECOND OWNER, PHASE D LOT D2 (2026-08-11): `organization` and `calendar`, for
+   registry entries #24 and #31. TWO glyphs, not three — the third retarget
+   (Today) took `clock`, which the 2026-08-07 set already carries, so reading
+   this file before drawing saved a drawing.
+
+   THE NUMBER THIS OWNER CAN HONESTLY PUBLISH IS NOT THE GLYPH SHARE. That lot
+   changed nine files at once (navigation counts, Today's head, the tab, the
+   help mark, font smoothing), so its whole hot-path delta is +625 B gzip
+   (171 952 → 172 577 of 174 000; reserve after: 1 423 B) and the two glyphs
+   were NOT measured in isolation. Extrapolating the 2026-08-07 rate — ~33 B
+   gzip per glyph — puts them near 66 B, which is an estimate and is labelled
+   as one. A lot that needs the real number must measure a build with only the
+   glyph edit in it, the way the entry above did.
+
    GEOMETRY OF THE GLYPHS ADDED 2026-08-07. The shapes come from the v3
    prototype, which draws its icons inline on a 16x16 viewBox with stroke
    width 1.3 (`v3/app.js:14-59`, `v3/screens/knowledge.js:356-368`). This file
@@ -42,6 +56,8 @@ export type IconName =
   | "documents"
   | "meetings"
   | "relationships"
+  | "organization"
+  | "calendar"
   | "people"
   | "pipeline"
   | "renewals"
@@ -57,7 +73,8 @@ export type IconName =
   | "panel"
   | "fields"
   | "folder"
-  | "folder-loose";
+  | "folder-loose"
+  | "lock";
 
 export const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
@@ -79,6 +96,40 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
     relationships: (
       <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
+    ),
+    /* WPIS #24 REJESTRU — BUDYNEK, NIE DRUGIE DWIE SYLWETKI.
+       `v3/app.js:20` (`org`), przeskalowany ×1,5 jak cały ten zestaw. Do tego
+       lotu cel „Organizations" nosił glif `relationships` — dwie sylwetki
+       z kreską łącznika, której przy 16 px nie widać — a tuż pod nim, w TEJ
+       SAMEJ grupie CRM, stoi „People" z dwiema sylwetkami. Rejestr zmierzył to
+       na powiększeniu 3×, a plik sam zapowiadał tę kolizję komentarzem.
+
+       `relationships` ZOSTAJE W ZESTAWIE i nie jest przerysowywany: renderuje
+       go ekran rekordu projektu (`record/ProjectRecordOverview.tsx`) dla pasa
+       POWIĄZAŃ, gdzie graf jest właśnie tym, co znak ma znaczyć. Kolizja była
+       w PRZYPISANIU, nie w rysunku. */
+    organization: (
+      <path d="M4.5 20.25V6.3a1.5 1.5 0 0 1 1.5-1.5h6.75a1.5 1.5 0 0 1 1.5 1.5v13.95M14.25 9.75H18a1.5 1.5 0 0 1 1.5 1.5v9M3 20.25h18M7.8 9h2.4M7.8 12.9h2.4M7.8 16.8h2.4" />
+    ),
+    /* WPIS #31 REJESTRU, POŁOWA DRUGA — KARTKA KALENDARZA.
+       `v3/app.js:37` (`calendar`), ×1,5. „Today" i „Calendar" niosły DOKŁADNIE
+       ten sam glif (`cockpit`, czterokomórkowa siatka) na dwóch sąsiednich
+       wierszach nawigacji. Prototyp stawia tam zegar i kartkę kalendarza;
+       zegar ten zestaw MA od 2026-08-07 (`clock` niżej), więc nowy jest tylko
+       ten jeden znak, a nie dwa.
+
+       RÓŻNICA WOBEC `meetings` JEST ZAMIERZONA, ALE NIE JEST RÓŻNICĄ
+       PROTOTYPU, i to prostuje naprawa po przeglądzie tego lotu. Tutaj oba
+       znaki są z jednej rodziny: `meetings` to kartka z podziałką dni
+       (`M8 14h3M13 14h3`), a ta jest pusta. Prototyp rozdziela je INACZEJ —
+       jego `meeting` (`v3/app.js:23`) to nie kartka, tylko kamera (zaokrąglony
+       prostokąt z trójkątem obiektywu), więc para „pusta kartka wobec kartki
+       z podziałką" jest rozstrzygnięciem TEJ aplikacji, nie cytatem. Adoptowany
+       z prototypu jest sam `calendar`; `meetings` zostaje starszym glifem tego
+       zestawu, bo przerysowanie go na kamerę byłoby zmianą, o którą nie prosi
+       żaden wpis rejestru. Dwa cele w dwóch różnych grupach nawigacji. */
+    calendar: (
+      <path d="M3.75 6.75a1.5 1.5 0 0 1 1.5-1.5h13.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-12ZM3.75 10.5h16.5M8.25 3.75v3M15.75 3.75v3" />
     ),
     // Dwie sylwetki obok siebie: „relationships" niesie graf powiązań, a to są
     // ludzie w nim. Ten sam cel w nawigacji nie może nosić tego samego znaku co
@@ -127,7 +178,7 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
     warn: (
       <path d="M12 9v4.5M12 16.5h.015M10.65 4.35a1.5 1.5 0 0 1 2.7 0l7.5 13.5A1.5 1.5 0 0 1 19.5 20.1H4.5a1.5 1.5 0 0 1-1.35-2.25l7.5-13.5Z" />
     ),
-    /* `v3/app.js:56` — "this leads somewhere", on a link out of a row. */
+    /* `v3/app.js:54` — "this leads somewhere", on a link out of a row. */
     arrow: <path d="M5.25 12h13.5M13.5 6.75 18.75 12 13.5 17.25" />,
     /* `v3/app.js:28` and `:29`. The prototype ALSO carries a second, slightly
        smaller pair under `caretRight`/`caretDown` in
@@ -189,6 +240,31 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
         strokeDasharray="3.6 3"
         d="M3 6.3a1.5 1.5 0 0 1 1.5-1.5h4.35l1.8 2.4H19.5a1.5 1.5 0 0 1 1.5 1.5v9.6a1.5 1.5 0 0 1-1.5 1.5H4.5a1.5 1.5 0 0 1-1.5-1.5V6.3Z"
       />
+    ),
+    /* `v3/app.js:51`, scaled x1.5 like the whole set. THIRD OWNER, PHASE D LOT
+       D7 (2026-08-12), for registry entry #65: the „Coming up" section head
+       carries a pill saying what the reader is looking at and that none of it
+       can be edited from here (`v3/screens/meetings.js:437-438` — `<span
+       class="mt-sec-lock">${icon("lock")}Outlook</span>`).
+
+       THE GLYPH IS NOT DECORATION OF THE DEPTH — IT IS WHAT MAKES THE DEPTH
+       READABLE. The prototype spends `--surface-sunken` on the upcoming rows to
+       mean „nothing here can be changed" (`v3/screens/meetings.css:6-9`) and
+       says in the same breath that it works together with the lock and the
+       label, never alone. Depth alone is invisible to a reader who cannot see
+       it; the pill is the part that survives.
+
+       THE NUMBER, MEASURED ON THIS MACHINE 2026-08-12 AND NOT EXTRAPOLATED —
+       and it is a CEILING for the glyph, not the glyph's own share. Hot-path
+       JS went 634 768 → 635 003 B raw and 172 631 → 172 681 B gzip across the
+       whole lot, i.e. +50 B gzip; that build also carries `RealApp.tsx`'s new
+       `onOpenSources` closure, which is hot too. Nothing else in D7 touches
+       the hot path — `MeetingsSurface` is lazy and the harness files are dev
+       only. Reserve left on the tightest budget, hot-path gzip: 1 319 B of
+       174 000. The 2026-08-07 owner's ~33 B/glyph rate predicted the same
+       order; a lot needing the glyph alone must build the glyph alone. */
+    lock: (
+      <path d="M6.75 10.8V8.1a5.25 5.25 0 0 1 10.5 0v2.7M5.55 10.8h12.9a1.5 1.5 0 0 1 1.5 1.5v6.15a1.5 1.5 0 0 1-1.5 1.5H5.55a1.5 1.5 0 0 1-1.5-1.5V12.3a1.5 1.5 0 0 1 1.5-1.5Z" />
     ),
   } as const;
   return (

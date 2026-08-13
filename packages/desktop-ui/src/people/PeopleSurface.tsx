@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -10,7 +10,6 @@ import {
   renewalPhrase,
   type DeliveryReading,
   type OrganizationReading,
-  type SignalKey,
 } from "../crm/organization-reading.js";
 import {
   createPerson,
@@ -18,7 +17,8 @@ import {
   type DesktopSnapshot,
   type MutationFailure,
 } from "../client/workflow.js";
-import { Icon } from "../components/Icon.js";
+import { Icon, type IconName } from "../components/Icon.js";
+import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
   type ListNavigationItemProps,
@@ -50,10 +50,17 @@ import styles from "./people.module.css";
 // only as a `title` (`crm.js:481`), and a native tooltip does not exist for a
 // keyboard or for touch.
 
+// Trzeci człon to NAZWA GLIFU, tak jak `v3/screens/crm.js:216`
+// (`["orgs", "By organization", "org"], ["table", "Table", "table"]`), a
+// `crm.js:545` stawia go PRZED etykietą (poprzednia wersja tego komentarza
+// wskazywała `:203`, linię PUSTĄ). Budynek to nasz `organization` —
+// ten sam znak, którym lot D2 rozróżnił pozycję nawigacji; „Table" konsumuje
+// `fields`, bo prototypowy glif tabeli nie ma w `Icon.tsx` odpowiednika,
+// a właścicielem tamtego pliku jest D2.
 const LAYOUTS = [
-  ["organizations", "By organization"],
-  ["table", "Table"],
-] as const;
+  ["organizations", "By organization", "organization"],
+  ["table", "Table", "fields"],
+] as const satisfies readonly (readonly [string, string, IconName])[];
 type Layout = (typeof LAYOUTS)[number][0];
 
 // The relationship state is a DECLARATION somebody made, so it is drawn as a
@@ -67,13 +74,10 @@ const RELATIONSHIP_STATE_LABELS: Readonly<
   inactive: "Inactive",
 };
 
-const SIGNAL_MARKS: Readonly<Record<SignalKey, string>> = {
-  risk: "▲",
-  watch: "◧",
-  good: "■",
-  none: "□",
-};
-
+// ZNACZNIK SYGNAŁU JEST RYSOWANY, NIE PISANY — bliźniak pozycji z ekranu
+// Organizacji (rejestr zgłosił tę samą wadę dwa razy, #20 i #30). Mapa znaków
+// pisma znikła; kształt niesie arkusz (`people.module.css`, `.signalMark_<key>`),
+// a prototypem jest `v3/app.css:389-409` przez `healthDot` (`v3/app.js:116`).
 const RelationshipSignalChip = ({
   reading,
 }: {
@@ -83,9 +87,10 @@ const RelationshipSignalChip = ({
     className={`${styles.signal} ${styles[`signal_${reading.signal.key}`]}`}
     data-relationship-signal={reading.signal.key}
   >
-    <span aria-hidden="true" className={styles.signalMark}>
-      {SIGNAL_MARKS[reading.signal.key]}
-    </span>
+    <span
+      aria-hidden="true"
+      className={`${styles.signalMark} ${styles[`signalMark_${reading.signal.key}`]}`}
+    />
     {reading.signal.label}
   </span>
 );
@@ -170,19 +175,43 @@ const PersonRow = ({
         )}
       </span>
       {/* Participation, and only what exists. A chip reading "0 deals" is
-          noise dressed as content. */}
+          noise dressed as content.
+
+          POZYCJA #29 DOMKNIĘTA W LOCIE D9: glif wiodący wraca do plakietki.
+          Prototyp rysuje go pod `v3/screens/crm.js:420-421` — `icon("pipeline")`
+          przy dealach, `icon("meeting")` przy spotkaniach, oba PRZED pełnym
+          słowem z `pjPlural(…, "deal", "deals")`. Otwarte i sprawdzone pod tymi
+          numerami; wcześniejszy cytat („418-423") obejmował nagłówek funkcji
+          i wiersz NOTATEK (`:422`), których ta aplikacja nie rysuje — dlatego
+          zakres kończy się na 421, a nie na 422.
+
+          DWA POPRZEDNIE PODEJŚCIA ODMÓWIŁY, I ICH POWÓD BYŁ MIERZONY, TYLKO
+          MIERZYŁ OBJAW. Lot D6 dołożył glif i bramka wróciła czerwona na
+          `span._parts`; zapisano to jako „glif nie mieści się pod sufitem
+          cudzego wątku". Lot D9 zmierzył tor, a nie glif: przy tekście 200%
+          plakietka „3 deals" ma 99,0 px w torze o szerokości 73,5 px, czyli
+          NIE MIEŚCI SIĘ RÓWNIEŻ BEZ GLIFU. Przyczyną był tor, który kazał
+          ustępować jedynej rzeczy w tym wierszu, która nie umie się skrócić.
+          Poprawka jest w `.row` (`minmax(min-content, 1fr)`) i opisana tam.
+
+          Glify są z `Icon.tsx` (`pipeline`, `meetings`) i nie dokładają nic do
+          zestawu — obie nazwy niesie już lewa kolumna, więc otwarcie okna nie
+          płaci za nie drugi raz. Druga połowa #29 — glify w segmentach układu —
+          była oddana i zmierzona wcześniej (D6-04b). */}
       <span className={styles.parts}>
         {reading.deals.length === 0 && reading.meetings.length === 0 ? (
           <span className={styles.absent}>Nothing recorded yet</span>
         ) : (
           <>
             {reading.deals.length > 0 && (
-              <span className={styles.part}>
+              <span className={styles.part} data-part="deals">
+                <Icon name="pipeline" />
                 {countLabel(reading.deals.length, "deal")}
               </span>
             )}
             {reading.meetings.length > 0 && (
-              <span className={styles.part}>
+              <span className={styles.part} data-part="meetings">
+                <Icon name="meetings" />
                 {countLabel(reading.meetings.length, "meeting")}
               </span>
             )}
@@ -229,6 +258,12 @@ const GroupHead = ({
       className={styles.groupHead}
       data-people-group={reading.organization.id}
     >
+      {/* POZYCJA #26, DRUGA POŁOWA. Szarą pastylkę pod tą nazwą zdjęła Faza C
+          (reset przycisku); został glif budynku, który prototyp stawia PRZED
+          nazwą — `v3/screens/crm.js:471` (`${icon("org")}${esc(o.name)}`;
+          poprzednia wersja wskazywała `:481`, czyli plakietkę sygnału),
+          rozmiar w `v3/screens/crm.css:191`. Nazwa glifu jest konsumowana
+          z zestawu D2, `Icon.tsx` nietknięty. */}
       <button
         className={styles.groupName}
         onClick={() =>
@@ -236,6 +271,7 @@ const GroupHead = ({
         }
         type="button"
       >
+        <Icon name="organization" />
         {reading.organization.name}
       </button>
       <span className={styles.groupCount}>{peopleCount}</span>
@@ -488,130 +524,98 @@ export const PeopleSurface = ({
     });
   };
 
-  const header = (
-    <header className="surface-header">
-      <h1 id="surface-title" tabIndex={-1}>
-        People
-      </h1>
-    </header>
+  /* AKCJA GŁÓWNA WRACA DO PASMA TYTUŁU I NIESIE AKCENT (Faza C, lot C2).
+     Prototyp: `v3/screens/crm.js:540` — `btn("New person", { cls: "primary",
+     icon: "plus" })` jako drugi argument `crumbbar(crumbs, actions)`
+     (`v3/app.js:677-683`), dosunięty do prawego końca pasma rozpychaczem
+     `.crumbbar .spacer { flex: 1 }` (`v3/app.css:293`) i wypełniony gradientem
+     akcentu (`v3/app.css:321-332`). Kontrakt: `.ui-craft/tokens.md`, „Usage
+     constraints" 3.
+
+     ZMIERZONE PRZED POPRAWKĄ (`dowody/c2-czerwien-poziom.txt`): pion 74,1 px
+     poniżej rzędu tytułu przy tolerancji 18, poziom 990,1 px od końca pasma
+     przy tolerancji 16 — czyli akcja stała przy LEWEJ krawędzi rzędu niżej.
+
+     KLASA JEST WARUNKOWA I NIE ZMUSZA DO TEGO REGUŁA — poprawione 2026-08-11
+     po przeglądzie, bo poprzednie brzmienie powoływało się na kontrakt, który
+     mówi coś innego. „Usage constraints" 3 zabrania dwóch wypełnień akcentu
+     w JEDNYM POJEMNIKU, a nie w jednym widoku, i została przepisana 2026-08-07
+     dokładnie po to, żeby przestać mówić „one per view"
+     (`.ui-craft/tokens.md`, „Primary action carries the accent fill — one per
+     container that owns a main action, not one per view"). Sprawdzone tutaj,
+     a nie założone: formularz tworzenia jest RODZEŃSTWEM pasma, własnym
+     `<form className={styles.create}>` niżej w tym pliku — czyli osobnym
+     pojemnikiem, na który kontrakt daje licencję wprost.
+
+     ZOSTAJE WIĘC JAKO WYBÓR O ZNACZENIU, i tak trzeba go czytać: kiedy
+     formularz jest na ekranie, rzeczą do naciśnięcia jest to, co w środku,
+     a ten przycisk już tylko go zamyka. Jest to ŚWIADOMY ROZJAZD z prototypem,
+     którego `crumbbar(crumbs, actions)` (`v3/app.js:677-683`) nie ma ani
+     jednego stanu, w którym akcja pasma gaśnie. Ten sam akapit stoi na
+     Organizacjach, Lejku i Odnowieniach. */
+  const header = (action?: ReactNode) => (
+    <SurfaceTitleBand action={action} title="People" />
+  );
+  const bandAction = (
+    <button
+      aria-expanded={creating}
+      className={creating ? "secondary-button" : "primary-button"}
+      onClick={() => setCreating((open) => !open)}
+      type="button"
+    >
+      <Icon name="capture" />
+      New person
+    </button>
   );
 
   if (!relationships.available)
     return (
-      <div className={`surface-scroll ${styles.people}`} data-people-surface>
-        {header}
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>People are unavailable</h2>
-            {/* The slice's own reason, not a sentence written here: a fixed
-                line tells a reader nothing they can act on, and the message is
-                the only thing that names what failed. */}
-            <p data-people-unavailable>{relationships.message}</p>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
-      </div>
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także w stanie awaryjnym —
+      // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
+      // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
+      // powiedzieć, że czegoś nie dało się przeczytać.
+      <>
+        {header()}
+        <div className={`surface-scroll ${styles.people}`} data-people-surface>
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>People are unavailable</h2>
+              {/* The slice's own reason, not a sentence written here: a fixed
+                  line tells a reader nothing they can act on, and the message is
+                  the only thing that names what failed. */}
+              <p data-people-unavailable>{relationships.message}</p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </section>
+        </div>
+      </>
     );
 
   return (
-    <div className={`surface-scroll ${styles.people}`} data-people-surface>
-      {header}
-      {/* THE SECOND PROJECTION THIS SCREEN READS. People come from
-          `relationship.workspace` and are on screen; what is being waited on
-          comes from the work plane, and when THAT read fails the rows can still
-          be drawn — they just may not say anything about waiting. The reason
-          belongs here, once, rather than repeated on every row. */}
-      {snapshot.work.kind === "unavailable" && (
-        <div className="inline-error" role="status">
-          <p data-people-work-unavailable>{snapshot.work.message}</p>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </div>
-      )}
-      <div className={styles.crumbbar}>
-        <button
-          aria-expanded={creating}
-          className="secondary-button"
-          onClick={() => setCreating((open) => !open)}
-          type="button"
-        >
-          <Icon name="capture" />
-          New person
-        </button>
-      </div>
-      {creating && (
-        <form
-          aria-label="New person"
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <label className={styles.field}>
-            Name
-            <input
-              onChange={(event) => setDraftName(event.target.value)}
-              required
-              value={draftName}
-            />
-          </label>
-          <label className={styles.field}>
-            Organization
-            <select
-              onChange={(event) => setDraftOrganizationId(event.target.value)}
-              value={draftOrganizationId}
-            >
-              <option value="">{NO_ORGANIZATION_GROUP}</option>
-              {index.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            Role
-            <input
-              onChange={(event) => setDraftRole(event.target.value)}
-              value={draftRole}
-            />
-          </label>
-          <label className={styles.field}>
-            Email
-            <input
-              onChange={(event) => setDraftEmail(event.target.value)}
-              type="email"
-              value={draftEmail}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={busy || draftName.trim() === ""}
-            type="submit"
-          >
-            {busy ? "Adding…" : "Add person"}
-          </button>
-        </form>
-      )}
-      <div className={styles.viewbar}>
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, a przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest tu WARUNKIEM, a nie stylem: pasma muszą
+    // być bezpośrednimi dziećmi `.work-surface`, więc żaden dodatkowy element
+    // nie może stanąć między nimi a nośnikiem.
+    <>
+      {header(bandAction)}
+      <div className={`view-band ${styles.viewbar}`}>
         <div
           aria-label="People layout"
           className={styles.switcher}
           role="tablist"
         >
-          {LAYOUTS.map(([id, label]) => (
+          {LAYOUTS.map(([id, label, glyph]) => (
             <button
               aria-selected={layout === id}
               className={styles.switch}
@@ -620,6 +624,7 @@ export const PeopleSurface = ({
               role="tab"
               type="button"
             >
+              <Icon name={glyph} />
               {label}
             </button>
           ))}
@@ -628,90 +633,175 @@ export const PeopleSurface = ({
           {`${countLabel(tally.people, "person", "people")} across ${countLabel(tally.organizations, "organization")}`}
         </span>
       </div>
-      {ordered.length === 0 ? (
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>No people yet</h2>
-            <p>
-              A person is somebody you deal with at a client — not somebody who
-              signs in here.
-            </p>
+      <div className={`surface-scroll ${styles.people}`} data-people-surface>
+        {/* THE SECOND PROJECTION THIS SCREEN READS (PR #232). People come from
+            `relationship.workspace` and are on screen; what is being waited on
+            comes from the work plane, and when THAT read fails the rows can
+            still be drawn — they just may not say anything about waiting. The
+            reason belongs here, once, rather than repeated on every row.
+
+            W PRZEWIJANYM PUDEŁKU, NIE MIĘDZY PASMAMI: od lotu R3 pasma są
+            rodzeństwem tego pudełka i niosą chrom ekranu, a to jest komunikat
+            o DANYCH — przewija się razem z listą, której dotyczy. */}
+        {snapshot.work.kind === "unavailable" && (
+          <div className="inline-error" role="status">
+            <p data-people-work-unavailable>{snapshot.work.message}</p>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
           </div>
-        </section>
-      ) : layout === "table" ? (
-        <PeopleTable
-          itemProps={itemProps}
-          onOpen={openPerson}
-          onSelect={onSelectRecord}
-          readings={ordered}
-          selectedRecordId={selectedRecordId}
-          timeZone={timeZone}
-        />
-      ) : (
-        // The head stands OUTSIDE the listbox and each group owns its own,
-        // exactly as the accepted prototype does (`crm.js:485-498`). A listbox
-        // may hold only options and groups, and the head carries a real
-        // `<button>` — an interactive control inside a composite widget with a
-        // roving tab stop is undefined in the accessibility tree and dead to
-        // the arrow keys, because the row handler gates on
-        // `target === currentTarget`. The row indices still run unbroken across
-        // the boundaries: `useListNavigation` keys on the index, not on the DOM.
-        <div className={styles.list}>
-          {groups.map((group: PeopleGroup, position) => {
-            const base = groups
-              .slice(0, position)
-              .reduce((total, earlier) => total + earlier.readings.length, 0);
-            return (
-              <div className={styles.group} key={group.key}>
-                {group.organization === undefined ? (
-                  <div className={styles.groupHead} data-people-group="none">
-                    <span className={styles.groupName}>
-                      {NO_ORGANIZATION_GROUP}
-                    </span>
-                    <span className={styles.groupCount}>
-                      {group.readings.length}
-                    </span>
-                  </div>
-                ) : (
-                  <GroupHead
-                    onOpenOrganization={onOpenOrganization}
-                    peopleCount={group.readings.length}
-                    reading={readOrganization(
-                      group.organization,
-                      index,
-                      delivery === undefined
-                        ? undefined
-                        : delivery(group.organization.id),
-                      prose,
-                    )}
-                  />
-                )}
-                <div
-                  aria-label={
-                    group.organization === undefined
-                      ? "People with no organization recorded"
-                      : `People at ${group.organization.name}`
-                  }
-                  role="listbox"
-                >
-                  {group.readings.map((reading, offset) => (
-                    <PersonRow
-                      index={base + offset}
-                      itemProps={itemProps}
-                      key={reading.person.id}
-                      onOpen={openPerson}
-                      onSelect={onSelectRecord}
-                      reading={reading}
-                      selected={reading.person.id === selectedRecordId}
-                      timeZone={timeZone}
+        )}
+        {/* FORMULARZ TWORZENIA ZJECHAŁ POD PASEK WIDOKU, i to jest skutek
+            układu, a nie osobna decyzja o kolejności. Do tego lotu stał MIĘDZY
+            pasmami — czyli rozpychał chrom w stanie tworzenia, a `.surface-header
+            + .view-band` przestawało wtedy trafiać i pasma się rozjeżdżały.
+            Prototyp układa dwa pasma jedno na drugim i dopiero pod nimi treść
+            (`v3/app.css:278-303`), a formularz jest treścią: przewija się razem
+            z listą, którą uzupełnia. */}
+        {creating && (
+          <form
+            aria-label="New person"
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <label className={styles.field}>
+              Name
+              <input
+                onChange={(event) => setDraftName(event.target.value)}
+                required
+                value={draftName}
+              />
+            </label>
+            <label className={styles.field}>
+              Organization
+              <select
+                onChange={(event) => setDraftOrganizationId(event.target.value)}
+                value={draftOrganizationId}
+              >
+                <option value="">{NO_ORGANIZATION_GROUP}</option>
+                {index.organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              Role
+              <input
+                onChange={(event) => setDraftRole(event.target.value)}
+                value={draftRole}
+              />
+            </label>
+            <label className={styles.field}>
+              Email
+              <input
+                onChange={(event) => setDraftEmail(event.target.value)}
+                type="email"
+                value={draftEmail}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={busy || draftName.trim() === ""}
+              type="submit"
+            >
+              {busy ? "Adding…" : "Add person"}
+            </button>
+          </form>
+        )}
+        {ordered.length === 0 ? (
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>No people yet</h2>
+              <p>
+                A person is somebody you deal with at a client — not somebody
+                who signs in here.
+              </p>
+            </div>
+          </section>
+        ) : layout === "table" ? (
+          <PeopleTable
+            itemProps={itemProps}
+            onOpen={openPerson}
+            onSelect={onSelectRecord}
+            readings={ordered}
+            selectedRecordId={selectedRecordId}
+            timeZone={timeZone}
+          />
+        ) : (
+          // The head stands OUTSIDE the listbox and each group owns its own,
+          // exactly as the accepted prototype does (`crm.js:485-498`). A listbox
+          // may hold only options and groups, and the head carries a real
+          // `<button>` — an interactive control inside a composite widget with a
+          // roving tab stop is undefined in the accessibility tree and dead to
+          // the arrow keys, because the row handler gates on
+          // `target === currentTarget`. The row indices still run unbroken across
+          // the boundaries: `useListNavigation` keys on the index, not on the DOM.
+          <div className={styles.list}>
+            {groups.map((group: PeopleGroup, position) => {
+              const base = groups
+                .slice(0, position)
+                .reduce((total, earlier) => total + earlier.readings.length, 0);
+              return (
+                <div className={styles.group} key={group.key}>
+                  {group.organization === undefined ? (
+                    <div className={styles.groupHead} data-people-group="none">
+                      <span className={styles.groupName}>
+                        {NO_ORGANIZATION_GROUP}
+                      </span>
+                      <span className={styles.groupCount}>
+                        {group.readings.length}
+                      </span>
+                    </div>
+                  ) : (
+                    <GroupHead
+                      onOpenOrganization={onOpenOrganization}
+                      peopleCount={group.readings.length}
+                      reading={readOrganization(
+                        group.organization,
+                        index,
+                        delivery === undefined
+                          ? undefined
+                          : delivery(group.organization.id),
+                        prose,
+                      )}
                     />
-                  ))}
+                  )}
+                  <div
+                    aria-label={
+                      group.organization === undefined
+                        ? "People with no organization recorded"
+                        : `People at ${group.organization.name}`
+                    }
+                    role="listbox"
+                  >
+                    {group.readings.map((reading, offset) => (
+                      <PersonRow
+                        index={base + offset}
+                        itemProps={itemProps}
+                        key={reading.person.id}
+                        onOpen={openPerson}
+                        onSelect={onSelectRecord}
+                        reading={reading}
+                        selected={reading.person.id === selectedRecordId}
+                        timeZone={timeZone}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 };

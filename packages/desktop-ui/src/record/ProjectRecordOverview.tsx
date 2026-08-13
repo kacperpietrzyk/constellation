@@ -145,13 +145,28 @@ export const ProjectRecordHeader = ({
             label alone says which bucket; only the reason says why. */}
         <span className={styles.why}>{reading.health.why.join(" · ")}</span>
         <span className={styles.gap} />
+        {/* JEDEN SLOT, JEDEN GLIF — w obu stanach `organization`.
+            Slot klienta rysował dotąd DWA rysunki zależnie od tego, czy jest
+            wypełniony: pusty niósł `organization`, wypełniony
+            `relationships`. Ikona pustego stanu ma mówić, CZEGO tu nie ma
+            (rejestr, wpis #52), a wtedy musi być tym samym rysunkiem, który ta
+            rzecz nosi, kiedy JEST. Ujednolicone w stronę `organization`, bo
+            tak stoi w prototypie (`v3/screens/record.js:441` — wypełniona
+            plakietka klienta to `icon("org")`) i bo `relationships` na
+            organizacji jest w tym drzewie nazwaną wadą: złamanie dwudzieste
+            czwarte („point Organizations back at the relationships glyph")
+            istnieje po to, żeby dwa wiersze grupy CRM nie niosły jednego
+            rysunku. */}
         {client === undefined ? (
-          <span className={styles.chipDashed}>No client</span>
+          <span className={styles.chipDashed}>
+            <Icon name="organization" />
+            No client
+          </span>
         ) : onOpenClient === undefined ? (
           // Nothing to enter, so nothing that looks enterable. A greyed
           // control with no stated reason is a dummy.
           <span className={styles.chip}>
-            <Icon name="relationships" />
+            <Icon name="organization" />
             <span className={styles.chipLabel}>{client.name}</span>
           </span>
         ) : (
@@ -160,12 +175,15 @@ export const ProjectRecordHeader = ({
             onClick={() => onOpenClient(client)}
             type="button"
           >
-            <Icon name="relationships" />
+            <Icon name="organization" />
             <span className={styles.chipLabel}>{client.name}</span>
           </button>
         )}
         {due === undefined ? (
-          <span className={styles.chipDashed}>No deadline</span>
+          <span className={styles.chipDashed}>
+            <Icon name="clock" />
+            No deadline
+          </span>
         ) : (
           <span className={styles.due}>
             {due}
@@ -404,6 +422,20 @@ export interface ProjectRecordOverviewProps {
    *  away the health, the composition and every exit for the duration of an
    *  edit — the reader is editing one field, not leaving the record. */
   readonly outcomeEditor?: ReactNode;
+  /** CIAŁO PROJEKTU — dokument bogaty, który stoi POD zamierzonym skutkiem
+   *  i W TEJ SAMEJ KOLUMNIE co on. Prop istnieje, bo dokument ładuje się
+   *  leniwie i jest składany w `Wave2Surfaces`, a mieszka tutaj, bo jest
+   *  ciałem tekstu, nie kolejnym panelem ekranu.
+   *
+   *  DLACZEGO TO JEST PROP, A NIE RODZEŃSTWO SIATKI (rejestr, wpis #47).
+   *  Renderowany obok `.body` dokument dostawał CAŁĄ szerokość ekranu, więc
+   *  przechodził pod pas powiązań, a lewa krawędź pasa urywała się na jego
+   *  górnym rogu — pas kończył się tam, gdzie kończyła się siatka. Odniesienie
+   *  robi dokładnie to, co ten prop: `v3/screens/record.js:454-460` wkłada
+   *  `${doc}` do `<div class="rc-doc">` WEWNĄTRZ `<div class="rc-body">`,
+   *  a `.rc-rail` (`v3/screens/record.css:101`) niesie własną lewą krawędź
+   *  przez całą wysokość siatki. */
+  readonly body?: ReactNode;
 }
 
 export const ProjectRecordOverview = ({
@@ -416,6 +448,7 @@ export const ProjectRecordOverview = ({
   onOpenDecision,
   clientLinking,
   outcomeEditor,
+  body,
 }: ProjectRecordOverviewProps) => {
   const { buckets } = reading;
   const clients = overview.clientOrganizations;
@@ -502,6 +535,8 @@ export const ProjectRecordOverview = ({
               )}
             </div>
           )}
+          {/* Dokument projektu zamyka KOLUMNĘ tekstu, a nie ekran. */}
+          {body}
         </div>
 
         {/* Exits, not reading matter — which is why narrow costs nothing here.

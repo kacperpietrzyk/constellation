@@ -827,10 +827,20 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
             const work = document.querySelector('#main-content[role="tabpanel"]');
-            const surface = [...(work?.children ?? [])].find(
-              (element) => element.getClientRects().length > 0
+            // WSZYSTKIE WIDOCZNE KORZENIE, nie pierwszy — patrz nota przy tym
+            // samym wyliczeniu w zamiataniu 320 px niżej. Ekran przepięty
+            // w locie D10 ma ich troje (pasmo, pasek widoku, przewijane
+            // pudełko), a przy 200% tekstu to WŁAŚNIE pasma się zawijają: sweep
+            // po pierwszym korzeniu widziałby tu 40-pikselowy pasek i wracał
+            // zielony nad przepełnieniem w pudełku pod nim.
+            const roots = [...(work?.children ?? [])].filter(
+              (element) =>
+                element.getClientRects().length > 0 &&
+                !element.classList.contains("shell-tabbar") &&
+                !element.classList.contains("capture-dock")
             );
-            const overflowingDescendants = [...(surface?.querySelectorAll("*") ?? [])]
+            const overflowingDescendants = roots
+              .flatMap((root) => [root, ...root.querySelectorAll("*")])
               .filter(
                 (element) =>
                   element.getClientRects().length > 0 &&
@@ -843,11 +853,23 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                 scrollWidth: element.scrollWidth,
                 clientWidth: element.clientWidth
               }));
+            // Ta sama reguła co niżej: jeden wiersz na etykietę, więc wskazuje
+            // korzeń przepełniający się NAJMOCNIEJ.
+            const surface = roots.reduce(
+              (worst, element) =>
+                worst === undefined ||
+                element.scrollWidth - element.clientWidth >
+                  worst.scrollWidth - worst.clientWidth
+                  ? element
+                  : worst,
+              undefined
+            );
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
               viewportWidth: innerWidth,
               surfacePresent: surface !== undefined,
+              surfaceRoots: roots.length,
               surfaceWidth: surface?.scrollWidth,
               surfaceClientWidth: surface?.clientWidth,
               overflowingDescendants
@@ -1185,11 +1207,47 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
             const work = document.querySelector('#main-content[role="tabpanel"]');
-            const surface = [...(work?.children ?? [])].find(
+            // POWIERZCHNIA MOŻE MIEĆ WIĘCEJ NIŻ JEDEN KORZEŃ. Tu stało
+            // \`.find()\`, czyli PIERWSZE widoczne dziecko nośnika, i to
+            // twierdzenie jest fałszywe od lotu D10: pasmo tytułu, pasek widoku
+            // i przewijane pudełko są od niego TROJGIEM RODZEŃSTWA, więc
+            // pierwszym dzieckiem jest pasmo — pasek 40 px. Bramka układu
+            // dostała tę samą poprawkę w tym samym locie
+            // (\`verify-renderer-layout.mjs\`, \`measure()\`), ten skrypt jej NIE
+            // dostał, i przez to zamiatał czterdziestopikselowy pasek na
+            // Organizacjach i Odnowieniach, meldując pod etykietą ekranu.
+            //
+            // CO PRZEZ TO MILCZAŁO, a nie „co mogłoby": \`.surface-header button\`
+            // nie ma dopasowania, kiedy podmiotem JEST \`.surface-header\` —
+            // selektor potomka nie sięga samego korzenia — więc pusta akcja
+            // pasma była nie do wykrycia. Drabina nagłówków miała wtedy jeden
+            // stopień (\`h1\` pasma), a jeden stopień NIGDY nie przeskakuje, więc
+            // ten sam ekran wracał zielony nad dowolną dziurą pod pasmem.
+            const roots = [...(work?.children ?? [])].filter(
               (element) =>
                 element.getClientRects().length > 0 &&
                 !element.classList.contains("shell-tabbar") &&
                 !element.classList.contains("capture-dock")
+            );
+            // Korzeń dopasowany przez selektor liczy się SAM ZE SIEBIE, nie
+            // tylko przez potomków — inaczej wraca dokładnie ta cisza wyżej.
+            const withinRoots = (selector) =>
+              roots.flatMap((root) => [
+                ...(root.matches(selector) ? [root] : []),
+                ...root.querySelectorAll(selector)
+              ]);
+            // JEDEN WIERSZ NA ETYKIETĘ, więc szerokość musi wskazać jeden
+            // korzeń: ten, który przepełnia się NAJMOCNIEJ. Porównanie jest
+            // ostre, więc przy remisie (w tym przy zerze) wygrywa pierwszy —
+            // na ekranie o jednym korzeniu wynik jest tożsamy z poprzednim.
+            const surface = roots.reduce(
+              (worst, element) =>
+                worst === undefined ||
+                element.scrollWidth - element.clientWidth >
+                  worst.scrollWidth - worst.clientWidth
+                  ? element
+                  : worst,
+              undefined
             );
             const unnamedControls = [...document.querySelectorAll(controlSelector)]
               .filter(
@@ -1198,9 +1256,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                   !hasAccessibleName(element)
               )
               .map((element) => element.tagName.toLowerCase());
-            const blankHeaderActions = [
-              ...(surface?.querySelectorAll(".surface-header button:not(:disabled)") ?? [])
-            ]
+            const blankHeaderActions = withinRoots(".surface-header")
+              .flatMap((header) => [
+                ...header.querySelectorAll("button:not(:disabled)")
+              ])
               .filter((element) => {
                 const hasVisibleIcon = [...element.querySelectorAll("svg")].some(
                   (icon) => icon.getClientRects().length > 0
@@ -1214,9 +1273,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             // Gwarancja: powierzchnia, której nie da się otworzyć, ZAWSZE proponuje
             // ponowienie. Rozpoznawana po stanie, nie po słowach — inaczej flip na
             // angielski wywala test pilnujący czegoś prawdziwego.
-            const unavailableSurface = surface?.querySelector(
+            const unavailableSurface = withinRoots(
               '[data-surface-state="failed"]'
-            );
+            )[0];
             const unavailableWithoutRetry =
               unavailableSurface !== null &&
               unavailableSurface !== undefined &&
@@ -1236,9 +1295,14 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                     .map((id) => attribute + ":" + id)
               )
             );
-            const headings = [...(surface?.querySelectorAll(
-              "h1, h2, h3, h4, h5, h6"
-            ) ?? [])].map((element) => Number(element.tagName.slice(1)));
+            // Drabina biegnie przez WSZYSTKIE korzenie w kolejności dokumentu:
+            // \`h1\` mieszka w paśmie, a sekcje pod nim w przewijanym pudełku,
+            // więc drabina policzona nad jednym korzeniem nie jest drabiną
+            // ekranu. Dzieci nośnika są w kolejności dokumentu, a
+            // \`querySelectorAll\` też — złożenie zachowuje kolejność.
+            const headings = withinRoots("h1, h2, h3, h4, h5, h6").map(
+              (element) => Number(element.tagName.slice(1))
+            );
             const headingJumps = headings
               .slice(1)
               .filter((level, index) => level - headings[index] > 1);
@@ -1246,6 +1310,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
               surfacePresent: surface !== undefined,
+              surfaceRoots: roots.length,
               surfaceWidth: surface?.scrollWidth,
               surfaceClientWidth: surface?.clientWidth,
               unnamedControls,

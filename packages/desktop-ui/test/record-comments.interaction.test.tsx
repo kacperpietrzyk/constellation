@@ -129,6 +129,10 @@ const base: PanelProps = {
   threads: [openRoot, settledRoot, reply],
   threadsKnown: true,
   recordKey: "project-a",
+  // W POZYCJI WYŁĄCZONEJ, jak reszta tej bazy: znacznik autora rysuje wtedy
+  // glif osoby, a nie inicjały, i żaden test nie przechodzi dlatego, że ktoś
+  // inny podał tu nazwę.
+  currentDisplayName: undefined,
   actorOf: (entry) => ({
     name: entry.author.displayName,
     short: "KP",
@@ -316,6 +320,47 @@ test("a read-only scope says so, and offers no write it would refuse", async () 
   assert.equal(composer().placeholder, "Write a comment");
   assert.equal(composer().disabled, false);
   control(entryOf(rootId), "Reply", "a granted scope offers no way to answer");
+});
+
+test("the composer is stamped with the reader's initials when it is known whose it is", async () => {
+  // ŚWIADEK GAŁĘZI, KTÓREJ NIE MIAŁ NIKT (rejestr, wpis #58; odzyskane
+  // zgłoszenie z przeglądu lotu D4). Cała ta baza trzyma
+  // `currentDisplayName: undefined`, czyli DOKŁADNIE tę wartość, która gasi
+  // inicjały — więc gałąź `initialsOf(currentDisplayName)` nie była dotąd
+  // wykonywana przez nic. Para `D4-06c` bramki układu mierzy POŁOŻENIE
+  // znacznika (margines, który opuszcza go do pierwszego wiersza tekstu)
+  // i mierzy je na fikstury, w której znacznik niesie glif; TREŚĆ znacznika
+  // przy znanym imieniu jest osobnym zdaniem i to jest jego pomiar.
+  const markOf = (): Element =>
+    one(
+      form(),
+      'span[aria-hidden="true"]',
+      "the composer has no author mark at all",
+    );
+
+  await render({ ...base, canComment: true, currentDisplayName: undefined });
+  // OBECNOŚĆ GLIFU, NIE PUSTY NAPIS. „textContent === ''" spełniłby TAKŻE
+  // znacznik, który nie rysuje nic — a to jest wada, nie stan bez imienia.
+  assert.ok(
+    markOf().querySelector("svg") !== null,
+    "bez imienia znacznik ma rysować glif osoby, a nie stać pusty",
+  );
+  assert.equal(
+    markOf().textContent,
+    "",
+    "litery w znaczniku bez imienia znaczą, że skądś wzięła się atrapa",
+  );
+
+  await render({
+    ...base,
+    canComment: true,
+    currentDisplayName: "Kacper Pietrzyk",
+  });
+  assert.equal(
+    markOf().textContent,
+    "KP",
+    "znacznik kompozytora nie niesie inicjałów czytelnika, choć imię jest znane",
+  );
 });
 
 test("an empty list only reads as 'nobody has written here' when it is the answer", async () => {

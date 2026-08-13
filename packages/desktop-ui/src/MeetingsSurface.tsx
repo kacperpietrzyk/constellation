@@ -12,7 +12,9 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 import { createPortal } from "react-dom";
 
 import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
+import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { CalendarConsentDialog } from "./components/CalendarConsentDialog.js";
+import { Icon } from "./components/Icon.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDate, formatWeekdayTime } from "./i18n.js";
@@ -170,12 +172,21 @@ export const MeetingsSurface = ({
   inspectorHost,
   onInspectorOpen,
   onMeetingSelected,
+  onOpenSources,
 }: {
   readonly client: ConstellationRendererClient;
   readonly activeMeetingId?: string | undefined;
   readonly inspectorHost: HTMLElement | null;
   readonly onInspectorOpen: () => void;
   readonly onMeetingSelected: (meetingId: string) => void;
+  /* PRAWY KONIEC NAGŁÓWKA SEKCJI „Jamie results" — WPIS #65, DRUGA POŁOWA.
+     Prototyp stawia tam wyjście, nie ozdobę (`v3/screens/meetings.js:445` —
+     `<button class="more" data-mt-go='{"kind":"sources"}'>Open Sources →`),
+     a ekran, na który ono prowadzi, w tej aplikacji ISTNIEJE: czytelnia Źródeł
+     Biblioteki. To ten sam precedens, co wpis #6 na Dzisiaj
+     (`TodaySurface.tsx` — `onOpenCalendar`): powierzchnia nie zna powłoki, więc
+     drogę podaje jej `RealApp`. */
+  readonly onOpenSources: () => void;
 }) => {
   const [state, setState] = useState<MeetingState>({ kind: "loading" });
   const [preview, setPreview] = useState<CalendarWritePreview>();
@@ -217,6 +228,14 @@ export const MeetingsSurface = ({
   // row the control lived on. Holding the intent rather than calling `focus()`
   // straight away is what makes it survive the refetch: the element the reader
   // pressed is gone by the time React commits the new list.
+  /* STOI PRZY POZOSTAŁYCH ZACZEPACH, A NIE PRZY SWOIM UŻYCIU, i to jest
+     poprawka zmierzona, nie stylistyczna: pierwsza wersja tego lotu wołała
+     `useRef` niżej, obok tafli integracji — czyli PO trzech wczesnych
+     `return`ach tego komponentu (ładowanie, błąd, brak Space'u). Zaczep wołany
+     warunkowo to zmienna liczba zaczepów między przebiegami: ekran Spotkań
+     przestał się renderować w całości, a sonda geometrii wróciła z `band: null`
+     zamiast z komunikatem — awaria, którą lint tego repozytorium przepuścił. */
+  const jamieSectionRef = useRef<HTMLElement | null>(null);
   const detachRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const reattachRef = useRef<HTMLButtonElement | null>(null);
   const pendingFocusRef = useRef<string | undefined>(undefined);
@@ -484,7 +503,13 @@ export const MeetingsSurface = ({
         <h1 id="surface-title" className="sr-only" tabIndex={-1}>
           Opening meetings…
         </h1>
-        <div />
+        {/* DWA PLACEHOLDERY, NIE TRZY, i to jest poprawka cytatu, nie kosmetyka:
+            ten szkielet rysował dwukolumnową siatkę, czyli obiecywał układ,
+            który po rekompozycji nie przyjeżdża. Sekcje są dwie i stoją jedna
+            pod drugą. Nic tego stanu nie zrzuca ekranem, więc dowodem jest tu
+            odczyt kodu — ale szkielet zapowiadający nieistniejący układ to
+            dokładnie ta klasa długu, którą dwa ostatnie commity tej gałęzi
+            spłacały w komentarzach. */}
         <div />
         <div />
       </section>
@@ -585,6 +610,81 @@ export const MeetingsSurface = ({
       )}
     </div>
   );
+  /* IMPORT Z JAMIE JAKO JEDNA FUNKCJA, WOŁANA Z DWÓCH MIEJSC. Do tej pory ta
+     obsługa stała wpisana w atrybut `onClick` przycisku w tafli integracji;
+     pasmo tytułu żąda tej samej roboty u swojego prawego końca, a druga kopia
+     tego łańcucha byłaby drugim miejscem, w którym następna zmiana komunikatu
+     może się nie odbyć. */
+  const importFromJamie = () => {
+    setJamieBusy(true);
+    void client
+      .syncJamie()
+      .then((result) => {
+        setJamieBusy(false);
+        setNotice(
+          `Jamie: ${result.applied + result.corrected} new or corrected, ${result.noChange} unchanged, ${result.partial} partial${
+            result.failed ? `, ${countLabel(result.failed, "error")}` : ""
+          }.`,
+        );
+        load();
+      })
+      .catch(() => {
+        setJamieBusy(false);
+        setNotice(
+          "Could not sync Jamie. The results you already have are unchanged.",
+        );
+      });
+  };
+  /* AKCJA PASMA JEST BEZWARUNKOWA, i to jest wymóg, nie wygoda. Prototyp stawia
+     ją w paśmie zawsze (`v3/screens/meetings.js:431-433` — `btn("Import from
+     Jamie", { cls: "bordered", icon: "arrow" })`), niezależnie od tego, czy
+     klucz jest zapisany; przycisk pojawiający się dopiero po podłączeniu byłby
+     akcją, której czytelnik bez klucza nigdy nie zobaczy — a to jest właśnie
+     stan, w którym ma ona najwięcej do powiedzenia.
+
+     BEZ KLUCZA NIE ODMAWIA, TYLKO PROWADZI: naciśnięcie przewija do tafli
+     integracji i daje jej ognisko, czyli robi tę samą rzecz co ręczne szukanie
+     jej w treści. Martwy przycisk „disabled" mówiłby czytelnikowi, że nic nie
+     da się zrobić, a dokładnie w tym stanie da się.
+
+     `secondary-button`, NIE `primary-button`: prototypowy modyfikator to
+     `bordered` (`v3/app.css:319` — `background: var(--surface-raised)`), czyli
+     powierzchnia z obwódką, a nie wypełnienie akcentem. Spis pasma tytułu liczy
+     obie klasy jako akcję (`TITLE_BAND_ACTION_CLASSES`), więc wybór między nimi
+     jest wyborem o WIERNOŚCI, nie o przejściu bramki.
+
+     GLIF NIE JEST OZDOBĄ, JEST WARUNKIEM WIDOCZNOŚCI TEJ AKCJI (naprawa po
+     przeglądzie lotu D1). Trzeci argument cytowanego wyżej wywołania —
+     `icon: "arrow"` — lot D1 przepisał z prototypu razem z etykietą
+     i modyfikatorem, a sam glif pominął. Poniżej 50 rem okna arkusz zwija
+     KAŻDĄ akcję pasma do kwadratu i gasi jej napis (`styles.css` —
+     `.surface-header .secondary-button { width: …; font-size: 0 }`), bo reguła
+     jest pisana pod akcję Z IKONĄ: chowa etykietę i zostawia glif. Przycisk bez
+     `svg` zostawał w tym trybie PUSTYM prostokątem — jedyny taki z sześciu
+     ekranów, które oddały akcję pasma, bo pięć pozostałych podaje `<Icon />`
+     (np. `people/PeopleSurface.tsx:519-523`). Bramka układu chodzi przy 320 px
+     i wróciła zielona, bo mierzy PRZEPEŁNIENIE, a nie pustkę. */
+  const bandAction = (
+    <button
+      className="secondary-button"
+      disabled={jamieBusy}
+      onClick={() => {
+        if (jamie.kind === "ready" && jamie.configured) {
+          importFromJamie();
+          return;
+        }
+        const section = jamieSectionRef.current;
+        if (section === null) return;
+        section.scrollIntoView({ block: "nearest" });
+        const field = section.querySelector("input");
+        if (field instanceof HTMLInputElement) field.focus();
+      }}
+      type="button"
+    >
+      <Icon name="arrow" />
+      {jamieBusy ? "Importing…" : "Import from Jamie"}
+    </button>
+  );
   const jamieConnection = (
     <div className="meeting-integration-wrap">
       {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
@@ -592,6 +692,7 @@ export const MeetingsSurface = ({
       <section
         className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
         aria-labelledby="jamie-title"
+        ref={jamieSectionRef}
       >
         {jamie.kind === "ready" && jamie.configured ? (
           <p className="meeting-integration-summary">
@@ -624,28 +725,7 @@ export const MeetingsSurface = ({
             <button
               className="primary-button"
               disabled={jamieBusy}
-              onClick={() => {
-                setJamieBusy(true);
-                void client
-                  .syncJamie()
-                  .then((result) => {
-                    setJamieBusy(false);
-                    setNotice(
-                      `Jamie: ${result.applied + result.corrected} new or corrected, ${result.noChange} unchanged, ${result.partial} partial${
-                        result.failed
-                          ? `, ${countLabel(result.failed, "error")}`
-                          : ""
-                      }.`,
-                    );
-                    load();
-                  })
-                  .catch(() => {
-                    setJamieBusy(false);
-                    setNotice(
-                      "Could not sync Jamie. The results you already have are unchanged.",
-                    );
-                  });
-              }}
+              onClick={importFromJamie}
             >
               {jamieBusy ? "Syncing…" : "Sync the last 90 days"}
             </button>
@@ -724,558 +804,794 @@ export const MeetingsSurface = ({
       </section>
     </div>
   );
-  return (
-    <section className="meeting-surface" aria-labelledby="surface-title">
-      <header className="meeting-hero">
-        <div>
-          <p className="eyebrow">From preparation to follow-up</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Meetings
-          </h1>
+
+  /* REKOMPOZYCJA CIAŁA EKRANU — WPISY #63, #64 I #65 REJESTRU JAKO JEDNA
+     ROBOTA, BO KAŻDY Z NICH OSOBNO ZOSTAWIŁBY EKRAN GORSZYM NIŻ BYŁ.
+
+     Do tej chwili ten ekran rysował DWA PASY: podniesioną taflę „Jamie results"
+     i wąską szynę `.meeting-context-rail` po prawej, w której siedziało to,
+     z czym w spotkanie się WCHODZI. Trzy zdania rejestru opisują trzy strony
+     tego samego pudełka:
+
+       #63 — nadchodzące są ZDEGRADOWANE do prawej szyny zamiast stać jako
+             PIERWSZA sekcja na pełną szerokość (prototyp: `v3/screens/
+             meetings.js:430-451` — dwie sekcje jedna pod drugą, „Coming up”
+             pierwsza; `v3/screens/meetings.css:11` — `.mt` to JEDNA kolumna);
+       #64 — drabina jasności jest ODWRÓCONA: szyna była CIEMNIEJSZA od kanwy
+             (`--surface-sunken` położony wprost na płótnie), a tafla formularza
+             integracji siedziała wpuszczona WEWNĄTRZ podniesionej karty;
+       #65 — nagłówek sekcji był WCIĄGNIĘTY DO ŚRODKA karty i służył jej za
+             kreskę działową, zamiast stać na kanwie nad nią, i nie miał prawego
+             końca.
+
+     JEDNYM RUCHEM, KTÓRY TO ZAMYKA, JEST PRZENIESIENIE CHROMU KARTY Z SEKCJI NA
+     LISTĘ W ŚRODKU. Farba, która stała na `.meeting-completed`, była naraz:
+     przeciwwagą szyny (#64), pudełkiem, w którym uwięziony był nagłówek (#65),
+     i powodem, dla którego nadchodzące nie mieściły się obok (#63). Sekcja jest
+     odtąd PRZEZROCZYSTA, karta to `.meeting-upcoming-list` / `.meeting-result-
+     list`, a nagłówek jest RODZEŃSTWEM karty, nie jej pierwszym dzieckiem.
+
+     GŁĘBIA ZOSTAJE NOŚNIKIEM ZNACZENIA I NIE JEST TU ODWRACANA. Prototyp mówi
+     to wprost w swoim własnym arkuszu (`v3/screens/meetings.css:6-9`):
+     nadchodzące są WPUSZCZONE, bo nie da się w nich nic zmienić; odbyte stoją
+     na planie treści, bo to na nich się pracuje. Wpuszczony wiersz WEWNĄTRZ
+     jaśniejszej karty jest więc CELEM, a nie wadą — wadą było `--surface-
+     sunken` położony wprost na kanwie. I działa to razem z kłódką i etykietą,
+     nigdy samo.
+
+     OBIE SEKCJE SĄ WYCIĄGNIĘTE DO STAŁYCH, i to nie jest kosmetyka: kolejność
+     z #63 jest wtedy jedną linijką do zamiany, więc break-test dowodzący tej
+     kolejności ZMIENIA UKŁAD zamiast KASOWAĆ sekcję. Złamanie, które kasuje
+     podmiot, dowodzi nieobecności, a nie wpisu. */
+  const upcomingSection = (
+    <section className="meeting-upcoming" aria-labelledby="upcoming-title">
+      {/* NAGŁÓWEK STOI NA KANWIE, A LICZBA SIEDZI W NIM — wpis #65 i prototyp
+          `v3/screens/meetings.js:436` (`<h2>Coming up <span class="n">…`).
+          Poziom drugi, nie trzeci: `h3` brał się wyłącznie stąd, że sekcja
+          wisiała pod `<h2 id="sources-title">` skasowanej szyny. Dziś obie
+          sekcje są równorzędne i obie stoją wprost pod `<h1 id="surface-title">`
+          pasma — prototyp żąda tego wprost prozą (`meetings.js:429-430`). */}
+      <div className="meeting-sec-head">
+        <h2 id="upcoming-title">
+          Coming up{" "}
+          <span className="meeting-sec-count">{surface.upcoming.length}</span>
+        </h2>
+        {/* KŁÓDKA MÓWI TO, CO MÓWI WPUSZCZENIE WIERSZA, TYLKO SŁOWAMI. Głębia
+            sama w sobie nie jest czytelna dla nikogo, kto jej nie widzi, więc
+            prototyp stawia obok niej plakietkę z kłódką i nazwą dostawcy
+            (`v3/screens/meetings.css:31-38`, `meetings.js:437-438`). Te
+            wydarzenia są tu do CZYTANIA: aplikacja umie dopisać własny blok
+            przygotowania, ale nie umie zmienić cudzego wpisu w kalendarzu. */}
+        <span className="meeting-sec-lock">
+          <Icon name="lock" />
+          {surface.capability.provider === "eventkit"
+            ? "Apple Calendar"
+            : "Calendar"}
+        </span>
+      </div>
+      {/* KONTROLKA UPRAWNIENIA WCHODZI DO TEJ SEKCJI, A NIE ZNIKA Z SZYNĄ, i to
+          jest jedyne miejsce w całej aplikacji, z którego woła się
+          `requestCalendarAccess()`. Tłumaczy DOKŁADNIE tę listę: pusta albo
+          niepełna jest przez to, co ta kontrolka pokazuje. Martwy „Grant
+          access" przeszedł już raz przez cztery podpisane wydania (PR #143),
+          a spis kontrolek deklaruje na tym ekranie 2 przy zmierzonych 4 — więc
+          zgubienie go byłoby CICHĄ zielenią, nie czerwienią. */}
+      {calendarCapability}
+      {surface.upcoming.length === 0 ? (
+        <div className="meeting-empty">
+          <svg aria-hidden="true" viewBox="0 0 48 48">
+            <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
+          </svg>
+          {/* POZIOM TRZECI, BO GŁOWA SEKCJI ZJECHAŁA NA DRUGI (lot D7). Ten
+              nadpis stoi wprost pod `<h2 id="upcoming-title">`, więc `h4`
+              zostawiał w spisie treści dziurę h2→h4 — i to jest dokładnie ta
+              dziura, którą złapało zamiatanie paczkowanej alfy przy 320 px
+              (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [4]`).
+              Bliźniak po stronie odbytych (`meeting-completed`) stał na `h3` od
+              początku i dlatego nie miał tego defektu. */}
+          <h3>No events visible</h3>
           <p>
-            Facts before a meeting, the Jamie result after, and every action
-            item that follows.
+            {surface.capability.canRead
+              ? "The calendar has no meetings in this window."
+              : "Unblock the provider to see preparation."}
           </p>
         </div>
-      </header>
-
-      {notice && (
-        <p className="meeting-notice" role="status">
-          {notice}
-        </p>
-      )}
-
-      <div className="meeting-lanes">
-        <section
-          className="meeting-completed"
-          aria-labelledby="completed-title"
-        >
-          <header>
-            <h2 id="completed-title">Jamie results</h2>
-            <span>{countLabel(surface.completed.length, "result")}</span>
-          </header>
-          {jamieConnection}
-          {surface.completed.length === 0 ? (
-            <div className="meeting-empty meeting-empty--compact">
-              <h3>No result imported yet</h3>
-              <p>
-                Jamie still owns recording and transcription. Import keeps the
-                source and merges duplicates safely.
-              </p>
-            </div>
-          ) : (
-            <div className="meeting-results-browser">
-              <ol
-                className="meeting-result-list"
-                role="listbox"
-                aria-label="Imported Jamie results"
+      ) : (
+        /* KARTA JEST TU, NIE NA SEKCJI — to jest cały wpis #64 w jednym
+           elemencie. Nie dostaje `role`/`aria-label`: prototypowe `.mt-list`
+           jest `role="listbox"`, bo jego wiersze SĄ opcjami, a nasze to
+           `<article>` z własnymi kontrolkami. Rola obiecująca semantykę
+           klawiatury, której kod nie ma, jest gorsza niż jej brak. */
+        <div className="meeting-upcoming-list">
+          {surface.upcoming.map(({ event, brief }) => (
+            <article
+              className="meeting-event"
+              key={`${event.calendarExternalId}:${event.eventExternalId}`}
+            >
+              <div className="meeting-time">
+                {/* An instant, marked up as one. It was a bare `<strong>`,
+                        which is the only timestamp on this screen that a
+                        reader's software could not recognise as a time. */}
+                <strong>
+                  <time dateTime={event.startsAt}>
+                    {formatWeekdayTime(event.startsAt)}
+                  </time>
+                </strong>
+                <span>
+                  {event.isAllDay
+                    ? "All day"
+                    : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
+                </span>
+              </div>
+              <div className="meeting-event-body">
+                {/* TEN SAM POZIOM, CO NADPIS PUSTEGO RAMIENIA WYŻEJ, i z tego
+                    samego powodu: tytuł wydarzenia jest dzieckiem sekcji
+                    „Coming up", a ta jest dziś `h2`. Ramię z wierszami rysuje
+                    fikstura bramki układu, a ramię puste — zamiatanie alfy;
+                    poprawka jednego bez drugiego zostawiłaby defekt w tym
+                    ramieniu, którego akurat NIE mierzy ten przyrząd. */}
+                <h3>{event.title}</h3>
+                <p>
+                  {countLabel(event.attendees.length, "participant")}
+                  {event.location ? ` · ${event.location}` : ""}
+                </p>
+                <div className="evidence-thread">
+                  <span className="evidence-node">Event</span>
+                  <i aria-hidden="true" />
+                  <span className="evidence-node">Fact brief</span>
+                  <i aria-hidden="true" />
+                  <span className="evidence-node evidence-node--muted">
+                    Jamie result after
+                  </span>
+                </div>
+                <div className="meeting-brief">
+                  <div>
+                    <strong>Orientation</strong>
+                    <span>
+                      {brief.orientation.length
+                        ? brief.orientation
+                            .map((item) => item.label)
+                            .join(" · ")
+                        : "No exactly linked records."}
+                    </span>
+                  </div>
+                  <div>
+                    <strong>Open loops</strong>
+                    <span>
+                      {brief.openLoops.length
+                        ? brief.openLoops.map((item) => item.label).join(" · ")
+                        : "No safely matched commitments."}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                className="secondary-button meeting-block-action"
+                disabled={
+                  !surface.capability.canWriteOwnedBlocks || event.isAllDay
+                }
+                onClick={() => {
+                  const startsAt = new Date(
+                    Date.parse(event.startsAt) - 30 * 60_000,
+                  ).toISOString();
+                  const block: CalendarBlockDraft = {
+                    calendarExternalId: event.calendarExternalId,
+                    ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
+                    title: `Preparation: ${event.title}`,
+                    startsAt,
+                    endsAt: event.startsAt,
+                    expectedRevision: null,
+                    sourceRecordIds: [
+                      `calendar-event:${event.eventExternalId}`,
+                    ],
+                  };
+                  void client
+                    .previewCalendarBlocks({ blocks: [block] })
+                    .then((result) => {
+                      if (result === undefined)
+                        setNotice(
+                          "Could not build a safe preview. Nothing was written.",
+                        );
+                      else setPreview(result);
+                    });
+                }}
               >
-                {surface.completed.map((meeting, index) => {
-                  const selected = meeting.id === selectedMeeting?.id;
-                  const preview =
-                    resultPreviews.get(meeting.id) ??
-                    "No summary in the Jamie result.";
-                  const previewId = `meeting-result-preview-${index}`;
-                  const title = meeting.title ?? "Untitled meeting";
-                  const workCount = countLabel(
-                    meeting.workItems.length,
-                    "action item",
-                  );
-                  return (
-                    <li key={meeting.id} role="presentation">
+                Preview block
+              </button>
+              {/* #35 forbids a `title=` as the only carrier of an
+                      explanation: it does not exist for a keyboard, for touch,
+                      or for anybody not hovering, and the reason a control is
+                      dead is exactly what those readers need. This sentence
+                      used to be one. */}
+              {!surface.capability.canWriteOwnedBlocks && (
+                <small className="meeting-block-unavailable">
+                  This calendar does not allow writing blocks.
+                </small>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+  const completedSection = (
+    <section className="meeting-completed" aria-labelledby="completed-title">
+      <div className="meeting-sec-head">
+        <h2 id="completed-title">
+          Jamie results{" "}
+          <span className="meeting-sec-count">{surface.completed.length}</span>
+        </h2>
+        <button
+          type="button"
+          className="meeting-sec-more"
+          data-open-sources
+          onClick={onOpenSources}
+        >
+          Open Sources →
+        </button>
+      </div>
+      {jamieConnection}
+      {surface.completed.length === 0 ? (
+        <div className="meeting-empty">
+          <h3>No result imported yet</h3>
+          <p>
+            Jamie still owns recording and transcription. Import keeps the
+            source and merges duplicates safely.
+          </p>
+        </div>
+      ) : (
+        <div className="meeting-results-browser">
+          <ol
+            className="meeting-result-list"
+            role="listbox"
+            aria-label="Imported Jamie results"
+          >
+            {surface.completed.map((meeting, index) => {
+              const selected = meeting.id === selectedMeeting?.id;
+              const preview =
+                resultPreviews.get(meeting.id) ??
+                "No summary in the Jamie result.";
+              const previewId = `meeting-result-preview-${index}`;
+              const title = meeting.title ?? "Untitled meeting";
+              const workCount = countLabel(
+                meeting.workItems.length,
+                "action item",
+              );
+              return (
+                <li key={meeting.id} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    className={`meeting-result-row${selected ? " is-selected" : ""}`}
+                    aria-label={`${title}. ${healthLabel(meeting)}. ${formatWeekdayTime(meeting.startedAt)}. ${workCount}.`}
+                    aria-describedby={previewId}
+                    aria-selected={selected}
+                    {...(selected && inspectorHost
+                      ? { "aria-controls": "meeting-result-detail" }
+                      : {})}
+                    {...resultNav(index)}
+                    onClick={() => selectResult(index)}
+                  >
+                    <span className="meeting-result-row-heading">
+                      <strong>{title}</strong>
+                      <span
+                        className={`meeting-health meeting-health--${meeting.triage}`}
+                      >
+                        {healthLabel(meeting)}
+                      </span>
+                    </span>
+                    <time dateTime={meeting.startedAt}>
+                      {formatWeekdayTime(meeting.startedAt)}
+                    </time>
+                    <span className="meeting-result-row-summary" id={previewId}>
+                      {preview}
+                    </span>
+                    <span className="meeting-result-row-meta">
+                      {workCount}
+                      <span aria-hidden="true">→</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+
+          {selectedMeeting &&
+            inspectorHost &&
+            createPortal(
+              <article
+                className="meeting-result-detail"
+                id="meeting-result-detail"
+                aria-labelledby="meeting-result-detail-title"
+              >
+                <header className="meeting-result-detail-header">
+                  <div>
+                    <p className="eyebrow">Jamie result</p>
+                    <h3 id="meeting-result-detail-title">
+                      {selectedMeeting.title ?? "Untitled meeting"}
+                    </h3>
+                    <p>
+                      <time dateTime={selectedMeeting.startedAt}>
+                        {formatWeekdayTime(selectedMeeting.startedAt)}
+                      </time>
+                      <span aria-hidden="true"> · </span>
+                      {countLabel(
+                        selectedMeeting.participants.length,
+                        "participant",
+                      )}
+                    </p>
+                  </div>
+                  <strong
+                    className={`meeting-health meeting-health--${selectedMeeting.triage}`}
+                  >
+                    {healthLabel(selectedMeeting)}
+                  </strong>
+                </header>
+
+                <section
+                  className="meeting-result-routing"
+                  aria-labelledby="meeting-result-routing-title"
+                >
+                  <header>
+                    <div>
+                      <h4 id="meeting-result-routing-title">
+                        Project and client
+                      </h4>
+                      <p>
+                        {selectedMeeting.projectId ||
+                        selectedMeeting.organizationId
+                          ? "This meeting belongs to the chosen project and client."
+                          : "This meeting has no project or client yet."}
+                      </p>
+                    </div>
+                  </header>
+                  <div className="meeting-routing-fields">
+                    <label htmlFor="meeting-routing-project">
+                      Project
+                      <select
+                        id="meeting-routing-project"
+                        value={selectedMeeting.projectId ?? ""}
+                        disabled={busyItemId !== undefined}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setBusyItemId(selectedMeeting.id);
+                          void runMeetingCommand(
+                            selectedMeeting,
+                            "meeting.route",
+                            { projectId: value === "" ? null : value },
+                            `project:${value}:${selectedMeeting.version}`,
+                          ).then((changed) => {
+                            setBusyItemId(undefined);
+                            if (changed) load();
+                            else
+                              setNotice(
+                                "Could not change the project. The result may have changed since — refresh and try again.",
+                              );
+                          });
+                        }}
+                      >
+                        <option value="">No project</option>
+                        {routingOptions.projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label htmlFor="meeting-routing-organization">
+                      Client
+                      <select
+                        id="meeting-routing-organization"
+                        value={selectedMeeting.organizationId ?? ""}
+                        disabled={busyItemId !== undefined}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setBusyItemId(selectedMeeting.id);
+                          void runMeetingCommand(
+                            selectedMeeting,
+                            "meeting.route",
+                            { organizationId: value === "" ? null : value },
+                            `organization:${value}:${selectedMeeting.version}`,
+                          ).then((changed) => {
+                            setBusyItemId(undefined);
+                            if (changed) load();
+                            else
+                              setNotice(
+                                "Could not change the client. The result may have changed since — refresh and try again.",
+                              );
+                          });
+                        }}
+                      >
+                        <option value="">No client</option>
+                        {routingOptions.organizations.map((organization) => (
+                          <option key={organization.id} value={organization.id}>
+                            {organization.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </section>
+
+                <section
+                  className="meeting-result-summary"
+                  aria-labelledby="meeting-result-summary-title"
+                >
+                  <h4 id="meeting-result-summary-title">Summary</h4>
+                  {selectedMeeting.summaryMarkdown ? (
+                    <MeetingMarkdown value={selectedMeeting.summaryMarkdown} />
+                  ) : (
+                    <p className="meeting-result-empty-copy">
+                      Jamie returned no summary for this meeting.
+                    </p>
+                  )}
+                </section>
+
+                {selectedMeeting.transcriptMarkdown && (
+                  <section
+                    className="meeting-result-transcript"
+                    aria-labelledby="meeting-result-transcript-title"
+                  >
+                    <header>
+                      <div>
+                        <h4 id="meeting-result-transcript-title">Transcript</h4>
+                        <p>The original content imported from Jamie.</p>
+                      </div>
                       <button
                         type="button"
-                        role="option"
-                        className={`meeting-result-row${selected ? " is-selected" : ""}`}
-                        aria-label={`${title}. ${healthLabel(meeting)}. ${formatWeekdayTime(meeting.startedAt)}. ${workCount}.`}
-                        aria-describedby={previewId}
-                        aria-selected={selected}
-                        {...(selected && inspectorHost
-                          ? { "aria-controls": "meeting-result-detail" }
-                          : {})}
-                        {...resultNav(index)}
-                        onClick={() => selectResult(index)}
+                        className="secondary-button"
+                        aria-expanded={
+                          visibleTranscriptMeetingId === selectedMeeting.id
+                        }
+                        aria-controls={
+                          visibleTranscriptMeetingId === selectedMeeting.id
+                            ? "meeting-result-transcript-content"
+                            : undefined
+                        }
+                        onClick={() =>
+                          setVisibleTranscriptMeetingId((current) =>
+                            current === selectedMeeting.id
+                              ? undefined
+                              : selectedMeeting.id,
+                          )
+                        }
                       >
-                        <span className="meeting-result-row-heading">
-                          <strong>{title}</strong>
-                          <span
-                            className={`meeting-health meeting-health--${meeting.triage}`}
-                          >
-                            {healthLabel(meeting)}
-                          </span>
-                        </span>
-                        <time dateTime={meeting.startedAt}>
-                          {formatWeekdayTime(meeting.startedAt)}
-                        </time>
-                        <span
-                          className="meeting-result-row-summary"
-                          id={previewId}
-                        >
-                          {preview}
-                        </span>
-                        <span className="meeting-result-row-meta">
-                          {workCount}
-                          <span aria-hidden="true">→</span>
-                        </span>
+                        {visibleTranscriptMeetingId === selectedMeeting.id
+                          ? "Hide transcript"
+                          : "Show transcript"}
                       </button>
-                    </li>
-                  );
-                })}
-              </ol>
-
-              {selectedMeeting &&
-                inspectorHost &&
-                createPortal(
-                  <article
-                    className="meeting-result-detail"
-                    id="meeting-result-detail"
-                    aria-labelledby="meeting-result-detail-title"
-                  >
-                    <header className="meeting-result-detail-header">
-                      <div>
-                        <p className="eyebrow">Jamie result</p>
-                        <h3 id="meeting-result-detail-title">
-                          {selectedMeeting.title ?? "Untitled meeting"}
-                        </h3>
-                        <p>
-                          <time dateTime={selectedMeeting.startedAt}>
-                            {formatWeekdayTime(selectedMeeting.startedAt)}
-                          </time>
-                          <span aria-hidden="true"> · </span>
-                          {countLabel(
-                            selectedMeeting.participants.length,
-                            "participant",
-                          )}
-                        </p>
-                      </div>
-                      <strong
-                        className={`meeting-health meeting-health--${selectedMeeting.triage}`}
-                      >
-                        {healthLabel(selectedMeeting)}
-                      </strong>
                     </header>
-
-                    <section
-                      className="meeting-result-routing"
-                      aria-labelledby="meeting-result-routing-title"
-                    >
-                      <header>
-                        <div>
-                          <h4 id="meeting-result-routing-title">
-                            Project and client
-                          </h4>
-                          <p>
-                            {selectedMeeting.projectId ||
-                            selectedMeeting.organizationId
-                              ? "This meeting belongs to the chosen project and client."
-                              : "This meeting has no project or client yet."}
-                          </p>
-                        </div>
-                      </header>
-                      <div className="meeting-routing-fields">
-                        <label htmlFor="meeting-routing-project">
-                          Project
-                          <select
-                            id="meeting-routing-project"
-                            value={selectedMeeting.projectId ?? ""}
-                            disabled={busyItemId !== undefined}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setBusyItemId(selectedMeeting.id);
-                              void runMeetingCommand(
-                                selectedMeeting,
-                                "meeting.route",
-                                { projectId: value === "" ? null : value },
-                                `project:${value}:${selectedMeeting.version}`,
-                              ).then((changed) => {
-                                setBusyItemId(undefined);
-                                if (changed) load();
-                                else
-                                  setNotice(
-                                    "Could not change the project. The result may have changed since — refresh and try again.",
-                                  );
-                              });
-                            }}
-                          >
-                            <option value="">No project</option>
-                            {routingOptions.projects.map((project) => (
-                              <option key={project.id} value={project.id}>
-                                {project.title}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label htmlFor="meeting-routing-organization">
-                          Client
-                          <select
-                            id="meeting-routing-organization"
-                            value={selectedMeeting.organizationId ?? ""}
-                            disabled={busyItemId !== undefined}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setBusyItemId(selectedMeeting.id);
-                              void runMeetingCommand(
-                                selectedMeeting,
-                                "meeting.route",
-                                { organizationId: value === "" ? null : value },
-                                `organization:${value}:${selectedMeeting.version}`,
-                              ).then((changed) => {
-                                setBusyItemId(undefined);
-                                if (changed) load();
-                                else
-                                  setNotice(
-                                    "Could not change the client. The result may have changed since — refresh and try again.",
-                                  );
-                              });
-                            }}
-                          >
-                            <option value="">No client</option>
-                            {routingOptions.organizations.map(
-                              (organization) => (
-                                <option
-                                  key={organization.id}
-                                  value={organization.id}
-                                >
-                                  {organization.name}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </label>
-                      </div>
-                    </section>
-
-                    <section
-                      className="meeting-result-summary"
-                      aria-labelledby="meeting-result-summary-title"
-                    >
-                      <h4 id="meeting-result-summary-title">Summary</h4>
-                      {selectedMeeting.summaryMarkdown ? (
+                    {visibleTranscriptMeetingId === selectedMeeting.id && (
+                      <div id="meeting-result-transcript-content">
                         <MeetingMarkdown
-                          value={selectedMeeting.summaryMarkdown}
+                          value={selectedMeeting.transcriptMarkdown}
                         />
-                      ) : (
-                        <p className="meeting-result-empty-copy">
-                          Jamie returned no summary for this meeting.
-                        </p>
-                      )}
-                    </section>
-
-                    {selectedMeeting.transcriptMarkdown && (
-                      <section
-                        className="meeting-result-transcript"
-                        aria-labelledby="meeting-result-transcript-title"
-                      >
-                        <header>
-                          <div>
-                            <h4 id="meeting-result-transcript-title">
-                              Transcript
-                            </h4>
-                            <p>The original content imported from Jamie.</p>
-                          </div>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            aria-expanded={
-                              visibleTranscriptMeetingId === selectedMeeting.id
-                            }
-                            aria-controls={
-                              visibleTranscriptMeetingId === selectedMeeting.id
-                                ? "meeting-result-transcript-content"
-                                : undefined
-                            }
-                            onClick={() =>
-                              setVisibleTranscriptMeetingId((current) =>
-                                current === selectedMeeting.id
-                                  ? undefined
-                                  : selectedMeeting.id,
-                              )
-                            }
-                          >
-                            {visibleTranscriptMeetingId === selectedMeeting.id
-                              ? "Hide transcript"
-                              : "Show transcript"}
-                          </button>
-                        </header>
-                        {visibleTranscriptMeetingId === selectedMeeting.id && (
-                          <div id="meeting-result-transcript-content">
-                            <MeetingMarkdown
-                              value={selectedMeeting.transcriptMarkdown}
-                            />
-                          </div>
-                        )}
-                      </section>
+                      </div>
                     )}
+                  </section>
+                )}
 
-                    <section
-                      className="meeting-result-participants"
-                      aria-labelledby="meeting-result-participants-title"
-                    >
-                      <header>
-                        <div>
-                          <h4 id="meeting-result-participants-title">
-                            Participants
-                          </h4>
-                          <p>
-                            Participants with an email become People. The rest
-                            wait for your decision.
-                          </p>
-                        </div>
-                        {selectedMeeting.participants.some(
-                          (participant) =>
-                            participant.personId === undefined &&
-                            participant.email !== undefined,
-                        ) && (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={busyItemId !== undefined}
-                            onClick={() => {
-                              setBusyItemId(selectedMeeting.id);
-                              // One identifier per unlinked participant that
-                              // carries an email; the kernel consumes only what
-                              // it needs and leaves name-only people alone.
-                              const personIdPool = selectedMeeting.participants
-                                .filter(
-                                  (participant) =>
-                                    participant.personId === undefined &&
-                                    participant.email !== undefined,
-                                )
-                                .map(() => crypto.randomUUID());
-                              void runMeetingCommand(
-                                selectedMeeting,
-                                "meeting.linkParticipants",
-                                { personIdPool, resolutions: [] },
-                                `link:${selectedMeeting.version}`,
-                              ).then((changed) => {
-                                setBusyItemId(undefined);
-                                if (changed) load();
-                                else
-                                  setNotice(
-                                    "Could not link participants. Refresh and try again.",
-                                  );
-                              });
-                            }}
-                          >
-                            Link to People
-                          </button>
-                        )}
-                      </header>
-                      {selectedMeeting.participants.length === 0 && (
-                        <p className="meeting-result-empty-copy">
-                          Jamie returned no participants for this meeting.
-                        </p>
+                <section
+                  className="meeting-result-participants"
+                  aria-labelledby="meeting-result-participants-title"
+                >
+                  <header>
+                    <div>
+                      <h4 id="meeting-result-participants-title">
+                        Participants
+                      </h4>
+                      <p>
+                        Participants with an email become People. The rest wait
+                        for your decision.
+                      </p>
+                    </div>
+                    {selectedMeeting.participants.some(
+                      (participant) =>
+                        participant.personId === undefined &&
+                        participant.email !== undefined,
+                    ) && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={busyItemId !== undefined}
+                        onClick={() => {
+                          setBusyItemId(selectedMeeting.id);
+                          // One identifier per unlinked participant that
+                          // carries an email; the kernel consumes only what
+                          // it needs and leaves name-only people alone.
+                          const personIdPool = selectedMeeting.participants
+                            .filter(
+                              (participant) =>
+                                participant.personId === undefined &&
+                                participant.email !== undefined,
+                            )
+                            .map(() => crypto.randomUUID());
+                          void runMeetingCommand(
+                            selectedMeeting,
+                            "meeting.linkParticipants",
+                            { personIdPool, resolutions: [] },
+                            `link:${selectedMeeting.version}`,
+                          ).then((changed) => {
+                            setBusyItemId(undefined);
+                            if (changed) load();
+                            else
+                              setNotice(
+                                "Could not link participants. Refresh and try again.",
+                              );
+                          });
+                        }}
+                      >
+                        Link to People
+                      </button>
+                    )}
+                  </header>
+                  {selectedMeeting.participants.length === 0 && (
+                    <p className="meeting-result-empty-copy">
+                      Jamie returned no participants for this meeting.
+                    </p>
+                  )}
+                  <ul className="meeting-participants">
+                    {selectedMeeting.participants.map((participant) => (
+                      <li key={participant.externalId}>
+                        <strong>{participant.name}</strong>
+                        <small>
+                          {participant.personId
+                            ? "Person in the workspace"
+                            : participant.email
+                              ? "Not linked"
+                              : "No email — needs a decision"}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section
+                  className="meeting-result-work"
+                  aria-labelledby="meeting-result-work-title"
+                >
+                  <header>
+                    <div>
+                      <h4 id="meeting-result-work-title">Action items</h4>
+                      <p>
+                        Each item has its own state and stays linked to the
+                        meeting.
+                      </p>
+                    </div>
+                    <span>
+                      {countLabel(
+                        selectedMeeting.workItems.length,
+                        "action item",
                       )}
-                      <ul className="meeting-participants">
-                        {selectedMeeting.participants.map((participant) => (
-                          <li key={participant.externalId}>
-                            <strong>{participant.name}</strong>
-                            <small>
-                              {participant.personId
-                                ? "Person in the workspace"
-                                : participant.email
-                                  ? "Not linked"
-                                  : "No email — needs a decision"}
-                            </small>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-
-                    <section
-                      className="meeting-result-work"
-                      aria-labelledby="meeting-result-work-title"
-                    >
-                      <header>
-                        <div>
-                          <h4 id="meeting-result-work-title">Action items</h4>
-                          <p>
-                            Each item has its own state and stays linked to the
-                            meeting.
-                          </p>
-                        </div>
-                        <span>
-                          {countLabel(
-                            selectedMeeting.workItems.length,
-                            "action item",
-                          )}
-                        </span>
-                      </header>
-                      {selectedMeeting.workItems.length === 0 ? (
-                        <p className="meeting-result-empty-copy">
-                          This result has no action items yet.
-                        </p>
-                      ) : (
-                        <ul className="meeting-work-items">
-                          {selectedMeeting.workItems.map((item) => (
-                            <li className="meeting-work-item" key={item.id}>
-                              <div className="meeting-work-item-copy">
-                                <span>{workItemKindLabel(item)}</span>
-                                <strong>{item.title}</strong>
-                                <small>{workItemMetadata(item)}</small>
-                              </div>
-                              <div className="meeting-item-actions">
-                                {(item.kind === "task" ||
-                                  item.kind === "follow_up") &&
-                                  (item.taskId ? (
-                                    <span className="meeting-item-promoted">
-                                      Is a task
-                                    </span>
-                                  ) : (
-                                    <button
-                                      className="secondary-button"
-                                      disabled={busyItemId !== undefined}
-                                      onClick={() => {
-                                        setBusyItemId(item.id);
-                                        void runMeetingCommand(
-                                          selectedMeeting,
-                                          "meeting.promoteWorkItem",
-                                          {
-                                            workItemId: item.id,
-                                            taskId: crypto.randomUUID(),
-                                          },
-                                          // The meeting version keeps a
-                                          // re-promotion after undo a
-                                          // distinct command; a stable key
-                                          // would collide with the original
-                                          // attempt's fingerprint and make
-                                          // the item permanently unpromotable.
-                                          `promote:${item.id}:${selectedMeeting.version}`,
-                                        ).then((changed) => {
-                                          setBusyItemId(undefined);
-                                          if (changed) load();
-                                          else
-                                            setNotice(
-                                              "Could not create the task. The result may have changed since — refresh and try again.",
-                                            );
-                                        });
-                                      }}
-                                    >
-                                      Create task
-                                    </button>
-                                  ))}
+                    </span>
+                  </header>
+                  {selectedMeeting.workItems.length === 0 ? (
+                    <p className="meeting-result-empty-copy">
+                      This result has no action items yet.
+                    </p>
+                  ) : (
+                    <ul className="meeting-work-items">
+                      {selectedMeeting.workItems.map((item) => (
+                        <li className="meeting-work-item" key={item.id}>
+                          <div className="meeting-work-item-copy">
+                            <span>{workItemKindLabel(item)}</span>
+                            <strong>{item.title}</strong>
+                            <small>{workItemMetadata(item)}</small>
+                          </div>
+                          <div className="meeting-item-actions">
+                            {(item.kind === "task" ||
+                              item.kind === "follow_up") &&
+                              (item.taskId ? (
+                                <span className="meeting-item-promoted">
+                                  Is a task
+                                </span>
+                              ) : (
                                 <button
                                   className="secondary-button"
                                   disabled={busyItemId !== undefined}
                                   onClick={() => {
                                     setBusyItemId(item.id);
-                                    const nextState =
-                                      item.state === "open"
-                                        ? "completed"
-                                        : "open";
+                                    void runMeetingCommand(
+                                      selectedMeeting,
+                                      "meeting.promoteWorkItem",
+                                      {
+                                        workItemId: item.id,
+                                        taskId: crypto.randomUUID(),
+                                      },
+                                      // The meeting version keeps a
+                                      // re-promotion after undo a
+                                      // distinct command; a stable key
+                                      // would collide with the original
+                                      // attempt's fingerprint and make
+                                      // the item permanently unpromotable.
+                                      `promote:${item.id}:${selectedMeeting.version}`,
+                                    ).then((changed) => {
+                                      setBusyItemId(undefined);
+                                      if (changed) load();
+                                      else
+                                        setNotice(
+                                          "Could not create the task. The result may have changed since — refresh and try again.",
+                                        );
+                                    });
+                                  }}
+                                >
+                                  Create task
+                                </button>
+                              ))}
+                            <button
+                              className="secondary-button"
+                              disabled={busyItemId !== undefined}
+                              onClick={() => {
+                                setBusyItemId(item.id);
+                                const nextState =
+                                  item.state === "open" ? "completed" : "open";
+                                void client
+                                  .editMeetingWorkItem({
+                                    meetingId: selectedMeeting.id,
+                                    workItemId: item.id,
+                                    expectedVersion: item.version,
+                                    title: item.title,
+                                    state: nextState,
+                                  })
+                                  .then((changed) => {
+                                    setBusyItemId(undefined);
+                                    if (changed) load();
+                                    else
+                                      setNotice(
+                                        "This result changed since. Refreshed without overwriting the newer version.",
+                                      );
+                                  });
+                              }}
+                            >
+                              {item.state === "open"
+                                ? "Complete"
+                                : item.state === "conflicted"
+                                  ? "Keep local"
+                                  : "Reopen"}
+                            </button>
+                            {item.state === "conflicted" &&
+                              item.sourceValueInConflict && (
+                                <button
+                                  className="secondary-button"
+                                  disabled={busyItemId !== undefined}
+                                  onClick={() => {
+                                    setBusyItemId(item.id);
                                     void client
                                       .editMeetingWorkItem({
                                         meetingId: selectedMeeting.id,
                                         workItemId: item.id,
                                         expectedVersion: item.version,
-                                        title: item.title,
-                                        state: nextState,
+                                        title: item.sourceValueInConflict!,
+                                        state: "open",
                                       })
                                       .then((changed) => {
                                         setBusyItemId(undefined);
                                         if (changed) load();
                                         else
                                           setNotice(
-                                            "This result changed since. Refreshed without overwriting the newer version.",
+                                            "Could not resolve the conflict; a newer version exists.",
                                           );
                                       });
                                   }}
                                 >
-                                  {item.state === "open"
-                                    ? "Complete"
-                                    : item.state === "conflicted"
-                                      ? "Keep local"
-                                      : "Reopen"}
+                                  Accept Jamie
                                 </button>
-                                {item.state === "conflicted" &&
-                                  item.sourceValueInConflict && (
-                                    <button
-                                      className="secondary-button"
-                                      disabled={busyItemId !== undefined}
-                                      onClick={() => {
-                                        setBusyItemId(item.id);
-                                        void client
-                                          .editMeetingWorkItem({
-                                            meetingId: selectedMeeting.id,
-                                            workItemId: item.id,
-                                            expectedVersion: item.version,
-                                            title: item.sourceValueInConflict!,
-                                            state: "open",
-                                          })
-                                          .then((changed) => {
-                                            setBusyItemId(undefined);
-                                            if (changed) load();
-                                            else
-                                              setNotice(
-                                                "Could not resolve the conflict; a newer version exists.",
-                                              );
-                                          });
-                                      }}
-                                    >
-                                      Accept Jamie
-                                    </button>
-                                  )}
-                                {item.state === "open" && (
-                                  <button
-                                    className="secondary-button"
-                                    disabled={busyItemId !== undefined}
-                                    onClick={() => {
-                                      setBusyItemId(item.id);
-                                      void client
-                                        .editMeetingWorkItem({
-                                          meetingId: selectedMeeting.id,
-                                          workItemId: item.id,
-                                          expectedVersion: item.version,
-                                          title: item.title,
-                                          state: "dismissed",
-                                        })
-                                        .then((changed) => {
-                                          setBusyItemId(undefined);
-                                          if (changed) load();
-                                          else
-                                            setNotice(
-                                              "Could not dismiss the item; a newer version exists.",
-                                            );
-                                        });
-                                    }}
-                                  >
-                                    Dismiss
-                                  </button>
-                                )}
-                                {(item.kind === "task" ||
-                                  item.kind === "waiting" ||
-                                  item.kind === "follow_up") && (
-                                  <button
-                                    className="secondary-button"
-                                    disabled={busyItemId !== undefined}
-                                    onClick={() => {
-                                      setResponsibilityItemId(item.id);
-                                      setResponsibilityName(
-                                        item.responsibilityOverride?.name ??
-                                          item.assignee?.name ??
-                                          "",
+                              )}
+                            {item.state === "open" && (
+                              <button
+                                className="secondary-button"
+                                disabled={busyItemId !== undefined}
+                                onClick={() => {
+                                  setBusyItemId(item.id);
+                                  void client
+                                    .editMeetingWorkItem({
+                                      meetingId: selectedMeeting.id,
+                                      workItemId: item.id,
+                                      expectedVersion: item.version,
+                                      title: item.title,
+                                      state: "dismissed",
+                                    })
+                                    .then((changed) => {
+                                      setBusyItemId(undefined);
+                                      if (changed) load();
+                                      else
+                                        setNotice(
+                                          "Could not dismiss the item; a newer version exists.",
+                                        );
+                                    });
+                                }}
+                              >
+                                Dismiss
+                              </button>
+                            )}
+                            {(item.kind === "task" ||
+                              item.kind === "waiting" ||
+                              item.kind === "follow_up") && (
+                              <button
+                                className="secondary-button"
+                                disabled={busyItemId !== undefined}
+                                onClick={() => {
+                                  setResponsibilityItemId(item.id);
+                                  setResponsibilityName(
+                                    item.responsibilityOverride?.name ??
+                                      item.assignee?.name ??
+                                      "",
+                                  );
+                                }}
+                              >
+                                {item.responsibilityOverride === undefined &&
+                                item.assignee === undefined
+                                  ? "Set person"
+                                  : "Change person"}
+                              </button>
+                            )}
+                          </div>
+                          {responsibilityItemId === item.id && (
+                            <form
+                              className="meeting-responsibility-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                setBusyItemId(item.id);
+                                void client
+                                  .correctMeetingWorkItemResponsibility({
+                                    meetingId: selectedMeeting.id,
+                                    workItemId: item.id,
+                                    expectedVersion: item.version,
+                                    name: responsibilityName.trim(),
+                                  })
+                                  .then((changed) => {
+                                    setBusyItemId(undefined);
+                                    if (changed) {
+                                      setResponsibilityItemId(undefined);
+                                      setResponsibilityName("");
+                                      load();
+                                    } else
+                                      setNotice(
+                                        "Could not save the assignee; the result changed since.",
                                       );
-                                    }}
-                                  >
-                                    {item.responsibilityOverride ===
-                                      undefined && item.assignee === undefined
-                                      ? "Set person"
-                                      : "Change person"}
-                                  </button>
+                                  });
+                              }}
+                            >
+                              <label>
+                                Assignee for this item
+                                <input
+                                  autoFocus
+                                  maxLength={300}
+                                  required
+                                  value={responsibilityName}
+                                  onChange={(event) =>
+                                    setResponsibilityName(event.target.value)
+                                  }
+                                />
+                                {item.assignee !== undefined && (
+                                  <small>
+                                    Jamie says: {item.assignee.name}
+                                  </small>
                                 )}
-                              </div>
-                              {responsibilityItemId === item.id && (
-                                <form
-                                  className="meeting-responsibility-form"
-                                  onSubmit={(event) => {
-                                    event.preventDefault();
+                              </label>
+                              <button
+                                className="primary-button"
+                                disabled={
+                                  busyItemId === item.id ||
+                                  responsibilityName.trim().length === 0
+                                }
+                                type="submit"
+                              >
+                                Save correction
+                              </button>
+                              {item.responsibilityOverride !== undefined && (
+                                <button
+                                  className="quiet-button"
+                                  disabled={busyItemId !== undefined}
+                                  type="button"
+                                  onClick={() => {
                                     setBusyItemId(item.id);
                                     void client
                                       .correctMeetingWorkItemResponsibility({
                                         meetingId: selectedMeeting.id,
                                         workItemId: item.id,
                                         expectedVersion: item.version,
-                                        name: responsibilityName.trim(),
+                                        name: null,
                                       })
                                       .then((changed) => {
                                         setBusyItemId(undefined);
@@ -1285,441 +1601,270 @@ export const MeetingsSurface = ({
                                           load();
                                         } else
                                           setNotice(
-                                            "Could not save the assignee; the result changed since.",
+                                            "Could not restore the Jamie assignee; the result changed since.",
                                           );
                                       });
                                   }}
                                 >
-                                  <label>
-                                    Assignee for this item
-                                    <input
-                                      autoFocus
-                                      maxLength={300}
-                                      required
-                                      value={responsibilityName}
-                                      onChange={(event) =>
-                                        setResponsibilityName(
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                    {item.assignee !== undefined && (
-                                      <small>
-                                        Jamie says: {item.assignee.name}
-                                      </small>
-                                    )}
-                                  </label>
-                                  <button
-                                    className="primary-button"
-                                    disabled={
-                                      busyItemId === item.id ||
-                                      responsibilityName.trim().length === 0
-                                    }
-                                    type="submit"
-                                  >
-                                    Save correction
-                                  </button>
-                                  {item.responsibilityOverride !==
-                                    undefined && (
-                                    <button
-                                      className="quiet-button"
-                                      disabled={busyItemId !== undefined}
-                                      type="button"
-                                      onClick={() => {
-                                        setBusyItemId(item.id);
-                                        void client
-                                          .correctMeetingWorkItemResponsibility(
-                                            {
-                                              meetingId: selectedMeeting.id,
-                                              workItemId: item.id,
-                                              expectedVersion: item.version,
-                                              name: null,
-                                            },
-                                          )
-                                          .then((changed) => {
-                                            setBusyItemId(undefined);
-                                            if (changed) {
-                                              setResponsibilityItemId(
-                                                undefined,
-                                              );
-                                              setResponsibilityName("");
-                                              load();
-                                            } else
-                                              setNotice(
-                                                "Could not restore the Jamie assignee; the result changed since.",
-                                              );
-                                          });
-                                      }}
-                                    >
-                                      Restore Jamie
-                                    </button>
-                                  )}
-                                  <button
-                                    className="quiet-button"
-                                    type="button"
-                                    onClick={() => {
-                                      setResponsibilityItemId(undefined);
-                                      setResponsibilityName("");
-                                    }}
-                                  >
-                                    Cancel
-                                  </button>
-                                </form>
+                                  Restore Jamie
+                                </button>
                               )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
+                              <button
+                                className="quiet-button"
+                                type="button"
+                                onClick={() => {
+                                  setResponsibilityItemId(undefined);
+                                  setResponsibilityName("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </form>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
-                    {/* DECISION #32. No acceptance gate anywhere in here: the
+                {/* DECISION #32. No acceptance gate anywhere in here: the
                         notes are listed because they already point at this
                         meeting, and the only operation offered is removal. */}
-                    <section
-                      className="meeting-result-notes"
-                      aria-labelledby="meeting-result-notes-title"
-                    >
-                      <header>
-                        <div>
-                          <h4 id="meeting-result-notes-title">
-                            Notes on this meeting
-                          </h4>
-                          <p>Already attached. Nothing waits to be accepted.</p>
-                        </div>
-                        <TopicHelp topic="attached-notes" />
-                      </header>
-                      {attachedNotes.length === 0 ? (
-                        <p className="meeting-result-empty-copy">
-                          No note points at this meeting yet. A note reaches it
-                          by naming it while it is being written.
-                        </p>
-                      ) : (
-                        <ul className="meeting-attached-notes">
-                          {attachedNotes.map((note) => (
-                            <li
-                              className="meeting-attached-note"
-                              key={note.documentId}
-                            >
-                              <div className="meeting-work-item-copy">
-                                <span>
-                                  {note.author.authoredByAgent
-                                    ? "Agent"
-                                    : "Note"}
-                                </span>
-                                <strong>{note.title}</strong>
-                                <small>
-                                  {attachedNoteAuthorship(
-                                    note,
-                                    formatDate(note.updatedAt),
-                                  )}
-                                </small>
-                              </div>
-                              <div className="meeting-item-actions">
-                                <button
-                                  className="secondary-button"
-                                  data-meeting-detach={note.documentId}
-                                  disabled={busyItemId !== undefined}
-                                  ref={(element) => {
-                                    detachRefs.current.set(
-                                      note.documentId,
-                                      element,
-                                    );
-                                  }}
-                                  onClick={() => {
-                                    setBusyItemId(note.documentId);
-                                    void setNoteAttachment(
-                                      selectedMeeting,
-                                      note,
-                                      true,
-                                    ).then((changed) => {
-                                      setBusyItemId(undefined);
-                                      if (!changed) {
-                                        setNotice(
-                                          "Could not detach the note. The result may have changed since — refresh and try again.",
-                                        );
-                                        return;
-                                      }
-                                      setJustDetached(note);
-                                      // Decided at the press, consumed after
-                                      // the commit: the row this button lives
-                                      // on is gone by then, and the reversal
-                                      // is where the hands already are.
-                                      pendingFocusRef.current = REATTACH_FOCUS;
-                                      load();
-                                    });
-                                  }}
-                                >
-                                  Detach
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {justDetached !== undefined && (
-                        <p
-                          className="meeting-result-empty-copy"
-                          data-meeting-detached={justDetached.documentId}
+                <section
+                  className="meeting-result-notes"
+                  aria-labelledby="meeting-result-notes-title"
+                >
+                  <header>
+                    <div>
+                      <h4 id="meeting-result-notes-title">
+                        Notes on this meeting
+                      </h4>
+                      <p>Already attached. Nothing waits to be accepted.</p>
+                    </div>
+                    <TopicHelp topic="attached-notes" />
+                  </header>
+                  {attachedNotes.length === 0 ? (
+                    <p className="meeting-result-empty-copy">
+                      No note points at this meeting yet. A note reaches it by
+                      naming it while it is being written.
+                    </p>
+                  ) : (
+                    <ul className="meeting-attached-notes">
+                      {attachedNotes.map((note) => (
+                        <li
+                          className="meeting-attached-note"
+                          key={note.documentId}
                         >
-                          Detached “{justDetached.title}”. The note itself is
-                          unchanged.{" "}
-                          <button
-                            className="quiet-button"
-                            data-meeting-reattach={justDetached.documentId}
-                            disabled={busyItemId !== undefined}
-                            ref={reattachRef}
-                            type="button"
-                            onClick={() => {
-                              setBusyItemId(justDetached.documentId);
-                              void setNoteAttachment(
-                                selectedMeeting,
-                                justDetached,
-                                false,
-                              ).then((changed) => {
-                                setBusyItemId(undefined);
-                                if (!changed) {
-                                  setNotice(
-                                    "Could not put the note back. The result may have changed since — refresh and try again.",
-                                  );
-                                  return;
-                                }
-                                pendingFocusRef.current =
-                                  justDetached.documentId;
-                                setJustDetached(undefined);
-                                load();
-                              });
-                            }}
-                          >
-                            Put it back
-                          </button>
-                        </p>
-                      )}
-                    </section>
-
-                    {newItemMeetingId === selectedMeeting.id ? (
-                      <form
-                        className="meeting-add-item"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          setJamieBusy(true);
-                          void client
-                            .addMeetingWorkItem({
-                              meetingId: selectedMeeting.id,
-                              requestId: crypto.randomUUID(),
-                              kind: newItemKind,
-                              title: newItemTitle,
-                            })
-                            .then((created) => {
-                              setJamieBusy(false);
-                              if (created) {
-                                setNewItemTitle("");
-                                setNewItemMeetingId(undefined);
-                                load();
-                              } else
-                                setNotice(
-                                  "Could not add the item; the meeting changed since.",
+                          <div className="meeting-work-item-copy">
+                            <span>
+                              {note.author.authoredByAgent ? "Agent" : "Note"}
+                            </span>
+                            <strong>{note.title}</strong>
+                            <small>
+                              {attachedNoteAuthorship(
+                                note,
+                                formatDate(note.updatedAt),
+                              )}
+                            </small>
+                          </div>
+                          <div className="meeting-item-actions">
+                            <button
+                              className="secondary-button"
+                              data-meeting-detach={note.documentId}
+                              disabled={busyItemId !== undefined}
+                              ref={(element) => {
+                                detachRefs.current.set(
+                                  note.documentId,
+                                  element,
                                 );
-                            });
+                              }}
+                              onClick={() => {
+                                setBusyItemId(note.documentId);
+                                void setNoteAttachment(
+                                  selectedMeeting,
+                                  note,
+                                  true,
+                                ).then((changed) => {
+                                  setBusyItemId(undefined);
+                                  if (!changed) {
+                                    setNotice(
+                                      "Could not detach the note. The result may have changed since — refresh and try again.",
+                                    );
+                                    return;
+                                  }
+                                  setJustDetached(note);
+                                  // Decided at the press, consumed after
+                                  // the commit: the row this button lives
+                                  // on is gone by then, and the reversal
+                                  // is where the hands already are.
+                                  pendingFocusRef.current = REATTACH_FOCUS;
+                                  load();
+                                });
+                              }}
+                            >
+                              Detach
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {justDetached !== undefined && (
+                    <p
+                      className="meeting-result-empty-copy"
+                      data-meeting-detached={justDetached.documentId}
+                    >
+                      Detached “{justDetached.title}”. The note itself is
+                      unchanged.{" "}
+                      <button
+                        className="quiet-button"
+                        data-meeting-reattach={justDetached.documentId}
+                        disabled={busyItemId !== undefined}
+                        ref={reattachRef}
+                        type="button"
+                        onClick={() => {
+                          setBusyItemId(justDetached.documentId);
+                          void setNoteAttachment(
+                            selectedMeeting,
+                            justDetached,
+                            false,
+                          ).then((changed) => {
+                            setBusyItemId(undefined);
+                            if (!changed) {
+                              setNotice(
+                                "Could not put the note back. The result may have changed since — refresh and try again.",
+                              );
+                              return;
+                            }
+                            pendingFocusRef.current = justDetached.documentId;
+                            setJustDetached(undefined);
+                            load();
+                          });
                         }}
                       >
-                        <label>
-                          Kind
-                          <select
-                            value={newItemKind}
-                            onChange={(event) =>
-                              setNewItemKind(
-                                event.target.value as typeof newItemKind,
-                              )
-                            }
-                          >
-                            <option value="task">Task</option>
-                            <option value="waiting">Waiting</option>
-                            <option value="decision">Decision</option>
-                            <option value="note">Note</option>
-                            <option value="follow_up">Follow-up</option>
-                          </select>
-                        </label>
-                        <label>
-                          Content
-                          <input
-                            value={newItemTitle}
-                            onChange={(event) =>
-                              setNewItemTitle(event.target.value)
-                            }
-                            maxLength={4_000}
-                            required
-                            autoFocus
-                          />
-                        </label>
-                        <button
-                          className="primary-button"
-                          disabled={
-                            jamieBusy || newItemTitle.trim().length === 0
-                          }
-                        >
-                          Add item
-                        </button>
-                        <button
-                          type="button"
-                          className="quiet-button"
-                          onClick={() => setNewItemMeetingId(undefined)}
-                        >
-                          Cancel
-                        </button>
-                      </form>
-                    ) : (
-                      <button
-                        className="secondary-button meeting-add-trigger"
-                        onClick={() => setNewItemMeetingId(selectedMeeting.id)}
-                      >
-                        Add a standalone item
+                        Put it back
                       </button>
-                    )}
-                    {selectedMeeting.missingComponents.length > 0 && (
-                      <p className="inline-warning">
-                        Some Jamie task ids are missing. Syncing again fills
-                        them in without duplicating the meeting.
-                      </p>
-                    )}
-                  </article>,
-                  inspectorHost,
-                )}
-            </div>
-          )}
-        </section>
-        <aside className="meeting-context-rail" aria-labelledby="sources-title">
-          <header>
-            <p className="eyebrow">Sources and preparation</p>
-            <h2 id="sources-title">Meeting context</h2>
-          </header>
-          {calendarCapability}
-          <section
-            className="meeting-upcoming"
-            aria-labelledby="upcoming-title"
-          >
-            <header>
-              <h3 id="upcoming-title">Upcoming</h3>
-              <span>{countLabel(surface.upcoming.length, "event")}</span>
-            </header>
-            {surface.upcoming.length === 0 ? (
-              <div className="meeting-empty">
-                <svg aria-hidden="true" viewBox="0 0 48 48">
-                  <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
-                </svg>
-                <h4>No events visible</h4>
-                <p>
-                  {surface.capability.canRead
-                    ? "The calendar has no meetings in this window."
-                    : "Unblock the provider to see preparation."}
-                </p>
-              </div>
-            ) : (
-              surface.upcoming.map(({ event, brief }) => (
-                <article
-                  className="meeting-event"
-                  key={`${event.calendarExternalId}:${event.eventExternalId}`}
-                >
-                  <div className="meeting-time">
-                    {/* An instant, marked up as one. It was a bare `<strong>`,
-                        which is the only timestamp on this screen that a
-                        reader's software could not recognise as a time. */}
-                    <strong>
-                      <time dateTime={event.startsAt}>
-                        {formatWeekdayTime(event.startsAt)}
-                      </time>
-                    </strong>
-                    <span>
-                      {event.isAllDay
-                        ? "All day"
-                        : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
-                    </span>
-                  </div>
-                  <div className="meeting-event-body">
-                    <h4>{event.title}</h4>
-                    <p>
-                      {countLabel(event.attendees.length, "participant")}
-                      {event.location ? ` · ${event.location}` : ""}
                     </p>
-                    <div className="evidence-thread">
-                      <span className="evidence-node">Event</span>
-                      <i aria-hidden="true" />
-                      <span className="evidence-node">Fact brief</span>
-                      <i aria-hidden="true" />
-                      <span className="evidence-node evidence-node--muted">
-                        Jamie result after
-                      </span>
-                    </div>
-                    <div className="meeting-brief">
-                      <div>
-                        <strong>Orientation</strong>
-                        <span>
-                          {brief.orientation.length
-                            ? brief.orientation
-                                .map((item) => item.label)
-                                .join(" · ")
-                            : "No exactly linked records."}
-                        </span>
-                      </div>
-                      <div>
-                        <strong>Open loops</strong>
-                        <span>
-                          {brief.openLoops.length
-                            ? brief.openLoops
-                                .map((item) => item.label)
-                                .join(" · ")
-                            : "No safely matched commitments."}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    className="secondary-button meeting-block-action"
-                    disabled={
-                      !surface.capability.canWriteOwnedBlocks || event.isAllDay
-                    }
-                    onClick={() => {
-                      const startsAt = new Date(
-                        Date.parse(event.startsAt) - 30 * 60_000,
-                      ).toISOString();
-                      const block: CalendarBlockDraft = {
-                        calendarExternalId: event.calendarExternalId,
-                        ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
-                        title: `Preparation: ${event.title}`,
-                        startsAt,
-                        endsAt: event.startsAt,
-                        expectedRevision: null,
-                        sourceRecordIds: [
-                          `calendar-event:${event.eventExternalId}`,
-                        ],
-                      };
+                  )}
+                </section>
+
+                {newItemMeetingId === selectedMeeting.id ? (
+                  <form
+                    className="meeting-add-item"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      setJamieBusy(true);
                       void client
-                        .previewCalendarBlocks({ blocks: [block] })
-                        .then((result) => {
-                          if (result === undefined)
+                        .addMeetingWorkItem({
+                          meetingId: selectedMeeting.id,
+                          requestId: crypto.randomUUID(),
+                          kind: newItemKind,
+                          title: newItemTitle,
+                        })
+                        .then((created) => {
+                          setJamieBusy(false);
+                          if (created) {
+                            setNewItemTitle("");
+                            setNewItemMeetingId(undefined);
+                            load();
+                          } else
                             setNotice(
-                              "Could not build a safe preview. Nothing was written.",
+                              "Could not add the item; the meeting changed since.",
                             );
-                          else setPreview(result);
                         });
                     }}
                   >
-                    Preview block
+                    <label>
+                      Kind
+                      <select
+                        value={newItemKind}
+                        onChange={(event) =>
+                          setNewItemKind(
+                            event.target.value as typeof newItemKind,
+                          )
+                        }
+                      >
+                        <option value="task">Task</option>
+                        <option value="waiting">Waiting</option>
+                        <option value="decision">Decision</option>
+                        <option value="note">Note</option>
+                        <option value="follow_up">Follow-up</option>
+                      </select>
+                    </label>
+                    <label>
+                      Content
+                      <input
+                        value={newItemTitle}
+                        onChange={(event) =>
+                          setNewItemTitle(event.target.value)
+                        }
+                        maxLength={4_000}
+                        required
+                        autoFocus
+                      />
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={jamieBusy || newItemTitle.trim().length === 0}
+                    >
+                      Add item
+                    </button>
+                    <button
+                      type="button"
+                      className="quiet-button"
+                      onClick={() => setNewItemMeetingId(undefined)}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    className="secondary-button meeting-add-trigger"
+                    onClick={() => setNewItemMeetingId(selectedMeeting.id)}
+                  >
+                    Add a standalone item
                   </button>
-                  {/* #35 forbids a `title=` as the only carrier of an
-                      explanation: it does not exist for a keyboard, for touch,
-                      or for anybody not hovering, and the reason a control is
-                      dead is exactly what those readers need. This sentence
-                      used to be one. */}
-                  {!surface.capability.canWriteOwnedBlocks && (
-                    <small className="meeting-block-unavailable">
-                      This calendar does not allow writing blocks.
-                    </small>
-                  )}
-                </article>
-              ))
+                )}
+                {selectedMeeting.missingComponents.length > 0 && (
+                  <p className="inline-warning">
+                    Some Jamie task ids are missing. Syncing again fills them in
+                    without duplicating the meeting.
+                  </p>
+                )}
+              </article>,
+              inspectorHost,
             )}
-          </section>
-        </aside>
+        </div>
+      )}
+    </section>
+  );
+  return (
+    <section className="meeting-surface" aria-labelledby="surface-title">
+      {/* PIĄTY KSZTAŁT PASMA ZNIKA, NIE PRZYBYWA SZÓSTY. `.meeting-hero` był
+          czwartym pasmem tytułu tej aplikacji (`.surface-header`, `.meeting-hero`,
+          nagłówek Biblioteki, nagłówek ekranów rekordu) i jedynym, którego
+          siatka JEDNOKOLUMNOWA nie miała prawego końca — więc ten ekran nie
+          miał gdzie postawić akcji głównej i był ostatnim rozjazdem spisu B2.
+          Prototyp składa go tą samą funkcją co pozostałe
+          (`v3/screens/meetings.js:431-433` przez `crumbbar(crumbs, actions)`,
+          `v3/app.js:677-683`), więc odpowiedzią jest ten sam prymityw, którego
+          Faza C użyła na sześciu ekranach, a nie druga implementacja pasma.
+
+          NADPIS I ZDANIE OPISU ODCHODZĄ RAZEM Z NIM, i to jest wierność, a nie
+          skrót: prototypowe pasmo niesie NAZWĘ EKRANU i akcję, nic więcej
+          (`v3/app.css:282-293`), a nadpis „From preparation to follow-up"
+          powtarzał to, co mówią nagłówki dwóch sekcji pod nim. */}
+      <SurfaceTitleBand action={bandAction} title="Meetings" />
+
+      {notice && (
+        <p className="meeting-notice" role="status">
+          {notice}
+        </p>
+      )}
+
+      <div className="meeting-body">
+        {upcomingSection}
+        {completedSection}
       </div>
       {preview && (
         <CalendarConsentDialog

@@ -400,6 +400,28 @@
   transform: translateY(-0.2em) rotate(45deg);
 }
 
+/* WYZWALACZ, KTÓRY JEST AKCJĄ GŁÓWNĄ SWOJEGO POJEMNIKA (Faza C, lot C2).
+   `.inline-popover-trigger` maluje obwódkową pigułkę z szewronem, i to jest
+   właściwy wygląd dla dymka otwieranego z treści. Kiedy ten sam dymek jest
+   AKCJĄ GŁÓWNĄ pasma — dziś: „New note" i „Add a source" w paśmie Biblioteki,
+   gdzie prototyp maluje `.btn.primary` (`v3/screens/knowledge.js:802-804`
+   i `:967-968` przez `v3/app.css:321-332`) — o wyglądzie decyduje rola, nie
+   mechanizm. Selektor jest DWUKLASOWY, żeby wygrać niezależnie od kolejności
+   wstrzyknięcia arkuszy, a nie przez to, że akurat stoi niżej.
+
+   Rejestr notował oba te ekrany jako „ekran bez ANI JEDNEJ powierzchni
+   wypełnionej akcentem", a akcję tworzenia jako „bladą obwódkową pigułkę
+   › New content" — pigułkę składały dokładnie te dwie deklaracje: obwódka wyżej
+   i szewron w `::before`. Znika obwódka i szewron; ikona akcji jest wtedy tą
+   samą ikoną, którą niosą akcje główne pozostałych ekranów. */
+.inline-popover-trigger.primary-button {
+  border-color: transparent;
+}
+
+.inline-popover-trigger.primary-button::before {
+  content: none;
+}
+
 .inline-popover {
   position: fixed;
   z-index: var(--z-dropdown);
@@ -414,8 +436,15 @@
   overscroll-behavior: contain;
 }
 
+/* `.popover-choices` DOŁĄCZA DO TEJ REGUŁY, ZAMIAST POŻYCZAĆ `.task-state-actions`
+   (Faza D, lot D11). Panel wyboru szablonu ma dokładnie tę geometrię — kolumnę
+   przycisków po jednym kliknięciu — ale nie jest stanem zadania, a nazwa klasy,
+   która kłamie o swoim ekranie, jest w tym repozytorium nazwaną wadą. Trzecia
+   nazwa w tym samym selektorze kosztuje jeden wiersz i nic nie zmienia nikomu
+   innemu. */
 .inline-popover form,
-.inline-popover .task-state-actions {
+.inline-popover .task-state-actions,
+.inline-popover .popover-choices {
   display: grid;
   gap: var(--space-2);
 }
@@ -438,6 +467,7 @@
 
 .inline-popover button {
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--action-primary-text);
@@ -448,6 +478,7 @@
 
 .inline-popover button:hover {
   background: var(--action-primary-hover);
+  box-shadow: var(--action-primary-shadow-hover);
 }
 
 .inline-popover button:active {
@@ -498,6 +529,23 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-base);
+  /* WPIS #12 REJESTRU, I JEGO POŁOWA BYŁA OBALONA WŁASNYM POMIAREM AUTORA.
+     Teza „inny krój bazowy" jest FAŁSZYWA: „Inter var" nie jest zainstalowany
+     nigdzie, więc obie strony spadają na `-apple-system`, a zmierzone
+     szerokości są identyczne (96 = 96, 146 ≈ 147 px). Zostaje jedna różnica
+     i jest nią WYGŁADZANIE: prototyp deklaruje `-webkit-font-smoothing:
+     antialiased` (`v3/app.css:13`, w regule `body`), aplikacja nie miała tej
+     deklaracji ani razu w całym `packages/desktop-ui/src` — i dlatego ten sam
+     napis niósł u nas o 24% więcej tuszu (1 250 wobec 1 007 pikseli >120 przy
+     tej samej powierzchni).
+
+     TO JEST JEDNA DEKLARACJA, NIE ZMIANA STOSU PISMA, i tak ma zostać: stos
+     w `tokens.css` nie jest tu podejrzanym. Druga deklaracja jest dla Firefoksa
+     na macOS, gdzie prefiks `-webkit-` nie działa; prototyp jej nie ma, bo
+     chodzi wyłącznie w Chromium, a aplikacja pakuje Chromium — więc jest to
+     zapas, nie rozjazd. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 button,
 input,
@@ -506,9 +554,71 @@ select {
   color: inherit;
   font: inherit;
 }
+/* ── KAŻDA KONTROLKA MA TŁO, KTÓRE USTAWIŁ TEN ARKUSZ (Faza C, lot C3) ───────
+   Ten reset przez cztery fale mówił `border: 0` i milczał o tle, więc każdy
+   przycisk, któremu żadna dalsza reguła tła nie dała, malował się SYSTEMOWYM
+   `ButtonFace` — zmierzone `rgb(107,107,107)` w ciemnym motywie
+   i `rgb(239,239,239)` w jasnym. Skutek widoczny gołym okiem: chip albo segment
+   NIEWYBRANY był mocniej wyróżniony od WYBRANEGO, bo stan wybrany bierze
+   `--surface-hover`, czyli 5,5% bieli nad ciemnym planem (`tokens.css:223`)
+   i 4,5% czerni nad jasnym (`:875`), a farba silnika była od obu dalsza od
+   planu. Spis B1 (`scripts/control-paint.mjs`) naliczył tak czternaście
+   kształtów na pięciu ekranach, 27 narysowanych elementów w każdym motywie.
+
+   POPRAWKA IDZIE W RESET, A NIE W CZTERNAŚCIE REGUŁ, I ROZSTRZYGA TO POMIAR,
+   NIE GUST. Prototyp resetuje przycisk dokładnie tak — `button { background:
+   none; border: 0; cursor: pointer; padding: 0 }` (`v3/app.css:19`) — a spis
+   mówi, że idiom tego arkusza jest już TEN SAM: przy czternastu kształtach bez
+   farby stoi CZTERDZIEŚCI kształtów świadomie przezroczystych i ZERO malowanych
+   literałem spoza tokenów. Reset, który by MALOWAŁ, zamalowałby tamte
+   czterdzieści; reset, który deklaruje przezroczystość, dopisuje czternaście do
+   idiomu, który już rządzi. Tło niesie ta kontrolka, która go chce — tak jak
+   `.primary-button` i `.secondary-button` niżej.
+
+   HIERARCHIA ODWRACA SIĘ TYM SAMYM RUCHEM I W OBU MOTYWACH, bo prototyp trzyma
+   ją RELACJĄ, nie jasnością: tor `.segmented` siedzi na `--surface-sunken`
+   (`v3/app.css:337`), a jego suwak na `--surface-elevated` (`:352`) — wybrane
+   ODCHODZI OD PLANU, niewybrane na nim leży. Po tej poprawce stan spoczynkowy
+   jest planem (przezroczysty), a stan wybrany dalej bierze `--surface-hover`
+   plus `--border-strong` i grubość 500 — reguła `.switch[aria-selected="true"]`
+   w `organizations.module.css:99-104`, `people.module.css:98-103`
+   i `library.module.css:164-169` (selektor wypisany, bo sam numer wiersza
+   gnije przy pierwszym przesunięciu pliku i zostaje cytatem, który KŁAMIE:
+   dwa z tych trzech adresów były przepisane z rejestru B1 i wskazywały już
+   na wyściółkę stanu spoczynkowego) — czyli jaśnieje w ciemnym
+   i ciemnieje w jasnym — w obu wypadkach oddala się od planu, na którym leży
+   sąsiad. */
 button {
   border: 0;
+  background: none;
   touch-action: manipulation;
+}
+/* POLE TEKSTOWE BEZ KLASY TEŻ JEST KONTROLKĄ BEZ FARBY. Ta sama przyczyna
+   i ten sam wpis rejestru: pole „Change title" Bibliotece
+   (`library/SourcesReading.tsx:304`) nie niesie ŻADNEJ reguły, więc brało białe
+   `Field` silnika. `select` dwie linijki niżej ma materiał tej aplikacji od
+   zawsze — tu dostają go pola tekstowe i `textarea`, ale WYŁĄCZNIE tło:
+   `min-height`, `padding` i obramowanie zmieniłyby geometrię każdego
+   nieostylowanego pola w aplikacji, a rejestr mówi o farbie.
+
+   RODZAJE NIETEKSTOWE SĄ WYŁĄCZONE, i to nie jest ostrożność: `background-color`
+   na `input[type=checkbox]` z `appearance: auto` przemalowuje w Chromium natywny
+   kwadrat, a kontrakt mówi wprost, że dla prawdziwego checkboxa prototyp NIE MA
+   farby do naśladowania i lot musi zapytać, a nie wywnioskować
+   (`.ui-craft/brief.md:54`, część (c)). `:where()` zeruje swoisty wkład listy,
+   więc ta reguła przegrywa z każdą regułą klasową — pole, które ma własny
+   materiał, zachowuje go. */
+input:where(
+  :not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="color"],
+    [type="file"]
+  )
+),
+textarea {
+  background: var(--input-bg);
 }
 select {
   min-height: 2rem;
@@ -619,14 +729,59 @@ button:disabled {
    GDZIE TO MIESZKA: kopie spoczynkowe stoją w TYM pliku, a nie w warstwie
    tokenów, bo `tokens.css` był poza zakresem tego lotu. To jest miejsce
    tymczasowe, nie wybór architektoniczny — należą do warstwy, która definiuje
-   role cieni. */
+   role cieni.
+
+   ── SIÓDMA I ÓSMA ROLA: MATERIAŁ AKCJI GŁÓWNEJ ────────────────────────────
+   Dopisane przy naprawie po przeglądzie lotu C2. Lot C2 dał `.primary-button`
+   trzy warstwy cienia LITERAŁAMI, o swoistości (0,1,0), w pliku wczytywanym PO
+   `tokens.css` — czyli zbudował dokładnie tę kontrolkę, o której akapit
+   „CZEGO TO NIE OBEJMUJE" wyżej mówi, że dalej wygrywa z pierścieniem. Skutek
+   był taki, jak opisuje ten plik trzysta linii wyżej: akcja główna przy
+   `:focus-visible` wyglądała DOKŁADNIE jak w spoczynku, w motywie jasnym
+   i ciemnym (w `forced-colors` ratował ją `outline-color: Highlight`
+   z `tokens.css`). Hover był drugą połową tej samej wady, bo
+   `.primary-button:not(:disabled):hover` ma (0,3,0) i też deklarował literał —
+   poprawka na samym spoczynku zostawiłaby pierścień martwy dokładnie wtedy,
+   gdy kursor stoi na przycisku, o który klawiatura właśnie zapytała.
+
+   Dlatego materiał jest ROLĄ, a nie deklaracją na klasie: rola wpada pod
+   remap niżej i pierścień składa się PRZED cieniem własnym, zamiast być przez
+   niego zastąpiony. Wariant hoveru ma własną rolę, bo jest inną wartością, a
+   nie innym stanem tej samej wartości.
+
+   TA SAMA ROLA ZAMYKA DRUGI ZARZUT PRZEGLĄDU — dwa materiały dla jednej roli.
+   Wypełnienie `--action-primary-bg` nosiło po locie C2 SZEŚĆ powierzchni,
+   a cień dostała jedna (`.primary-button`), więc identyczna rola rysowała się
+   dwoma materiałami zależnie od tego, czy powierzchnia nosi klasę, czy własną
+   regułę. Rolę czytają dziś: `.primary-button`, `.inline-popover button`,
+   `.settings-control.support-report-action > button`,
+   `.settings-control .import-preview-confirm`, `.submit` kompozytora
+   komentarzy (`record/record-comments.module.css`) i akcja zapisu filtrów
+   (`tasks/saved-view-filters.module.css`).
+
+   SIÓDMA POWIERZCHNIA ZOSTAŁA ŚWIADOMIE POZA ROLĄ i to trzeba nazwać, bo
+   znalazłem ją sam, a nie dostałem w zgłoszeniu: `.skip-link` też jedzie
+   `--action-primary-bg`. Nie jest akcją główną w rozumieniu kontraktu
+   (`.ui-craft/tokens.md`, „Usage constraints" 3 mówi o pojemniku, KTÓRY MA
+   akcję główną), tylko afordancją dostępnościową parkowaną poza kadrem, więc
+   nadanie jej wypukłego materiału byłoby nową farbą w locie naprawczym.
+   Pierścienia to jej nie pozbawia: nie ma własnego `box-shadow`, więc reguła
+   globalna maluje na niej pierścień bez żadnego remapu. */
 :root {
+  --action-primary-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 0.24), 0 1px 2px oklch(0% 0 0 / 0.28),
+    0 0 0 1px var(--accent-edge);
+  --action-primary-shadow-hover:
+    inset 0 1px 0 oklch(100% 0 0 / 0.3), 0 2px 10px var(--accent-glow),
+    0 0 0 1px var(--accent-edge);
   --elevation-rest-resting: var(--elevation-rest);
   --elevation-raised-resting: var(--elevation-raised);
   --elevation-overlay-resting: var(--elevation-overlay);
   --capture-shadow-resting: var(--capture-shadow);
   --overlay-shadow-resting: var(--overlay-shadow);
   --context-shadow-resting: var(--context-shadow);
+  --action-primary-shadow-resting: var(--action-primary-shadow);
+  --action-primary-shadow-hover-resting: var(--action-primary-shadow-hover);
 }
 :where(
   button,
@@ -645,6 +800,10 @@ button:disabled {
   --capture-shadow: var(--control-focus-ring), var(--capture-shadow-resting);
   --overlay-shadow: var(--control-focus-ring), var(--overlay-shadow-resting);
   --context-shadow: var(--control-focus-ring), var(--context-shadow-resting);
+  --action-primary-shadow:
+    var(--control-focus-ring), var(--action-primary-shadow-resting);
+  --action-primary-shadow-hover:
+    var(--control-focus-ring), var(--action-primary-shadow-hover-resting);
 }
 
 svg {
@@ -705,9 +864,33 @@ kbd {
   opacity: 0.45;
 }
 
+/* WYSOKOŚĆ AKCJI JEST WYSOKOŚCIĄ Z PROTOTYPU (wpis #10 rejestru Fazy 4, druga
+   z dwóch jego połów). Rejestr zmierzył ją na zrzutach: „app 66 px urządzenia =
+   33 CSS, prototyp 56 px = 28 CSS", a `v3/app.css:307` mówi to samo w źródle —
+   `.btn { height: 1.75rem }`, dla WSZYSTKICH swoich wariantów naraz (`primary`,
+   `bordered`, `quiet` zmieniają wyłącznie farbę). Pierwsza połowa wpisu —
+   materiał: jasna kreska u góry i pierścień — weszła w locie C2, a gradient
+   został ODMÓWIONY na pomiarze kontrastu; nota o tym stoi niżej i nie zmienia
+   się przez ten lot.
+
+   1,75 rem, A NIE 28 px, i to nie jest kosmetyka zapisu: bramka układu chodzi
+   przy 200% i 300% pisma, a `rem` znaczy, że przy powiększonym piśmie rośnie
+   też cel. Wpisany piksel dałby przy 300% przycisk o treści trzykrotnie
+   większej niż jego pudełko.
+
+   `.compact` PRZESTAJE ISTNIEĆ JAKO ROZMIAR, bo baza jest już niższa niż on
+   był; zostaje jako wariant WYŚCIÓŁKI, czyli tym, czym prototyp go nie ma
+   wcale. Zmiana bazy bez tego zostawiłaby modyfikator „compact" WYŻSZY od
+   kontrolki, którą modyfikuje.
+
+   CZEGO TA LICZBA NIE ŁAMIE, sprawdzone, a nie założone: paczkowany smoke żąda
+   celu 44 px wyłącznie od `.search-control`, `.nav-item` i `.capture-dock`
+   (`run-packaged-alpha-smoke.mjs:953-955`), czyli od kontrolek POWŁOKI, których
+   ta reguła nie dotyczy. Milczenie o tym czytałoby się jak przeoczenie, więc
+   stoi wypisane. */
 .primary-button,
 .secondary-button {
-  min-height: 2.25rem;
+  min-height: 1.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -721,12 +904,81 @@ kbd {
     transform var(--duration-instant),
     border-color var(--duration-fast);
 }
+/* MATERIAŁ AKCJI GŁÓWNEJ (Faza C, lot C2, pozycja C4 rejestru o kształcie
+   przycisku). Prototyp daje jej TRZY warstwy cienia obok wypełnienia
+   (`v3/app.css:321-325`): jasną kreskę `inset 0 1px 0` pod górną krawędzią,
+   płytki cień pod spodem i pierścień `0 0 0 1px var(--accent-edge)`. Rejestr
+   potwierdził brak wszystkich trzech PIONOWĄ SONDĄ w wyściółce przycisku, poza
+   tuszem napisu: „app, x=2455: od góry do dołu jednolite rgb(127,75,220) — zero
+   różnicy, żadnej jasnej kreski wewnętrznej, żadnego pierścienia. Prototyp,
+   x=2590: […] nad gradientem siedzi jasna kreska rgb(193,167,255)". Kontrakt:
+   `.ui-craft/tokens.md`, „Component layer" — `action-primary-*` to jedna
+   akcja wypełniona akcentem.
+
+   GRADIENT ZE STOPNI PROTOTYPU WCHODZI 1:1 I NIE ZDAJE AA — DECYZJA
+   WŁAŚCICIELA, KACPER, 2026-08-12 (lot D8, pozycja #1 rejestru). Wypełnienie
+   spoczynkowe jest odtąd tym samym gradientem, co w prototypie
+   (`v3/app.css:321-325`): `linear-gradient(180deg, var(--a-400),
+   var(--a-500) 55%, var(--a-600))`. Do 2026-08-12 stała tu odmowa; poniżej
+   stoi to, co się zmieniło, i to, co się NIE zmieniło.
+
+   CO SIĘ NIE ZMIENIŁO: PRÓG. `scripts/consumer-contrast.test.mjs` dalej
+   ROZKŁADA ten gradient na trzy stopnie i mierzy KAŻDY przeciw `--on-accent`
+   progiem AA 4,5:1 — 2,57:1 na `--a-400`, 3,54:1 na `--a-500`, 5,19:1 na
+   `--a-600`. Napis leży W POPRZEK CAŁEGO gradientu, więc wiąże stopień
+   NAJGORSZY: 2,57:1. Próg nie został przeskalowany ani na jotę; zamiast tego
+   ta jedna para stoi w NAZWANYM, POLICZONYM zwolnieniu
+   `ACCENT_GRADIENT_EXEMPTIONS` i jej dług jest WYPISYWANY w każdym przebiegu
+   bramki. Zwolnienie zdejmuje asercję, nie pomiar.
+
+   ŻADEN TUSZ TEGO NIE RATUJE, i to jest dowód WYCZERPUJĄCY, nie próbka.
+   Kontrast jest monotoniczny względem jasności tuszu, a stopnie idą w dwie
+   strony, więc wystarczy sprawdzić oba końce (`scripts/color-contrast.mjs`):
+   CZYSTA BIEL daje 2,64 / 3,64 / 5,35 — pada na `--a-400`; CZYSTA CZERŃ daje
+   7,95 / 5,76 / 3,93 — pada na `--a-600`. Skoro pada najjaśniejszy i pada
+   najciemniejszy tusz, jaki fizycznie istnieje, to nie ma tuszu, który zdaje
+   na wszystkich trzech stopniach. Najciemniejszy tusz TEGO drzewa,
+   `--neutral-950`, daje 7,78 / 5,64 / 3,84 i mieści się w tym samym wniosku.
+   PADA GRADIENT, NIE TUSZ — i dlatego zwolnienie jest przy gradiencie.
+
+   HOVER I STAN WCIŚNIĘTY ZOSTAJĄ TAKIE, JAKIE SĄ — ZAKRES DECYZJI TO SAM
+   SPOCZYNEK. Prototypowy hover (`v3/app.css:326-330`) to DRUGI gradient,
+   `--a-300 → --a-400 55% → --a-500`, czyli 1,88 / 2,57 / 3,54 — wszystkie trzy
+   stopnie pod progiem, i do tego idzie JAŚNIEJ, odwrotnie niż zbocze tej
+   aplikacji (`--a-700`, 7,60:1). Nie wchodzi. Warunek właściciela mówi o JEDNEJ
+   parze; drugi gradient to druga para i wymagałby drugiej decyzji.
+
+   HOVER PODNOSI KRESKĘ I ZAMIENIA CIEŃ NA POŚWIATĘ, tak jak prototyp
+   (`v3/app.css:326-330`) — pierścień zostaje ten sam.
+
+   MATERIAŁ JEST ROLĄ, NIE LITERAŁEM NA KLASIE, i to jest poprawka po
+   przeglądzie tego lotu: literał o swoistości (0,1,0) w tym pliku ZABIERAŁ
+   akcji głównej pierścień ogniska. Wartości obu ról stoją przy remapie
+   ognisk — sekcja „SIÓDMA I ÓSMA ROLA" w bloku o jednym właścicielu
+   pierścienia, wyżej w tym pliku. */
+/* WYPEŁNIENIE JEST TU, NA KONTROLCE, A NIE W `--action-primary-bg`, i to jest
+   ograniczenie zakresu, nie wygoda: ten token czytają jako tło jeszcze SZEŚĆ
+   innych reguł w TRZECH arkuszach (policzone: `styles.css:469`, `:6003`,
+   `:10169`, `:10353`, `tasks/saved-view-filters.module.css:124`,
+   `record/record-comments.module.css:415`), a warunek właściciela mówi
+   o JEDNEJ parze. Gradient w tokenie wciągnąłby je wszystkie pod jedno
+   zwolnienie wydane na jedną kontrolkę. Skrót
+   `background`, nie `background-image` — bramka kontrastu zbiera `background`
+   i `background-color`, więc `background-image` nie dołożyłby ANI JEDNEGO
+   zmierzonego wiersza i przepuściłby 2,57:1 po cichu. */
 .primary-button {
   color: var(--action-primary-text);
-  background: var(--action-primary-bg);
+  background: linear-gradient(
+    180deg,
+    var(--a-400),
+    var(--a-500) 55%,
+    var(--a-600)
+  );
+  box-shadow: var(--action-primary-shadow);
 }
 .primary-button:not(:disabled):hover {
   background: var(--action-primary-hover);
+  box-shadow: var(--action-primary-shadow-hover);
 }
 .primary-button:not(:disabled):active {
   background: var(--action-primary-pressed);
@@ -769,13 +1021,31 @@ kbd {
   background: var(--surface-pressed);
   border-color: var(--border-strong);
 }
+/* `.compact` NIE JEST JUŻ WARIANTEM WYSOKOŚCI — poprawione w locie D1 Fazy D
+   razem z regułą, którą modyfikuje. Ten modyfikator dawał kiedyś `min-height:
+   2rem` przy bazie 2,25 rem; po zejściu bazy do prototypowych 1,75 rem
+   (`v3/app.css:307`) ta deklaracja robiłaby przycisk „compact" WYŻSZYM od
+   zwykłego, więc odeszła, a nota o niej odchodzi razem z nią zamiast zostać
+   jako zdanie nieprawdziwe o kodzie pod sobą.
+
+   ZOSTAJE JAKO WARIANT WYŚCIÓŁKI, i to nadal jest właściwość KONTROLKI, a nie
+   jednej z jej farb — dlatego selektor wymienia obie klasy akcji. Powód jest
+   ten sam, dla którego wymieniał je wcześniej: `primary-button compact` woła
+   `ReleaseContinuity.tsx:132`, a od lotu C2 także pas akcji rekordu projektu,
+   i przy selektorze wymieniającym samą `.secondary-button` żadna z tych dwóch
+   akcji nie dostawała tego, po co modyfikator nosi. */
+.primary-button.compact,
 .secondary-button.compact {
-  min-height: 2rem;
   padding-inline: var(--space-3);
 }
 .quiet-button,
 .ghost-button {
-  min-height: 2.25rem;
+  /* TA SAMA WYSOKOŚĆ CO AKCJA OBOK — powód stoi przy `.primary-button` wyżej.
+     Prototyp nie ma osobnej wysokości dla przycisku bez tła: `.btn.quiet`
+     (`v3/app.css:318`) zmienia sam kolor pisma. Zostawienie tych dwóch klas na
+     2,25 rem dałoby ekran, na którym akcja główna jest NIŻSZA od stojącego przy
+     niej przycisku pobocznego. */
+  min-height: 1.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -801,6 +1071,53 @@ kbd {
 .quiet-button:not(:disabled):active,
 .ghost-button:not(:disabled):active {
   background: var(--surface-pressed);
+}
+/* WPIS #4 REJESTRU — POMOC NA ŻĄDANIE MA KSZTAŁT PRZYPISU, NIE KSZTAŁT AKCJI.
+   Prototyp: `v3/app.css:896-904` — `.helpb` to okrąg 1,125 rem
+   (`border-radius: var(--radius-full)`, włoskowa obwódka, `background: none`)
+   z jednym znakiem „?" złożonym `--text-2xs` wagą 600, w kolorze
+   czwartorzędnym; komentarz nad regułą mówi wprost, po co: „wielkość znaku ma
+   być mniejsza niż etykieta, przy której stoi — to jest dopisek, nie kontrolka
+   do klikania na co dzień". U nas ta sama afordancja jechała jako
+   `ghost-button compact`, czyli słowny przycisk 1,75 rem o stopniu `--text-sm`
+   — obiekt SZERSZY od nagłówka, przy którym stał.
+
+   TREŚCI POMOCY TA REGUŁA NIE DOTYKA I DOTKNĄĆ NIE MOŻE: sufit 180 znaków na
+   temat pomocy jest zapisaną regułą tego repozytorium
+   (`help/help-topics.ts:1-11`, decyzja #35) i dalej obowiązuje — sprawdzone
+   przed tą zmianą. Zmienia się WYZWALACZ, nie to, co on otwiera.
+
+   `background: none`, A NIE `transparent`: spis B1 (`control-paint`) jest
+   uzbrojony i czyta TŁO każdej narysowanej kontrolki. Reset przycisku w tym
+   arkuszu daje `background: none` i ta reguła go NIE nadpisuje niczym, czego
+   spis nie zna — kontrolka trafia do `TRANSPARENT`, tak jak `.helpb`
+   w prototypie, który też nie maluje tła.
+
+   CEL DOTYKOWY: pole jest większe niż glif, bo znak stoi w pudełku 1,125 rem,
+   a nie w samym tuszu — ta sama uwaga stoi przy regule prototypu. */
+.help-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-quaternary);
+  background: none;
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+.help-mark:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
 }
 /* A SHARED BUTTON MATERIAL THAT USED TO LIVE IN A LAZY SURFACE SHEET. These
    two rules stood in `access-surface.css`, which only ever loaded when the
@@ -925,7 +1242,18 @@ kbd {
   /* The top inset used to reserve `--titlebar-height` for a band that was drawn
      over the sidebar. The band is above the sidebar now, so the reservation is
      over — the column starts where the column starts. */
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  /* JEDNA LICZBA NA RYNNĘ TEJ KOLUMNY, bo od tej chwili czytają ją DWIE rzeczy,
+     które muszą się zgadzać co do piksela: własne wcięcie poziome paska i
+     ujemny margines listy nawigacji niżej (`.sidebar nav`), którym szyna
+     aktywnej pozycji dosięga lewej krawędzi kolumny. Wpisane osobno rozjadą się
+     przy pierwszej zmianie gęstości i szyna zniknie w obcięciu — bez ani jednej
+     czerwonej asercji, bo `::before` dalej się GENERUJE i dalej rozwiązuje się
+     do akcentu. Tryb szyny ikon nadpisuje tę jedną liczbę (reguła
+     `.desktop-shell.rail .sidebar`). ODESŁANIE SELEKTOREM, NIE NUMEREM: numery
+     w tym pliku przesuwa każdy lot fali, a przeglądowi lotu C1 cztery takie
+     odesłania wskazały już na cudzy kod. */
+  --nav-gutter: var(--space-3);
+  padding: var(--space-2) var(--nav-gutter) var(--space-3);
   border-right: 1px solid var(--shell-border);
   /* Lewa kolumna jest PLANEM, nie szybą (`v3/app.css:155-160`). Stało tu
      rozmycie tła, którego prototyp nie ma nigdzie w powłoce; pod nim leży
@@ -1157,6 +1485,23 @@ kbd {
 }
 .sidebar nav {
   margin-top: var(--space-5);
+  /* LISTA SIĘGA DO KRAWĘDZI KOLUMNY, ŻEBY SZYNA MIAŁA GDZIE STANĄĆ, i to jest
+     warunek KONIECZNY, nie kosmetyka. `.sidebar nav` niesie `overflow-y: auto`
+     (pierwsza reguła `.sidebar nav`), a przeglądarka wylicza wtedy `overflow-x`
+     na `auto` — czyli
+     ten element PRZYCINA po obu osiach na swoim pudełku dopełnienia. Szyna
+     `.nav-item.active::before` stoi przy lewej krawędzi PASKA, więc bez tej
+     pary deklaracji leżałaby poza obszarem przycięcia i nie narysowałaby się
+     ani razu: `::before` byłby wygenerowany, rozwiązywałby się do akcentu,
+     a widać by go nie było. Ujemny margines i dopełnienie tej samej wartości
+     zostawiają pudełko TREŚCI dokładnie tam, gdzie było — nie rusza się ani
+     jeden wiersz — a przesuwają krawędź przycięcia na krawędź kolumny.
+     Prototyp rozwiązuje to odwrotnie i z tym samym skutkiem: tam pasek nie ma
+     wcięcia w ogóle, a niesie je `.nav` (`v3/app.css:196` — `overflow-x: hidden`
+     razem z `padding: 0 var(--space-2) var(--space-4)`), więc szyna o `left:
+     -0.5rem` ląduje równo na jego krawędzi przycięcia. */
+  margin-left: calc(-1 * var(--nav-gutter));
+  padding-left: var(--nav-gutter);
 }
 .nav-label {
   margin-top: var(--space-4);
@@ -1165,11 +1510,25 @@ kbd {
 .sidebar nav > .nav-label:first-child {
   margin-top: 0;
 }
+/* WPISY #13 I #54 REJESTRU (jeden kształt, dwa zgłoszenia) — DASZEK STOI PRZED
+   ETYKIETĄ, NIE PRZY PRAWEJ KRAWĘDZI PASKA. Prototyp rysuje nagłówek modułu
+   jako `${icon("chevDown", "chev")}<span>${title}</span>` (`v3/app.js:599`),
+   czyli znak zwijania jest PIERWSZYM dzieckiem wiersza i stoi kilka pikseli od
+   napisu; `v3/app.css:198-208` nie daje `.nav-head` ani jednej deklaracji, która
+   by go odsunęła. U nas daszek był OSTATNIM dzieckiem siatki
+   `minmax(0,1fr) auto auto`, więc oddzielała go od napisu cała szerokość
+   kolumny — i tak samo działo się na nagłówku każdego modułu.
+
+   TOR ETYKIETY ZOSTAJE ELASTYCZNY, tylko przesuwa się na drugie miejsce:
+   `auto minmax(0,1fr) auto`. Trzeci tor niesie `small` — nazwę bieżącego celu
+   przy zwiniętym module — i ZOSTAJE na końcu świadomie: prototyp nie ma tam
+   niczego, więc nie ma z czym go równać, a to jest jedyna treść tego wiersza,
+   która ma prawo być dosunięta do prawej. */
 .nav-group-toggle {
   width: 100%;
   min-height: 2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   /* `v3/app.css:210-216`: nagłówek modułu odsuwa się od tego, co nad nim,
@@ -1230,6 +1589,13 @@ kbd {
 .nav-item {
   width: 100%;
   min-height: 1.75rem;
+  /* BLOK ODNIESIENIA DLA SZYNY (`v3/app.css:213` — prototyp deklaruje to samo
+     w tej samej regule). Bez tego `::before` niżej zaczepiłby się o najbliższy
+     pozycjonowany przodek, czyli o `.sidebar` (jej deklaracja `position:
+     relative`), i jedna szyna stanęłaby
+     przy górnej krawędzi całej kolumny zamiast przy swoim wierszu. Para
+     czytająca FARBĘ tego pseudoelementu byłaby przy tym ZIELONA. */
+  position: relative;
   display: grid;
   grid-template-columns: 1.1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -1312,25 +1678,105 @@ kbd {
    `:not(a):not(b):not(c)` would weigh (0,5,0) and start winning ties this rule
    was never meant to enter — the same mistake, measured and undone, at
    `.settings-control button:not(.primary-button, .settings-row)`. */
-.nav-item:not(:disabled, .active, [aria-current]):hover {
+/* `[data-nav-open]` DOŁĄCZA DO LISTY WYKLUCZEŃ, NIE DO NIEJ SAMEJ: to trzeci
+   nośnik stanu „tu jesteś" w tej kolumnie (cel nadrzędny otwartego rekordu
+   projektu, `RealApp.tsx`), a nośnik pominięty tutaj gaśnie pod kursorem
+   dokładnie tak, jak zgasł `.active` opisany wyżej. Wykluczenie ATRYBUTEM waży
+   tyle co wykluczenie klasą, więc reguła zostaje przy swoim (0,3,0) — dopisanie
+   tu `:has(…)` podniosłoby ją do (0,5,0) i zaczęłaby wygrywać remisy, do
+   których nigdy nie należała. */
+.nav-item:not(:disabled, .active, [aria-current], [data-nav-open]):hover {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
 .nav-item:not(:disabled):active {
   background: var(--surface-pressed);
 }
-.nav-item.active {
+/* ── GDZIE CZYTELNIK JEST: PODBARWIENIE I SZYNA, NIE RAMKA ───────────────────
+   Stało tu `border-color: var(--nav-active-border)` plus `box-shadow:
+   var(--elevation-rest)`, czyli ciągła obwódka akcentu po CAŁYM obwodzie
+   wiersza i uniesienie. Prototyp nie ma tu ramki w ogóle: `v3/app.css:218-220`
+   daje podbarwienie `--accent-quieter`, tekst pierwszorzędny i wagę 500,
+   a `:222-226` dokłada 2,5-pikselową szynę tuszu przy LEWEJ krawędzi kolumny,
+   z poświatą `--accent-glow`. Kontrakt mówi to samo dwa razy i obie razy
+   z cytatem w tę stronę: `.ui-craft/tokens.md:271-279`, sekcja „Form first —
+   ink and wash" („Ink is confined to … a 2–2.5 px rail (`v3/app.css:485-487`,
+   `:222-226`)") i `:291-296`, sekcja „Wash rarely travels alone" („where
+   the reference washes an object it also inks one edge of it … the wash says
+   which object; the ink says the same thing on a channel that survives
+   a grayscale print").
+
+   ODWRÓCENIE NOŚNIKA, NIE ZDJĘCIE SYGNAŁU: znika ramka, zostaje ta sama
+   wartość `var(--accent)` — tyle że na szynie. Pomiar kontrastu, którym
+   uzasadniano krawędź, przenosi się razem z wartością (`tokens.css:703-737`).
+
+   WPIS NADRZĘDNY BIERZE TO SAMO. Prototyp uznaje otwarty rekord projektu za
+   bycie NA „Projects": `v3/app.js:573` stawia `aria-current="page"` również na
+   celu nadrzędnym, gdy trasa to `project`, więc pod jednym otwartym projektem
+   świecą DWA wiersze — rodzic i dziecko. Ta aplikacja świadomie zerowała
+   rodzica (`RealApp.tsx:1935-1941`), żeby nie mieć dwóch `aria-current`
+   naraz; rozstrzygnięcie zostaje, bo dotyczy DEKLARACJI, a nie farby. Nośnikiem
+   farby jest osobna deklaracja `data-nav-open`, dopisana w tym locie.
+
+   DLACZEGO ATRYBUT, A NIE `:has(+ .nav-children .nav-child.active)`. Selektor
+   `.nav-item:has(+ .nav-children .nav-child.active)` liczyłby (0,4,0) — waga
+   `:has()` to waga jego NAJCIĘŻSZEGO argumentu, a argument ma trzy klasy —
+   i wygrywałby z regułą wciśnięcia (`.nav-item:not(:disabled):active`,
+   (0,3,0)), czyli ten JEDEN wiersz przestałby odpowiadać na palec czytelnika,
+   wbrew rozstrzygnięciu zapisanemu dwadzieścia linii wyżej. To NIE jest ta
+   sama liczba, co (0,5,0) w nocie o hoverze wyżej: tam `:has()` siedzi
+   WEWNĄTRZ `:not()` w regule, która niesie jeszcze `:hover`, więc suma jest
+   o stopień wyższa. Atrybut waży tyle co `.active`.
+
+   CO DOKŁADNIE RODZIC DZIEDZICZY — LISTĄ, NIE SŁOWEM „WSZYSTKO". Pierwsza
+   wersja tej noty mówiła „wszystkie zastane remisy tej kolumny bez zmiany
+   którejkolwiek reguły poza listą wykluczeń hovera" i to było fałszywe:
+   nośnik trafił do trzech z pięciu żywych reguł kluczowanych stanem bieżącym
+   i do żadnej reguły trybu wymuszonych kolorów. Reguły są dziś wypisane
+   z nazwy, bo lista obok zamkniętego słownika gnije po cichu:
+
+     `.nav-item.active` (podbarwienie, tekst, waga)          — ma nośnik
+     `.nav-item.active::before` (szyna)                      — ma nośnik
+     `.nav-item.active > svg` (glif)                         — ma nośnik
+     `.nav-item:not(…):hover` (wykluczenie hovera)           — ma nośnik
+     `.nav-item[aria-current="page"] kbd` (skrót)            — DOPISANY
+     `@media (forced-colors: active) .nav-item.active`       — DOPISANY
+
+   `.settings-mode-column .nav-item[aria-current="location"]` NIE dostaje
+   nośnika i to jest rozstrzygnięcie, nie przeoczenie: `data-nav-open` rodzi
+   się wyłącznie z otwartego rekordu projektu, a ta kolumna nie ma rekordów. */
+.nav-item.active,
+.nav-item[data-nav-open] {
   color: var(--nav-active-text);
-  border-color: var(--nav-active-border);
   background: var(--nav-active-bg);
-  box-shadow: var(--elevation-rest);
+  font-weight: 500;
+}
+/* SZYNA. Geometria jest przepisana z prototypu co do liczby (`v3/app.css:222-226`),
+   z JEDNĄ poprawką na różnicę pudełek: tam `.nav-item` nie ma obramowania,
+   tutaj niesie `border: 1px solid transparent` (reguła `.nav-item`, po to, żeby stan
+   aktywny nie ruszał układu), a `left` odmierza się od pudełka DOPEŁNIENIA,
+   czyli od krawędzi wewnątrz tego obramowania. Stąd `- 1px`: bez niego szyna
+   stanęłaby o piksel w prawo od krawędzi kolumny. */
+.nav-item.active::before,
+.nav-item[data-nav-open]::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--nav-gutter) - 1px);
+  top: 50%;
+  translate: 0 -50%;
+  width: 2.5px;
+  height: 1rem;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
 }
 /* Ikona aktywnej pozycji bierze PEŁNY akcent (`v3/app.css:221`). Podbarwienie
    pod wierszem mówi „ten wiersz", a tusz na glifie mówi „ta pozycja" — bez
    niego cały sygnał niósł prostokąt o alfie 0,08 i pierwsze zadanie akcentu
    („gdzie czytelnik jest") było w tej kolumnie ledwo widoczne. Reguły dla samego
    glifu nie było tu w ogóle: dziedziczył `--nav-active-text`. */
-.nav-item.active > svg {
+.nav-item.active > svg,
+.nav-item[data-nav-open] > svg {
   color: var(--accent);
 }
 .nav-item:disabled {
@@ -1383,12 +1829,84 @@ kbd {
    (`scripts/verify-renderer-layout.mjs:783`), and the sidebar does not lie
    inside it. This position is closed on a browser measurement recorded in the
    lot report, not on an instrument. */
+/* PASMO WYJŚCIA, NIE PIERWSZY WIERSZ SPISU (`v3/screens/settings.css:40-43` —
+   `.st-nav-head { min-height: var(--header-band-height); border-bottom: 1px
+   solid var(--border-subtle) }`, a `.st-nav-list` zaczyna się dopiero pod nią).
+   Wcięcie zdejmowane ujemnym marginesem o RYNNĘ KOLUMNY, tą samą jedną liczbą,
+   którą czyta szyna aktywnej pozycji — pasmo, które nie dobiega do krawędzi,
+   nie jest pasmem, a wpisana tu druga liczba rozjechałaby się przy pierwszej
+   zmianie gęstości. */
+.sidebar-settings-mode {
+  /* Kolumna trybu nie ma nad spisem NICZEGO, więc jej własne wcięcie górne
+     odsunęłoby pasmo od krawędzi okna o dwa różne odstępy naraz (wyściółka
+     paska + `margin-top` listy). Pasmo ma stać tam, gdzie zaczyna się kolumna. */
+  padding-top: 0;
+}
+.sidebar-settings-mode nav {
+  margin-top: 0;
+  /* KRAWĘDŹ PRZYCIĘCIA IDZIE ZA PASMEM PO OBU STRONACH, INACZEJ PASMO JEST
+     OBCIĘTE PO PRAWEJ — i to jest poprawka po przeglądzie lotu D5, znaleziona
+     ODCZYTEM, a nie pomiarem, bo `getBoundingClientRect` oddaje pudełko UKŁADU
+     i jest ślepy na przycięcie: pomiar lotu („wystawanie w prawo 0 px") był
+     prawdziwy i nic o tej wadzie nie mówił.
+
+     `.sidebar nav` niesie `overflow-y: auto`, więc przeglądarka wylicza
+     `overflow-x` na `auto` i element PRZYCINA na swoim pudełku dopełnienia po
+     OBU osiach (to samo zdanie stoi przy regule z ujemnym marginesem po
+     lewej). Tamta para deklaracji przesunęła krawędź przycięcia na krawędź
+     kolumny TYLKO z lewej, a `.settings-mode-head` ma margines ujemny
+     SYMETRYCZNY — więc jego prawe `--nav-gutter` leżało poza pudełkiem
+     przycięcia nawigacji i było ścinane (12 px przy 1440 px, 4 px w szynie),
+     a pasek stawał się przewijalny poziomo. Pasmo, które nie dobiega do
+     krawędzi, nie jest pasmem — i tak samo nie jest nim pasmo, któremu
+     krawędź obcięto.
+
+     TA SAMA JEDNA LICZBA, `--nav-gutter`: ujemny margines i dopełnienie tej
+     samej wartości zostawiają pudełko TREŚCI dokładnie tam, gdzie było, a
+     przesuwają krawędź przycięcia na krawędź kolumny — dokładnie tak, jak po
+     lewej, i tak samo samo dostraja się w szynie ikon.
+
+     WIĄZANE DO TRYBU USTAWIEŃ, NIE DO `.sidebar nav`: w powłoce pracy pasma
+     nie ma, a przesunięcie krawędzi przycięcia dosunęłoby tam pionowy pasek
+     przewijania do obwódki kolumny bez żadnego powodu. Selektor potomka trafia
+     w OBIE nawigacje — zewnętrzną i `.settings-mode-column` — i to jest
+     wymagane, nie uboczne: naprawa samej kolumny trybu zostawia jej pudełko
+     brzegowe na krawędzi kolumny, a przycina je nawigacja o poziom wyżej. */
+  margin-right: calc(-1 * var(--nav-gutter));
+  padding-right: var(--nav-gutter);
+}
+.settings-mode-head {
+  display: flex;
+  align-items: center;
+  min-height: var(--header-band-height);
+  margin: 0 calc(-1 * var(--nav-gutter)) var(--space-2);
+  padding: 0 var(--nav-gutter);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.settings-mode-head .settings-mode-back {
+  width: auto;
+}
 .settings-mode-column {
   display: grid;
   gap: 0.12rem;
 }
+/* GRUPY SPISU (`v3/screens/settings.css:55-60` — `.st-nav-group + .st-nav-group
+   { margin-top: var(--space-4) }` i `.st-nav-glabel` wersalikami `--text-2xs`
+   z rozstrzeleniem 0,06em w kolorze czwartorzędnym). Odstęp jest NA GRUPIE
+   PO SĄSIEDZIE, nie na każdej, żeby pierwsza nie odpychała się od pasma. */
+.settings-mode-group + .settings-mode-group {
+  margin-top: var(--space-4);
+}
+.settings-mode-group-label {
+  margin: 0 0 0.25rem;
+  padding: 0 var(--space-2);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 .settings-mode-column .nav-item {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 1.1rem minmax(0, 1fr);
   /* `white-space` STOI NA WPISIE, nie tylko na jego dziecku, i to nie jest
      kosmetyka selektora: „nie zawijaj" jest własnością wpisu, dziecko ją
      dziedziczy, a pomiar pytający o wpis dostaje odpowiedź zamiast `normal`
@@ -1495,6 +2013,18 @@ kbd {
 .nav-child.active .nav-child-dot {
   background: var(--accent);
 }
+/* SZYNA WIERSZA POTOMNEGO NIE STOI PRZY KRAWĘDZI KOLUMNY, TYLKO NA PIONIE
+   DRZEWA — i to jest osobna reguła prototypu, nie niedopatrzenie
+   (`v3/app.css:246`: `left: -0.0625rem; height: 0.875rem`). Wiersz potomny
+   dziedziczyłby z reguły wyżej szynę odmierzoną do lewej krawędzi paska
+   i przeciął pion `.nav-children::before` na pół; tak odmierzona zakrywa
+   dokładnie ten pion na wysokości swojego wiersza, czyli mówi „ta gałąź" tam,
+   gdzie gałąź jest rysowana. Krótsza o 0,125 rem, bo wiersz potomny jest
+   niższy (reguła `.nav-child`). `- 1px` z tego samego powodu, co wyżej. */
+.nav-child.active::before {
+  left: calc(-0.0625rem - 1px);
+  height: 0.875rem;
+}
 .sidebar-spacer {
   flex: 1;
 }
@@ -1559,13 +2089,24 @@ kbd {
       100% 12rem no-repeat,
     var(--surface-canvas);
 }
+/* RYNNA KANWY MA JEDNĄ DEFINICJĘ I TRZECH KONSUMENTÓW (Faza D, lot D1).
+   `clamp(var(--space-5), 4vw, var(--space-10))` stało dotąd przepisane
+   w `.work-surface` i w `.surface-scroll`, a `.meeting-surface` niosło jego
+   trzecią, INNĄ wersję (`clamp(var(--space-4), 3vw, var(--space-10))`) — czyli
+   ten sam kształt zapisany trzy razy, w tym raz z inną liczbą. To jest w tym
+   repozytorium nazwana klasa defektu, a od tego lotu ma jeszcze jeden skutek:
+   pasmo tytułu wychodzi z kolumny czytelnej na całą szerokość kanwy MARGINESEM
+   równym tej rynnie, więc rynna zapisana dwa razy to pasmo, które przy
+   pierwszej rozbieżności wystaje albo nie dochodzi. Jedna zmienna, dziedziczona
+   w dół, znaczy, że wyściółka nośnika i margines pasma NIE MOGĄ się rozjechać. */
 .work-surface {
   --surface-measure: 72rem;
+  --surface-gutter: clamp(var(--space-5), 4vw, var(--space-10));
   container-type: inline-size;
   position: relative;
   min-width: 0;
   overflow: auto;
-  padding: 0 clamp(var(--space-5), 4vw, var(--space-10)) var(--space-8);
+  padding: 0 var(--surface-gutter) var(--space-8);
   background: var(--surface-canvas);
   scrollbar-color: var(--border-default) transparent;
 }
@@ -1717,15 +2258,29 @@ kbd {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
+/* WPIS #5 REJESTRU — ZAKŁADKA OBEJMUJE WŁASNĄ ETYKIETĘ, NIE CAŁE PASMO.
+   Rejestr zmierzył to na zrzutach, na których OBA produkty rysują DOKŁADNIE
+   JEDNĄ zakładkę, więc różnica nie brała się z liczby kart: u nas „Today" to
+   wypełniona płyta ok. 205 px CSS, w prototypie ok. 55 px. Odpowiadały za to
+   dwie deklaracje, których prototyp nie ma — `flex: 1 1 10rem` (rośnij do
+   wolnego miejsca) i `min-width: 7rem` (podłoga szersza niż niejedna
+   etykieta). `v3/app.css:107-115` daje `.tab` wyłącznie SUFIT (`max-width:
+   13rem`) i `min-width: 0`; szerokość jest funkcją treści.
+
+   SUFIT ZOSTAJE, PODŁOGA SCHODZI DO ZERA, a `flex` schodzi do `0 1 auto`:
+   kurczenie się przy wielu zakładkach jest właściwością prototypu (`min-width:
+   0` istnieje po to), rośnięcie nie jest. Kreska akcentu pod aktywną zakładką
+   ma odtąd szerokość napisu, bo jest wcięta o 0,5 rem od krawędzi zakładki —
+   i to jest dokładnie to, co rejestr zgłasza jako drugą połowę wpisu. */
 .shell-tab {
   position: relative;
-  min-width: 7rem;
+  min-width: 0;
   max-width: 13rem;
   height: 2.25rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1.75rem;
   align-items: center;
-  flex: 1 1 10rem;
+  flex: 0 1 auto;
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
@@ -1803,20 +2358,48 @@ kbd {
 .shell-tab-close svg {
   width: 0.8rem;
 }
-/* PROPORCJE PASKA `crumbbar` Z PROTOTYPU (`v3/app.css:282-293`), NIE SAM PASEK.
-   Prototypowy `crumbbar` jest pasmem na całą szerokość płótna, z własną dolną
-   krawędzią; tutaj przejęte są WYŁĄCZNIE jego proporcje — wysokość pasma, skala
-   tytułu i akcja po prawej — a nagłówek zostaje w kolumnie czytelnej
-   (`--surface-measure`), którą ma cała powłoka. Pełne pasmo przesunęłoby
-   poziome wyrównanie względem treści na jedenastu powierzchniach i jest ZMIANĄ
-   WIĘKSZĄ, niż ten lot obejmuje.
+/* PASMO `crumbbar` Z PROTOTYPU, TERAZ RÓWNIEŻ JEGO SZEROKOŚĆ (`v3/app.css:282-293`).
+   Do Fazy D stała tu nota mówiąca, że przejęte są WYŁĄCZNIE proporcje pasma,
+   a pełne pasmo jest „zmianą większą, niż ten lot obejmuje". Lot D1 jest tą
+   zmianą, więc nota jest przepisana zamiast zostawiona jako nieprawda o własnym
+   kodzie — komentarz kłamiący o kodzie, który opisuje, jest w tym repozytorium
+   policzoną, powtarzalną wadą.
+
+   CO ROZSTRZYGNĄŁ POMIAR, a nie czyj gust. Rejestr Fazy 4 zeskanował kolumnę
+   x=2600 zrzutu `v5-renewals.png`: stoją na niej DWIE włoskowe kreski, CSS 79
+   i CSS 119, obie ciągnące się od x=481 do x=2879 — od krawędzi bocznego paska
+   do prawej krawędzi okna. Na `app-renewals.png` w tym samym pasie jest DOKŁADNIE
+   JEDNA kreska (CSS 227) i biegnie od x=520 do x=2799, czyli jest wcięta o 40 CSS
+   z obu stron. To samo na Lejku (x=2200: prototyp CSS 79 i 119, aplikacja ani
+   jednej kreski) i na Organizacjach (x=1500). Cztery wpisy rejestru — #9, #11,
+   #16, #22 — mówią przez to jedno zdanie.
+
+   GRANICA, KTÓREJ TA REGUŁA NIE PRZEKRACZA: pasmo idzie na całą szerokość
+   kanwy, ale TREŚĆ pod nim zostaje w kolumnie czytelnej (`--surface-measure`,
+   `.surface-scroll > *` niżej). Sufit czytelności jest osobną regułą i ten lot
+   go nie rusza. Prototyp też trzyma te dwie rzeczy osobno: `.crumbbar` nie ma
+   żadnego `max-width`, a `.record` (`v3/app.css:650`) ma `--surface-measure`.
+
+   JAK PASMO WYCHODZI Z KOLUMNY: ujemny margines poziomy równy rynnie nośnika
+   (`--surface-gutter`) i ta sama rynna z powrotem jako wyściółka. Skutek jest
+   taki, że PUDEŁKO TREŚCI pasma stoi dokładnie tam, gdzie stało — czyli oś
+   pozioma spisu B2 (`koniec_treści = prawa − wyściółka`) mierzy po tej zmianie
+   tę samą krawędź co przed nią, a sześć ekranów oddanych przez lot C2 zostaje
+   `FLUSH_END`. Zmierzone: przed i po, akcja Organizacji kończy się na x=1400.
+
+   `--surface-band-lift` odejmuje wyściółkę GÓRNĄ nośnika, bo prototypowe pasmo
+   siedzi pod chromem okna bez powietrza nad sobą. Obie liczby są nazwane przy
+   nośniku, nie przepisane tutaj: nośnik, który zmieni rynnę, przesuwa pasmo
+   razem ze sobą, zamiast się z nim rozjechać.
 
    `min-height`, a nie `height`, dokładnie jak w prototypie: przy skalowaniu
    tekstu pasmo ma rosnąć, a nie przycinać. */
 .surface-header {
-  max-width: var(--surface-measure, 58rem);
   min-height: var(--header-band-height);
-  margin: 0 auto var(--space-6);
+  margin: calc(-1 * var(--surface-band-lift, 0px))
+    calc(-1 * var(--surface-gutter, 0px)) var(--space-6);
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   /* Było `flex-start` — akcja równała się do GÓRY nagłówka display, czyli do
      niczego, co widać. W rzędzie o wysokości pasma równa się do rzędu tytułu. */
@@ -1832,6 +2415,213 @@ kbd {
 }
 .surface-header > * {
   min-width: 0;
+}
+/* DRUGIE PASMO PROTOTYPU, RAZ, ZAMIAST SIEDMIU KOPII (`v3/app.css:295-301`).
+   Prototyp układa nad płótnem DWA pasma: `crumbbar` z nazwą ekranu i akcją,
+   a pod nim `viewbar` z przełącznikiem układu, filtrem i licznikiem. Oba mają tę
+   samą wysokość (`--header-band-height`), tę samą rynnę i tę samą dolną krawędź
+   — czyli SĄ jednym kształtem o dwóch treściach.
+
+   Ta aplikacja miała ten kształt przepisany w SIEDMIU arkuszach modułowych
+   (`pipeline`, `organizations`, `renewals`, `people`, `tasks`,
+   `project-collection`, `library`) i w każdym inaczej: Odnowienia miały
+   `min-height` i kreskę, Lejek i Organizacje ani jednego z tych dwóch, a rynny
+   były trzy różne. To jest wariant „ręcznej listy obok zamkniętego słownika",
+   nazwanej w tym repozytorium klasy defektu — więc KSZTAŁT stoi tutaj, a moduły
+   zostają przy swojej TREŚCI (odstęp między dziećmi, zawijanie, kolejność).
+
+   TĘ KLASĘ WZIĘŁO PIĘĆ Z SIEDMIU, I DWA ODMÓWIENIA SĄ ZMIERZONE, nie pominięte
+   — bo „kształt jest już raz zapisany" byłoby nieprawdą dla następnego lotu,
+   który tam zajrzy. Wzięły: Lejek, Organizacje, Odnowienia, Ludzie i Zadania —
+   wszystkie rysują pasek widoku jako BEZPOŚREDNIE dziecko `.surface-scroll`,
+   którego wyściółka JEST `--surface-gutter`, więc ujemny margines pada dokładnie
+   na krawędź nośnika. Nie wzięły dwa:
+
+     * `library.module.css` — `LibraryShell` rysuje w `.shell`, siatce BEZ
+       wyściółki, więc rynna 40 px odziedziczona po `.work-surface` wypchnęłaby
+       pasmo 40 px POZA nośnik;
+     * `project-collection.module.css` — jego pasek widoku jest WNUKIEM, wewnątrz
+       `.collection`.
+
+   OBIE ODMOWY SPRAWDZONE POMIAREM W LOCIE D10, i jedna z nich była zapisana
+   ODWROTNIE, niż zachowuje się kod.
+
+     * BIBLIOTEKA: odmowa dotyczy KLASY, a nie UKŁADU, i to rozróżnienie było
+       tu nienazwane. Zmierzone przy 1440 / 760 / 1920: `_header_` i `_viewbar_`
+       są BEZPOŚREDNIMI dziećmi `.shell`, a na całej drodze od nich do
+       `#main-content` nie ma ANI JEDNEGO pudełka przewijania (`.shell` liczy
+       `overflow-y: visible`, przewijają się dopiero pola odczytu w trzecim
+       rzędzie siatki). Oba pasma idą przy tym na pełną szerokość kanwy
+       (220..1440, 52..760, 220..1920). Biblioteka MA więc układ prototypu —
+       doszła do niego siatką zamiast dzieloną klasą — i nie jest zaległością
+       lotu D10 ani żadnego następnego.
+     * KOLEKCJA PROJEKTÓW: odmowa STOI, ale jej powód był napisany W ZŁĄ
+       STRONĘ. Stało tu „ten sam margines PRZEPEŁNIŁBY pudełko węższe od
+       kanwy"; zmierzone przepełnienie wynosi ZERO przy każdej z trzech
+       szerokości, a przy 1920 — czyli tam, gdzie `--surface-measure` naprawdę
+       przycina — pasek ma 1152 px i kończy się na x=1412 w nośniku kończącym
+       się na 1920, czyli jest o **508 px ZA KRÓTKI**, a nie za długi. Lot,
+       który sprawdziłby tę odmowę przy 1440 px, uznałby ją za nieaktualną:
+       tam różnica to same 40 px rynny. Prawdziwy mechanizm jest inny i jest
+       nim rodzic: `.collection` sama liczy `overflow-y: auto`, więc pasek
+       siedzi w CUDZYM pudełku przewijania i wyprowadzenie go wymaga decyzji
+       o tamtym pudełku, a nie o marginesie.
+
+   Nazwa klasy jest GLOBALNA i dokładana obok klasy modułowej, a nie zamiast
+   niej: `class={`view-band ${styles.viewbar}`}`. Dzięki temu spis B1 dalej widzi
+   moduł po jego skrócie treści, a ta reguła nie zależy od kolejności, w jakiej
+   bundler skleja arkusze modułowe z globalnym — dwie reguły o tej samej sile
+   selektora rozstrzygałyby się kolejnością wczytania, czyli szczegółem budowy. */
+.view-band {
+  min-height: var(--header-band-height);
+  margin-inline: calc(-1 * var(--surface-gutter, 0px));
+  padding-inline: var(--surface-gutter, 0px);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* PASMA STOJĄ NA SOBIE, BEZ POWIETRZA MIĘDZY NIMI — prototyp rysuje ich dolne
+   krawędzie na CSS 79 i CSS 119, czyli dokładnie o wysokość pasma od siebie.
+   Dolny margines pasma tytułu jest odstępem od TREŚCI, więc nad paskiem widoku
+   nie ma czego oddzielać; `:has()` zdejmuje go dokładnie tam, gdzie drugie pasmo
+   naprawdę stoi, i nigdzie indziej.
+
+   `--surface-stack-gap` jest DRUGĄ połową tego samego zdania: nośnik ekranu jest
+   kolumną `flex` z własnym `gap`, a `gap` działa MIĘDZY dziećmi niezależnie od
+   marginesów. Ekran, który chce pasm sklejonych, nazywa swój odstęp tą zmienną
+   i pasek widoku go odejmuje. Ekran, który jej nie deklaruje, dostaje 0 i nic
+   się dla niego nie zmienia — więc ta reguła nie sięga po ekrany, których ten
+   lot nie mierzył.
+
+   OBIE REGUŁY SĄ MARTWE NA EKRANACH PRZEPIĘTYCH PRZEZ LOT D10, i to jest
+   napisane tutaj, żeby następny lot nie skasował ich jako zbędnych. Tam, gdzie
+   pasma są rodzeństwem przewijanego pudełka, żadna z tych dwóch nie ma pracy:
+   `--surface-stack-gap` deklaruje NOŚNIK TREŚCI (`.organizations`, `.renewals`),
+   a wyniesione pasma nie są już jego dziećmi, więc nie dziedziczą tej zmiennej
+   i `var(…, 0px)` daje zero; margines dolny pasma tytułu i tak zeruje reguła
+   przepięcia niżej. Konsumentów zostaje OŚMIU — każdy ekran, który dalej rysuje
+   pasmo w środku nośnika — i dla nich obie reguły pracują dokładnie tak jak
+   przedtem. Kasować je będzie wolno wtedy, gdy przepięty będzie ostatni ekran,
+   a nie wcześniej. */
+.surface-header:has(+ .view-band) {
+  margin-block-end: 0;
+}
+.surface-header + .view-band {
+  margin-block-start: calc(-1 * var(--surface-stack-gap, 0px));
+}
+
+/* ── PASMA JAKO RODZEŃSTWO PRZEWIJANEGO PUDEŁKA (Faza D, lot D10) ──────────
+   OTWARTE I SPRAWDZONE PRZY CYTOWANYCH LINIACH: prototyp trzyma `.crumbbar`
+   (`v3/app.css:282-285`), `.viewbar` (`:295-299`) i `.scroller` (`:303`) jako
+   TROJE DZIECI `.canvas` (`:278-281`), która jest kolumną `flex`. Przewija się
+   WYŁĄCZNIE trzecie z nich — `.scroller` niesie `flex: 1; min-height: 0;
+   overflow: auto`, a oba pasma `flex: none`, więc stoją pod chromem okna i nie
+   ruszają się. Nota przy `.surface-scroll` niżej cytowała dotąd `281-293`:
+   zakres urwany z obu stron, bez deklaracji `.canvas` i bez `.scroller`, czyli
+   akurat bez tych dwóch reguł, które dowodzą rodzeństwa. Zakres, który je
+   obejmuje, to `278-303`, i tak brzmiał już `SurfaceTitleBand.tsx:50`.
+
+   U NAS BYŁO ODWROTNIE: pasma były DZIEĆMI przewijanego nośnika, więc jechały
+   z treścią. Ta reguła odwraca to dla ekranu, który sam się zgłosi.
+
+   ZGŁOSZENIE JEST STRUKTURALNE, A NIE LISTĄ NAZW. Warunkiem jest `:has(>
+   .surface-header)`, czyli „pasmo tytułu jest BEZPOŚREDNIM dzieckiem nośnika" —
+   a to jest dokładnie ta zmiana układu, o którą chodzi. Ekran deklaruje ją tym,
+   że ją robi. Alternatywa `[data-surface="…"]` byłaby ręczną listą obok
+   zamkniętego słownika, czyli nazwaną w tym repozytorium klasą defektu (sześć
+   żywych miejsc, trzy trafione w jednej fali) — i rozjechałaby się przy
+   pierwszym ekranie, który zmieni układ bez zmiany identyfikatora.
+
+   SPRAWDZONE, ŻE NIE ŁAPIE NIKOGO PRZYPADKIEM. Wszystkie sześć pozostałych
+   miejsc rysujących `.surface-header` trzyma je o poziom GŁĘBIEJ, więc żadne nie
+   jest bezpośrednim dzieckiem `.work-surface`: Spotkania w `<section
+   class="meeting-surface">` (`MeetingsSurface.tsx:1829`), ekran rekordu projektu
+   w `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:640`), pełny kontekst
+   organizacji w `.surface-scroll.organization-context`
+   (`StrategicDepthSurface.tsx:1752`), historia wrzutek w
+   `.surface-scroll.history-surface` (`CaptureHistoryReading.tsx:199`),
+   Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:963`)
+   i martwy `TasksSurface` w `.surface-scroll` (`Wave2Surfaces.tsx:188`).
+
+   SIŁA SELEKTORA JEST TU CELOWO WYŻSZA, nie przypadkiem. `:has()` wnosi siłę
+   swojego argumentu, więc `.work-surface:has(> .surface-header)` liczy (0,2,0),
+   a z `> .surface-header` — (0,3,0). Reguła `.surface-header + .view-band` wyżej
+   liczy (0,2,0) i zerowanie marginesu MUSI ją pobić; przy remisie
+   rozstrzygałaby kolejność w arkuszu, czyli szczegół budowy. Dlatego oba pasma
+   mają tu osobne selektory zamiast wspólnego `:where(…)`, które wniosłoby zero.
+
+   CZEGO TA REGUŁA NIE ROBI: nie rusza rynny (`--surface-gutter` zostaje ta sama
+   i pasmo bierze ją jako WŁASNĄ wyściółkę zamiast dostawać ujemnym marginesem),
+   nie rusza sufitu czytelnej kolumny i nie dotyka ośmiu ekranów, które dalej
+   rysują pasmo w środku nośnika. */
+.work-surface:has(> .surface-header) {
+  display: flex;
+  flex-direction: column;
+  /* Nośnik przestaje być przewijany — przewija się jego trzecie dziecko. Bez
+     tego strona miałaby DWA pudełka przewijania jedno w drugim. */
+  overflow: hidden;
+}
+.work-surface:has(> .surface-header) > .surface-header,
+.work-surface:has(> .surface-header) > .view-band {
+  /* Ujemne marginesy były mechanizmem WYCHODZENIA z czytelnej kolumny. Pasmo
+     poza nośnikiem treści nie ma z czego wychodzić, a odziedziczony ujemny
+     margines poziomy wypchnąłby je o rynnę POZA kanwę. */
+  margin: 0;
+  padding-inline: var(--surface-gutter, 0px);
+  flex: none;
+}
+.work-surface:has(> .surface-header) > .surface-scroll {
+  flex: 1;
+  /* `min-height: 100%` z `.surface-scroll` rozwiązuje się tu do PEŁNEJ wysokości
+     kolumny, więc pudełko z pasmami nad sobą przepełniłoby nośnik i wypchnęło
+     pasma za jego górną krawędź. `min-height: 0` jest też tym, co pozwala
+     dziecku `flex` skurczyć się poniżej treści, czyli w ogóle mieć własne
+     przewijanie. */
+  min-height: 0;
+  overflow: auto;
+  /* Nie ma nad czym unosić pasma: pasmo stoi wyżej, poza tym pudełkiem. Zerowana
+     jest ZMIENNA, a nie `padding-top`, bo wyściółka jest tu zapisana skrótem
+     `padding` i druga deklaracja rozbiłaby jeden kształt na dwa miejsca. */
+  --surface-band-lift: 0px;
+  scrollbar-color: var(--border-default) transparent;
+}
+/* KOMUNIKAT POWŁOKI I PLAKIETKA WARUNKU SĄ TU TRZECIM I CZWARTYM RODZAJEM
+   DZIECKA, i ta reguła istnieje, bo bez niej się KURCZĄ.
+
+   Oba niosą `margin-inline: auto` obok `max-width` (`.notice` niżej,
+   `.condition-banner` na końcu arkusza) — pod nośnikiem BLOKOWYM znaczy to
+   „wypełnij, przytnij do miary, wyśrodkuj". Pod kolumną `flex` oś liniowa jest
+   osią POPRZECZNĄ, a automatyczny margines w osi poprzecznej WYŁĄCZA rozciąganie
+   i każe pudełku zmierzyć własną treść. Ten sam mechanizm jest w tym arkuszu
+   opisany i zmierzony przy `.surface-scroll > *` — piętnaścioro dzieci narysowanych
+   węziej niż kolumna, w tym tytuł zadania po jednym znaku w wierszu. Lekarstwo
+   jest to samo i celowo nie jest nowe: rozmiar OKREŚLONY, żeby `max-width` miało
+   od czego przycinać.
+
+   ŻADNA BRAMKA TEGO NIE WIDZI: harness nie rysuje ani komunikatu, ani plakietki
+   (`.condition-banner` wisi na `build.channel === "developer-preview"`,
+   `RealApp.tsx:1901`), więc przelot melduje o niej „no stop draws it". Zmierzone
+   sondą lotu przez WSTRZYKNIĘCIE obu węzłów do nośnika, przy 1440 px, z obiema
+   stronami — z tą deklaracją i po jej zdjęciu:
+
+     ekran przepięty (nośnik `flex`):  komunikat 1152 → 131,4 px bez niej,
+                                       plakietka 1152 →  78,0 px bez niej
+     ekran nieprzepięty (nośnik blok): 1152 px OBOJĘTNIE, w obie strony
+
+   Czyli deklaracja jest nośna dokładnie tam, gdzie ma być, i jest no-opem
+   wszędzie indziej. Bez pomiaru drugiej strony byłaby asercją, której nikt nie
+   widział na czerwono.
+
+   CO SIĘ ZMIENIA I NIE DA SIĘ COFNĄĆ TĄ REGUŁĄ: oba stoją teraz POZA pudełkiem
+   przewijania, więc nie odjeżdżają z treścią. Dla komunikatu to jest lepiej.
+   Dla plakietki warunku znaczy to, że jej `position: sticky` nie ma już czego
+   się trzymać — jest przypięta na stałe, co jest MOCNIEJSZE niż przyklejenie,
+   ale to jest inna deklaracja niż ta, którą ktoś napisał. Nazwane tutaj, żeby
+   następny lot nie odkrywał tego pomiarem. */
+.work-surface:has(> .surface-header) > .notice,
+.work-surface:has(> .surface-header) > .condition-banner {
+  inline-size: 100%;
 }
 /* Historia wrzutek jest ODCZYTEM Biblioteki, a nie własnym celem, więc jej
    nagłówek zjeżdża na `h2` pod `h1` powłoki. Wygląd zostaje ten sam: poziom
@@ -1870,8 +2660,7 @@ kbd {
    w Fazie 2 je ujawniło. Reguła celuje więc w KAŻDY akapit nagłówka, a nie
    w ostatnie dziecko: dziesięć ekranów, na których to działało, wygląda
    tak samo, a dwa, na których nie działało, dołączają. */
-.surface-header p:not(.eyebrow),
-.meeting-hero > div:first-child > p:not(.eyebrow) {
+.surface-header p:not(.eyebrow) {
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
@@ -2283,8 +3072,8 @@ kbd {
 /* Hover bierze krawędź akcentu i poświatę (`v3/app.css:815-816`) — dok to
    jedyne wejście do przechwytywania z każdego ekranu, więc „da się to wcisnąć"
    jest tu warte tuszu. Obiekt pod kursorem nie zmienia planu; zmienia go
-   krawędź rzeczy, którą da się wcisnąć. `--accent-glow` dostaje tu drugiego
-   konsumenta. */
+   krawędź rzeczy, którą da się wcisnąć. `--accent-glow` dostaje tu TRZECIEGO
+   konsumenta — stało „drugiego", policzone bez `.workspace-switcher`. */
 .capture-dock:hover {
   color: var(--text-primary);
   border-color: var(--accent-edge);
@@ -2631,8 +3420,45 @@ kbd {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.task-removal-actions .status-danger {
+/* ── WARIANT NISZCZĄCY NALEŻY DO AKCJI, NIE DO POJEMNIKA (Faza C, lot C3) ────
+   Ta reguła stała na `.task-removal-actions .status-danger` i ustawiała SAM
+   `border-color` na przycisku, którego reset ma `border: 0` — czyli deklaracja
+   nie rysowała NICZEGO, a kontrolka za krokiem `confirming` malowała się farbą
+   silnika (`RecordRemovalSection.tsx:84`, `TaskRemovalSection.tsx:60`).
+   Spis B1 zna tę wadę i jej NIE DOSIĘGA: jego spacer nie otwiera ekranu rekordu
+   ani inspektora, więc cisza przyrządu o niej nie była zdaniem o niej.
+
+   MATERIAŁ NIESIE BAZA, TINT NIESIE WARIANT — to jest układ prototypu:
+   `.btn` deklaruje kształt i `border: 1px solid transparent` (`v3/app.css:307`),
+   a `.st-danger` dokłada wyłącznie kolor i barwę krawędzi na hoverze
+   (`v3/screens/settings.css:176-179`). Kontrakt żąda tego samego: „the fill on
+   a destructive action — the reference gives danger `--status-error` as colour
+   and border and never as a solid fill" (`.ui-craft/tokens.md:257`). Dlatego
+   przycisk potwierdzenia dostaje `secondary-button`, a wariant zaczepia się
+   o klasę akcji, nie o nazwę pojemnika.
+
+   CO STARA REGUŁA ROBIŁA NAPRAWDĘ, zmierzone na rodzicu (228d8ad), a nie
+   zgadnięte: selektor potomka dosięgał WSZYSTKICH czterech miejsc, ale malował
+   tylko na dwóch. `CalendarConsentDialog.tsx:113`
+   i `TaskReservationSection.tsx:296` niosły „secondary-button status-danger"
+   od zawsze, a `.secondary-button` deklaruje `border: 1px solid` — więc tam
+   krawędź do pomalowania ISTNIAŁA i deklaracja rysowała. Nie rysowała
+   wyłącznie na gołych `<button class="status-danger">`
+   (`RecordRemovalSection.tsx:84`, `TaskRemovalSection.tsx:60` na rodzicu),
+   bo nad resetem z `border: 0` sam `border-color` nie ma czego pomalować.
+   Ten lot dopisał im `secondary-button` i tym samym ruchem zabrał regule
+   powód, żeby nazywać pojemnik.
+
+   HOVER MUSI BYĆ WYPISANY: `.secondary-button:not(:disabled):hover` ma swoistość
+   (0,3,0) i przebiłby wariant (0,2,0), więc krawędź niszcząca gasłaby dokładnie
+   w chwili, w której kursor na niej stoi. */
+.secondary-button.status-danger {
   border-color: color-mix(in oklch, var(--status-error) 55%, transparent);
+  color: var(--status-error);
+}
+.secondary-button.status-danger:not(:disabled):hover,
+.secondary-button.status-danger:not(:disabled):active {
+  border-color: color-mix(in oklch, var(--status-error) 72%, transparent);
   color: var(--status-error);
 }
 .task-context-dates {
@@ -2690,11 +3516,22 @@ kbd {
   display: grid;
   gap: var(--space-3);
 }
+/* JEDNA OBWÓDKA NA CAŁĄ LISTĘ, KRESKA MIĘDZY WIERSZAMI (`v3/screens/settings.css:
+   109-120` — `.st-list { border: 1px solid var(--border-subtle); border-radius:
+   var(--radius-md); overflow: hidden }`, a `.st-row` niesie WYŁĄCZNIE
+   `border-bottom` i nie ma ani promienia, ani własnego tła).
+
+   `overflow: hidden`, tak jak tam, i to nie jest ozdoba: bez niego tło wiersza
+   pod kursorem i szyna zaznaczenia wychodzą kwadratowym rogiem poza zaokrągloną
+   krawędź plastra. */
 .status-list {
   display: grid;
-  gap: var(--space-1);
+  gap: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   list-style: none;
 }
 /* PIERWSZY KONSUMENT `--row-height` W USTAWIENIACH (2,125 rem).
@@ -2719,10 +3556,17 @@ kbd {
   gap: var(--space-2) var(--space-3);
   min-height: var(--row-height);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  /* WIERSZ PRZESTAJE BYĆ KARTĄ — obwódka, promień i własne jaśniejsze
+     wypełnienie zeszły na LISTĘ (reguła wyżej). Zostaje jedna kreska
+     rozdzielająca, zdejmowana na ostatnim wierszu, dokładnie jak
+     `.st-row` / `.st-row:last-child` (`v3/screens/settings.css:113-118`). */
+  border-bottom: 1px solid var(--border-subtle);
 }
+.status-list li:last-child {
+  border-bottom: 0;
+}
+/* Wyciszenie zarchiwizowanego wiersza zostaje, ale mówi je samo `opacity`
+   i tło ZAPADNIĘTE — token, nie uniesienie, bo wiersz nie jest już kartą. */
 .status-list li.status-archived {
   opacity: 0.72;
   background: var(--surface-sunken);
@@ -2785,7 +3629,6 @@ kbd {
   font-size: var(--text-xs);
 }
 .status-create select {
-  min-height: 1.8rem;
   font-size: var(--text-2xs);
 }
 /* Pola rekordu: typowane wartości workspace w inspektorze — etykieta po
@@ -3654,7 +4497,12 @@ kbd {
   --sidebar-width: var(--sidebar-rail);
 }
 .desktop-shell.rail .sidebar {
-  padding-inline: 0.25rem;
+  /* Rynna kolumny zmienia się razem z trybem, więc zmienia się TA JEDNA liczba
+     — a ujemny margines listy i `left` szyny idą za nią same. Wpisanie tu
+     samego `padding-inline` zostawiłoby szynę odmierzoną do rynny SZEROKIEJ
+     kolumny, czyli 8 px poza krawędzią i w obcięciu. */
+  --nav-gutter: 0.25rem;
+  padding-inline: var(--nav-gutter);
 }
 /* `.brand-row strong` is NOT in this list any more, and the rule that used to
    slide the mark to `left: 1.25rem` in the rail is gone with it: the mark left
@@ -3726,6 +4574,26 @@ kbd {
 .desktop-shell.rail .settings-mode-section {
   display: none;
 }
+/* RAZEM ZE SWOIMI POZYCJAMI, i to jest poprawka regresji zmierzonej w tym
+   samym locie, nie ostrożność. Sekcje są w szynie ukryte (reguła wyżej), więc
+   nagłówek grupy zostawał jako jedyna widoczna treść listy — a jest to zwykły
+   akapit, którego reguła `.nav-item > span { display: none }` nie dosięga.
+   Zmierzone przy 760 px, PRZED tą regułą: etykieta 90,5 px szerokości w szynie
+   szerokiej na 52 px rozpychała listę, a pasmo wyjścia wystawało poza kolumnę
+   o 46,5 px w prawo. Bramka układu tego NIE ZOBACZY — chodzi wyłącznie przy
+   1440 px, a szyna zaczyna się poniżej. Znaleziona osobną sondą.
+
+   `display: none`, a nie samo ukrycie wzrokowe: etykieta jest `aria-hidden`,
+   czyli nie niesie nic czytnikowi ekranu, a grupa, której pozycji nie widać,
+   nie ma czego nazywać. */
+.desktop-shell.rail .settings-mode-group-label {
+  display: none;
+}
+/* Bez własnych pozycji grupa jest pustym pudełkiem, a jej odstęp od sąsiadki
+   zostawiłby w szynie dwie dziury po niczym. */
+.desktop-shell.rail .settings-mode-group + .settings-mode-group {
+  margin-top: 0;
+}
 .desktop-shell.rail .settings-mode-back {
   grid-template-columns: 1fr;
 }
@@ -3740,6 +4608,17 @@ kbd {
 }
 
 @media (max-width: 50rem) {
+  /* WYŚCIÓŁKA BEZ RYNNY, I TO JEST TU BEZPIECZNE — powiedziane wprost, bo
+     przy `.surface-scroll` (`@media (max-width: 56rem)` niżej) ta sama para
+     musi się ruszać RAZEM: pasmo tytułu wychodzi z kolumny czytania ujemnym
+     marginesem równym `--surface-gutter`, więc nośnik, który nadpisze samą
+     wyściółkę, wypycha pasmo poza siebie o różnicę tych dwóch liczb. Tutaj
+     nadpisana jest sama wyściółka i nic z tego nie wynika, bo `.work-surface`
+     NIE NIESIE PASMA: wszystkie piętnaście pasm tej aplikacji rysuje się
+     wewnątrz `.surface-scroll`, `.meeting-surface` albo własnego nagłówka
+     ekranu rekordu (sprawdzone spisem, nie założone). Zapisane, żeby następny
+     lot nie przepisywał tu rynny „dla symetrii" ani nie czytał tego miejsca
+     jako precedensu dla nośnika, który pasmo niesie. */
   .work-surface {
     padding-inline: var(--space-4);
   }
@@ -3752,8 +4631,11 @@ kbd {
   .shell-history-controls {
     display: none;
   }
+  /* KWADRAT, BO WYSOKOŚĆ JEST TU KONTRAKTEM CELU DOTYKU (2,75 rem niżej).
+     Do naprawy po przeglądzie lotu D1 stało tu 2,25 rem obok wysokości 1,75 rem
+     — czyli prostokąt 36 × 28 px na ekranie dotykowym. */
   .surface-header .secondary-button {
-    width: 2.25rem;
+    width: 2.75rem;
     padding: 0;
     font-size: 0;
   }
@@ -3904,7 +4786,12 @@ kbd {
   .task-row.selected {
     outline: 1px solid Highlight;
   }
+  /* `[data-nav-open]` DOŁĄCZA TU, i to jest jedyny sygnał, jaki temu wierszowi
+     w tym trybie zostaje: system nadpisuje i podbarwienie (`--nav-active-bg`),
+     i wypełnienie szyny (`background: var(--accent)`), więc bez tej nazwy cel
+     nadrzędny otwartego rekordu nie mówiłby w wymuszonych kolorach NICZEGO. */
   .nav-item.active,
+  .nav-item[data-nav-open],
   .capture-kind button[aria-pressed="true"] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
@@ -3921,52 +4808,54 @@ kbd {
 
 /* R7 · Meeting and calendar loop · Atlas PAT-26 / OVR-15 / STA-22 */
 .meeting-surface {
+  /* DRUGI NOŚNIK PASMA TYTUŁU, i dlatego deklaruje te same dwie zmienne co
+     `.surface-scroll`: Spotkania nie przewijają się przez `.surface-scroll`,
+     tylko przez własne pudełko, a od Fazy D rysują to samo `.surface-header`.
+     Rynna była tu wcześniej TRZECIĄ wersją tego samego kształtu i miała inne
+     liczby — patrz nota przy `--surface-gutter` w `.work-surface`. */
+  --surface-band-lift: var(--space-8);
   display: grid;
+  /* SIATKA O WYSOKOŚCI 100% ROZCIĄGA SWOJE RZĘDY, i to jest powód, dla którego
+     pasmo tytułu mierzyło tu 70,8 px przy 40 px na dziesięciu innych ekranach.
+     Zmierzone przed tym lotem i po nim — `.meeting-hero` miało DOKŁADNIE tę
+     samą liczbę, więc rozciągnięcie nie przyszło z przepięciem pasma, tylko
+     stało tu od zawsze i było niewidoczne, dopóki nagłówek był trzywierszowy.
+     `start` znaczy „treść płynie od góry", czyli to, co ten ekran i tak robi:
+     przewija się własnym `overflow: auto`. */
+  align-content: start;
   gap: var(--space-6);
   height: 100%;
   overflow: auto;
   max-width: 94rem;
   margin: 0 auto;
-  padding: var(--space-8) clamp(var(--space-4), 3vw, var(--space-10))
-    var(--space-12);
+  padding: var(--surface-band-lift) var(--surface-gutter) var(--space-12);
 }
-.meeting-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-/* TO JEST TYTUŁ EKRANU, tylko pod inną klasą — i pierwsza wersja tej noty
-   twierdziła coś przeciwnego („tytuł rekordu spotkania"), na tej podstawie
-   POWIĘKSZAJĄC go z 31,68 px do 36 px. Obala to `MeetingsSurface.tsx:729-733`:
-   ten `h1` niesie `id="surface-title"` i literał „Meetings", czyli dokładnie
-   etykietę aktywnej zakładki tuż nad sobą. Dubluje tak samo jak jedenaście
-   pozostałych i dostaje to samo lekarstwo co one.
+/* CZTERY REGUŁY `.meeting-hero` SKASOWANE, NIE OSIEROCONE (Faza D, lot D1).
+   Spotkania rysują dziś `SurfaceTitleBand`, czyli `.surface-header` — to samo
+   pasmo co sześć ekranów Fazy C — więc siatka jednokolumnowa, kopia reguły
+   `h1` (rozmiar i waga słowo w słowo takie same jak w `.surface-header h1`),
+   kopia reguły akapitu opisu i wpis w zapytaniu kontenerowym straciły ostatni
+   znacznik, który je wołał.
 
-   Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
-   `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero` — dlatego zła
-   liczba przeszła. Podmiot sondy jest teraz wyprowadzony z `id="surface-title"`,
-   nie z klasy nagłówka; patrz `scripts/verify-renderer-layout.mjs`. */
-.meeting-hero h1 {
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: -0.008em;
-  line-height: var(--leading-snug);
-}
-.meeting-hero > div:first-child > p:last-child {
-  max-width: 48rem;
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: var(--leading-normal);
-}
+   Nota, która tu stała, mówiła rzecz wartą zapamiętania i dlatego zostaje
+   przepisana zamiast usunięta: sonda wierności NIE MIERZYŁA tego tytułu, bo jej
+   podmiotem był selektor `.surface-header h1, h2`, a Spotkania rysowały
+   `.meeting-hero` — i tak przeszła zła liczba (36 px zamiast 31,68 px). Podmiot
+   sondy jest od tamtej poprawki wyprowadzony z `id="surface-title"`, a nie
+   z klasy nagłówka (`scripts/verify-renderer-layout.mjs`), więc ten ekran nie
+   wypada z pomiaru ani przez tę zmianę, ani przez następną. */
+/* JEDEN KONSUMENT, ZMIERZONY PRZED ZMIANĄ: `calendar-capability` pisze
+   wyłącznie `MeetingsSurface.tsx`, więc reguła bazowa schodzi na tę samą
+   drabinę co reszta ekranu (`--radius-md` + `--shadow-sm`) zamiast dostawać
+   nadpis zakresowy. */
 .calendar-capability {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-rest);
+  box-shadow: var(--shadow-sm);
 }
 .calendar-capability strong {
   font-size: var(--text-sm);
@@ -3995,9 +4884,16 @@ kbd {
   color: var(--text-secondary);
   background: var(--status-success-bg);
 }
-.meeting-lanes {
+/* CIAŁO EKRANU SPOTKAŃ — JEDNA KOLUMNA, DWIE SEKCJE JEDNA POD DRUGĄ.
+   Wpis #63 rejestru. Nazwa zmieniona z `.meeting-lanes`, bo „pasy" nazywały
+   dwa pasy, których już nie ma — a klasa mówiąca o nieistniejącym układzie to
+   ten sam dług, co komentarz cytujący to, czego nie robi. Prototyp:
+   `v3/screens/meetings.css:11` (`.mt { max-width: 74rem; padding:
+   var(--space-6) }` — jedna kolumna) i `v3/screens/meetings.js:430-451`
+   (dwie `<section class="mt-sec">` w pionie, „Coming up" pierwsza). */
+.meeting-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
   align-items: start;
 }
@@ -4012,7 +4908,16 @@ kbd {
   padding: var(--space-5);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--surface-sunken);
+  /* WPIS #64, DRUGA POŁOWA — TAFLA INTEGRACJI PRZESTAJE BYĆ WPUSZCZONA.
+     Dopóki siedziała WEWNĄTRZ podniesionej karty „Jamie results", wpuszczenie
+     dawało jeden stopień w dół od tafli nad nią. Po rekompozycji jej sekcja
+     jest przezroczysta, więc `--surface-sunken` leżałby WPROST NA KANWIE —
+     a to jest dokładnie odwrócenie, które wpis nazywa.
+     I jest drugi powód, mocniejszy od geometrii: prototyp wydaje wpuszczenie
+     na znaczenie „nic tu nie da się zmienić" (`v3/screens/meetings.css:6-9`),
+     a to jest FORMULARZ, w który wpisuje się klucz. */
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
 }
 @container (max-width: 46rem) {
   .meeting-integration {
@@ -4092,75 +4997,132 @@ kbd {
 .meeting-integration-actions .quiet-button {
   min-height: 2.75rem;
 }
+/* SEKCJA JEST PRZEZROCZYSTA, KARTĄ JEST LISTA W ŚRODKU — wpisy #64 i #65
+   naraz. Farba, którą nosiła `.meeting-completed`, robiła trzy rzeczy jednym
+   pudełkiem: trzymała nagłówek w środku (#65), stała jako przeciwwaga
+   wpuszczonej szyny (#64) i zabierała szerokość, przez którą nadchodzące
+   zeszły do szyny (#63). Zdjęta z sekcji, założona na listę — prototyp:
+   `v3/screens/meetings.css:13-14` (`.mt-sec` niesie SAM margines) wobec
+   `:40-43` (`.mt-list` niesie obwódkę, promień, tło i cień). */
 .meeting-upcoming,
 .meeting-completed {
   display: grid;
   gap: var(--space-3);
   min-width: 0;
 }
-.meeting-completed {
-  padding: var(--space-5);
-  border: 1px solid var(--panel-reading-border);
-  border-radius: var(--radius-xl);
-  background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-raised);
-}
-.meeting-context-rail {
-  display: grid;
-  gap: var(--space-5);
-  min-width: 0;
-  padding: var(--space-5);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
-  box-shadow: inset 0 1px 0 var(--border-subtle);
-}
-.meeting-context-rail > header {
-  display: grid;
-  gap: var(--space-1);
-}
-.meeting-context-rail > header p {
-  margin: 0;
-}
-.meeting-context-rail > header h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-}
-.meeting-upcoming > header,
-.meeting-completed > header {
+/* NAGŁÓWEK SEKCJI STOI NA KANWIE — wpis #65. Bez wypełnienia i BEZ KRESKI
+   POD SPODEM: kreska, którą miał, była kreską działową karty, z której ten
+   nagłówek właśnie wyszedł (prototyp mierzy tu 0 px). Prawy koniec dosuwa
+   `margin-left: auto` na jedynym dalszym dziecku — plakietce albo wyjściu.
+   Prototyp: `v3/screens/meetings.css:15-38`. Ten sam kształt, który Dzisiaj
+   wozi od wpisu #2 (`today.module.css` — `.sectionHead`, też `<div>`). */
+.meeting-sec-head {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+  gap: var(--space-3);
 }
-.meeting-upcoming > header h2,
-.meeting-upcoming > header h3,
-.meeting-completed > header h2 {
+.meeting-sec-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.012em;
 }
-.meeting-upcoming > header span,
-.meeting-completed > header span {
+.meeting-sec-count {
   color: var(--text-quaternary);
   font-size: var(--text-xs);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.meeting-sec-more {
+  margin-left: auto;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transition: color var(--duration-fast);
+}
+.meeting-sec-more:hover {
+  color: var(--accent);
+}
+.meeting-sec-lock {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+/* WYMAGANE, NIE OZDOBNE: globalna reguła `svg { width: 1rem; height: 1rem }`
+   postawiłaby glif 16 px w plakietce składanej stopniem 11 px. Prototyp
+   podaje tę samą liczbę wprost (`v3/screens/meetings.css:38`). */
+.meeting-sec-lock svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+/* KARTA NADCHODZĄCYCH. `overflow: hidden` przycina wpuszczone wypełnienie
+   wierszy do zaokrąglonych rogów — wiersze są tu `<article>`, a jedyna
+   kontrolka w środku jest odsunięta od krawędzi wyściółką wiersza, więc
+   pierścień ogniska nie stoi na tej krawędzi. Lista wyników NIE dostaje tej
+   deklaracji i powód stoi przy niej. */
+.meeting-upcoming-list {
+  display: grid;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+/* WIERSZ WPUSZCZONY W JAŚNIEJSZĄ KARTĘ — I TO JEST CEL, NIE WADA.
+   Prototyp mówi to własnym arkuszem (`v3/screens/meetings.css:6-9, 52-62`):
+   nadchodzące leżą pod planem treści, bo nie da się w nich nic zmienić.
+   Odwróceniem, które wpis #64 nazywa, było `--surface-sunken` położony
+   WPROST NA KANWIE — czyli szyna, nie ten wiersz.
+   WYŚCIÓŁKA JEST TU WŁASNA: wiersz brał ją dotąd z karty, którą sekcja
+   przestała być.
+
+   TRZY ŚCIEŻKI, BO WIERSZ PRZESTAŁ MIESZKAĆ W SZYNIE. Jedna kolumna była
+   geometrią pudełka szerokiego na 18-22 rem i nigdzie indziej nie była
+   wystawiona na próbę. Przeniesienie wiersza na pełną szerokość bez
+   przeliczenia jego środka jest dokładnie tym półstanem, przed którym
+   ostrzega rejestr („każdy z tych trzech osobno zostawia ekran gorszym”):
+   godzina, treść i akcja rozjeżdżały się wtedy w pionie przez całe 1136 px.
+   Prototyp trzyma tu `7.5rem minmax(0, 1fr) auto` (`v3/screens/
+   meetings.css:54-55`, `.mt-up`) i nasze TRZY dzieci wiersza — `.meeting-time`,
+   `.meeting-event-body`, `.meeting-block-action` — siadają na te ścieżki
+   jeden do jednego. Zapytanie 47,5 rem niżej składa to z powrotem do jednej
+   kolumny. */
 .meeting-event {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: start;
-  padding: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
 }
+.meeting-event:last-child {
+  border-bottom: 0;
+}
+/* KIEDY, ZŁOŻONE W KOLUMNĘ — ścieżka ma 7,5 rem, a „Wed 09:00” obok „45 min”
+   w jednym wierszu zawijało się w niej na dwa wiersze o nierównej linii bazowej.
+   Prototypowe `.mt-up-when` (`v3/screens/meetings.css:70-73`) jest kolumną
+   z tego samego powodu. Zapytanie 47,5 rem przywraca układ poziomy, bo tam
+   ścieżka jest znowu pełną szerokością wiersza. */
 .meeting-time {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-top: 0.0625rem;
 }
 .meeting-time strong {
   font-size: var(--text-sm);
@@ -4178,8 +5140,11 @@ kbd {
   gap: var(--space-3);
   min-width: 0;
 }
-.meeting-event-body h3,
-.meeting-event-body h4 {
+/* JEDEN SELEKTOR, BO JEST JEDEN NAGŁÓWEK. Para `h3, h4` niosła oba poziomy
+   przez czas, w którym tytuł wydarzenia zjeżdżał z jednego na drugi; dziś
+   `h4` w tym pudełku nie rysuje NIC, a martwe ramię selektora wygląda przy
+   następnym czytaniu jak deklaracja, że oba poziomy są tu dozwolone. */
+.meeting-event-body h3 {
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -4217,6 +5182,33 @@ kbd {
   color: var(--text-quaternary);
   border-style: dashed;
 }
+/* ŁĄCZNIK O STAŁEJ DŁUGOŚCI — TYLKO W TYM WIERSZU, i to jest naprawa regresji,
+   którą ten lot sam wprowadził. Reguła bazowa wyżej daje łącznikowi `flex:
+   1 1 1.5rem`, czyli udział w CAŁEJ wolnej szerokości; do tej pory nigdy tego
+   nie robiła w wierszu spotkania, bo szyna nadpisywała cały motyw na pionowy
+   — własną, skasowaną razem z nią regułą nad `.evidence-thread`, w której
+   kreska miała 1×8 px. Po skasowaniu szyny dwie kreski zaczęły wchłaniać całą
+   nadwyżkę wiersza — zmierzone w oknie 1675 px: ~700 px na kreskę, czyli
+   łańcuch pochodzenia czytany jako dwie długie linie z trzema plakietkami na
+   końcach. Reguła bazowa ZOSTAJE NIETKNIĘTA, bo dzieli ją onboarding
+   (`OnboardingFlow.tsx:126-133`), gdzie rozciąganie jest zamierzone; ten
+   nadpis jest wąski jak wiersz, którego dotyczy. */
+.meeting-event .evidence-thread i {
+  flex: 0 0 1.5rem;
+}
+/* PARY „ETYKIETA — WARTOŚĆ” STOJĄ W DWÓCH ŚCIEŻKACH, nie jedna pod drugą.
+   Prototypowe `.mt-prep` jest kolumną pozycji (`v3/screens/meetings.css:107`),
+   ale każda POZYCJA jest siatką z osobną ścieżką klucza
+   (`meetings.css:108-112`, `13rem minmax(0, 1fr) auto`). Stos etykieta-nad-
+   wartością był drugą połową geometrii szyny: w wierszu na 1136 px zostawiał
+   „Orientation” samotnie w linii szerokiej na całą treść. Pojemnik zostaje
+   jedną kolumną, bo to jest `.mt-prep`.
+   ŚCIEŻKI SĄ DWIE, NIE TRZY, I TO JEST ADAPTACJA, NIE PRZEOCZENIE: trzecia
+   ścieżka prototypu (`auto`) niesie u niego znacznik na końcu pozycji, a nasza
+   para ma dokładnie dwoje dzieci — `<strong>` i `<span>`. Pusta ścieżka
+   zajmowałaby zero pikseli i nie zmieniała nic poza tym, że reguła obiecywałaby
+   miejsce, którego nikt nie zajmuje. Jedyne miejsce renderu: `MeetingsSurface
+   .tsx:934`, czyli wnętrze wiersza nadchodzących. */
 .meeting-brief {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -4224,7 +5216,9 @@ kbd {
 }
 .meeting-brief > div {
   display: grid;
-  gap: var(--space-1);
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
 }
 .meeting-brief strong {
   color: var(--text-tertiary);
@@ -4236,66 +5230,71 @@ kbd {
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
 }
+/* ZMIERZONE W PRZEGLĄDARCE, NIE WYWNIOSKOWANE Z DIFFA. Szyna nadpisywała tę
+   kontrolkę `justify-self: stretch`, a plan lotu D7 mówił, że skasowanie
+   nadpisu wystarczy, bo reguła bazowa jest poprawna na pełnej szerokości. NIE
+   BYŁA: `.meeting-event` jest siatką, a domyślne `justify-items: stretch`
+   rozciąga element siatki tak samo jak skasowany nadpis. Zmierzone po
+   rekompozycji w oknie 1675 px: przycisk 1470 px szerokości. Reguła bazowa
+   nigdy nie była wystawiona na próbę, bo ten wiersz istniał WYŁĄCZNIE w szynie.
+   POWÓD PRZEPISANY PRZY ODBIORZE, BO POPRZEDNI PRZESTAŁ BYĆ PRAWDĄ, I DRUGI
+   RAZ PO POMIARZE. Powoływał się na „jednokolumnowy wiersz, w którym akcja
+   stoi POD treścią”, a wiersz ma odtąd trzy ścieżki i akcja stoi OBOK niej,
+   w trzeciej. Powoływał się też na zapytanie 47,5 rem jako na miejsce, gdzie
+   ta deklaracja pracuje — nie pracuje tam: przycisk dostaje w nim własne
+   `width: 100%` niżej i jest to zamierzone, bo tam wiersz jest węższy od
+   napisu. Zmierzone po rekompozycji w oknie 1440 px: ścieżka trzecia
+   123,047 px przy przycisku 123 px, czyli tę wadę naprawia LICZBA ŚCIEŻEK,
+   a nie ta linijka. Zostaje jako pas bezpieczeństwa nad `justify-items:
+   stretch`, które jest wartością POCZĄTKOWĄ siatki i wraca samo, gdyby wiersz
+   kiedykolwiek stracił trzecią ścieżkę — czyli dokładnie w tej postaci, w
+   której zmierzono 1470 px. */
 .meeting-block-action {
+  justify-self: start;
   min-height: 2.75rem;
   white-space: nowrap;
 }
+/* CZWARTE DZIECKO SIATKI, WSTAWIONE Z RĘKI. To zdanie rysuje się dokładnie
+   wtedy, gdy przycisk obok jest wyłączony, a w siatce o trzech ścieżkach
+   auto-umieszczenie posadziłoby je w PIERWSZEJ kolumnie następnego wiersza —
+   czyli pod godziną, z dala od kontrolki, którą tłumaczy. `2 / -1` stawia je
+   pod treścią i akcją naraz. Selektor jest zawężony do wiersza spotkania, bo
+   wspólną deklarację wyglądu (niżej, razem z `.capture-undo-unavailable`)
+   dzieli z kontrolką, która w żadnej siatce nie siedzi. */
+.meeting-event > .meeting-block-unavailable {
+  grid-column: 2 / -1;
+}
+/* STAN PUSTY PRZESTAJE BYĆ WPUSZCZONY — druga połowa wpisu #64. Sekcje są
+   przezroczyste, więc ten kafel leży teraz WPROST NA KANWIE, a `--surface-
+   sunken` na kanwie jest właśnie tym odwróceniem, które wpis nazywa.
+   Prototypowe `.mt-none` (`v3/screens/meetings.css:45-49`) nie ma wypełnienia
+   ŻADNEGO: sama kreskowana obwódka, `--radius-md`, `--space-4`.
+   NADPISY SZYNY SĄ TU WŁOŻONE W BAZĘ, NIE COFNIĘTE. Bez nich stan pusty
+   wróciłby do `min-height: 16rem` i `--space-8` — a to jest dokładnie ten
+   jeden stan, który fikstura bramki układu naprawdę rysuje. */
 .meeting-empty {
   display: grid;
   justify-items: start;
   gap: var(--space-2);
-  min-height: 16rem;
-  align-content: center;
-  padding: var(--space-8);
-  border: 1px dashed var(--border-default);
-  border-radius: var(--radius-xl);
-  background: var(--surface-sunken);
-}
-.meeting-empty--compact {
-  min-height: 12rem;
-  padding: var(--space-6);
-}
-.meeting-context-rail .calendar-capability {
-  padding: var(--space-4);
-  background: var(--panel-reading-bg);
-}
-.meeting-context-rail .meeting-empty {
   min-height: 0;
-  padding: var(--space-5) var(--space-4);
-  border-radius: var(--radius-lg);
-}
-.meeting-context-rail .meeting-empty svg {
-  width: 2rem;
-}
-.meeting-context-rail .meeting-empty h4 {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-.meeting-context-rail .evidence-thread {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: var(--space-1);
-  overflow: visible;
-}
-.meeting-context-rail .evidence-thread i {
-  width: 1px;
-  min-width: 1px;
-  height: var(--space-2);
-  margin-left: var(--space-3);
-}
-.meeting-context-rail .evidence-node {
-  white-space: normal;
-}
-.meeting-context-rail .meeting-block-action {
-  justify-self: stretch;
+  align-content: center;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: none;
 }
 .meeting-empty svg {
-  width: 2.5rem;
+  width: 2rem;
   fill: none;
   stroke: var(--text-quaternary);
   stroke-width: 1.25;
 }
+/* OBA STANY PUSTE TEGO EKRANU SĄ DZIŚ BLIŹNIAKAMI I DOPIERO TERAZ TAK
+   WYGLĄDAJĄ. Nadchodzące niosły `h4` przy `--text-sm`, odbyte `h3` przy
+   `--text-md` — ta różnica brała się z poziomu nagłówka, nie z zamiaru, i
+   odeszła razem z nim. KONSEKWENCJA DO ZOBACZENIA NA OCZY: nadpis „No events
+   visible" jest o stopień większy niż był, i NIC TEGO NIE MIERZY — fikstura
+   bramki układu rysuje ramię z wierszami, nie to. */
 .meeting-empty h3 {
   margin: var(--space-2) 0 0;
   font-size: var(--text-md);
@@ -4311,6 +5310,18 @@ kbd {
 .meeting-results-browser {
   min-width: 0;
 }
+/* KARTA WYNIKÓW — wpis #64. Plan treści, nie plan wpuszczony: to na nich się
+   pracuje (`v3/screens/meetings.css:6-9`, `:40-43` — `.mt-list { background:
+   var(--surface-content) }`). Chrom, który stał na sekcji, siedzi tutaj.
+
+   BEZ `overflow: hidden`, W ODRÓŻNIENIU OD KARTY NADCHODZĄCYCH, I TO JEST
+   POMIAR, NIE NIEDOPATRZENIE. Wiersz tej listy jest `<button>` na całą
+   szerokość karty, a jego ognisko rysuje `--focus-ring` — LISTĘ CIENI
+   ZEWNĘTRZNYCH (`tokens.css` — `0 0 0 0.0625rem var(--accent)` i dwa dalsze).
+   Przycięcie na przodku wycięłoby pierścień pierwszego i ostatniego wiersza
+   przy krawędzi karty. Rogi domykają zamiast tego same wiersze skrajne, niżej.
+   Precedens tej klasy wady stoi w break-teście 9 tego repozytorium: literał
+   `box-shadow` zabrał akcji głównej pierścień ogniska, a bramka była zielona. */
 .meeting-result-list {
   display: grid;
   align-content: start;
@@ -4318,11 +5329,22 @@ kbd {
   padding: 0;
   list-style: none;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--shadow-sm);
 }
 .meeting-result-list > li:not(:last-child) {
   border-bottom: 1px solid var(--border-subtle);
+}
+/* Wypełnienie zaznaczonego i naciśniętego wiersza kończy się na promieniu
+   karty zamiast wystawać za niego kwadratowym rogiem. */
+.meeting-result-list > li:first-child .meeting-result-row {
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
+}
+.meeting-result-list > li:last-child .meeting-result-row {
+  border-end-start-radius: var(--radius-md);
+  border-end-end-radius: var(--radius-md);
 }
 /* Long Jamie histories: rows outside the viewport skip layout and paint. */
 .meeting-result-list > li {
@@ -4707,12 +5729,13 @@ kbd {
   background: var(--status-warning-bg);
   color: var(--text-secondary);
 }
+/* Szkielet zapowiada UKŁAD, KTÓRY PRZYJEDZIE: jedna kolumna, dwie sekcje. */
 .meeting-skeleton {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 .meeting-skeleton div {
   min-height: 12rem;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-raised);
 }
 .meeting-consent-backdrop {
@@ -4787,16 +5810,8 @@ kbd {
 }
 
 @container (max-width: 68rem) {
-  .meeting-lanes {
-    grid-template-columns: 1fr;
-  }
-  .meeting-context-rail {
-    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.7fr);
-    align-items: start;
-  }
-  .meeting-context-rail > header {
-    grid-column: 1 / -1;
-  }
+  /* Trzy reguły szyny zniknęły stąd razem z nią. Ciało ekranu jest
+     jednokolumnowe przy KAŻDEJ szerokości, więc nie ma czego zwijać. */
   .meeting-result-row {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto auto;
@@ -4820,23 +5835,16 @@ kbd {
   }
 }
 @container (max-width: 47.5rem) {
+  /* RYNNA, NIE WYŚCIÓŁKA: pasmo tytułu wychodzi z tej powierzchni na pełną
+     szerokość ujemnym marginesem równym `--surface-gutter`, więc zwężenie
+     wyściółki przez `padding-inline` zostawiłoby pasmo wysunięte poza kanwę
+     o różnicę tych dwóch liczb. Nadpisujemy więc RYNNĘ i pozwalamy, żeby
+     wyściółka i margines pasma zmieniły się razem. */
   .meeting-surface {
-    padding-inline: var(--space-4);
+    --surface-gutter: var(--space-4);
   }
-  .meeting-hero {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-  .meeting-completed,
-  .meeting-context-rail {
-    padding: var(--space-4);
-  }
-  .meeting-context-rail {
-    grid-template-columns: 1fr;
-  }
-  .meeting-context-rail > header {
-    grid-column: auto;
-  }
+  /* Wyściółka sekcji zniknęła stąd, bo zniknęła z sekcji: karta ma dziś
+     wyściółkę na wierszu, a nie na pudełku wokół nagłówka. */
   .meeting-integration--connected {
     align-items: stretch;
   }
@@ -4856,7 +5864,7 @@ kbd {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .meeting-upcoming > header {
+  .meeting-sec-head {
     align-items: flex-start;
     flex-wrap: wrap;
     gap: var(--space-2);
@@ -4889,14 +5897,24 @@ kbd {
     grid-template-columns: 1fr;
     gap: var(--space-3);
   }
+  /* POZIOMO, BO ŚCIEŻKA JEST TU CAŁYM WIERSZEM. Ta reguła deklarowała dotąd
+     `grid-template-columns` na pudełku, które jest `display: flex` — czyli
+     NIC, przez cały czas swojego istnienia. Kolumna 7,5 rem z bazy nie ma tu
+     sensu, więc składamy „kiedy” z powrotem w jedną linię. */
   .meeting-time {
-    grid-template-columns: auto 1fr;
+    flex-direction: row;
     align-items: baseline;
     gap: var(--space-2);
+    padding-top: 0;
   }
-  .meeting-block-action {
-    justify-self: start;
+  /* `2 / -1` z bazy w siatce o JEDNEJ ścieżce daje linię startu równą linii
+     końca, a to według specyfikacji zamienia się w `span 1` OD LINII 2 — czyli
+     w kolumnę niejawną dopisaną z prawej. Wąski tryb dostaje więc własne
+     `1 / -1`, zamiast dziedziczyć wartość, która tu znaczy co innego. */
+  .meeting-event > .meeting-block-unavailable {
+    grid-column: 1 / -1;
   }
+  .meeting-brief > div,
   .meeting-brief {
     grid-template-columns: 1fr;
   }
@@ -4964,6 +5982,7 @@ kbd {
   .calendar-capability,
   .meeting-integration,
   .meeting-empty,
+  .meeting-upcoming-list,
   .meeting-result-list,
   .meeting-result-detail,
   .meeting-result-transcript,
@@ -4999,9 +6018,23 @@ kbd {
   background: transparent;
 }
 .surface-scroll {
+  /* WYSOKOŚĆ, KTÓRĄ PASMO TYTUŁU ODEJMUJE, ŻEBY USIĄŚĆ NA GÓRNEJ KRAWĘDZI
+     KANWY. Prototyp stawia pasmo bezpośrednio pod chromem okna, bez ani jednego
+     piksela powietrza nad nim (`v3/app.css:278-303` — `.crumbbar` i `.viewbar`
+     są RODZEŃSTWEM `.scroller`, nie jego dziećmi; poprzedni cytat `281-293` nie
+     obejmował ani `.canvas`, ani `.scroller`, czyli dwóch reguł, na których to
+     zdanie stoi). NA OŚMIU EKRANACH pasmo jest jeszcze dzieckiem przewijanego
+     nośnika, więc jedyne, co je z tamtej krawędzi spycha, to wyściółka górna
+     TEGO nośnika — a skoro ma ją odjąć, musi ją znać z nazwy, nie
+     z powtórzonego literału.
+
+     DWA EKRANY JUŻ TAK NIE MAJĄ. Lot D10 przepiął Organizacje i Odnowienia na
+     układ prototypu; tam pasma są rodzeństwem tego pudełka, a ta zmienna jest
+     zerowana przy `.work-surface:has(> .surface-header) > .surface-scroll`
+     wyżej. Ta reguła zostaje, bo zostaje jej ośmiu konsumentów. */
+  --surface-band-lift: var(--space-6);
   min-height: 100%;
-  padding: var(--space-6) clamp(var(--space-5), 4vw, var(--space-10))
-    var(--space-10);
+  padding: var(--surface-band-lift) var(--surface-gutter) var(--space-10);
 }
 /* A READING COLUMN OF AT MOST `--surface-measure`, CENTRED. That is what these
    three declarations say together, and `inline-size: 100%` is the one that makes
@@ -5041,13 +6074,56 @@ kbd {
 
    `align-self: stretch` is the fix a reasonable person tries first and it does
    NOTHING: auto margins in the cross axis beat `align-self`. Measured, not
-   reasoned. `margin-inline: 0` also produces the right width, by switching off
-   the centring these surfaces were designed around — which is why the definite
-   size is the remedy and not the removal. */
-.surface-scroll > * {
+   reasoned. Dropping the auto margin outright also produces the right width, by
+   switching off the shrink-to-fit these surfaces are exposed to — which is why
+   the definite size is the remedy and not the removal. */
+/* DWA WYJĄTKI OD TEJ REGUŁY SĄ PASMAMI, i to jest cała treść dopisku Fazy D.
+   Ta reguła mówi „kolumna czytelna"; pasmo tytułu i pasek widoku mówią coś
+   innego — „cała szerokość kanwy, z własną dolną krawędzią" — i mówią to
+   trzema deklaracjami, z których każdą ta reguła by nadpisała, bo stoi
+   w arkuszu NIŻEJ. Wyjątek zapisany tutaj jest jedyną wersją, przy której
+   geometria pasma zostaje w JEDNEJ regule; alternatywa — dopisać pasmu drugą,
+   silniejszą regułę w tym miejscu — rozbiłaby jeden kształt na dwa odległe
+   miejsca w arkuszu, czyli zrobiłaby dokładnie to, co ta baza kodu nazywa
+   dryfem przepisanego kształtu.
+
+   WYJĄTEK SIEDZI W `:where()`, ŻEBY NIE RUSZYŁ SIŁY SELEKTORA. `*:not(a):not(b)`
+   sumuje siłę argumentów i podnosi tę regułę z (0,1,0) na (0,3,0) — a przy
+   (0,1,0) stoją CZTERY reguły modułowe celujące w bezpośrednie dzieci tych
+   samych nośników i deklarujące tę samą właściwość (`pipeline.module.css`
+   `.create`, `.dealPanel`, `.emptyState`, `organizations.module.css` `.create`,
+   wszystkie `margin-inline: var(--space-4)`). Podniesiona siła rozstrzygnęłaby
+   ten remis CICHO, na korzyść tej reguły, czyli zmieniłaby wygląd dwóch ekranów
+   albo uciszyła cztery martwe deklaracje — i ani jednego z tych dwóch zdań nie
+   umie dziś powiedzieć żaden przyrząd, bo ani jedna para nie czyta tych
+   elementów. `:where()` wnosi siłę ZERO, więc remis zostaje tam, gdzie był,
+   a wyjątek dla pasm nie płaci za siebie cudzą kaskadą.
+
+   WOLNA PRZESTRZEŃ IDZIE NA KONIEC, NIE NA OBIE STRONY (naprawa po przeglądzie
+   lotu D1). Dopóki pasmo samo siedziało w tej kolumnie, wyśrodkowanie treści
+   i wyśrodkowanie pasma dawały JEDNĄ lewą krawędź. Lot D1 wypuścił pasmo na
+   całą kanwę i zostawił `margin-inline: auto` pod nim, czyli rozjechał te dwie
+   krawędzie o `(szerokość nośnika − 72rem) / 2` — zero, dopóki okno ma nie
+   więcej niż 1452 px (a bramka mierzy najszerzej 1440), i 234 px przy oknie
+   1920 px. Prototyp rozstrzyga to jednoznacznie: sufit czytelności ma tam
+   `.record` (`v3/app.css:650`), `.mt` (`screens/meetings.css:11`), `.ib`
+   (`screens/inbox.css:8`) i `.cal-screen` (`screens/calendar.css:17`), a ŻADEN
+   z nich nie centruje — jedyne `margin: 0 auto` w całym prototypie stoi na
+   `.empty-state` (`v3/app.css:1068`).
+   `0 auto`, A NIE `0`: margines automatyczny po stronie końca zostaje, bo to
+   ON jest mechanizmem opisanym w akapicie wyżej i w czterech arkuszach
+   modułowych — zdjęcie go w całości zrobiłoby z `inline-size: 100%` deklarację
+   bez powodu, którą następny lot skasuje jako zbędną. */
+/* WYJĄTEK NA PASMA JEST MARTWY NA EKRANACH PRZEPIĘTYCH PRZEZ LOT D10 — nie
+   dlatego, że przestał obowiązywać, tylko dlatego, że nie ma tam czego wyjmować:
+   ani jedno pasmo nie jest już dzieckiem `.surface-scroll`. Reguła ZOSTAJE
+   w całości, bo na ośmiu pozostałych ekranach oba pasma dalej są jej dziećmi
+   i bez wyjątku wpadłyby z powrotem do kolumny czytelnej. Kasowanie wyjątku
+   przed przepięciem ostatniego ekranu cofnęłoby wpis #9 rejestru. */
+.surface-scroll > *:where(:not(.surface-header, .view-band)) {
   inline-size: 100%;
   max-width: var(--surface-measure, 58rem);
-  margin-inline: auto;
+  margin-inline: 0 auto;
 }
 .wave2-header {
   margin-bottom: var(--space-6);
@@ -5122,9 +6198,15 @@ kbd {
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-out);
 }
+/* `[data-nav-open]` DOŁĄCZA TU, bo prototyp paruje skrót ze stanem bieżącym,
+   nie z deklaracją: `v3/app.css:233` odsłania `.kbd` przy `:hover` I przy
+   `[aria-current="page"]`, czyli na KAŻDYM wierszu oznaczonym jako bieżący.
+   Cel nadrzędny otwartego rekordu jest takim wierszem — nie bierze tylko
+   `aria-current`, i to rozstrzygnięcie dotyczy czytnika ekranu, nie skrótu. */
 .nav-item:hover kbd,
 .nav-item:focus-visible kbd,
-.nav-item[aria-current="page"] kbd {
+.nav-item[aria-current="page"] kbd,
+.nav-item[data-nav-open] kbd {
   opacity: 1;
 }
 
@@ -6426,10 +7508,31 @@ kbd {
 .document-presence.migration_failed > span {
   background: var(--status-error);
 }
+/* FAZA D, LOT D3, WPIS #37 — AKCJE CZYTELNI STOJĄ W JEDNYM RZĘDZIE, NIE
+   W PIONOWEJ KOLUMNIE. Prototyp: `.kn-actions`
+   (`v3/screens/knowledge.css:253`) — `display: flex; align-items: center;
+   flex-wrap: wrap; gap: var(--space-3)`, a stojąca w nim pigułka to `.kn-act`
+   (`:254-264`) o wysokości 1,75 rem. Zmierzone przed zmianą przy 1440 px: ta
+   siatka miała 187 px wysokości, bo stan zapisu, „Rename", „Export to Markdown"
+   i pasek narzędzi stały jedno POD drugim; prototypowy rząd ma 28 px.
+
+   CZEGO TA REGUŁA NIE ROZSTRZYGA, BO REJESTR SAM SIĘ WSTRZYMAŁ: pasek
+   formatowania (B / I / H2 / Code / Link). Prototyp nie ma paska edycji
+   w ogóle, więc nie ma czego z czym porównać — wpis mówi to wprost i ocenia
+   WYŁĄCZNIE układ. Pasek zostaje więc członkiem tego rzędu i zawija się razem
+   z nim.
+
+   `flex-wrap: wrap` JEST TU WARUNKIEM, NIE OZDOBĄ: cztery obiekty w jednym
+   rzędzie nie mieszczą się w kolumnie czytania przy 200% tekstu, a rząd, który
+   nie umie się złamać, wypycha czytelnię w bok — dokładnie ta klasa wady, na
+   którą ten arkusz nosi już pięć deklaracji. */
 .document-editor-actions {
-  display: grid;
-  justify-items: end;
-  gap: var(--space-2);
+  display: flex;
+  flex: 1 1 28rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 .document-toolbar {
   display: flex;
@@ -6762,22 +7865,6 @@ kbd {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
-.knowledge-create-bar {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.knowledge-create-bar .inline-popover-trigger {
-  min-width: 0;
-  min-height: 2.25rem;
-  justify-content: center;
-  overflow: hidden;
-  padding-inline: var(--space-2);
-  text-overflow: ellipsis;
-  width: 100%;
-}
 .inline-popover .knowledge-create-form {
   min-width: min(20rem, calc(100vw - 3rem));
   padding: 0;
@@ -6909,6 +7996,56 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* FAZA D, LOT D3, WPIS #35 — REFERENCJA WIERSZA DOSTAJE PLAKIETKĘ Z GLIFEM.
+   Prototyp: `.kn-row-in` (`v3/screens/knowledge.css:182-189`) — obwódka
+   włoskowa, `--radius-full`, sufit szerokości 12 rem i glif w kolorze akcentu
+   (`:188`, `opacity: .85`); nadmiar referencji stoi obok, w `.kn-row-more`
+   (`:190`). Adres folderu jest w prototypie INNYM obiektem — `.kn-row-where`
+   (`:191-195`): ten sam glif co w drzewie, w tonie wygaszonym, BEZ obwódki, bo
+   „ta notatka leży tutaj" nie jest wyjściem dokądś.
+
+   ZAKRES WPISU JEST WĄSKI I TAKI ZOSTAJE. Rejestr sam obala drugą połowę
+   zgłoszenia („data spada niżej" to długość referencji, nie reguła) i sam
+   odmawia liczenia kolumny „Move" jako dowodu — więc ta reguła nie rusza ani
+   pasa daty, ani afordancji przeniesienia. */
+.knowledge-row-ref,
+.knowledge-row-where {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+/* SUFITY SZEROKOŚCI SĄ DWA, BO PROTOTYP MA DWA OBIEKTY. `.kn-row-in` stoi na
+   12 rem (`v3/screens/knowledge.css:183`), a `.kn-row-where` na 11 rem (`:192`)
+   — węższy, bo adres folderu jest przypisem, a referencja wyjściem. Zlanie ich
+   w jedną liczbę dawało adresowi folderu sufit, którego prototyp mu nie daje. */
+.knowledge-row-ref {
+  max-width: 12rem;
+  padding: 0.0625rem 0.4375rem 0.0625rem 0.3125rem;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+.knowledge-row-ref svg,
+.knowledge-row-where svg {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  flex: none;
+}
+.knowledge-row-ref svg {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.knowledge-row-where {
+  max-width: 11rem;
+}
+.knowledge-row-where svg {
+  color: var(--text-disabled);
+}
+.knowledge-row-more {
+  flex: none;
+  color: var(--text-disabled);
 }
 /* Its own lane on the right: `margin-left: auto`, the quietest step of the text
    ramp and the tabular figures are all `.kn-row-when`
@@ -7091,14 +8228,62 @@ kbd {
   background: var(--surface-canvas);
 }
 .knowledge-editor-header {
+  flex-wrap: wrap;
   padding-inline: var(--space-6);
   background: var(--panel-reading-bg);
+}
+/* Druga połowa wpisu #37: rząd akcji musi mieć GDZIE się zmieścić. Zmierzone
+   przy 1440 px — obok tytułu zostaje 386 px, a te cztery obiekty (stan zapisu,
+   „Rename", eksport, pasek formatowania) chcą około 760 px, więc `flex-wrap`
+   na samym rzędzie dawał cztery piętra zamiast jednego. Baza 28 rem jest
+   większa od tego, co zostaje obok tytułu, więc rząd schodzi na WŁASNĄ linię
+   i tam rozciąga się na całą szerokość głowy — dokładnie tak, jak w prototypie,
+   gdzie `.kn-actions` (`v3/screens/knowledge.css:253`) stoi POD wierszem
+   metadanych, a nie obok tytułu. */
+.document-editor-identity {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+/* FAZA D, LOT D3, WPIS #36 — jeden przygaszony wiersz pod tytułem, kształtem
+   `.kn-reader-meta` (`v3/screens/knowledge.css:246-249`): `--text-xs`, ton
+   czwartorzędny, `margin-top: 0.4375rem`, odstęp 0,375 rem i zawijanie, bo
+   ścieżka folderu bywa długa. */
+.document-editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  margin: 0.4375rem 0 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+.document-editor-meta-dot {
+  color: var(--text-disabled);
+}
+.document-editor-where {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.document-editor-where svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: none;
+  color: var(--text-disabled);
 }
 .knowledge-writing-plane {
   display: grid;
   min-width: 0;
   padding: clamp(var(--space-4), 3vw, var(--space-8));
-  background: var(--surface-sunken);
+  /* PŁASZCZYZNA CZYTANIA, nie wklęsłość tła: kanwa notatki przestała być
+     uniesioną kartą (wpis #38, niżej w tym arkuszu), więc powierzchnia czytania
+     jest TA. Wartość stała przez jeden lot w drugiej regule o tym samym
+     selektorze 44 linie niżej, gdzie wygrywała kolejnością — czytelnik
+     poprawiający regułę bazową nie widział skutku. */
+  background: var(--panel-reading-bg);
   /* Shell height minus the title band and the editor header keeps the canvas
      full-height without a magic viewport constant. The `--header-band-height`
      term went out with the work column's own band: subtracting a strip that is
@@ -7109,6 +8294,65 @@ kbd {
 .knowledge-writing-plane > .document-canvas {
   display: block;
   min-height: 30rem;
+}
+/* ── FAZA D, LOT D3, WPIS #38 ────────────────────────────────────────────────
+   TREŚĆ NOTATKI PRZESTAJE BYĆ ZAGNIEŻDŻONĄ, UNIESIONĄ KARTĄ, A HIERARCHIA
+   TYPOGRAFICZNA PRZESTAJE BYĆ ODWRÓCONA.
+
+   Prototyp ma tu JEDEN plan: `.kn-body` (`v3/screens/knowledge.css:282`) to
+   `padding-top: var(--space-5)` i nic więcej — bez obwódki, bez tła, bez
+   cienia; zmierzone na prototypie: `border-top-width: 0px`, `background:
+   rgba(0,0,0,0)`, `box-shadow: none`. Aplikacja rysowała trzy: okno, wklęsłą
+   płaszczyznę pisania i jaśniejszą od nich obu kartę z promieniem `--radius-xl`
+   i `--elevation-rest`.
+
+   ODWRÓCENIE, ZMIERZONE, NIE OSZACOWANE. Przy 1440 px kanwa liczyła 18,88 px
+   pisma, jej `h1` 37,76 px, a `h2` 28,32 px — przy tytule czytanej notatki
+   również 28,32 px. Czyli śródtytuł drugiego poziomu RÓWNAŁ SIĘ tytułowi, a
+   pierwszego był od niego o połowę większy. W prototypie największy śródtytuł
+   (`.kn-h2`, `--text-lg`) jest MNIEJSZY od tytułu (`.kn-reader-title`,
+   `--text-xl`), a akapit stoi na `--text-sm` (`:283-291`, zmierzone: 18 / 14 /
+   13 px pod tytułem 22 px).
+
+   REGUŁA BAZOWA `.document-canvas` ZOSTAJE NIETKNIĘTA I TO JEST DECYZJA
+   O ZAKRESIE, nie zaniechanie. Ta sama klasa jedzie na karcie dokumentu rekordu
+   projektu (`ProjectRichBody.tsx`, `.project-editor-shell >
+   .project-document-canvas`), która ma własny wpis rejestru w INNYM locie tej
+   fazy (#47). Przepisanie reguły bazowej byłoby wejściem w cudzą domenę, więc
+   płaszczyzna Biblioteki nadpisuje ją u siebie, dwiema klasami przeciw jednej.
+
+   Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
+   znika. Samo `background: var(--panel-reading-bg)` stoi w regule bazowej
+   `.knowledge-writing-plane` (`:7843`), a nie tu — druga deklaracja tego samego
+   selektora wygrywała kolejnością i czyniła wartość bazową martwą. */
+.knowledge-writing-plane .document-canvas {
+  padding: var(--space-5) 0 var(--space-10);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+/* WAGA JEST TU, BO ZAŻĄDAŁA JEJ BRAMKA `scripts/heading-typography.mjs` — trzy
+   reguły niżej deklarowały sam stopień, a nagłówek bez zadeklarowanej wagi
+   bierze `bold` przeglądarki, czyli 700, którego na skali v3 nie ma. Prototyp
+   deklaruje ją raz dla całej rodziny: `.kn-h { font-weight: 600;
+   letter-spacing: -0.01em }` (`v3/screens/knowledge.css:283`). */
+.knowledge-writing-plane .document-canvas h1,
+.knowledge-writing-plane .document-canvas h2,
+.knowledge-writing-plane .document-canvas h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.knowledge-writing-plane .document-canvas h1 {
+  font-size: var(--text-lg);
+}
+.knowledge-writing-plane .document-canvas h2 {
+  font-size: var(--text-md);
+}
+.knowledge-writing-plane .document-canvas h3 {
+  font-size: var(--text-base);
 }
 /* Podgląd markdownu tej notatki (decyzja #17).
    `pre-wrap` plus łamanie w dowolnym miejscu, a NIE poziomy pasek: sam blok
@@ -7501,16 +8745,25 @@ kbd {
   .named-versions {
     padding-inline: var(--space-4);
   }
+  /* MARTWA DEKLARACJA, NIE ZMIANA ZDANIA. Do lotu D3 ten rząd był siatką
+     i wąski krok mówił mu `justify-items: start`; lot przeniósł bazę na `flex`
+     (`:7095`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
+     robi NIC — więc reguła prosiła o lewą, a kaskada dawała prawą z bazowego
+     `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: przy
+     `flex: 1 1 28rem` element i tak wypełnia linię węższą niż 28 rem.
+
+     CZEMU AKURAT LEWA: pasek narzędzi jest OSTATNIM DZIECKIEM tego rzędu
+     (`KnowledgeEditor.tsx:1501` i `:1528`), a nie jego rodzeństwem, i reguła
+     dwie niżej daje mu w tym kroku `width: 100%` — więc zajmuje całą linię
+     i układa swoje przyciski od lewej. Pozostali członkowie rzędu, którzy
+     zawinęli się nad niego, stają na tej samej krawędzi zamiast wisieć nad nim
+     po prawej. */
   .document-editor-actions {
-    width: 100%;
-    justify-items: start;
+    justify-content: flex-start;
   }
   .document-toolbar {
     width: 100%;
     justify-content: flex-start;
-  }
-  .knowledge-create-bar .inline-popover-trigger {
-    min-height: 2.75rem;
   }
   .knowledge-writing-plane {
     padding: var(--space-3);
@@ -7836,8 +9089,14 @@ kbd {
   .restore-counts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* RYNNA, NIE WYŚCIÓŁKA — ta sama poprawka i ten sam powód co przy
+     `.meeting-surface` w zapytaniu kontenerowym wyżej. Nadpisanie samej
+     wyściółki zostawiało pasmo tytułu wysunięte poza nośnik o RÓŻNICĘ tych
+     dwóch liczb; zmierzone przez bramkę układu przy oknie 320 px na
+     OSIEMNASTU ekranach naraz: „content 272 px wide in a 268 px box", czyli
+     dokładnie 2 × (20 px rynny − 16 px wyściółki). */
   .surface-scroll {
-    padding-inline: var(--space-4);
+    --surface-gutter: var(--space-4);
   }
   .condition-banner {
     margin-inline: var(--space-4);
@@ -7855,6 +9114,17 @@ kbd {
   .wave2-shell {
     min-width: 0;
   }
+  /* CZTERY KLASY, NIE DWIE (naprawa po przeglądzie lotu D1). Podłoga 2,75 rem
+     jest KONTRAKTEM CELU DOTYKU wąskiego okna, a nie farbą przycisku
+     pobocznego — a stała dotąd wyłącznie pod `quiet`/`ghost`. Odkąd lot D1
+     zszedł z akcją główną na 1,75 rem (`v3/app.css:307`), ten sam pas akcji
+     stawiał obok siebie przycisk 44 px i akcję 28 px (np. `Wave2Surfaces.tsx`
+     — `ghost-button` „Edit outcome" przy `secondary-button compact` „Apply"),
+     czyli DOKŁADNIE tę inwersję, przed którą broniła się nota przy
+     `.quiet-button` wyżej, tylko o 16 px większą. Cel dotyku jest jeden dla
+     całego pasa albo nie jest kontraktem. */
+  .primary-button,
+  .secondary-button,
   .quiet-button,
   .ghost-button {
     min-height: 2.75rem;
@@ -8193,14 +9463,23 @@ kbd {
   container-type: inline-size;
 }
 
+/* KATEGORIA PRZESTAJE BYĆ KARTĄ, A SEKCJA NIĄ ZOSTAJE (`v3/screens/settings.css:
+   235-241` — `.st-grant` niesie obwódkę, promień i przycięcie, a `.st-grant-head`
+   jest PASMEM nagłówka zamkniętym własną kreską; prototyp stawia obok siebie
+   „This workspace" i „You", a na ekranie Pipeline „Stages" i „Default markup",
+   jako OSOBNE karty z widoczną przerwą).
+
+   ID, `data-settings-category` I `scroll-margin-top` ZOSTAJĄ TUTAJ, i to nie
+   jest resztka: powłoka przewija do tego elementu (`settingsCategoryElementId`),
+   a obserwator przecięć na nim właśnie stawia znacznik bieżącej sekcji w kolumnie
+   trybu. Zdjęcie pudełka wolno zrobić tylko tak, żeby te trzy rzeczy zostały —
+   inaczej pary L6-02a/b zzielenieją nad zepsutym znacznikiem albo zczerwienieją
+   z powodu, który nie ma nic wspólnego z tym wpisem. */
 .settings-category {
   scroll-margin-top: var(--space-5);
-  overflow: hidden;
-  margin-bottom: var(--space-6);
-  border: 1px solid var(--panel-reading-border);
-  border-radius: var(--radius-lg);
-  background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-rest);
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 /* JEDNA KOLUMNA, NIE DWIE. Stały tu dwa tory — proza w `1fr`, kontrolka
@@ -8217,14 +9496,35 @@ kbd {
    nagłówek → wyjaśnienie → kontrolka. Zysk pozycji — wyjaśnienie przestaje
    być kolumną i staje się linijką — jest ten sam. */
 .settings-category > section {
-  border-top: 1px solid var(--border-default);
+  overflow: hidden;
   display: grid;
   gap: var(--space-4);
-  padding: var(--space-5);
+  /* Wyściółka POZIOMA schodzi na dzieci, bo pasmo nagłówka musi dobiec do obu
+     krawędzi karty — sekcja z wyściółką na wszystkie strony daje kreskę
+     kończącą się 20 px przed obrysem, czyli podkreślenie, a nie pasmo. */
+  padding: 0 0 var(--space-5);
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-rest);
 }
 
-.settings-category > section:first-child {
-  border-top: 0;
+.settings-category > section > * {
+  margin-inline: var(--space-5);
+}
+
+/* PASMO NAGŁÓWKA SEKCJI. `.settings-copy` jest pierwszym dzieckiem w OSIEMNASTU
+   z dziewiętnastu sekcji — policzone, nie założone; dziewiętnasta („App update")
+   oddaje swoją treść komponentowi `ReleaseContinuity` i pasma nie dostaje, więc
+   reguła niżej daje jej zwykłe wcięcie górne zamiast wyrwy. */
+.settings-category > section > .settings-copy {
+  margin-inline: 0;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-category > section > *:first-child:not(.settings-copy) {
+  margin-top: var(--space-5);
 }
 
 .settings-copy h2 {
@@ -8583,9 +9883,68 @@ kbd {
   font-size: 0.95em;
 }
 
-.settings-control > select,
 .settings-control > button {
   align-self: stretch;
+}
+/* ── KONTROLKA WYBORU BIERZE SZEROKOŚĆ SWOJEJ TREŚCI (Faza C, lot C5) ─────────
+   `align-self: start`, A NIE SKREŚLENIE `stretch` — i to jest cała różnica
+   między poprawką a jej pozorem. `.settings-control` jest kolumną
+   (`:8828-8834`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
+   dziecko na całą szerokość tafli; sam wpis `align-self: stretch` był tu
+   powtórzeniem domyślnej wartości i skasowanie go NIE ZMIENIŁOBY NICZEGO.
+   Kontrolka wraca do szerokości własnej treści dopiero wtedy, gdy powie
+   `start` wprost.
+
+   DLACZEGO SELEKTOR MA `>`, a reguła geometrii niżej go NIE MA. Te dwie
+   deklaracje mówią o dwóch RÓŻNYCH osiach i sięgają dwóch różnych zbiorów.
+   `.settings-control` bywa kolumną (dziecko wprost, np. `#voice-audio-retention`
+   — `SettingsSurface.tsx:1898-1911`), ale bywa też pojemnikiem RZĘDÓW
+   (`.settings-control > div` ustawia `display: flex` w poziomie, `:8836-8840`),
+   a w rzędzie osią poprzeczną jest PION: `align-self: start` przykleiłoby tam
+   kontrolkę do górnej krawędzi rzędu obok rozciągniętych pól tekstowych. Oś
+   pozioma w rzędzie to `flex`, i tym zajmuje się reguła niżej.
+
+   PROTOTYP MÓWI TO DWOMA MIEJSCAMI NA RAZ. `.st-select`
+   (`v3/screens/settings.css:190-194`) i `.btn` (`v3/app.css:306-314`) mają co
+   do wartości tę samą geometrię i ANI JEDNO nie deklaruje szerokości; wpis
+   ustawień prototypu (`.st-presetpick`, `v3/screens/settings.js:329-334`) stawia
+   etykietę, kontrolkę i notkę w RZĘDZIE, a kontrolka jest w nim tak szeroka,
+   jak jej treść.
+
+   TRZECI KSZTAŁT, DOPISANY PO PRZEGLĄDZIE (2026-08-11): ZAPYTANIE KONTENEROWE.
+   Wyliczanka wyżej wymieniała dwa kształty i milczała o `@container (max-width:
+   47.5rem)` (`:9428-9447`), który przewraca `.settings-control > div` w KOLUMNĘ
+   z `align-items: stretch` i daje polom tekstowym `width: 100%`. Zarzut brzmiał:
+   w tym trybie sufit `16rem` obowiązuje kontrolkę, a sąsiednie pole rozpycha się
+   na całość, więc parzystość pole↔kontrolka się rozjeżdża.
+
+   ROZSTRZYGNIĘTE POMIAREM, NIE OSZACOWANE, i wychodzi na to, że ten tryb NIE
+   DOSIĘGA ani jednej kontrolki wyboru. Kontenerem jest `.settings-sections`
+   (`:8535-8537`), więc próg 47,5 rem to 760 px SZEROKOŚCI TAFLI, a nie okna:
+   przy oknie 1440 px tafla ma 1140 px (zapytanie nieaktywne), przy 900 px ma
+   608 px (zapytanie AKTYWNE). Zmierzone w obu stanach na tej samej fiksturze:
+   sześć NARYSOWANYCH kontrolek wyboru, rodzicem żadnej z nich NIE JEST
+   `.settings-control > div` — cztery stoją w `form.status-create`, jedna
+   w `label`, jedna wprost w `.settings-control` — więc reguła zapytania trafia
+   w zbiór, w którym nie ma ŻADNEJ Z TYCH SZEŚCIU. Szerokości są w obu stanach
+   IDENTYCZNE (66,8 / 88,8 / 94,8 / 111,8 / 124,8 / 256 px), a sąsiednie pola
+   trzymają 147,8 px w jednym i drugim. Przewidziany rozjazd się nie zdarza.
+
+   CZEGO TEN POMIAR NIE OBEJMUJE, powiedziane wprost, żeby zdanie wyżej nie
+   urosło do nieprawdy: źródło Ustawień deklaruje JEDENAŚCIE `<select>`
+   (`SettingsSurface.tsx` 7, `settings/AccessSection.tsx` 2,
+   `settings/ActivitySection.tsx` 1, `settings/CommercialDefaultsSection.tsx` 1),
+   a ten harness rysuje sześć — pozostałe siedzą w kategoriach i stanach, do
+   których nie dochodzi. O nich nie wiadomo NIC i nie należy udawać, że wiadomo.
+
+   CO Z TEGO WYNIKA DLA ARKUSZA: nic — i to jest decyzja, nie przeoczenie.
+   Nadpisanie `max-inline-size: none` pod tym zapytaniem byłoby regułą, która nie
+   ma dziś podmiotu i której nic nie mierzy. BRAMKA UKŁADU CHODZI NA 1440 px,
+   więc gdyby kiedyś `<select>` trafił do `.settings-control > div`, ten przelot
+   tego NIE ZOBACZY — zobaczy to dopiero pomiar przy tafli węższej niż 760 px,
+   i wtedy ta reguła ma powstać razem z parą. */
+.settings-control > select {
+  align-self: start;
 }
 
 .settings-control label,
@@ -8605,8 +9964,45 @@ kbd {
   font: inherit;
   padding: 0.6rem 0.65rem;
 }
+/* Druga połowa tej samej pozycji, na drugiej osi i dla obu kształtów naraz —
+   powód i cytaty stoją przy `.settings-control > select` wyżej.
+
+   `flex: 1` KAZAŁ KONTROLCE ZJEŚĆ CAŁE WOLNE MIEJSCE RZĘDU, więc pole wyboru
+   z napisem „Task" stało tak samo szerokie jak sąsiadujące z nim pole tekstowe
+   na etykietę (`SettingsSurface.tsx:1547-1583`). Reguła nad tą zbiera pola
+   tekstowe I kontrolkę wyboru w jeden materiał — i to jest słuszne, prototyp
+   trzyma `.st-input` i `.st-select` w jednej geometrii — ale `flex: 1` jest
+   właściwością POLA TEKSTOWEGO: pole rośnie, bo rośnie jego treść. Kontrolka
+   wyboru ma zbiór opcji skończony i znany, więc rośnie do najszerszej z nich
+   i tam się zatrzymuje.
+
+   PODŁOGA 2,75 REM OBOWIĄZUJE POZA PASKIEM DODAWANIA, a nie wszędzie, i to
+   zdanie jest tu przepisane po przeglądzie: stało tu „wysokość zostaje na
+   2,75 rem i nie jest wadą" jako zdanie o KAŻDEJ kontrolce wyboru panelu,
+   a wpis #71 zmierzył pasek `form.status-create` i zszedł tam na wysokość
+   paska akcji (reguła `.settings-control .status-create …` niżej w tym pliku,
+   szukaj jej po selektorze — numer wiersza przesuwa każdy lot). W wierszach
+   panelu, które paskiem dodawania NIE SĄ, 2,75 rem zostaje i dalej nie jest
+   wadą: `.settings-control button` ma tę samą podłogę, więc pion zgadza się
+   z sąsiadem co do piksela.
+
+   PARZYSTOŚĆ STOPNIA POLE↔KONTROLKA ISTNIEJE, ale NIE z deklaracji, które widać
+   przy `.status-create` — i przegląd tego lotu wyliczył ją stamtąd odwrotnie.
+   `.status-create input` deklaruje `--text-xs`, `.status-create select`
+   deklaruje `--text-2xs` (obie 0,2,0, obie wcześniej w pliku), a obie przegrywa
+   `font: inherit` z reguły nad tą: `.settings-control input:not([type])`
+   i `.settings-control select` ważą 0,2,1 i stoją PÓŹNIEJ. Pole i kontrolka
+   dziedziczą więc jeden i ten sam stopień, a osobno stoi przycisk
+   (`--text-xs` z `.settings-control button:not(…)`). Stopnia NIE RUSZAM
+   świadomie: prototyp żąda równego stopnia pola i kontrolki (`.st-input`
+   i `.st-select`, oba `--text-sm`) i ta parzystość jest tym, co aplikacja ma;
+   zrównanie kontrolki z przyciskiem rozbiłoby ją na rzecz drugiej parzystości,
+   której prototyp żąda tak samo. Trójstronny rozjazd pole↔kontrolka↔przycisk
+   jest osobną pozycją i osobnym lotem. */
 .settings-control select {
   min-height: 2.75rem;
+  flex: 0 1 auto;
+  max-inline-size: 16rem;
   cursor: pointer;
 }
 
@@ -8665,6 +10061,56 @@ kbd {
   font-weight: 600;
   padding: var(--space-2) 0.72rem;
   white-space: nowrap;
+}
+/* DRUGA POŁOWA WPISU #71 REJESTRU, ODDANA NA POMIARZE, NIE NA ODCZYCIE — i to
+   jest istotne, bo dwa odczyty kodu stały tu naprzeciwko siebie. Komentarz przy
+   `.settings-control select` (`:9564-9583`, lot C5) mówił „wysokość NIE JEST
+   wadą, bo `.settings-control button` ma tę samą podłogę 2,75 rem"; przeliczenie
+   Fazy D mówiło „teza wpisu stoi, bo sąsiednie POLE TEKSTOWE nie deklaruje
+   żadnej podłogi". Obie prozy były prawdziwe i żadna nie była zmierzona.
+   Zmierzone w Chromium przy 1440 px, jasny motyw, w rzędzie `form.status-create`
+   („New status — label" + „Task" + „Add", `align-items: center`, więc nic się
+   nie rozciąga): pole 34,2 px, kontrolka wyboru 44 px, przycisk 44 px. Wpis
+   rejestru mówi o polu i o kontrolce, i różnica wynosiła 9,8 px.
+
+   PASEK DODAWANIA JEST PASKIEM AKCJI, NIE WIERSZEM PANELU (`v3/screens/
+   settings.css:181-194` — `.st-input` i `.st-select` mają w prototypie tę samą
+   wysokość 1,75 rem, tę samą wyściółkę i ten sam stopień; `.st-bar` niżej,
+   `:165-170`, jest ich wspólnym pojemnikiem). Ten pasek MIAŁ tu już własną,
+   gęstą geometrię — `min-height: 1.8rem` na kontrolce i na przycisku — i nigdy
+   (uwaga: 1,8 rem, czyli LICZBĘ PODOBNĄ DO PROTOTYPU, a nie prototypową)
+   nie docierała ona do ekranu: `.settings-control select` (`:9583`) i
+   `.settings-control button:not(…)` (`:9634`) są tak samo swoiste (0,2,1)
+   i stoją PÓŹNIEJ, więc wygrywały. Reguła niżej jest wiązana `.settings-control`
+   po to i tylko po to, żeby stanąć na tym samym poziomie swoistości (0,2,1)
+   i zdecydować KOLEJNOŚCIĄ, a nie żeby dołożyć wagi — dlatego stoi TUTAJ,
+   pod regułami, które wygrywały, a nie przy `.status-create` trzy tysiące
+   wierszy wyżej, gdzie napisana najpierw przegrywała z nimi tak samo, jak
+   przegrywała reguła, którą miała naprawić. Wysokość nie schodzi sama:
+   34,2 px pola brało się z WYŚCIÓŁKI 0,6 rem (`:9549`), nie z podłogi, więc
+   podłoga bez wyściółki nie ruszyłaby ani jednego piksela.
+
+   LICZBA JEST PROTOTYPOWA, A NIE „MNIEJ WIĘCEJ PROTOTYPOWA" — poprawka po
+   przeglądzie. Reguła stała na 1,8 rem, a para D5-05 CYTOWAŁA 1,75 rem
+   z prototypu i pilnowała 1,8; wartość podobna do prototypowej nie jest
+   wartością z prototypu, a nigdzie nie było zdania „prototyp mówi 1,75, zostaje
+   1,8, bo…". Zostaje 1,75 rem, czyli dokładnie to, co deklarują `.st-input`,
+   `.st-select` (`v3/screens/settings.css:181-194`) i `.btn`
+   (`v3/app.css:306-307`).
+
+   PRÓG DOTYKOWY, POWIEDZIANY LICZBĄ, A NIE PRZEMILCZANY: 1,75 rem to 28 px,
+   czyli powyżej 24 px z WCAG 2.5.8 (AA) — tego samego progu, na którym stoi
+   wyliczenie przy `.stageRow` (34 px, „spełnione z zapasem"); całe wyliczenie
+   zostaje w mocy po zejściu z 28,8 px. Traci się zapas
+   do 2.5.5 (AAA, 44 px), którego ten ekran nigdzie nie deklaruje, i traci się
+   parzystość kontrolki z przyciskiem zmierzoną przez lot C5 — dlatego przycisk
+   schodzi razem z nimi, a nie zostaje sam na 44 px. Trzy kontrolki jednego
+   paska mają jedną wysokość albo nie są jednym paskiem. */
+.settings-control .status-create input,
+.settings-control .status-create select,
+.settings-control .status-create button {
+  min-height: 1.75rem;
+  padding: 0 var(--space-2);
 }
 
 /* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,
@@ -8725,6 +10171,7 @@ kbd {
 
 .settings-control.support-report-action > button {
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   border-color: var(--action-primary-bg);
   color: var(--action-primary-text);
   font-weight: 600;
@@ -8739,6 +10186,7 @@ kbd {
 @media (hover: hover) and (pointer: fine) {
   .settings-control.support-report-action > button:hover:not(:disabled) {
     background: var(--action-primary-hover);
+    box-shadow: var(--action-primary-shadow-hover);
   }
 }
 
@@ -8907,6 +10355,7 @@ kbd {
 
 .settings-control .import-preview-confirm {
   background: var(--action-primary-bg);
+  box-shadow: var(--action-primary-shadow);
   color: var(--action-primary-text);
 }
 

@@ -166,7 +166,15 @@ describe("enterprise settings navigation contract", () => {
     // więc pyta o nią — i czyta powłokę, bo tam ten nawigator stoi.
     assert.match(
       shell,
-      /aria-current=\{\s*settingsCategory === category\.id \? "location" : undefined,?\s*\}/,
+      // ODSTĘPY SĄ TU DOWOLNE, I TO JEST POPRAWKA PRZYRZĄDU, NIE ROZLUŹNIENIE
+      // ASERCJI. Wzorzec żądał POJEDYNCZYCH SPACJI wokół `?` i `:`, więc
+      // przestał pasować w chwili, w której lot D5 zagnieździł pozycję o jeden
+      // poziom głębiej (spis dzieli się na grupy) i prettier złamał to samo
+      // wyrażenie na trzy wiersze. Zmieniło się WCIĘCIE, nie zachowanie —
+      // rozstrzyga to para bramki układu L6-02b, która czyta wypełnienie
+      // oznaczonej pozycji na NARYSOWANYM elemencie. Asercja nad źródłem,
+      // która pada od przeformatowania, mierzy formatowanie.
+      /aria-current=\{\s*settingsCategory\s*===\s*category\.id\s*\?\s*"location"\s*:\s*undefined,?\s*\}/,
     );
     // Wash + waga + szyna: trzy nośniki naraz, bo sam kolor nie jest nośnikiem
     // znaczenia (`v3/screens/settings.css:74-80`).
@@ -175,13 +183,20 @@ describe("enterprise settings navigation contract", () => {
       /\.settings-mode-column \.nav-item\[aria-current="location"\]\s*\{[^}]*box-shadow: inset 2px 0 0 var\(--accent\)/s,
     );
     // Etykieta ma swój własny tor, a nie tor ikony: `.nav-item` jest siatką
-    // trzytorową, a pozycja sekcji renderuje JEDNO dziecko, więc bez tej
-    // reguły etykieta ląduje w torze 1,1 rem i zawija się na trzy linie.
-    // Zmierzone przed poprawką przy 1440 px: 17,59 px szerokości, 51 px
-    // wysokości na trzech z sześciu pozycji.
+    // trzytorową (glif, etykieta, ogon), a pozycja sekcji nie ma ogona.
+    //
+    // JEDEN TOR → DWA TORY PRZY LOCIE D5. Poprzednie brzmienie żądało
+    // `minmax(0, 1fr)` i JEDNEGO toru, bo pozycja renderowała wtedy jedno
+    // dziecko: etykieta lądowała w torze ikony i zawijała się na trzy linie
+    // (zmierzone przy 1440 px: 17,59 px szerokości, 51 px wysokości na trzech
+    // z sześciu pozycji). Wpis #69 rejestru żąda glifu przy każdej sekcji
+    // (`v3/screens/settings.css:61-71` — `.st-navitem` ma tor `.ico` PRZED
+    // etykietą), więc jeden tor przestał być lekarstwem i stał się zakazem
+    // oddania wpisu. To, czego ta asercja pilnuje, się nie zmienia: etykieta
+    // ma WŁASNY tor, a nie tor glifu.
     assert.match(
       styles,
-      /\.settings-mode-column \.nav-item\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/s,
+      /\.settings-mode-column \.nav-item\s*\{[^}]*grid-template-columns: 1\.1rem minmax\(0, 1fr\)/s,
     );
   });
 

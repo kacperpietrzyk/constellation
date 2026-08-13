@@ -6,7 +6,11 @@ import Collaboration from "@tiptap/extension-collaboration";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { SERVABLE_IMAGE_MEDIA_TYPES } from "@constellation/contracts";
-import type { DocumentId, KnowledgeSourceId } from "@constellation/contracts";
+import type {
+  DocumentId,
+  FolderId,
+  KnowledgeSourceId,
+} from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   RendererDocumentRevision,
@@ -52,7 +56,9 @@ import {
 import { DOCUMENT_SCHEMA_EXTENSIONS } from "../document-editor-extensions.js";
 
 import { useInlineSuggestions } from "../components/InlineSuggestions.js";
-import { countLabel, formatDateTime } from "../i18n.js";
+import { Icon } from "../components/Icon.js";
+import { countLabel, formatDate, formatDateTime } from "../i18n.js";
+import { folderPath, isUnfiled } from "./folder-tree.js";
 import { roleCopy, type DocumentItem } from "./library-chrome.js";
 
 const milestoneCopy = {
@@ -416,6 +422,33 @@ export const KnowledgeEditor = ({
   readonly onRename: (title: string) => Promise<boolean>;
 }) => {
   const yDocument = useMemo(() => new Y.Doc({ gc: true }), [document.id]);
+  /*
+   * GDZIE TA NOTATKA LEŻY — z tego samego odczytu, z którego bierze to drzewo
+   * obok (`knowledge.list`), i TYLKO wtedy, kiedy ten odczyt jest gotowy.
+   *
+   * ODMÓWIONY ODCZYT NIE DAJE SIĘ ODRÓŻNIĆ OD BRAKU FOLDERU, więc człon „gdzie"
+   * zostaje WYCOFANY, a nie zgadnięty. Wcześniejsza wersja tego komentarza
+   * twierdziła, że przy pustej liście `folderPath` zwraca sam identyfikator —
+   * NIE ZWRACA. `folder-tree.ts:117-133` robi `byId.get(folderId)` na pustej
+   * mapie, dostaje `undefined`, pętli nie wykonuje ani razu i oddaje
+   * `[].join(" / ")`, czyli PUSTY ŁAŃCUCH. Wiersz rysował więc niemy glif
+   * folderu po kropce rozdzielającej — pustkę zamiast zdania, dokładnie tę
+   * klasę wady, którą `NotesReading` nazywa przy `structureReadable`
+   * (`NotesReading.tsx:105-127`: „the claims about structure are withdrawn").
+   * Stan jest TRWAŁY, nie przejściowy: `snapshot.documents` i
+   * `snapshot.knowledge` to dwa niezależne odczyty, a ten edytor montuje się na
+   * `client && open` bez bramki na gotowość `knowledge`.
+   *
+   * Kiedy odczyt JEST gotowy, o „Unfiled" rozstrzyga `isUnfiled`, a nie samo
+   * `folderId === undefined`: notatka wskazująca folder, którego na liście nie
+   * ma, jest dla czytelnika nieprzypisana i `folder-tree.ts:157-167` mówi, czemu
+   * to nie jest błąd. Ta gałąź nie jest mierzona ŻADNĄ parą — fikstura bramki
+   * ma `knowledge` gotowe, a D3-11b liczy wyłącznie `time` w tym wierszu.
+   */
+  const structureReadable = snapshot.knowledge.kind === "ready";
+  const folders =
+    snapshot.knowledge.kind === "ready" ? snapshot.knowledge.data.folders : [];
+  const unfiled = isUnfiled(document, folders);
   const revisionNameId = useId();
   const evidenceHeadingId = useId();
   const [text, setText] = useState("");
@@ -1412,10 +1445,58 @@ export const KnowledgeEditor = ({
 
   return (
     <section className="knowledge-editor" aria-labelledby="document-title">
+      {/* FAZA D, LOT D3, WPIS #36 — GŁOWA CZYTELNI MÓWI KIEDY I GDZIE.
+          Prototyp: `.kn-reader-meta` (`v3/screens/knowledge.css:246-249`,
+          złożone `v3/screens/knowledge.js:747-753`) — jeden przygaszony wiersz
+          `--text-xs` pod tytułem, rozdzielony `.kn-dot`, w którym stoją autor,
+          „updated <dzień>" i klikalny adres folderu (`.kn-where`, `:267-271`).
+          Nad tytułem nie było u nas nic poza mikroetykietą rodzaju, a data
+          aktualizacji, którą wiersz listy obok pokazuje, w czytelni nie padała
+          ani razu.
+
+          CZEGO TU NIE MA I DLACZEGO — TO NIE JEST PRZEOCZENIE. Prototypowy
+          wiersz zaczyna się od awatara z inicjałami i słowa „You". Projekcja
+          `document.list` (`packages/contracts/src/query.ts:1718-1733`) niesie
+          `id`, `spaceId`, `title`, `folderId`, `externalId`, `role`, `version`
+          i `updatedAt` — i ANI JEDNEGO pola autora. „Kto" nie jest więc
+          brakującym komponentem, tylko brakującym FAKTEM: awatar narysowany
+          z czegokolwiek innego byłby zdaniem o autorstwie, którego ten odczyt
+          nie zna. Zgłoszone jako pozycja nieoddana, nie ukryte.
+
+          ADRES FOLDERU JEST NAPISEM, NIE PRZYCISKIEM. `.kn-where` prowadzi
+          w prototypie do tego folderu w drzewie obok; ten komponent nie ma
+          wywołania, którym mógłby przestawić zaznaczenie drzewa w rodzicu —
+          a afordancja, która nigdzie nie prowadzi, jest kłamstwem, którego ten
+          arkusz nie chce (ta sama zasada, co brak strzałki wyjścia w „What
+          rests on this"). */}
       <header className="knowledge-editor-header">
-        <div>
+        <div className="document-editor-identity">
           <p className="eyebrow">{roleCopy[document.role]}</p>
           <h2 id="document-title">{document.title}</h2>
+          <p className="document-editor-meta">
+            <span>
+              updated{" "}
+              <time dateTime={document.updatedAt}>
+                {formatDate(
+                  document.updatedAt,
+                  snapshot.bootstrap.workspace.timezone,
+                )}
+              </time>
+            </span>
+            {structureReadable ? (
+              <>
+                <span aria-hidden="true" className="document-editor-meta-dot">
+                  ·
+                </span>
+                <span className="document-editor-where">
+                  <Icon name={unfiled ? "folder-loose" : "folder"} />
+                  {unfiled
+                    ? "Unfiled"
+                    : folderPath(folders, document.folderId as FolderId)}
+                </span>
+              </>
+            ) : null}
+          </p>
         </div>
         <div className="document-editor-actions">
           <p className="sr-only" role="status">

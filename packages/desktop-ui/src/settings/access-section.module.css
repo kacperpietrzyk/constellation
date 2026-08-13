@@ -18,6 +18,14 @@
    definite resolves to `fit-content`, and `fit-content` under a centred
    parent resolves to nothing at all. */
 
+/* TRZY Z TYCH DEKLARACJI NIE DOCIERAJĄ DO EKRANU W USTAWIENIACH i to jest
+   zamierzone, nie resztka. Korzeń jest `section`, więc łapie go
+   `.settings-category > section` (0,1,1) w `styles.css`: `padding` schodzi na
+   `0 0 var(--space-5)` (wyściółka pozioma idzie na dzieci, żeby pasmo dobiegało
+   do obrysu), `border-top` zastępuje pełen obrys karty, a `gap` schodzi
+   z `--space-6` na `--space-4` — czyli na rytm, który mają wszystkie pozostałe
+   sekcje tego ekranu. Zostają tutaj jako geometria komponentu, gdyby kiedyś
+   stanął poza kartą kategorii; policzone, nie założone. */
 .root {
   display: grid;
   align-content: start;
@@ -659,6 +667,29 @@
      it reach the category edge costs nothing and is what the rows needed. */
   .root {
     padding-inline: 0;
+  }
+
+  /* PEŁNY SPAD MUSI OBJĄĆ KARTĘ, INACZEJ NIE JEST PEŁNYM SPADEM. Reguła wyżej
+     zeruje wyściółkę KORZENIA, a od wpisu #70 rejestru wcięcie tej sekcji
+     niesie już nie ona, tylko karta kategorii ze `styles.css`:
+     `.settings-category > section` zdejmuje wyściółkę poziomą na dzieci
+     (`> * { margin-inline: var(--space-5) }`) i dokłada własny obrys z promieniem.
+     Same 34 px, które komentarz wyżej odzyskał, wracałyby więc z powrotem —
+     zmierzone: lista członków przepełniała się o 46 px przy oknie 320 px
+     wobec zapisanych w rejestrze 18 px, i o 28 px przy tekście 200%, gdzie
+     rejestr nie ma ŻADNEGO sufitu, bo tam nic nie wystawało.
+
+     Dwie deklaracje o swoistości (0,2,0) i (0,2,1), czyli wygrywające
+     z (0,1,1) karty KOLEJNOŚCIĄ NIEZALEŻNIE od tego, w jakiej kolejności
+     bundler skleja moduł z arkuszem globalnym — remis na wadze rozstrzygałby
+     się tam kolejnością plików, czyli rzeczą, której ten plik nie kontroluje. */
+  .root.root {
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  .root.root > * {
+    margin-inline: 0;
   }
 
   .ledger {

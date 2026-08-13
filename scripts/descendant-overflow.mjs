@@ -139,25 +139,53 @@ export const KNOWN_DESCENDANT_OVERFLOWS = [
     thread:
       "skalowanie interfejsu (R3-5, za falą E) — nazwa klienta w wierszu relacji",
   },
-  {
-    surface: "people",
-    signature: "span._parts",
-    ceilings: {
-      "text scaled to 200%": 25,
-      "a 320 px window": 24,
-    },
-    thread: "skalowanie interfejsu (R3-5, za falą E) — rozbicie kontaktu",
-  },
-  {
-    surface: "people",
-    signature: "b._absent",
-    ceilings: {
-      "text scaled to 200%": 19,
-      "a 320 px window": 16,
-    },
-    thread:
-      "skalowanie interfejsu (R3-5, za falą E) — wyróżnienie brakującej danej",
-  },
+  // ── SPŁACONY I SKASOWANY: `people` / `span._parts`, 2026-08-12 ────────────
+  // Stał tu wpis z sufitami 25 px (tekst 200%) i 24 px (okno 320 px) na pasie
+  // uczestnictwa, z wątkiem „skalowanie interfejsu (R3-5, za falą E)". Nie jest
+  // to podniesienie sufitu ani przeniesienie długu — przepełnienie PRZESTAŁO
+  // ISTNIEĆ w każdym z trzech przelotów, i jest to zmierzone przed i po:
+  //
+  //   przelot           | przed | po | plakietka ↔ tor
+  //   1440 px           |  +0   | +0 | 54,1 px w torze 259 px
+  //   tekst 200% (1024) |  +25  | +0 | 99,0 w 73,5  →  166,2 w 166,2
+  //   okno 320 px       |  +21  | +0 | 54,1 w 33    →   89,4 w 89,4
+  //
+  // PRZYCZYNA NIE ZGADZAŁA SIĘ Z ZAPISANĄ. Wpis był prowadzony jako „rozbicie
+  // kontaktu przy skalowaniu", czyli jako defekt SKALI. Lot D9 zmierzył tor,
+  // a nie treść: plakietka „3 deals" nie mieściła się w swoim torze także BEZ
+  // glifu — tor `minmax(0, 1fr)` kazał ustępować jedynej komórce wiersza, która
+  // nie umie się skrócić, podczas gdy pięć komórek obok niosło
+  // `text-overflow: ellipsis` i stało. To jest defekt KOLEJNOŚCI USTĘPOWANIA,
+  // strukturalny, i mieszkał w cudzym wątku tylko dlatego, że pokazywał się
+  // dopiero przy ciasnym wierszu. Poprawka: `minmax(min-content, 1fr)` na
+  // trzecim torze `.row` (`people/people.module.css`), uzasadniona przy regule.
+  //
+  // CZEGO TA SPŁATA NIE ZAŁATWIA, powiedziane wprost, żeby skasowany wpis nie
+  // czytał się szerzej, niż był: (1) tory przestały być identyczne w każdym
+  // wierszu przy ciasnej szerokości — `min-content` zależy od treści wiersza,
+  // więc przy 200% i przy 320 px kolumny listy nie stoją już w jednej linii
+  // (przy 1440 px stoją, bo udział 1fr jest tam większy niż `min-content`);
+  // (2) nazwa oddaje przy 200% około 43 px na rzecz plakietki. Oba są mniejsze
+  // od tego, co było: plakietka rysowała się PO WIERZCHU kolumny kontaktu, bo
+  // `.parts` nie ma i nie miała `overflow: hidden`.
+  // ── SPŁACONY I SKASOWANY: `people` / `b._absent`, 2026-08-12 ──────────────
+  // Stał tu wpis z sufitami 19 px (tekst 200%) i 16 px (okno 320 px) na „Never
+  // met", z wątkiem „skalowanie interfejsu (R3-5, za falą E)". Skasowany jako
+  // UBOCZNY SKUTEK innej poprawki i to jest cała historia: lot D9 zasiał
+  // spotkania, przez co po raz pierwszy narysowała się DRUGA gałąź tej samej
+  // komórki — data zamiast „Never met" — i wyszła ze swojego toru jako świeże
+  // naruszenie (`people` / `b`, +34 px przy 200%, +22 px przy 320 px).
+  // Przyczyna okazała się wspólna dla obu gałęzi: `.met b` była jedyną komórką
+  // tekstową tego wiersza BEZ `overflow: hidden; text-overflow: ellipsis;
+  // white-space: nowrap`, które sześć sąsiednich niesie od początku. Dopisanie
+  // ich zdejmuje werdykt z obu gałęzi naraz — obie są dziś `contained`, czyli
+  // treścią, dla której wielokropek JEST zamierzonym potraktowaniem.
+  //
+  // NIE JEST TO PRZEKWALIFIKOWANIE POD ZIELEŃ, i różnica jest sprawdzalna:
+  // odmówiono dokładnie tego samego ruchu na `span._parts` w tym samym locie,
+  // bo tam treścią jest LICZNIK, a ucięty licznik nie wygląda na ucięty, tylko
+  // na inną liczbę. Pas uczestnictwa dostał zamiast tego więcej miejsca.
+  // Uzasadnienie obu decyzji stoi przy regułach w `people/people.module.css`.
   // ── SPŁACONY I SKASOWANY: `renewals` / `div._money`, 2026-08-07 ────────────
   // Stał tu wpis z sufitami 19 px (tekst 200%) i 54 px (okno 320 px) na kwotę
   // przy umowie, z wątkiem „skalowanie interfejsu (R3-5, za falą E)". Przelot
@@ -444,6 +472,138 @@ export const classifyDescendantOverflow = (
 export const unusedRegistryEntries = (
   matchedSignatures,
   registry = KNOWN_DESCENDANT_OVERFLOWS,
+) =>
+  registry.filter(
+    (entry) => !matchedSignatures.has(`${entry.surface}|${entry.signature}`),
+  );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRUGA POŁOWA TEJ SAMEJ AWARII: TREŚĆ, KTÓRA ZNIKŁA, ZAMIAST WYSTAWAĆ
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// PO CO TO POWSTAŁO, i to jest jedyny powód, dla którego wolno dokładać drugi
+// rejestr. Przelotka przepełnień wyżej pomija każdy element o `clientWidth <= 1`
+// (`verify-renderer-layout.mjs`, filtr „narzędzie tylko dla czytnika ekranu"),
+// bo pudełko 1×1 px z całym zdaniem w środku jest zawsze przepełnione i nigdy
+// widoczne. Filtr jest słuszny i zostaje — ale ma skutek uboczny, którego nikt
+// nie zapisał: KOMÓRKA TEKSTOWA PRZESTAJE BYĆ RAPORTOWANA DOKŁADNIE WTEDY, GDY
+// PRZESTAJE BYĆ WIDOCZNA. Element skrócony wielokropkiem wypisuje się jako
+// `contained`; ten sam element ściśnięty do zera wypada z raportu i przelot
+// czyta się jak poprawa.
+//
+// TO NIE JEST HIPOTEZA. Przegląd fali D zgłosił „lot D9 zapadł rolę na ekranie
+// Ludzi przy 200%" na podstawie komentarza w arkuszu, a komentarz mówił, że
+// przed zmianą rola „wychodziła o 237 px, czyli była skrócona wielokropkiem".
+// Zmierzone w przeglądarce na obu wersjach toru: rola miała przy 200% szerokość
+// wewnętrzną 0 / 2,3 / 0 px PRZED zmianą i 0 / 0 / 0 px PO. Liczba 237 była
+// PRZEPEŁNIENIEM nad pudełkiem szerokim na 2,3 px, a nie szerokością widocznego
+// napisu. Ani autor lotu, ani przegląd nie mieli czym tego rozstrzygnąć, bo
+// NIC W TYM DRZEWIE NIE MIERZYŁO SZEROKOŚCI WIDOCZNEJ. Ten rejestr jest tym
+// przyrządem — powstał z pomyłki, którą sam czyni niemożliwą.
+//
+// PRÓG JEST BINARNY I DLATEGO BEZSPORNY. Nie „za wąskie na jeden znak" (to
+// wymagałoby wybrania liczby, a wybrana liczba jest sufitem, który da się
+// przesunąć pod własną dostawę), tylko `clientWidth < 1` — czyli DOKŁADNIE ten
+// zbiór, który przelotka przepełnień odrzuca. Ten rejestr mówi o ślepej plamce
+// tamtej przelotki i o niczym więcej.
+//
+// CO ZNACZY WPIS. Tak samo jak wyżej: `passes` wymienia przeloty, w których
+// zapadnięcie jest ZNANYM DŁUGIEM z nazwanym właścicielem. Przelot NIEWYMIENIONY
+// znaczy „ten element się tutaj NIE zapada", więc zapadnięcie na nim pada jak
+// każde nowe. Nie ma tu żadnej liczby do podniesienia — jest tylko lista
+// przelotów, a skrócenie jej jest spłatą długu.
+
+/** Czy odczyt mówi o elemencie, który niesie tekst i nie ma go czym pokazać. */
+export const COLLAPSED_CLIENT_WIDTH_PX = 1;
+
+/**
+ * GDZIE TEN REJESTR JEST EGZEKWOWANY, i dlaczego to nie jest obniżony próg.
+ *
+ * Przelotka zbiera zapadniętą treść na KAŻDEJ powierzchni i wypisuje wszystko,
+ * co znajdzie, w każdym przebiegu. Egzekwowana jest jedna: `people` — ta, dla
+ * której ten przyrząd powstał.
+ *
+ * DLACZEGO NIE OD RAZU WSZĘDZIE. Pierwszy przebieg tej przelotki zwrócił
+ * SZESNAŚCIE zapadniętych komórek na PIĘCIU powierzchniach (`tasks`,
+ * `projects`, `organizations`, `people` i ich soczewki) — wszystkie zastane,
+ * żadna z nich nie jest robotą tego przeglądu, i żadna nie była dotąd przez
+ * cokolwiek mierzona. Egzekwowanie ich naraz znaczyłoby albo wpisanie
+ * szesnastu długów z wątkami, których nikt nie przyjął, albo naprawę pięciu
+ * ekranów w przeglądzie, którego przedmiotem są przyrządy. Jedno i drugie jest
+ * gorsze niż powiedzenie wprost, ile ich jest i gdzie.
+ *
+ * DLACZEGO TO NIE JEST OSŁABIENIE ASERCJI: ten przyrząd POWSTAJE w tym
+ * przebiegu. Nic z tych szesnastu nie było wcześniej egzekwowane ani nawet
+ * widziane, więc ograniczenie zakresu przy narodzinach niczego nie zdejmuje —
+ * zamienia zero widocznych na szesnaście wypisanych i jedną pilnowaną.
+ *
+ * WYJŚCIE, żeby ta lista nie została zakresem na zawsze: każda powierzchnia
+ * dopisana tutaj wymaga albo kolejności zwijania (czyli naprawy), albo wpisu
+ * w `KNOWN_COLLAPSED_TEXT` z właścicielem. Najpilniejszy podmiot jest
+ * NAZWANY i zmierzony, żeby nie zginął w wypisie: `organizations` /
+ * `span._segment` ma szerokość wewnętrzną 0 px przy treści 186 px przy 1440 px
+ * I przy 1920 px — czyli przy szerokościach, na których produkt naprawdę
+ * chodzi, a nie w wąskim przelocie. Mechanizm jest strukturalny, nie fiksturowy
+ * (`flex: 0 6 auto; min-width: 0` bez podłogi; wiersz o krótszej nazwie pokazuje
+ * ten sam element na 39,1 px). Nie jest naprawiany tutaj, bo lekarstwo —
+ * podłoga `min-width` — jest wprost ODRZUCONE w tym samym arkuszu przy
+ * `.nameLine` jako decyzja projektowa, a jej odwrócenie należy do właściciela.
+ */
+export const COLLAPSED_TEXT_ENFORCED_SURFACES = ["people"];
+
+/**
+ * ZAPADNIĘTA TREŚĆ ZMIERZONA, NIE ZGADNIĘTA. Każdy wpis pochodzi z przebiegu
+ * sondy na tym drzewie 2026-08-12 i niesie wątek, do którego należy.
+ */
+export const KNOWN_COLLAPSED_TEXT = [
+  {
+    surface: "people",
+    signature: "span._role",
+    // Zmierzone: treść 239–371 px przy szerokości wewnętrznej 0 px na KAŻDYM
+    // z trzech wierszy, w obu wąskich przelotach. Sprawdzone także PRZED
+    // poprawką toru z lotu D9 (`minmax(0, 1fr)`): 0 / 2,3 / 0 px przy 200%
+    // i 0 / 0 / 0 px przy 320 px, czyli zapadnięcie jest STARSZE od tamtego
+    // lotu i nie jest jego regresją. Przy 760 px — czyli przy własnym minimum
+    // okna produktu — rola ma 43,8 / 130,7 / 77,6 px i czyta się; przy 1440 px
+    // 176 / 132 / 145 px. Dlatego oba szerokie przeloty stoją tu NIEWYMIENIONE
+    // i zapadnięcie na nich pada.
+    passes: ["text scaled to 200%", "a 320 px window"],
+    thread:
+      "skalowanie interfejsu (R3-5, za falą E) — kolejność zwijania w wierszu osoby",
+  },
+];
+
+/**
+ * Jedna decyzja o jednym zapadnięciu. Jak wyżej: bierze ODCZYTY, nie węzeł DOM,
+ * żeby dała się przetestować bez przeglądarki.
+ */
+export const classifyCollapsedText = (
+  { surface, signature, clientWidth, textLength, pass },
+  registry = KNOWN_COLLAPSED_TEXT,
+) => {
+  if (textLength === 0) return { verdict: "empty" };
+  if (clientWidth >= COLLAPSED_CLIENT_WIDTH_PX) return { verdict: "visible" };
+  const entry = registry.find(
+    (candidate) =>
+      matchesSurface(surface, candidate.surface) &&
+      candidate.signature === signature,
+  );
+  if (entry === undefined) return { verdict: "violation" };
+  if (!entry.passes.includes(pass))
+    return { verdict: "violation", thread: entry.thread };
+  return { verdict: "known", thread: entry.thread };
+};
+
+/** Czy werdykt o tej powierzchni pada, czy jest tylko wypisywany. */
+export const collapsedTextEnforced = (
+  surface,
+  scope = COLLAPSED_TEXT_ENFORCED_SURFACES,
+) => scope.some((candidate) => matchesSurface(surface, candidate));
+
+/** Ta sama kontrola co `unusedRegistryEntries`, nad drugim rejestrem. */
+export const unusedCollapsedEntries = (
+  matchedSignatures,
+  registry = KNOWN_COLLAPSED_TEXT,
 ) =>
   registry.filter(
     (entry) => !matchedSignatures.has(`${entry.surface}|${entry.signature}`),

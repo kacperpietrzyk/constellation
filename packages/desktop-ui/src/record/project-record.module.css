@@ -104,7 +104,16 @@
 }
 
 /* A chip is a control when there is somewhere to go and plain text when there
-   is not. Both look the same until you hover one of them. */
+   is not. Both look the same until you hover one of them.
+
+   PLAKIETKA JEST MIĘKKO ZAOKRĄGLONYM PROSTOKĄTEM, NIE KAPSUŁĄ (rejestr,
+   wpis #52). `--radius-full` robi z końców półokręgi, przez co plakietka
+   metadanych czyta się jak plakietka STANU (te są kapsułami celowo) i traci
+   proste boki, po których prototyp odróżnia jedno od drugiego. Odniesienie:
+   `v3/app.css:356-362` — `.chip { height: 1.5rem; padding: 0 0.4375rem;
+   border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+   background: var(--surface-raised); font-size: var(--text-xs) }`.
+   Kontrakt: `.ui-craft/tokens.md` — „Shape, motion, depth". */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -112,7 +121,7 @@
   max-inline-size: 100%;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--text-secondary);
   font: inherit;
@@ -143,16 +152,47 @@ button.chip:hover {
   block-size: 0.875rem;
 }
 
-/* A dashed outline says "nothing is here" without a sentence saying it. */
+/* A dashed outline says "nothing is here" without a sentence saying it.
+
+   Ten sam kształt co `.chip` (rejestr, wpis #52) — pusty stan jest tą samą
+   plakietką z inną krawędzią, a nie innym komponentem. Prototyp:
+   `v3/app.css:367` — `.chip.dashed { border-style: dashed; background: none;
+   color: var(--text-quaternary) }`, czyli MODYFIKATOR nad `.chip`, więc
+   promień dziedziczy się z niej i nie ma prawa się różnić. */
 .chipDashed {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   border: 1px dashed var(--border-default);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   color: var(--text-disabled);
   white-space: nowrap;
+}
+
+/* Ikona wiodąca stoi także w stanie pustym, bo mówi, CZEGO tu nie ma — bez
+   niej „No client" i „No deadline" są dwoma nierozróżnialnymi szarymi owalami.
+
+   CO ROBI PROTOTYP, dokładnie, bo poprzednia wersja tego komentarza cytowała
+   go za szeroko: pustą plakietkę terminu rysuje z zegarem
+   (`v3/screens/record.js:445` — `<span class="chip dashed">${icon("clock")}No
+   deadline</span>`), a pustą plakietkę klienta BEZ glifu (`:442`). Glif
+   w „No client" jest więc rozszerzeniem tej aplikacji ponad odniesienie,
+   świadomym i zamkniętym w rejestrze jako wpis #52 („glif wiodący u OBU
+   pustych plakietek") — nie cytatem.
+
+   ROZMIAR JEST LICZBĄ TEJ APLIKACJI, NIE PROTOTYPU. `v3/app.css:364` mówi
+   `.chip svg { width: 0.75rem; height: 0.75rem; opacity: 0.7 }`; ta reguła
+   bierze 0,875rem z siostrzanej `.chip svg` wyżej w TYM arkuszu, żeby obie
+   plakietki — pełna i pusta — niosły glif tej samej wielkości. Przezroczystość
+   0,7 jest z odniesienia. Poprzednia wersja komentarza cytowała 0,75rem
+   i deklarowała 0,875rem, czyli była dowodem na wartość, której reguła nie
+   używa. */
+.chipDashed svg {
+  flex: none;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  opacity: 0.7;
 }
 
 .due {
@@ -336,11 +376,20 @@ button.chip:hover {
   opacity: 0.35;
 }
 
+/* PRÓBKA JEST MINIATURĄ SEGMENTU PASKA, więc ma kształt segmentu (rejestr,
+   wpis #53). `--radius-sm` to 0,375 rem (`tokens.css:158`), a próbka ma
+   0,625 rem — promień równy 60% boku zamyka kwadracik w kółko i legenda
+   przestaje odsyłać do paska nad sobą. Prototyp rysuje ją literalnie
+   dwoma pikselami: `v3/screens/projects.css:238` — `.pj-legend .pj-seg
+   { width: 0.625rem; height: 0.625rem; border-radius: 2px }`. Liczba
+   surowa, nie token, bo to JEST liczba prototypu; najbliższy token
+   (`--radius-xs`) dałby inny kształt. Kontrakt: `.ui-craft/tokens.md` —
+   „Shape, motion, depth". */
 .swatch {
   flex: none;
   inline-size: 0.625rem;
   block-size: 0.625rem;
-  border-radius: var(--radius-sm);
+  border-radius: 2px;
 }
 
 /* ── TWO-COLUMN BODY ───────────────────────────────────────────────────── */
@@ -439,9 +488,37 @@ button.chip:hover {
 
 /* Nothing here is to be read, everything is to be clicked, which is exactly
    why narrow costs nothing. */
+/* KRAWĘDŹ PASA BIEGNIE PRZEZ CAŁY WIERSZ SIATKI, a nie przez tyle, ile ma
+   własnej treści (rejestr, wpis #47 — druga połowa).
+
+   POMIAR, KTÓRY TEGO ZAŻĄDAŁ (1440 px, harness). Samo przeniesienie karty
+   dokumentu do kolumny tekstu załatwia PIERWSZĄ połowę zgłoszenia — karta
+   przestaje wchodzić pod pas (prawa krawędź 1376 → 1072 px) — ale NIE drugą.
+   `.body` niesie `align-items: start` (i słusznie: gdyby pas się rozciągał
+   treścią, jego sekcje wisiałyby rozstrzelone), więc pudełko pasa jest
+   dokładnie tak wysokie jak jego sekcje. Zmierzone po przeniesieniu: kolumna
+   tekstu 422,6..1193,1, a pas 422,6..667,6 — włoskowa krawędź URYWAŁA SIĘ
+   525,5 px nad dnem kolumny. To ta sama wada, którą rejestr opisał, tylko
+   przesunięta: wcześniej kończyła się na górnym rogu karty (667,6 = górna
+   krawędź karty), teraz kończyłaby się w połowie dokumentu.
+
+   `align-self: stretch` rozciąga SAMO PUDEŁKO pasa na wysokość wiersza —
+   treść zostaje na górze, bo pas jest kolumną flex — więc krawędź jest tym,
+   czym jest w prototypie: granicą KOLUMNY, nie obrysem treści.
+
+   Odniesienie: `v3/screens/record.css:101` — `.rc-rail { border-left: 1px
+   solid var(--border-subtle); padding-left: var(--space-5) }` przy
+   `.rc-body { align-items: start }` (:84-87). W prototypie ta sama para
+   deklaracji nie ucina niczego, bo tam to PAS jest kolumną wyższą (sześć
+   sekcji powiązań nad krótkim dokumentem); u nas dokument jest trzy razy
+   wyższy od pasa, więc identyczny arkusz daje przeciwny obraz. Przepisujemy
+   INTENCJĘ prototypu — krawędź na całą długość ciała rekordu — a nie jego
+   literę, która milczy o przypadku, którego prototyp nie miał.
+   Kontrakt: `.ui-craft/patterns.md` — „Pattern: Record body and its rail". */
 .rail {
   display: flex;
   flex-direction: column;
+  align-self: stretch;
   gap: var(--space-5);
   min-inline-size: 0;
   padding-inline-start: var(--space-5);
@@ -595,8 +672,24 @@ button.railRow:focus-visible .railArrow {
   line-height: var(--leading-snug);
 }
 
+/* SZEROKOŚĆ WŁASNEJ TREŚCI, NIE SZEROKOŚĆ RZĘDU (Faza C, lot C5). `flex: 1 1
+   8rem` kazało tej kontrolce zjadać CAŁE wolne miejsce rzędu, więc pole wyboru
+   z jedną krótką nazwą klienta rozciągało się na wszystko, czego nie zajął
+   przycisk obok. Prototyp mówi odwrotnie i mówi to dwoma miejscami naraz:
+   `.st-select` (`v3/screens/settings.css:190-194`) i `.btn`
+   (`v3/app.css:306-314`) mają tę samą geometrię i ANI JEDNO nie deklaruje
+   szerokości — kontrolka wyboru stoi jak przycisk obok niej.
+
+   SUFIT ZOSTAJE, BO ZNIKŁA TYLKO PODŁOGA. Nazwy organizacji są treścią rekordu
+   i biegną długo, a `<select>` bierze szerokość najszerszej opcji; `flex-basis:
+   8rem` chronił przed jednym, `max-inline-size` chroni przed drugim. Sufit
+   16rem to idiom tego arkusza dla tej samej kontrolki w innym miejscu
+   (`styles.css:6642-6653`). `min-inline-size: 0` zostaje: rząd zawija, a bez
+   tego kontrolka nie umiałaby zejść poniżej swojej wewnętrznej szerokości
+   i wystawałaby z wąskiego kadru. */
 .railSelect {
-  flex: 1 1 8rem;
+  flex: 0 1 auto;
+  max-inline-size: 16rem;
   min-inline-size: 0;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-subtle);

@@ -10,6 +10,8 @@ import type {
   RendererCommandResponse,
 } from "@constellation/desktop-preload/client";
 
+import type { MeetingLoopSurface } from "@constellation/contracts";
+
 import { createScenarioClient } from "../src/client/scenario-client.js";
 import { MeetingsSurface } from "../src/MeetingsSurface.js";
 import { assertNoNode } from "./dom-assert.js";
@@ -81,7 +83,15 @@ type Mounted = {
   readonly detachedNow: () => readonly string[];
 };
 
-const mountMeetings = async (): Promise<Mounted> => {
+const mountMeetings = async (
+  /* JEDNO RAMIĘ WYRAŻENIA NA RAZ, PODAWANE Z ZEWNĄTRZ. `.meeting-empty`
+     i `.meeting-upcoming-list` to dwa ramiona jednego warunku
+     (`MeetingsSurface.tsx`, `surface.upcoming.length === 0`), więc żadna
+     pojedyncza fikstura nie narysuje obu — a drabina nagłówków musi być
+     sprawdzona w OBU, bo defekt, który położył paczkowaną alfę, siedział
+     w tym ramieniu, którego domyślna fikstura NIE rysuje. */
+  shapeLoop: (loop: MeetingLoopSurface) => MeetingLoopSurface = (loop) => loop,
+): Promise<Mounted> => {
   // Derived from the clock the test runs on, never pinned: a fixture whose
   // instants are written down is a defect with a delay fuse.
   const now = Date.now();
@@ -112,7 +122,7 @@ const mountMeetings = async (): Promise<Mounted> => {
   const client: ConstellationRendererClient = {
     ...base,
     getJamieStatus: async () => ({ configured: true, scope: "personal" }),
-    getMeetingLoop: async () => meetingLoopFixture(now, detached),
+    getMeetingLoop: async () => shapeLoop(meetingLoopFixture(now, detached)),
     runQuery: async (query: QueryEnvelope) =>
       query.queryName === "document.backlinks"
         ? projectionResponse(backlinksFixture(now))
@@ -158,6 +168,7 @@ const mountMeetings = async (): Promise<Mounted> => {
         inspectorHost,
         onInspectorOpen: () => undefined,
         onMeetingSelected: () => undefined,
+        onOpenSources: () => undefined,
       }),
     );
   });
@@ -438,5 +449,105 @@ test("the routing selects offer the destinations the query returns", async () =>
     [...select.options].map((option) => option.textContent),
     ["No project", "Northstar rollout"],
     "the project select is empty — the routing read failed and the screen said nothing",
+  );
+});
+
+/* DRABINA NAGŁÓWKÓW TEGO EKRANU — POZIOM NIE PRZESKAKUJE POZIOMU.
+ *
+ * DLACZEGO TA ASERCJA TU JEST. Lot D7 podniósł głowę sekcji „Coming up" z `h3`
+ * na `h2` i zostawił jej dzieci na `h4`. Dziura h2→h4 pojechała do CI i położyła
+ * trzy zadania paczkowanej alfy naraz
+ * (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [4]`) — a NIC
+ * LOKALNEGO tego nie widziało: `scripts/heading-typography.mjs` bada, czy każda
+ * reguła nagłówka deklaruje rozmiar i wagę, czyli ARKUSZ, a bramka układu sądzi
+ * `#surface-title`, czyli JEDEN nagłówek na ekran. O KOLEJNOŚCI poziomów nie
+ * mówiła żadna z nich. Przyrządem był wyłącznie smoke chodzący raz na przebieg
+ * CI, na trzech spakowanych systemach, po ośmiu minutach.
+ *
+ * REGUŁA JEST TA SAMA, CO W SMOKE'U, i to jest celowe powtórzenie, a nie druga
+ * definicja: `scripts/run-packaged-alpha-smoke.mjs` liczy `headingJumps` jako
+ * te poziomy, które są o więcej niż jeden większe od poprzedniego w kolejności
+ * dokumentu. Tutaj chodzi w tym samym kształcie, tylko wcześniej i za darmo.
+ *
+ * OBA RAMIONA, BO DEFEKT SIEDZIAŁ W TYM, KTÓREGO FIKSTURA NIE RYSUJE. Domyślna
+ * fikstura ma jedno nadchodzące wydarzenie, więc rysuje `.meeting-upcoming-list`
+ * i tytuł wydarzenia; smoke widział ekran z `upcoming: []`, czyli `.meeting-empty`
+ * i nadpis „No events visible". Asercja na jednym ramieniu byłaby zielona nad
+ * dokładnie tym defektem, który to napisał.
+ */
+const headingJumps = (scope: HTMLElement): number[] => {
+  const levels = [...scope.querySelectorAll("h1, h2, h3, h4, h5, h6")].map(
+    (element) => Number(element.tagName.slice(1)),
+  );
+  return levels.slice(1).filter((level, index) => level - levels[index]! > 1);
+};
+
+/** The ladder, rendered as `h1 → h2 → …`, so a red run names what it saw. */
+const headingLadder = (scope: HTMLElement): string =>
+  [...scope.querySelectorAll("h1, h2, h3, h4, h5, h6")]
+    .map(
+      (element) =>
+        `${element.tagName.toLowerCase()}("${(element.textContent ?? "").trim().slice(0, 40)}")`,
+    )
+    .join(" → ");
+
+test("the heading ladder never skips a level, with an upcoming event on screen", async () => {
+  await mountMeetings();
+  /* POZYTYWNA KONTROLA PRZYRZĄDU, W TRZECH CZĘŚCIACH. „Zero przeskoków" jest
+     prawdą o pustej stronie, o stronie z jednym nagłówkiem i o stronie, na
+     której poziom trzeci nigdy nie wystąpił — czyli o KAŻDEJ wersji tego
+     ekranu, na której defekt siedzi ukryty gdzie indziej. Podłoga 4 jest
+     ZMIERZONA, nie wybrana: pasmo daje `h1`, obie sekcje po `h2`, wydarzenie
+     `h3`. Reszta nagłówków tego ekranu rysuje się w inspektorze, czyli w innym
+     korzeniu, i nie należy do zamiatanego zakresu — dokładnie tak, jak
+     w smoke'u, którego podmiotem jest sam ekran. */
+  const levels = [...container.querySelectorAll("h1, h2, h3, h4, h5, h6")].map(
+    (element) => Number(element.tagName.slice(1)),
+  );
+  assert.ok(
+    levels.length >= 4,
+    `the surface drew ${levels.length} headings, so this sweep measured almost nothing: ${headingLadder(container)}`,
+  );
+  assert.equal(levels[0], 1, "the screen does not open with its own `h1`");
+  assert.ok(
+    container.querySelector(".meeting-upcoming-list"),
+    "this fixture drew no upcoming list, so the arm this test names was never on screen",
+  );
+  assert.deepEqual(
+    headingJumps(container),
+    [],
+    `a heading level was skipped: ${headingLadder(container)}`,
+  );
+  // OSTATNIA CZĘŚĆ KONTROLI, PO ASERCJI, ŻEBY TO ONA NAZYWAŁA DEFEKT: ekran,
+  // z którego poziom trzeci ZNIKNĄŁ, nie ma czym przeskoczyć i przechodziłby
+  // wyżej cicho.
+  assert.ok(
+    levels.includes(3),
+    `no heading on this screen sits at level three, so the sweep above had nothing to catch: ${headingLadder(container)}`,
+  );
+});
+
+test("the heading ladder never skips a level when nothing is coming up", async () => {
+  await mountMeetings((loop) => ({ ...loop, upcoming: [] }));
+  assert.ok(
+    container.querySelector(".meeting-empty"),
+    "the empty upcoming arm did not render, so this test measured the other one twice",
+  );
+  assertNoNode(
+    container.querySelector(".meeting-upcoming-list"),
+    "both arms of the same expression are on screen, which means the fixture override did not take",
+  );
+  assert.deepEqual(
+    headingJumps(container),
+    [],
+    `a heading level was skipped: ${headingLadder(container)}`,
+  );
+  // TA SAMA KONTROLA, CO WYŻEJ, I W TEJ SAMEJ KOLEJNOŚCI: nadpis pustego stanu
+  // JEST tym poziomem trzecim, o który poszło.
+  assert.ok(
+    [...container.querySelectorAll("h1, h2, h3, h4, h5, h6")]
+      .map((element) => Number(element.tagName.slice(1)))
+      .includes(3),
+    `the empty upcoming state drew no level-three heading: ${headingLadder(container)}`,
   );
 });

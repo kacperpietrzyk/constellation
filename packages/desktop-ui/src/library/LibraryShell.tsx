@@ -59,6 +59,13 @@ export const LibraryShell = ({
   const [reading, setReading] = useState<LibraryReading>(
     activeReading ?? "notes",
   );
+  // WĘZEŁ W STANIE, NIE W `useRef`, i to jest wymóg, a nie gust: portal
+  // wstrzykuje do CELU, więc odczyt musi się przerysować w chwili, w której cel
+  // pojawia się w drzewie. `useRef` nie powoduje przerysowania, a pierwszy
+  // przebieg ma tam `null` — akcja zostałaby wtedy nienarysowana aż do
+  // pierwszej zmiany stanu z innego powodu. Ten sam kształt co `inspectorHost`,
+  // który powłoka podaje temu komponentowi z zewnątrz.
+  const [actionHost, setActionHost] = useState<HTMLElement | null>(null);
   // Kontekst powłoki niesie żądany odczyt, więc wrzutka głosowa i wrzutka
   // otwarta z Inboxa lądują na rejestrze, a nie na Notatkach. Bez tego efektu
   // przepięcie tamtych dwóch wywołań z wycofanego `history` na `library`
@@ -78,6 +85,38 @@ export const LibraryShell = ({
 
   return (
     <div className={styles.shell}>
+      {/* PASMO TYTUŁU DOSTAJE SLOT AKCJI, A LICZNIK SCHODZI DO PASKA WIDOKU
+          (Faza C, lot C2 — pozycje rejestru o Notatkach i o Źródłach; JEDNA
+          poprawka na dwa ekrany, bo pasmo jest jedno).
+
+          Prototyp: `v3/screens/knowledge.js:802-804` stawia `btn("New note",
+          { cls: "primary", icon: "plus" })` jako drugi argument
+          `crumbbar(crumbs, actions)` (`v3/app.js:677-683`), a `:967-968` robi
+          to samo z „Add a source"; rozpychacz `.crumbbar .spacer { flex: 1 }`
+          (`v3/app.css:293`) odpycha akcję do prawego końca pasma, a wypełnienie
+          idzie z `.btn.primary` (`v3/app.css:321-332`). Licznik siedzi
+          w prototypie w PASKU WIDOKU pod pasmem (`v3/app.css:295-301`, `.viewbar
+          .count`) — ta sama zmiana, którą Odnowienia dostały w swoim locie jako
+          pozycja 7. Kontrakt: `.ui-craft/tokens.md`, „Usage constraints" 3 —
+          pasek akcji ekranu to pojemnik, któremu wolno nieść jedną akcję
+          z wypełnieniem akcentu; rejestr notuje o obu tych ekranach, że NIE MA
+          NA NICH ANI JEDNEJ powierzchni wypełnionej akcentem.
+
+          KOLEJNOŚĆ MA ZNACZENIE I JEST MIERZONA. Licznik stał na PRAWYM KOŃCU
+          pasma, więc sam slot akcji by nie wystarczył: akcja stanęłaby PRZED
+          liczbą i pasmo dalej kończyłoby się liczbą — co spis pasma tytułu
+          czyta jako `INSET_FROM_END`. Licznik schodzi więc niżej, a koniec
+          pasma należy do akcji.
+
+          AKCJA JEST WSTRZYKIWANA PRZEZ PORTAL, nie budowana tutaj. Odczyt wie,
+          co na nim znaczy „utwórz" (Notatki otwierają dymek z formularzem,
+          Źródła mają własny), a powłoka wie, GDZIE ta akcja stoi. Ten sam
+          wzorzec, co `inspectorHost` w tym samym pliku i w
+          `KnowledgeEditor.tsx:1558`; przeniesienie formularzy do powłoki
+          znaczyłoby przeniesienie ich stanu, czyli przebudowę dwóch odczytów
+          w locie o POŁOŻENIU akcji. Historia przechwyceń akcji tworzenia nie ma
+          i slot zostaje wtedy pusty — „ten odczyt nie ma akcji" jest
+          odpowiedzią, nie luką. */}
       <header className={styles.header}>
         <div>
           <p className="eyebrow">Sources and deliverables</p>
@@ -85,9 +124,7 @@ export const LibraryShell = ({
             Library
           </h1>
         </div>
-        <span className={`library-count ${styles.count}`}>
-          {documentCount + sourceCount}
-        </span>
+        <div className={styles.headerAction} ref={setActionHost} />
       </header>
 
       <div className={styles.viewbar}>
@@ -118,6 +155,13 @@ export const LibraryShell = ({
             </button>
           ))}
         </div>
+        {/* LICZNIK CZYTA LISTĘ, WIĘC STOI NAD LISTĄ, a nie w rzędzie akcji —
+            `v3/app.css:295-301` daje `.viewbar` własne `.count`. Klasa
+            `library-count` zostaje, bo dzieli ją reguła globalna w `styles.css`
+            z dwiema powierzchniami spoza Biblioteki. */}
+        <span className={`library-count ${styles.count}`}>
+          {documentCount + sourceCount}
+        </span>
       </div>
 
       {/* `data-height-bound` JEST DEKLARACJĄ, nie hakiem testowym, i mówi
@@ -132,6 +176,7 @@ export const LibraryShell = ({
       <div className={styles.reading} data-height-bound="library">
         {reading === "notes" ? (
           <NotesReading
+            actionHost={actionHost}
             client={client}
             snapshot={snapshot}
             activeDocumentId={activeDocumentId}
@@ -148,6 +193,7 @@ export const LibraryShell = ({
           // availability control and what rests on the source outside the
           // screen they belong to. So this reading takes no inspector host.
           <SourcesReading
+            actionHost={actionHost}
             client={client}
             snapshot={snapshot}
             onReload={onReload}
