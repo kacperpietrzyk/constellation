@@ -2024,7 +2024,13 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // co czyta się jak zepsuty przyrząd, a nie jak dowieziona poprawka.
       // Podmiotem jest ten SAM przycisk w tym samym stanie — zmieniło się
       // wyłącznie pasmo, w którym stoi.
-      selector: "[data-pipeline-surface] .surface-header button",
+      // PRZEPIĘTE W LOCIE R3 z tego samego powodu, co para `D6-04a` na
+      // Organizacjach: pasmo wyszło z przewijanego pudełka, więc
+      // `[data-pipeline-surface]` — atrybut TEGO pudełka — przestał być jego
+      // przodkiem. Kotwicą jest `main[data-surface]`, deklaracja obejmująca oba
+      // pasma i treść pod nimi; `main` konieczne, bo ten sam atrybut niesie
+      // pozycja nawigacji.
+      selector: 'main[data-surface="pipeline"] .surface-header button',
       why: "R2 — one ruling for five surfaces; the title band holds exactly one button, which at rest is `primary-button`",
       app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:840-872",
     },
@@ -2091,7 +2097,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "pipeline" },
     subject: {
-      selector: '[data-pipeline-surface] [class*="_stagesLink_"]',
+      // Ta sama zmiana kotwicy co wyżej: kontrolka „Stages" stoi w PASKU
+      // WIDOKU, a ten jest od lotu R3 rodzeństwem przewijanego pudełka.
+      selector: 'main[data-surface="pipeline"] [class*="_stagesLink_"]',
       why: "CSS Module class; the app declares 1px solid var(--border-subtle) at rest",
       app: "packages/desktop-ui/src/pipeline/pipeline.module.css:80-94",
     },
@@ -5694,7 +5702,10 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "people" },
     subject: {
-      selector: '[data-people-surface] [class*="_switch_"] svg',
+      // PRZEPIĘTE W LOCIE R3, jak `D6-04a` na Organizacjach: przełącznik układu
+      // stoi w PASKU WIDOKU, a ten wyszedł z przewijanego pudełka, więc
+      // `[data-people-surface]` przestał być jego przodkiem.
+      selector: 'main[data-surface="people"] [class*="_switch_"] svg',
       why: "drugi arkusz i drugi literał LAYOUTS — jedna para nad Organizacjami nie mówi nic o tym ekranie",
       app: "packages/desktop-ui/src/people/PeopleSurface.tsx (LAYOUTS) + people.module.css (.switch svg)",
     },
@@ -5752,7 +5763,10 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     route: { surface: "people" },
     subject: {
-      selector: '[data-people-surface] [class*="_switch_"] svg',
+      // PRZEPIĘTE W LOCIE R3, jak `D6-04a` na Organizacjach: przełącznik układu
+      // stoi w PASKU WIDOKU, a ten wyszedł z przewijanego pudełka, więc
+      // `[data-people-surface]` przestał być jego przodkiem.
+      selector: 'main[data-surface="people"] [class*="_switch_"] svg',
       why: "DRUGA para, nie druga własność pierwszej — dokładnie z powodu, dla którego istnieje D6-02a: reguła mieszka w drugim arkuszu modułowym, a jedna para stałaby zielona nad połową poprawki. Obie połowy naprawdę rozjechały się razem i razem zostały poprawione",
       app: "packages/desktop-ui/src/people/people.module.css (.switch svg)",
     },

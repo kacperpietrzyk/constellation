@@ -562,85 +562,45 @@ export const PeopleSurface = ({
 
   if (!relationships.available)
     return (
-      <div className={`surface-scroll ${styles.people}`} data-people-surface>
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także w stanie awaryjnym —
+      // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
+      // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
+      // powiedzieć, że czegoś nie dało się przeczytać.
+      <>
         {header()}
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>People are unavailable</h2>
-            {/* The slice's own reason, not a sentence written here: a fixed
-                line tells a reader nothing they can act on, and the message is
-                the only thing that names what failed. */}
-            <p data-people-unavailable>{relationships.message}</p>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => void onReload()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
-      </div>
+        <div className={`surface-scroll ${styles.people}`} data-people-surface>
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>People are unavailable</h2>
+              {/* The slice's own reason, not a sentence written here: a fixed
+                  line tells a reader nothing they can act on, and the message is
+                  the only thing that names what failed. */}
+              <p data-people-unavailable>{relationships.message}</p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => void onReload()}
+              type="button"
+            >
+              Try again
+            </button>
+          </section>
+        </div>
+      </>
     );
 
   return (
-    <div className={`surface-scroll ${styles.people}`} data-people-surface>
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, a przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest tu WARUNKIEM, a nie stylem: pasma muszą
+    // być bezpośrednimi dziećmi `.work-surface`, więc żaden dodatkowy element
+    // nie może stanąć między nimi a nośnikiem.
+    <>
       {header(bandAction)}
-      {creating && (
-        <form
-          aria-label="New person"
-          className={styles.create}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <label className={styles.field}>
-            Name
-            <input
-              onChange={(event) => setDraftName(event.target.value)}
-              required
-              value={draftName}
-            />
-          </label>
-          <label className={styles.field}>
-            Organization
-            <select
-              onChange={(event) => setDraftOrganizationId(event.target.value)}
-              value={draftOrganizationId}
-            >
-              <option value="">{NO_ORGANIZATION_GROUP}</option>
-              {index.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            Role
-            <input
-              onChange={(event) => setDraftRole(event.target.value)}
-              value={draftRole}
-            />
-          </label>
-          <label className={styles.field}>
-            Email
-            <input
-              onChange={(event) => setDraftEmail(event.target.value)}
-              type="email"
-              value={draftEmail}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={busy || draftName.trim() === ""}
-            type="submit"
-          >
-            {busy ? "Adding…" : "Add person"}
-          </button>
-        </form>
-      )}
       <div className={`view-band ${styles.viewbar}`}>
         <div
           aria-label="People layout"
@@ -665,90 +625,154 @@ export const PeopleSurface = ({
           {`${countLabel(tally.people, "person", "people")} across ${countLabel(tally.organizations, "organization")}`}
         </span>
       </div>
-      {ordered.length === 0 ? (
-        <section className={styles.emptyState} role="status">
-          <div>
-            <h2>No people yet</h2>
-            <p>
-              A person is somebody you deal with at a client — not somebody who
-              signs in here.
-            </p>
-          </div>
-        </section>
-      ) : layout === "table" ? (
-        <PeopleTable
-          itemProps={itemProps}
-          onOpen={openPerson}
-          onSelect={onSelectRecord}
-          readings={ordered}
-          selectedRecordId={selectedRecordId}
-          timeZone={timeZone}
-        />
-      ) : (
-        // The head stands OUTSIDE the listbox and each group owns its own,
-        // exactly as the accepted prototype does (`crm.js:485-498`). A listbox
-        // may hold only options and groups, and the head carries a real
-        // `<button>` — an interactive control inside a composite widget with a
-        // roving tab stop is undefined in the accessibility tree and dead to
-        // the arrow keys, because the row handler gates on
-        // `target === currentTarget`. The row indices still run unbroken across
-        // the boundaries: `useListNavigation` keys on the index, not on the DOM.
-        <div className={styles.list}>
-          {groups.map((group: PeopleGroup, position) => {
-            const base = groups
-              .slice(0, position)
-              .reduce((total, earlier) => total + earlier.readings.length, 0);
-            return (
-              <div className={styles.group} key={group.key}>
-                {group.organization === undefined ? (
-                  <div className={styles.groupHead} data-people-group="none">
-                    <span className={styles.groupName}>
-                      {NO_ORGANIZATION_GROUP}
-                    </span>
-                    <span className={styles.groupCount}>
-                      {group.readings.length}
-                    </span>
-                  </div>
-                ) : (
-                  <GroupHead
-                    onOpenOrganization={onOpenOrganization}
-                    peopleCount={group.readings.length}
-                    reading={readOrganization(
-                      group.organization,
-                      index,
-                      delivery === undefined
-                        ? undefined
-                        : delivery(group.organization.id),
-                      prose,
-                    )}
-                  />
-                )}
-                <div
-                  aria-label={
-                    group.organization === undefined
-                      ? "People with no organization recorded"
-                      : `People at ${group.organization.name}`
-                  }
-                  role="listbox"
-                >
-                  {group.readings.map((reading, offset) => (
-                    <PersonRow
-                      index={base + offset}
-                      itemProps={itemProps}
-                      key={reading.person.id}
-                      onOpen={openPerson}
-                      onSelect={onSelectRecord}
-                      reading={reading}
-                      selected={reading.person.id === selectedRecordId}
-                      timeZone={timeZone}
+      <div className={`surface-scroll ${styles.people}`} data-people-surface>
+        {/* FORMULARZ TWORZENIA ZJECHAŁ POD PASEK WIDOKU, i to jest skutek
+            układu, a nie osobna decyzja o kolejności. Do tego lotu stał MIĘDZY
+            pasmami — czyli rozpychał chrom w stanie tworzenia, a `.surface-header
+            + .view-band` przestawało wtedy trafiać i pasma się rozjeżdżały.
+            Prototyp układa dwa pasma jedno na drugim i dopiero pod nimi treść
+            (`v3/app.css:278-303`), a formularz jest treścią: przewija się razem
+            z listą, którą uzupełnia. */}
+        {creating && (
+          <form
+            aria-label="New person"
+            className={styles.create}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <label className={styles.field}>
+              Name
+              <input
+                onChange={(event) => setDraftName(event.target.value)}
+                required
+                value={draftName}
+              />
+            </label>
+            <label className={styles.field}>
+              Organization
+              <select
+                onChange={(event) => setDraftOrganizationId(event.target.value)}
+                value={draftOrganizationId}
+              >
+                <option value="">{NO_ORGANIZATION_GROUP}</option>
+                {index.organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              Role
+              <input
+                onChange={(event) => setDraftRole(event.target.value)}
+                value={draftRole}
+              />
+            </label>
+            <label className={styles.field}>
+              Email
+              <input
+                onChange={(event) => setDraftEmail(event.target.value)}
+                type="email"
+                value={draftEmail}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={busy || draftName.trim() === ""}
+              type="submit"
+            >
+              {busy ? "Adding…" : "Add person"}
+            </button>
+          </form>
+        )}
+        {ordered.length === 0 ? (
+          <section className={styles.emptyState} role="status">
+            <div>
+              <h2>No people yet</h2>
+              <p>
+                A person is somebody you deal with at a client — not somebody
+                who signs in here.
+              </p>
+            </div>
+          </section>
+        ) : layout === "table" ? (
+          <PeopleTable
+            itemProps={itemProps}
+            onOpen={openPerson}
+            onSelect={onSelectRecord}
+            readings={ordered}
+            selectedRecordId={selectedRecordId}
+            timeZone={timeZone}
+          />
+        ) : (
+          // The head stands OUTSIDE the listbox and each group owns its own,
+          // exactly as the accepted prototype does (`crm.js:485-498`). A listbox
+          // may hold only options and groups, and the head carries a real
+          // `<button>` — an interactive control inside a composite widget with a
+          // roving tab stop is undefined in the accessibility tree and dead to
+          // the arrow keys, because the row handler gates on
+          // `target === currentTarget`. The row indices still run unbroken across
+          // the boundaries: `useListNavigation` keys on the index, not on the DOM.
+          <div className={styles.list}>
+            {groups.map((group: PeopleGroup, position) => {
+              const base = groups
+                .slice(0, position)
+                .reduce((total, earlier) => total + earlier.readings.length, 0);
+              return (
+                <div className={styles.group} key={group.key}>
+                  {group.organization === undefined ? (
+                    <div className={styles.groupHead} data-people-group="none">
+                      <span className={styles.groupName}>
+                        {NO_ORGANIZATION_GROUP}
+                      </span>
+                      <span className={styles.groupCount}>
+                        {group.readings.length}
+                      </span>
+                    </div>
+                  ) : (
+                    <GroupHead
+                      onOpenOrganization={onOpenOrganization}
+                      peopleCount={group.readings.length}
+                      reading={readOrganization(
+                        group.organization,
+                        index,
+                        delivery === undefined
+                          ? undefined
+                          : delivery(group.organization.id),
+                        prose,
+                      )}
                     />
-                  ))}
+                  )}
+                  <div
+                    aria-label={
+                      group.organization === undefined
+                        ? "People with no organization recorded"
+                        : `People at ${group.organization.name}`
+                    }
+                    role="listbox"
+                  >
+                    {group.readings.map((reading, offset) => (
+                      <PersonRow
+                        index={base + offset}
+                        itemProps={itemProps}
+                        key={reading.person.id}
+                        onOpen={openPerson}
+                        onSelect={onSelectRecord}
+                        reading={reading}
+                        selected={reading.person.id === selectedRecordId}
+                        timeZone={timeZone}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 };

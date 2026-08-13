@@ -853,8 +853,16 @@ test("nothing on this screen explains itself in a tooltip", async () => {
   // Compared as a BOOLEAN, not as the node: handing vitest a DOM element to
   // serialise for its diff kills the worker without reporting anything, which
   // this repository has already paid for once.
+  // CAŁY EKRAN, NIE JEGO PRZEWIJANE PUDEŁKO. Od lotu R3 pasmo tytułu i pasek
+  // widoku są RODZEŃSTWEM `.surface-scroll`, a `data-pipeline-surface` został na
+  // pudełku — zamiatanie po tamtym adresie przestało widzieć oba pasma i byłoby
+  // zielone nad `title=` postawionym w którymkolwiek z nich. Ten plik montuje na
+  // dwa sposoby (powłoka i sam ekran), więc zakres rozstrzyga się w locie.
+  const screen =
+    container.querySelector<HTMLElement>('main[data-surface="pipeline"]') ??
+    container;
   assert.equal(
-    container.querySelector("[data-pipeline-surface] [title]") === null,
+    screen.querySelector("[title]") === null,
     true,
     "an explanation survived as a `title` attribute",
   );

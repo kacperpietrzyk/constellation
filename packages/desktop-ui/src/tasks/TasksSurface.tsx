@@ -358,12 +358,18 @@ export const TasksSurface = ({
 
   if (work.kind !== "ready")
     return (
-      <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+      // Pasmo jest RODZEŃSTWEM przewijanego pudełka także w stanie awaryjnym —
+      // patrz nota przy głównym zwrocie niżej. Gdyby ta gałąź trzymała stary
+      // układ, chrom skakałby o 12 px dokładnie w chwili, w której ekran ma
+      // powiedzieć, że czegoś nie dało się przeczytać.
+      <>
         <SurfaceTitleBand title="Tasks" />
-        <p className={styles.unavailable}>
-          Tasks are unavailable while the work plane cannot be read.
-        </p>
-      </div>
+        <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+          <p className={styles.unavailable}>
+            Tasks are unavailable while the work plane cannot be read.
+          </p>
+        </div>
+      </>
     );
 
   // A task OPENED as a record takes the whole surface. The record brings its own
@@ -377,25 +383,28 @@ export const TasksSurface = ({
   // way: they are how the shell scrolls this plane and how the packaged smoke
   // finds it.
   if (activeTaskId !== undefined)
-    return (
+    // TYLKO RAMIĘ Z PASMEM WYNOSI PASMO. Drugie ramię oddaje ekran rekordu,
+    // który rysuje WŁASNY chrom — objęcie go tym fragmentem postawiłoby pasmo
+    // ekranu Zadań nad pasmem rekordu, czyli dwa pasma jedno pod drugim.
+    return renderRecordScreen === undefined ? (
+      // The record could not be assembled — the opened task is not in the
+      // work projection, so there is nothing to read it from. Said plainly
+      // rather than degraded into a thinner record: a screen missing half
+      // its reading still looks like a screen. The heading carries the id
+      // the record would have carried, because the failure case is exactly
+      // when a work plane with no name and no focus target is worst.
+      <>
+        <SurfaceTitleBand title="This task could not be opened" />
+        <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
+          <p className={styles.unavailable}>
+            It is not in the work projection for this Space. Reload, or go back
+            to the task list.
+          </p>
+        </div>
+      </>
+    ) : (
       <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
-        {renderRecordScreen === undefined ? (
-          // The record could not be assembled — the opened task is not in the
-          // work projection, so there is nothing to read it from. Said plainly
-          // rather than degraded into a thinner record: a screen missing half
-          // its reading still looks like a screen. The heading carries the id
-          // the record would have carried, because the failure case is exactly
-          // when a work plane with no name and no focus target is worst.
-          <>
-            <SurfaceTitleBand title="This task could not be opened" />
-            <p className={styles.unavailable}>
-              It is not in the work projection for this Space. Reload, or go
-              back to the task list.
-            </p>
-          </>
-        ) : (
-          renderRecordScreen()
-        )}
+        {renderRecordScreen()}
       </div>
     );
 
@@ -446,11 +455,22 @@ export const TasksSurface = ({
         : TASK_GROUPING_LABELS[grouping];
 
   return (
-    <div
-      className={`surface-scroll ${styles.tasks}`}
-      data-density={density}
-      data-tasks-surface
-    >
+    // PASMA SĄ RODZEŃSTWEM PRZEWIJANEGO PUDEŁKA, NIE JEGO DZIEĆMI — układ
+    // prototypu (`v3/app.css:278-303`: `.crumbbar`, `.viewbar` i `.scroller` to
+    // troje dzieci `.canvas`, a przewija się wyłącznie trzecie). Mechanizm stoi
+    // w `styles.css` przy `.work-surface:has(> .surface-header)`; ekran zgłasza
+    // się do niego TYM, że wynosi pasma na zewnątrz, a nie nazwą na liście.
+    //
+    // Fragment zamiast pojemnika jest tu WARUNKIEM, a nie stylem: pasma muszą
+    // być bezpośrednimi dziećmi `.work-surface`, więc żaden dodatkowy element
+    // nie może stanąć między nimi a nośnikiem.
+    //
+    // `data-density` ZOSTAJE NA PUDEŁKU, i to jest pomiar, nie odruch: czytają
+    // go wyłącznie wiersze listy i komórki tabeli
+    // (`task-list.module.css:237`, `task-table.module.css:388-389`), a te
+    // wszystkie mieszkają w przewijanym pudełku. Na paśmie nie miałby czego
+    // opisać.
+    <>
       <SurfaceTitleBand
         action={
           /* THE SCREEN'S ACTION, WHICH THIS BAND DID NOT HAVE AT ALL (Phase C,
@@ -648,79 +668,85 @@ export const TasksSurface = ({
         </p>
       </div>
 
-      {activeLayout === "list" ? (
-        <TaskListLayout
-          firstRowIndexOfGroup={firstRowIndexOfGroup}
-          groups={groups}
-          itemProps={itemProps}
-          onAddToGroup={addToGroup}
-          onOpen={onOpenTask}
-          onSelect={onSelectTask}
-          onToggleCompleted={onSetCompleted}
-          prose={prose}
-          selectedTaskId={selectedTaskId}
-        />
-      ) : (
-        <LazySurfaceBoundary label={TASK_LAYOUT_LABELS[activeLayout]}>
-          <Suspense
-            fallback={
-              <SurfaceLoadingState label={TASK_LAYOUT_LABELS[activeLayout]} />
-            }
-          >
-            {activeLayout === "board" ? (
-              <TaskBoardLayout
-                firstRowIndexOfGroup={firstRowIndexOfGroup}
-                groupingLabel={boardGroupingLabel}
-                groups={groups}
-                itemProps={itemProps}
-                onAddToGroup={addToGroup}
-                onMoveToStatus={onSetStatus}
-                onOpen={onOpenTask}
-                onSelect={onSelectTask}
-                prose={prose}
-                selectedTaskId={selectedTaskId}
-                // A field grouping is an object and never equals "project", so
-                // the test the board used to make on the union reads correctly
-                // on the wider type without narrowing it first.
-                showProjects={grouping !== "project"}
-              />
-            ) : activeLayout === "table" ? (
-              <TaskTableLayout
-                chosenColumns={chosenColumns}
-                fields={taskFields}
-                itemProps={itemProps}
-                onOpen={onOpenTask}
-                onSelect={onSelectTask}
-                prose={prose}
-                rows={rows}
-                selectedTaskId={selectedTaskId}
-                viewKey={activeView?.id ?? "all"}
-              />
-            ) : activeLayout === "timeline" ? (
-              <TaskTimelineLayout
-                itemProps={itemProps}
-                onOpen={onOpenTask}
-                onPlanOnDay={onPlanOnDay}
-                onSelect={onSelectTask}
-                prose={prose}
-                rows={rows}
-                selectedTaskId={selectedTaskId}
-              />
-            ) : activeLayout === "calendar" ? (
-              <TaskCalendarLayout
-                itemProps={itemProps}
-                onOpen={onOpenTask}
-                onOpenCalendarDestination={onOpenCalendar}
-                onPlanOnDay={onPlanOnDay}
-                onSelect={onSelectTask}
-                prose={prose}
-                rows={rows}
-                selectedTaskId={selectedTaskId}
-              />
-            ) : null}
-          </Suspense>
-        </LazySurfaceBoundary>
-      )}
-    </div>
+      <div
+        className={`surface-scroll ${styles.tasks}`}
+        data-density={density}
+        data-tasks-surface
+      >
+        {activeLayout === "list" ? (
+          <TaskListLayout
+            firstRowIndexOfGroup={firstRowIndexOfGroup}
+            groups={groups}
+            itemProps={itemProps}
+            onAddToGroup={addToGroup}
+            onOpen={onOpenTask}
+            onSelect={onSelectTask}
+            onToggleCompleted={onSetCompleted}
+            prose={prose}
+            selectedTaskId={selectedTaskId}
+          />
+        ) : (
+          <LazySurfaceBoundary label={TASK_LAYOUT_LABELS[activeLayout]}>
+            <Suspense
+              fallback={
+                <SurfaceLoadingState label={TASK_LAYOUT_LABELS[activeLayout]} />
+              }
+            >
+              {activeLayout === "board" ? (
+                <TaskBoardLayout
+                  firstRowIndexOfGroup={firstRowIndexOfGroup}
+                  groupingLabel={boardGroupingLabel}
+                  groups={groups}
+                  itemProps={itemProps}
+                  onAddToGroup={addToGroup}
+                  onMoveToStatus={onSetStatus}
+                  onOpen={onOpenTask}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  selectedTaskId={selectedTaskId}
+                  // A field grouping is an object and never equals "project", so
+                  // the test the board used to make on the union reads correctly
+                  // on the wider type without narrowing it first.
+                  showProjects={grouping !== "project"}
+                />
+              ) : activeLayout === "table" ? (
+                <TaskTableLayout
+                  chosenColumns={chosenColumns}
+                  fields={taskFields}
+                  itemProps={itemProps}
+                  onOpen={onOpenTask}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  rows={rows}
+                  selectedTaskId={selectedTaskId}
+                  viewKey={activeView?.id ?? "all"}
+                />
+              ) : activeLayout === "timeline" ? (
+                <TaskTimelineLayout
+                  itemProps={itemProps}
+                  onOpen={onOpenTask}
+                  onPlanOnDay={onPlanOnDay}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  rows={rows}
+                  selectedTaskId={selectedTaskId}
+                />
+              ) : activeLayout === "calendar" ? (
+                <TaskCalendarLayout
+                  itemProps={itemProps}
+                  onOpen={onOpenTask}
+                  onOpenCalendarDestination={onOpenCalendar}
+                  onPlanOnDay={onPlanOnDay}
+                  onSelect={onSelectTask}
+                  prose={prose}
+                  rows={rows}
+                  selectedTaskId={selectedTaskId}
+                />
+              ) : null}
+            </Suspense>
+          </LazySurfaceBoundary>
+        )}
+      </div>
+    </>
   );
 };

@@ -65,6 +65,11 @@ const KNOWN_TOPIC_IDS = new Set<string>(helpTopics.map((topic) => topic.id));
  */
 const organizationsScreen = 'main[data-surface="organizations"]';
 const peopleScreen = 'main[data-surface="people"]';
+// Lot R3 wyniósł pasma tych samych trzech ekranów: Ludzie (wyżej), Zadania
+// i Lejek. Na Lejku w pasku widoku stoi plakietka „not configured" i wiszący
+// przy niej temat pomocy, więc bez tej kotwicy trzytematowa deklaracja niżej
+// zamieniłaby się CICHO w dwutematową.
+const pipelineScreen = 'main[data-surface="pipeline"]';
 
 /* The name a screen reader would give the control.
  *
@@ -282,7 +287,7 @@ test("the board carries all three money topics from §1.3", async () => {
     () => container.querySelector("[data-pipeline-card]") !== null,
     "the board drew no deal card, so its anchors were never on screen",
   );
-  const board = surfaceNode("[data-pipeline-surface]");
+  const board = surfaceNode(pipelineScreen);
   // The unconfigured-stage topic hangs on the warning tag and appears with it.
   // Asserting the set below without this would let a fixture with no stray
   // stage quietly turn a three-topic claim into a two-topic one.

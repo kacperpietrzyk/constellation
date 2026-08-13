@@ -168,6 +168,27 @@ const choose = async (selectId: string, value: string): Promise<void> => {
   });
 };
 
+/* ZAKRESEM PASKA WIDOKU JEST EKRAN, A NIE JEGO PRZEWIJANE PUDEŁKO.
+ *
+ * `data-tasks-surface` siedzi na `.surface-scroll`, a od lotu R3 pasmo tytułu
+ * i pasek widoku są RODZEŃSTWEM tego pudełka, nie jego dziećmi (układ prototypu,
+ * `v3/app.css:278-303`). Przełącznik układu, licznik zadań i „Edit filters"
+ * mieszkają w pasku widoku, więc każdy selektor `[data-tasks-surface] …`
+ * przestał ich sięgać — siedem asercji w tym pliku zgasło w tej samej chwili.
+ *
+ * ROZSTRZYGA SIĘ TO W LOCIE, BO TEN PLIK MONTUJE NA DWA SPOSOBY: `openTasks`
+ * stawia całą powłokę (jest `main[data-surface="tasks"]`), a `renderTasks`
+ * montuje sam ekran (nie ma). Stała nazwa selektora działałaby dla jednego
+ * z nich i wywracała drugi.
+ *
+ * Podmioty, które NAPRAWDĘ są treścią — wiersze zadań, kolumny tablicy, głowy
+ * grup, `data-density` — zostają przy `[data-tasks-surface]`, bo mieszkają
+ * w pudełku i to jest o nich prawdziwe zdanie.
+ */
+const tasksScreen = (): HTMLElement =>
+  container.querySelector<HTMLElement>('main[data-surface="tasks"]') ??
+  container;
+
 const boardColumns = (): HTMLElement[] => [
   ...container.querySelectorAll<HTMLElement>(
     "[data-tasks-surface] [data-board-column]",
@@ -193,8 +214,8 @@ const groupLabels = (): string[] =>
   );
 
 const layoutButton = (layout: string): HTMLButtonElement => {
-  const button = container.querySelector<HTMLButtonElement>(
-    `[data-tasks-surface] [data-layout="${layout}"]`,
+  const button = tasksScreen().querySelector<HTMLButtonElement>(
+    `[data-layout="${layout}"]`,
   );
   assert.ok(button, `the layout switcher offers no ${layout}`);
   return button;
@@ -204,9 +225,7 @@ const layoutButton = (layout: string): HTMLButtonElement => {
  *  from the fixture: a test that recomputed the number would agree with a lens
  *  that dropped a task and a counter that dropped it too. */
 const statedTaskCount = (): number => {
-  const status = container.querySelector<HTMLElement>(
-    '[data-tasks-surface] p[role="status"]',
-  );
+  const status = tasksScreen().querySelector<HTMLElement>('p[role="status"]');
   const match = /(\d+) tasks?\b/u.exec(status?.textContent ?? "");
   assert.ok(match, "the Tasks screen states no count of its own");
   return Number(match[1]);
@@ -434,8 +453,8 @@ test("a board grouped by a field the workspace has dropped is refused, and says 
 });
 
 const editFilters = (): HTMLButtonElement | undefined => {
-  const buttons = container.querySelectorAll<HTMLButtonElement>(
-    "[data-tasks-surface] button[aria-expanded]",
+  const buttons = tasksScreen().querySelectorAll<HTMLButtonElement>(
+    "button[aria-expanded]",
   );
   return [...buttons].find(
     (button) => button.textContent?.trim() === "Edit filters",
