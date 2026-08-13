@@ -3284,7 +3284,48 @@ const measureTheme = async (
         "`.primary-button` — instrument failure, not a verdict.",
     );
   else {
-    await page.waitForTimeout(400);
+    // CZEKAMY NA PODMIOT, NIE NA ZEGAR — i to jest poprawka przyrządu, który
+    // NAPRAWDĘ SKŁAMAŁ, a nie ostrożność na zapas.
+    //
+    // Stało tu `waitForTimeout(400)`. Ludzie są ekranem LENIWYM, a zastępka
+    // `Suspense` (`SurfaceLifecycleStates.tsx`, `SurfaceLoadingState`) nie
+    // rysuje ŻADNEGO `.surface-header` — więc dopóki paczka się nie doniesie,
+    // `.surface-header .primary-button` nie istnieje. Sonda czytała to jako
+    // „pasmo zgubiło akcję" i kładła bramkę zdaniem o produkcie nad stanem,
+    // który był stanem ŁADOWANIA. Każdy motyw dostaje ŚWIEŻY kontekst
+    // przeglądarki (nota przy `THEME_ORDER`), więc obie paczki lecą z zimnego
+    // cache'u i 400 ms jest tam progiem, nie zapasem: na tym runnerze CI
+    // przeszło, na runnerze CI padło JEDNO z dwóch przejść — czyli dokładnie
+    // ten kształt, w którym zegar rozstrzyga zamiast kodu.
+    //
+    // SUFIT ZOSTAJE I DALEJ KŁADZIE BRAMKĘ. Zmienia się to, CO wtedy mówi:
+    // „nie doniosło się w N ms, ekran nadal ładował" to inna awaria niż „ekran
+    // stoi gotowy i nie ma w paśmie akcji", a jedno zdanie na oba wysyłało
+    // następnego czytelnika w złą stronę.
+    const arrival = await page.evaluate(
+      async ({ selector, budgetMs }) => {
+        const started = performance.now();
+        const loading = () =>
+          document.querySelector(
+            '#main-content [data-surface-state="loading"]',
+          ) !== null;
+        while (performance.now() - started < budgetMs) {
+          if (!loading() && document.querySelector(selector) !== null)
+            return {
+              present: true,
+              stillLoading: false,
+              waitedMs: Math.round(performance.now() - started),
+            };
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return {
+          present: document.querySelector(selector) !== null,
+          stillLoading: loading(),
+          waitedMs: Math.round(performance.now() - started),
+        };
+      },
+      { selector: bandActionSelector, budgetMs: 5000 },
+    );
     // ZDJĘCIE SPOCZYNKOWE ROBIONE PO NAWIGACJI, bo ta kontrolka montuje się
     // dopiero teraz — zdjęcie sprzed pętli Tabów jej NIE MA. Przystanek bez
     // wartości spoczynkowej jest w tej sondzie awarią przyrządu, nie werdyktem,
@@ -3302,10 +3343,15 @@ const measureTheme = async (
     }, bandActionSelector);
     if (resting === null)
       failures.push(
-        `VISUAL_PROBE_BAND_ACTION_ABSENT (${theme}): ${bandActionSurface} drew no ` +
-          `\`${bandActionSelector}\`, so the accent action this probe exists to measure was not on ` +
-          "screen. Either the band lost its action or the fixture stopped reaching this screen — " +
-          "instrument failure, nothing measured.",
+        arrival.stillLoading
+          ? `VISUAL_PROBE_BAND_ACTION_NEVER_ARRIVED (${theme}): ${bandActionSurface} was STILL LOADING after ` +
+              `${arrival.waitedMs} ms — its lazy chunk had not resolved, so \`${bandActionSelector}\` could not ` +
+              "exist yet and nothing was measured. This says nothing about the band: it is the probe's budget " +
+              "against this machine, and the number to look at is the wait, not the paint."
+          : `VISUAL_PROBE_BAND_ACTION_ABSENT (${theme}): ${bandActionSurface} finished loading in ` +
+              `${arrival.waitedMs} ms and STILL drew no \`${bandActionSelector}\`, so the accent action this ` +
+              "probe exists to measure was not on screen. The screen is settled, so this is the band or the " +
+              "fixture — instrument failure, nothing measured.",
       );
     else {
       // BUDŻET JEST POMIAREM, NIE ŻYCZENIEM: liczba naciśnięć potrzebna, żeby
