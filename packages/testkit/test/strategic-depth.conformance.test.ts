@@ -515,19 +515,39 @@ it("deduplicates reviews and preserves recurrence, decision, and Project history
     ).outcome,
     "success",
   );
-  assert.equal(
-    unwrap(
-      harness.kernel.execute(context(), {
-        ...metadata("renewal-duplicate"),
-        commandName: "relationship.renewalCreate",
-        payload: {
-          ...renewalPayload,
-          renewalId: uuid(),
-          followUpTaskId: uuid(),
-        },
-      }),
-    ).outcome,
-    "rejected",
+  // A SECOND TERM UNDER A KEY ALREADY RECORDED IS A CONFLICT, NAMED, AND IT
+  // CARRIES THE RECORD IN THE WAY. This is what an importer's second run looks
+  // like, and the refusal has to be told apart from a broken command: the same
+  // create also returns `command.precondition_failed` for an id already taken,
+  // a revoked owner, an organization in another Space and evidence that does
+  // not exist. Answering all five with one code left the caller nothing to
+  // decide on, and the safe reading of an ambiguous failure is to stop — so a
+  // re-run of an import stalled where it should have skipped. `currentVersions`
+  // is what makes it actionable: the caller pivots to
+  // `relationship.renewalUpdate` with exactly those `expectedVersions` instead
+  // of minting a second renewal for a term that already exists.
+  const duplicate = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("renewal-duplicate"),
+      commandName: "relationship.renewalCreate",
+      payload: {
+        ...renewalPayload,
+        renewalId: uuid(),
+        followUpTaskId: uuid(),
+      },
+    }),
+  );
+  if (
+    duplicate.outcome !== "conflict" ||
+    duplicate.diagnosticCode !== "record.already_exists"
+  )
+    return assert.fail(
+      `a duplicate cycleKey came back as ${duplicate.outcome}/${"diagnosticCode" in duplicate ? duplicate.diagnosticCode : "none"} rather than a named conflict, which is the refusal an importer reads to tell its own re-run from a broken command`,
+    );
+  assert.deepEqual(
+    duplicate.currentVersions,
+    { [renewalId]: 1 },
+    "the refusal does not name the renewal already holding this cycle, so the caller cannot pivot to an update",
   );
   assert.equal(harness.store.snapshot().attentionSignals?.length, 1);
   assert.equal(

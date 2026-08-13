@@ -442,6 +442,59 @@ test("a loop that starts from red proves nothing, and the harness says so first"
   }
 });
 
+test("a break carrying its own check has that check measured on the untouched tree", () => {
+  const probe = scaffold();
+  try {
+    // ZŁAMANIE Z WŁASNYM `verify` było porównywane z bazą zmierzoną na
+    // sprawdzeniu DOMYŚLNYM, a wiersz wyjścia i tak zaczynał się od zaszytego
+    // „baseline GREEN". Sprawdzenie czerwone JUŻ PRZED złamaniem meldowało się
+    // wtedy jako czerwień po przywróceniu — czyli jako zatruty `dist`, którym
+    // nie było. Tutaj musi paść z powodem wskazującym na to sprawdzenie.
+    // Sprawdzenie ZAPISUJE, co zobaczyło. Asercja „plik jest oryginalny po
+    // przebiegu" byłaby ozdobą: `restoreEverything` w `finally` przywraca go
+    // w KAŻDEJ kolejności zdarzeń, więc nie umie odróżnić bazy mierzonej przed
+    // złamaniem od mierzonej po nim. Odróżnia to dopiero zapis z wnętrza
+    // sprawdzenia.
+    const seen = path.join(probe.root, "seen.txt");
+    writeFileSync(
+      path.join(probe.root, "always-red.mjs"),
+      'import { readFileSync, writeFileSync } from "node:fs";\n' +
+        `writeFileSync(${JSON.stringify(seen)}, readFileSync(${JSON.stringify(
+          probe.source,
+        )}, "utf8"));\n` +
+        "process.exit(1);\n",
+    );
+    assert.throws(
+      () =>
+        runBreakTests({
+          root: probe.root,
+          build: probe.build,
+          verify: probe.verify,
+          stampFiles: [probe.stamp],
+          log: () => {},
+          breaks: [
+            {
+              name: "the break with a check of its own",
+              file: probe.source,
+              edit: () => SOURCE_BROKEN,
+              verify: {
+                command: process.execPath,
+                args: ["always-red.mjs"],
+              },
+            },
+          ],
+        }),
+      /baseline is not green .* brings of its own/su,
+    );
+    // CO SPRAWDZENIE MIAŁO POD SOBĄ, kiedy je uruchomiono: tekst oryginalny.
+    // To jest jedyna obserwacja, która odróżnia bazę mierzoną na nietkniętym
+    // drzewie od przebiegu po zapisie złamania.
+    assert.equal(readFileSync(seen, "utf8"), SOURCE_ORIGINAL);
+  } finally {
+    probe.dispose();
+  }
+});
+
 test("assertions still red after the restore stop the run instead of the next break", () => {
   const probe = scaffold();
   try {

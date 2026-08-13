@@ -784,35 +784,15 @@ export const PipelineSurface = ({
     </header>
   );
 
-  if (activeOpportunityId !== undefined)
-    return (
-      <div
-        className={`surface-scroll ${styles.pipeline}`}
-        data-pipeline-surface
-      >
-        {renderRecordScreen === undefined ? (
-          <>
-            {header}
-            <section className={styles.emptyState} role="status">
-              <div>
-                <h2>This deal has no record screen yet</h2>
-                {/* The honest sentence for the one release in which the context
-                    exists and the screen that draws it has not landed. It says
-                    what is missing rather than showing a board that ignores the
-                    request. */}
-                <p data-pipeline-record-missing>
-                  The opportunity record is a context on this surface, and
-                  nothing has been handed in to draw it.
-                </p>
-              </div>
-            </section>
-          </>
-        ) : (
-          renderRecordScreen()
-        )}
-      </div>
-    );
-
+  // THE AVAILABILITY GUARD RUNS FIRST, AHEAD OF THE RECORD SLOT, and the order
+  // is the whole point. A deal opened as a record is drawn from the SAME slice
+  // as the board: `RealApp.tsx:2109-2121` only looks the opportunity up when
+  // `relationships.kind === "ready"`, so an unreadable slice arrives here as
+  // `renderRecordScreen === undefined` — indistinguishable, from inside this
+  // branch, from a deal that genuinely is not there. Checking the record slot
+  // first is how the one path that jumps this guard told a reader "this deal
+  // has no record screen yet" about a read that never happened: no reason, no
+  // retry, and a claim about the product where the truth was a failure.
   if (!relationships.available)
     return (
       <div
@@ -835,6 +815,39 @@ export const PipelineSurface = ({
             Try again
           </button>
         </section>
+      </div>
+    );
+
+  if (activeOpportunityId !== undefined)
+    return (
+      <div
+        className={`surface-scroll ${styles.pipeline}`}
+        data-pipeline-surface
+      >
+        {renderRecordScreen === undefined ? (
+          <>
+            {header}
+            <section className={styles.emptyState} role="status">
+              <div>
+                <h2>This deal is not in the pipeline</h2>
+                {/* Past the guard above, the slice READ FINE and this deal is
+                    not in it — a context restored from device state naming a
+                    record removed since, or one belonging to a Space this
+                    session cannot see (`RealApp.tsx:2113-2116` anticipates
+                    exactly that). Saying "no record screen yet" here described
+                    a gap in the product that was closed releases ago, and said
+                    it about data. */}
+                <p data-pipeline-record-missing>
+                  The deal this view was opened for is no longer among the ones
+                  you can read here. It may have been removed, or it may live in
+                  a Space you do not have.
+                </p>
+              </div>
+            </section>
+          </>
+        ) : (
+          renderRecordScreen()
+        )}
       </div>
     );
 

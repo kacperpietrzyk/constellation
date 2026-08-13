@@ -48,8 +48,17 @@ export interface TreeRow {
   readonly name: string;
   /** 1 for the roots and for a folder with no parent; deeper below. */
   readonly level: number;
-  /** What the counter beside the name says. Never recomputed here. */
-  readonly count: number;
+  /**
+   * What the counter beside the name says. Never recomputed here.
+   *
+   * ABSENT when the number would be a claim nobody read. `All notes` and
+   * `Unfiled` are counted from `document.list`; when that read fails those two
+   * counts collapse to zero while every folder row beside them still carries
+   * its own `noteCount` from `knowledge.list` — a tree saying "All notes: 0"
+   * over folders declaring a dozen. A withdrawn number is the honest half of
+   * that pair, and the type makes withdrawing it the only way to say so.
+   */
+  readonly count?: number;
   readonly hasChildren: boolean;
   readonly expanded: boolean;
   /** `Klienci / Orbit / Wdrożenie` — the note's address, not just its leaf. */
@@ -243,6 +252,12 @@ export const visibleTreeRows = (
   folders: readonly FolderSummary[],
   notes: readonly NoteSummary[],
   expanded: ReadonlySet<FolderId>,
+  /**
+   * Whether `notes` is the note list or the empty array a failed `document.list`
+   * degrades to. Defaults to true, so the readable path renders exactly what it
+   * rendered before; only the two rows counted FROM `notes` are affected.
+   */
+  notesReadable = true,
 ): readonly TreeRow[] => {
   const ordered = folderTreeOrder(folders);
   const rows: TreeRow[] = [
@@ -255,7 +270,7 @@ export const visibleTreeRows = (
       // sum of the top-level folder counts whenever anything is unfiled. That
       // is correct and must not be "fixed": #30's hard requirement is that the
       // library has one place showing all of it.
-      count: notes.length,
+      ...(notesReadable ? { count: notes.length } : {}),
       hasChildren: false,
       expanded: false,
       path: "All notes",
@@ -265,7 +280,9 @@ export const visibleTreeRows = (
       kind: "unfiled",
       name: "Unfiled",
       level: 1,
-      count: notes.filter((note) => isUnfiled(note, folders)).length,
+      ...(notesReadable
+        ? { count: notes.filter((note) => isUnfiled(note, folders)).length }
+        : {}),
       hasChildren: false,
       expanded: false,
       path: "Unfiled",

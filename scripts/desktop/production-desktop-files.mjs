@@ -31,6 +31,7 @@ export const PRODUCTION_DESKTOP_FILES = new Set([
   "security.js",
   "starter-workspace-export.js",
   "starter-workspace-import.js",
+  "startup-failure.js",
   "support-report.js",
   "workspace-key-custody.js",
   "workspace-backup-archive.js",
