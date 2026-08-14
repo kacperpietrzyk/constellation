@@ -479,11 +479,34 @@ export const TaskRecordScreen = ({
 
   return (
     <div className={screen.screen} data-record-kind="task">
-      <div className={screen.crumbs}>
+      {/* OKRUSZEK STOI W PAŚMIE, A NIE W TREŚCI (wpis 12-2). Prototyp otwiera
+          rekord zadania paskiem `crumbbar("Tasks › <projekt> › T1", …)`
+          (`v3/screens/record.js:556-562`) — trasa do kolekcji, separator
+          i nazwa TEGO rekordu, wszystko w jednym rzędzie chromu nad treścią.
+          Ta apka miała tu `‹ Tasks`: JEDNO nazwanie, i to nazwanie MIEJSCA,
+          z którego się przyszło, a nie trasy, na której się stoi — a pasmo
+          rekordu stało puste.
+
+          NAZWA REKORDU POWTARZA SIĘ W OKRUSZKU I W TYTULE, i to jest wybór
+          prototypu, nie przeoczenie: `crumbbar(„Projects › <p.title>")` stoi
+          tam nad `<h1 class="rec-title">${p.title}</h1>`
+          (`v3/screens/record.js:429-432`). Okruszek mówi, GDZIE jesteś; tytuł
+          mówi, CO czytasz.
+
+          `<header>`, A NIE `<div>`: to jest rząd chromu tego ekranu, ten sam
+          rodzaj pudełka co pasmo powierzchni. Tytuł rekordu ma własny
+          `<header>` NIŻEJ i jest jego dzieckiem, więc `#surface-title.closest("header")`
+          dalej rozwiązuje się do tamtego — ten węzeł jest RODZEŃSTWEM, nie
+          przodkiem, i osi składu nie rusza. */}
+      <header className={screen.crumbs}>
         <button className={screen.back} onClick={onBack} type="button">
-          <span aria-hidden="true">‹</span> Tasks
+          Tasks
         </button>
-      </div>
+        <span aria-hidden="true" className={screen.crumbSeparator}>
+          ›
+        </span>
+        <span className={screen.crumbCurrent}>{task.title}</span>
+      </header>
 
       {/* The `<h1>` carries `id="surface-title"` and `tabIndex={-1}` because the
           shell uses BOTH: `aria-labelledby="surface-title"` names the whole work

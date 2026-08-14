@@ -22,7 +22,11 @@ import type {
   StrategicRecordId,
   TaskId,
 } from "@constellation/contracts";
-import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
+import type {
+  ConstellationRendererClient,
+  DataHomeStatus,
+  DesktopBuildInfo,
+} from "@constellation/desktop-preload/client";
 
 import { CaptureDialog } from "./CaptureDialog.js";
 import { StrategicRecordInspector } from "./StrategicRecordInspector.js";
@@ -188,6 +192,7 @@ import {
   settingsCategoryContext,
   opportunityContext,
   taskContext,
+  tasksSavedViewContext,
   type ShellContext,
 } from "./client/shell-navigation.js";
 import { subscribeToAgentWrites } from "./client/agent-write-reload.js";
@@ -232,6 +237,76 @@ const libraryInspectorLabel: Readonly<Record<LibraryReading, string>> = {
   notes: "Document",
   sources: "Source",
   captures: "Capture",
+};
+
+/**
+ * Co obiecuje kontrolka pod przełącznikiem przestrzeni — JEDNO ŹRÓDŁO.
+ *
+ * Napis stoi w czterech miejscach jednego bloku JSX (etykieta widoczna,
+ * `aria-label`, dymek railu z fokusu, dymek railu z hovera). Cztery literały
+ * to cztery okazje, żeby jedna z dróg obiecywała co innego niż pozostałe trzy
+ * — a to jest w tym repozytorium nazwana klasa defektu („ręczna lista obok
+ * zamkniętego słownika"). Prototyp: `v3/app.js:653-655`.
+ */
+const SEARCH_CONTROL_LABEL = "Search and run…";
+
+/**
+ * DRUGA LINIA KAFLA PRZESTRZENI: GDZIE LEŻĄ DANE I W JAKIM SĄ STANIE, W TEJ
+ * KOLEJNOŚCI (`v3/app.js:649` — `Local · encrypted`: miejsce, separator,
+ * ochrona).
+ *
+ * CO TU STAŁO I DLACZEGO TO BYŁO GORSZE NIŻ „za długi napis". Linia miała dwie
+ * gałęzie: `dataHomeLabel` („Local only · data on this device") przy
+ * `availability === "available"` i „Data Home needs attention" w KAŻDYM innym
+ * przypadku. A `dataHome` jest w ogóle CZYTANE tylko w kanale `local-alpha`
+ * (`client/workflow.ts` — `if (build.channel === "local-alpha")`), więc
+ * w podglądzie deweloperskim slice jest `undefined` i kafel MELDOWAŁ USTERKĘ
+ * MAGAZYNU, którego nikt nie pytał. To jest dokładnie ta klasa, którą ten
+ * program ma nazwaną z drugiej strony („odczyt niedostępny rysuje nic, nigdy
+ * zera"): nieodbyty pomiar wychodził jako zła odpowiedź.
+ *
+ * CZTERY STANY, I ŻADEN NIE JEST DOMYŚLNĄ OZDOBĄ:
+ *   * odczyt wzięty i zły  → „needs attention" — usterka, którą ktoś zmierzył;
+ *   * magazyn skoordynowany → miejscem jest Hub, nie to urządzenie, więc
+ *     miejsce nazywa się jego nazwą, a stan mówi „coordinated";
+ *   * odczyt wzięty i dobry albo NIEWZIĘTY → ochrona z `build.persistence`,
+ *     bo to pole wie w KAŻDYM kanale, czy dysk niesie szyfrowany magazyn
+ *     („encrypted"), czy sesja siedzi w pamięci („session memory").
+ *     „encrypted" nad pamięcią sesji byłoby obietnicą bezpieczeństwa, której
+ *     nikt nie dotrzymuje, więc gałęzie są dwie.
+ *
+ * MIEJSCE ZOSTAJE W KAŻDYM STANIE. Napis, który przy usterce przestaje mówić,
+ * GDZIE leżą dane, zabiera czytelnikowi jedyną trwałą informację z tego kafla
+ * — a usterka jest stanem tego samego magazynu, nie jego zamiennikiem.
+ *
+ * DLACZEGO TO JEST FUNKCJA MODUŁU, A NIE CZTERY WYRAŻENIA W CIELE KOMPONENTU,
+ * i jest to poprawka po przeglądzie adwersarialnym lotu L11. Bramka układu
+ * chodzi po JEDNYM stanie tej linii — harness stoi w podglądzie
+ * deweloperskim, gdzie `dataHome` jest `undefined`, a build trzyma sesję
+ * w pamięci — więc para `L11-02` czyta zawsze „Local · session memory".
+ * Trzy pozostałe gałęzie, w tym ta USTERKOWA, dla której cała poprawka
+ * powstała, nie były dotknięte ŻADNYM pomiarem, a tytuł pary obiecywał
+ * „in every state". Jako funkcja są mierzalne wszystkie cztery, bez
+ * przeglądarki: `test/shell-storage-line.interaction.test.ts`.
+ */
+export const workspaceStorageLine = (
+  dataHome: DataHomeStatus | undefined,
+  persistence: DesktopBuildInfo["persistence"],
+): string => {
+  const coordinated = dataHome?.descriptor.providerKind === "coordinated";
+  const troubled =
+    dataHome !== undefined && dataHome.availability !== "available";
+  const place = coordinated
+    ? (dataHome?.descriptor.displayName ?? "Hub")
+    : "Local";
+  const state = troubled
+    ? "needs attention"
+    : coordinated
+      ? "coordinated"
+      : persistence === "encrypted-local"
+        ? "encrypted"
+        : "session memory";
+  return `${place} · ${state}`;
 };
 
 export const RealApp = ({
@@ -1853,7 +1928,7 @@ export const RealApp = ({
   //    i drugi poziom nawigacji. Cztery cele CRM biorą `snapshot.relationships`
   //    przez `countLiveRecords`, dzielący predykat z `indexRelationships`,
   //    czyli z indeksem, na którym stoją wszystkie cztery ekrany. Biblioteka
-  //    bierze te same dwie długości, co `LibraryShell.tsx:77-84`.
+  //    bierze te same dwie długości, co `LibraryShell.tsx:92-99`.
   // 2. NIEDOSTĘPNY ODCZYT NIE JEST ZEREM. Brak klucza znaczy „nie wiem" i wiersz
   //    nie rysuje wtedy NICZEGO. Zero w tym miejscu byłoby odpowiedzią „nie ma
   //    ani jednego" na pytanie, którego nie dało się zadać — to jest defekt,
@@ -1899,11 +1974,28 @@ export const RealApp = ({
       : {}),
   };
   const isPreview = build.channel === "developer-preview";
+  // KTO CZYTA — jedyna rzecz, jaką stopka paska bocznego ma powiedzieć
+  // (`v3/app.js:660-664`). Odczyt jest już w migawce powłoki, więc to nie jest
+  // nowe zapytanie ani nowa zdolność; `undefined` znaczy „nie dało się
+  // zapytać" i rysuje NIC, a nie zastępnik.
+  const accessSlice = state.snapshot.access;
+  const viewerName =
+    accessSlice.kind === "ready"
+      ? accessSlice.data.members.find(
+          (member) =>
+            member.principalId === accessSlice.data.currentPrincipalId,
+        )?.displayName
+      : undefined;
   const coordinatedDataHome =
     state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
-  const dataHomeLabel = coordinatedDataHome
-    ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · coordinated`
-    : "Local only · data on this device";
+  // DRUGA LINIA KAFLA — MIEJSCE, SEPARATOR, STAN. Cztery gałęzie i ich powody
+  // stoją przy `workspaceStorageLine` na poziomie modułu; bramka układu widzi
+  // stąd wyłącznie tę jedną, w którą wpada podgląd deweloperski, a pozostałe
+  // trzy mierzy `test/shell-storage-line.interaction.test.ts`.
+  const storageLine = workspaceStorageLine(
+    state.snapshot.dataHome,
+    build.persistence,
+  );
   // Product-owner correction (2026-07-18): the work plane owns the available
   // width until a deliberate record selection opens the inspector. The panel
   // remains the single detail plane, but it never consumes an empty column.
@@ -1933,7 +2025,11 @@ export const RealApp = ({
   const projectNavChildren =
     state.snapshot.projects.kind === "ready" &&
     state.snapshot.projects.data.items.length > 0 ? (
-      <div className="nav-children" key="projects-children">
+      <div
+        className="nav-children"
+        data-nav-children="projects"
+        key="projects-children"
+      >
         {state.snapshot.projects.data.items.map((project) => (
           <button
             key={project.id}
@@ -1948,6 +2044,65 @@ export const RealApp = ({
             <span>{project.title}</span>
           </button>
         ))}
+      </div>
+    ) : null;
+  // DRUGI POZIOM MA DWIE GAŁĘZIE, NIE JEDNĄ (`v3/app.js:637-641`: prototyp
+  // rysuje `.nav-views` POD Zadaniami i POD Projektami, tym samym elementem).
+  // Aplikacja miała tylko projektową, więc drzewo nawigacji różniło się od
+  // prototypu STRUKTURĄ, a nie zawartością fikstury — jedyny cel z zapisanymi
+  // widokami nie pokazywał ani jednego, choć ekran pod nim wymienia je
+  // w kontrolce „View".
+  //
+  // WIERSZ, KTÓRY OTWIERA WIDOK, A NIE TYLKO EKRAN. Widok był do tej pory
+  // wyłącznie stanem lokalnym `TasksSurface`, więc wiersz potomny prowadzący
+  // na „All work" byłby afordancją bez celu — w tym repozytorium nazwana klasa
+  // defektu („zdolność, której nic nie montuje"). Dlatego kontekst niesie
+  // `savedViewId` (`client/shell-navigation.ts`), tą samą drogą co odczyt
+  // Biblioteki i kategoria Ustawień.
+  //
+  // ODFILTROWANE PO `state`, tak samo jak w kontrolce ekranu: widok wycofany
+  // stoi dalej w projekcji, a lewa kolumna nie jest archiwum.
+  //
+  // `data-nav-children` NAZYWA RODZICA, i to jest wymóg pomiaru, nie ozdoba:
+  // `[data-nav-level="child"]` liczy oba drugie poziomy naraz i jest zielone
+  // od JEDNEGO projektu, więc bez tego atrybutu żadna asercja nie odróżnia
+  // „drzewo ma drugi poziom" od „drzewo ma drugi poziom POD ZADANIAMI".
+  //
+  // `+ New view` Z PROTOTYPU TU NIE MA i to jest ODMOWA, nie przeoczenie:
+  // tworzenie widoku mieszka w `SavedViewManager` obok kontrolki, która go
+  // otwiera, a przycisk w nawigacji musiałby albo powtórzyć ten zapis drugi
+  // raz, albo prowadzić donikąd. Wpis rejestru przejścia, który go opisuje
+  // (P-8), jest wpisem OSOBNYM od tego (P-10) i nie został temu lotowi dany.
+  const savedViewNavChildren =
+    state.snapshot.work.kind === "ready" &&
+    state.snapshot.work.data.savedViews.some(
+      (view) => view.state === "active",
+    ) ? (
+      <div
+        className="nav-children"
+        data-nav-children="tasks"
+        key="tasks-children"
+      >
+        {state.snapshot.work.data.savedViews
+          .filter((view) => view.state === "active")
+          .map((view) => {
+            const open =
+              surface === "tasks" && activeContext.savedViewId === view.id;
+            return (
+              <button
+                key={view.id}
+                type="button"
+                data-nav-level="child"
+                className={`nav-item nav-child ${open ? "active" : ""}`}
+                tabIndex={-1}
+                aria-current={open ? "page" : undefined}
+                {...navHandlers(tasksSavedViewContext(view.id))}
+              >
+                <span className="nav-child-dot" aria-hidden="true" />
+                <span>{view.name}</span>
+              </button>
+            );
+          })}
       </div>
     ) : null;
   // Kiedy otwarty jest REKORD projektu, „bieżącą stroną" jest ten projekt,
@@ -2574,6 +2729,35 @@ export const RealApp = ({
       <TasksSurface
         snapshot={state.snapshot}
         selectedTaskId={selectedTaskId}
+        // Który zapisany widok ma być otwarty — z KONTEKSTU, bo prosi o niego
+        // drugi poziom lewej kolumny. Pominięte, gdy kontekst o żaden nie
+        // prosi: prop obecny z wartością `undefined` znaczyłby „otwórz All
+        // work" i cofałby wybór zrobiony na ekranie przy każdym renderze
+        // powłoki.
+        {...(activeContext.savedViewId === undefined
+          ? {}
+          : { requestedViewId: activeContext.savedViewId })}
+        // Droga powrotna. Bez niej lewa kolumna trzymałaby
+        // `aria-current="page"` na widoku, z którego czytelnik zszedł
+        // kontrolką — a bieżąca strona, która kłamie, jest gorsza niż jej brak.
+        onViewOpened={(savedViewId) =>
+          // NIE `openContext`, I TO JEST WARUNEK, NIE STYL. `openContext`
+          // podnosi `surfaceFocusPendingRef`, którego konsument (efekt niżej)
+          // chodzi na ZMIANIE `activeContext.key`. Zapisany widok siedzi na
+          // TYM SAMYM kluczu (`destination:tasks`), więc przy przełączeniu
+          // widoku kontrolką efekt nie ruszyłby — a flaga zostałaby podniesiona
+          // i przeniosła ognisko przy NASTĘPNEJ, cudzej zmianie celu.
+          // Czytelnik stoi w tej chwili w kontrolce „View" i nie prosił
+          // o przeniesienie ogniska nigdzie.
+          setNavigation((current) =>
+            navigateShellContext(
+              current,
+              savedViewId === undefined
+                ? destinationContext("tasks", "Tasks")
+                : tasksSavedViewContext(savedViewId),
+            ),
+          )
+        }
         // Only a context that ASKED to be a record draws one. A capture that
         // just became a task, a signal activated from the operating system and
         // a reference followed out of a document all carry `taskId` too, and
@@ -2828,6 +3012,12 @@ export const RealApp = ({
               setDocumentInspectorKind(kind);
               setDocumentInspectorOpen(true);
             }}
+            // TA SAMA PALETA, CO POD `⌘K` I POD KONTROLKĄ W SZYNIE — jedno
+            // wywołanie, trzy afordancje. Własne pole wyszukiwania w paśmie
+            // Biblioteki byłoby DRUGĄ wyszukiwarką o innym zasięgu niż ta
+            // z powłoki; prototyp stawia tam przycisk otwierający paletę
+            // (`act: "palette"`, `v3/screens/knowledge.js:803`).
+            onOpenSearch={() => setSearchOpen(true)}
             captureHistory={{
               selectedCaptureId,
               ...(selectedCaptureRouteActivity?.targetCommandId === undefined
@@ -3339,7 +3529,10 @@ export const RealApp = ({
                     )
                   }
                 >
-                  <span className="shell-tab-kind" aria-hidden="true" />
+                  {/* NIC PRZED TYTUŁEM (`v3/app.css:106-133`). Stał tu
+                      `<span className="shell-tab-kind">` — okrąg bez wartości:
+                      ta sama plamka przy celu, przy rekordzie i przy odczycie
+                      Biblioteki. Reguła arkusza znikła razem z nim. */}
                   <span>{tab.label}</span>
                 </button>
                 {navigation.tabs.length > 1 && (
@@ -3444,11 +3637,11 @@ export const RealApp = ({
         warunek jest do napisania wprost.
 
         CZEGO TA POPRAWKA NIE ZDEJMUJE, i to jest rozstrzygnięcie, nie
-        przeoczenie: stopka tożsamości (`.preview-identity`) zostaje. Prototyp
-        nie ma jej w ŻADNYM trybie, więc jej obecność nie jest rozjazdem
-        TRYBU USTAWIEŃ — jest osobnym zdaniem o powłoce, którego rejestr
-        Fazy 4 nie postawił, a lot ekranowy nie zamyka wpisów, których nie
-        dostał.
+        przeoczenie: stopka (`.sidebar-foot`, do lotu L11 `.preview-identity`)
+        zostaje w OBU trybach. Prototyp ma ją w pasku bocznym i nie ma trybu
+        Ustawień, więc jej obecność tutaj nie jest rozjazdem TRYBU — jest
+        osobnym zdaniem o powłoce. Od L11 stoi w niej imię czytelnika, czyli
+        dokładnie to, co prototyp trzyma w `sidebar-foot`.
 
         WYSZUKIWANIA TO NIE ZABIERA: `⌘K` wisi na nasłuchu okna
         (`RealApp.tsx`, gałąź `event.code === "KeyK"`), a nie na tym przycisku
@@ -3464,7 +3657,12 @@ export const RealApp = ({
               // przycisk jest DODATKOWO `disabled`, a wyłączony przycisk nie
               // przyjmuje fokusu — tam tooltip nie docierał do nikogo poza
               // najeżdżającą myszą.
-              aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}, ${
+              // NAZWA DOSTĘPNA CZYTA TĘ SAMĄ LINIĘ, CO OKO. Stał tu
+              // `dataHomeLabel` — osobny napis o tym samym magazynie, więc przy
+              // usterce czytnik ekranu słyszał „Local only · data on this
+              // device" nad kaflem, który na ekranie mówił coś innego. Jedno
+              // źródło, jedna prawda.
+              aria-label={`Workspace ${bootstrap.workspace.name}, ${storageLine}, ${
                 isPreview
                   ? "opens workspace settings"
                   : coordinatedDataHome
@@ -3485,28 +3683,49 @@ export const RealApp = ({
               </span>
               <span>
                 <strong>{bootstrap.workspace.name}</strong>
-                <small>
-                  {state.snapshot.dataHome?.availability === "available"
-                    ? dataHomeLabel
-                    : "Data Home needs attention"}
-                </small>
+                <small>{storageLine}</small>
               </span>
-              {!isPreview && (
-                <span className="workspace-switcher-action">•••</span>
-              )}
+              {/* SZEWRON, NIE WIELOKROPEK, I BEZ WARUNKU (`v3/app.js:651`,
+                  `v3/app.css:181`). Stały tu trzy kropki `•••` — znak „więcej
+                  akcji", czyli obietnica menu, którego ten przycisk nie
+                  otwiera; prototyp stawia `⌄`, który mówi „to się rozwija".
+                  Reguła arkusza na ten glif CZEKAŁA: `.workspace-switcher > svg`
+                  niesie obrót o 90° od dawna i nie miała ani jednego dziecka,
+                  więc obrócony `chevron-right` jest tym glifem, który ona
+                  opisuje — nie nowym rysunkiem płaconym przy otwarciu okna.
+                  Rozmiar tej reguły zszedł po przeglądzie adwersarialnym
+                  z 0,85 rem na prototypowe 0,75 rem w obu osiach.
+
+                  BEZ `!isPreview`, I TO JEST ZMIANA, NIE PRZEOCZENIE. Kropki
+                  znikały w podglądzie, więc trzeci tor siatki
+                  (`grid-template-columns: … 1rem`) stał pusty dokładnie w tym
+                  jedynym stanie, po którym chodzi bramka — glif nie do
+                  zmierzenia jest glifem bez dowodu. Wyłączony przycisk ZOSTAJE
+                  wyłączony i całą kontrolkę gasi `:disabled { opacity }`; ta
+                  sama para stoi obok w tym pliku, w przycisku zwijania paska
+                  (`disabled={narrowRail}` z glifem w środku). */}
+              <Icon name="chevron-right" />
             </button>
             <button
               className="search-control"
-              aria-label={`Search · ${modifierLabel}K`}
+              // OBIETNICA TEJ KONTROLKI JEST OBIETNICĄ TEGO, CO SIĘ OTWIERA
+              // (`v3/app.js:653-655` — `<span class="lbl">Search and run…</span>`).
+              // Stało tu samo „Search" przy `⌘K`, a za `⌘K` stoi paleta, która
+              // sama nazywa się „Command palette and global search"
+              // (`Wave2Surfaces.tsx`): kłamało WEJŚCIE, nie zawartość. Napis
+              // jest w czterech miejscach jednego bloku — etykieta widoczna,
+              // `aria-label` i dwa dymki railu — i wszystkie cztery mówią to
+              // samo zdanie, bo to jest jedna obietnica, a nie cztery.
+              aria-label={`${SEARCH_CONTROL_LABEL} · ${modifierLabel}K`}
               onFocus={(event) =>
-                showRailTip(event.currentTarget, "Search", {
+                showRailTip(event.currentTarget, SEARCH_CONTROL_LABEL, {
                   keys: `${modifierLabel}K`,
                   kind: "direct",
                 })
               }
               onBlur={hideRailTip}
               onMouseEnter={(event) =>
-                showRailTip(event.currentTarget, "Search", {
+                showRailTip(event.currentTarget, SEARCH_CONTROL_LABEL, {
                   keys: `${modifierLabel}K`,
                   kind: "direct",
                 })
@@ -3515,7 +3734,7 @@ export const RealApp = ({
               onClick={() => setSearchOpen(true)}
             >
               <Icon name="search" />
-              <span>Search</span>
+              <span>{SEARCH_CONTROL_LABEL}</span>
               {/* CICHY GLIF, NIE KLAWISZ (`v3/app.css:183-194`). `<kbd>` niesie
           w tym arkuszu obwódkę, tło i promień, czyli rysunek klawiatury —
           a to jest jedna kontrolka, nie ściągawka. Znaczenie „to jest skrót"
@@ -3607,8 +3826,10 @@ export const RealApp = ({
                   className="nav-item settings-mode-back"
                   data-settings-back="true"
                   // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
-                  // rule `.nav-item > span { display: none }` (styles.css:3645)
-                  // takes BOTH children out of the accessibility tree, and the
+                  // rule `.desktop-shell.rail .nav-item > span { display: none }`
+                  // (styles.css:4574, inside the rail block that begins at
+                  // :4570) takes BOTH children out of the accessibility tree,
+                  // and the
                   // only way out of settings mode was left announcing itself as
                   // „‹". The label is now on the button, so it survives the
                   // width at which the text disappears.
@@ -3779,7 +4000,9 @@ export const RealApp = ({
                       {groupItems.flatMap((item) =>
                         item.id === "projects" && !railMode
                           ? [navEntry(item), projectNavChildren]
-                          : navEntry(item),
+                          : item.id === "tasks" && !railMode
+                            ? [navEntry(item), savedViewNavChildren]
+                            : navEntry(item),
                       )}
                     </div>
                   </div>
@@ -3792,6 +4015,25 @@ export const RealApp = ({
         {isPreview && (
           <details className="fixture-condition">
             <summary>Preview condition</summary>
+            {/* STAN BUILDA STOI TU, A NIE W WIERSZU TOŻSAMOŚCI, i to jest cała
+                treść P-3. „Developer preview / Session memory · <wersja>"
+                zajmowało miejsce, w którym prototyp pisze imię czytelnika
+                (`v3/app.js:661` — `${avatar(ME)}<span class="who">Kacper</span>`),
+                czyli powłoka mówiła CZYM JEST BUILD tam, gdzie człowiek szuka
+                KIM JEST. Obie informacje zostają: ta schodzi o jeden element
+                wyżej, do pojemnika, który i tak istnieje wyłącznie w podglądzie
+                i znika z buildem produkcyjnym w całości.
+
+                `· {build.version}` NIE MA TU ZAMIENNIKA I NIE WRACA. Wersja
+                stoi w Ustawieniach dwa razy (`SettingsSurface.tsx`, podtytuł
+                kategorii „Setup and app" i jej wartość); trzecia kopia w
+                stopce paska bocznego była kopią wartości. */}
+            <p className="fixture-condition-build">
+              Developer preview ·{" "}
+              {build.persistence === "encrypted-local"
+                ? "encrypted local storage"
+                : "session memory"}
+            </p>
             <select
               value={previewCondition}
               onChange={(event) =>
@@ -3809,25 +4051,40 @@ export const RealApp = ({
             </select>
           </details>
         )}
-        <div className="preview-identity">
-          <span className="status-dot" />
-          <div>
-            <strong>
-              {isPreview
-                ? "Developer preview"
-                : coordinatedDataHome
-                  ? "Coordinated workspace"
-                  : "Local workspace"}
-            </strong>
-            <span>
-              {coordinatedDataHome
-                ? "Hub + encrypted working copy"
-                : build.persistence === "encrypted-local"
-                  ? "Encrypted local storage"
-                  : "Session memory"}{" "}
-              · {build.version}
-            </span>
-          </div>
+        {/* STOPKA PASKA BOCZNEGO NALEŻY DO CZŁOWIEKA (`v3/app.js:660-664`,
+            `v3/app.css:262-267`). Stała tu `.preview-identity`: kropka stanu,
+            nazwa KANAŁU BUILDA i rodzaj magazynu z numerem wersji — trzy
+            zdania o programie w jedynym miejscu powłoki, które prototyp
+            oddaje czytelnikowi. Kanał zszedł do `.fixture-condition` wyżej,
+            magazyn stoi teraz na drugiej linii kafla przestrzeni (P-2, jedno
+            zdanie zamiast dwóch), a wersja nie ma tu zamiennika.
+
+            IMIĘ JEST OSIĄGALNE ZAWSZE I NIE KOSZTUJE NOWEGO ODCZYTU.
+            `snapshot.access` jest w migawce powłoki od dawna
+            (`client/workflow.ts`, `DataSlice<AccessProjection>`), a członek
+            niebędący zarządcą i tak dostaje SWOJE własne członkostwo
+            (`application/src/collaboration.ts` — `canManage ? … : [membership]`),
+            więc `currentPrincipalId` zawsze ma się z czym zejść. To NIE jest
+            `Person` z grafu: ludzie w grafie nigdy nie logują się do tej
+            aplikacji.
+
+            ODCZYT NIEDOSTĘPNY RYSUJE NIC, NIGDY ZASTĘPNIK — ta sama reguła co
+            przy licznikach nawigacji (`.ui-craft/patterns.md`, „Pattern:
+            Navigation row"). Ani „You", ani inicjał przestrzeni w miejscu
+            inicjału człowieka: kafel z cudzą literą jest gorszy niż pusty
+            wiersz, bo wygląda na odpowiedź. Zostają wtedy same dwie
+            kontrolki. */}
+        <div className="sidebar-foot">
+          {viewerName !== undefined && (
+            <>
+              <span className="sidebar-foot-avatar" aria-hidden="true">
+                {[...viewerName.trim()][0]?.toUpperCase() ?? "·"}
+              </span>
+              <span className="sidebar-foot-who" data-sidebar-identity="true">
+                {viewerName}
+              </span>
+            </>
+          )}
           {/* THE COLLAPSE AFFORDANCE THE SHELL NEVER HAD (`v3/app.js:662`,
               which puts it in the sidebar foot beside Settings — same place).
               Until now the rail was a pure consequence of window width: a

@@ -15,11 +15,24 @@
 //
 // CYFRY SĄ WYCZERPANE i to jest decyzja, nie awaria. Docelowy zbiór ma
 // jedenaście celów, a klawiatura daje dziewięć skrótów, więc numeracja jest
-// przypisana raz, do KSZTAŁTU DOCELOWEGO (Today 1 · Calendar 2 · Inbox 3 ·
-// Tasks 4 · Projects 5 · Pipeline 6 · Organizations 7 · People 8 · Meetings 9),
-// a nie do tego, co akurat istnieje. Dzięki temu żadna fala nie przenumerowuje
-// skrótów pod ręką — cyfra raz zapamiętana zostaje przy swoim celu. Cele bez
-// cyfry (Library, Renewals i to, co jeszcze nie wsiąkło) osiąga się paletą.
+// przypisana raz i żadna fala nie przenumerowuje skrótów pod ręką — cyfra raz
+// zapamiętana zostaje przy swoim celu.
+//
+// CZYJA JEST CYFRA — ROZSTRZYGA PROTOTYP, I TO JEST ZMIANA WOBEC POPRZEDNIEJ
+// WERSJI TEJ NOTY. Stało tu „…Organizations 7 · People 8 · Meetings 9",
+// przypisane do wyobrażonego kształtu docelowego. Prototyp v3 przypisuje
+// inaczej (`v3/app.js:156-169`, pole `key`): Today 1 · Calendar 2 · Inbox 3 ·
+// Tasks 4 · Projects 5 · Pipeline 6 · Organizations 7 · Meetings 8 · Notes 9,
+// a People, Renewals i Sources NIE MAJĄ cyfry w ogóle. Nasza Library jest
+// odpowiednikiem prototypowych Notes (Notatki + Źródła + historia wrzutek
+// scalone w fali Knowledge — nota niżej), więc bierze jego dziewiątkę.
+//
+// REGUŁA, KTÓRA TO TRZYMA: numer przy celu jest ten sam, co przy jego
+// odpowiedniku w prototypie, a cel bez odpowiednika nie dostaje numeru. Zbiór
+// jest asertowany W CAŁOŚCI (`desktop-preload/test/client.test.ts`), a nie po
+// jednym wpisie — pojedyncze asercje przepuściły w tym repozytorium dokładnie
+// tę klasę rozjazdu. Cele bez cyfry (People, Renewals) osiąga się paletą,
+// i mówi to ich `aria-label`, nie tylko dymek.
 //
 // `history` WSIĄKŁ w `library` w fali Knowledge i to było SCALENIE TREŚCI,
 // a nie przemianowanie: rejestr wrzutek przyjechał w całości jako trzeci
@@ -128,21 +141,24 @@ export const desktopSurfaceRegistry = [
     loading: "lazy",
   },
   {
-    // Ludzie z grafu, nie użytkownicy aplikacji. Cyfra 8 była zarezerwowana od
-    // przebudowy nawigacji i nic się przez nią nie przenumerowuje.
+    // Ludzie z grafu, nie użytkownicy aplikacji. BEZ CYFRY, i to jest zmiana
+    // wobec poprzedniej wersji: ósemka stała tu z rezerwacji zrobionej przy
+    // przebudowie nawigacji, a prototyp nie daje People skrótu w ogóle
+    // (`v3/app.js:156-169` — `people` jest w `DESTINATIONS` bez pola `key`).
+    // Cel osiąga się paletą, tak samo jak Renewals.
     id: "people",
     label: "People",
     icon: "people",
     group: "CRM",
-    shortcut: 8,
+    shortcut: null,
     chrome: "navigation",
     loading: "lazy",
   },
   {
     // Kontrakty do odnowienia. Bez cyfry i to jest decyzja, nie przeoczenie:
-    // dziewięć skrótów jest przypisanych do kształtu docelowego, 6 i 8 należą
-    // do Pipeline i People, a Renewals osiąga się paletą — tak samo jak
-    // Library. Cel bez cyfry i tak stoi w nawigacji.
+    // prototyp nie daje `renewals` pola `key`, tak samo jak `people`
+    // i `sources`. Cel bez cyfry i tak stoi w nawigacji, a droga przez paletę
+    // stoi w jego nazwie dostępnej.
     id: "renewals",
     label: "Renewals",
     icon: "renewals",
@@ -152,20 +168,26 @@ export const desktopSurfaceRegistry = [
     loading: "lazy",
   },
   {
+    // ÓSEMKA, NIE DZIEWIĄTKA (`v3/app.js` — `meetings` ma `key: 8`). Zwolniła
+    // ją People.
     id: "meetings",
     label: "Meetings",
     icon: "meetings",
     group: "Knowledge",
-    shortcut: 9,
+    shortcut: 8,
     chrome: "navigation",
     loading: "lazy",
   },
   {
+    // DZIEWIĄTKA PO PROTOTYPOWYCH `notes`. Library JEST tym celem: Notatki,
+    // Źródła i historia wrzutek zostały w fali Knowledge scalone w jeden
+    // odczyt (nota o `history` niżej), a prototyp trzyma `notes` na `key: 9`.
+    // Cel czytany codziennie, który dotąd chodził wyłącznie przez paletę.
     id: "library",
     label: "Library",
     icon: "documents",
     group: "Knowledge",
-    shortcut: null,
+    shortcut: 9,
     chrome: "navigation",
     loading: "lazy",
   },

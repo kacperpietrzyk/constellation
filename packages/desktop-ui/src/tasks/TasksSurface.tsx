@@ -1,4 +1,11 @@
-import { Suspense, lazy, useMemo, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import type {
   FieldDefinitionId,
@@ -138,6 +145,8 @@ export const TasksSurface = ({
   onPlanOnDay,
   onOpenCalendar,
   onSaveViewFilters,
+  requestedViewId,
+  onViewOpened,
   client,
   onReload,
   onFailure,
@@ -179,6 +188,23 @@ export const TasksSurface = ({
     view: WorkSavedView,
     change: SavedWorkViewFilterChange,
   ) => Promise<boolean>;
+  /** Który zapisany widok ma być otwarty, o ile ktoś o niego poprosił.
+   *
+   *  Prosi drugi poziom lewej kolumny (`RealApp.tsx`, `savedViewNavChildren`):
+   *  wiersz potomny pod Zadaniami niesie kontekst z `savedViewId`, a bez tego
+   *  propsa wiersz nazwany „Segment MSSP" lądowałby na „All work" — afordancja
+   *  bez celu. Opcjonalny, bo tylko powłoka trzyma kontekst.
+   *
+   *  PARA Z `onViewOpened` JEST OBOWIĄZKOWA W SENSIE PROJEKTU, choć nie
+   *  w typie: bez drogi powrotnej kontekst mówiłby „otwarty jest widok X"
+   *  wtedy, gdy czytelnik przełączył się kontrolką na „All work", a wiersz
+   *  potomny nosiłby `aria-current="page"` nad ekranem, który tego widoku nie
+   *  pokazuje. Kłamiąca bieżąca strona jest gorsza niż brak wiersza. */
+  readonly requestedViewId?: string | undefined;
+  /** Co ekran zrobił z widokiem — żeby powłoka mogła to powiedzieć nawigacji.
+   *  `undefined` znaczy „All work". */
+  readonly onViewOpened?:
+    ((savedViewId: string | undefined) => void) | undefined;
   /** The three the view manager writes with. Optional together with the manager
    *  itself: a harness mounting this surface to exercise the collection has no
    *  client, and a Save that reaches nobody is worse than no Save. */
@@ -247,6 +273,11 @@ export const TasksSurface = ({
   // to make.
   const openView = (view: WorkSavedView | undefined): void => {
     setActiveViewId(view?.id);
+    // DRUGI KIERUNEK. Powłoka trzyma zapisany widok na kontekście zakładki, bo
+    // z niego bierze go drugi poziom lewej kolumny; ekran, który zmienia widok
+    // po cichu, zostawiłby tam `aria-current="page"` na wierszu, którego nie
+    // pokazuje.
+    onViewOpened?.(view?.id);
     // The columns belong to the VIEW, so the session's choice does not follow
     // the reader across one. What the next view opens with is what they stored
     // for it.
@@ -257,6 +288,37 @@ export const TasksSurface = ({
     setSort(sortFromSavedView(view.sort));
     setLayout(layoutFromSavedView(view.layout, seeded, fieldDefinitions));
   };
+
+  // WIDOK, O KTÓRY POPROSIŁA NAWIGACJA — jeden kierunek, drugi w `openView`
+  // niżej przy kontrolce. Warunek `requestedViewId !== activeViewId` jest tym,
+  // co trzyma oba kierunki w zgodzie BEZ pamiętania, kto był ostatni: kiedy
+  // czytelnik przełączy widok kontrolką, powłoka dostaje o tym znać i prośba
+  // zrównuje się ze stanem, więc ten efekt nie ma czego cofać. Bez tego
+  // warunku każdy render powłoki wyrzucałby czytelnika z powrotem na widok
+  // z lewej kolumny.
+  //
+  // BRAK WIDOKU W PROJEKCJI NIE JEST BŁĘDEM: odczyt bywa jeszcze w drodze,
+  // a widok skasowany między sesjami po prostu nie wróci. Ekran zostaje wtedy
+  // na „All work" i nic o tym nie kłamie.
+  useEffect(() => {
+    if (requestedViewId === undefined || requestedViewId === activeViewId)
+      return;
+    const requested = projection?.savedViews.find(
+      (view) => view.id === requestedViewId,
+    );
+    if (requested === undefined) return;
+    openView(requested);
+    // `openView` jest odtwarzane przy każdym renderze i zmienia cztery stany
+    // naraz; wpisanie go tu jako zależności zamieniłoby ten efekt w pętlę.
+    //
+    // STAŁO TU `eslint-disable-next-line react-hooks/exhaustive-deps` I TO
+    // KŁADŁO `npm run lint`. Tej reguły w tym repozytorium NIE MA w konfiguracji
+    // (`react-hooks` nie jest wpięty), a ESLint traktuje wyłączenie nieznanej
+    // reguły jako BŁĄD — przy `--max-warnings=0` cała bramka wracała czerwona
+    // z pliku, którego nikt o nic nie pytał. Wyłączenie było więc jednocześnie
+    // martwe (nie tłumiło żadnego ostrzeżenia) i szkodliwe. Powód pominięcia
+    // zależności zostaje spisany wyżej, bo jest prawdziwy; znika sam znacznik.
+  }, [requestedViewId, activeViewId, projection]);
 
   // The lens actually drawn, which is the chosen one except for the pair the
   // kernel refuses to store. Held as a DERIVED value rather than written back

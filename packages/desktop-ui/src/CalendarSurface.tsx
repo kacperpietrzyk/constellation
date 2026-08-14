@@ -637,16 +637,33 @@ export const CalendarSurface = ({
 
   return (
     <div className={`surface-scroll ${styles.calendar}`} ref={surfaceRef}>
+      {/* PASMO JEST JEDNOWIERSZOWE: NAZWA PO LEWEJ, KONTEKST PO PRAWEJ.
+          Prototyp składa je jedną funkcją — `crumbbar("Calendar", <span
+          class="when">27 July – 2 August 2026</span>)`
+          (`v3/screens/calendar.js:202`), a `.crumbs .cur` (`v3/app.css:292`)
+          niesie `white-space: nowrap`: po lewej stoi JEDNO nazwanie i nic nad
+          nim ani pod nim. Do tego lotu zakres tygodnia stał tu jako
+          `<p class="eyebrow">` NAD `<h1>`, czyli pasmo o wysokości policzonej
+          na jeden wiersz rysowało dwa (zmierzone: stos 50–77,9 px w paśmie
+          o wysokości 40 px). Kontrakt sankcjonował ten wariant do 2026-08-13
+          i został przepisany razem z tą zmianą — `.ui-craft/patterns.md`,
+          „Pattern: Surface title band", ograniczenie „A band's left side is
+          ONE ROW".
+
+          ZAKRES TYGODNIA ZOSTAJE W PAŚMIE, tylko PO TYTULE i po prawej
+          stronie: prototyp trzyma go dokładnie tam, a `data-week-range`
+          czytają testy interakcyjne. Nawigacja tygodnia jedzie z nim, bo jest
+          kontrolką TEGO odczytu — trzy `ghost-button`, czyli poza zbiorem klas
+          akcji, więc oś miejsca akcji dalej mierzy Kalendarz jako `NO_ACTION`
+          po obu stronach. */}
       <header className="surface-header">
+        <h1 id="surface-title" tabIndex={-1}>
+          Calendar
+        </h1>
         <div className={styles.headline}>
-          <div>
-            <p className="eyebrow" data-week-range>
-              {rangeLabel}
-            </p>
-            <h1 id="surface-title" tabIndex={-1}>
-              Calendar
-            </h1>
-          </div>
+          <p className={styles.when} data-week-range>
+            {rangeLabel}
+          </p>
           <div className={styles.weekNav}>
             <button
               type="button"
@@ -675,11 +692,22 @@ export const CalendarSurface = ({
             </button>
           </div>
         </div>
+      </header>
+
+      <div className={styles.calendarState}>
         {/* Pojemność policzona bez kalendarza to nie pojemność. Dopóki
             spotkania nie są przeczytane, `buildWeek` dostaje pustą listę —
             i wtedy „40h wolnego" stałoby dokładnie NAD paskiem z odmową.
-            Nagłówek mówi więc, czego nie wie, zamiast podawać liczbę,
-            wokół której ktoś zaplanuje tydzień. */}
+            Ekran mówi więc, czego nie wie, zamiast podawać liczbę,
+            wokół której ktoś zaplanuje tydzień.
+
+            ZDANIE ZESZŁO Z PASMA DO TREŚCI W LOCIE L2, i to jest ten sam ruch,
+            który lot D2 zrobił na Dzisiaj (para `D2-02c`). Prototyp trzyma
+            pojemność pod tytułem ekranu, w kolumnie pracy
+            (`v3/screens/calendar.js:206-212` — `.cal-capacity` w `.cal-head`),
+            a nie na prawym końcu pasma. Znacznik `data-week-capacity` jedzie
+            razem z akapitem: testy interakcyjne szukają go w całym ekranie,
+            nie w paśmie. */}
         <p
           className={styles.capacity}
           data-week-capacity
@@ -700,9 +728,6 @@ export const CalendarSurface = ({
             <strong>Free time unknown without the calendar</strong>
           )}
         </p>
-      </header>
-
-      <div className={styles.calendarState}>
         {/* Powód, dla którego spotkania są nieruchome, jest pomocą NA ŻĄDANIE:
             prawdziwy przycisk otwierający okno, nigdy `title=` i nigdy akapit
             pod nagłówkiem. Stoi RAZ, w nagłówku — powtórzony przy każdym

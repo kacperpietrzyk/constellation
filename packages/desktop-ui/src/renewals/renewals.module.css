@@ -106,7 +106,7 @@
    `scripts/descendant-overflow.mjs` holds inherited debt with an owner instead.
    The band's own padding cannot be what is left over: the gate reads
    `scrollWidth - clientWidth` on the element itself
-   (`scripts/verify-renderer-layout.mjs:681`), and padding is inside
+   (`scripts/verify-renderer-layout.mjs:689`), and padding is inside
    `clientWidth`. With breaking allowed the box's narrowest width is its longest
    WORD, which is under the narrowest pass that gate runs.
 

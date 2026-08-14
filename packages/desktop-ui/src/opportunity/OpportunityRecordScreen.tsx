@@ -480,11 +480,19 @@ export const OpportunityRecordScreen = ({
 
   return (
     <div className={screen.screen} data-record-kind="opportunity">
-      <div className={screen.crumbs}>
+      {/* OKRUSZEK W PAŚMIE — powód, cytat i uwaga o powtórzonej nazwie stoją
+          przy tym samym rzędzie w `record/TaskRecordScreen.tsx`. Prototyp nie
+          ma ekranu rekordu szansy (wiersz `no-screen` spisu pasma tytułu), więc
+          kształt jest wzięty z rekordów, które ma. */}
+      <header className={screen.crumbs}>
         <button className={screen.back} onClick={onBack} type="button">
-          <span aria-hidden="true">‹</span> Pipeline
+          Pipeline
         </button>
-      </div>
+        <span aria-hidden="true" className={screen.crumbSeparator}>
+          ›
+        </span>
+        <span className={screen.crumbCurrent}>{opportunity.title}</span>
+      </header>
 
       <header className={styles.header}>
         <h1 className={styles.title} id="surface-title" tabIndex={-1}>

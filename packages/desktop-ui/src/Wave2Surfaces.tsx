@@ -82,25 +82,33 @@ const ApplyTemplatePopover = lazy(async () => ({
    `.wave2-header h1, h2` byłoby KOPIĄ WARTOŚCI z `.surface-header h1` — w tym
    repozytorium nazwaną klasą defektu. Wariant z nadpisem i opisem zostaje więc
    napisany wprost, a wspólny slot akcji obsługuje sześć pozostałych ekranów. */
+/* LEWA STRONA TEGO PASMA TO JEDEN WIERSZ, i to jest cała zmiana lotu L2 w tym
+   pliku. Do niego wariant rysował TRZY wiersze — nadtytuł, tytuł i zdanie
+   opisowe w jednym `<div>`-ie — przez co pasmo Projektów miało 44,9 px tam,
+   gdzie każde inne ma 40 (zmierzone: stos 40–83,9 px, `title band projects
+   stack STACKED rows=3`). Prototyp nie ma tu ani nadtytułu, ani zdania:
+   `crumbbar("Projects", btn("New project"))` (`v3/app.js:1078`), a `.crumbs
+   .cur` (`v3/app.css:292`) niesie `white-space: nowrap` — jedno nazwanie
+   i akcja. Zdanie „Intended outcomes and the work behind them." tłumaczyło
+   ekran w miejscu, w którym prototyp go NAZYWA (wpisy 5-1 i 5-3 rejestru
+   przejścia).
+
+   KLASA DALEJ JEST LITERAŁEM `"surface-header wave2-header"` i wariant DALEJ
+   nie deleguje do `SurfaceTitleBand` — powód stoi wyżej i jest zmierzony
+   (bramka typografii nagłówków czyta literalne `className`), a ten lot go nie
+   unieważnia: zmienia się SKŁAD pasma, nie sposób, w jaki jego klasy trafiają
+   do źródła. */
 const SurfaceHeader = ({
-  kicker,
   title,
-  description,
   action,
 }: {
-  readonly kicker: string;
   readonly title: string;
-  readonly description: string;
   readonly action?: React.ReactNode;
 }) => (
   <header className="surface-header wave2-header">
-    <div>
-      <p className="eyebrow">{kicker}</p>
-      <h1 id="surface-title" tabIndex={-1}>
-        {title}
-      </h1>
-      <p>{description}</p>
-    </div>
+    <h1 id="surface-title" tabIndex={-1}>
+      {title}
+    </h1>
     {action}
   </header>
 );
@@ -187,9 +195,7 @@ export const TasksSurface = ({
   return (
     <div className="surface-scroll">
       <SurfaceHeader
-        kicker="Root Space · local view"
         title="Tasks"
-        description="Captured actions, their state and the kept sources."
         action={
           <button className="secondary-button" onClick={onCapture}>
             <Icon name="capture" />
@@ -658,7 +664,7 @@ export const ProjectsSurface = ({
               {/* KROK POTWIERDZENIA ODCHODZI RAZEM Z KONTROLKĄ FORMULARZA
                   (lot D11, wpisy #51 i #55). Wybór szablonu wysyła JEDNĄ
                   komendę, a toast niesie działające Cofnij przez 8 s
-                  (`RealApp.tsx:1245`, `refreshAfter` `:1459+`) — więc pomyłka
+                  (`RealApp.tsx:1320`, `refreshAfter` `:1534+`) — więc pomyłka
                   kosztuje jedno kliknięcie wstecz. Nazwa dostępna szła dotąd
                   z `sr-only` etykiety `<label for>`; dymek nie ma czego takiego,
                   więc niesie ją TREŚĆ wyzwalacza plus `panelLabel`. */}
@@ -766,13 +772,7 @@ export const ProjectsSurface = ({
   return (
     <div className="surface-scroll project-surface">
       <SurfaceHeader
-        kicker="Projects · active"
         title={fullView ? overview.project.title : "Projects"}
-        description={
-          fullView
-            ? "The intended outcome, lifecycle and work in this project."
-            : "Intended outcomes and the work behind them."
-        }
         action={
           <div className="project-header-actions">
             {fullView && (

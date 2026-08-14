@@ -185,7 +185,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h2",
     weight: 560,
     sheet:
-      "packages/desktop-ui/src/calendar.module.css:367 i inbox.module.css:52 (.sectionHead h2)",
+      "packages/desktop-ui/src/calendar.module.css:389 i inbox.module.css:52 (.sectionHead h2)",
     surfaces: "calendar, inbox",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -209,7 +209,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
   {
     signature: "span._dayName",
     weight: 560,
-    sheet: "packages/desktop-ui/src/calendar.module.css:149",
+    sheet: "packages/desktop-ui/src/calendar.module.css:171",
     surfaces: "calendar",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -269,7 +269,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
   {
     signature: "h2",
     weight: 590,
-    sheet: "packages/desktop-ui/src/styles.css:3354 (.inspector-body > h2)",
+    sheet: "packages/desktop-ui/src/styles.css:3367 (.inspector-body > h2)",
     surfaces: "tasks:task (+ zakładki)",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -353,7 +353,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "strong",
     weight: 590,
     sheet:
-      "packages/desktop-ui/src/calendar.module.css:54, inbox.module.css:29, tasks/task-calendar.module.css:38, styles.css:6841",
+      "packages/desktop-ui/src/calendar.module.css:76, inbox.module.css:29, tasks/task-calendar.module.css:38, styles.css:6862",
     surfaces: "calendar, inbox, library:captures, tasks:calendar",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -382,7 +382,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h2",
     weight: 620,
     sheet:
-      "packages/desktop-ui/src/styles.css:3075 (.empty-state h2, .empty-state h3) i styles.css:6215 (.section-heading h2)",
+      "packages/desktop-ui/src/styles.css:3088 (.empty-state h2, .empty-state h3) i styles.css:6227 (.section-heading h2)",
     surfaces:
       "organizations, projects:project, projects:project:overview, settings",
     owner: "L5 (Faza II) — pozycja P5 #1",
@@ -395,7 +395,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h3._stateTitle",
     weight: 620,
     sheet:
-      "packages/desktop-ui/src/styles.css:3075 (.empty-state h2, .empty-state h3)",
+      "packages/desktop-ui/src/styles.css:3088 (.empty-state h2, .empty-state h3)",
     surfaces: "settings",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -403,7 +403,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
   {
     signature: "span",
     weight: 620,
-    sheet: "packages/desktop-ui/src/styles.css:3239 (.inspector-header span)",
+    sheet: "packages/desktop-ui/src/styles.css:3252 (.inspector-header span)",
     surfaces: "tasks:task (+ zakładki)",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -424,7 +424,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h3",
     weight: 630,
     sheet:
-      "packages/desktop-ui/src/styles.css:6786 (.history-ledger > header h3)",
+      "packages/desktop-ui/src/styles.css:6807 (.history-ledger > header h3)",
     surfaces: "library:captures",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -558,7 +558,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "span",
     weight: 650,
     sheet:
-      "packages/desktop-ui/src/styles.css:2851 (.task-filter-control > span, .task-row-field > span, .task-column-head) oraz dziedziczone z przycisków (:901)",
+      "packages/desktop-ui/src/styles.css:2864 (.task-filter-control > span, .task-row-field > span, .task-column-head) oraz dziedziczone z przycisków (:901)",
     surfaces: "wszystkie 37 stanów ekranu",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",

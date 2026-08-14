@@ -4,6 +4,8 @@ import type { DocumentId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import type { LibraryReading } from "../client/shell-navigation.js";
+import { Icon } from "../components/Icon.js";
+import { modifierLabel } from "../components/ShortcutsOverlay.js";
 import type { DesktopSnapshot, MutationFailure } from "../client/workflow.js";
 import type { DocumentEntityTargetKind } from "../document-entity-reference.js";
 import {
@@ -30,6 +32,13 @@ import { SourcesReading } from "./SourcesReading.js";
 
 export type LibraryInspectorKind = LibraryReading;
 
+/* SŁOWA PROTOTYPU, CO DO SŁOWA: `btn("Search notes and records", …)`
+   (`v3/screens/knowledge.js:803`). Stała, a nie literał w JSX, bo ta sama nazwa
+   jedzie do `aria-label` — kontrolka zwija się przy wąskim pojemniku do samej
+   ikony i wtedy `aria-label` jest JEDYNYM miejscem, w którym ta obietnica
+   jeszcze stoi. */
+const LIBRARY_SEARCH_LABEL = "Search notes and records";
+
 export const LibraryShell = ({
   client,
   snapshot,
@@ -40,6 +49,7 @@ export const LibraryShell = ({
   onEntityActivate,
   onReload,
   onFailure,
+  onOpenSearch,
   captureHistory,
 }: {
   readonly client: ConstellationRendererClient | undefined;
@@ -54,6 +64,11 @@ export const LibraryShell = ({
   }) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
+  /** Otwiera paletę wyszukiwania — TĘ SAMĄ, którą otwiera `⌘K` i kontrolka
+   *  w szynie powłoki. Pasmo prototypu ma tu przycisk, nie własne pole
+   *  (`v3/screens/knowledge.js:803`), więc ten odczyt niczego nie wyszukuje
+   *  sam: mówi tylko, że stąd też się to robi. */
+  readonly onOpenSearch: () => void;
   readonly captureHistory: CaptureHistoryWiring;
 }) => {
   const [reading, setReading] = useState<LibraryReading>(
@@ -117,14 +132,46 @@ export const LibraryShell = ({
           w locie o POŁOŻENIU akcji. Historia przechwyceń akcji tworzenia nie ma
           i slot zostaje wtedy pusty — „ten odczyt nie ma akcji" jest
           odpowiedzią, nie luką. */}
-      <header className={styles.header}>
-        <div>
-          <p className="eyebrow">Sources and deliverables</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Library
-          </h1>
+      {/* PASMO BIBLIOTEKI JEST TYM SAMYM PASMEM, CO POZOSTAŁE JEDENAŚCIE
+          (lot L2). Trzy rzeczy zmieniły się tu naraz i wszystkie trzy są
+          jednym zdaniem prototypu — `crumbbar("Notes", btn("Search notes and
+          records", { cls: "quiet", icon: "search", act: "palette", kbd: "⌘K" })
+          + btn("New note", { cls: "primary", icon: "plus" }))`
+          (`v3/screens/knowledge.js:802-804`):
+
+          1. NADTYTUŁ „Sources and deliverables" ZNIKA — prototyp nazywa ekran
+             raz, a `.crumbs .cur` (`v3/app.css:292`) jest `nowrap`: lewa strona
+             pasma to jeden wiersz (wpis 11-7 rejestru przejścia mówi o tym
+             samym paśmie co ten punkt);
+          2. KLASA `surface-header` DOCHODZI DO MODUŁOWEJ, więc ten nagłówek
+             bierze wysokość pasma (`--header-band-height`), włoskową kreskę
+             i rozkład `space-between` z tej samej reguły, co jedenaście
+             pozostałych. Przed tym lotem rysował własne 60 px przy 40 px
+             wszędzie indziej — trzeci wariant tego samego pasma. Reguły
+             modułowe zostają WYŁĄCZNIE tam, gdzie mówią coś, czego reguła
+             globalna nie mówi (zawijanie i łamanie słów przy 300% pisma);
+          3. WYSZUKIWANIE WRACA DO PASMA jako kontrolka CICHA (`ghost-button`,
+             czyli poza zbiorem klas akcji — oś miejsca akcji dalej mierzy tu
+             „New note" i dalej widzi je na końcu pasma). Otwiera tę samą
+             paletę, co `⌘K` i kontrolka w szynie powłoki; skrót jest
+             wypisany tym samym glifem co tam. */}
+      <header className={`surface-header ${styles.header}`}>
+        <h1 id="surface-title" tabIndex={-1}>
+          Library
+        </h1>
+        <div className={styles.headerAction}>
+          <button
+            aria-label={`${LIBRARY_SEARCH_LABEL} (${modifierLabel}K)`}
+            className={`ghost-button compact ${styles.searchInBand}`}
+            onClick={onOpenSearch}
+            type="button"
+          >
+            <Icon name="search" />
+            <span className={styles.searchLabel}>{LIBRARY_SEARCH_LABEL}</span>
+            <span className={styles.searchHint}>{modifierLabel}K</span>
+          </button>
+          <div className={styles.actionSlot} ref={setActionHost} />
         </div>
-        <div className={styles.headerAction} ref={setActionHost} />
       </header>
 
       <div className={styles.viewbar}>

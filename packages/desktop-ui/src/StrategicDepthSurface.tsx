@@ -106,7 +106,7 @@ const StateMark = ({ state }: { readonly state: string }) => (
 // THE ORGANIZATIONS COLLECTION
 //
 // The export keeps its old name because the name is a SEAM: `shell/lazy-
-// surfaces.tsx` and `RealApp.tsx:2003` both reach for `module.StrategicDepth-
+// surfaces.tsx` and `RealApp.tsx:2158` both reach for `module.StrategicDepth-
 // Surface`, and both files belong to other lots this wave. What the component
 // IS has changed completely — it is the client list, not the CRM ledger it was.
 //

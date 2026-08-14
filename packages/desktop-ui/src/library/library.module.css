@@ -22,34 +22,55 @@
   background: var(--surface-window);
 }
 
-/* `flex-wrap` and not just a zero minimum: with the count pinned beside it the
-   title block was squeezed to about 90 px at 300% text and its own words then
-   overflowed. Letting the count drop to the next line is the right trade — it
-   is a number nobody reads first, and the alternative is a heading that does
-   not fit its own box. */
+/* CO TU ZOSTAŁO PO LOCIE L2, I DLACZEGO NIE WIĘCEJ. Nagłówek nosi teraz
+   `surface-header` obok tej klasy, więc `display`, `align-items`,
+   `justify-content`, `gap`, `flex-wrap`, wysokość pasma i włoskowa kreska idą
+   z JEDNEJ reguły dzielonej z jedenastoma pozostałymi pasmami (`styles.css`,
+   `.surface-header`) — powtórzenie ich tutaj byłoby drugą definicją tego
+   samego kształtu, czyli nazwaną w tym repozytorium klasą defektu. Zostaje
+   wyłącznie to, czego tamta reguła nie mówi:
+
+   * ZEROWE MARGINESY, I TO JEST POMIAR, NIE PORZĄDKI. Reguła globalna
+     wyciąga pasmo z kolumny czytania ujemnym marginesem poziomym równym
+     rynnie nośnika (`--surface-gutter`) i podnosi je o `--surface-band-lift`.
+     Powłoka Biblioteki jest siatką, która JUŻ zajmuje całą kanwę, więc te
+     dwa ujemne marginesy wypychają pasmo poza nią po obu stronach: bramka
+     układu zmierzyła „content 1260 px wide in a 1220 px box" na pełnym oknie
+     i to samo przy 320 px, 200% i 300% pisma. Margines dolny znika z trzeciego
+     powodu: pod tym pasmem stoi pasek odczytów z własną wyściółką
+     (`.viewbar`), a nie treść, a prototyp trzyma oba pasma jedno pod drugim
+     bez powietrza między nimi (`v3/app.css:282-301`).
+   * WYŚCIÓŁKA POZIOMA. Reguła globalna bierze ją z `--surface-gutter`; tutaj
+     musi się zgadzać z paskiem odczytów i listą pod nim, które mają
+     `--space-6`. Bez tej linijki tytuł stałby o kilkanaście pikseli obok
+     wszystkiego, co pod nim.
+   * WŁASNY KONTEKST POJEMNIKA pod zapytanie niżej — patrz `.searchLabel`. */
 .header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-6) var(--space-3);
+  container-type: inline-size;
+  margin: 0;
+  padding-inline: var(--space-6);
 }
 
 /* `min-width: 0`, and it is the whole reason this rule exists: a flex item
    defaults to `min-width: auto`, so the title block asked for its eyebrow on
    ONE line — 561 px of it inside a 432 px box once text is scaled to 300%,
    measured on the Library harness. With a zero minimum the sentence wraps and
-   the header stops setting the surface's width. */
+   the header stops setting the surface's width. Nadtytuł zszedł z tego pasma
+   w locie L2, a reguła ZOSTAJE: jej podmiotem jest odtąd prawa połowa pasma
+   (wyszukiwanie plus akcja), która przy 300% pisma ma dokładnie ten sam
+   problem i ten sam zerowy minimum go zdejmuje. */
 .header > div {
   min-width: 0;
 }
 
 /* A single scaled word is wider than a narrow panel, and there is no space in
    it to break at. `anywhere` is the only value that takes it out of the box's
-   min-content width; the alternative is a title that leaves the surface. */
-.header h1,
-.header .eyebrow {
+   min-content width; the alternative is a title that leaves the surface.
+
+   Selektor `.header .eyebrow` STAŁ TU DO LOTU L2 i zeszło razem z nadtytułem: reguła
+   nad elementem, którego ten ekran już nie rysuje, wygląda jak opis produktu,
+   a jest opisem produktu sprzed poprawki. */
+.header h1 {
   overflow-wrap: anywhere;
 }
 
@@ -80,7 +101,18 @@
    (`v3/app.css:293`). Węzeł stoi tu ZAWSZE, także dla odczytu bez akcji: pusty
    `<div>` o zerowej szerokości nie zmienia tego pasma, a cel portalu, który raz
    jest, a raz go nie ma, zmuszałby odczyt do sprawdzania, czy ma gdzie się
-   wstrzyknąć. */
+   wstrzyknąć.
+
+   LOT L2 PRZENIÓSŁ REF NA WŁASNY POJEMNIK (`.actionSlot` niżej), bo obok slotu
+   stanęła cicha kontrolka wyszukiwania — a wstrzykiwanie portalem do pudełka,
+   które ma także zwykłe dziecko z JSX, jest właśnie tym, czego React nie
+   gwarantuje. */
+/* PRAWA POŁOWA PASMA: cicha kontrolka wyszukiwania i slot akcji, w tej
+   kolejności — dokładnie tak, jak `crumbbar` prototypu przyjmuje oba przyciski
+   jednym argumentem (`v3/screens/knowledge.js:802-804`). Kolejność jest
+   MIERZONA: akcja musi zostać OSTATNIA, bo spis pasma tytułu czyta odstęp
+   między jej prawą krawędzią a końcem treści pasma i cokolwiek postawionego
+   za nią czyta jako `INSET_FROM_END`. */
 .headerAction {
   display: flex;
   align-items: center;
@@ -94,6 +126,64 @@
      swojej treści (`min-width: auto`), więc bez tych trzech deklaracji pasmo
      rosło w bok zamiast złamać etykietę. */
   min-inline-size: 0;
+}
+
+/* Cel portalu. Własny pojemnik, a nie `.headerAction` z refem, odkąd stoi obok
+   niego kontrolka wyszukiwania: portal wstrzykuje do CELU, więc cel musi być
+   pudełkiem, którego zawartość wolno wymienić bez ruszania rodzeństwa. Pusty
+   nie zajmuje w rzędzie nic (`display: flex` bez dzieci ma zerową szerokość),
+   więc odczyt bez akcji zostawia pasmo dokładnie takim, jakim je zastał. */
+.actionSlot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* CICHA KONTROLKA WYSZUKIWANIA — trzy rzeczy, których `ghost-button` nie mówi.
+   Wszystkie trzy są odpowiedzią na POMIAR, a nie ostrożnością:
+
+   1. `min-inline-size: 0` na przycisku i na etykiecie. Element flex nie schodzi
+      domyślnie poniżej swojej treści, a etykieta „Search notes and records" ma
+      przy 300% pisma kilkaset pikseli — bramka układu zmierzyła wtedy
+      `div._actionSlot overflows its own box by 108 px`.
+   2. WAGA WPISANA WPROST, i to jest jedyny powód, dla którego te dwa `<span>`
+      w ogóle mają klasy. `.ghost-button` rysuje dziś wagą 550 — długiem
+      zarejestrowanym na lot L5 — a KAŻDE nowe dziecko tego przycisku
+      dziedziczyłoby ją jako NOWĄ sygnaturę spoza skali: spis wag zwrócił
+      dokładnie to (`TYPE_WEIGHT_UNREGISTERED — span.search-shortcut draws at
+      weight 550`). Dokładanie długu, który inny lot ma zdejmować, byłoby
+      cofnięciem się; oba napisy biorą więc zadeklarowany stopień `--weight-medium`.
+   3. ZAPYTANIE POJEMNIKA W `rem`, nie media query. Ta kontrolka nie mieści się
+      w dwóch różnych sytuacjach — w wąskim oknie i przy powiększonym piśmie
+      w oknie szerokim — a `rem` w zapytaniu pojemnika rośnie razem z korzeniem,
+      więc jedno zdanie obsługuje obie. Zwinięta zostaje ikoną z `aria-label`:
+      nazwa dociera do czytnika ekranu tak samo, a skrót przestaje być
+      obietnicą, na którą nie ma miejsca. */
+.searchInBand {
+  min-inline-size: 0;
+}
+
+.searchLabel {
+  font-weight: var(--weight-medium);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchHint {
+  color: var(--text-disabled);
+  flex: none;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+}
+
+@container (max-inline-size: 46rem) {
+  .searchLabel,
+  .searchHint {
+    display: none;
+  }
 }
 
 .headerAction :global(.inline-popover-trigger) {

@@ -674,7 +674,7 @@ const INACTIVE_COMPONENT = {
 // marki NIE NIESIE ŻADNEGO TEKSTU (to `<svg>` z kółkami i kreskami malowanymi
 // `currentColor`, `components/BrandMark.tsx`), a do tego jest wycięty
 // z drzewa dostępności i stoi obok wypisanej nazwy produktu
-// (`RealApp.tsx:1746-1747`, `.brand-row strong` = „Constellation").
+// (`RealApp.tsx:1821-1822`, `.brand-row strong` = „Constellation").
 // SPRAWDZANE JEST TO, CO DA SIĘ SPRAWDZIĆ: obecność atrybutu przy tej klasie.
 // „Nazwa stoi obok" jest twierdzeniem o drzewie DOM i zostaje prozą.
 const DECORATIVE_EXEMPTIONS = [

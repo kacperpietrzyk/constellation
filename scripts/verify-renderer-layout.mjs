@@ -85,6 +85,12 @@ import {
   TITLE_BAND_OPENING_DIVERGENCES,
   TITLE_BAND_OPENING_STATUS,
   TITLE_BAND_ROWS,
+  TITLE_BAND_CARRIES_ARMED,
+  TITLE_BAND_CARRIES_DIVERGENCES,
+  TITLE_BAND_CARRIES_STATUS,
+  TITLE_BAND_HEIGHT_ARMED,
+  TITLE_BAND_HEIGHT_DIVERGENCES,
+  TITLE_BAND_HEIGHT_STATUS,
   TITLE_BAND_STACK_ARMED,
   TITLE_BAND_STACK_DIVERGENCES,
   TITLE_BAND_STACK_STATUS,
@@ -96,7 +102,9 @@ import {
   classifyTitleBandAction,
   classifyTitleBandCensus,
   classifyTitleBandInline,
+  isTitleBandCarriesDivergence,
   isTitleBandDivergence,
+  isTitleBandHeightDivergence,
   isTitleBandOpeningDivergence,
   isTitleBandStackDivergence,
   titleBandVerdictThrows,
@@ -551,7 +559,7 @@ const TYPE_WEIGHT_SCALE = declaredWeightScale(
 //                  `[data-record-kind]` po dwukliku i zmierzyć ten ekran.
 //   "navigates"  — wiersz ZABIERA DO rekordu w jego kolekcji i nie otwiera nic;
 //                  żądanie ekranu byłoby tu żądaniem zachowania, którego produkt
-//                  świadomie nie ma (`RealApp.tsx:2702-2704`).
+//                  świadomie nie ma (`RealApp.tsx:2886-2888`).
 //
 // STRAŻNIK WYCZERPANIA JEST CZĘŚCIĄ TABELI, nie dodatkiem: powierzchnia, która
 // narysowała taki wiersz i nie stoi tutaj, wywala przelot z własną nazwą. Bez
@@ -578,13 +586,13 @@ const TYPE_WEIGHT_SCALE = declaredWeightScale(
 // na kolekcji z zaznaczonym rekordem. Zdanie „to nie są drzwi" jest tu
 // weryfikowane, zdanie „to jest przejście" nie jest.
 const RECORD_DOORS = {
-  // `taskContext(id, title, { record: true })` — `RealApp.tsx:2705-2708`.
+  // `taskContext(id, title, { record: true })` — `RealApp.tsx:2889-2892`.
   tasks: "opens",
   // `projectContext` — kolekcja Projektów promuje projekt na jego ekran.
   projects: "opens",
   // Jedyne drzwi do rekordu szansy, potwierdzone przy zdjęciu `[data-renewal-row]`.
   pipeline: "opens",
-  // `taskContext(id, title)` BEZ `{ record: true }` — `RealApp.tsx:2307-2310`.
+  // `taskContext(id, title)` BEZ `{ record: true }` — `RealApp.tsx:2462-2465`.
   // Wiersz istnieje na tym ekranie dopiero od fikstury lotu D9.
   calendar: "navigates",
 };
@@ -1325,12 +1333,12 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // zobaczyć, bo fikstura nie kładła na Kalendarzu ani jednego wiersza:
         // `taskContext(id, title)` BEZ `{ record: true }` niesie
         // `surface: "tasks"` i żadnej flagi rekordu
-        // (`client/shell-navigation.ts:494-504`), więc podwójne kliknięcie
+        // (`client/shell-navigation.ts:538-548`), więc podwójne kliknięcie
         // wiersza Kalendarza ZABIERA DO zadania w jego kolekcji, zamiast
         // promować je na własny ekran. Nie jest to defekt produktu, tylko jego
-        // zapisane rozstrzygnięcie: `RealApp.tsx:2702-2704` mówi wprost „the
+        // zapisane rozstrzygnięcie: `RealApp.tsx:2886-2888` mówi wprost „the
         // ONE place a list promotes a task to its own screen", a Kalendarz
-        // (`:2307-2310`) i Dziś (`:2261-2264`) świadomie nie są tym miejscem.
+        // (`:2462-2465`) i Dziś (`:2416-2419`) świadomie nie są tym miejscem.
         //
         // DRUGA POŁOWA TEGO DEFEKTU BYŁA GORSZA OD CZERWIENI, KTÓRA GO ODKRYŁA.
         // `measure(`${id}:${kind}`)` niżej podstawia „record", kiedy nic się nie
@@ -2998,7 +3006,7 @@ const outlineOf = (paint) => {
 // (`--elevation-rest: var(--control-focus-ring), var(--elevation-rest-resting)`).
 // Kontrolka z własnym cieniem rysuje go więc dalej, a pierścień stoi PRZED nim,
 // czyli nie ma już czego nadpisywać. Zmierzone na przystanku 8
-// (`button.capture-dock`, `styles.css:1867`): przy fokusie
+// (`button.capture-dock`, `styles.css:1882`): przy fokusie
 // `oklch(0.55 0.21 295) 0px 0px 0px 1px` i trzy warstwy własnej elewacji za nim.
 // Wykluczenie zostaje w kodzie, bo jest poprawne dla kontrolki, która ten remap
 // ominie — ale DZIŚ nie odsiewa ani jednego przystanku.
@@ -3702,7 +3710,7 @@ const measureTheme = async (
       // z KSZTAŁTU, nie z nazwy klasy: pytanie brzmi „czy człowiek to widzi",
       // a nie „czy to się nazywa skip-link". Afordancja dostępnościowa siedzi
       // dziś nad początkiem układu (`transform: translate(-50%, -180%)`,
-      // `styles.css:4480-4490`) i zjeżdża w kadr dopiero z fokusem.
+      // `styles.css:4493-4503`) i zjeżdża w kadr dopiero z fokusem.
       //
       // CELOWO NIE liczymy „poniżej zgięcia" jako zaparkowania: kontrolka pod
       // spodem jest osiągalna przewinięciem, a ta nad początkiem kadru — tylko
@@ -5149,7 +5157,7 @@ const measureControlPaintInPage = async ({
   // klucza, więc strażnik „zero kontrolek" nie miał po czym iterować.
   const declared = [shellSurface, ...all];
   // KTÓRY CEL DOJECHAŁ. Powłoka stempluje aktywny cel na planie roboczym
-  // (`RealApp.tsx:3669`), więc przybycie jest OBSERWOWALNE — a kliknięcie,
+  // (`RealApp.tsx:3890`), więc przybycie jest OBSERWOWALNE — a kliknięcie,
   // które po cichu nie zadziała, kazałoby spisowi policzyć ten sam panel pod
   // trzynastoma nazwami i wszystkie byłyby niezerowe.
   const arrivals = [];
@@ -5446,11 +5454,11 @@ const controlPaintCensus = async (browser) => {
 //
 // JEDNA SZEROKOŚĆ — 1440×900, jak pary i jak spis farby. Przy 320 px i przy
 // 200% tekstu akcja LEGALNIE stoi wiersz niżej: `.surface-header` ma
-// `flex-wrap: wrap` postawione świadomie (`styles.css:1826-1831`), więc
+// `flex-wrap: wrap` postawione świadomie (`styles.css:1841-1846`), więc
 // asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
 // przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
 // „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
-// przyklejenia (`:5010`).
+// przyklejenia (`:5022`).
 
 const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
 
@@ -5496,7 +5504,7 @@ const measureTitleBandActionInPage = async ({
   // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
   // więc pada głośno jako `TITLE_BAND_NOT_MEASURED`) — czyli przypadek, nie
   // reguła. Kryterium jest teraz to samo co przy `parkedOutOfFrame`
-  // (`:2990-3000`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
+  // (`:3003-3013`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
   // kadrem znaczą „niewidoczne", a „poniżej zgięcia" NIE — tamto jest zwykłym
   // układem, to jest ukryciem.
   const rendered = (element) => {
@@ -5548,11 +5556,14 @@ const measureTitleBandActionInPage = async ({
         band: null,
         neighbourhood: [],
         actions: [],
-        // OBA POLA IDĄ TU JAKO `null` ŚWIADOMIE: pasmo nierozstrzygnięte ma
-        // zapalać `TITLE_BAND_NOT_MEASURED`, a nie udawać świadka osi P3. Ten
-        // sam powód, który wyżej każe przepisać `band` nietknięte.
+        // WSZYSTKIE CZTERY POLA IDĄ TU JAKO `null` ŚWIADOMIE: pasmo
+        // nierozstrzygnięte ma zapalać `TITLE_BAND_NOT_MEASURED`, a nie udawać
+        // świadka osi 3-6. Ten sam powód, który wyżej każe przepisać `band`
+        // nietknięte.
         stack: null,
         opening: null,
+        height: null,
+        carries: null,
       };
     const bandBox = box(band);
     const titleBox = box(title);
@@ -5657,6 +5668,198 @@ const measureTitleBandActionInPage = async ({
           : (openingNode.textContent ?? "").trim().slice(0, 32),
     };
 
+    // ── OŚ 5 (L2): CZY TO JEST PASMO POWŁOKI I CZY MA JEGO WYSOKOŚĆ ────────
+    // TOKEN ROZWIĄZYWANY W TEJ SAMEJ STRONIE, tym samym idiomem co sonda
+    // `--text-2xl` wyżej: sonda dostaje `block-size: var(--header-band-height)`
+    // i jest wstawiana W RODZICA PASMA, więc dziedziczy dokładnie te zmienne,
+    // które obowiązują w tym miejscu drzewa. Ekran, który przedeklarowałby
+    // token u siebie, byłby wtedy zmierzony SWOJĄ liczbą — i to jest właściwe
+    // pytanie: „czy pasmo stoi na wysokości, którą ta powierzchnia deklaruje".
+    const heightProbe = document.createElement("div");
+    heightProbe.style.position = "absolute";
+    heightProbe.style.left = "-9999px";
+    heightProbe.style.visibility = "hidden";
+    heightProbe.style.blockSize = "var(--header-band-height)";
+    (band.parentElement ?? work() ?? document.body).append(heightProbe);
+    const wantedBandHeight = round(heightProbe.getBoundingClientRect().height);
+    heightProbe.remove();
+    // KLASA JEST CZĘŚCIĄ PYTANIA — powód stoi przy osi w `title-band-action.mjs`
+    // („wysokość równą tokenowi można trafić przypadkiem").
+    const onShellBand = band.classList.contains("surface-header");
+    // PÓŁ PIKSELA, TA SAMA TOLERANCJA CO PRZY `rem` W PRZELOCIE PAR
+    // (`REM_TOLERANCE_PX`): pasmo o `min-height` zaokrągla się na subpikselach,
+    // a różnica, o którą tu chodzi, to 5 i 20 px, nie 0,4.
+    const height = {
+      state: !onShellBand
+        ? "OWN_HEAD"
+        : Math.abs(bandBox.height - wantedBandHeight) <= 0.5
+          ? "SHELL_BAND"
+          : "SHELL_BAND_OFF",
+      // OBIE STRONY PORÓWNANIA DRUKUJĄ SIĘ ZAWSZE, tak samo jak na osi
+      // otwarcia: „SHELL_BAND_OFF" bez obu liczb nie daje się sprawdzić.
+      measured: bandBox.height,
+      wanted: wantedBandHeight,
+      signature: signature(band),
+    };
+
+    // ── OŚ 6 (L2): CO PASMO PROWADZĄCE NIESIE OPRÓCZ NAZWY ─────────────────
+    // PODMIOTEM JEST PIERWSZE NARYSOWANE `<header>` W KOLUMNIE PRACY, a nie
+    // pasmo tytułu: na rekordzie to są DWA RÓŻNE elementy (trasa stoi nad
+    // głową rekordu), i cały wpis 12-2 rejestru jest właśnie o tym pierwszym.
+    const leadBand =
+      [...(work()?.querySelectorAll("header") ?? [])].find(
+        (node) => node instanceof HTMLElement && rendered(node),
+      ) ?? band;
+    const leadText = (node) => (node.textContent ?? "").trim();
+    const titleText = leadText(title);
+    // WYSZUKIWANIE MIERZONE WIDOCZNYM TEKSTEM KONTROLKI, nie jej klasą,
+    // znacznikiem ani `aria-label`: pytanie brzmi „czy człowiek widzi w paśmie,
+    // że stąd się szuka i czym". Skrót jest częścią pytania, bo prototyp pisze
+    // go tam wprost (`kbd: "⌘K"`), a kontrolka bez niego obiecuje inną rzecz.
+    //
+    // `aria-label` STAŁ W TYM WYRAŻENIU DO PRZEGLĄDU ADWERSARIALNEGO L2 I BYŁ
+    // WADĄ, a nie hojnością — `library/LibraryShell.tsx:164` wpisuje w niego
+    // CAŁE zdanie, którego ta oś szuka („Search notes and records (⌘K)"), więc
+    // pasmo pozbawione widocznego glifu skrótu dalej zapalało flagę. Zmierzone
+    // sondą na żywej apce: po skasowaniu `span.searchHint` widoczny tekst to
+    // „Search notes and records", a `aria-label` dalej niesie „(⌘K)". Złamanie
+    // „Library search control drops its shortcut" wracało przez to ZIELONE nad
+    // produktem, który obietnicy skrótu już nie niósł.
+    //
+    // ZAKRES, ŻEBY NIE OBIECYWAĆ WIĘCEJ, NIŻ TU STOI: spis chodzi przy
+    // 1440×900, gdzie oba napisy kontrolki są narysowane. Poniżej 46 rem
+    // pojemnika `library/library.module.css:182-187` gasi je OBA
+    // (`display: none`) i w paśmie zostaje goła ikona — tego stanu ten spis nie
+    // odwiedza, a `textContent` sam z siebie nie odróżnia napisu zgaszonego od
+    // narysowanego, więc oś nie orzeka o nim ani „tak", ani „nie".
+    const searchControl =
+      [...leadBand.querySelectorAll("button, a, input")].find((node) => {
+        if (!(node instanceof HTMLElement) || !rendered(node)) return false;
+        const words = leadText(node);
+        return /search/iu.test(words) && /(⌘|ctrl)\s*\+?\s*k/iu.test(words);
+      }) ?? null;
+    // TRASA MIERZONA CZŁONAMI, A NIE JEDNYM WĘZŁEM, i każde z trzech pytań
+    // niżej jest pytaniem, które przegląd adwersarialny L2 udowodnił jako
+    // NIEZADANE przez pierwszą wersję tej osi:
+    //
+    //   * czy PIERWSZY człon nazywa KOLEKCJĘ. Sprawdzane porównaniem
+    //     z etykietą tej powierzchni w szynie powłoki, a nie przez „jakikolwiek
+    //     narysowany przycisk z tekstem". Zmierzone sondą: podmiana „Tasks" na
+    //     „Wombat" NIE gasiła flagi, więc połowa zdania „odnośnik do kolekcji"
+    //     nie była mierzona niczym;
+    //   * ILE członów trasa ma. Prototyp rekordu zadania ma trzy
+    //     (`v3/screens/record.js:556-562`: kolekcja › projekt › identyfikator),
+    //     nasz rekord ma dwa — różnica, którą oś licząca „link i liść" widziała
+    //     jako zgodność;
+    //   * czy BIEŻĄCY człon powtarza TYTUŁ rekordu, czy niesie coś innego.
+    //     Prototyp stawia tam identyfikator zadania (`t.id.toUpperCase()`),
+    //     a tytuł zostawia `<h1 class="rec-title">` niżej; na rekordzie
+    //     projektu (`v3/screens/record.js:429-432`) stawia tam tytuł. To są dwa
+    //     RÓŻNE kształty tej samej trasy i oś musi je rozróżniać, inaczej
+    //     „TRAIL" znaczy tyle co „jakieś okruszki".
+    //
+    // CZŁONY BIERZE SIĘ PRZEPLOTEM, a nie „wszystkimi dziećmi z tekstem":
+    // pasmo rekordu projektu niesie za trasą jeszcze akcje (`New task`,
+    // `Edit outcome`…), które NIE są członami trasy. Przeplot „człon, separator,
+    // człon" kończy się na pierwszym dziecku, które nie jest separatorem —
+    // czyli dokładnie tam, gdzie kończy się trasa.
+    const collectionKey = id.includes("/") ? id.slice(0, id.indexOf("/")) : "";
+    const navItem =
+      collectionKey === ""
+        ? null
+        : document.querySelector(`.nav-item[data-surface="${collectionKey}"]`);
+    // ETYKIETA SZYNY, A NIE `textContent` CAŁEGO WIERSZA: wiersz nawigacji
+    // niesie jeszcze licznik (`span.nav-item-meta`, `aria-hidden`), więc
+    // porównanie z całością dawałoby „Tasks3" i nie zgadzałoby się nigdy.
+    const navLabel =
+      navItem === null
+        ? ""
+        : leadText(
+            [...navItem.querySelectorAll("span")].find(
+              (node) =>
+                node.getAttribute("aria-hidden") !== "true" &&
+                leadText(node) !== "",
+            ) ?? navItem,
+          );
+    const trailMembers = [];
+    if (leadBand !== band) {
+      let wantMember = true;
+      for (const child of leadBand.children) {
+        if (!(child instanceof HTMLElement) || !rendered(child)) continue;
+        const separator = child.getAttribute("aria-hidden") === "true";
+        if (wantMember) {
+          if (separator || leadText(child) === "") break;
+          trailMembers.push(child);
+          wantMember = false;
+        } else {
+          if (!separator) break;
+          wantMember = true;
+        }
+      }
+    }
+    const trailHead = trailMembers[0] ?? null;
+    const trailLink =
+      trailMembers.length >= 2 &&
+      trailHead !== null &&
+      navLabel !== "" &&
+      leadText(trailHead) === navLabel &&
+      (trailHead.tagName === "BUTTON" || trailHead.tagName === "A")
+        ? trailHead
+        : null;
+    const trailCurrent =
+      trailLink === null
+        ? null
+        : (trailMembers[trailMembers.length - 1] ?? null);
+    // KSZTAŁT TRASY JEST OSOBNYM SŁOWEM, nie sufiksem flagi: flaga mówi „pasmo
+    // niesie trasę", kształt mówi „taką". Skala 2-3 pokrywa każdy crumbbar
+    // PIĘTNASTU EKRANÓW SPISU (najdłuższy ma trzy człony — rekord zadania);
+    // prototyp ma poza spisem trasy dłuższe (czytelnia notatki skleja ścieżkę
+    // folderów), więc arność spoza skali wraca WŁASNYM napisem, zamiast wpaść
+    // po cichu do jednego ze znanych stanów. Pełny powód stoi przy
+    // `TITLE_BAND_TRAIL_SHAPES` w `title-band-action.mjs`.
+    const trailShape =
+      trailLink === null || trailCurrent === null
+        ? "NO_TRAIL"
+        : trailMembers.length > 3
+          ? "TRAIL_OFF_SCALE"
+          : `TRAIL_${trailMembers.length}_${
+              titleText !== "" && leadText(trailCurrent) === titleText
+                ? "TITLE"
+                : "OTHER"
+            }`;
+    const carriesFlags = [
+      searchControl === null ? "" : "SEARCH",
+      trailLink === null || trailCurrent === null ? "" : "TRAIL",
+    ].filter((flag) => flag !== "");
+    const carries = {
+      state: carriesFlags.length === 0 ? "NAME_ONLY" : carriesFlags.join("+"),
+      // SŁOWA IDĄ DO RAPORTU, bo o słowa tu chodzi. Bez nich „NAME_ONLY" nad
+      // Biblioteką nie daje się odróżnić od „przycisk jest, tylko nazwany
+      // inaczej", a to są dwie różne roboty.
+      signature: signature(leadBand),
+      sample: leadText(leadBand).replace(/\s+/gu, " ").slice(0, 48),
+      search:
+        searchControl === null ? "-" : leadText(searchControl).slice(0, 32),
+      // OBIE STRONY PORÓWNANIA DRUKUJĄ SIĘ ZAWSZE, ten sam wymóg co na osiach
+      // otwarcia i wysokości: bez etykiety z szyny obok pierwszego członu
+      // „NO_TRAIL" nad rekordem nie daje się odróżnić od „trasa jest, tylko
+      // pierwszy człon nazwano inaczej niż kolekcję", a to są dwie różne
+      // roboty. Bez tekstu bieżącego członu nie widać, czy powtarza tytuł.
+      shape: trailShape,
+      trail:
+        leadBand === band
+          ? "- (the leading band IS the title band, so this screen cannot carry one)"
+          : trailMembers.length === 0
+            ? `- (no member before the first non-separator child; nav „${navLabel}")`
+            : `${trailMembers.length} member(s) „${trailMembers
+                .map((member) => leadText(member).slice(0, 24))
+                .join(" › ")}" (nav „${navLabel}", title „${titleText.slice(
+                0,
+                24,
+              )}")`,
+      leadIsTitleBand: leadBand === band,
+    };
+
     // KONIEC PASMA JEST KRAWĘDZIĄ TREŚCI, NIE KRAWĘDZIĄ RAMKI, i ta różnica jest
     // całą poprawnością osi poziomej: `justify-content: flex-end` stawia ostatnie
     // dziecko przy krawędzi PUDEŁKA TREŚCI, więc pasmo z wyściółką dawałoby
@@ -5745,6 +5948,8 @@ const measureTitleBandActionInPage = async ({
       actions,
       stack,
       opening,
+      height,
+      carries,
     };
   };
 
@@ -5809,7 +6014,7 @@ const measureTitleBandActionInPage = async ({
     //
     // ZAKŁADEK SIĘ NIE OBCHODZI, i to jest pomiar, nie skrót: `.crumbs`
     // z `.actions` renderuje `ProjectRecordScreen` POZA panelem zakładki
-    // (`:300-306` wobec `:308`), więc każda zakładka pokazuje TE SAME
+    // (`:308-314` wobec `:316`), więc każda zakładka pokazuje TE SAME
     // elementy w tych samych miejscach. Rejestr rozjazdów liczy je dwa razy,
     // bo porównywał dwa zrzuty; ten przelot liczy je RAZ, bo mierzy elementy.
     const row =
@@ -5850,6 +6055,15 @@ const titleBandActionCensus = async (browser) => {
   // rozjazdów, siedem zgłoszonych"), czyli tę samą klasę, którą ten przelot ma
   // zamykać.
   const compositionReported = [];
+  // TRZECI KANAŁ RAPORTU, DLA DWÓCH OSI CHROMU (L2), i powód jest DOKŁADNIE
+  // ten sam, dla którego drugi jest osobny od pierwszego: podsumowanie osi
+  // składu i otwarcia drukuje `compositionReported.length` obok SWOJEJ liczby
+  // rozjazdów. Kiedy oś zawartości pasma zeszła na „pending" (przegląd
+  // adwersarialny L2 — trasa rekordu zadania jest rozjazdem), jej zgłoszenia
+  // trafiały do tamtej tablicy i tamta linia mówiła „0 stack and 2 opening
+  // divergence(s) … 4 reported". Linia wewnętrznie sprzeczna to ta sama klasa
+  // defektu, którą ten przelot ma zamykać.
+  const chromeReported = [];
   const started = Date.now();
   const report = (line) => console.log(`title band\t${line}`);
 
@@ -5894,6 +6108,12 @@ const titleBandActionCensus = async (browser) => {
   let stackDivergent = 0;
   let stackHeld = 0;
   let stackNotComparable = 0;
+  let heightDivergent = 0;
+  let heightHeld = 0;
+  let heightNotComparable = 0;
+  let carriesDivergent = 0;
+  let carriesHeld = 0;
+  let carriesNotComparable = 0;
   let openingDivergent = 0;
   let openingHeld = 0;
   let openingNotComparable = 0;
@@ -5931,6 +6151,8 @@ const titleBandActionCensus = async (browser) => {
         // bramka Fazy I nie toleruje.
         stack: entry.stack ?? null,
         opening: entry.opening ?? null,
+        height: entry.height ?? null,
+        carries: entry.carries ?? null,
       });
       report(
         `${entry.id}\tNOT_MEASURED\t„#surface-title" matched ${entry.titles} element(s), ` +
@@ -5963,6 +6185,8 @@ const titleBandActionCensus = async (browser) => {
       band: entry.band,
       stack: entry.stack ?? null,
       opening: entry.opening ?? null,
+      height: entry.height ?? null,
+      carries: entry.carries ?? null,
     });
     const row = byId.get(entry.id);
     // PRZEWIDZIANY ZNACZY PRZEWIDZIANY NA OBU OSIACH. Koniunkcja, nie sama
@@ -6062,6 +6286,25 @@ const titleBandActionCensus = async (browser) => {
             : `${row.todayStack}/${row.todayOpening}, prototype ${row.prototypeStack}/${row.prototypeOpening}`
         }`,
     );
+    // ── L2: TRZECIA LINIA NA EKRAN — WYSOKOŚĆ PASMA I TO, CO NIESIE ─────────
+    // OSOBNA, A NIE DOPISANA DO DRUGIEJ, z tego samego powodu, dla którego
+    // druga jest osobna od pierwszej: tamte dwie mają kolumny cytowane
+    // w nagłówku `title-band-action.mjs` i w raportach lotów P3 i C2. Ta linia
+    // jest jedynym miejscem, z którego widać SŁOWA pasma prowadzącego — a oś
+    // szósta jest właśnie o słowach.
+    report(
+      `${entry.id}\tband ${entry.height.state} ${entry.height.measured}px ` +
+        `(declared ${entry.height.wanted}px) in ${entry.height.signature}` +
+        `\tcarries ${entry.carries.state}/${entry.carries.shape} in ` +
+        `${entry.carries.signature} „${entry.carries.sample}" [search: ` +
+        `${entry.carries.search} | trail: ${entry.carries.trail}]` +
+        `\ttable says ${
+          row === undefined
+            ? "UNDECLARED"
+            : `${row.todayHeight}/${row.todayCarries}/${row.todayTrail}, prototype ` +
+              `${row.prototypeHeight}/${row.prototypeCarries}/${row.prototypeTrail}`
+        }`,
+    );
 
     if (row === undefined) continue;
 
@@ -6138,6 +6381,84 @@ const titleBandActionCensus = async (browser) => {
           `screen's content at --text-2xl — ${row.citeOpening}`,
       );
 
+    // ── L2: OSIE WYSOKOŚCI I ZAWARTOŚCI PASMA ──────────────────────────────
+    // Ta sama kolejność i ten sam powód co przy dwóch osiach P3 wyżej: osądzone
+    // PRZED gałęzią osi akcji, bo tamta kończy się `continue`, a osie się nie
+    // sumują i nie mogą się nawzajem wyłączać.
+    const heightDivergentRow = isTitleBandHeightDivergence(row);
+    if (heightDivergentRow) heightDivergent += 1;
+    else if (row.prototype === "no-screen") heightNotComparable += 1;
+    else heightHeld += 1;
+    const heightPredicted = entry.height.state === row.todayHeight;
+    if (
+      titleBandVerdictThrows({
+        predicted: heightPredicted,
+        divergent: heightDivergentRow,
+        armed: TITLE_BAND_HEIGHT_ARMED,
+      })
+    )
+      verdicts.push(
+        heightPredicted
+          ? `TITLE_BAND_HEIGHT_DIVERGED — ${entry.id}: one band at one height is ENFORCED and ` +
+              `this screen carries its title in ${entry.height.signature} measured ` +
+              `${entry.height.measured}px against the band height this surface declares ` +
+              `(${entry.height.wanted}px). The prototype gives every band one declared height — ` +
+              `${row.citeHeight}. App: ${row.app}.`
+          : `TITLE_BAND_HEIGHT_DRIFT — ${entry.id}: this pass measured ${entry.height.state} ` +
+              `(${entry.height.signature} at ${entry.height.measured}px, band height token ` +
+              `${entry.height.wanted}px) and the canonical screen list says ${row.todayHeight}. ` +
+              "Either a band changed class or height and nobody wrote it down, or a lot " +
+              `delivered the fix and left the row behind. App: ${row.app}.`,
+      );
+    else if (heightDivergentRow)
+      chromeReported.push(
+        `${entry.id}	band ${entry.height.state} ${entry.height.measured}px ` +
+          `(declared ${entry.height.wanted}px)	the prototype draws one band at one declared ` +
+          `height — ${row.citeHeight}`,
+      );
+
+    const carriesDivergentRow = isTitleBandCarriesDivergence(row);
+    if (carriesDivergentRow) carriesDivergent += 1;
+    else if (row.prototype === "no-screen") carriesNotComparable += 1;
+    else carriesHeld += 1;
+    // PRZEWIDZENIE OBEJMUJE OBA SŁOWA TEJ OSI — flagę I kształt trasy. Gdyby
+    // pytało tylko o flagę, produkt, który zgubił człon trasy albo zamienił
+    // bieżący człon, wracałby jako „zgodny z tabelą" i cała druga połowa tej
+    // osi byłaby napisem bez asercji.
+    const carriesPredicted =
+      entry.carries.state === row.todayCarries &&
+      entry.carries.shape === row.todayTrail;
+    if (
+      titleBandVerdictThrows({
+        predicted: carriesPredicted,
+        divergent: carriesDivergentRow,
+        armed: TITLE_BAND_CARRIES_ARMED,
+      })
+    )
+      verdicts.push(
+        carriesPredicted
+          ? `TITLE_BAND_CARRIES_DIVERGED — ${entry.id}: what the leading band carries is ` +
+              `ENFORCED as ${row.prototypeCarries}/${row.prototypeTrail} and this pass read ` +
+              `${entry.carries.state}/${entry.carries.shape} in ${entry.carries.signature} ` +
+              `(„${entry.carries.sample}"; search: ${entry.carries.search}; trail: ` +
+              `${entry.carries.trail}) — ${row.citeCarries} ${row.citeTrail} App: ${row.app}.`
+          : `TITLE_BAND_CARRIES_DRIFT — ${entry.id}: this pass read ${entry.carries.state}/` +
+              `${entry.carries.shape} in ${entry.carries.signature} („${entry.carries.sample}"; ` +
+              `search: ${entry.carries.search}; trail: ${entry.carries.trail}) and the canonical ` +
+              `screen list says ${row.todayCarries}/${row.todayTrail}. Either the band gained or ` +
+              "lost a search control, a trail member or the crumb that names where you are, and " +
+              "nobody wrote it down, or a lot delivered the fix and left the row behind. " +
+              `App: ${row.app}.`,
+      );
+    else if (carriesDivergentRow)
+      chromeReported.push(
+        `${entry.id}	carries ${entry.carries.state}/${entry.carries.shape} in ` +
+          `${entry.carries.signature} „${entry.carries.sample}" [trail: ` +
+          `${entry.carries.trail}]	the prototype's leading band carries ` +
+          `${row.prototypeCarries}/${row.prototypeTrail} — ${row.citeCarries} ` +
+          `${row.citeTrail}`,
+      );
+
     // KSIĘGOWOŚĆ NAJPIERW, WERDYKT POTEM, i to nie jest kolejność estetyczna:
     // gałąź werdyktu kończy się `continue`, więc licząc po niej dostalibyśmy po
     // uzbrojeniu podsumowanie „0 ekranów stawia akcję poza rzędem tytułu" obok
@@ -6202,6 +6523,7 @@ const titleBandActionCensus = async (browser) => {
     verdicts,
     reported,
     compositionReported,
+    chromeReported,
     judged: judged.length,
     divergent,
     displacedRow,
@@ -6211,6 +6533,12 @@ const titleBandActionCensus = async (browser) => {
     stackDivergent,
     stackHeld,
     stackNotComparable,
+    heightDivergent,
+    heightHeld,
+    heightNotComparable,
+    carriesDivergent,
+    carriesHeld,
+    carriesNotComparable,
     openingDivergent,
     openingHeld,
     openingNotComparable,
@@ -6256,7 +6584,7 @@ const ROUTED_ARRIVAL = {
   // `[data-task-row]` rysuje też panel zadań NA REKORDZIE i kalendarz.
   projects: "#main-content [data-project-row]",
   tasks: "#main-content [data-task-row]",
-  // Biblioteka: przełącznik soczewek (LibraryShell.tsx:111). Ten sam znacznik,
+  // Biblioteka: przełącznik soczewek (LibraryShell.tsx:126). Ten sam znacznik,
   // po którym przelot geometrii wylicza obiektywy.
   library: "#main-content [data-layout]",
   // Spotkania: `MeetingsSurface.tsx:779` — korzeń ekranu, ta sama klasa, którą
@@ -6295,8 +6623,32 @@ const ROUTED_ARRIVAL = {
   // `max-width: 1152px`. Marker celuje w `._week`, a nie w `._calendarState`,
   // bo kartę odmowy zabierze pierwsza działająca fikstura kalendarza,
   // a tydzień zostanie. Podkreślnik po nazwie jest nośny: `[class*="_week_"]`
-  // NIE łapie `_weekNav_hash` (`calendar.module.css:87` wobec `:34`).
+  // NIE łapie `_weekNav_hash` (`calendar.module.css:109` wobec `:56`).
   calendar: '#main-content [class*="_week_"]',
+};
+
+// ── PRZYBYCIE OBIEKTYWU TO NIE JEST ZAZNACZONA ZAKŁADKA ─────────────────────
+// `ROUTED_ARRIVAL.library` to `#main-content [data-layout]`, czyli PRZEŁĄCZNIK
+// odczytu — element, który stoi w drzewie od pierwszej klatki powłoki
+// Biblioteki. Kliknięcie obiektywu sprawdzało do dziś wyłącznie
+// `aria-selected="true"` NA TEJ ZAKŁADCE i czekało stałe 700 ms, a treść
+// notatki dojeżdża osobno. Stąd bierze się `libraryNoteBody: only 0 drew`
+// i `ROUTED_NOT_MEASURED — D3-10c` z przelotu `l2-gate-3.txt`: przelot mierzył
+// PUSTY `.document-canvas`, bo zakładka była zaznaczona, a ciało jeszcze nie.
+//
+// MARKER JEST ZDARZENIEM, NIE DŁUŻSZYM CZEKANIEM: pętla pyta o narysowany
+// element ciała aż do `arrivalTimeoutMs`, więc szybki przebieg nie zwalnia,
+// a wolny nie kłamie. Brak markera po czasie zostaje AWARIĄ TRASY — głośną,
+// z nazwą kroku — a nie cichym „para nie zmierzyła".
+// TEN SAM SUFIT CZASU CO PRZY PRZYBYCIU POWIERZCHNI — jedna liczba na całe
+// czekanie tego pliku, żeby „ile czeka bramka" nie było dwoma różnymi
+// odpowiedziami w dwóch przelotach.
+const ROUTED_LENS_TIMEOUT_MS = TITLE_BAND_ARRIVAL_TIMEOUT_MS;
+const ROUTED_LENS_ARRIVAL = {
+  // Ciało czytelni: pierwszy narysowany blok tekstu W KANWIE dokumentu, a nie
+  // sama kanwa — kanwa istnieje pusta.
+  "library/notes":
+    "#main-content .document-canvas :is(h1, h2, h3, p, li, blockquote)",
 };
 
 // RODZAJ REKORDU, KTÓREGO SIĘ SPODZIEWAMY PO TYCH DRZWIACH. Trzy drzwi, trzy
@@ -6870,7 +7222,13 @@ const routedStops = () => {
 // TWARDY WARUNEK ZADANIA: jeśli kliknięcie nie dowiozło ekranu, ten przelot ma
 // paść GŁOŚNO z nazwą ekranu — nie zmierzyć po cichu powłoki i zapisać par jako
 // oczekujących. Każdy krok ma więc warunek DOJŚCIA, a nie tylko kliknięcie.
-const walkRouteInPage = async ({ route, arrival, recordKind }) => {
+const walkRouteInPage = async ({
+  route,
+  arrival,
+  lensArrival,
+  arrivalTimeoutMs,
+  recordKind,
+}) => {
   const frame = () =>
     new Promise((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(resolve)),
@@ -6981,6 +7339,31 @@ const walkRouteInPage = async ({ route, arrival, recordKind }) => {
           "opens on, under the name of one it never showed.",
       };
     steps.push(`lens ${route.layout} (aria-selected=true)`);
+
+    // CIAŁO OBIEKTYWU, CZEKANE NA ZDARZENIE — powód i dowód stoją przy
+    // `ROUTED_LENS_ARRIVAL`. Zaznaczona zakładka mówi „przełącznik przyjął
+    // kliknięcie", a nie „treść jest na ekranie".
+    const bodyMarker = lensArrival ?? null;
+    if (bodyMarker !== null) {
+      const deadline = Date.now() + arrivalTimeoutMs;
+      let body = document.querySelector(bodyMarker);
+      while (!rendered(body) && Date.now() < deadline) {
+        await settle(100);
+        body = document.querySelector(bodyMarker);
+      }
+      if (!rendered(body))
+        return {
+          ok: false,
+          steps,
+          step: `lens ${route.layout} body`,
+          reason:
+            `the lens „${route.layout}" is selected, but its body marker „${bodyMarker}" is ` +
+            `${body === null ? "absent" : "present but not rendered"} after ${arrivalTimeoutMs} ms. ` +
+            "The pairs below would be read off an empty canvas, which is how this pass once " +
+            "reported „only 0 drew” over a screen that simply had not finished loading.",
+        };
+      steps.push(`lens ${route.layout} body drew`);
+    }
   }
 
   // ── WYBÓR WĘZŁA W DRZEWIE ────────────────────────────────────────────────
@@ -7501,6 +7884,13 @@ const routedVisualLanguage = async (browser) => {
       const walked = await page.evaluate(walkRouteInPage, {
         route: stop.route,
         arrival: ROUTED_ARRIVAL[stop.route.surface] ?? "body",
+        lensArrival:
+          stop.route.layout === undefined
+            ? null
+            : (ROUTED_LENS_ARRIVAL[
+                `${stop.route.surface}/${stop.route.layout}`
+              ] ?? null),
+        arrivalTimeoutMs: ROUTED_LENS_TIMEOUT_MS,
         recordKind:
           stop.route.openRecord === undefined
             ? null
@@ -8197,6 +8587,8 @@ try {
     console.log(`title band\treported\t${line}`);
   for (const line of titleBand.compositionReported)
     console.log(`title band\tcomposition reported\t${line}`);
+  for (const line of titleBand.chromeReported)
+    console.log(`title band\tchrome reported\t${line}`);
   console.log(
     `title band: ${TITLE_BAND_ACTION_STATUS} — ` +
       `${TITLE_BAND_ACTION_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
@@ -8226,6 +8618,37 @@ try {
       `${TITLE_BAND_STACK_DIVERGENCES.length} stack and ${TITLE_BAND_OPENING_DIVERGENCES.length} ` +
       `opening divergence(s) on the canonical list\t` +
       `${titleBand.compositionReported.length} reported`,
+  );
+  // ── L2: TRZECIA LINIA PODSUMOWANIA — PASMO JAKO PASMO ────────────────────
+  // OSOBNA, z tego samego powodu co linia P3 wyżej: tamte dwie są cytowane
+  // w opisach lotów fali C, D2 i Fazy I, a ta odpowiada na inne pytanie —
+  // „czy to jest jedno pasmo na wszystkich ekranach i czy niesie to, co ma
+  // nieść". Bez niej dostawa lotu L2 nie miałaby w wyjściu bramki ani jednego
+  // wiersza, z którego przy odbiorze widać, że została zmierzona.
+  console.log(
+    `title band chrome: band height ${TITLE_BAND_HEIGHT_STATUS}, carries ` +
+      `${TITLE_BAND_CARRIES_STATUS} — ` +
+      // KAŻDA OŚ MÓWI O SWOIM STANIE. Napis „ENFORCED" pod dysjunkcją
+      // (`HEIGHT_ARMED || CARRIES_ARMED`) był prawdziwy tylko dopóki obie osie
+      // były uzbrojone — z jedną „pending" ta linia twierdziłaby o niej to,
+      // czego przelot nie robi.
+      `${
+        TITLE_BAND_HEIGHT_ARMED && TITLE_BAND_CARRIES_ARMED
+          ? "ENFORCED (a divergence on either axis fails this run)"
+          : TITLE_BAND_HEIGHT_ARMED || TITLE_BAND_CARRIES_ARMED
+            ? "MIXED (a divergence fails this run on the armed axis and is reported on the pending one; a screen that drifted from the list still fails on both)"
+            : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"
+      }\t` +
+      `${titleBand.heightDivergent} screen(s) carry their title in a band other than the shell's ` +
+      `own, or at a height it does not declare (${titleBand.heightHeld} agree with the ` +
+      `prototype, ${titleBand.heightNotComparable} have no prototype counterpart)\t` +
+      `${titleBand.carriesDivergent} screen(s) disagree with the prototype about what the ` +
+      `leading band carries beside the screen's name, or about the shape of the trail it draws ` +
+      `(${titleBand.carriesHeld} agree, ` +
+      `${titleBand.carriesNotComparable} have no prototype counterpart)\t` +
+      `${TITLE_BAND_HEIGHT_DIVERGENCES.length} band-height and ` +
+      `${TITLE_BAND_CARRIES_DIVERGENCES.length} carries divergence(s) on the canonical list\t` +
+      `${titleBand.chromeReported.length} reported`,
   );
   // ── P7 + PARY LOTÓW 2-6: PRZELOT TRAS ───────────────────────────────────
   // OSOBNY PRZELOT OD `visualLanguagePairs`, i to nie jest podział estetyczny:

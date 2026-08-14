@@ -303,10 +303,20 @@ export const ProjectRecordScreen = ({
 
   return (
     <div className={styles.screen} data-record-kind="project">
-      <div className={styles.crumbs}>
+      {/* OKRUSZEK W PAŚMIE — powód i cytat stoją przy tym samym rzędzie
+          w `record/TaskRecordScreen.tsx`. Tu prototyp jest najbliżej dosłowny:
+          `crumbbar("Projects › <p.title>", btn("New task", …))` nad
+          `<h1 class="rec-title">` z tym samym tytułem
+          (`v3/screens/record.js:429-432`) — trasa i akcja w rzędzie chromu,
+          nazwa rekordu w paśmie POD nim, i tak, nazwa pada dwa razy. */}
+      <header className={styles.crumbs}>
         <button className={styles.back} onClick={onBack} type="button">
-          <span aria-hidden="true">‹</span> Projects
+          Projects
         </button>
+        <span aria-hidden="true" className={styles.crumbSeparator}>
+          ›
+        </span>
+        <span className={styles.crumbCurrent}>{overview.project.title}</span>
         {/* THE ONE ACCENT-FILLED ACTION OF THIS STRIP (Phase C, lot C4).
             The reference draws exactly this button in exactly this place:
             `v3/screens/record.js:429-433` is
@@ -341,7 +351,7 @@ export const ProjectRecordScreen = ({
           </button>
           {actions}
         </div>
-      </div>
+      </header>
 
       <ProjectRecordHeader
         client={client}

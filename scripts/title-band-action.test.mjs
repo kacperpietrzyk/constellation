@@ -27,9 +27,21 @@ import {
   TITLE_BAND_PROTOTYPE_OPENING_STATES,
   TITLE_BAND_PROTOTYPE_STACK_STATES,
   TITLE_BAND_ROWS,
+  TITLE_BAND_CARRIES_ARMED,
+  TITLE_BAND_CARRIES_DIVERGENCES,
+  TITLE_BAND_CARRIES_STATES,
+  TITLE_BAND_HEIGHT_ARMED,
+  TITLE_BAND_HEIGHT_DIVERGENCES,
+  TITLE_BAND_HEIGHT_STATES,
+  TITLE_BAND_PROTOTYPE_CARRIES_STATES,
+  TITLE_BAND_PROTOTYPE_HEIGHT_STATES,
+  TITLE_BAND_PROTOTYPE_TRAIL_SHAPES,
+  TITLE_BAND_TRAIL_SHAPES,
   TITLE_BAND_STACK_ARMED,
   TITLE_BAND_STACK_DIVERGENCES,
   TITLE_BAND_STACK_STATES,
+  isTitleBandCarriesDivergence,
+  isTitleBandHeightDivergence,
   TITLE_BAND_STATES,
   CSS_MODULE_HASH_PATTERN,
   classifyTitleBandAction,
@@ -372,10 +384,10 @@ test("every state a row declares is a state the rule can produce", () => {
 // ruchy —
 //
 //   −1  Notatki i Źródła to JEDEN wiersz `library`: rejestr porównywał dwa
-//       zrzuty, a pasmo jest jedno (`LibraryShell.tsx:80-90`);
+//       zrzuty, a pasmo jest jedno (`LibraryShell.tsx:95-105`);
 //   −1  rekord projektu i jego zakładka komentarzy to JEDEN wiersz
 //       `projects/record:project`: `.crumbs` z `.actions` renderuje się POZA
-//       panelem zakładki (`ProjectRecordScreen.tsx:300-306` wobec `:308`);
+//       panelem zakładki (`ProjectRecordScreen.tsx:312-354` wobec `:368`);
 //   −1  i TEN JEDEN wiersz NIE JEST rozjazdem POŁOŻENIA, co wyszło dopiero
 //       w locie C2: prototyp stawia akcję rekordu w crumbbarze, a tytuł rekordu
 //       W NASTĘPNYM PAŚMIE (`v3/screens/record.js:429-433` skleja `crumbbar(…)`
@@ -558,6 +570,36 @@ test("every row carries an address on both sides of the comparison", () => {
 // rozróżnienia nie unosi i dlatego go nie deklaruje.
 test("both new axes declare their states, and the two sides use different dictionaries", () => {
   assert.deepEqual(TITLE_BAND_STACK_STATES, ["ONE_ROW", "STACKED"]);
+  assert.deepEqual(TITLE_BAND_HEIGHT_STATES, [
+    "SHELL_BAND",
+    "SHELL_BAND_OFF",
+    "OWN_HEAD",
+  ]);
+  assert.deepEqual(TITLE_BAND_CARRIES_STATES, [
+    "NAME_ONLY",
+    "SEARCH",
+    "TRAIL",
+    "SEARCH+TRAIL",
+  ]);
+  assert.deepEqual(TITLE_BAND_TRAIL_SHAPES, [
+    "NO_TRAIL",
+    "TRAIL_2_TITLE",
+    "TRAIL_2_OTHER",
+    "TRAIL_3_TITLE",
+    "TRAIL_3_OTHER",
+    "TRAIL_OFF_SCALE",
+  ]);
+  // SKALA ARNOŚCI JEST ZAMKNIĘTA NA TRZECH, więc pomiar czteroczłonowy MA mieć
+  // własny napis; po stronie prototypu tego napisu nie ma, bo prototyp
+  // czteroczłonowej trasy nie rysuje nigdzie.
+  assert.deepEqual(TITLE_BAND_PROTOTYPE_TRAIL_SHAPES, [
+    "NO_TRAIL",
+    "TRAIL_2_TITLE",
+    "TRAIL_2_OTHER",
+    "TRAIL_3_TITLE",
+    "TRAIL_3_OTHER",
+    "NO_SCREEN",
+  ]);
   assert.deepEqual(TITLE_BAND_OPENING_STATES, [
     "OPENING_2XL",
     "OPENING_SMALLER",
@@ -593,6 +635,62 @@ test("both new axes declare their states, and the two sides use different dictio
       row.prototype === "no-screen",
       `${row.id} silences the opening axis without declaring the screen missing`,
     );
+    // OSIE PIĄTA I SZÓSTA (lot L2) — ten sam strażnik słownika i ten sam
+    // strażnik `NO_SCREEN`. Powtórzenie jest tu treścią: nowa oś bez wpisu
+    // w tej pętli byłaby jedyną, której literówka w napisie przechodzi cicho.
+    assert.ok(
+      TITLE_BAND_HEIGHT_STATES.includes(row.todayHeight),
+      `${row.id} measures an undeclared band-height state: ${row.todayHeight}`,
+    );
+    assert.ok(
+      TITLE_BAND_PROTOTYPE_HEIGHT_STATES.includes(row.prototypeHeight),
+      `${row.id} claims an undeclared prototype band-height state: ${row.prototypeHeight}`,
+    );
+    assert.ok(
+      TITLE_BAND_CARRIES_STATES.includes(row.todayCarries),
+      `${row.id} measures an undeclared carries state: ${row.todayCarries}`,
+    );
+    assert.ok(
+      TITLE_BAND_PROTOTYPE_CARRIES_STATES.includes(row.prototypeCarries),
+      `${row.id} claims an undeclared prototype carries state: ${row.prototypeCarries}`,
+    );
+    assert.equal(
+      row.prototypeHeight === "NO_SCREEN",
+      row.prototype === "no-screen",
+      `${row.id} silences the band-height axis without declaring the screen missing`,
+    );
+    assert.equal(
+      row.prototypeCarries === "NO_SCREEN",
+      row.prototype === "no-screen",
+      `${row.id} silences the carries axis without declaring the screen missing`,
+    );
+    // DRUGA KOLUMNA OSI SZÓSTEJ — ten sam strażnik słownika i ten sam strażnik
+    // `NO_SCREEN`. Bez niego `TRAIL_2_TITLE` napisane z literówką byłoby
+    // wiecznym rozjazdem, którego nie da się zamknąć żadną poprawką produktu.
+    assert.ok(
+      TITLE_BAND_TRAIL_SHAPES.includes(row.todayTrail),
+      `${row.id} measures an undeclared trail shape: ${row.todayTrail}`,
+    );
+    assert.ok(
+      TITLE_BAND_PROTOTYPE_TRAIL_SHAPES.includes(row.prototypeTrail),
+      `${row.id} claims an undeclared prototype trail shape: ${row.prototypeTrail}`,
+    );
+    assert.equal(
+      row.prototypeTrail === "NO_SCREEN",
+      row.prototype === "no-screen",
+      `${row.id} silences the trail column without declaring the screen missing`,
+    );
+    // FLAGA I KSZTAŁT NIE MOGĄ SOBIE PRZECZYĆ. „TRAIL" bez kształtu (albo
+    // kształt bez flagi) to wiersz, którego żadna strona nie da się przeczytać.
+    for (const side of [
+      ["todayCarries", "todayTrail"],
+      ["prototypeCarries", "prototypeTrail"],
+    ])
+      assert.equal(
+        row[side[0]].includes("TRAIL"),
+        row[side[1]].startsWith("TRAIL_"),
+        `${row.id} says ${row[side[0]]} and ${row[side[1]]} at once`,
+      );
   }
 });
 
@@ -614,23 +712,154 @@ test("both new axes cite the prototype with a file and a line on every row", () 
       address,
       `${row.id} does not cite what opens the prototype's content`,
     );
+    assert.match(
+      row.citeHeight,
+      address,
+      `${row.id} does not cite the height the prototype's band declares`,
+    );
+    assert.match(
+      row.citeCarries,
+      address,
+      `${row.id} does not cite what the prototype's leading band carries`,
+    );
+    assert.match(
+      row.citeTrail,
+      address,
+      `${row.id} does not cite the shape of the prototype's trail`,
+    );
   }
 });
 
 // ROZJAZDY WYPISANE Z NAZWY, nie policzone. „Pięć rozjazdów" dałoby się
 // osiągnąć również przez zepsucie kolumny prototypu na innych pięciu ekranach.
-test("the stack axis is red on exactly the five screens that wrap their title", () => {
+// OŚ SKŁADU JEST ODDANA I UZBROJONA (lot L2). Do tego lotu ta asercja wypisywała
+// z nazwy pięć ekranów, których pasmo owijało tytuł — Kalendarz, Skrzynkę,
+// Ustawienia, Projekty i Bibliotekę. Wszystkie pięć oddano w jednym przebiegu,
+// więc lista jest PUSTA, a warunek uzbrojenia — ten sam, dwustronny — przestawia
+// oś na „enforced". Lista pusta i uzbrojenie są tu razem CELOWO: gdyby ktoś
+// oddał cztery z pięciu i przestawił status, druga asercja by go zatrzymała;
+// gdyby oddał pięć i statusu nie ruszył, zatrzymałaby go pierwsza.
+test("the stack axis is delivered: no screen wraps its title, and the axis is armed", () => {
   assert.deepEqual(
     TITLE_BAND_STACK_DIVERGENCES.map((row) => row.id),
-    ["calendar", "inbox", "settings", "projects", "library"],
+    [],
   );
-  // WARUNEK UZBROJENIA JAKO ASERCJA, nie jako proza — ta sama umowa co przy
-  // osi akcji, w obie strony.
   assert.equal(
     TITLE_BAND_STACK_ARMED,
     TITLE_BAND_STACK_DIVERGENCES.length === 0,
   );
-  assert.equal(TITLE_BAND_STACK_ARMED, false);
+  assert.equal(TITLE_BAND_STACK_ARMED, true);
+});
+
+// OSIE PIĄTA I SZÓSTA — ta sama umowa, ten sam kształt asercji. Obie powstały
+// RAZEM z poprawką, którą mierzą, więc ich listy są puste od pierwszego dnia
+// i obie są uzbrojone; warunek dwustronny pilnuje, żeby żadna z tych dwóch
+// rzeczy nie zmieniła się bez drugiej.
+test("the band-height axis is delivered: one band at one declared height, and it is armed", () => {
+  assert.deepEqual(
+    TITLE_BAND_HEIGHT_DIVERGENCES.map((row) => row.id),
+    [],
+  );
+  assert.equal(
+    TITLE_BAND_HEIGHT_ARMED,
+    TITLE_BAND_HEIGHT_DIVERGENCES.length === 0,
+  );
+  assert.equal(TITLE_BAND_HEIGHT_ARMED, true);
+});
+
+// OŚ SZÓSTA JEST DZIŚ „pending" I MA DWA ROZJAZDY WYPISANE Z NAZWY — to jest
+// ODWRÓCENIE deklaracji, z jaką wyszła z lotu L2, a nie zmiękczenie
+// oczekiwania. Powód stoi przy `TITLE_BAND_CARRIES_STATUS` i sprowadza się do
+// jednego zdania: zero rozjazdów było funkcją SŁABOŚCI pomiaru, bo jedno słowo
+// `TRAIL` opisywało dwie różne trasy. Warunek dwustronny zostaje ten sam co na
+// trzech pozostałych osiach, więc uzbrojenie bez zamknięcia listy (albo
+// zamknięcie listy bez uzbrojenia) zatrzyma się tutaj.
+test("the carries axis is pending on exactly the two screens whose band says something else", () => {
+  assert.deepEqual(
+    TITLE_BAND_CARRIES_DIVERGENCES.map((row) => row.id),
+    ["tasks", "tasks/record:task"],
+  );
+  assert.equal(
+    TITLE_BAND_CARRIES_ARMED,
+    TITLE_BAND_CARRIES_DIVERGENCES.length === 0,
+  );
+  assert.equal(TITLE_BAND_CARRIES_ARMED, false);
+});
+
+// KSZTAŁT TRASY JEST OSĄDZANY, A NIE TYLKO DRUKOWANY, i ten test jest jedynym
+// miejscem, które to przypina. Predykat pozbawiony drugiego członu (kolumny
+// `*Trail`) wraca `false` dla obu wierszy niżej — czyli dokładnie ta odwrócona
+// polaryzacja, z którą oś wyszła z lotu: „zgoda z prototypem" nad trasą o innej
+// liczbie członów i innym członie bieżącym.
+test("the carries axis judges the shape of the trail, not only that there is one", () => {
+  assert.equal(
+    isTitleBandCarriesDivergence({
+      prototype: "action",
+      todayCarries: "TRAIL",
+      prototypeCarries: "TRAIL",
+      todayTrail: "TRAIL_2_TITLE",
+      prototypeTrail: "TRAIL_3_OTHER",
+    }),
+    true,
+    "a two-member trail against the prototype's three is a divergence",
+  );
+  assert.equal(
+    isTitleBandCarriesDivergence({
+      prototype: "action",
+      todayCarries: "TRAIL",
+      prototypeCarries: "TRAIL",
+      todayTrail: "TRAIL_2_TITLE",
+      prototypeTrail: "TRAIL_2_OTHER",
+    }),
+    true,
+    "the same arity with a different current member is a divergence",
+  );
+  assert.equal(
+    isTitleBandCarriesDivergence({
+      prototype: "action",
+      todayCarries: "TRAIL",
+      prototypeCarries: "TRAIL",
+      todayTrail: "TRAIL_2_TITLE",
+      prototypeTrail: "TRAIL_2_TITLE",
+    }),
+    false,
+  );
+});
+
+// ROZKŁAD ODPOWIEDZI NA OSI SZÓSTEJ JEST CZĘŚCIĄ JEJ POPRAWNOŚCI. Oś, która
+// odpowiada tym samym na wszystkich piętnastu wierszach, nie odróżnia niczego —
+// a właśnie o odróżnienie tu chodzi: JEDEN ekran niesie w paśmie wyszukiwanie
+// (prototyp ma dokładnie jedno `act: "palette"`), TRZY niosą trasę rekordu,
+// a jedenaście samą nazwę. Ta asercja pilnuje rozkładu z nazwy, a nie liczby.
+test("the carries axis says three different things, and says each on the screens that have it", () => {
+  const byState = (state) =>
+    TITLE_BAND_ROWS.filter((row) => row.todayCarries === state).map(
+      (row) => row.id,
+    );
+  assert.deepEqual(byState("SEARCH"), ["library"]);
+  assert.deepEqual(byState("TRAIL"), [
+    "projects/record:project",
+    "tasks/record:task",
+    "pipeline/record:opportunity",
+  ]);
+  assert.equal(byState("NAME_ONLY").length, 11);
+  // DRUGA KOLUMNA MA WŁASNY ROZKŁAD I WŁASNE ŚWIADECTWO. Trzy trasy zmierzone
+  // dziś mają ten sam kształt, a prototyp ma trzy RÓŻNE — i to jest cała treść
+  // dołożenia tej kolumny.
+  const byShape = (shape, side) =>
+    TITLE_BAND_ROWS.filter((row) => row[side] === shape).map((row) => row.id);
+  assert.deepEqual(byShape("TRAIL_2_TITLE", "todayTrail"), [
+    "projects/record:project",
+    "tasks/record:task",
+    "pipeline/record:opportunity",
+  ]);
+  assert.deepEqual(byShape("TRAIL_2_TITLE", "prototypeTrail"), [
+    "projects/record:project",
+  ]);
+  assert.deepEqual(byShape("TRAIL_3_OTHER", "prototypeTrail"), [
+    "tasks/record:task",
+  ]);
+  assert.deepEqual(byShape("TRAIL_2_OTHER", "prototypeTrail"), ["tasks"]);
 });
 
 test("the opening axis is red on exactly the two screens the prototype opens at 2xl", () => {
@@ -642,6 +871,11 @@ test("the opening axis is red on exactly the two screens the prototype opens at 
     TITLE_BAND_OPENING_ARMED,
     TITLE_BAND_OPENING_DIVERGENCES.length === 0,
   );
+  // NADAL `false`, I TO JEST WYNIK LOTU L2, NIE JEGO ZALEGŁOŚĆ. Ta oś pyta,
+  // czy ekran OTWIERA treść tytułem wielkości 2xl — czyli o wpisy 1-1 i 2-3
+  // rejestru przejścia, które należą do lotu L3 i są jego całą robotą. L2
+  // zamknął oś SKŁADU pasma i nie dotknął treści pod nim, więc zostawia tę oś
+  // dokładnie tak czerwoną, jak ją zastał: dwa ekrany, wypisane z nazwy wyżej.
   assert.equal(TITLE_BAND_OPENING_ARMED, false);
 });
 
@@ -663,6 +897,87 @@ test("a screen the prototype does not have is never a divergence on the new axes
       prototype: "no-screen",
       todayOpening: "OPENING_2XL",
       prototypeOpening: "NO_SCREEN",
+    }),
+    false,
+  );
+  assert.equal(
+    isTitleBandHeightDivergence({
+      prototype: "no-screen",
+      todayHeight: "SHELL_BAND",
+      prototypeHeight: "NO_SCREEN",
+    }),
+    false,
+  );
+  assert.equal(
+    isTitleBandCarriesDivergence({
+      prototype: "no-screen",
+      todayCarries: "TRAIL",
+      prototypeCarries: "NO_SCREEN",
+    }),
+    false,
+  );
+});
+
+// OŚ PIĄTA PORÓWNUJE JEDNO PYTANIE, A DRUKUJE TRZY STANY, i tylko ten test to
+// zapisuje. Ekran, którego tytuł stoi we WŁASNEJ głowie, jest zgodny
+// z prototypem wtedy i tylko wtedy, gdy prototyp też nie stawia go w paśmie —
+// a ekran, który pasmo ma, ale rysuje je o pięć pikseli za wysoko
+// (`SHELL_BAND_OFF`), jest rozjazdem tak samo jak ten, który pasma nie ma
+// wcale. Trzeci stan mówi PRZYCZYNĘ, nie zmienia werdyktu.
+test("the band-height axis judges one question and prints three states", () => {
+  assert.equal(
+    isTitleBandHeightDivergence({
+      prototype: "no-action",
+      prototypeHeight: "SHELL_BAND",
+      todayHeight: "SHELL_BAND_OFF",
+    }),
+    true,
+  );
+  assert.equal(
+    isTitleBandHeightDivergence({
+      prototype: "no-action",
+      prototypeHeight: "SHELL_BAND",
+      todayHeight: "OWN_HEAD",
+    }),
+    true,
+  );
+  assert.equal(
+    isTitleBandHeightDivergence({
+      prototype: "no-action",
+      prototypeHeight: "OWN_HEAD",
+      todayHeight: "OWN_HEAD",
+    }),
+    false,
+  );
+  // I ODWROTNA STRONA TEGO SAMEGO PYTANIA: ekran, któremu prototyp pasma NIE
+  // daje, a który u nas pasmo ma, też jest rozjazdem. Bez tego członu oś
+  // mierzyłaby wyłącznie brak, a nie równość.
+  assert.equal(
+    isTitleBandHeightDivergence({
+      prototype: "no-action",
+      prototypeHeight: "OWN_HEAD",
+      todayHeight: "SHELL_BAND",
+    }),
+    true,
+  );
+});
+
+// OŚ SZÓSTA PORÓWNUJE CAŁĄ ODPOWIEDŹ, nie jedną flagę — pasmo, które niesie
+// wyszukiwanie tam, gdzie prototyp ma trasę, jest rozjazdem, choć „coś niesie".
+test("the carries axis compares the whole answer, not the presence of something", () => {
+  assert.equal(
+    isTitleBandCarriesDivergence({
+      prototype: "no-action",
+      prototypeCarries: "TRAIL",
+      todayCarries: "SEARCH",
+    }),
+    true,
+  );
+  assert.equal(
+    isTitleBandCarriesDivergence({
+      prototype: "no-action",
+      prototypeCarries: "NAME_ONLY",
+      todayCarries: "NAME_ONLY",
     }),
     false,
   );
@@ -712,7 +1027,7 @@ test("the opening axis judges the 2xl question, not the three measured states", 
 // KANONICZNOŚĆ LISTY PRZYPIĘTA DO JEDYNEGO ŹRÓDŁA, bo bez tego `TITLE_BAND_ROWS`
 // jest CZWARTĄ ręcznie przepisaną kopią listy ekranów — a „ręczna lista obok
 // zamkniętego słownika" jest w tym repozytorium nazwaną klasą defektu i sam
-// rejestr powierzchni nosi o niej komentarz (`surface-registry.ts:203-207`).
+// rejestr powierzchni nosi o niej komentarz (`surface-registry.ts:225-229`).
 //
 // DZIURA, KTÓRĄ TO ZAMYKA, JEST WĄSKA I REALNA: powierzchnia nawigacyjna, która
 // przybędzie, wpada w `TITLE_BAND_ROW_UNDECLARED`, a znikająca w
@@ -870,6 +1185,12 @@ const walk = {
 const ONE_ROW_WITNESS = {
   stack: { state: "ONE_ROW" },
   opening: { state: "OPENING_SMALLER" },
+  // ŚWIADKOWIE DWÓCH OSI LOTU L2, z tego samego powodu i z tą samą
+  // polaryzacją: `TITLE_BAND_HEIGHT_NEVER_ON_BAND` czyta `entry.height?.state`,
+  // a `TITLE_BAND_CARRIES_NEVER_NAME_ONLY` — `entry.carries?.state`, więc wpis
+  // BEZ tych pól zapala oba tak samo jak wpis, który wrócił znaleziskiem.
+  height: { state: "SHELL_BAND" },
+  carries: { state: "NAME_ONLY" },
 };
 const measured = [
   {
@@ -886,6 +1207,8 @@ const measured = [
     titles: 1,
     stack: { state: "STACKED" },
     opening: { state: "OPENING_SMALLER" },
+    height: { state: "SHELL_BAND_OFF" },
+    carries: { state: "SEARCH" },
   },
   {
     id: "pipeline",
@@ -1104,6 +1427,119 @@ test("a pass that forgot to carry the stack field fails like a pass with no witn
   assert.ok(
     failures.some((failure) => failure.startsWith("TITLE_BAND_NEVER_ONE_ROW")),
   );
+});
+
+// STRAŻNICY DWÓCH OSI LOTU L2 — DO PRZEGLĄDU ADWERSARIALNEGO BEZ ANI JEDNEGO
+// TESTU, KTÓRY BY JE ZAPALIŁ. Obie nazwy stały wyłącznie w komentarzu fikstury
+// `ONE_ROW_WITNESS`, czyli w miejscu, które dba o to, żeby NIE zapaliły się
+// przypadkiem — a to jest asercja o polaryzacji ODWROTNEJ niż potrzebna.
+// Strażnik bez testu zapalającego jest zdaniem, o którym wiadomo wyłącznie, że
+// jest dziś zielone.
+test("a pass whose bands are never the shell's own is reported as a broken probe", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => ({
+      ...entry,
+      height: { state: "OWN_HEAD" },
+    })),
+    rows,
+  });
+  assert.ok(
+    failures.some((failure) =>
+      failure.startsWith("TITLE_BAND_HEIGHT_NEVER_ON_BAND"),
+    ),
+  );
+});
+
+// TA SAMA POLARYZACJA CO PRZY `NEVER_ONE_ROW`: pole, którego przelot nie
+// przepisał do `judged`, ma zapalać strażnika, a nie go mijać.
+test("a pass that forgot to carry the height field fails like a pass with no witness", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => {
+      const withoutHeight = { ...entry };
+      delete withoutHeight.height;
+      return withoutHeight;
+    }),
+    rows,
+  });
+  assert.ok(
+    failures.some((failure) =>
+      failure.startsWith("TITLE_BAND_HEIGHT_NEVER_ON_BAND"),
+    ),
+  );
+});
+
+// STRAŻNIK OSI SZÓSTEJ PYTA „UMIE WRÓCIĆ SAMĄ NAZWĄ", więc zapala go przelot,
+// w którym KAŻDE pasmo coś niesie — czyli detektor, który zapalił obie flagi
+// wszędzie. Kierunek jest wybrany świadomie i ten test go przypina: odwrotny
+// strażnik („ani jednej trasy") byłby czerwony na każdym drzewie, na którym
+// rekordu jeszcze nie oddano.
+test("a pass where every band carries something is reported as a broken probe", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => ({
+      ...entry,
+      carries: { state: "SEARCH+TRAIL" },
+    })),
+    rows,
+  });
+  assert.ok(
+    failures.some((failure) =>
+      failure.startsWith("TITLE_BAND_CARRIES_NEVER_NAME_ONLY"),
+    ),
+  );
+});
+
+test("a pass that forgot to carry the carries field fails like a pass with no witness", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => {
+      const withoutCarries = { ...entry };
+      delete withoutCarries.carries;
+      return withoutCarries;
+    }),
+    rows,
+  });
+  assert.ok(
+    failures.some((failure) =>
+      failure.startsWith("TITLE_BAND_CARRIES_NEVER_NAME_ONLY"),
+    ),
+  );
+});
+
+// UZBROJENIE JEST CZYTANE ZE STAŁEJ, NIE PODANE LITERAŁEM, i to jest różnica
+// między testem PREDYKATU a testem OSI. `titleBandVerdictThrows` ma już swój
+// test na trzech literałach; ten mówi, co robi DZISIEJSZY stan każdej z dwóch
+// osi lotu L2 nad wierszem, który jest rozjazdem i został zmierzony ZGODNIE
+// z tabelą. Przestawienie któregokolwiek `*_STATUS` bez przemyślenia tej
+// asercji zatrzyma się tutaj.
+test("what each L2 axis does with a divergence it predicted comes from its own status", () => {
+  const divergentAndPredicted = { predicted: true, divergent: true };
+  assert.equal(
+    titleBandVerdictThrows({
+      ...divergentAndPredicted,
+      armed: TITLE_BAND_HEIGHT_ARMED,
+    }),
+    true,
+    "the band-height axis is armed: a divergence it predicted must fail the run",
+  );
+  assert.equal(
+    titleBandVerdictThrows({
+      ...divergentAndPredicted,
+      armed: TITLE_BAND_CARRIES_ARMED,
+    }),
+    false,
+    "the carries axis is pending: a divergence it predicted is reported, not thrown",
+  );
+  // DRYF PADA NA OBU, NIEZALEŻNIE OD UZBROJENIA — i to jest jedyny powód, dla
+  // którego złamania tych osi wracają czerwienią z rodziny `_DRIFT`, a nie
+  // `_DIVERGED`: złamanie rusza POMIAR, a nie tabelę.
+  for (const armed of [TITLE_BAND_HEIGHT_ARMED, TITLE_BAND_CARRIES_ARMED])
+    assert.equal(
+      titleBandVerdictThrows({ predicted: false, divergent: false, armed }),
+      true,
+    );
 });
 
 // STRAŻNIK OSI OTWARCIA MÓWI „ROZWIĄZAŁA SIĘ", A NIE „ZNALAZŁA 2XL", i ten test

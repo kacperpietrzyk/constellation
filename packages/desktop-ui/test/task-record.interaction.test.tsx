@@ -846,8 +846,12 @@ test("opening a task puts the task itself on screen, named once, with a way back
   );
 
   // And there is a way out, which returns the collection rather than an empty
-  // plane.
-  const back = buttonIn(opened, "‹ Tasks");
+  // plane. NAPIS ZMIENIŁ SIĘ W LOCIE L2 i ta asercja jedzie za nim świadomie:
+  // rząd nad rekordem przestał być linkiem cofającym („‹ Tasks") i stał się
+  // TRASĄ w paśmie („Tasks › <tytuł rekordu>"), tak jak w prototypie
+  // (`v3/screens/record.js:556-562`). Wyjście jest tym samym przyciskiem, tylko
+  // pierwszym członem trasy, więc test dalej pyta o zachowanie, a nie o glif.
+  const back = buttonIn(opened, "Tasks");
   assert.ok(back, "the record offers no way back to the task list");
   await act(async () => {
     back.click();
@@ -926,7 +930,7 @@ test("the task's conversation lives in exactly one place at a time", async () =>
   // or from the Inbox must not silently lose its comments. Nothing asserted
   // this before: every existing test single-clicks, so it exercised this arm
   // without ever stating it.
-  const back = buttonIn(record(), "‹ Tasks");
+  const back = buttonIn(record(), "Tasks");
   assert.ok(back);
   await act(async () => {
     back.click();
