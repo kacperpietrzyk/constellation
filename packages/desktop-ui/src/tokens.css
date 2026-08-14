@@ -42,6 +42,36 @@
   --tracking-tight: -0.035em;
   --tracking-wide: 0.025em;
 
+  /* SKALA WAG — CZTERY STOPNIE, ZAMKNIĘTA, CZYTANA Z PROTOTYPU.
+     Prototyp v3 używa DOKŁADNIE czterech wag i ani jednej innej: 400 (3
+     deklaracje), 500 (64), 600 (85), 700 (3) — policzone w całym
+     `docs/plans/2026-07-27-ui-ux-rebuild/v3`. Aplikacja miała w chwili
+     postawienia tej skali DZIEWIĘĆ wartości poza nią (550, 560, 570, 580,
+     590, 620, 630, 650, 750 — 91 deklaracji), z których prototyp nie używa
+     ani jednej. Rejestr tego długu i jego właściciel stoją
+     w `scripts/type-weight.mjs`.
+
+     STOPNIE, PO NAZWIE: `--weight-regular` 400, `--weight-medium` 500,
+     `--weight-semibold` 600, `--weight-bold` 700. Ta proza jest tu świadomie,
+     a `declaredWeightScale()` świadomie WYCINA komentarze przed czytaniem —
+     parser czytający arkusz razem z komentarzem znalazłby te cztery nazwy po
+     skasowaniu samych deklaracji i oddał pełną skalę nad arkuszem, który jej
+     nie ma. Dokładnie ta pułapka położyła kiedyś `main` w `css-token-lint`.
+
+     DEKLARACJA, NIE OZDOBA: `scripts/verify-renderer-layout.mjs` czyta ZBIÓR
+     DOZWOLONY z tych nazw (a wartości rozwiązuje w żywym korzeniu), więc
+     skasowanie któregokolwiek stopnia albo dopisanie piątego ZMIENIA WERDYKT
+     bramki układu. Dopisanie stopnia jest decyzją o języku wizualnym
+     i wymaga wpisu w `.ui-craft/tokens.md`, sekcja „Type".
+
+     BEZ NADPISANIA W MOTYWIE JASNYM, i to jest decyzja: waga nie jest funkcją
+     motywu, więc druga deklaracja niżej byłaby tym samym kształtem przepisanym
+     dwa razy — nazwaną w tym repozytorium klasą defektu. */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
   /* RAMPA NEUTRALNA — wartości z `v3/tokens.css:37-52`, hue 285, wyższa chroma.
      Nazwy zostają aplikacyjne (`--neutral-N`), więc żadne miejsce wywołania nie
      zmienia się przez tę fazę; mapowanie jest 1:1 po stopniu (`--n-950`
@@ -757,7 +787,7 @@
   /* AKTYWNA NAWIGACJA niesie akcent — najcichszy jego stopień jako wypełnienie
      (`v3/app.css:218-220`), a od Fazy C tusz pełnej mocy idzie na SZYNĘ przy
      lewej krawędzi kolumny, nie na obramowanie wiersza (`v3/app.css:222-226`,
-     `.ui-craft/tokens.md:291-296`, sekcja „Wash rarely travels alone").
+     `.ui-craft/tokens.md:397-402`, sekcja „Wash rarely travels alone").
      Zwykłe zaznaczenie wiersza i hover ZOSTAJĄ
      neutralne (`--surface-selected`, `--surface-hover`): akcent na hoverze albo
      na każdym zaznaczeniu łamie regułę małej powierzchni. */

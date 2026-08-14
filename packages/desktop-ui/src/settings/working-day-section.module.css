@@ -73,7 +73,7 @@
 }
 
 /* SKUTEK LICZBY (`v3/screens/settings.css:206-218`, `.st-effect`;
-   KONTRAKT: `.ui-craft/tokens.md:193-194` i `:85-92`, tak samo jak w sekcji
+   KONTRAKT: `.ui-craft/tokens.md:316-317` i `:85-92`, tak samo jak w sekcji
    obok). Ten sam
    kształt co w sekcji obok i ŚWIADOMIE osobna kopia, nie wspólna klasa
    w `styles.css`: ten ekran jest leniwy, więc każda reguła przeniesiona do

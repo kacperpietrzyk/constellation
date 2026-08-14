@@ -2700,6 +2700,461 @@ const outcome = runBreakTests({
           "the sweeps' scope",
         ),
     },
+    {
+      // ── FAZA I, PRZYRZĄD P1, ZŁAMANIE PIERWSZE — OŚ WARTOŚCI ──────────────
+      // USTAWIENIA TRACĄ WŁASNĄ MIARĘ (P1-13).
+      //
+      // JEDYNE ZŁAMANIE W TYM PLIKU, KTÓRE ZMIENIA WARTOŚĆ SUFITU KOLUMNY
+      // CZYTELNEJ, i to jest cała jego treść. Ustawienia są jedynym ekranem tej
+      // aplikacji, który deklaruje własną miarę, więc jedynym, na którym para
+      // P1 jest dziś MATCH — czyli jedynym, który da się przewrócić z zieleni
+      // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
+      // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
+      // (`styles.css:2103`), wylicza 1152 px zamiast 1184 i para `enforced`
+      // wrzuca WERDYKT (`verify-renderer-layout.mjs:7083-7088`), który idzie do
+      // `problems`.
+      //
+      // CZYM RÓŻNI SIĘ OD POZOSTAŁYCH: najbliższe mu złamanie czternaste („put
+      // the title band back inside the reading column", D1-01b) DODAJE sufit
+      // tam, gdzie go nie ma, i mierzy PASMO. To zabiera sufit tam, gdzie jest,
+      // i mierzy TREŚĆ. Żadne inne złamanie tego pliku nie rusza WARTOŚCI
+      // `--surface-measure` na żadnym ekranie.
+      //
+      // NAPIS DO TRAFIENIA JEST JEDNOKROTNY: `--surface-measure: 74rem`
+      // występuje w `styles.css` dokładnie raz (`:9398`).
+      name: "take the Settings screen's own reading measure away: the one screen that declares its ceiling inherits the shell's",
+      expectRedContains: ["P1-13"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.settings-surface {
+  --surface-measure: 74rem;
+  container-type: inline-size;`,
+          `.settings-surface {
+  container-type: inline-size;`,
+          "the Settings screen's own reading measure",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P1, ZŁAMANIE DRUGIE — OŚ ISTNIENIA ───────────────
+      // SKRZYNKA TRACI NOŚNIK TREŚCI (P1-03).
+      //
+      // DOWODZI TEZY PARY OCZEKUJĄCEJ, A NIE JEJ LICZBY: podmiot P1-03 ŻYJE
+      // i jest mierzony dzisiaj, więc „nie pasuje" jest POMIAREM, a nie martwym
+      // selektorem. Dla pary `pending` nie ma innej drogi — `pending + DIFFERS`
+      // jest zielone, `pending + MATCH` żąda poprawki produktu (niewyrażalnej
+      // przez `replaceOnce`), a `NOT_MEASURED` JEST ŚLEPE NA STATUS
+      // (`verify-renderer-layout.mjs:7050-7057`) i kładzie bramkę niezależnie
+      // od tego, czy para jest oczekująca. Po zdjęciu klasy modułowej
+      // z nośnika `[class*="_inbox_"]` nie trafia w nic, para wraca
+      // `ROUTED_NOT_MEASURED` razem ze spisem części selektora — czyli
+      // z diagnozą, a nie z samym „czerwono".
+      //
+      // WYBÓR PODMIOTU JEST POMIAREM, NIE WYGODĄ. Trzy warunki naraz spełnia
+      // tylko Skrzynka: (a) `styles.inbox` występuje w pliku DOKŁADNIE RAZ,
+      // więc `replaceOnce` ma w co trafić; (b) marker przybycia tego ekranu to
+      // `[data-inbox-row]`, a nie ta klasa, a sama klasa niesie wyłącznie
+      // `display:flex; flex-direction:column; gap` (`inbox.module.css:5-9`) —
+      // nic, co gasi wiersz — więc trasa DALEJ LĄDUJE i czerwień jest
+      // o selektorze, nie o nawigacji (`ROUTED_ROUTE_FAILED` nie niesie
+      // identyfikatorów par, więc trasa, która pada, minęłaby
+      // `expectRedContains`); (c) `_inbox_` nie występuje w ŻADNYM skrypcie
+      // bramek, więc złamanie nie zabija cudzych par. Renewals, Pipeline
+      // i rekord odpadają po (b) — ich podmiot JEST markerem przybycia.
+      name: "take the module class off the Inbox content box: the P1 subject stops existing while the route still lands",
+      expectRedContains: ["P1-03"],
+      file: "packages/desktop-ui/src/InboxSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "<div className={`surface-scroll ${styles.inbox}`}>",
+          '<div className="surface-scroll">',
+          "the Inbox content carrier",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P2, ZŁAMANIE PIERWSZE — MAPA POWŁOKI ─────────────
+      // LISTA DZISIAJ PRZESTAJE BYĆ LISTĄ (P2-01a/b/c).
+      //
+      // SCHEMAT JEST Z KONIECZNOŚCI INNY NIŻ W ZŁAMANIACH, KTÓRE PSUJĄ
+      // WARTOŚĆ, i powód jest arytmetyczny, nie stylistyczny. Wszystkie trzy
+      // pary tej pozycji są `pending` i są DIFFERS już dziś — nie da się ich
+      // „bardziej rozjechać", a doprowadzenie apki do zgodności (żeby zapalić
+      // `PENDING_ALREADY_MATCHES`) jest POPRAWKĄ, nie edycją jednego napisu,
+      // i `replaceOnce` tego nie wyrazi. Jedyną gałęzią osądu, która pada
+      // NIEZALEŻNIE OD STATUSU, jest `NOT_MEASURED`
+      // (`verify-renderer-layout.mjs:4555-4562` — status jest tam wyłącznie
+      // DRUKOWANY, nie sprawdzany), więc złamanie musi ZABIĆ ISTNIENIE
+      // PODMIOTU. Ten sam wybór, z tego samego powodu, zrobiło złamanie P1
+      // nad Skrzynką.
+      //
+      // ZABIJANA JEST ROLA, A NIE ATRYBUT WIERSZA, i to jest wybór o
+      // najmniejszym koszcie ubocznym. `[data-planned-row]` jest kotwicą progu
+      // `rowCounts.todayPlannedRows` (`verify-renderer-layout.mjs:1126-1129`)
+      // ORAZ podmiotem czwartej pary tego przyrządu (P2-02), więc skasowanie
+      // atrybutu zapaliłoby trzy czerwienie naraz i żadnej nie dałoby się
+      // przypisać. `role="listbox"` nie jest czytane przez ŻADNĄ bramkę tego
+      // repozytorium — sprawdzone grepem po `scripts/`: jedyne wystąpienie
+      // poza parami P2 to komentarz o liście Źródeł
+      // (`verify-renderer-layout.mjs:1087`). Wiersze zachowują własne
+      // `role="option"`, więc pary innych ekranów czytające `[role="option"]`
+      // (D3, D7) też stoją nietknięte.
+      //
+      // CO TO DOWODZI: że podmiot pojemnika jest rozwiązywany PRZEZ ROLĘ i że
+      // ta rola żyje dzisiaj. P2-02 zostaje zmierzona i zostaje cicha
+      // (pending + DIFFERS), więc czerwień da się przypisać co do pary.
+      name: "take the list role off the Today plan list: the container P2 measures stops existing",
+      expectRedContains: ["P2-01a", "NOT_MEASURED"],
+      file: "packages/desktop-ui/src/TodaySurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          <ul
+            className={styles.rows}
+            role="listbox"
+            aria-label="Planned for today"
+          >`,
+          `          <ul
+            className={styles.rows}
+            role="group"
+            aria-label="Planned for today"
+          >`,
+          "the Today plan list's role",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P2, ZŁAMANIE DRUGIE — MAPA TRASOWANA ─────────────
+      // TO SAMO ZDANIE, DRUGI PRZELOT (P2-03a/b/c).
+      //
+      // NIE JEST TO KOPIA POPRZEDNIEGO I RÓŻNICA NIE JEST KOSMETYCZNA: tamto
+      // pada w `visualLanguagePairs` jako `VISUAL_LANGUAGE_NOT_MEASURED`
+      // (`:4555`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
+      // (`:7071`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
+      // drugie dowodzi, że pary P2 naprawdę są mierzone PO DOJŚCIU na miejsce.
+      //
+      // DOWODZI TEŻ ROZŁĄCZNOŚCI PODMIOTU I MARKERA PRZYBYCIA. Marker
+      // Skrzynki to `#main-content [data-inbox-row]` (`ROUTED_ARRIVAL`,
+      // dopisany przez przyrząd P1), a ta edycja zdejmuje rolę z `<ul>`,
+      // zostawiając atrybut na `<li>` — więc trasa DALEJ LĄDUJE i czerwień
+      // mówi „the route DID land (steps above), so this is the selector, not
+      // the navigation". Gdyby przybycie było przypięte do roli, to samo
+      // złamanie wróciłoby jako `ROUTED_ROUTE_FAILED`, który NIE NIESIE
+      // identyfikatorów par i minąłby `expectRedContains` — czyli złamanie
+      // byłoby czerwone z niewłaściwego powodu.
+      //
+      // JEDNOKROTNOŚĆ NAPISU: `role="list"` stoi w tym pliku dwa razy — nad
+      // skrzynką `work` i nad `captures` — więc dopasowanie MUSI nieść
+      // `aria-labelledby="inbox-work"`, i niesie. Skrzynka przechwytów jest
+      // w tej fiksturze pusta i rysuje `<p>` zamiast `<ul>`, więc jej rola
+      // i tak nie stoi dziś w drzewie.
+      name: "take the list role off the Inbox work list: the routed stop lands and the container P2 measures is gone",
+      expectRedContains: ["P2-03a", "ROUTED_NOT_MEASURED"],
+      file: "packages/desktop-ui/src/InboxSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <ul
+                className={styles.rows}
+                role="list"
+                aria-labelledby="inbox-work"
+              >`,
+          `              <ul
+                className={styles.rows}
+                role="group"
+                aria-labelledby="inbox-work"
+              >`,
+          "the Inbox work list's role",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P3, ZŁAMANIE PIERWSZE — OŚ SKŁADU PASMA ──────────
+      // SKRZYNKA GUBI NADTYTUŁ, A TABELA DALEJ MÓWI „STACKED".
+      //
+      // KIERUNEK JEST ODWROTNY NIŻ WE WSZYSTKICH POPRZEDNICH ZŁAMANIACH TEGO
+      // PLIKU i to jest cała jego wartość: tamte PSUJĄ produkt, a to go
+      // POPRAWIA. Spis pasma ma w nagłówku zapisane, że dryf od kolumny
+      // `today` znaczy jedno z dwojga — „ktoś przesunął i nie zapisał" albo
+      // „lot dowiózł poprawkę i zostawił wiersz" — i do dziś udowodniony był
+      // wyłącznie pierwszy z nich. Bez tego dowodu tabela mogłaby zacząć
+      // kłamać w kierunku, którego nikt nie sprawdził, a lot L2 zamknąłby
+      // rozjazd bez ani jednej czerwonej lampki po drodze.
+      //
+      // TO JEST DOKŁADNIE POPRAWKA, KTÓREJ ŻĄDA OŚ 3: po tej edycji `<h1>` jest
+      // bezpośrednim dzieckiem `<header>`, w paśmie nie stoi nic z tekstem
+      // przed tytułem, a przelot mierzy `ONE_ROW` wobec tabeli mówiącej
+      // `STACKED`.
+      //
+      // NAZWA W `expectRedContains` JEST JEDNYM ZŁĄCZONYM LITERAŁEM, NIE DWOMA
+      // FRAGMENTAMI. Samo „inbox" trafia w dowolne miejsce czterominutowego
+      // wyjścia (bramka drukuje ten ekran w kilkunastu przelotach), więc
+      // złamanie mogłoby przejść na CUDZEJ czerwieni. To jest ten sam napis,
+      // który buduje werdykt `TITLE_BAND_STACK_DRIFT`.
+      //
+      // ŻADNE Z POPRZEDNICH ZŁAMAŃ NIE DOTYKA TEGO PASMA: jedyne inne, które
+      // edytuje `InboxSurface.tsx` (P2), zdejmuje rolę z `<ul>` w TREŚCI i pada
+      // jako `ROUTED_NOT_MEASURED` na parach P2-03a — inna gałąź kodu, inny
+      // przelot, inny napis.
+      name: "take the eyebrow out of the Inbox band: the stack column stops describing the product",
+      expectRedContains: ["TITLE_BAND_STACK_DRIFT — inbox"],
+      file: "packages/desktop-ui/src/InboxSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <div>
+          <p className="eyebrow">Signals and captures</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            Inbox
+          </h1>
+        </div>
+`,
+          `        <h1 id="surface-title" tabIndex={-1}>
+          Inbox
+        </h1>
+`,
+          "the Inbox band eyebrow wrapper",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P3, ZŁAMANIE DRUGIE — OŚ OTWARCIA TREŚCI ─────────
+      // NAGŁÓWEK SEKCJI KALENDARZA UDAJE OTWARCIE EKRANU.
+      //
+      // Oś 4 ma dziś TRZYNAŚCIE wierszy zgodnych i ZERO trafień `OPENING_2XL`
+      // w całej aplikacji, więc złamanie, które psuje produkt, musi przewrócić
+      // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
+      // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
+      // `h2 „Deadline this week or already late…"` o 16 px
+      // (`CalendarSurface.tsx:791-799`, reguła `calendar.module.css:343-351`).
+      // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
+      // mówiącej `OPENING_SMALLER`.
+      //
+      // DLACZEGO KALENDARZ, A NIE DZISIAJ: ten ekran jest NIEOSIĄGALNY dla obu
+      // map par — nie ma go w `ROUTED_ARRIVAL`, bo klient scenariuszowy
+      // świadomie odmawia kalendarza — więc czerwień może przyjść WYŁĄCZNIE
+      // z tej osi i żadna para nie może jej podrobić. `grep -c
+      // "calendar.module.css" scripts/break-visual-language.mjs` → 0: ani jedno
+      // z poprzednich złamań nie dotyka tego arkusza.
+      //
+      // WAGA 560 ZOSTAJE NIETKNIĘTA ŚWIADOMIE: jest podmiotem osobnego wpisu
+      // rejestru, a złamanie ruszające dwie rzeczy naraz nie mówi, która
+      // zapaliła.
+      //
+      // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
+      // pada w tym arkuszu dwa razy (`:45`, `:348`) i `font-weight: 560` też
+      // dwa razy, a `replaceOnce` rzuca przy dwóch trafieniach. Czterowierszowy
+      // blok jest w tym pliku jedyny — sprawdzone przed napisaniem tego wpisu.
+      name: "let the Calendar section heading open the screen at 2xl: the opening axis loses a witness",
+      expectRedContains: ["TITLE_BAND_OPENING_DRIFT — calendar"],
+      file: "packages/desktop-ui/src/calendar.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 560;`,
+          `  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 560;`,
+          "the Calendar section heading size",
+        ),
+    },
+    {
+      // ZŁAMANIE PRZYRZĄDU P4 — I PIERWSZE W TYM PLIKU, KTÓRE DOWODZI TRZECIEJ
+      // GAŁĘZI OSĄDU. Wszystkie wcześniejsze złamania pokazują albo
+      // `NOT_MEASURED` po zabiciu podmiotu, albo werdykt nad parą `enforced`.
+      // Tu czerwień ma nazwę `ROUTED_PENDING_ALREADY_MATCHES` i znaczy coś
+      // innego: para P4-01b jest zapisana jako NIEODDANA, a produkt nagle
+      // spełnia jej oczekiwanie.
+      //
+      // CZERWIEŃ NIE JEST TU ZDANIEM O PRODUKCIE i nikt nie ma prawa jej tak
+      // przeczytać: to jest zdanie o REJESTRZE („przerzuć wpis na enforced albo
+      // oczekiwanie jest napisane tak, że nigdy nie padnie"). Skasowanie pola
+      // wyszukiwania NIE naprawia ekranu Zadań — prototyp zastępuje je
+      // omniboksem powłoki, a nie pustym miejscem.
+      //
+      // DLACZEGO TO JEST MOCNIEJSZY DOWÓD NIŻ SCHEMAT „ZABIJ PODMIOT →
+      // NOT_MEASURED", którym chodzą pozostałe pary `pending` tej fazy. Tamten
+      // schemat mówi „selektor żyje". Ten mówi więcej: podmiot żyje, jest
+      // LICZONY, a licznik naprawdę reaguje na jego zniknięcie — czyli
+      // dzisiejsze „nie pasuje" jest POMIAREM, a nie martwym selektorem, i para
+      // zauważy dostawę lotu L6 w tej samej chwili, w której ona nastąpi.
+      // Dla pary `count` zabicie podmiotu jest właśnie tym, co para MIERZY,
+      // więc daje `pending` + MATCH zamiast `NOT_MEASURED`.
+      //
+      // DLACZEGO AKURAT TO POLE: jest jedynym `<input>` na powierzchni treści
+      // Zadań, więc jedna edycja zeruje licznik CAŁEJ pary. Trzy `<select>`
+      // obok są nietknięte, więc P4-01a musi zostać DIFFERS — i to jest druga
+      // rzecz, którą ten przebieg dowodzi: złamanie jednej pary nie rusza
+      // sąsiedniej. `<label htmlFor="tasks-search">` zostaje osierocona i to
+      // jest w porządku dla złamania: bramka układu nie ma sondy sierocej
+      // etykiety (sprawdzone), a `noUnusedLocals` jest w tym repozytorium
+      // wyłączony, więc nieużywane `setSearch` dalej się kompiluje. Gdyby
+      // złamanie nie zbudowało się, `break-test.mjs` zgłosiłby to osobno
+      // („the build refused the broken tree"), a nie zaliczył jako czerwień.
+      //
+      // SPRAWDZONE PRZED NAPISANIEM: `grep -rn "tasks-search" packages scripts`
+      // → wyłącznie `TasksSurface.tsx` (etykieta i pole). Złamanie nie może
+      // więc zapalić cudzej czerwieni i zostać zaliczone z niewłaściwego
+      // powodu. Domyślny `verify` wystarcza — pary P4 chodzą w tym samym
+      // przelocie co reszta mapy trasowanej.
+      name: "delete the Tasks search field: a pending count-0 pair starts matching without a delivery",
+      expectRedContains: ["ROUTED_PENDING_ALREADY_MATCHES", "P4-01b"],
+      file: "packages/desktop-ui/src/tasks/TasksSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          <input
+            id="tasks-search"
+            onChange={(event) => setSearch(event.target.value)}
+            type="search"
+            value={search}
+          />
+`,
+          "",
+          "the Tasks search field",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P5 — SKALA WAG JEST DANĄ, NIE OZDOBĄ ─────────────
+      //
+      // Zbiór dozwolony P5 czyta się z `tokens.css`, a nie z listy w skrypcie.
+      // Bez tego złamania NIKT NIGDY nie zobaczy, że deklaracja jest NOŚNA:
+      // przyrząd z wpisanym `[400, 500, 600, 700]` w kodzie wyglądałby
+      // identycznie w każdym raporcie i byłby zielony po skasowaniu wszystkich
+      // czterech tokenów.
+      //
+      // CZERWIEŃ JEST POJEDYNCZA I TO JEST ARGUMENT ZA TYM ZŁAMANIEM, NIE
+      // PRZECIW. Pary `P5-01a`/`P5-01b` po tym złamaniu NIE wracają
+      // `NOT_MEASURED`: `resolveAs` ustawia `var(--weight-semibold)` na próbce
+      // doklejonej do dokumentu, a nierozwiązywalne `var()` w NIE-niestandardowej
+      // własności jest *invalid at computed-value time* — `font-weight` jest
+      // DZIEDZICZONA, więc próbka wylicza wagę odziedziczoną, a nie pusty
+      // napis. `NOT_MEASURED` z tytułu tokenu wymaga PUSTEGO rozwiązania, więc
+      // obie pary zostają `DIFFERS`, a `pending` + `DIFFERS` to cisza.
+      // WNIOSEK, KTÓRY TO ZŁAMANIE ZAPISUJE: skasowanie skali jest dla par
+      // NIEWIDZIALNE. Bez osobnej, uzbrojonej asercji
+      // `TYPE_WEIGHT_NO_DECLARED_SCALE` usunięcie czterech tokenów przeszłoby
+      // przez bramkę na zielono, a przyrząd porównywałby wagi ze zbiorem,
+      // którego nie ma.
+      //
+      // ŻADNE Z POZOSTAŁYCH ZŁAMAŃ TEGO PLIKU NIE ATAKUJE DEKLARACJI UŻYTEJ
+      // JAKO ZBIÓR DOZWOLONY. Najbliższe jest „drop the section count back to
+      // body weight", ale ono łamie produkt pod parę z WPISANYM literałem
+      // „500" — dowodzi asercji o JEDNEJ liczbie, a nie o zbiorze. To jest
+      // pierwsze złamanie w tym pliku, po którym przyrząd nie wie, czego
+      // oczekiwać.
+      name: "delete the declared weight scale: the membership assertion has nothing to be a member of",
+      expectRedContains: ["TYPE_WEIGHT_NO_DECLARED_SCALE"],
+      file: "packages/desktop-ui/src/tokens.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;`,
+          "",
+          "the declared weight scale",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P5 — PRZELOTKA NAPRAWDĘ CHODZI PO ŻYWYM DRZEWIE ──
+      //
+      // DRUGA STRONA TEGO SAMEGO PYTANIA. Złamanie wyżej dowodzi, że ZBIÓR
+      // jest nośny; to dowodzi, że POMIAR jest nośny i że rejestr długu jest
+      // ZAMKNIĘTY. Bez niego dałoby się dopisać dziesiątą obcą wagę i przejść
+      // cicho.
+      //
+      // WYBRANA REGUŁA JEST WSPÓLNA dla `.eyebrow`, `.nav-label`
+      // i `.section-label`, czyli dla CHROMU POWŁOKI — a chrom powłoki leży
+      // poza `#main-content`, więc dowodzi przy okazji, że przelotka nie
+      // zatrzymuje się na treści. NIE CZYTA JEJ ŻADNA PARA: trzy pary tej mapy
+      // czytające `fontWeight` celują w `_sectionHead_ h2`, `_sectionHead_
+      // _count_` i `_panelHead_ h2`. Czerwień nie jest więc nadokreślona cudzą
+      // asercją.
+      //
+      // 650 → 655, A NIE 650 → 400, I TO JEST CAŁA RÓŻNICA: łamana jest
+      // PRZYNALEŻNOŚĆ DO REJESTRU, nie przynależność do skali. Wartość 400
+      // zazieleniłaby te trzy sygnatury i zostawiła WYŁĄCZNIE trzy osierocone
+      // wpisy (`TYPE_WEIGHT_UNUSED_ENTRY`), czyli czerwień o zupełnie innej
+      // nazwie niż to złamanie.
+      //
+      // CZERWIEŃ TEGO ZŁAMANIA MA SZEŚĆ WIERSZY, NIE TRZY, i mówimy to tutaj,
+      // żeby czytający raport nie wziął połowy z nich za regresję: trzy
+      // `TYPE_WEIGHT_UNREGISTERED` na wadze 655 (to jest nazwana czerwień)
+      // ORAZ trzy `TYPE_WEIGHT_UNUSED_ENTRY` na `p.eyebrow|650`,
+      // `p.nav-label|650` i `p.section-label|650`, bo po tej edycji nikt już
+      // nie rysuje 650 pod tymi sygnaturami. Osierocenie zachodzi przy OBU
+      // wartościach — różnicą jest to, że 655 dokłada do niego asercję, którą
+      // to złamanie NAZYWA. `expectRedContains` jest listą ZAWIERANIA
+      // (`break-test.mjs:203-213` odrzuca tylko BRAKI), więc dodatkowe wiersze
+      // niczego nie unieważniają.
+      //
+      // IGŁA SPRAWDZONA NA UNIKALNOŚĆ: sam napis `font-weight: 650;` stoi
+      // w `styles.css` DZIEWIĘĆ razy, więc krótsza igła rzuciłaby na
+      // wielokrotnym trafieniu; ten siedmiowierszowy blok występuje raz.
+      name: "give a shell label an off-scale weight nobody registered: a new divergence has to fail the run the day it lands",
+      expectRedContains: ["TYPE_WEIGHT_UNREGISTERED", "655"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.eyebrow,
+.nav-label,
+.section-label {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 650;`,
+          `.eyebrow,
+.nav-label,
+.section-label {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 655;`,
+          "the shell label's off-scale weight",
+        ),
+    },
+    {
+      // ── FAZA I, PRZYRZĄD P5 — OŚLEPIENIE WŁASNEJ PRZELOTKI ────────────────
+      //
+      // TRZECIA STRONA TEGO SAMEGO PYTANIA i ten sam kształt, co złamanie
+      // oślepiające przelotkę zapadniętej treści: dwa poprzednie łamią
+      // PRODUKT, to łamie PRZYRZĄD. Bez niego „46 sygnatur poza skalą" jest
+      // nieodróżnialne od „przelotka nie chodzi", bo obie odpowiedzi mają
+      // dokładnie ten sam kolor przy zielonej bramce — a „pusta fikstura nie
+      // tylko nie mierzy, ona CHOWA" jest w tym repozytorium nazwaną klasą.
+      //
+      // ŁAMANY JEST ZASIĘG, NIE FILTR, i to jest wybór: podmiana `document.body`
+      // na `null` trafia w strażnika na wejściu `sweepTypeWeight`, więc przelot
+      // kończy się z ZEREM odczytów zamiast z odczytami o złych wartościach.
+      // Zaostrzenie filtra kształtu dałoby liczbę mniejszą, a nie zero, czyli
+      // dowodziłoby czegoś, czego ta nazwa nie mówi.
+      //
+      // CZERWIEŃ JEST TU SZEROKA I TO JEST NIEUNIKNIONE: obok nazwanego
+      // `TYPE_WEIGHT_SWEEP_MEASURED_NOTHING` wypada 46 wierszy
+      // `TYPE_WEIGHT_UNUSED_ENTRY`, bo rejestr, którego nikt nie spotkał, jest
+      // z definicji cały martwy. `expectRedContains` jest listą ZAWIERANIA
+      // (`break-test.mjs:203-213`), więc czerwień nazwana jest sprawdzana,
+      // a reszta nie unieważnia dowodu.
+      //
+      // EDYCJA IDZIE W `scripts/`, NIE W PRODUKT, i dlatego przywrócenie jest
+      // czyste: ten plik nie przechodzi przez `tsc -b`, więc nie ma `dist`,
+      // który mógłby zostać zatruty przywróceniem z backupu.
+      name: "blind the type-weight sweep: an empty measurement has to look different from a clean product",
+      expectRedContains: ["TYPE_WEIGHT_SWEEP_MEASURED_NOTHING"],
+      file: "scripts/verify-renderer-layout.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "          sweepTypeWeight(document.body, label);",
+          "          sweepTypeWeight(null, label);",
+          "the type-weight sweep's scope",
+        ),
+    },
   ]),
 });
 
