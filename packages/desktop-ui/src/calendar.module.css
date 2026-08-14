@@ -258,11 +258,21 @@
   cursor: grab;
 }
 
-.row:hover {
+/* WYPEŁNIENIE STANU ZAWĘŻONE DO KOLUMNY DNIA, i to nie jest kosmetyka
+   selektora. `PlannableRow` rysuje się w DWÓCH miejscach tego ekranu
+   (`CalendarSurface.tsx` — raz w `.list` kolumny dnia, raz w `.tray`), a od
+   tego lotu te dwa miejsca mają różny prototyp: w kolumnie dnia kartą jest
+   POZYCJA (`v3/screens/calendar.css:131-137` — `.cal-item` z własnym
+   promieniem), a w tacy kartą jest POJEMNIK, a wiersz nie ma promienia żadnego
+   (`:204-208` — `.cal-tray-item`). Wypełnienie malowane wprost na wierszu tacy
+   wychodziłoby kwadratowym rogiem poza zaokrągloną krawędź karty; w tacy maluje
+   je więc `<li>`, razem z rogiem — ten sam układ, co na Dzisiaj i z tego samego
+   pomiaru pierścienia ogniska. */
+.list .row:hover {
   background: var(--surface-hover);
 }
 
-.row[aria-selected="true"] {
+.list .row[aria-selected="true"] {
   background: var(--surface-selected);
   border-color: var(--border-default);
 }
@@ -365,17 +375,99 @@
   font-weight: 400;
 }
 
+/* TRZECI EKRAN RODZINY — wpis 2-5 dokumentu przejścia. Prototyp niesie tę samą
+   trójkę deklaracji co `.td-list` i `.ib-list`, tu bez cienia:
+   `v3/screens/calendar.css:200-203` (`.cal-tray`). Kontrakt: `.ui-craft/
+   patterns.md` — „Pattern: Section head over a list card", ograniczenie
+   „The chrome belongs to the LIST, not to the section".
+
+   NIE PRZYCINA — I JEST TO ŚWIADOMY ROZJAZD Z PROTOTYPEM, KTÓRY PRZYCINA
+   (`:202` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
+   miał: jego wiersz tacy też jest ogniskowalny (`v3/screens/calendar.js:101` —
+   `role="option"` z wędrującym `tabindex`), jego reguła ogniska sięga 3 px
+   twardym konturem i 5 px poświatą poza pudełko (`v3/app.css:36-43`), a
+   `.cal-tray` nie ma wyściółki — zmierzone na bliźniaczym `.td-list` w samym
+   prototypie prawdziwym Tabem w Chromium: luz 0 px na trzech krawędziach
+   i wskaźnik przycięty w całości, mimo `position: relative` i `z-index` z tej
+   samej reguły. Prototyp wycina więc własny wskaźnik ogniska, a wycięcie
+   wymaganego wskaźnika jest naruszeniem WCAG 2.4.7 przy każdym rozmiarze
+   pierścienia — tego się nie kopiuje. Tutejszy pierścień (`tokens.css` —
+   `--focus-ring`, 14 px wysunięcia) stoi wprost na krawędzi pojemnika, bo
+   wiersz tacy siedzi w gołym `<li>` bez wyściółki. Róg karty domykają zamiast
+   przycięcia wiersze skrajne — lekarstwo lotu R1 (`styles.css` —
+   `.meeting-result-list`). Rozjazd niesie wpis `NOT_COVERED` „nothing stops
+   a later lot from clipping the focus ring away".
+
+   `gap: 1px` znika, bo separator rysuje odtąd wiersz swoją krawędzią.
+
+   TEGO POJEMNIKA NIE MIERZY DZIŚ ANI JEDNA PARA i wpis `NOT_COVERED` przyrządu
+   P2 zostaje na miejscu: taca rysuje się wyłącznie przy zadaniu BEZ `startAt`,
+   a jedyne zadanie fikstury harnessu je ma. */
 .tray {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   margin: 0;
   padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
   list-style: none;
 }
 
+/* HOVER I ZAZNACZENIE TO DWA STANY, NIE JEDEN, I MUSZĄ SIĘ RÓŻNIĆ. Pierwsza
+   wersja tej reguły łączyła oba selektory w jedną listę z `--surface-selected`,
+   przez co w kontrolce `role="listbox"` najechanie kursorem malowało się
+   DOKŁADNIE tym samym, co zaznaczenie, a zaznaczenie traciło drugą warstwę,
+   którą wcześniej niosło (`border-color: var(--border-default)` na `.row`).
+   Prototyp rozstrzyga to przeciwnie i wprost: `v3/screens/calendar.css:210-211`
+   — `.cal-tray-item:hover { background: var(--surface-raised) }` oraz
+   `.cal-tray-item[aria-selected="true"] { background: var(--accent-quieter) }`.
+   Ta aplikacja trzyma własną parę tokenów (`--surface-hover` kontra
+   `--surface-selected`, `tokens.css` — obie zadeklarowane osobno w obu
+   motywach) i dokłada zaznaczeniu tę samą jednopikselową obwódkę wewnętrzną,
+   co lista planu na Dzisiaj; przejście zaznaczenia na odcień akcentu jest
+   robotą Fazy III na trzech ekranach naraz, nie tego lotu.
+
+   KOLEJNOŚĆ ŹRÓDŁOWA JEST TU NOŚNA: oba selektory mają swoistość 0,2,1
+   (`:has()` bierze swoistość argumentu), więc o wierszu zaznaczonym I POD
+   KURSOREM rozstrzyga wyłącznie to, która reguła stoi niżej. Zaznaczenie stoi
+   niżej celowo — inaczej hover przykryłby zaznaczenie i zlanie stanów wróciłoby
+   tylnymi drzwiami.
+
+   TEGO NIE MIERZY DZIŚ ANI JEDNA PARA: taca rysuje się wyłącznie przy zadaniu
+   BEZ `startAt`, a jedyne zadanie fikstury je ma (wpis `NOT_COVERED` `LP2-05`
+   w mapie trasowanej). Dowód rozróżnienia jest z ZBUDOWANEGO arkusza i z obu
+   bloków `tokens.css`, nie z przelotu bramki. */
+.tray > li:hover {
+  background: var(--surface-hover);
+}
+
+.tray > li:has([aria-selected="true"]) {
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.tray > li:first-child {
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
+}
+
+.tray > li:last-child {
+  border-end-start-radius: var(--radius-md);
+  border-end-end-radius: var(--radius-md);
+}
+
+/* Wiersz tacy oddaje róg karty pojemnikowi i bierze w zamian kreskę działową.
+   Obwódka zostaje przezroczysta na trzech krawędziach, żeby geometria nie
+   skakała między stanami — tak samo, jak było przed tym lotem. */
 .trayRow {
   font-size: var(--text-base);
+  border-radius: 0;
+  border-bottom-color: var(--border-subtle);
+}
+
+.tray > li:last-child .trayRow {
+  border-bottom-color: transparent;
 }
 
 .lead {

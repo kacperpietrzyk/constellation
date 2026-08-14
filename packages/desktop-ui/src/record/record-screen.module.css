@@ -16,7 +16,7 @@
      DEKLARACJA JEST OBOWIĄZKOWA, A NIE OZDOBNA, I NOSI JĄ TROJE, NIE DWOJE —
      policzone z importów `record-screen.module.css`, a nie z pamięci
      (pierwsza wersja tej noty wymieniała dwóch konsumentów i była niepełna):
-     1. rekord zadania (`record/TaskRecordScreen.tsx:49`) rysuje się WEWNĄTRZ
+     1. rekord zadania (`record/TaskRecordScreen.tsx:50`) rysuje się WEWNĄTRZ
         korzenia Zadań (`tasks/TasksSurface.tsx:425`, `.tasks`);
      2. rekord projektu (`record/ProjectRecordScreen.tsx:56`) wewnątrz
         `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:640`);

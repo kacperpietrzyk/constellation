@@ -185,14 +185,69 @@
   font-weight: 500;
 }
 
+/* CHROM KARTY NALEŻY DO POJEMNIKA, NIE DO WIERSZA — wpis 1-2 dokumentu
+   przejścia. Prototyp mówi to dwa razy tym samym arkuszem i z tą samą trójką
+   deklaracji: `v3/screens/today.css:57-60` (`.td-list`) dla obu list zadań
+   i `:19-22` (`.td-meetings`) dla listy spotkań. Kontrakt: `.ui-craft/
+   patterns.md` — „Pattern: Section head over a list card", ograniczenie
+   „The chrome belongs to the LIST, not to the section".
+
+   `gap: 1px` ZNIKA, i to nie jest sprzątanie przy okazji. Separator rysuje
+   odtąd wiersz swoją własną krawędzią (niżej), więc odstęp na pojemniku dałby
+   kreskę DWUPIKSELOWĄ przy wszystkich parach chromu zielonych. Oba wpisy
+   `NOT_COVERED` przyrządu P2 nazywały to jako jedyną cichą drogę porażki tego
+   lotu; pilnuje jej teraz para czytająca `rowGap` pojemnika. Prototyp nie
+   deklaruje na tych listach żadnego odstępu, więc wyliczoną wartością jest
+   `normal`, a nie `0px` — zmierzone w Chromium, nie założone. */
 .rows,
 .meetings {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   margin: 0;
   padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
   list-style: none;
+}
+
+/* PRZYCINA TYLKO LISTA SPOTKAŃ, I JEST TO ŚWIADOMY ROZJAZD Z PROTOTYPEM,
+   NIE LUKA W ODCZYCIE. Prototyp przycina OBIE listy (`v3/screens/today.css:59`
+   i `:21` — `overflow: hidden`), a ta aplikacja idzie za nim tylko na jednej.
+
+   POWODEM NIE JEST TO, ŻE PROTOTYP TEGO PROBLEMU NIE MIAŁ — miał go i przyciął
+   mimo to. Zmierzone w prototypie prawdziwym Tabem w Chromium (37 tabulacji do
+   pierwszego wiersza, `:focus-visible` = true), 1440×900: reguła ogniska
+   `v3/app.css:36-43` daje wierszowi `outline: solid 2px` przy `outline-offset:
+   1px` (czyli 3 px twardej linii poza pudełkiem) ORAZ `box-shadow: 0 0 0 5px
+   var(--accent-quieter)` (5 px poświaty), a `.td-list` wylicza `overflow:
+   hidden` przy wyściółce `0px 0px 0px 0px`, więc luz wiersza do krawędzi
+   przycięcia wynosi 0 px na górze, po lewej i po prawej. Kontrola świadkiem:
+   element wstawiony 8 px poza wiersz NIE JEST widoczny 4 px za krawędzią
+   pojemnika, mimo `position: relative` i `z-index: 2` z tej samej reguły
+   ogniska — `overflow: hidden` przodka przycina jedno i drugie. Prototyp
+   wycina więc CAŁY swój wskaźnik ogniska na wierszach listy planu.
+
+   Tego się nie kopiuje, i nie dlatego, że nasz pierścień jest większy
+   (`tokens.css` — `--focus-ring`, 14 px wysunięcia wobec tamtych 5 px), tylko
+   dlatego, że wycięcie wymaganego wskaźnika ogniska jest naruszeniem
+   WCAG 2.4.7 przy KAŻDYM rozmiarze pierścienia. Reguła 1 tej fali („prototyp
+   wygrywa") rozstrzyga spór PROTOTYP KONTRA KONTRAKT; tu prototypowi
+   przeciwstawia się kryterium dostępności, więc rozjazd zostaje zapisany jako
+   rozjazd — wpis `NOT_COVERED` „nothing stops a later lot from clipping the
+   focus ring away" w `scripts/visual-language-pairs.mjs` niesie mechanizm
+   i warunek wyjścia.
+
+   Kryterium, KTÓRA lista przycina, jest precedensem tej aplikacji, lot R1:
+   `.meeting-upcoming-list` (`styles.css`) przycina, bo jej wiersz nie ma nic
+   ogniskowalnego przy krawędzi, a `.meeting-result-list` NIE przycina, bo jej
+   wiersz jest przyciskiem na całą szerokość karty. Zmierzone tutaj tym samym
+   przyrządem, oba motywy: wiersz planu przylega do pudełka wyściółki pojemnika
+   ze WSZYSTKICH czterech stron z luzem 0 px, a wiersz spotkania nie ma czego
+   ogniskować (`TodaySurface.tsx` — trzy `<span>` i nic więcej), więc tam
+   przycięcie prototypu wchodzi bez ceny. */
+.meetings {
+  overflow: hidden;
 }
 
 .row,
@@ -202,63 +257,97 @@
   align-items: baseline;
   gap: var(--space-3);
   padding: var(--space-3);
-  border-radius: var(--radius-md);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: var(--text-base);
+}
+
+/* Ostatni wiersz nie rysuje kreski, bo pod nim jest już krawędź karty —
+   `v3/screens/today.css:66` (`.td-row:last-child`) i `:28`
+   (`.td-meeting:last-child`). Wiersz planu siedzi w gołym `<li>`, wiersz
+   spotkania JEST `<li>`, stąd dwa różne selektory na jedno zdanie. */
+.rows > li:last-child > .row,
+.meeting:last-child {
+  border-bottom: 0;
 }
 
 .row {
   cursor: default;
 }
 
-.row:hover {
+/* WYPEŁNIENIE STANU ZESZŁO NA `<li>`, I WYMUSIŁ TO POMIAR PIERŚCIENIA.
+   Skoro `.rows` nie przycina, róg karty musi domknąć coś w środku — tak samo
+   jak w locie R1, gdzie robią to wiersze skrajne (`styles.css` —
+   `.meeting-result-list > li:first-child .meeting-result-row`). Tam nośnikiem
+   był sam wiersz; tutaj nie może nim być, bo wiersz jest podmiotem asercji
+   „wiersz oddaje róg karty liście" i promień postawiony na nim uczyniłby tę
+   asercję fałszywą wobec kodu ZGODNEGO z prototypem. `<li>` jest puste
+   i niczego nie mierzy, więc chrom rogu i wypełnienie idą tam, a `[data-
+   planned-row]` zostaje kwadratowy.
+
+   PROTOTYP DAJE TYM DWÓM STANOM RÓŻNE TOKENY, i pierwsza wersja tego komentarza
+   twierdziła inaczej — cytowała `v3/screens/today.css:64-65` („samo tło"), czyli
+   ogon reguły `.td-row`, a nie stany. Stany stoją w `:67-68`:
+   `.td-row:hover { background: var(--surface-raised) }` oraz
+   `.td-row[aria-selected="true"] { background: var(--accent-quieter) }` — hover
+   dostaje płaszczyznę, zaznaczenie odcień AKCENTU. Ta aplikacja rozróżnia je
+   dziś inaczej (wspólne tło + jednopikselowa obwódka wewnętrzna niżej), i tak
+   samo było PRZED tym lotem — więc lot niczego tu nie zlał, ale i niczego nie
+   naprawił. Przejście zaznaczenia na odcień akcentu dotyka trzech ekranów
+   (Dzisiaj, Skrzynka, Kalendarz) i jest robotą Fazy III, zapisaną z poprawnym
+   cytatem, nie z tym błędnym. */
+.rows > li:hover,
+.rows > li:has([aria-selected="true"]) {
   background: var(--surface-raised, var(--surface-content));
 }
 
-.row[aria-selected="true"] {
-  background: var(--surface-raised, var(--surface-content));
+.rows > li:has([aria-selected="true"]) {
   box-shadow: inset 0 0 0 1px var(--border-default);
 }
 
-/* Fallback `var(--focus-ring, var(--text-primary))` NIGDY nie działał: token
-   jest zdefiniowany, więc podstawienie brało listę cieni, a `outline` w całości
-   padał (zmierzone: `outline-style: none`). Slot koloru bierze
-   `--focus-ring-color`, bez fallbacku — token jest zadeklarowany RAZ, w bloku
-   `:root`, i rozwiązuje się w obu motywach, bo jest aliasem `--accent`, a blok
-   jasny remapuje `--accent` (ten sam zapis stoi przy tokenie w `tokens.css`).
+/* CZTERY DEKLARACJE W DWÓCH REGUŁACH — I ANI JEDNEJ NIE WOLNO ZWINĄĆ DO
+   SKRÓTU `border-radius`. Fikstura rysuje JEDEN wiersz, więc `:first-child`
+   i `:last-child` trafiają w TEN SAM element; skrót rozpisuje się na cztery
+   narożniki naraz, więc `border-radius: 0 0 var(--radius-md) var(--radius-md)`
+   w drugiej regule wyzerowałby górne rogi ustawione przez pierwszą. Długie
+   własności logiczne nie kolidują, bo każda dotyka jednego narożnika. To jest
+   dokładnie ta „oczywista" konsolidacja, którą późniejszy lot mógłby zrobić
+   w ciszy — bramka zobaczyłaby ją tylko przez pary niżej.
 
-   KONTUR JEST ZAWĘŻONY DO STANU ZAZNACZENIA — z tego samego powodu, co
-   w `inbox.module.css`: `.row[aria-selected="true"]` cztery reguły wyżej
-   deklaruje `box-shadow` przy swoistości 0,2,0 i przykrywa nim globalny
-   pierścień `:where(…):focus-visible` (0,1,0), więc bez tej reguły zaznaczony
-   wiersz z ogniskiem zostałby bez żadnego wskaźnika. Na wierszu
-   NIEZAZNACZONYM nic pierścienia nie przykrywało, więc kontur był tam drugą
-   ramką na tej samej krawędzi.
-
-   Wiersz Dzisiaj to `<div role="option">` z wędrującym `tabindex` (0 na
-   przystanku, -1 na reszcie — `useListNavigation`), więc pierścień globalny
-   ŁAPIE GO tak samo jak przycisk Skrzynki: selektor `[tabindex]:not([tabindex=
-   "-1"])` dopasowuje przystanek, a element z ogniskiem NIM JEST.
-
-   ZMIERZONE W CHROMIUM na tym wierszu (nie przez podobieństwo do Skrzynki),
-   prawdziwym Tabem, w obu motywach, przed i po. Motyw ciemny, skrótowo:
-
-     przed, niezaznaczony  kontur 2 px akcentu ORAZ pełny pierścień globalny
-     przed, zaznaczony     kontur 2 px akcentu ORAZ
-                           `oklch(1 0 0 / 0.095) 0 0 0 1px inset` — i TYLKO to
-     po,    niezaznaczony  kontur `solid 2px rgba(0, 0, 0, 0)` (przezroczysty
-                           kontur reguły globalnej) ORAZ sam pierścień globalny
-     po,    zaznaczony     bez zmian
-
-   POMIAR SZEDŁ PRZEZ REPRODUKCJĘ KASKADY, NIE PRZEZ BRAMKĘ UKŁADU, i to jest
-   granica tego dowodu: fikstura harnessu nie rysuje ANI JEDNEGO
-   `[data-planned-row]` („Nothing is planned for today"), więc bramka układu nie
-   ma tu czego zmierzyć. Reprodukcja bierze TE SAME arkusze z dysku i to samo
-   Chromium, ale nie dowodzi niczego o reszcie ekranu. */
-.row[aria-selected="true"]:focus-visible {
-  outline: 2px solid var(--focus-ring-color);
-  outline-offset: -2px;
+   MIERZĄ TO DWIE PARY, PO JEDNEJ NA REGUŁĘ: `P2-01c` czyta
+   `borderStartStartRadius` na `> li:first-child`, `P2-01e` czyta
+   `borderEndEndRadius` na `> li:last-child`. Skasowanie którejkolwiek z tych
+   dwóch reguł w całości zapala dokładnie jedną z nich. Dwie deklaracje „od
+   strony końca wiersza" (`border-start-end-radius`, `border-end-start-radius`)
+   nie są czytane przez żadną parę i jest to zapisane we wpisie `NOT_COVERED`
+   „nothing stops a later lot from clipping the focus ring away". */
+.rows > li:first-child {
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
 }
+
+.rows > li:last-child {
+  border-end-start-radius: var(--radius-md);
+  border-end-end-radius: var(--radius-md);
+}
+
+/* TU STAŁ WŁASNY KONTUR OGNISKA ZAZNACZONEGO WIERSZA — I ZNIKA RAZEM
+   Z PRZYCZYNĄ, KTÓRA GO POWOŁAŁA, a nie przy okazji. Powód zapisany przy nim
+   brzmiał: `.row[aria-selected="true"]` deklarowało `box-shadow` przy
+   swoistości 0,2,0 i przykrywało nim globalny pierścień
+   `:where(…):focus-visible` (0,1,0, `tokens.css`), więc bez konturu zaznaczony
+   wiersz z ogniskiem zostawał bez ŻADNEGO wskaźnika. Ten sam komentarz mówił
+   też, że na wierszu NIEZAZNACZONYM kontur był drugą ramką na tej samej
+   krawędzi.
+
+   Chrom karty zabrał wypełnieniu stanu nośnik: tło i obwódka zaznaczenia
+   siedzą teraz na `<li>`, a `.row` nie deklaruje już żadnego `box-shadow`.
+   Pierścienia nie ma więc czym przykryć w ŻADNYM stanie — i to samo zdanie,
+   które kazało kontur dodać, każe go teraz zabrać, bo inaczej wróciłby jako
+   ta druga ramka, tym razem na wszystkich wierszach naraz. Zmierzone
+   prawdziwym Tabem w Chromium, oba motywy: pierścień wystaje 14 px, `.row`
+   przylega do pojemnika luzem 0 px, `overflow` pojemnika zostaje `visible`
+   właśnie po to, żeby ten pierścień było widać. */
 
 /* Godzina jest kotwicą wzroku, więc cyfry nie mogą tańczyć między wierszami. */
 .when {

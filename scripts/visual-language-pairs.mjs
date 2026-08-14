@@ -1531,7 +1531,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
   // `:has()` rozbija go na dwa nieparsowalne kawałki i spis „każda część
   // osobno" przestaje cokolwiek mówić, choć czerwień dalej pada.
   //
-  // ── WZORZEC, KTÓRY TE SZEŚĆ PAR ZAKŁADA PO STRONIE LOTU L4 ────────────────
+  // ── WZORZEC, KTÓRY TE SZEŚĆ PAR ZAKŁADAŁO PO STRONIE LOTU L4 — ROZSTRZYGNIĘTY
+  //    2026-08-14 ────────────────────────────────────────────────────────────
   // ZAPISANE TUTAJ, ŻEBY NIKT NIE ODKRYWAŁ TEGO Z CZERWONEJ BRAMKI — ten sam
   // ruch, co przy przyrządzie P1. Prototyp niesie chrom na OSOBNYM pudełku
   // (`div.td-list`, `div.ib-list` opakowują wiersze), a te pary czytają element
@@ -1542,6 +1543,13 @@ export const VISUAL_LANGUAGE_PAIRS = [
   // sześć par ZOSTANIE CZERWONYCH nad poprawną dostawą i trzeba je będzie
   // PRZEPIĄĆ na to pudełko — decyzja należy do L4, ale koszt jest znany
   // z góry i stoi zapisany tu, a nie w raporcie z czerwonego przelotu.
+  //
+  // CO WYBRAŁ LOT L4, I DLACZEGO TO NIE BYŁO PYTANIE: chrom stoi WPROST na
+  // `<ul>`, bez opakowania. Prototyp sam żadnego nie ma — element niosący klasę
+  // karty JEST elementem niosącym `role="listbox"` / `role="list"`
+  // (`v3/screens/today.js`, `inbox.js`, `calendar.js`), a zasadą tej fali jest
+  // „prototyp wygrywa". Ani jedna para nie została przepięta; przepisana została
+  // jedna (`P2-01c`) i z powodu, który z tym wyborem nie ma nic wspólnego.
   // Pary wiersza (P2-02, P2-04) są na tę zmianę odporne: ich podmiotem jest
   // atrybut wiersza, którego żadna z dwóch dróg nie rusza.
   //
@@ -1564,11 +1572,11 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: '#main-content [role="listbox"]:has([data-planned-row])',
       why: "role plus the declared row attribute, so neither the module hash nor the tag is load-bearing; the approaching list on the same screen is also a listbox but carries data-approaching-row, so it cannot join this subject set",
-      app: "packages/desktop-ui/src/TodaySurface.tsx:409-412, today.module.css:188-196 (.rows — declares gap, margin, padding and list-style, and no border at all)",
+      app: 'packages/desktop-ui/src/TodaySurface.tsx (the <ul role="listbox" aria-label="Planned for today">), today.module.css (.rows, .meetings — one shared card rule since lot L4; before it the rule declared gap, margin, padding and list-style, and no border at all)',
     },
     read: { property: "borderTopWidth" },
     expect: { kind: "literal", value: "1px" },
-    status: "pending: LOT L4",
+    status: "enforced",
   },
   {
     id: "P2-01b",
@@ -1586,38 +1594,272 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: '#main-content [role="listbox"]:has([data-planned-row])',
       why: "the same subject as P2-01a; the radius is read APART from the border because a 1px square frame satisfies one and not the other, and entry 1-2 names both",
-      app: "packages/desktop-ui/src/today.module.css:188-196",
+      app: "packages/desktop-ui/src/today.module.css (.rows, .meetings)",
     },
     // TOKEN, NIE LICZBA, i to jest ochrona przed asercją gnijącą od tokenu:
-    // `inbox.module.css:136-140` zapisuje wprost, że liczby promienia z tamtej
+    // `inbox.module.css:172-176` zapisuje wprost, że liczby promienia z tamtej
     // okolicy są HISTORYCZNE (mierzone, gdy `--radius-md` miał 0.5625rem;
     // R3 z 2026-08-07 dał mu 0.75rem). Wpisany literał „12px" zrobiłby z tej
     // pary czerwień przy następnej zmianie tokenu, bez żadnej zmiany produktu.
     read: { property: "borderRadius" },
     expect: { kind: "token", token: "--radius-md" },
-    status: "pending: LOT L4",
+    status: "enforced",
   },
+  // ── TA PARA JEST PRZEPISANA PRZEZ LOT L4, RAZEM Z POMIAREM, KTÓRY TEGO
+  //    ZAŻĄDAŁ ────────────────────────────────────────────────────────────────
+  // Czytała `overflow` i żądała „hidden" za prototypem. PIERWSZA WERSJA TEGO
+  // AKAPITU UZASADNIAŁA ROZJAZD ZDANIEM, KTÓRE JEST NIEPRAWDZIWE: „prototyp na
+  // to nie natrafił, bo maluje ognisko konturem 1 px poza pudełkiem
+  // (`v3/app.css:36-38`)". Cytat urywał się jedną linię przed dowodem
+  // przeciwnym. Pełna reguła to `v3/app.css:36-43`:
+  //
+  //   :36  :where(button, a, …, [tabindex]:not([tabindex="-1"])):focus-visible {
+  //   :37    outline: 2px solid var(--accent);
+  //   :38    outline-offset: 1px;
+  //   :39    box-shadow: 0 0 0 5px var(--accent-quieter);
+  //   :40    border-radius: var(--radius-xs);
+  //   :41    z-index: var(--z-raised);
+  //   :42    position: relative;
+  //
+  // czyli 3 px twardej linii ORAZ 5 px poświaty poza pudełkiem. Wiersze
+  // prototypu SĄ ogniskowalne (`v3/screens/today.js:53`, `inbox.js:82`,
+  // `calendar.js:101` — `role="option"` z wędrującym `tabindex`), a `.td-list`
+  // nie ma wyściółki. ZMIERZONE W SAMYM PROTOTYPIE, prawdziwym Tabem
+  // w Chromium 1440×900 (`scratchpad/probe-proto-L4.mjs`, 37 tabulacji do
+  // pierwszego wiersza, `:focus-visible` = true): `.td-list` wylicza
+  // `overflow: hidden/hidden` przy wyściółce `0px 0px 0px 0px`, luz wiersza do
+  // krawędzi przycięcia wynosi 0 px na górze, po lewej i po prawej, a element
+  // wstawiony 8 px poza wiersz nie jest widoczny 4 px za krawędzią pojemnika
+  // MIMO `position: relative` i `z-index: 2` z tej samej reguły. Prototyp
+  // napotkał więc ten sam problem i wyciął sobie CAŁY wskaźnik ogniska.
+  //
+  // ROZJAZD ZOSTAJE, ALE Z PRAWDZIWYM POWODEM. Nie brzmi on „nasz pierścień ma
+  // 14 px, a ich 5 px" — brzmi „wycięcie wymaganego wskaźnika ogniska jest
+  // naruszeniem WCAG 2.4.7 przy KAŻDYM rozmiarze pierścienia". Reguła 1 tej
+  // fali („prototyp wygrywa") rozstrzyga spór PROTOTYP KONTRA KONTRAKT; tutaj
+  // prototypowi przeciwstawia się kryterium dostępności, więc rozjazd jest
+  // ZAPISANY jako rozjazd, a nie przemilczany. Po stronie tej aplikacji
+  // pierścień jest LISTĄ CIENI ZEWNĘTRZNYCH (`packages/desktop-ui/src/
+  // tokens.css` — `--focus-ring`, malowany regułą `:where(…):focus-visible`)
+  // i wystaje 14 px, a wiersz planu przylega do pudełka wyściółki pojemnika
+  // z luzem 0 px na WSZYSTKICH czterech krawędziach (prawdziwy Tab w Chromium,
+  // oba motywy).
+  //
+  // ROZSTRZYGA TO PRECEDENS TEJ APLIKACJI, NIE GUST: lot R1 postawił dokładnie
+  // tę granicę (`packages/desktop-ui/src/styles.css` —
+  // `.meeting-upcoming-list` przycina, bo w jej wierszu nic ogniskowalnego nie
+  // stoi przy krawędzi; `.meeting-result-list` NIE przycina, bo jej wiersz jest
+  // przyciskiem na całą szerokość karty, a róg domykają tam wiersze skrajne
+  // przez `border-start-start-radius` / `border-end-end-radius`).
+  //
+  // DLACZEGO OCZEKIWANIE ZMIENIA SIĘ RAZEM Z ODCZYTEM, A NIE SAMO. Para
+  // cytująca `overflow: hidden` i pilnująca „visible" byłaby parą cytującą
+  // jedną rzecz i pilnującą innej — nazwana klasa defektu tego rejestru
+  // (`patterns.md`, „An add bar is an action bar", przypadek 1,8 rem kontra
+  // cytowane 1,75 rem). Nowy odczyt pyta o rzecz, którą prototyp i lekarstwo R1
+  // mówią ZGODNIE: róg karty ma być widoczny na wierszu, który się z nim styka.
+  // Samo pytanie „czy pojemnik dalej nie przycina" zeszło do wpisu
+  // `NOT_COVERED` — z mechanizmem pierścienia i warunkiem wyjścia.
+  //
+  // NOŚNIKIEM ROGU JEST `<li>`, NIE WIERSZ, I TO NIE JEST WYBÓR STYLU.
+  // Lekarstwo R1 kładzie promień na WIERSZU; tutaj wiersz jest podmiotem pary
+  // P2-02 („wiersz oddaje róg karty liście", `borderRadius` = „0px"), a fikstura
+  // rysuje DOKŁADNIE JEDEN wiersz, więc `:first-child` i `:last-child` to ten
+  // sam element i promień postawiony na nim uczyniłby P2-02 czerwoną wobec kodu
+  // ZGODNEGO z prototypem. `<li>` na Dzisiaj jest puste (`TodaySurface.tsx` —
+  // `data-planned-row` siedzi na `<div>` w środku), więc bierze róg i tło stanu,
+  // a wiersz zostaje kwadratowy. Na Skrzynce ta droga NIE ISTNIEJE
+  // (`data-inbox-row` jest wprost na `<li>`) i dlatego tam rozstrzyga pomiar
+  // luzu, a nie ta sztuczka.
+  //
+  // PARA MIERZY JEDNĄ Z CZTERECH DEKLARACJI, O KTÓRYCH MÓWI JEJ TYTUŁ — i drugą
+  // mierzy `P2-01e` niżej. Lekarstwo to dwie reguły po dwie deklaracje
+  // (`today.module.css` — `.rows > li:first-child` i `> li:last-child`).
+  // Ta para czyta `borderStartStartRadius` z pierwszej, `P2-01e` czyta
+  // `borderEndEndRadius` z drugiej, więc skasowanie KTÓREJKOLWIEK reguły
+  // w całości zapala dokładnie jedną z nich; przed dopisaniem `P2-01e`
+  // skasowanie reguły `:last-child` zostawiało tę parę zieloną Z KONSTRUKCJI
+  // (inny selektor, inna własność), a wypełnienie stanu ostatniego wiersza
+  // wychodziło kwadratowym rogiem za zaokrągloną krawędź karty. Dwie
+  // deklaracje od strony końca wiersza dalej nie są czytane i stoi to we wpisie
+  // `NOT_COVERED` „nothing stops a later lot from clipping the focus ring
+  // away".
+  //
+  // ══ PRZEPISANIE KONTRAKTU `.ui-craft/patterns.md` — KROK MERGE'A, NIE RZECZ
+  //    ZROBIONA ════════════════════════════════════════════════════════════
+  // `/.ui-craft/` jest gitignorowane (`.gitignore:5`), więc NIE ISTNIEJE
+  // w drzewie roboczym tego lotu i ŻADEN nośnik nie sprawi, że przepisanie
+  // pojedzie w diffie. Lot chodził w worktree z zakazem pisania do drzewa
+  // głównego (równolegle chodził tam inny tor). Tekst jedzie więc tutaj, w
+  // pliku ŚLEDZONYM, dosłownie — i tu jest jedyne miejsce, w którym przetrwa.
+  // Mechaniczny aplikator z twardymi asercjami:
+  // `…/scratchpad/l4-ui-craft-patch.py` (dry run domyślnie, `--apply` zapisuje).
+  // Dopóki to nie zostanie zastosowane, pole `contract` niżej mówi „do
+  // przepisania", a NIE „przepisane".
+  //
+  // (1) BYŁO — „A row of a list is not a card":
+  //     „…the row keeps one hairline, removed on the last row. `overflow:
+  //     hidden` on the plate is load-bearing — without it the hover fill and
+  //     the selection rail leave square corners outside a rounded edge."
+  //     MA BYĆ:
+  //     „…the row keeps one hairline, removed on the last row. The plate must
+  //     CUT the corner its rows would otherwise square off — but `overflow:
+  //     hidden` is one of two ways to do that, not an invariant. Clip the plate
+  //     WHEN AND ONLY WHEN no focusable box touches the plate's padding box;
+  //     otherwise leave it unclipped and round `> li:first-child` /
+  //     `> li:last-child` instead. Both halves are shipped and both were
+  //     measured with a real Tab in Chromium, in both themes: the Inbox row's
+  //     button sits 8 px and 12 px inside its list, so the hard rings survive
+  //     the clip and only the 0.12-alpha halo is cut; Today's plan rows and the
+  //     Calendar tray rows sit at 0 px on all four edges. This is a KNOWN
+  //     divergence from the reference, not a gap in reading it: the reference
+  //     clips all four of its plates and thereby clips its OWN indicator away —
+  //     measured in the prototype, `.td-list` computes `overflow: hidden` with
+  //     `padding: 0` while `v3/app.css:36-43` paints focus 3 px (outline plus
+  //     offset) and 5 px (halo) outside the row, and a witness 8 px outside the
+  //     row is invisible past the plate edge despite that rule's own
+  //     `position: relative; z-index`. Clipping a required focus indicator
+  //     fails WCAG 2.4.7 at any ring size, so this app declines to reproduce
+  //     it. The precedent is this app's own lot R1: `.meeting-upcoming-list`
+  //     clips and says why, `.meeting-result-list` does not."
+  //
+  // (2) NOWE OGRANICZENIE, dopisywane pod tamtym: „The plate adds no gap of its
+  //     own. The separator is ONE hairline and it is the row's `border-bottom`.
+  //     A `gap` on the plate beside it delivers a two-pixel rule while every
+  //     pair about the border, the radius and the row's corner stays green —
+  //     the single silent failure instrument P2 named twice before lot L4 could
+  //     make it. Read as `rowGap` on the container by `P2-01d` and `P2-03d`.
+  //     The reference declares no gap at all, so the computed value is
+  //     `normal`, not `0px`."
+  //
+  // (3) BYŁO — „Three declarations are invariant across the reference and are
+  //     what makes a list a card: a hairline `--border-subtle` border,
+  //     `--radius-md`, and `overflow: hidden`."
+  //     MA BYĆ: „TWO declarations are invariant … a hairline `--border-subtle`
+  //     border and `--radius-md`. The reference adds `overflow: hidden` to all
+  //     four of them, and this app follows it only where the measurement above
+  //     allows." (Zdanie o niezmienniku było sprzeczne z własnym `Usage` tego
+  //     wzorca od Fazy D: `Usage` wymienia `.meeting-result-list`, który tej
+  //     deklaracji świadomie nie ma.)
+  //
+  // (4) `Usage` rośnie o cztery karty: `today.module.css` (`.rows`,
+  //     `.meetings`), `inbox.module.css` (`.rows`), `calendar.module.css`
+  //     (`.tray`).
   {
     id: "P2-01c",
     lot: "P2",
     position: 1,
     kind: "restyle",
-    title: "and the Today container clips its rows to that radius",
+    title: "and the Today card's corner is cut on the row that meets its head",
     contract:
-      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", zdanie „overflow: hidden on the plate is load-bearing"',
+      ".ui-craft/patterns.md — „Pattern: Settings section card and list plate\", zdanie o przycięciu talerza; przepisanie z niezmiennika na warunek jest KROKIEM MERGE'A tego lotu i tekst stoi w komentarzu nad tą parą, bo `/.ui-craft/` jest gitignorowane",
     prototype: {
       file: "v3/screens/today.css",
       lines: "57-60",
-      value: "`.td-list { overflow: hidden }`",
+      value:
+        "`.td-list { border-radius: var(--radius-md); overflow: hidden }` — prototyp domyka róg PRZYCIĘCIEM i przycina przy tym własny wskaźnik ogniska (zmierzone w prototypie), a ta aplikacja domyka róg wierszem skrajnym, bo wycięcie wskaźnika jest naruszeniem WCAG 2.4.7; precedens `packages/desktop-ui/src/styles.css` (`.meeting-result-list > li:first-child`)",
+    },
+    subject: {
+      // BEZ SPACJI PRZY `>`: diagnostyka `NOT_MEASURED` dzieli selektor po
+      // `\s+` i próbuje każdą część osobno, a samotny `>` nie jest selektorem.
+      selector:
+        '#main-content [role="listbox"]:has([data-planned-row])>li:first-child',
+      why: "the first row's own box, addressed through the container of P2-01a so the two pairs cannot drift apart; `:first-child` resolves to exactly one drawn element whatever the row count, so this subject cannot go ambiguous by growing — unlike a bare `>li`, whose first and last members would hold DIFFERENT radii the moment the fixture draws two rows",
+      app: "packages/desktop-ui/src/today.module.css (.rows > li:first-child — border-start-start-radius)",
+    },
+    read: { property: "borderStartStartRadius" },
+    expect: { kind: "token", token: "--radius-md" },
+    status: "enforced",
+  },
+  // ── PARA, KTÓREJ NIE BYŁO, I KTÓRA ZAMYKA JEDYNE CICHE `greenWrong` TEGO
+  //    PRZYRZĄDU ──────────────────────────────────────────────────────────────
+  // Oba wpisy `NOT_COVERED` przyrządu P2 nazywały tę samą drogę porażki:
+  // „lot L4 może dołożyć wierszowi `border-bottom` i ZOSTAWIĆ `gap: 1px` na
+  // pojemniku, czyli dowieźć separator 2 px zamiast 1 px, przy wszystkich
+  // ośmiu parach P2 zielonych". Sprawdzone przed napisaniem tej pary:
+  // ANI JEDNA para obu map nie czytała `rowGap` ani `columnGap` jako
+  // oczekiwania — jedyne odczyty `columnGap` w repozytorium są w spisie pasma
+  // tytułu, czyli w diagnostyce, nie w asercji.
+  //
+  // `„normal"`, A NIE `„0px"`, I TO JEST ZMIERZONE, NIE ZAŁOŻONE. Sonda
+  // w Chromium: kontener flex BEZ deklaracji `gap` wylicza `rowGap: "normal"`,
+  // a ten sam kontener z `gap: 0` wylicza `"0px"`. Prototyp nie deklaruje na
+  // `.td-list` odstępu ŻADNEGO, więc „normal" jest zapisem jego stanu — ten sam
+  // kształt, co `literal: "none"` przy `L1-01a` i przy suficie P1-04. Lot,
+  // który kiedykolwiek napisze tu `gap: 0`, dowiezie rzecz POPRAWNĄ i musi
+  // przestawić ten literał w tym samym commicie; to jest edycja jednego słowa
+  // i stoi tu napisana, żeby nikt nie odkrywał jej z czerwonego przelotu.
+  {
+    id: "P2-01d",
+    lot: "P2",
+    position: 1,
+    kind: "restyle",
+    title: "and the Today list adds no second gap between its rows",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card", ograniczenie „The chrome belongs to the LIST, not to the section"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "57-66",
+      value:
+        "`.td-list` declares no gap at all; the whole separator is the row's own `border-bottom: 1px solid var(--border-subtle)` on `.td-row`",
     },
     subject: {
       selector: '#main-content [role="listbox"]:has([data-planned-row])',
-      why: "the third declaration of the same one-line rule, and the one that makes the radius VISIBLE: without it the row hover fill (today.module.css:214-216) draws square corners outside a rounded edge, which is the defect the contract names by hand",
-      app: "packages/desktop-ui/src/today.module.css:188-196",
+      why: "the same subject as P2-01a, and read on the CONTAINER because that is where the second hairline would come from: the row's border is one pixel and the list's gap would be another, so the eye gets a two-pixel rule while every pair about the border, the radius and the row's corner stays green",
+      app: "packages/desktop-ui/src/today.module.css (.rows, .meetings — the gap declaration is gone)",
     },
-    read: { property: "overflow" },
-    expect: { kind: "literal", value: "hidden" },
-    status: "pending: LOT L4",
+    read: { property: "rowGap" },
+    expect: { kind: "literal", value: "normal" },
+    status: "enforced",
+  },
+  // ── DRUGA POŁOWA LEKARSTWA NA RÓG, DOPISANA PRZY NAPRAWIE LOTU L4 ─────────
+  // Lekarstwo, którego pilnuje `P2-01c`, to CZTERY deklaracje w DWÓCH regułach.
+  // `P2-01c` czytała jedną z nich i była zielona Z KONSTRUKCJI wobec
+  // skasowania całej reguły `.rows > li:last-child` — inny selektor, inna
+  // własność — a to jest złamanie, które robi dokładnie tę wadę, dla której
+  // lekarstwo istnieje: wypełnienie hover i zaznaczenia ostatniego wiersza
+  // wychodzi kwadratowym rogiem za zaokrągloną dolną krawędź karty.
+  //
+  // JEDNA PARA NA REGUŁĘ, NIE JEDNA NA DEKLARACJĘ. Cztery pary byłyby czterema
+  // odczytami tej samej myśli; dwie wystarczą, żeby skasowanie KTÓREJKOLWIEK
+  // z dwóch reguł zapaliło przelot. Reszta (`border-start-end-radius`,
+  // `border-end-start-radius` — narożniki od strony końca wiersza) zostaje
+  // nieczytana i jest to POWIEDZIANE, nie przemilczane: wpis `NOT_COVERED`
+  // „nothing stops a later lot from clipping the focus ring away".
+  //
+  // FIKSTURA RYSUJE JEDEN WIERSZ, więc `:first-child` i `:last-child` trafiają
+  // dziś w TEN SAM element — para dalej mierzy co innego (dolny-końcowy
+  // narożnik zamiast górnego-początkowego) i dalej pada osobno, bo pada
+  // deklaracja, nie element. Selektor pozostaje jednoznaczny także przy
+  // wielu wierszach: `:last-child` rozwiązuje się do jednego narysowanego
+  // elementu przy każdej liczbie wierszy (pułapka nr 5 przyrządu — dwa
+  // narysowane dopasowania o różnej wartości to awaria, nie werdykt).
+  {
+    id: "P2-01e",
+    lot: "P2",
+    position: 1,
+    kind: "restyle",
+    title: "and the same corner is cut on the row that meets the card's foot",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", ograniczenie „A row of a list is not a card" (przepisanie jak przy P2-01c)',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "57-60",
+      value:
+        "`.td-list { border-radius: var(--radius-md); overflow: hidden }` — prototyp domyka DOLNY róg tym samym przycięciem, co górny; ta aplikacja domyka go ostatnim wierszem, precedens `packages/desktop-ui/src/styles.css` (`.meeting-result-list > li:last-child`)",
+    },
+    subject: {
+      // BEZ SPACJI PRZY `>` — ta sama uwaga, co przy P2-01c: diagnostyka
+      // `NOT_MEASURED` dzieli selektor po `\s+`, a samotny `>` nie jest
+      // selektorem.
+      selector:
+        '#main-content [role="listbox"]:has([data-planned-row])>li:last-child',
+      why: "the last row's own box, addressed through the same container as P2-01a and P2-01c so the three cannot drift apart; this pair exists because deleting the whole `> li:last-child` rule left P2-01c green while the card's foot went square",
+      app: "packages/desktop-ui/src/today.module.css (.rows > li:last-child — border-end-end-radius)",
+    },
+    read: { property: "borderEndEndRadius" },
+    expect: { kind: "token", token: "--radius-md" },
+    status: "enforced",
   },
   // ── P2 · POZYCJA 2 — WIERSZ NIE JEST KARTĄ ────────────────────────────────
   // DRUGA POŁOWA TEZY, I BEZ NIEJ PRZYRZĄD JEST DZIURAWY: pozycja 1 spełnia się
@@ -1640,7 +1882,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: "#main-content [data-planned-row]",
       why: "the declared row attribute, the same one the layout gate's todayPlannedRows floor is anchored to (verify-renderer-layout.mjs:1126-1129); the app puts --radius-md on the ROW",
-      app: "packages/desktop-ui/src/today.module.css:198-208 (.row, .meeting — border-radius: var(--radius-md))",
+      app: "packages/desktop-ui/src/today.module.css (.row, .meeting — the card radius is gone and a border-bottom took its place)",
     },
     // „TEN ELEMENT NIE MA TEJ WŁASNOŚCI" ZAPISUJE SIĘ LITERAŁEM — ustalony
     // kształt tego rejestru, precedens `L1-01a` (`literal: "none"`) i P1-04
@@ -1648,7 +1890,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     // wartość to dokładnie „0px", a nie „none".
     read: { property: "borderRadius" },
     expect: { kind: "literal", value: "0px" },
-    status: "pending: LOT L4",
+    status: "enforced",
   },
 
   // ── LOT L10 FAZY II — FORMATOWANIE DAT ────────────────────────────────────
@@ -1790,7 +2032,7 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
     title: "the row's hairline separator, on Today",
     prototype:
       "v3/screens/today.css:61-65 (`.td-row { border-bottom: 1px solid var(--border-subtle) }`) + `:66` (`.td-row:last-child { border-bottom: 0 }`)",
-    app: "packages/desktop-ui/src/today.module.css:188-196 — lista niesie `gap: 1px`, a wiersz (`:198-208`) nie deklaruje ŻADNEJ krawędzi (wpis 1-2: `border-bottom: 0px`)",
+    app: "packages/desktop-ui/src/today.module.css — od lotu L4 wiersz NIESIE `border-bottom: 1px solid var(--border-subtle)`, a `.rows > li:last-child > .row` je zeruje; niezmierzone zostaje, czy oba te zdania są prawdziwe",
     probe: "[data-planned-row]",
     why:
       "NIE „nie zdążyliśmy”, tylko „fikstura czyni asercję FAŁSZYWĄ”. Harness rysuje DOKŁADNIE " +
@@ -1803,12 +2045,98 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
     exit:
       "drugie zadanie zaplanowane NA DZIŚ w `dev/CollaborationHarness.tsx` — a nie zadanie " +
       "nieplanowane, bo tamto zasila sekcję `approaching`, czyli DRUGĄ listę po jednym wierszu, " +
-      "i niczego nie odblokowuje.",
+      "i niczego nie odblokowuje. OSTRZEŻENIE DLA LOTU, KTÓRY TO ZROBI: od L4 róg karty niesie " +
+      "`<li>`, a `:first-child` i `:last-child` trzymają wtedy RÓŻNE promienie. Para napisana na " +
+      "gołe `>li` (bez `:first-child`) wróci `NOT_MEASURED` przez `distinct.length > 1`, czyli " +
+      "czerwienią, która czyta się jak defekt produktu. P2-01c celuje w `:first-child` właśnie " +
+      "po to i rośnięcia fikstury się nie boi.",
     greenWrong:
-      "Lot L4 może dołożyć wierszowi `border-bottom` i ZOSTAWIĆ `gap: 1px` na pojemniku " +
-      "(`today.module.css:192`), czyli dowieźć separator 2 px zamiast 1 px, przy wszystkich " +
-      "ośmiu parach P2 zielonych. To jest jedyna droga, którą ta poprawka może pojechać źle " +
-      "i nie zostać zauważona.",
+      "Wiersz może dostać `border-bottom` na liście, która ZOSTAŁA z własnym odstępem — czyli " +
+      "separator 2 px zamiast 1 px. Od lotu L4 ta droga NIE JEST już cicha: `P2-01d` czyta " +
+      "`rowGap` pojemnika i pada, gdy odstęp wróci. Bez pomiaru zostaje samo istnienie kreski " +
+      "i jej zniknięcie pod ostatnim wierszem — lista bez ANI JEDNEGO separatora dalej przejdzie " +
+      "tu na zielono.",
+  },
+  {
+    // ── PRZYRZĄD P2, POZYCJA 1 — DWA POZOSTAŁE POJEMNIKI DZISIAJ ─────────────
+    // Rekonesans lotu L4 zmierzył, że żywych pojemników tej rodziny jest SZEŚĆ,
+    // nie trzy: trzy z nich nie rysują się przy dzisiejszej fiksturze, więc
+    // dokument przejścia ich nie zobaczył i plan ich nie policzył. Dwa z tych
+    // trzech są na Dzisiaj i stoją tutaj; trzeci (druga skrzynka) w mapie
+    // trasowanej.
+    lot: "P2",
+    position: 1,
+    scope:
+      "dwa z trzech pojemników Dzisiaj — pas „Approaching deadlines” i lista „In the calendar”",
+    title: "two of the three Today list cards are never drawn, so never judged",
+    prototype:
+      "v3/screens/today.css:57-60 (`.td-list`, użyta przez `today.js` DWA razy — plan i „approaching”) + `:18-21` (`.td-meetings` — ta sama trójka deklaracji)",
+    app: 'packages/desktop-ui/src/TodaySurface.tsx (`<ul className={styles.rows} role="listbox">` dla „Approaching deadlines”, `<ul className={styles.meetings}>` dla „In the calendar”) + today.module.css',
+    probe: "[data-approaching-row]",
+    why:
+      "DWIE RÓŻNE PRZYCZYNY, obie o fiksturze, i obie były prawdą JESZCZE PRZED tym lotem — " +
+      "wpis powstaje dopiero teraz, bo dopiero teraz jest co przeoczyć. (1) Pas „Approaching” " +
+      "bierze `approachingUnplanned(...)`, które ODRZUCA każde zadanie z `startAt`, a jedyne " +
+      "zadanie harnessu je ma; para wróciłaby `NOT_MEASURED`, czyli awarią przyrządu nad " +
+      "poprawnym kodem. (2) Lista „In the calendar” nie ma źródła w migawce — spotkania schodzą " +
+      "przez `client.getMeetingLoop`, a fikstura nie podaje ANI JEDNEGO. " +
+      "DLACZEGO TO NIE JEST „i tak są pokryte regułą sąsiada”: pas „Approaching” dzieli z listą " +
+      "planu klasę `.rows`, więc dziś jego zieleń byłaby przypadkowo prawdziwa, ale lista spotkań " +
+      "od tego lotu ma WŁASNĄ deklarację `overflow` (przycina, gdy `.rows` nie przycinają) — " +
+      "wspólnej reguły już nie ma i argument z sąsiada przestał obowiązywać.",
+    exit:
+      "(1) zadanie BEZ `startAt`, z `dueAt` w horyzoncie, w `dev/CollaborationHarness.tsx` — " +
+      "TA SAMA jedna pozycja fikstury odblokowuje wpis o tacy Kalendarza w mapie trasowanej; " +
+      "(2) co najmniej jedno spotkanie podane przez pętlę kalendarza scenariusza, czyli robota " +
+      "klienta scenariuszowego, nie ekranu.",
+    greenWrong:
+      "Dwie z trzech kart Dzisiaj mogą zostać nieoddane albo oddane inaczej niż trzecia — " +
+      "w szczególności lista spotkań może przestać przycinać albo zacząć przycinać lista planu, " +
+      "co jest regresją WCAG 2.4.7 na pierścieniu ogniska — przy komplecie par P2 zielonych.",
+  },
+  {
+    // ── PRZYRZĄD P2, POZYCJA 1 — ŚWIADOMY ROZJAZD Z PROTOTYPEM, BEZ STRAŻNIKA ─
+    lot: "P2",
+    position: 1,
+    scope: "decyzja o NIEPRZYCINANIU dwóch pojemników tej rodziny",
+    title: "nothing stops a later lot from clipping the focus ring away",
+    prototype:
+      "v3/screens/today.css:57-60 i v3/screens/calendar.css:200-203 — obie reguły deklarują `overflow: hidden`, a ta aplikacja świadomie ich w tym nie naśladuje",
+    app: "packages/desktop-ui/src/today.module.css (`.rows` bez `overflow`) + calendar.module.css (`.tray` bez `overflow`)",
+    probe: '[role="listbox"]:has([data-planned-row])',
+    why:
+      "Rozjazd jest ZMIERZONY, nie przeoczony: pierścień ogniska tej aplikacji jest listą cieni " +
+      "ZEWNĘTRZNYCH (`packages/desktop-ui/src/tokens.css` — `--focus-ring`: 1 px akcentu, 3 px " +
+      "rozrzutu, 14 px rozmycia, malowane regułą `:where(…):focus-visible`), a wiersz obu tych " +
+      "list przylega do pudełka wyściółki pojemnika z luzem 0 px na czterech krawędziach " +
+      "(prawdziwy Tab w Chromium, oba motywy). PROTOTYP NATRAFIŁ NA TO SAMO I PRZYCIĄŁ — " +
+      "pierwsza wersja tego wpisu twierdziła, że „na to nie natrafił, bo maluje ognisko konturem " +
+      "1 px poza pudełkiem (`v3/app.css:36-38`)”, i był to cytat urwany jedną linię przed " +
+      "dowodem przeciwnym. Pełna reguła `v3/app.css:36-43` daje kontur 2 px przy offsecie 1 px " +
+      "ORAZ `box-shadow: 0 0 0 5px var(--accent-quieter)`, wiersze prototypu są ogniskowalne " +
+      "(`v3/screens/today.js:53`, `inbox.js:82`, `calendar.js:101`), a `.td-list` nie ma " +
+      "wyściółki. Zmierzone w samym prototypie (`scratchpad/probe-proto-L4.mjs`, prawdziwy Tab, " +
+      "Chromium 1440×900): `overflow: hidden/hidden`, wyściółka `0px 0px 0px 0px`, luz 0 px na " +
+      "trzech krawędziach, świadek 8 px poza wierszem niewidoczny za krawędzią pojemnika mimo " +
+      "`position: relative` i `z-index` z tej samej reguły. Podstawą rozjazdu jest więc WCAG " +
+      "2.4.7 (wycięcie wymaganego wskaźnika jest naruszeniem przy każdym rozmiarze pierścienia), " +
+      "a nie niewiedza prototypu. Czego BRAKUJE: (1) pary mówiącej „ten pojemnik dalej nie " +
+      "przycina” — para na `overflow` z oczekiwaniem „visible” cytowałaby regułę prototypu " +
+      "mówiącą „hidden”, czyli byłaby parą cytującą jedną rzecz i pilnującą innej, co ten " +
+      "rejestr ma nazwane jako klasę defektu; (2) odczytu dwóch z czterech deklaracji lekarstwa " +
+      "na róg — `P2-01c` czyta `border-start-start-radius` na `> li:first-child`, `P2-01e` czyta " +
+      "`border-end-end-radius` na `> li:last-child`, a `border-start-end-radius` " +
+      "i `border-end-start-radius` nie czyta nikt.",
+    exit:
+      "para czytająca PROSTOKĄT NAMALOWANEGO pierścienia, a nie wyliczony `overflow` — " +
+      "`getBoundingClientRect` nie ma formy dla cienia, więc to jest warstwa w runnerze " +
+      "(zrzut piksela albo zastępczy element mierzalny), czyli lot, a nie poprawka. Ta sama " +
+      "warstwa spłaca wpis `LC1-01` o przyciętej szynie nawigacji.",
+    greenWrong:
+      "Ktokolwiek dopisze `overflow: hidden` do `.rows` albo `.tray` — na przykład wyrównując je " +
+      "„do prototypu” albo do Skrzynki — wytnie pierścień ogniska pierwszego i ostatniego wiersza " +
+      "razem z twardą krawędzią 1 px, czyli zrobi regresję WCAG 2.4.7, a przelot zostanie zielony: " +
+      "P2-01c czyta promień rogu, nie przycięcie.",
   },
 ];
 
@@ -1926,10 +2254,43 @@ export const VISUAL_LANGUAGE_EXPECTED = {
   // oddaje pozycję w tym samym drzewie: para była CZERWONA na kodzie sprzed
   // zmiany (0 elementów wobec 1) i zielona po niej. Pozostałe dwie pozycje
   // briefu (Odnowienia, Biblioteka) są w mapie trasowanej.
-  pairs: 56,
-  enforced: 51,
-  pending: 5,
-  notCovered: 4,
+  // 56 → 57, `enforced` 51 → 56, `pending` 5 → 1 I `notCovered` 4 → 6 PRZY
+  // LOCIE L4 FAZY II, 2026-08-14. Cztery ruchy, jedna dostawa, i żaden z nich
+  // nie jest poluzowaniem:
+  //
+  //   • CZTERY PARY P2 IDĄ NA `enforced`. Chrom karty zszedł z wiersza na
+  //     pojemnik na Dzisiaj, na Skrzynce i na tacy Kalendarza. Kolejność jest
+  //     wymuszona mechanicznie: para `pending`, która pasuje, kładzie przelot
+  //     jako `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`.
+  //   • `P2-01c` JEST PRZEPISANA, NIE ODPUSZCZONA, i pełny powód stoi przy
+  //     niej: czytała `overflow` za prototypem, a lot zmierzył, że przycięcie
+  //     na tej liście wycina pierścień ogniska razem z jego twardą krawędzią
+  //     1 px. Czyta odtąd promień rogu na wierszu skrajnym — lekarstwo lotu R1
+  //     tej samej aplikacji. Oczekiwanie i cytat pokazują znowu na to samo.
+  //   • `P2-01d` JEST NOWA i zamyka jedyne ciche `greenWrong` całego przyrządu:
+  //     separator 2 px złożony z krawędzi wiersza i odstępu pojemnika. Ani
+  //     jedna z 243 par obu map nie czytała dotąd `gap`.
+  //   • `notCovered` ROŚNIE O DWA i oba przyrosty są odmowami Z POMIAREM:
+  //     dwa pojemniki Dzisiaj, których fikstura nie rysuje (a od tego lotu nie
+  //     chroni ich już wspólna reguła CSS), oraz świadomy rozjazd
+  //     z prototypem — dwie listy tej aplikacji NIE przycinają i nic nie
+  //     pilnuje, żeby tak zostało.
+  //
+  // `pending` SCHODZI DO JEDNEGO: zostaje `L1-15a`, świadomie zostawiona przez
+  // lot L1 z powodem zapisanym przy wpisie.
+  //
+  // 57 → 58 I `enforced` 56 → 57 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU L4,
+  // 2026-08-14, I NIE JEST TO NOWA POZYCJA — to DRUGA POŁOWA POZYCJI 1, która
+  // pojechała bez pomiaru. Lekarstwo na róg to cztery deklaracje w dwóch
+  // regułach, a `P2-01c` czytała jedną: skasowanie całej reguły
+  // `.rows > li:last-child` zostawiało przelot ZIELONY (inny selektor, inna
+  // własność) nad kwadratowym rogiem u stopy karty. `P2-01e` czyta drugą
+  // regułę. `positionsWithPairs` się nie rusza — ta sama klasa ruchu, co
+  // 46 → 47 przy naprawie lotu D2.
+  pairs: 58,
+  enforced: 57,
+  pending: 1,
+  notCovered: 6,
   lots: {
     10: {
       // Trzy pozycje briefu, po jednej na wpis rejestru: 1-7 (pasmo Dzisiaj),
@@ -2870,7 +3231,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "tasks", openRecord: "[data-task-row]" },
     subject: {
       selector: '[data-record-kind="task"] #surface-title',
-      why: "same shape as L4-01a (TaskRecordScreen.tsx:488); the app gives it --text-2xl",
+      why: "same shape as L4-01a (TaskRecordScreen.tsx:489); the app gives it --text-2xl",
       app: "packages/desktop-ui/src/record/task-record.module.css:23-38",
     },
     read: { property: "fontSize" },
@@ -2926,8 +3287,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "tasks", openRecord: "[data-task-row]" },
     subject: {
       selector: '[data-record-kind="task"] [class*="_plan_"]',
-      why: "the app renders one <p> with a middle dot (TaskRecordScreen.tsx:539-552), so display computes block",
-      app: "packages/desktop-ui/src/record/task-record.module.css:138-148",
+      why: "the app renders one <p> with a middle dot (TaskRecordScreen.tsx:578-591), so display computes block",
+      app: "packages/desktop-ui/src/record/task-record.module.css:173-183",
     },
     read: { property: "display" },
     expect: { kind: "literal", value: "grid" },
@@ -2950,11 +3311,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '[data-record-kind="task"] [class*="_why_"]',
       why: "the app draws the signal as a bare span with no box at all",
-      app: "packages/desktop-ui/src/record/task-record.module.css:87-91",
+      app: "packages/desktop-ui/src/record/task-record.module.css:122-126",
     },
     read: { property: "backgroundColor" },
     expect: { kind: "not", value: "rgba(0, 0, 0, 0)" },
-    risk: 'renderuje się WYŁĄCZNIE, gdy `operationalState !== "actionable"` (TaskRecordScreen.tsx:507); jeśli fikstura otwiera zadanie zwyczajne, para wróci NOT_MEASURED i to jest fakt o fiksturze, nie o selektorze',
+    risk: 'renderuje się WYŁĄCZNIE, gdy `operationalState !== "actionable"` (TaskRecordScreen.tsx:508); jeśli fikstura otwiera zadanie zwyczajne, para wróci NOT_MEASURED i to jest fakt o fiksturze, nie o selektorze',
     status: "enforced",
   },
   {
@@ -3083,7 +3444,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '[data-record-kind="task"] [class*="_docHeading_"]',
       why: "the task screen gives its micro-headings --text-xs where the family uses --text-2xs; the TOKEN --tracking-wide is deliberately not the subject (it has consumers outside this family)",
-      app: "packages/desktop-ui/src/record/task-record.module.css:214-226",
+      app: "packages/desktop-ui/src/record/task-record.module.css:279-291",
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-2xs" },
@@ -3236,18 +3597,18 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '[data-record-kind="task"] [class*="_list_"]',
       why: "the app draws a bare flex column with no border",
-      app: "packages/desktop-ui/src/record/task-record.module.css:271-291",
+      app: "packages/desktop-ui/src/record/task-record.module.css:357-390",
     },
     read: { property: "borderTopWidth" },
     expect: { kind: "literal", value: "1px" },
     // ŚLEPOTA POTWIERDZONA I WYCENIONA. `.list` nie jest pojemnikiem, który
-    // rysuje się pusty: `TaskRecordScreen.tsx:647` montuje go dopiero przy
-    // niepustym `children`, a `:682` dopiero gdy istnieje jakakolwiek zależność
+    // rysuje się pusty: `TaskRecordScreen.tsx:710` montuje go dopiero przy
+    // niepustym `children`, a `:745` dopiero gdy istnieje jakakolwiek zależność
     // — w obu pustych przypadkach na ekran idzie `<p class="note">`. JEDYNE
     // zadanie harnessu przeglądarkowego (`CollaborationHarness.tsx`, odczyt
     // `work.overview`) nie ma ani rodzica, ani jednej krawędzi zależności, więc
     // pojemnik nie powstaje ANI RAZU. To jest ta sama pustka, którą zmierzył
-    // i opisał `task-record.module.css:302-310`.
+    // i opisał `task-record.module.css:401-409`.
     //
     // POPRAWKA ADRESU, I NIE JEST KOSMETYCZNA. Do tej rundy oba te zdania
     // powoływały się na `harness-snapshot.ts:112-163` („cztery zadania"). Ten
@@ -3346,7 +3707,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '[data-record-kind="task"] [class*="_prose_"]',
       why: "the task sheet pins 68ch in three places while the rest of the family uses the token",
-      app: "packages/desktop-ui/src/record/task-record.module.css:241",
+      app: "packages/desktop-ui/src/record/task-record.module.css:306",
     },
     read: { property: "maxWidth" },
     expect: { kind: "token", token: "--surface-read" },
@@ -7206,7 +7567,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '#main-content [data-record-kind="task"]',
       why: "the record screen is the sole child of the tasks scroll box once a row is opened, so it wears the same `.surface-scroll > *` clamp as every list body. Measured 2026-08-13, both themes — ONE rendered element, maxWidth 1152px, i.e. the record reads NARROWER than the reference by 20 rem",
-      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:480, klamra styles.css:6184-6188",
+      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:481, klamra styles.css:6184-6188",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 92 },
@@ -7282,11 +7643,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '#main-content [role="list"]:has([data-inbox-row])',
       why: "role plus the declared row attribute, the same definition as P2-01a; the capture mailbox is empty in this fixture and renders a <p> instead of a <ul> (InboxSurface.tsx:361-365), and both mailboxes would carry the identical `.rows` rule anyway, so this subject cannot go ambiguous by growing",
-      app: "packages/desktop-ui/src/InboxSurface.tsx:340-344, inbox.module.css:63-70 (.rows — declares gap, margin, padding and list-style, and no border at all)",
+      app: 'packages/desktop-ui/src/InboxSurface.tsx (the <ul role="list"> of the work mailbox), inbox.module.css (.rows — the card rule since lot L4; before it the rule declared gap, margin, padding and list-style, and no border at all)',
     },
     read: { property: "borderTopWidth" },
     expect: { kind: "literal", value: "1px" },
-    status: "pending: LOT L4",
+    status: "enforced",
   },
   {
     id: "P2-03b",
@@ -7305,11 +7666,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '#main-content [role="list"]:has([data-inbox-row])',
       why: "the same subject as P2-03a; read apart from the border for the reason given there, and against the TOKEN rather than a number for the reason given at P2-01b",
-      app: "packages/desktop-ui/src/inbox.module.css:63-70",
+      app: "packages/desktop-ui/src/inbox.module.css (.rows)",
     },
     read: { property: "borderRadius" },
     expect: { kind: "token", token: "--radius-md" },
-    status: "pending: LOT L4",
+    status: "enforced",
   },
   {
     id: "P2-03c",
@@ -7328,11 +7689,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '#main-content [role="list"]:has([data-inbox-row])',
       why: "the Inbox row is the one place in this family where the contract's sentence is literal: the selected row draws a rail with ::before at its own left edge (v3/screens/inbox.css:45-47), which is exactly the square corner outside a rounded edge the constraint names",
-      app: "packages/desktop-ui/src/inbox.module.css:63-70",
+      app: "packages/desktop-ui/src/inbox.module.css (.rows)",
     },
     read: { property: "overflow" },
     expect: { kind: "literal", value: "hidden" },
-    status: "pending: LOT L4",
+    status: "enforced",
   },
   {
     id: "P2-04",
@@ -7352,11 +7713,43 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: "#main-content [data-inbox-row]",
       why: "the declared row attribute, written on the <li> itself (InboxSurface.tsx:136-146); the radius the app puts here is the SAME --radius-md the container is missing, which is the whole sentence of this instrument in one screen",
-      app: "packages/desktop-ui/src/inbox.module.css:72-79 (.row — border-radius: var(--radius-md))",
+      app: "packages/desktop-ui/src/inbox.module.css (.row — the card radius is gone and a border-bottom took its place)",
     },
     read: { property: "borderRadius" },
     expect: { kind: "literal", value: "0px" },
-    status: "pending: LOT L4",
+    status: "enforced",
+  },
+  // BLIŹNIAK `P2-01d` NA DRUGIM EKRANIE RODZINY, i stoi tu z tego samego
+  // powodu, dla którego stoi tam: oba wpisy `NOT_COVERED` przyrządu P2
+  // nazywały separator 2 px (krawędź wiersza plus odstęp pojemnika) jako
+  // JEDYNĄ cichą drogę porażki lotu L4, a przed tym lotem ani jedna para obu
+  // map nie czytała `gap`. Pełne uzasadnienie odczytu i wartości „normal”
+  // (zmierzonej, nie założonej) stoi RAZ, przy `P2-01d` w mapie powłoki;
+  // powielanie go tutaj byłoby tym samym kształtem przepisanym w dwóch
+  // miejscach, co ten rejestr ma nazwane jako klasę defektu.
+  {
+    id: "P2-03d",
+    lot: "P2",
+    position: 3,
+    kind: "restyle",
+    title: "and the Inbox list adds no second gap between its rows",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", ograniczenie „A row of a list is not a card"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "27-42",
+      value:
+        "`.ib-list` declares no gap at all; the whole separator is `border-bottom: 1px solid var(--border-subtle)` on `.ib-row`",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector: '#main-content [role="list"]:has([data-inbox-row])',
+      why: "the same subject as P2-03a, read on the CONTAINER because that is where a second hairline would come from; the reading is the same one P2-01d makes on Today, so the two screens of this family cannot drift apart on the one thing no pair used to see",
+      app: "packages/desktop-ui/src/inbox.module.css (.rows — the gap declaration is gone)",
+    },
+    read: { property: "rowGap" },
+    expect: { kind: "literal", value: "normal" },
+    status: "enforced",
   },
 
   // ══ PRZYRZĄD P4 FAZY I — KONTROLKA, KTÓRĄ RYSUJE SYSTEM, NA POWIERZCHNI ═══
@@ -7905,6 +8298,239 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "count", equals: 1 },
     status: "enforced",
   },
+  // ══ FAZA II, LOT L9 — EKRAN REKORDU ══════════════════════════════════════
+  // Wpisy 12-1, 12-4, 12-5 dokumentu przejścia. Trzy pozycje z parą; 12-6,
+  // 12-7 i 12-8 stoją bez pary i z powodem — patrz `lots.L9` niżej i raport
+  // lotu.
+  //
+  // KLUCZ LOTU JEST NAPISEM `"L9"`, a nie liczbą 9, i to nie jest ozdoba:
+  // numeryczne `lot: 9` należy do poprzedniej fali, a `auditRoutedMap` grupuje
+  // pozycje po `String(pair.lot)`. Precedens: `"P1"`…`"P5"` z Fazy I.
+  //
+  // WSZYSTKIE SZEŚĆ SĄ W MAPIE TRASOWANEJ, BO REKORD LEŻY ZA NAWIGACJĄ.
+  // Przelot powłoki robi jedno wejście i zero kliknięć, więc para nad
+  // `[data-record-kind]` wróciłaby stamtąd jako `NOT_MEASURED`, czyli awaria
+  // przyrządu udająca werdykt.
+  //
+  // ── L9 · POZYCJA 1 (wpis 12-4) — RZĄD METADANYCH JEST RZĘDEM PIGUŁEK ──────
+  {
+    id: "L9-01a",
+    lot: "L9",
+    position: 1,
+    kind: "restyle",
+    title: "the task record's status stands in a pill, not as bare text",
+    // KONTRAKT WSKAZUJE ISTNIEJĄCĄ SEKCJĘ, i to jest poprawka po przeglądzie
+    // adwersarialnym: stało tu „Pattern: Metadata chip row", nagłówek, którego
+    // w `.ui-craft/patterns.md` NIE MA (plik niesie czternaście sekcji
+    // `## Pattern:` i tej wśród nich nie ma). Powołanie się na jedno z dwóch
+    // źródeł jest odrzuceniem — a cytat na sekcję nieistniejącą jest gorszy niż
+    // brak cytatu, bo czyta się jak spełniona reguła. Sekcją, która NAPRAWDĘ
+    // rządzi krawędzią i promieniem plakietki, jest ta sama, którą cytuje
+    // `D4-02` nad tym samym zdaniem na rekordzie PROJEKTU.
+    contract:
+      ".ui-craft/tokens.md (Shape, motion, depth — stan rekordu nosi tę samą krawędź, co reszta rzędu plakietek)",
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "565",
+      value:
+        '`<button class="chip" data-act="status-menu"><span class="sdot …"></span>${st.label}</button>` — status JEST `.chip`, czyli `border: 1px solid var(--border-default)` z `v3/app.css:356-362`, tym samym obiektem co plakietka projektu i organizacji obok',
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector:
+        '[data-record-kind="task"] [class*="_head_"] [class*="_state_"]',
+      why: 'JEDEN narysowany element: `styles.state` i `styles.state_<stan>` siedzą na tym samym `<span>` (TaskRecordScreen.tsx:498-510), więc `[class*="_state_"]` nie ma jak trafić w dwa pudełka o różnej wartości (pułapka nr 5). Zawężone do `_head_`, bo panel operacji stoi obok w tym samym `<header>` — jego arkusz nie deklaruje `.state`, ale zawężenie jest tańsze niż sprawdzanie tego przy każdej przyszłej zmianie',
+      app: "packages/desktop-ui/src/record/task-record.module.css (.state)",
+    },
+    read: { property: "borderTopWidth" },
+    // KRAWĘDŹ, A NIE TŁO: `--surface-raised` bywa w motywie jasnym nie do
+    // odróżnienia od kanwy, a pytanie tej pary brzmi „czy to jest pudełko",
+    // nie „jakiego jest koloru". Wartość jest literałem, bo `1px` to nie
+    // token — prototyp pisze ją wprost w regule `.chip`.
+    expect: { kind: "literal", value: "1px" },
+    status: "enforced",
+  },
+  {
+    id: "L9-01b",
+    lot: "L9",
+    position: 1,
+    kind: "restructure",
+    title: "and nothing elastic stands between the pills any more",
+    // Ta sama poprawka co przy `L9-01a`: sekcja „Pattern: Metadata chip row"
+    // nie istnieje. Rytm rzędu — jeden odstęp ze skali zamiast rozpychacza —
+    // należy do „Spacing and density", którą cytuje nad rekordem `L4-12`.
+    contract:
+      ".ui-craft/tokens.md (Spacing and density — rząd plakietek biegnie od lewej z jednym odstępem; rozpychacz należy do pasma, nie do rzędu)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "653",
+      value:
+        "`.rec-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap }` — ZERO rozpychaczy; cztery pigułki `v3/screens/record.js:564-570` stoją obok siebie. Rekord PROJEKTU ma rozpychacz i go zachowuje (`v3/screens/record.css:31`), więc to jest zdanie o rekordzie zadania, nie o rodzinie",
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '[data-record-kind="task"] [class*="_head_"] [class*="_gap_"]',
+      why: "przed tym lotem `<span className={styles.gap} />` z `flex: 1 1 auto` stał między stanem a plakietką projektu i odrywał ją do prawej krawędzi kolumny czytelnej (przejście, 1662 px: x ≈ 1473). `count equals 0` jest tu jedynym kształtem, który nie kłamie: para czytająca `flexGrow` po skasowaniu elementu wróciłaby NOT_MEASURED, czyli jako awaria przyrządu, a nie jako dostawa",
+      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx (metadata row), task-record.module.css",
+    },
+    read: { property: null },
+    // `count` robi `continue` PRZED strażnikiem „zero dopasowań"
+    // (`verify-renderer-layout.mjs:4634-4651`), więc zero jest tu WERDYKTEM.
+    // Oczekiwanie nieobecności liczy WSZYSTKIE dopasowania, także schowane
+    // (`:4213-4217`) — rozpychacz przeniesiony pod `display: none` nie
+    // przeszedłby jako skasowany.
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "L9-01c",
+    lot: "L9",
+    position: 1,
+    kind: "restyle",
+    title: "and the row's chips are soft rectangles, like the project record's",
+    contract: ".ui-craft/tokens.md (Shape, motion, depth)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "356-362",
+      value:
+        "`.chip { border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--surface-raised) }`",
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '[data-record-kind="task"] [class*="_chipDashed_"]',
+      why: "ten sam kształt, co para `D4-02` asertuje na rekordzie PROJEKTU, przepisany w drugim arkuszu i tam rozjechany na `--radius-full` — `restated-shape-drift`, nazwana w tym repozytorium klasa defektu. Podmiotem jest plakietka pustego stanu, bo to jedyna, którą ta fikstura rysuje (`work.overview` niesie `projectIds: []`), i jest dokładnie jedna",
+      app: "packages/desktop-ui/src/record/task-record.module.css (.chip, .chipDashed)",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-sm" },
+    status: "enforced",
+  },
+  {
+    // DOPISANA PRZY NAPRAWIE PO PRZEGLĄDZIE ADWERSARIALNYM L9. Raport lotu
+    // wypisał glif na plakietce projektu jako NIE ZMIERZONY „bo fikstura nie ma
+    // na czym go postawić" — i to było NIEPRAWDĄ, obaloną przez własny pomiar
+    // tego samego lotu: `L9-01c` mierzy `[class*="_chipDashed_"]` i odczytała na
+    // nim `6px`, czyli plakietka pustego stanu SIĘ RYSUJE. Glif siedzi dokładnie
+    // w niej. Powód „fikstura nie ma na czym stanąć" jest prawdziwy wyłącznie
+    // dla plakietki WYKONAWCY (`work.overview` nie niesie `assignment`) i dla
+    // glifu na plakietce PRAWDZIWEGO projektu (`projectIds: []`).
+    //
+    // ETYKIETA „NIE ZMIERZONE" JEST NOŚNA (reguła 9 przeczytana w drugą stronę):
+    // postawiona nad rzeczą mierzalną, zwalnia ją z dowodu na zawsze. Glif mógł
+    // zniknąć z tej gałęzi, a bramka zostałaby zielona.
+    id: "L9-01d",
+    lot: "L9",
+    position: 1,
+    kind: "restyle",
+    title: "and the empty project pill wears the row's glyph too",
+    contract:
+      ".ui-craft/tokens.md (Component layer — „a glyph's size is a statement about WHERE it stands\"; glif stoi w treści rekordu, więc jest jej częścią, nie ozdobą chromu)",
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "567-568",
+      value:
+        '`<button class="chip" …>${icon("project")}${esc(p.title)}</button>` i `${icon("org")}${esc(o.name)}` — KAŻDA plakietka rzędu `.rec-meta` otwiera się glifem, a `v3/app.css:364` daje mu własny stopień (`.chip svg { width: 0.75rem; height: 0.75rem; opacity: 0.7 }`)',
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '[data-record-kind="task"] [class*="_chipDashed_"] svg',
+      why: 'gałąź pustego stanu jest JEDYNĄ, którą ta fikstura rysuje, i jest to ta sama gałąź, na której `L9-01c` odczytała promień — czyli podmiot jest dowiedziony żywy przez sąsiednią parę, a nie założony. `atLeast: 1`, a nie `equals 1`: zdaniem jest „plakietka nosi glif", a nie spis ludności rzędu — drugi glif dołożony kiedyś obok nie jest złamaniem tej reguły. `atLeast` czyta liczbę NARYSOWANYCH (`verify-renderer-layout.mjs:4216-4218`), więc `<svg>` schowany albo o zerowej powierzchni nie zaliczy się jako obecny',
+      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx (gałąź `taskProjects.length === 0`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+  // ── L9 · POZYCJA 2 (wpis 12-5) — PANEL PLAN/DEADLINE PRZESTAJE BYĆ MARTWY ──
+  // DWIE Z PIĘCIU CZĘŚCI KOMÓRKI PROTOTYPU, i tylko na jedną z nich da się
+  // postawić parę. Druga — wiersz autorstwa przeniesiony DO komórki — jest
+  // oddana w kodzie i NIEMIERZALNA w tej fiksturze: rekord czyta zadanie
+  // z `work.overview`, a harness nie kładzie tam `plannedBy` (jest wyłącznie
+  // na kopii z `task.list`, `dev/CollaborationHarness.tsx:433-437`). Zasianie
+  // go NIE JEST darmowe — `TaskBoardLayout.tsx:152` rysuje wtedy etykietę
+  // planisty na KAŻDEJ karcie tablicy, czyli przestawia inny ekran, którego
+  // ten lot nie mierzy. Wypisane w `NOT_COVERED` z warunkiem wyjścia.
+  {
+    id: "L9-02a",
+    lot: "L9",
+    position: 2,
+    kind: "restyle",
+    title: "each half of the plan panel names its kind with a glyph",
+    // Trzecia poprawka tej samej zmyślonej nazwy. Glif wewnątrz TREŚCI rekordu
+    // (a nie chromu) jest przedmiotem akapitu „A glyph's size is a statement
+    // about WHERE it stands" w warstwie komponentów kontraktu — tego samego,
+    // z którego wyszły pary `D9-01a`/`D9-01b`.
+    contract:
+      ".ui-craft/tokens.md (Component layer — „a glyph's size is a statement about WHERE it stands\"; mikroetykieta nosi ten sam rysunek, co rzecz, którą nazywa)",
+    prototype: {
+      file: "v3/screens/record.css",
+      lines: "224-229",
+      value:
+        '`.rc-plan-k { display: inline-flex; align-items: center; gap: 0.3125rem; text-transform: uppercase }` + `.rc-plan-k svg { width: 0.75rem; height: 0.75rem }`, wypełnione w `v3/screens/record.js:477` (`icon("today")Plan`) i `:489` (`icon("flag")Deadline`)',
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '[data-record-kind="task"] [class*="_planKey_"] svg',
+      why: "obie komórki rysują się BEZWARUNKOWO (TaskRecordScreen.tsx — brak gałęzi wokół `.plan`), więc `atLeast: 2` pyta o obie połowy naraz i nie da się go zaspokoić jedną. Liczba, a nie rozmiar: rozmiar glifu jest już pilnowany globalną regułą `svg` powłoki, a tego, że glif W OGÓLE STOI, nie pilnowało nic",
+      app: "packages/desktop-ui/src/record/task-record.module.css (.planKey svg)",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 2 },
+    status: "enforced",
+  },
+  // ── L9 · POZYCJA 3 (wpis 12-1) — TA SAMA TREŚĆ NIE STOI NA EKRANIE DWA RAZY ─
+  // OBIE PARY SĄ `pending` I OBIE SĄ DZIŚ CZERWONE, i to jest CAŁY produkt tej
+  // pozycji w tym locie. Wpis 12-1 czyta się jak usterka i nią jest, ale jego
+  // lekarstwo — zamknięcie panelu podglądu przy otwartym rekordzie — odbiera
+  // rekordowi zadania pięć zdolności, których on nie ma u siebie: edytor
+  // tytułu/kontekstu/następnego kroku (`RealApp.tsx:4080-4110`), załączniki,
+  // przypisanie, rezerwację w kalendarzu i usunięcie. Nagłówek
+  // `record/TaskRecordScreen.tsx:59-64` deklaruje to wprost, a sam ekran
+  // odsyła tam zdaniem w treści („The inspector beside this record is where it
+  // is written"). To jest DECYZJA FUNKCJONALNA, nie farba.
+  //
+  // ŻE TO JEST DO ZROBIENIA, WIDAĆ Z TEGO SAMEGO WYRAŻENIA. Trzecie ramię
+  // rekordowe `inspectorDetailOpen` jest już ubezpieczone: `projectFullView`
+  // (`RealApp.tsx:1362-1364`) wyłącza podgląd nad rekordem projektu — i tamten
+  // ekran przyjął operacje inspektora slotami (`ProjectRecordScreenProps
+  // .actions`, `.outcomeEditor`, „passed in rather than rebuilt so the
+  // operations move with the screen instead of disappearing with it"). Czyli
+  // precedens jest CZYSTY i pokazuje cenę: najpierw przenieś operacje, potem
+  // zamknij panel.
+  {
+    id: "L9-03a",
+    lot: "L9",
+    position: 3,
+    kind: "restructure",
+    title: "the preview panel closes when the task record takes the screen",
+    // „Pattern: Record screen" NIE ISTNIEJE w kontrakcie. Sekcją, która mówi,
+    // co stoi OBOK kolumny czytelnej rekordu, jest „Pattern: Record body and
+    // its rail": kolumna czytelna niosąca wszystko, co o rekordzie napisano,
+    // i przy niej WĄSKA SZYNA WYJŚĆ z włoskową krawędzią — dwie kolumny w jednej
+    // siatce, i nic trzeciego.
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Record body and its rail" (obok kolumny czytelnej stoi wąska szyna WYJŚĆ, nie druga kopia treści)',
+    prototype: {
+      file: "v3/screens/record.js",
+      lines: "222-226",
+      value:
+        '`rcShell` — `<div class="scroller"><div class="record"><div class="rc-shell"><div class="rc-main">…` — JEDNA kolumna, zero paneli obok; prototyp nie ma na rekordzie panelu podglądu w ogóle',
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: "aside.inspector.open",
+      why: 'klasa `open` jest dokładana WYŁĄCZNIE przy `inspectorDetailOpen` (RealApp.tsx:3976), więc podmiot jest dosłownie zdaniem „panel podglądu jest otwarty". Mierzony NA PRZYSTANKU z otwartym rekordem zadania — poza nim to samo zdanie jest o czymś innym i nie jest wadą. Efekt `RealApp.tsx:697-699` zapala `selectedTaskId` bezwarunkowo z kontekstu, więc otwarcie rekordu ZAWSZE zapala podgląd tego samego zadania',
+      app: "packages/desktop-ui/src/RealApp.tsx:1365-1373 (inspectorDetailOpen — ramię `selectedTask` bez strażnika)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    // STATUS JEST DOSŁOWNIE „pending: LOT L9" I NIC WIĘCEJ. Pierwsza wersja
+    // dopisywała za nim „— decyzja funkcjonalna Kacpra" i przelot rzucił
+    // `ROUTED_UNKNOWN_STATUS` na obu motywach: ten napis JEST danymi, po
+    // których pass rozstrzyga koszt pomiaru, a nie miejscem na notatkę.
+    // Powód stoi w komentarzu wyżej, gdzie jest czytany przez ludzi.
+    status: "pending: LOT L9",
+  },
 ];
 
 /**
@@ -7912,6 +8538,79 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
  * lotom, GDZIE nie ma dowodu, i mówi to ZANIM lot odda robotę.
  */
 export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
+  {
+    // DRUGIE ŻYWE WYSTĄPIENIE WPISU 12-1, ZMIERZONE I ZDJĘTE W TYM SAMYM
+    // PRZELOCIE — i to jest wpis o PRZELOCIE, nie o produkcie.
+    //
+    // Recon tego lotu przeczytał w kodzie, że rekord SZANSY zostawia panel
+    // podglądu otwarty tak samo jak rekord zadania: `onClick` karty woła
+    // `onSelectRecord` → `setSelectedStrategicId` (`pipeline/PipelineSurface
+    // .tsx:326`, `RealApp.tsx:2478`), a efekt czyszczący tę wartość
+    // (`RealApp.tsx:700-708`) jest warunkowany `taskId || projectId ||
+    // organizationId`, których kontekst szansy nie niesie
+    // (`client/shell-navigation.ts:544-552`). Para `L9-03b` została napisana
+    // dokładnie na to.
+    //
+    // WRÓCIŁA `MATCH` NA OBU MOTYWACH — `aside.inspector.open` liczy tam ZERO.
+    // Przyczyna nie jest w produkcie: krok trasy otwierający rekord wysyła
+    // WYŁĄCZNIE `new MouseEvent("dblclick")` (`verify-renderer-layout.mjs:7040`),
+    // bez ani jednego `click`, więc `onClick` karty nigdy nie biegnie i nic nie
+    // zaznacza. Rekord ZADANIA zapala podgląd inną drogą — efektem z
+    // `activeContext.taskId` (`RealApp.tsx:697-699`) — i dlatego TAM ta sama
+    // para jest czerwona.
+    //
+    // Para została ZDJĘTA, a nie zostawiona zieloną: `enforced` nad zerem,
+    // którego przyczyną jest brak kliknięcia, to jest dokładnie „pusta
+    // fikstura chroni fałszywą asercję" — zdanie prawdziwe o przelocie
+    // i nieprawdziwe o produkcie.
+    //
+    // WARUNEK WYJŚCIA: krok trasy, który przed otwarciem rekordu ZAZNACZA
+    // wiersz/kartę tym samym gestem co człowiek (`click`, potem `dblclick`).
+    // To jest przebudowa przelotu, nie pozycja ekranowa — i ta sama przebudowa
+    // odblokowuje wpis `D4` o polu edycji komentarza, wypisany niżej.
+    lot: "L9",
+    position: 3,
+    scope: "rekord szansy — drugie wystąpienie duplikatu treści",
+    title: "the deal record's preview state is unreachable by this walk",
+    prototype:
+      "v3/screens/record.js:222-226 (`rcShell` — jedna kolumna, zero paneli obok, na każdym rodzaju rekordu)",
+    app: "packages/desktop-ui/src/RealApp.tsx:1365-1373 (ramię `selectedStrategicRecord` bez strażnika)",
+    why:
+      "Krok `openRecord` wysyła sam `dblclick`, więc `onClick` karty lejka nigdy nie biegnie i nic nie zaznacza; " +
+      "panel podglądu jest przy tym przystanku zamknięty Z POWODU PRZELOTU, nie z powodu strażnika w kodzie. " +
+      "Para nad tym stanem byłaby zielona nad żywym rozjazdem — zmierzone 2026-08-14, oba motywy.",
+  },
+  {
+    // DRUGA POŁOWA POZYCJI 2 LOTU L9, ODDANA W KODZIE I NIEMIERZALNA W TEJ
+    // FIKSTURZE. Prototyp trzyma wiersz autorstwa WEWNĄTRZ komórki planu
+    // (`.rc-plan-by` w `.rc-plan-cell`), aplikacja trzymała go pod całym
+    // panelem; lot go przeniósł. Żadna para tego nie potwierdzi, bo element
+    // nigdy się w harnessie nie rysuje.
+    //
+    // I TO NIE JEST „ZA TRUDNE DO ZMIERZENIA", TYLKO „NIE MA CZEGO MIERZYĆ" —
+    // dokładnie ta klasa, którą ten plik zbiera od fal. Rekord czyta zadanie
+    // z `work.overview`, a harness kładzie `plannedBy` WYŁĄCZNIE na kopii
+    // z `task.list` (`dev/CollaborationHarness.tsx:433-437`), żeby zapalić
+    // plakietkę autorstwa na Dzisiaj.
+    //
+    // WARUNEK WYJŚCIA I JEGO CENA, POLICZONA PRZED ZOSTAWIENIEM TEGO WPISU:
+    // dopisać `plannedBy` do zadania w `work.overview`. Kosztuje to drugi
+    // ekran — `tasks/TaskBoardLayout.tsx:152` rysuje wtedy etykietę planisty
+    // na KAŻDEJ karcie tablicy, czyli przestawia przystanek `tasks:board`,
+    // którego ten lot nie mierzy i którego nie miał ruszać. Lot, który weźmie
+    // tę fiksturę, bierze razem z nią tamten przystanek.
+    lot: "L9",
+    position: 2,
+    scope: "wiersz autorstwa planu — przeniesiony do komórki, nierysowany",
+    title: "the plan cell's authorship line is drawn by no fixture state",
+    prototype:
+      "v3/screens/record.css:235-240 + v3/screens/record.js:481-482 (`.rc-plan-by` WEWNĄTRZ `.rc-plan-cell`)",
+    app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx (plan cell, `planned`), task-record.module.css (.authorship)",
+    why:
+      "`plannedSentence` zwraca `undefined`, dopóki zadanie nie niesie `plannedBy`, a zadanie z `work.overview` " +
+      "w tym harnessie go nie niesie. Element nie wchodzi do DOM-u, więc para nad nim wróciłaby NOT_MEASURED — " +
+      "awaria przyrządu, nie werdykt. Dowodem jest tu źródło, nie piksel.",
+  },
   {
     // POŁOWA WPISU #61, WYPISANA ZAMIAST ZAMKNIĘTA DEKLARACJĄ. `resize: none`
     // stoi dziś na OBU polach komentarza — na `.composerText` (pisanie nowego,
@@ -8234,7 +8933,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     title: "the row's hairline separator, on Inbox",
     prototype:
       "v3/screens/inbox.css:34-41 (`.ib-row { border-bottom: 1px solid var(--border-subtle) }`) + `:42` (`.ib-row:last-child { border-bottom: 0 }`)",
-    app: "packages/desktop-ui/src/inbox.module.css:63-70 (`gap: 1px` na liście) + `:72-79` (zero deklaracji krawędzi na wierszu)",
+    app: "packages/desktop-ui/src/inbox.module.css — od lotu L4 wiersz niesie `border-bottom`, a `.row:last-child` je zeruje; niezmierzone zostaje, czy oba te zdania są prawdziwe",
     why:
       "Fikstura czyni asercję FAŁSZYWĄ, nie „niewygodną”. `attention.inbox` harnessu niesie DOKŁADNIE " +
       'JEDNĄ pozycję (`dev/CollaborationHarness.tsx:859-876`, `unreadCount: 1`, `destination.kind: "task"`, ' +
@@ -8245,8 +8944,38 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "druga pozycja w `attention.inbox` fikstury, w TEJ SAMEJ skrzynce — czyli z `destination.kind` " +
       "innym niż `capture`. Pozycja przechwytu utworzy DRUGĄ listę po jednym wierszu i niczego nie odblokuje.",
     greenWrong:
-      "To samo, co przy bliźniaku z Dzisiaj: separator 2 px złożony z `gap: 1px` na pojemniku " +
-      "i `border-bottom: 1px` na wierszu przechodzi z kompletem par P2 na zielono.",
+      "Lista bez ANI JEDNEGO separatora dalej przejdzie tu na zielono. Druga połowa tej " +
+      "porażki — separator 2 px złożony z odstępu pojemnika i krawędzi wiersza — od lotu L4 " +
+      "cicha NIE JEST: czyta ją `P2-03d` (`rowGap` pojemnika), tak samo jak `P2-01d` na Dzisiaj.",
+  },
+  {
+    // ── PRZYRZĄD P2, POZYCJA 3 — DRUGA SKRZYNKA TEGO EKRANU ──────────────────
+    // Trzeci z sześciu żywych pojemników tej rodziny, których rekonesans lotu
+    // L4 naliczył dwa razy więcej niż dokument przejścia. Dwa pozostałe
+    // niemierzone są na Dzisiaj i stoją w `VISUAL_LANGUAGE_NOT_COVERED`.
+    lot: "P2",
+    position: 3,
+    scope:
+      "druga skrzynka tego ekranu — pojemnik „Didn't make it into the system”",
+    title: "the capture mailbox's list card is never drawn, so never judged",
+    prototype:
+      "v3/screens/inbox.css:27-30 (`.ib-list`, użyta przez `inbox.js` DWA razy — wpis 3-1 dokumentu przejścia mówi wprost „dwie karty `div.ib-list`”)",
+    app: 'packages/desktop-ui/src/InboxSurface.tsx (drugie `<ul className={styles.rows} role="list">`, sekcja `data-inbox-section="capture"`) + inbox.module.css',
+    why:
+      "Fikstura, nie brak przystanku, i to jest zmierzone sondą na tym przystanku: `attention.inbox` " +
+      "harnessu niesie DOKŁADNIE JEDNĄ pozycję, a jej `destination.kind` to „task”, czyli skrzynka " +
+      "`work`. Skrzynka przechwytu jest pusta i rysuje `<p>` zamiast `<ul>` — para wróciłaby " +
+      "`ROUTED_NOT_MEASURED`, czyli awarią przyrządu nad poprawnym kodem. Dziś obie skrzynki niosą " +
+      "IDENTYCZNĄ regułę `.rows`, więc zieleń pary z pierwszej jest o drugiej przypadkowo " +
+      "prawdziwa — i przestanie nią być w chwili, w której ktokolwiek rozdzieli te dwie reguły. " +
+      "Po to jest ten wpis.",
+    exit:
+      "druga pozycja w `attention.inbox` fikstury z `destination.kind` RÓWNYM „capture” — czyli " +
+      "dokładnie ta, której wpis o separatorze wyżej NIE chce, bo tam potrzebne są dwa wiersze " +
+      "w JEDNEJ liście. Jedna pozycja fikstury zamyka jedno z tych dwojga, nigdy oba naraz.",
+    greenWrong:
+      "Druga karta Skrzynki może zostać nieoddana albo oddana inaczej niż pierwsza — bez ramki, " +
+      "bez przycięcia albo z własnym odstępem — przy komplecie par P2 zielonych.",
   },
   {
     // ── PRZYRZĄD P2, POZYCJA 5 — TRZECI EKRAN RODZINY, TACA KALENDARZA ────────
@@ -8256,7 +8985,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     title: "the Calendar tray has no container measurement",
     prototype:
       "v3/screens/calendar.css:200-203 (`.cal-tray` — ta sama trójka deklaracji co `.td-list` i `.ib-list`) + `:204-209` (`.cal-tray-item` z `border-bottom` i BEZ promienia)",
-    app: "packages/desktop-ui/src/CalendarSurface.tsx:802-809, calendar.module.css:368-375 (`.tray` — zero krawędzi, zero promienia, zero przycięcia)",
+    app: 'packages/desktop-ui/src/CalendarSurface.tsx (`<ul className={styles.tray} role="listbox">`), calendar.module.css — lot L4 dowiózł tu chrom karty W CIEMNO: ramkę, promień, tło `--surface-content`, róg na wierszach skrajnych i krawędź działową na `.trayRow`, ANI RAZU nie zobaczone przez żaden przelot',
     why:
       "ZMIERZONE, NIE ZAŁOŻONE, i przyczyną jest FIKSTURA, nie brak przystanku. Taca rysuje się " +
       "wyłącznie przy `tray.length > 0` (`CalendarSurface.tsx:802`), a `tray` to `approachingUnplanned(...)` " +
@@ -8272,8 +9001,10 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "powtarzać: warunek wyjścia żądający roboty, która stoi zrobiona, jest wpisem, który nigdy " +
       "nie zostanie zamknięty.",
     greenWrong:
-      "Chrom karty na Kalendarzu może zostać nieoddany albo oddany NA WIERSZU (`.trayRow`) i żaden " +
-      "przelot tego nie zobaczy — a to jest dokładnie ta wada, którą P2 nazywa na dwóch pozostałych ekranach.",
+      "Chrom karty na Kalendarzu jest tu od lotu L4 NAPISANY, ale ani razu ZMIERZONY — może być " +
+      "napisany źle (na wierszu zamiast na pojemniku, z odstępem, bez rogu na wierszu skrajnym) " +
+      "albo cicho odjechać od dwóch pozostałych ekranów tej rodziny, i żaden przelot tego nie " +
+      "zobaczy. To jest ten sam rodzaj ciszy, co przed L4, tylko po drugiej stronie dostawy.",
   },
   {
     // ── PRZYRZĄD P4 — KONTROLKI, KTÓRE RYSUJĄ SIĘ DOPIERO PO OTWARCIU ────────
@@ -8619,7 +9350,36 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // atrybutowe przechodzą przy podmianie „Yesterday" na datę, bo napis
   // i atrybut wychodzą z DWÓCH osobnych wywołań. `positionsWithPairs` się nie
   // rusza — rośnie tylko `pairs` tutaj i `lots.10.pairs` niżej.
-  pairs: 187,
+  //
+  // 187 → 188 PRZY LOCIE L4 FAZY II, 2026-08-14, i NIE JEST TO nowa pozycja:
+  // `P2-03d` czyta `rowGap` pojemnika Skrzynki, czyli tę jedną własność, której
+  // przed tym lotem nie czytała ANI JEDNA para obu map, a którą oba wpisy
+  // `NOT_COVERED` przyrządu P2 nazywały jako jedyną cichą drogę porażki lotu
+  // (separator 2 px złożony z krawędzi wiersza i odstępu listy). Bliźniak stoi
+  // w mapie powłoki jako `P2-01d`. `positionsWithPairs` się nie rusza — rośnie
+  // `pairs` tutaj i `lots.P2.pairs` niżej, i muszą rosnąć razem.
+  //
+  // 188 → 193 PRZY LOCIE L9 FAZY II, 2026-08-14, I SĄ TO TRZY NOWE POZYCJE —
+  // ekran rekordu ZADANIA, którego rzędu metadanych i panelu planu nie mierzyła
+  // dotąd ANI JEDNA para obu map. Sprawdzone przed dopisaniem: jedyna para nad
+  // tym panelem, `L4-02a`, czyta `display: grid`, czyli że komórki są DWIE —
+  // nie to, co w nich stoi.
+  //
+  // PIĘĆ PAR NA PIĘĆ, I TAK SIĘ ROZKŁADAJĄ: cztery (`L9-01a/b/c`, `L9-02a`) są
+  // `enforced` i zielenieją razem z farbą tego lotu, jedna (`L9-03a`, wpis 12-1)
+  // jest `pending`, bo jej lekarstwo jest decyzją funkcjonalną Kacpra, a nie
+  // farbą — powód stoi przy parze. Pierwsza wersja tego akapitu liczyła tu
+  // sześć par przy przyroście o pięć (cztery `enforced` + „dwie `L9-03a/b`
+  // pending"), bo została napisana przed zdjęciem bliźniaka i nie przeliczona
+  // po nim. Bliźniak `L9-03b` nad rekordem SZANSY wrócił `MATCH` na obu
+  // motywach — krok trasy otwiera rekord samym `dblclick` i nigdy nie zaznacza
+  // karty — więc został zdjęty do `notCovered` z warunkiem wyjścia.
+  //
+  // 193 → 194 PRZY NAPRAWIE PO PRZEGLĄDZIE ADWERSARIALNYM LOTU L9, i NIE JEST
+  // TO nowa pozycja: `L9-01d` stoi na pozycji 1, na tym samym podmiocie co
+  // `L9-01c` (plakietka pustego stanu), i mierzy to, co raport lotu ogłosił
+  // NIEMIERZALNYM — glif w tej plakietce. `positionsWithPairs` się nie rusza.
+  pairs: 194,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -8659,7 +9419,23 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // jest dla nich WSPÓLNY i jest przebudową przelotu (krok trasy naciskający
   // kontrolkę WIERSZA) plus fikstura z zapisanym widokiem — rozbicie tego na
   // wpis per ekran udawałoby, że każdy z nich ma osobne wyjście.
-  notCovered: 17,
+  //
+  // 17 → 18 PRZY LOCIE L4 FAZY II, 2026-08-14, i jest to odmowa Z POMIAREM:
+  // druga skrzynka tego samego ekranu (`capture`) niesie ten sam pojemnik co
+  // pierwsza, a fikstura go NIE RYSUJE. Dziś obie dzielą regułę `.rows`, więc
+  // zieleń pierwszej jest o drugiej przypadkowo prawdziwa — wpis istnieje po
+  // to, żeby ta przypadkowość była zapisana, a nie odkryta.
+  //
+  // 18 → 19 PRZY LOCIE L9 FAZY II, 2026-08-14, i jest to druga połowa pozycji
+  // 2 tego lotu: wiersz autorstwa planu jest PRZENIESIONY do komórki i nie
+  // rysuje się w tym harnessie w ogóle. Warunek wyjścia jest zapisany razem
+  // z jego CENĄ (drugi ekran przestawiony przez tę samą fiksturę), bo warunek
+  // bez ceny czyta się jak zaległość, a to jest wybór.
+  //
+  // 19 → 20 W TYM SAMYM LOCIE: drugie żywe wystąpienie wpisu 12-1 (rekord
+  // szansy), zdjęte jako para PO POMIARZE, nie przed nim. Powód i warunek
+  // wyjścia stoją przy wpisie.
+  notCovered: 20,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -8699,6 +9475,63 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // dziś wyłącznie pikseli, nie deklaracji.
   blind: 1,
   lots: {
+    L9: {
+      // SZEŚĆ POZYCJI BRIEFU = SZEŚĆ WPISÓW SEKCJI 12 DOKUMENTU PRZEJŚCIA,
+      // i mapowanie numeru pozycji na wpis jest tu WYPISANE, bo numery pozycji
+      // nie idą po sufiksach `12-N` i czytelnik inaczej założy, że idą:
+      //   1 → 12-4 (rząd metadanych nie jest rzędem pigułek)      — 3 pary
+      //   2 → 12-5 (panel PLAN/DEADLINE jest martwy)              — 1 para
+      //   3 → 12-1 (ta sama treść stoi na ekranie dwa razy)       — 2 pary
+      //   4 → 12-6 (inny zestaw zakładek)                         — BEZ PARY
+      //   5 → 12-7 (trzy kolumny metadanych naraz)                — BEZ PARY
+      //   6 → 12-8 (`Subscribe` nie ma odpowiednika)              — BEZ PARY
+      //
+      // DLACZEGO TRZY ZOSTAJĄ BEZ PARY, KAŻDA Z INNEGO POWODU — i żaden z nich
+      // nie brzmi „nie zdążyliśmy":
+      //   • 12-6: `RECORD_TABS` (`record/record-tabs.ts:26-33`) jest słownikiem
+      //     ZAMKNIĘTYM, `restoreTab` waliduje po nim, a pasek bierze z niego
+      //     etykiety. `Related` i `Notes` to dwa NOWE PANELE na trzech
+      //     ekranach, nie przemalowanie paska — rozmiarem lot, nie pozycja.
+      //     Para nad nienapisanym panelem byłaby wieczną czerwienią bez
+      //     właściciela.
+      //   • 12-7: przejście mówi wprost, że prawa kolumna „sama w sobie nie
+      //     jest zła" i psuje się DOPIERO razem z panelem podglądu. Czyli jej
+      //     dowodem jest pomiar pozycji 3, a nie własna para. Jeśli 12-1
+      //     zostaje otwarte, ta pozycja zostaje otwarta razem z nim — i to
+      //     jest zależność, nie zaległość.
+      //   • 12-8: ZOSTAJE ODMÓWIONE, ALE NA JEDNYM POWODZIE Z DWÓCH — drugi
+      //     był NIEPRAWDĄ i został tu skasowany przy naprawie po przeglądzie.
+      //     Stało: „`title-band-action.mjs:739-743` asertuje rekord jako
+      //     `NO_ACTION/NO_ACTION`, więc dołożenie przycisku daje czerwień na
+      //     cudzej osi". Adres wskazywał wiersz DZISIAJ, nie rekordu (wiersz
+      //     rekordu to `:1064-1070`), a samo zdanie o czerwieni nie broni się
+      //     po zmierzeniu OBU predykatów: strona prototypu liczy wyłącznie
+      //     `.btn` z `PROTOTYPE_FILLED_MODIFIERS` (`:276` — `primary`,
+      //     `bordered`), a strona aplikacji ma `.ghost-button` ŚWIADOMIE POZA
+      //     zbiorem akcji (`:88-99`, „to jest pomiar, nie gust"). Wierny
+      //     `Subscribe` — przezroczysty, tak jak `cls: "quiet"` prototypu
+      //     (`v3/screens/record.js:560`) — zostawiłby ten wiersz na
+      //     `NO_ACTION/NO_ACTION` po obu stronach. Czerwień dałoby dopiero
+      //     WYPEŁNIENIE, którego prototyp też nie ma.
+      //     POWÓD, KTÓRY ZOSTAJE, JEST SAMODZIELNY: `Subscribe` mieszka
+      //     w PAŚMIE OKRUSZKA, a to jest rejon, który lot L2 przebudował na
+      //     gałęzi nieobecnej w tym drzewie — dokładanie tam kontrolki znaczy
+      //     konflikt z cudzą niezmergowaną dostawą.
+      //   1 → 12-4: cztery pary (`L9-01a/b/c/d`)
+      //   2 → 12-5: jedna para (`L9-02a`)
+      //   3 → 12-1: jedna para (`L9-03a`); bliźniak nad rekordem szansy zdjęty
+      //
+      // POZYCJA 3 MIAŁA MIEĆ DWIE PARY I MA JEDNĄ: druga wróciła zielona nad
+      // żywym rozjazdem, bo przelot nie zaznacza karty lejka, i została zdjęta
+      // do `notCovered`. Pozycja dalej JEST pokryta — rekord zadania mierzy ją
+      // czerwono.
+      //
+      // 5 → 6 PRZY NAPRAWIE PO PRZEGLĄDZIE: `L9-01d`, czwarta para pozycji 1.
+      positionsInBrief: 6,
+      pairs: 6,
+      positionsWithPairs: 3, // 1, 2, 3
+      positionsWithoutPairs: [4, 5, 6],
+    },
     10: {
       // Trzy pozycje briefu, dwie z parą TUTAJ (2 — Odnowienia, 3 — Biblioteka),
       // pozycja 1 (pasmo Dzisiaj) w mapie powłoki. Trzy pary na pozycji 3, bo
@@ -8770,8 +9603,10 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // powłoki, pozycje 5-6 nie mają pary w ŻADNEJ z map i stoją wypisane
       // w `notCovered` obu — ta sama arytmetyka, co przy P1 i C1: pozycja bez
       // pary w TEJ mapie nie jest pozycją bez dowodu.
+      // 4 → 5 PRZY LOCIE L4: `P2-03d` (`rowGap`) siada na POZYCJI 3, czyli tam,
+      // gdzie już stoją trzy pary pojemnika, więc `positionsWithPairs` zostaje 2.
       positionsInBrief: 6,
-      pairs: 4,
+      pairs: 5,
       positionsWithPairs: 2, // 3, 4
       positionsWithoutPairs: [1, 2, 5, 6],
     },

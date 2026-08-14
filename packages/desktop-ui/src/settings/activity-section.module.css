@@ -405,7 +405,7 @@
    `anywhere`, nie `break-word`: łamiemy WEWNĄTRZ identyfikatora, bo to on jest
    za długi, a `break-word` nie zmienia wtedy nic. Ten sam wybór i z tego samego
    powodu stoi już przy ośmiu podmiotach niosących treść użytkownika albo
-   identyfikator (`inbox.module.css:214`, `organization-context.css:191`,
+   identyfikator (`inbox.module.css:258`, `organization-context.css:191`,
    `calendar.module.css:239`, `styles.css:2846`).
 
    Skracanie komunikatu byłoby poprawką w złą stronę: kod odmowy jest jedynym
