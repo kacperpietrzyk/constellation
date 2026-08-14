@@ -198,7 +198,42 @@
    `NOT_COVERED` przyrządu P2 nazywały to jako jedyną cichą drogę porażki tego
    lotu; pilnuje jej teraz para czytająca `rowGap` pojemnika. Prototyp nie
    deklaruje na tych listach żadnego odstępu, więc wyliczoną wartością jest
-   `normal`, a nie `0px` — zmierzone w Chromium, nie założone. */
+   `normal`, a nie `0px` — zmierzone w Chromium, nie założone.
+
+   TŁO BIERZE `--surface-content`, A PROTOTYP PISZE TAM `var(--surface-panel)`,
+   I TO JEST ŚWIADOMY ROZJAZD Z WADĄ WZORCA, NIE Z JEGO ZAMIAREM. Lot L4
+   przepisał tę deklarację z prototypu dosłownie i położył `css token lint`:
+   `--surface-panel` NIE JEST ZDEFINIOWANY NIGDZIE — ani w `tokens.css` tej
+   aplikacji, ani w `v3/tokens.css` prototypu (`grep -- "--surface-panel:"`
+   w całym `v3/` → zero trafień). Niezdefiniowany `var(--…)` bez fallbacku jest
+   wartością nieprawidłową przy podstawieniu, więc własność wraca do wartości
+   początkowej: `transparent`.
+
+   ZMIERZONE W PROTOTYPIE, NIE ZAŁOŻONE (Chromium 1440×900, serwer statyczny
+   na `v3/`, `getComputedStyle`):
+     dark   `.td-list`, `.td-meetings` → `rgba(0, 0, 0, 0)` na płótnie
+            `oklch(0.104 0.01 285)`; `.ib-list`, `.cal-tray`, `.st-list`
+            → `oklch(0.152 0.012 285)` = `--surface-content`
+     light  `.td-list`, `.td-meetings` → `rgba(0, 0, 0, 0)` na płótnie
+            `oklch(0.982 0.003 285)`; `.ib-list`, `.cal-tray`, `.st-list`
+            → `oklch(1 0 0)` = `--surface-content`
+   Karty Dzisiaj NIE odcinają się więc od kanwy w żadnym motywie, a trzy
+   pozostałe karty tej samej rodziny odcinają się w obu.
+
+   ROZSTRZYGA O TYM SAM PROTOTYP, I ROZSTRZYGA PRZECIW SOBIE: czwarte użycie
+   tej nazwy, `v3/screens/settings.css:111`, brzmi `background:
+   var(--surface-panel, var(--surface-content))` — z FALLBACKIEM. Ta sama
+   rodzina (`border-subtle` + `--radius-md` + `overflow: hidden` + tło), ten sam
+   autor, a jedyna różnica to fallback, którego trzy użycia w `today.css`
+   (`:21`, `:59`, `:107`) nie mają. Autor prototypu NAZWAŁ więc `--surface-content`
+   wartością tej rodziny; brak fallbacku na Dzisiaj jest przeoczeniem, nie
+   wyborem, bo wybór „ta karta ma być przezroczysta" nie zapisuje się przez
+   odwołanie do nazwy, której się nie definiuje.
+
+   Precedens rozumowania jest z TEGO SAMEGO lotu: L4 zmierzył, że prototypowe
+   `overflow: hidden` przycina wskaźnik ogniska własnego wiersza, i odmówił
+   skopiowania wady wzorca (komentarz niżej). Prototyp wygrywa co do ZAMIARU;
+   jego wada nie jest projektem. */
 .rows,
 .meetings {
   display: flex;
@@ -207,7 +242,7 @@
   padding: 0;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background: var(--surface-content);
   list-style: none;
 }
 

@@ -1555,6 +1555,82 @@ export const VISUAL_LANGUAGE_PAIRS = [
   //
   // ── P2 · POZYCJA 1 — LISTA DZISIAJ STOI W POJEMNIKU Z RAMKĄ ───────────────
   // Wpis 1-2 dokumentu przejścia.
+  //
+  // ── USTALENIE O SAMYM ŹRÓDLE PRAWDY: `--surface-panel` NIE ISTNIEJE ───────
+  // I JEST TO WADA PROTOTYPU, NIE JEGO PROJEKT — zapisane TU, bo to jest
+  // jedyne miejsce w repozytorium, które trzyma zdania o tym, co prototyp
+  // MÓWI, a `docs/plans/…/v3` jest gitignorowane i w drzewie CI go nie ma.
+  //
+  // `v3/screens/today.css` odwołuje się do `var(--surface-panel)` TRZY razy
+  // (`:21` `.td-meetings`, `:59` `.td-list`, `:107` `.td-empty`) i NIE definiuje
+  // tej nazwy ani razu — `grep -rn -- "--surface-panel:" v3/` daje zero trafień
+  // w CAŁYM prototypie, `v3/tokens.css` włącznie. Niezdefiniowany `var(--…)`
+  // bez fallbacku jest wartością nieprawidłową przy podstawieniu, więc te trzy
+  // pojemniki renderują się PRZEZROCZYSTE.
+  //
+  // ZMIERZONE, NIE WYCZYTANE (Chromium 1440×900 nad statycznym serwerem na
+  // `v3/`, `getComputedStyle(...).backgroundColor`, oba motywy):
+  //   dark   `.td-list` i `.td-meetings` → `rgba(0, 0, 0, 0)` na płótnie
+  //          `oklch(0.104 0.01 285)`; `.ib-list`, `.mt-list` i `.cal-tray`
+  //          → `oklch(0.152 0.012 285)`, czyli `--surface-content`
+  //   light  `.td-list` i `.td-meetings` → `rgba(0, 0, 0, 0)` na płótnie
+  //          `oklch(0.982 0.003 285)`; te same trzy → `oklch(1 0 0)`
+  // Karta Dzisiaj NIE czyta się na ekranie tak jak karta Skrzynki: tamta
+  // podnosi się nad kanwę w obu motywach, ta leży na niej płasko.
+  //
+  // ZMIERZONA JEST TEŻ APLIKACJA PO ZMIANIE, i to nie jest formalność: tło
+  // równe WŁASNEMU podkładowi byłoby wadą lustrzaną do tej, którą ta zmiana
+  // zamyka (`tokens.css:657` daje `--panel-reading-bg: var(--surface-content)`,
+  // więc pojemnik postawiony na czytelni miałby tło nieodróżnialne od kanwy
+  // i czytałby się samą ramką). Zmierzone nad `?surface=collaboration`,
+  // 1440×900, oba motywy: `.rows` → `oklch(0.152 0.012 285)` na płótnie
+  // `main.work-column` `oklch(0.104 0.01 285)` (dark) i `oklch(1 0 0)` na
+  // `oklch(0.982 0.003 285)` (light) — czyli DOKŁADNIE ten sam skok, jaki
+  // prototyp daje swojej karcie Skrzynki. Karta się podnosi.
+  //
+  // ROZSTRZYGA SAM PROTOTYP, PRZECIW SOBIE. Czwarte i OSTATNIE użycie tej nazwy
+  // w całym `v3/` — `v3/screens/settings.css:111` — brzmi `background:
+  // var(--surface-panel, var(--surface-content))`, Z FALLBACKIEM, na regule
+  // `.st-list` o IDENTYCZNEJ trójce chromu (`--border-subtle`, `--radius-md`,
+  // `overflow: hidden`). Zmierzone: `.st-list` wychodzi `oklch(0.152 0.012 285)`
+  // / `oklch(1 0 0)`, czyli fallback naprawdę niesie `--surface-content`.
+  //
+  // TA REGUŁA NALEŻY DO INNEGO WZORCA („Pattern: Settings section card and list
+  // plate", cytowanego w polu `contract` pary P2-01a) i dlatego jest tu
+  // CYTOWANA JAKO DOWÓD O WARTOŚCI TOKENU, a nie doliczana do spisu tego
+  // wzorca — jej płótno to sam panel ustawień, więc pomiar „czy karta się
+  // podnosi" nie ma tam sensu. Dowód jest od tego niezależny: autor zapisał
+  // czarno na białym, czym `--surface-panel` MIAŁ być. „Przezroczysta karta"
+  // nie jest wyborem, który da się zapisać przez odwołanie do nazwy, której
+  // się nigdzie nie definiuje — to jest przeoczony fallback.
+  //
+  // DLATEGO APLIKACJA BIERZE `--surface-content` I JEST TO ROZJAZD ŚWIADOMY,
+  // dokładnie tego samego rodzaju co odmowa skopiowania `overflow: hidden`
+  // niżej: prototyp wygrywa co do ZAMIARU, jego wada nie jest projektem.
+  // Cytaty `prototype.value` przy parach tej pozycji zostają dosłowne — one
+  // mówią, co w arkuszu STOI — ale każdy z nich niesie odtąd zdanie o tym, co
+  // ten zapis NAPRAWDĘ rysuje, żeby następny czytający nie wziął go za dowód
+  // na tło, którego prototyp nie ma.
+  //
+  // KONTRAKT ZOSTAŁ POPRAWIONY, NIE OBUDOWANY. `.ui-craft/patterns.md` —
+  // „Pattern: Section head over a list card" — twierdził do 2026-08-14, że
+  // „the FILL and the SHADOW are the screen's own and are NOT part of the
+  // pattern", i JEDYNYM dowodem na zmienność wypełnienia było `.td-list` takes
+  // `--surface-panel`. To zdanie było czytane z TEKSTU ŹRÓDŁOWEGO wzorca, nigdy
+  // z jego RENDERU. Po pomiarze wypełnienie jest NIEZMIENNIKIEM (`.ib-list`,
+  // `.mt-list`, `.cal-tray` → `--surface-content`; `.td-list` → nic), więc
+  // niezmienników wzorca jest CZTERY, a nie trzy. „Screen's own" zostaje
+  // wyłącznie przy CIENIU i to też jest odtąd zmierzone, nie wyczytane:
+  // `boxShadow` daje dwuwarstwowy `--shadow-sm` na `.ib-list` i `.mt-list`,
+  // a `none` na `.td-list`, `.td-meetings` i `.cal-tray`. Ten plik jest
+  // w drzewie roboczym CI, a `.ui-craft/` nie — dlatego pomiar stoi tutaj
+  // W CAŁOŚCI, a tam w formie skróconej.
+  //
+  // NIEZMIERZONE I POWIEDZIANE WPROST: ani jedna para obu map nie czyta
+  // `backgroundColor` na tej rodzinie pojemników, więc ten rozjazd nie ma
+  // dziś strażnika — lot, który zdejmie tło albo wróci do niezdefiniowanej
+  // nazwy, dostanie czerwień WYŁĄCZNIE z `css token lint` w drugim przypadku
+  // i ŻADNEJ w pierwszym.
   {
     id: "P2-01a",
     lot: "P2",
@@ -1567,7 +1643,10 @@ export const VISUAL_LANGUAGE_PAIRS = [
       file: "v3/screens/today.css",
       lines: "57-60",
       value:
-        "`.td-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-panel) }`",
+        "`.td-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-panel) }` — " +
+        "cytat jest dosłowny, ale `--surface-panel` NIE JEST W PROTOTYPIE ZDEFINIOWANY (zero deklaracji w całym `v3/`), " +
+        "więc ta karta renderuje się PRZEZROCZYSTA w obu motywach (zmierzone); aplikacja bierze `--surface-content` za " +
+        "`v3/screens/settings.css:111`, gdzie ta sama rodzina pisze `var(--surface-panel, var(--surface-content))` — komentarz wyżej",
     },
     subject: {
       selector: '#main-content [role="listbox"]:has([data-planned-row])',

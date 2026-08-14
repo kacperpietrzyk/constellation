@@ -3351,10 +3351,10 @@ const outcome = runBreakTests({
           text,
           `  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background: var(--surface-content);
 `,
           `  border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background: var(--surface-content);
 `,
           "the Today list card border",
         ),
