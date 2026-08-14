@@ -2926,7 +2926,7 @@ const outcome = runBreakTests({
       // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
       // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
       // `h2 „Deadline this week or already late…"` o 16 px
-      // (`CalendarSurface.tsx:791-799`, reguła `calendar.module.css:351-359`).
+      // (`CalendarSurface.tsx:791-799`, reguła `calendar.module.css:361-369`).
       // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
       // mówiącej `OPENING_SMALLER`.
       //
@@ -2942,7 +2942,7 @@ const outcome = runBreakTests({
       // zapaliła.
       //
       // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
-      // pada w tym arkuszu dwa razy (`:53`, `:356`) i `font-weight: 560` też
+      // pada w tym arkuszu dwa razy (`:53`, `:366`) i `font-weight: 560` też
       // dwa razy, a `replaceOnce` rzuca przy dwóch trafieniach. Czterowierszowy
       // blok jest w tym pliku jedyny — sprawdzone przed napisaniem tego wpisu.
       name: "let the Calendar section heading open the screen at 2xl: the opening axis loses a witness",
@@ -3307,6 +3307,372 @@ const outcome = runBreakTests({
           '      return days === 0 ? "Today" : days === 1 ? "Tomorrow" : "Yesterday";',
           "      return `${day.month} ${day.day}`;",
           "the words of the relative branch",
+        ),
+    },
+    {
+      // ══ FAZA II, LOT L4 — CHROM KARTY NA POJEMNIKU LISTY ══════════════════
+      //
+      // SZEŚĆ ZŁAMAŃ NA JEDEN LOT, I ŻADNE Z NICH NIE JEST ZŁAMANIEM ISTNIENIA
+      // PODMIOTU. Pary przyrządu P2 były do tego lotu `pending`, więc jedynym
+      // schematem, który dla nich działał, było zabicie podmiotu (`NOT_MEASURED`
+      // kładzie przelot niezależnie od statusu). Od chwili, w której lot je
+      // oddał i przerzucił na `enforced`, działa schemat MOCNIEJSZY: złamanie
+      // WARTOŚCIOWE — podmiot dalej istnieje, dalej jest mierzony, a liczba
+      // jest inna. Czerwień jest wtedy zdaniem o produkcie, nie awarią
+      // przyrządu.
+      //
+      // FRAGMENT `expectRedContains` JEST WZIĘTY Z WIERSZA WERDYKTU, NIE
+      // Z SAMEGO IDENTYFIKATORA, i to jest poprawka po przeglądzie. Sam
+      // `„P2-01a"` stoi w wyjściu KAŻDEGO przelotu, także zielonego: bramka
+      // drukuje wiersz raportu dla każdej pary niezależnie od werdyktu
+      // (zmierzone na zielonym przelocie — po dwa wystąpienia każdego z tych
+      // sześciu identyfikatorów). Warunek „musi stać w wyjściu czerwonego
+      // przebiegu" spełniałaby więc DOWOLNA czerwień, także cudza. Kształt
+      // `„— P2-01a „"` — myślnik, identyfikator, cudzysłów otwierający —
+      // składa się wyłącznie w `verify-renderer-layout.mjs` w trzech miejscach
+      // i wszystkie trzy są czerwienią O TEJ PARZE: werdykt powłoki
+      // (`${theme} theme — ${pair.id} „${pair.title}"`), werdykt trasowany
+      // (`… at ${route} — ${pair.id} „…`) i `VISUAL_LANGUAGE_NOT_MEASURED`.
+      // Wiersz raportu jest rozdzielany tabulatorami i tego kształtu nie ma.
+      // Sprawdzone przed uruchomieniem harnessu: każdy z siedmiu fragmentów ma
+      // ZERO trafień w zapisanym wyjściu zielonego przelotu.
+      //
+      // ZŁAMANIE PIERWSZE — POJEMNIK TRACI RAMKĘ (P2-01a).
+      // Odtwarza stan sprzed lotu dosłownie: wpis 3-1 dokumentu przejścia
+      // zmierzył na tej rodzinie ekranów ZBIÓR PUSTY pojemników z ramką albo
+      // promieniem, przy 206 zielonych parach całego rejestru. Czerwona ma być
+      // dokładnie jedna para: `P2-01b` czyta promień, który tu zostaje, i to
+      // jest cały powód, dla którego ramka i promień są czytane OSOBNO.
+      name: "the Today list card loses its hairline border again",
+      expectRedContains: ["— P2-01a „"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
+`,
+          `  border-radius: var(--radius-md);
+  background: var(--surface-content);
+`,
+          "the Today list card border",
+        ),
+    },
+    {
+      // ZŁAMANIE DRUGIE — WIERSZ ZNOWU BIERZE RÓG KARTY (P2-02).
+      //
+      // DRUGA POŁOWA TEZY PRZYRZĄDU, i bez niej pozycja 1 spełnia się także
+      // przy PODWÓJNYM zaokrągleniu, którego prototyp nie ma na żadnym ekranie.
+      // Złamanie oddaje wierszowi promień, którego lot go pozbawił, i zostawia
+      // chrom pojemnika nietknięty — więc trzy pary pojemnika zostają zielone,
+      // a pada dokładnie ta jedna, która mówi „wiersz nie jest kartą".
+      name: "the Today row takes the card corner back from the list",
+      expectRedContains: ["— P2-02 „"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+`,
+          `  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+`,
+          "the Today row card corner",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZECIE — SEPARATOR ROBI SIĘ DWUPIKSELOWY (P2-01d).
+      //
+      // TO JEST ZŁAMANIE, KTÓRE NIE MIAŁO CZEGO ZAPALIĆ AŻ DO TEGO LOTU, i po
+      // to tu stoi. Oba wpisy `NOT_COVERED` przyrządu P2 nazywały tę jedną
+      // drogę porażki: wiersz dostaje `border-bottom`, a pojemnik ZOSTAJE
+      // z własnym odstępem, więc oko widzi kreskę 2 px przy KOMPLECIE par
+      // chromu zielonych. Przed `P2-01d` ani jedna para obu map nie czytała
+      // `gap` i to złamanie wróciłoby zielone — czyli byłoby złamaniem
+      // udającym uzbrojenie.
+      name: "the Today list gets its own gap back and the separator doubles",
+      expectRedContains: ["— P2-01d „"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.rows,
+.meetings {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+`,
+          `.rows,
+.meetings {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+`,
+          "the Today list gap",
+        ),
+    },
+    {
+      // ZŁAMANIE CZWARTE — RÓG U GŁOWY KARTY PRZESTAJE BYĆ DOMKNIĘTY (P2-01c).
+      //
+      // Lista planu na Dzisiaj NIE PRZYCINA, a prototyp przycina i wycina przy
+      // tym własny wskaźnik ogniska — rozjazd świadomy, zmierzony po obu
+      // stronach i zapisany przy parze. Róg domyka zamiast przycięcia wiersz
+      // skrajny, lekarstwem lotu R1 tej samej aplikacji.
+      //
+      // NAZWA TEGO ZŁAMANIA MÓWI „U GŁOWY", BO TYLE ONO DOWODZI. Lekarstwo to
+      // cztery deklaracje w dwóch regułach, a złamanie zdejmuje jedną — tę,
+      // którą `P2-01c` czyta. Dowodzi więc uzbrojenia TEGO odczytu, nie całej
+      // tezy „róg karty jest domknięty"; drugą regułę bierze złamanie siódme.
+      // Wartościowe, nie strukturalne: `<li>` stoi, reguła stoi, brakuje
+      // jednej deklaracji.
+      name: "the Today card corner stops being cut on the row that meets its head",
+      expectRedContains: ["— P2-01c „"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.rows > li:first-child {
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
+}
+`,
+          `.rows > li:first-child {
+  border-start-end-radius: var(--radius-md);
+}
+`,
+          "the Today card's first-row corner",
+        ),
+    },
+    {
+      // ZŁAMANIE SIÓDME — CAŁA DRUGA REGUŁA LEKARSTWA ZNIKA (P2-01e).
+      //
+      // TO JEST ZŁAMANIE, KTÓRE PRZED NAPRAWĄ LOTU WRACAŁO ZIELONE, i po to tu
+      // stoi. Skasowanie reguły `.rows > li:last-child` w całości robi dokładnie
+      // tę wadę, dla której lekarstwo istnieje — wypełnienie hover i zaznaczenia
+      // ostatniego wiersza wychodzi kwadratowym rogiem za zaokrągloną dolną
+      // krawędź karty — a `P2-01c` była na to ślepa Z KONSTRUKCJI: czyta inny
+      // selektor i inną własność. Para `P2-01e` czyta tę regułę i pada.
+      //
+      // ZŁAMANIE STRUKTURALNE, ALE NIE ZABÓJSTWO PODMIOTU: `<li>` dalej istnieje
+      // i dalej jest mierzone, znika sama deklaracja promienia. Czerwień jest
+      // więc werdyktem o produkcie (`enforced` + DIFFERS), nie
+      // `NOT_MEASURED`-em — i fragment werdyktu to sprawdza.
+      name: "the Today card foot stops being cut and the whole last-row rule goes",
+      expectRedContains: ["— P2-01e „"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.rows > li:last-child {
+  border-end-start-radius: var(--radius-md);
+  border-end-end-radius: var(--radius-md);
+}
+
+`,
+          "",
+          "the Today card's last-row corner rule",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĄTE — SKRZYNKA PRZESTAJE PRZYCINAĆ (P2-03c).
+      //
+      // DRUGI EKRAN RODZINY I ODWROTNY WERDYKT, i to jest cały powód, dla
+      // którego to złamanie jest osobne od czterech powyżej. Skrzynka PRZYCINA,
+      // bo jej element ogniskowalny stoi 8 px i 12 px w głębi wiersza, więc
+      // twarde pierścienie mieszczą się w luzie — zmierzone prawdziwym Tabem
+      // w Chromium, oba motywy. Ta sama deklaracja jest tu poprawna, a jedną
+      // powierzchnię dalej byłaby regresją dostępności; złamanie dowodzi, że
+      // rejestr umie powiedzieć to o KAŻDYM z tych dwóch ekranów osobno.
+      name: "the Inbox list card stops clipping its rows to the card corner",
+      expectRedContains: ["— P2-03c „"],
+      file: "packages/desktop-ui/src/inbox.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  overflow: hidden;
+`,
+          "",
+          "the Inbox list clip",
+        ),
+    },
+    {
+      // ZŁAMANIE SZÓSTE — TEN SAM ODSTĘP, DRUGI EKRAN (P2-03d).
+      //
+      // Bliźniak złamania trzeciego, i NIE jest zbędny: `P2-01d` i `P2-03d`
+      // czytają dwa RÓŻNE pojemniki w dwóch RÓŻNYCH mapach, więc odstęp
+      // wrócony na jednym ekranie jest niewidoczny dla pary z drugiego.
+      // Złamanie, które zapala obie naraz, nie istnieje — reguły są osobne.
+      name: "the Inbox list gets its own gap back and the separator doubles",
+      expectRedContains: ["— P2-03d „"],
+      file: "packages/desktop-ui/src/inbox.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+`,
+          `.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+`,
+          "the Inbox list gap",
+        ),
+    },
+    // ══ LOT L9 (FAZA II) — EKRAN REKORDU ZADANIA ═════════════════════════════
+    // Sześć złamań: pięć na to, co lot DOWIÓZŁ (piąte — (f) — dopisane przy
+    // naprawie po przeglądzie, razem z parą `L9-01d`), i jedno na parę, której
+    // lot świadomie NIE dowiózł. To ostatnie jest tu, bo `L9-03a` jest `pending`, a
+    // `pending` + `DIFFERS` jest z definicji ZIELONE — bez złamania nikt nigdy
+    // się nie dowie, czy ta para w ogóle patrzy na żywy podmiot.
+    {
+      // ZŁAMANIE L9 (a) — STATUS WRACA DO GOŁEGO TEKSTU (L9-01a).
+      //
+      // Zdejmowana jest KRAWĘDŹ, nie tło, bo tego para pyta: `--surface-raised`
+      // bywa w motywie jasnym nieodróżnialne od kanwy, więc pudełko poznaje się
+      // po kresce. Kontekst edycji sięga aż do `color: var(--text-primary)`, bo
+      // trzy linijki wyżej są znak w znak tym samym, co w regule `.chip`
+      // dziesięć linijek niżej — `replaceOnce` zgłosiłby dwukrotność.
+      name: "the task record's status loses its edge and reads as bare text again",
+      expectRedContains: ["— L9-01a „"],
+      file: "packages/desktop-ui/src/record/task-record.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);`,
+          `  padding: var(--space-1) var(--space-2);
+  background: var(--surface-raised);
+  color: var(--text-primary);`,
+          "the task record status pill's edge",
+        ),
+    },
+    {
+      // ZŁAMANIE L9 (b) — ROZPYCHACZ WRACA MIĘDZY PIGUŁKI (L9-01b).
+      //
+      // KLASA JEST TU LITERAŁEM, I TO JEST WYBÓR, NIE SKRÓT. `L9-01b` LICZY
+      // ELEMENTY (`[class*="_gap_"]`), a nie style, więc dowodem jest sama
+      // obecność nośnika. Reguła `.gap` została z arkusza usunięta razem
+      // z użyciem, a `entry.file` przyjmuje JEDEN plik — złamanie odtwarzające
+      // regułę i użycie musiałoby dotknąć dwóch. Literał daje dokładnie to,
+      // czego para zabrania, w jednym pliku i bez martwej reguły w arkuszu.
+      name: "the elastic spacer comes back into the task record's metadata row",
+      expectRedContains: ["— L9-01b „"],
+      file: "packages/desktop-ui/src/record/TaskRecordScreen.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          {taskProjects.length === 0 ? (`,
+          `          <span className="_gap_break_0" />
+          {taskProjects.length === 0 ? (`,
+          "the task record metadata spacer",
+        ),
+    },
+    {
+      // ZŁAMANIE L9 (c) — PIGUŁKI WRACAJĄ NA KAPSUŁĘ (L9-01c).
+      //
+      // To złamanie odtwarza wadę NAPRAWDĘ WYDANĄ, nie wyobrażoną: `--radius-full`
+      // stało w tym arkuszu obok `--radius-sm` w arkuszu rekordu projektu przez
+      // całą falę D, i mierzyła to tylko jedna z dwóch stron.
+      name: "the task record's chips go back to being capsules, drifting from the project record's",
+      expectRedContains: ["— L9-01c „"],
+      file: "packages/desktop-ui/src/record/task-record.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);`,
+          `  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-secondary);`,
+          "the task record chip radius",
+        ),
+    },
+    {
+      // ZŁAMANIE L9 (d) — JEDNA POŁOWA PANELU TRACI GLIF (L9-02a).
+      //
+      // JEDNA, NIE OBIE, i to jest treść tego złamania: para żąda `atLeast: 2`
+      // właśnie po to, żeby połowa zrobiona i połowa zapomniana nie przeszła.
+      // Złamanie zdejmujące oba glify dowiodłoby wyłącznie, że para umie paść
+      // na zerze — czyli nie dowiodłoby tego, po co ta liczba tam stoi.
+      name: "only one half of the plan panel keeps its glyph",
+      expectRedContains: ["— L9-02a „"],
+      file: "packages/desktop-ui/src/record/TaskRecordScreen.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <Icon name="calendar" />
+`,
+          "",
+          "the plan cell's glyph",
+        ),
+    },
+    {
+      // ZŁAMANIE L9 (f) — PUSTA PLAKIETKA TRACI GLIF (L9-01d).
+      //
+      // DOPISANE PRZY NAPRAWIE PO PRZEGLĄDZIE, razem z parą, której dowodzi.
+      // Kontekst edycji nie może być samym `<Icon name="project" />`: ten napis
+      // stoi w tym pliku DWA RAZY (gałąź pusta i gałąź wypełniona), więc
+      // `replaceOnce` zgłosiłby dwukrotność. Kotwicą jest otwarcie gałęzi
+      // pustej — `styles.chipDashed` występuje w pliku dokładnie raz.
+      name: "the empty project pill loses the glyph the reference gives every pill of the row",
+      expectRedContains: ["— L9-01d „"],
+      file: "packages/desktop-ui/src/record/TaskRecordScreen.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `            <span className={styles.chipDashed}>
+              <Icon name="project" />
+              No project`,
+          `            <span className={styles.chipDashed}>
+              No project`,
+          "the empty project pill's glyph",
+        ),
+    },
+    {
+      // ZŁAMANIE L9 (e) — PARA `pending` DOSTAJE SWOJĄ CZERWIEŃ (L9-03a).
+      //
+      // TO JEST JEDYNE ZŁAMANIE W TYM PLIKU, KTÓRE APLIKUJE POPRAWKĘ, A NIE
+      // WADĘ — i tak musi być. `L9-03a` jest `pending`, bo jej lekarstwo jest
+      // decyzją funkcjonalną (zamknięcie podglądu odbiera rekordowi zadania
+      // pięć zdolności, których on nie ma u siebie — patrz komentarz przy
+      // parze). `pending` + `DIFFERS` jest zielone, więc jedyną obserwowalną
+      // zmianą stanu tej pary jest `MATCH`, a `pending` + `MATCH` to
+      // `ROUTED_PENDING_ALREADY_MATCHES`, czyli czerwień.
+      //
+      // CO TO DOWODZI, POWIEDZIANE WPROST: że selektor `aside.inspector.open`
+      // ŻYJE i że przelot naprawdę stoi na otwartym rekordzie zadania — czyli
+      // że dzisiejsze „nie pasuje" jest POMIAREM, a nie martwym selektorem.
+      // Schemat z `recon-mechanika.md` §3 (złamanie zabija ISTNIENIE podmiotu →
+      // NOT_MEASURED) jest tu NIEDOSTĘPNY: para jest typu `count`, a `count`
+      // robi `continue` przed strażnikiem zera i nigdy nie wraca NOT_MEASURED.
+      name: "the preview panel is guarded on the task record and the pending pair notices",
+      expectRedContains: ["ROUTED_PENDING_ALREADY_MATCHES"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  const inspectorDetailOpen = Boolean(
+    selectedTask ||`,
+          `  const inspectorDetailOpen = Boolean(
+    (selectedTask &&
+      !(surface === "tasks" && activeContext.record === true)) ||`,
+          "the missing task-record guard on the preview panel",
         ),
     },
   ]),

@@ -21,7 +21,7 @@
 *.p12
 
 # JavaScript / TypeScript / desktop tooling
-node_modules/
+node_modules
 .pnpm-store/
 .turbo/
 .vite/

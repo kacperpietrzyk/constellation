@@ -185,7 +185,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h2",
     weight: 560,
     sheet:
-      "packages/desktop-ui/src/calendar.module.css:357 i inbox.module.css:52 (.sectionHead h2)",
+      "packages/desktop-ui/src/calendar.module.css:367 i inbox.module.css:52 (.sectionHead h2)",
     surfaces: "calendar, inbox",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
@@ -278,7 +278,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h2._docHeading",
     weight: 590,
     sheet:
-      "packages/desktop-ui/src/record/task-record.module.css:367, record/project-record.module.css:421, opportunity/opportunity-record.module.css:147 — TRZY arkusze, jedna sygnatura",
+      "packages/desktop-ui/src/record/task-record.module.css:466, record/project-record.module.css:421, opportunity/opportunity-record.module.css:147 — TRZY arkusze, jedna sygnatura",
     surfaces:
       "tasks:task, projects:project, pipeline:opportunity (+ przeglądy)",
     owner: "L5 (Faza II) — pozycja P5 #1",
@@ -308,7 +308,7 @@ export const KNOWN_OFF_SCALE_WEIGHTS = [
     signature: "h3._railHeading",
     weight: 590,
     sheet:
-      "packages/desktop-ui/src/record/task-record.module.css:588 i record/project-record.module.css:541",
+      "packages/desktop-ui/src/record/task-record.module.css:687 i record/project-record.module.css:541",
     surfaces: "tasks:task, projects:project (+ przeglądy)",
     owner: "L5 (Faza II) — pozycja P5 #1",
     thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",

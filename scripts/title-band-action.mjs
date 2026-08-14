@@ -1068,7 +1068,14 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/record.js:556-561 — drugim argumentem crumbbara są btn("Subscribe", { cls: "quiet" }) i <button class="icon-btn">, czyli DWIE kontrolki bez tła (app.css:306-314 baza bez `background`, :318 quiet zmienia sam kolor, :135-139 icon-btn dostaje tło dopiero na hover) — żadnego modyfikatora z PROTOTYPE_FILLED_MODIFIERS',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "record/TaskRecordScreen.tsx:475-480 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko ProjectRecordScreen (:208); <h1> jest bezpośrednim dzieckiem header._header (:492-495)",
+    // TRZY CYTATY, TRZY JAWNE ŚCIEŻKI — poprawka przy naprawie po przeglądzie
+    // lotu L9. Środkowy stał jako goła kontynuacja `:208`, czytana przez
+    // narzędzie przeliczające jako ciąg dalszy `TaskRecordScreen.tsx`, gdzie
+    // pod tym numerem stoi `.split(/\n{2,}/u)` z pomocnika tekstu, a nie żaden
+    // slot. Chodziło o `ProjectRecordScreen.tsx` i o deklarację propsa, więc
+    // ścieżka jest teraz wypisana; trzeci cytat też, bo inaczej kontynuowałby
+    // od tamtego pliku.
+    app: "record/TaskRecordScreen.tsx:476-481 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko record/ProjectRecordScreen.tsx:213; <h1> jest bezpośrednim dzieckiem header._header (record/TaskRecordScreen.tsx:493-496)",
     // Ta sama zadeklarowana równoważność co przy rekordzie projektu — powód
     // stoi tam i nie powtarza się tu, żeby nie zrobić z jednego faktu trzech.
     prototypeStack: "ONE_ROW",

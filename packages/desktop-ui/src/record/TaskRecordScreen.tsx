@@ -16,6 +16,7 @@ import type {
   MutationFailure,
   WorkOverviewProjection,
 } from "../client/workflow.js";
+import { Icon } from "../components/Icon.js";
 import { dateKeyInZone, formatDateTime } from "../i18n.js";
 import {
   dueSentence,
@@ -515,9 +516,25 @@ export const TaskRecordScreen = ({
               {PRIORITY_LABELS[priority] ?? priority} priority
             </span>
           )}
-          <span className={styles.gap} />
+          {/* NO SPACER HERE ANY MORE. Lot L9, position 1. The reference's task
+              metadata row is `.rec-meta` (`v3/app.css:653`), which has none —
+              its four pills run left to right with one gap between them. The
+              elastic span that used to stand here pushed the project badge to
+              the far end of the reading column, where it read as a second,
+              unrelated thing rather than as the fourth pill of one row. The
+              project record keeps ITS spacer, because the reference gives that
+              head one (`v3/screens/record.css:31`). */}
           {taskProjects.length === 0 ? (
-            <span className={styles.chipDashed}>No project</span>
+            // THE MEASURED HALF OF „every pill of this row wears a glyph". This
+            // is the branch the layout fixture draws — `work.overview` carries
+            // `projectIds: []` — so the glyph inside it is reachable by the gate
+            // and is asserted by `L9-01d`. The filled branch below carries the
+            // same slot and is NOT reachable in this tree; the rule is one, the
+            // proof covers the half that renders.
+            <span className={styles.chipDashed}>
+              <Icon name="project" />
+              No project
+            </span>
           ) : (
             // EVERY project, not the first: Task→Project is many-to-many and the
             // projection carries a list, so naming one would be a claim the data
@@ -531,9 +548,31 @@ export const TaskRecordScreen = ({
                 }
                 type="button"
               >
+                {/* ONE SLOT, ONE GLYPH, filled and empty alike — the rule the
+                    project record's client slot already states in full. The
+                    reference puts a glyph on every pill of this row
+                    (`v3/screens/record.js:567-569`). */}
+                <Icon name="project" />
                 <span className={styles.chipLabel}>{project.title}</span>
               </button>
             ))
+          )}
+          {/* THE FOURTH PILL OF THE REFERENCE'S ROW: who it is on.
+              `v3/screens/record.js:569` — `<span class="rc-assignee">${avatar}
+              ${name}</span>`, quiet rather than bordered, because it is the one
+              member of the row that names a PERSON and not a record.
+
+              NOT MEASURED BY ANY GATE IN THIS TREE, and that is a fact about
+              the fixture rather than about this element: the record reads its
+              task from `work.overview`, and the harness's task there carries no
+              `assignment` at all (`dev/CollaborationHarness.tsx:506-535`; the
+              field exists only on the `task.list` copy at `:456-467`). It draws
+              on real data and on nothing the layout gate opens. */}
+          {task.assignment !== undefined && (
+            <span className={styles.assignee}>
+              <Icon name="people" />
+              {task.assignment.displayName}
+            </span>
           )}
         </div>
         {/* WHY THE TASK IS STANDING STILL, ON ITS OWN BAND. Lot 4 #2, and the
@@ -568,10 +607,30 @@ export const TaskRecordScreen = ({
             seventh date voice beside the closed vocabulary in
             `tasks/task-view.ts`, which is this repository's named repeat
             defect. What the position is about is the two cells and the
-            boundary between them. The reduction is deliberate. */}
+            boundary between them. The reduction is deliberate.
+
+            LOT L9, POSITION 2 (entry 12-5) TAKES TWO MORE OF THE FIVE PARTS
+            the reference's cell has, and REFUSES the other two out loud.
+            Taken: the glyph on each label (`v3/screens/record.js:477,489`),
+            and the authorship line moved INSIDE the Plan cell, where the
+            reference keeps it (`:481-482`). Refused, with the reason each:
+              • the SUB-LINE under the value ("Nobody has put this in a day,
+                and it has a deadline", "17 days late") is a seventh date
+                voice beside the closed vocabulary in `tasks/task-view.ts`,
+                and this file already carries the paragraph saying why that is
+                forbidden. The sentence the app DOES say carries the same fact
+                in one string;
+              • the ACTION PILL (`Plan it ⌄` / `Change ⌄`) is a second place
+                to answer a question the inspector rail already answers, which
+                is the rule stated at the head of this file. Whether it moves
+                here is a functional decision and belongs to whoever owns the
+                rail's five operations — see the report for lot L9. */}
         <div className={styles.plan}>
           <div className={styles.planCell}>
-            <span className={styles.planKey}>Plan</span>
+            <span className={styles.planKey}>
+              <Icon name="calendar" />
+              Plan
+            </span>
             <span
               className={`${styles.planValue} ${
                 task.startAt === undefined ? styles.planUnset : ""
@@ -579,9 +638,18 @@ export const TaskRecordScreen = ({
             >
               {planSentence(task, prose)}
             </span>
+            {/* WHO planned it and WHEN, in the cell it is about. `plannedBy`
+                carries a principal, a kind and an instant — there is no "why"
+                on it, and none is invented here. */}
+            {planned !== undefined && (
+              <span className={styles.authorship}>{planned}</span>
+            )}
           </div>
           <div className={`${styles.planCell} ${styles.planCellDue}`}>
-            <span className={styles.planKey}>Deadline</span>
+            <span className={styles.planKey}>
+              <Icon name="flag" />
+              Deadline
+            </span>
             {/* The word "overdue" is in the sentence itself, so the colour only
                 reinforces something already said. */}
             <span
@@ -597,11 +665,6 @@ export const TaskRecordScreen = ({
             </span>
           </div>
         </div>
-        {/* WHO planned it and WHEN. `plannedBy` carries a principal, a kind and
-            an instant — there is no "why" on it, and none is invented here. */}
-        {planned !== undefined && (
-          <p className={styles.authorship}>{planned}</p>
-        )}
         {/* Beside the state it changes. An empty fallback on purpose: a spinner
             where a small chip is about to be is more movement than the wait it
             reports. */}

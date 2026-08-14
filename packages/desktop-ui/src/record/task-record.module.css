@@ -51,25 +51,60 @@
   text-wrap: balance;
 }
 
-/* Status, why it is held and where it belongs, on ONE line. Wrapping rather
-   than truncating: the reason is the half that carries information, and
-   clipping it leaves a badge. */
+/* THE METADATA LINE IS A ROW OF PILLS, AND THEY STAND NEXT TO EACH OTHER.
+   Lot L9, position 1 (entry 12-4). Reference: `v3/app.css:653` —
+   `.rec-meta { display: flex; align-items: center; gap: var(--space-2);
+   flex-wrap: wrap; margin-top: var(--space-3) }`, filled by
+   `v3/screens/record.js:564-570` with four pills in one run: the status
+   (`<button class="chip" data-act="status-menu">`), the project, the
+   organization and the assignee. Contract: `.ui-craft/patterns.md`,
+   "Pattern: Metadata chip row". Application: this rule and the two under it.
+
+   TWO THINGS CHANGE AND BOTH ARE ABOUT THE ROW, NOT ABOUT ONE BADGE.
+   `align-items` goes from `baseline` to `center` because a row of boxes is
+   aligned on its boxes; baseline is what you align a row of WORDS on, and the
+   line stopped being words the moment the status got an edge.
+
+   AND THE ELASTIC SPACER IS GONE. It used to be `.gap { flex: 1 1 auto }`
+   between the state and the project, which is what tore "No project" to the
+   far right of the reading column (measured at 1662px in the transition: the
+   badge sat at x ≈ 1473 with nothing between it and the state). The reference
+   has NO spacer in `.rec-meta` at all. It DOES have one on the project record
+   (`v3/screens/record.css:31` — `.rc-head-gap { flex: 1 1 var(--space-4) }`),
+   which is why this lot removes the spacer HERE and leaves the project
+   record's alone: the two heads are different objects in the reference, and
+   deleting both would be adopting one of them twice. */
 .head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2) var(--space-3);
   min-inline-size: 0;
   font-size: var(--text-sm);
 }
 
-/* Colour only reinforces here: the label stands in words beside it and the mark
-   differs by SHAPE, so a reader who sees no colour loses nothing. */
+/* THE STATUS IS A PILL, NOT BARE TEXT. Same position. In the reference the
+   status is literally `.chip` (`v3/screens/record.js:565`), the same object
+   the project and the organization wear — so the row reads as one kind of
+   thing repeated, instead of one sentence with two badges stuck on the end.
+
+   It keeps its own rule rather than joining `.chip` below, because the
+   status is the one member of the row that is NOT enterable here (the
+   inspector owns the change) and a hover that lights up would promise
+   otherwise.
+
+   Colour only reinforces: the label stands in words and the mark differs by
+   SHAPE, so a reader who sees no colour loses nothing. */
 .state {
   display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   color: var(--text-primary);
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -156,13 +191,17 @@
   font-size: var(--text-xs);
 }
 
-/* Pushes what the task BELONGS to to the end of the line, so the state and the
-   place it lives never interleave when the row wraps. */
-.gap {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
+/* A METADATA CHIP IS A SOFT RECTANGLE, NOT A CAPSULE. Same position, and it
+   is the third half of it. Reference: `v3/app.css:356-362` — `.chip {
+   border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+   background: var(--surface-raised) }`. Contract: `.ui-craft/tokens.md`,
+   "Shape, motion, depth".
 
+   The same sentence was already adjudicated for the PROJECT record's sheet
+   and is asserted there (`D4-02`, `project-record.module.css`), and this
+   sheet kept `--radius-full` — one shape written down twice, drifting, which
+   is this repository's named repeat defect. The task record's row was the
+   half nobody measured. */
 .chip,
 .chipDashed {
   display: inline-flex;
@@ -171,7 +210,7 @@
   max-inline-size: 100%;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--text-secondary);
   font: inherit;
@@ -199,6 +238,32 @@ button.chip:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The one member of the metadata row that names a PERSON, and the reference
+   keeps it quiet for that reason: `v3/screens/record.css:253` —
+   `.rc-assignee { display: inline-flex; align-items: center; gap: 0.375rem;
+   font-size: var(--text-xs); color: var(--text-tertiary) }`, with no border of
+   its own. A bordered pill would put a person in the same box as a record. */
+.assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.assignee svg {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+}
+
+.chip svg,
+.chipDashed svg {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  opacity: 0.7;
 }
 
 /* ── PLAN AND DEADLINE ARE TWO CELLS, NOT ONE SENTENCE ─────────────────────
@@ -248,12 +313,33 @@ button.chip:hover {
   border-inline-start: 1px solid var(--border-subtle);
 }
 
+/* THE LABEL CARRIES A GLYPH. Lot L9, position 2 (entry 12-5). Reference:
+   `v3/screens/record.css:224-229` — `.rc-plan-k { display: inline-flex;
+   align-items: center; gap: 0.3125rem; text-transform: uppercase }` with
+   `.rc-plan-k svg { width: 0.75rem; height: 0.75rem }`, filled by
+   `v3/screens/record.js:477` (`icon("today")Plan`) and `:489`
+   (`icon("flag")Deadline`). Contract: `.ui-craft/patterns.md`, "Pattern:
+   Metadata chip row" — a micro-label names its kind with the same glyph the
+   kind wears everywhere else.
+
+   The glyphs are `calendar` and `flag`, both already in the shell's set
+   (`components/Icon.tsx`), so this position spends nothing on the hot path —
+   that file is imported statically by `RealApp` and a new name in it would
+   be paid for by every reader at window open. */
 .planKey {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   /* A literal, for the reason position 6 gives in full at `.docHeading`. */
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.planKey svg {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
 }
 
 .planValue {
@@ -274,11 +360,24 @@ button.chip:hover {
   color: var(--status-error);
 }
 
+/* WHO PLANNED IT STANDS INSIDE THE PLAN CELL. Lot L9, position 2 (entry
+   12-5), and it is a move rather than a restyle. Reference:
+   `v3/screens/record.css:235-240` — `.rc-plan-by { display: inline-flex;
+   margin-top: 0.375rem; font-size: var(--text-2xs); color:
+   var(--text-quaternary) }`, and `v3/screens/record.js:481-482` renders it
+   INSIDE `.rc-plan-cell`, under the sub-line. Contract: `.ui-craft/tokens.md`,
+   "Type" — the smallest step is for provenance, not for readings.
+
+   It used to be a `<p>` UNDER the whole two-cell panel, which put an answer
+   about the left cell equidistant from both. The prototype's own reason for
+   the panel — "the left is your own intent, the right is somebody else's
+   promise" — is undone by any line that belongs to one cell and sits under
+   both. */
 .authorship {
   overflow-wrap: anywhere;
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  margin: var(--space-1) 0 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
 }
 
 /* Where an authoring control sits among readings. It gets its own row rather

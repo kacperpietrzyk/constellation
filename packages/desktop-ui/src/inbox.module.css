@@ -60,12 +60,41 @@
   font-weight: 400;
 }
 
+/* CHROM KARTY NALEŻY DO POJEMNIKA, NIE DO WIERSZA — wpis 3-1 dokumentu
+   przejścia, najostrzejszy dowód całej tej rodziny: sonda przeszła na tym
+   ekranie każdy pojemnik szerszy niż 200 px i wyższy niż 40 px, szukając ramki
+   albo promienia, i wróciła ze zbiorem PUSTYM. Prototyp ma tu dwie karty
+   `div.ib-list` (`v3/screens/inbox.css:27-30`), a cień jest tu własnością
+   EKRANU — `--shadow-sm` i `--surface-content` stoją w tamtej regule i nie ma
+   ich ani na Dzisiaj, ani na tacy Kalendarza. Kontrakt: `.ui-craft/patterns.md`
+   — „Pattern: Settings section card and list plate", ograniczenie „A row of
+   a list is not a card".
+
+   `gap: 1px` ZNIKA z tego samego powodu, co na Dzisiaj: separator rysuje odtąd
+   wiersz, więc odstęp na pojemniku dałby kreskę dwupikselową przy zielonych
+   parach chromu. Pilnuje tego para czytająca `rowGap`.
+
+   PRZYCINA, W ODRÓŻNIENIU OD LISTY PLANU NA DZISIAJ, I TO JEST POMIAR.
+   Kryterium jest precedens lotu R1 (`styles.css` — `.meeting-upcoming-list`
+   przycina, `.meeting-result-list` nie): czy pudełko elementu ogniskowalnego
+   dotyka pudełka wyściółki pojemnika. Zmierzone tutaj prawdziwym Tabem
+   w Chromium, oba motywy: `.rowMain` stoi 8 px od krawędzi górnej i dolnej
+   oraz 12 px od lewej, bo tyle daje wyściółka `<li>`. Twarde pierścienie ogniska
+   (`tokens.css` — `--focus-ring`: 1 px akcentu i 3 px rozrzutu) mieszczą się
+   w tym luzie w całości, więc wskaźnik wymagany przez WCAG 2.4.7 przycięcie
+   PRZEŻYWA; obcięty zostaje sam miękki spadek 14 px o alfie 0,12. Na Dzisiaj
+   ten sam pomiar dał luz 0 px na wszystkich czterech krawędziach i dlatego
+   tamta lista przycinać nie może. */
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
+  box-shadow: var(--shadow-sm);
   list-style: none;
 }
 
@@ -75,7 +104,14 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Pod ostatnim wierszem stoi już krawędź karty — `v3/screens/inbox.css:42`
+   (`.ib-row:last-child { border-bottom: 0 }`). Tu wiersz JEST `<li>`, więc
+   zdanie zapisuje się wprost na nim. */
+.row:last-child {
+  border-bottom: 0;
 }
 
 .row:hover {
@@ -148,10 +184,18 @@
   outline-offset: 2px;
 }
 
+/* PROMIEŃ ZNIKA STĄD RAZEM Z PROMIENIEM WIERSZA. Zaznaczony wiersz był
+   ostatnim miejscem tego ekranu, w którym karta stała w środku karty: kwadratowy
+   `<li>` w przyciętym pojemniku, a w nim przycisk z rogiem 12 px. Prototyp daje
+   zaznaczeniu SAMO tło i szynę (`v3/screens/inbox.css:44-47` —
+   `.ib-row[aria-selected="true"] { background: var(--accent-quieter) }` plus
+   `::before`), więc róg tu nie ma czego domykać.
+   NIE WIDZI TEGO ŻADNA PARA i to jest powiedziane wprost: para wiersza mierzy
+   `[data-inbox-row]`, czyli `<li>`, a to jest `<button>` w środku, a do tego
+   fikstura harnessu nie zaznacza żadnej pozycji skrzynki. */
 .rowMain[aria-pressed="true"] {
   background: var(--surface-selected);
   box-shadow: inset 0 0 0 1px var(--border-default);
-  border-radius: var(--radius-md);
 }
 
 /* Pilność: kształt (trójkąt kontra kwadrat), słowo w wierszu i dopiero
