@@ -368,6 +368,134 @@ export const TITLE_BAND_INLINE_STATES = [
   "NO_ACTION",
 ];
 
+// ════════════════════════════════════════════════════════════════════════════
+// PRZYRZĄD P3 (FAZA I) — SKŁAD PASMA I MIEJSCE WIDOCZNEGO TYTUŁU
+// ════════════════════════════════════════════════════════════════════════════
+//
+// DWIE DALSZE OSIE NAD TYM SAMYM SPACEREM, i to nie jest doklejenie z wygody.
+// Ten spis jako jedyny przyrząd w repozytorium ODWIEDZA wszystkie piętnaście
+// pasm — w tym Kalendarz, Skrzynkę i Ustawienia, których NIE MA w
+// `ROUTED_ARRIVAL`, więc żadna para ich nie dosięga (Kalendarz jest wprost
+// odmawiany przez klienta scenariuszowego). Przyrząd oparty na parach mierzyłby
+// dwa z pięciu ekranów, o których te osie są.
+//
+// CZEGO NIKT DZIŚ NIE PYTA, sprawdzone gretem po rejestrze par:
+//   * `grep -n eyebrow scripts/visual-language-pairs.mjs` → JEDNO trafienie
+//     (`D2-02b`, `.surface-header .eyebrow`, `count: 0`) i siedzi ono w mapie
+//     POWŁOKI, która robi zero kliknięć — czyli mierzy pasmo Dzisiaj i tylko
+//     Dzisiaj. W mapie trasowanej słowo `eyebrow` nie pada ani razu, a nadtytuł
+//     w paśmie niosą Kalendarz, Skrzynka, Projekty, Ustawienia i Biblioteka.
+//   * `grep -n surface-title scripts/visual-language-pairs.mjs` → trzy pary,
+//     wszystkie o `fontSize`/`letterSpacing` tytułu REKORDU. Żadna nie pyta, czy
+//     poza pasmem stoi cokolwiek wielkości `--text-2xl`.
+//
+// OŚ TRZECIA — SKŁAD LEWEGO STOSU PASMA.
+//
+// Prototyp składa lewą stronę KAŻDEGO pasma jedną funkcją: `crumbbar(crumbs,
+// actions)` (`v3/app.js:677-682`) wstawia `crumbs` do `<div class="crumbs">`,
+// a `.crumbs .cur` (`v3/app.css:292`) niesie `white-space: nowrap` — czyli
+// JEDEN wiersz, jedno nazwanie, nic nad nim i nic pod nim. Ustawienia są
+// jedynym ekranem prototypu, który crumbbara nie woła, i one też trzymają głowę
+// jako RZĄD, nie stos: `.st-panel-head` to `display: flex; align-items:
+// baseline` z tytułem i podtytułem OBOK siebie (`v3/screens/settings.css:84-90`).
+//
+// ZERO PIKSELI I ZERO TOLERANCJI, i to jest wybór, nie oszczędność. Miara
+// geometryczna („czy coś leży poza rzędem tytułu") stoi na liczbach zmierzonych
+// przy 1662 px, a ta bramka chodzi przy 320/760/1440 — pytanie jest więc
+// o STRUKTURĘ, nie o współrzędną.
+//
+// WARUNEK JEST KONIUNKCJĄ DWÓCH RZECZY, I DRUGA ZAMYKA DZIURĘ PIERWSZEJ. Samo
+// „tytuł jest bezpośrednim dzieckiem pasma" mierzy, czy tytuł jest OPAKOWANY —
+// a lot może to spełnić, wyjmując `<p class="eyebrow">` z `<div>`-a i stawiając
+// go jako rodzeństwo `<h1>` WEWNĄTRZ `<header>`: pasmo dalej rysuje dwa wiersze,
+// a oś robi się zielona. To jest w tym repozytorium nazwana wada — „bramka
+// pilnowała nieobecności STAREJ WADY i nie dotykała dostawy". Drugi warunek —
+// ZERO narysowanych elementów niosących tekst PRZED tytułem w kolejności
+// dokumentu — mówi zdanie wprost i nie daje się obejść przeniesieniem węzła.
+//
+// CO ZNACZY `rows`, ŻEBY NIKT NIE PRZEPISAŁ TEJ LICZBY JAKO WYSOKOŚCI PASMA:
+// to liczba wierszy WŁASNEGO STOSU TYTUŁU, czyli tytuł plus narysowane
+// rodzeństwo niosące tekst W JEGO OPAKOWANIU. Pasmo, którego dzieckiem jest sam
+// tytuł, ma stos jednowierszowy nawet wtedy, gdy samo pasmo rysuje pod nim
+// jeszcze pas plakietek (pasma rekordu mają 285 px wysokości i `rows=1`) — pas
+// plakietek jest osobnym dzieckiem pasma, a nie wierszem stosu tytułu.
+
+/** Stany, w jakich PRZELOT może zmierzyć lewy stos pasma. */
+export const TITLE_BAND_STACK_STATES = ["ONE_ROW", "STACKED"];
+
+/**
+ * Stany, którymi wolno opisać PROTOTYP na tej osi — osobny słownik, bo to jest
+ * fakt CZYTANY ZE ŹRÓDŁA, a nie mierzony przeglądarką, i bo dochodzi w nim
+ * odpowiedź, której pomiar mieć nie może: ekran, którego prototyp NIE MA.
+ */
+export const TITLE_BAND_PROTOTYPE_STACK_STATES = [
+  "ONE_ROW",
+  "STACKED",
+  "NO_SCREEN",
+];
+
+// OŚ CZWARTA — CZYM EKRAN OTWIERA TREŚĆ.
+//
+// Prototyp trzyma `<h1>` jako `sr-only` i nazywa ekran w paśmie
+// (`v3/app.js:2072`: `titled ? "" : '<h1 class="sr-only">…'`), a na DWÓCH
+// ekranach dokłada W TREŚCI otwarcie wielkości `--text-2xl`: `h2.td-greeting`
+// („Good morning, Kacper", `v3/screens/today.js:133`, `v3/screens/today.css:8-10`)
+// i `h2.cal-title` („This week", `v3/screens/calendar.js:205`,
+// `v3/screens/calendar.css:21-23`).
+//
+// PYTANIE JEST BINARNE PO STRONIE PROTOTYPU, I TO JEST POPRAWKA WZGLĘDEM
+// BRIEFU, KTÓRA MA TU STAĆ WYPISANA. Brief kazał wpisać w kolumnę prototypu ten
+// sam trójstanowy słownik, którym mierzy się aplikację — czyli orzec o
+// trzynastu ekranach, że prototyp ma tam nagłówek MNIEJSZY (a nie: nie ma
+// żadnego). Tego nie da się przeczytać gretem; dałoby się to wyłącznie
+// uruchomić. Wpisanie tego byłoby dokładnie tą klasą, którą to repozytorium już
+// raz zapłaciło: para PRZEPISUJĄCA wartość prototypu zamiast go MIERZYĆ.
+// Prototyp odpowiada więc na pytanie ROZSTRZYGALNE CZYTANIEM —
+// `grep -n "text-2xl" v3/app.css v3/screens/*.css` daje CZTERY trafienia i
+// tylko dwa z nich są otwarciem ekranu — a rozjazdem jest niezgodność na tym
+// jednym pytaniu. Trzeci stan po naszej stronie (`NO_OPENING` wobec
+// `OPENING_SMALLER`) jest DRUKOWANY i pilnowany przez dryf od kolumny `today`,
+// ale sam z siebie nie robi rozjazdu z prototypem.
+//
+// TO SAMO ZDEJMUJE ASYMETRIĘ NA TRZECH EKRANACH REKORDU. Po naszej stronie
+// tytuł rekordu siedzi w `<header>`, więc wypada z osi; w prototypie
+// `<h1 class="rec-title">` jest bezpośrednim dzieckiem `.rc-main`
+// (`v3/screens/record.js:432`) i żadnego `<header>` tam nie ma, więc pod regułą
+// „pierwszy nagłówek poza pasmem" wpadłby DO osi. Przy pytaniu trójstanowym oba
+// końce porównania czytałyby więc DWA RÓŻNE elementy. Przy pytaniu o 2xl nie
+// czytają: `.rec-title` to `--text-xl` (`v3/app.css:651`), więc prototypowy
+// rekord odpowiada `NOT_2XL` niezależnie od tego, którym z tych dwóch elementów
+// się go zapyta.
+
+/** Stany, w jakich PRZELOT może zmierzyć otwarcie treści. */
+export const TITLE_BAND_OPENING_STATES = [
+  "OPENING_2XL",
+  "OPENING_SMALLER",
+  "NO_OPENING",
+];
+
+/** Stany, którymi wolno opisać PROTOTYP na tej osi — patrz akapit wyżej. */
+export const TITLE_BAND_PROTOTYPE_OPENING_STATES = [
+  "OPENING_2XL",
+  "NOT_2XL",
+  "NO_SCREEN",
+];
+
+/**
+ * Ta sama umowa co `TITLE_BAND_ACTION_STATUS`: pozycja NIEODDANA raportuje,
+ * rzuca to, co ODDANE i ZEPSUTE — oraz KAŻDY dryf od kolumny `today`, również
+ * przy „pending" (`titleBandVerdictThrows`).
+ *
+ * WARUNEK PRZEŁĄCZENIA NA „enforced", zapisany tak, żeby dało się go
+ * ROZSTRZYGNĄĆ: odpowiednia lista rozjazdów jest PUSTA. Faza II (loty L2 i L3)
+ * jest jedynym miejscem, w którym ten przełącznik wolno ruszyć.
+ */
+export const TITLE_BAND_STACK_STATUS = "pending";
+export const TITLE_BAND_STACK_ARMED = TITLE_BAND_STACK_STATUS === "enforced";
+export const TITLE_BAND_OPENING_STATUS = "pending";
+export const TITLE_BAND_OPENING_ARMED =
+  TITLE_BAND_OPENING_STATUS === "enforced";
+
 /**
  * Werdykt o JEDNEJ akcji względem JEDNEGO tytułu.
  *
@@ -574,6 +702,36 @@ export const classifyTitleBandInline = ({ band, actions }) => {
  * Taki wiersz jest MIERZONY i RAPORTOWANY, ale nie może być znaleziskiem, bo
  * nie ma się od czego rozjechać. To jest zadeklarowana ślepa plama, nie cisza.
  */
+/**
+ * Cytat osi 3 dla jedenastu ekranów, które prototyp składa CRUMBBAREM.
+ *
+ * JEDEN NAPIS, A NIE JEDENAŚCIE, i to jest uczciwość, nie oszczędność: to jest
+ * fakt o JEDNEJ funkcji prototypu, a nie jedenaście osobnych odczytów. Napisanie
+ * go jedenaście razy z różnymi numerami linii sugerowałoby jedenaście lektur,
+ * których nie było — a rozjazd cytatu z faktem jest w tym repozytorium nazwaną
+ * klasą defektu.
+ */
+const CRUMBBAR_ONE_ROW_CITE =
+  "v3/app.js:677-682 — crumbbar(crumbs, actions) wstawia crumbs do " +
+  '<div class="crumbs">, a `.crumbs .cur` (v3/app.css:292) niesie ' +
+  "`white-space: nowrap`: lewa strona pasma to JEDEN wiersz i jedno nazwanie";
+
+/**
+ * Cytat osi 4 dla ekranów, którym prototyp NIE daje otwarcia wielkości 2xl.
+ *
+ * Też jeden napis i z tego samego powodu, tylko mocniejszego: to jest fakt o
+ * WYNIKU JEDNEGO GRETA po całym prototypie, a nie o pojedynczym ekranie. Cztery
+ * trafienia, dwa z nich są otwarciem ekranu, dwa pozostałe nazwane niżej — więc
+ * „ten ekran nie ma 2xl" jest tu wnioskiem z wyliczenia, a nie osobną lekturą.
+ */
+const NOT_2XL_CITE =
+  'v3: `grep -n "text-2xl" app.css screens/*.css` daje CZTERY trafienia — ' +
+  "v3/screens/today.css:9 (`.td-greeting`) i v3/screens/calendar.css:22 " +
+  "(`.cal-title`) są otwarciami ekranu, v3/app.css:1043 to `.metric .v`, " +
+  "a v3/screens/settings.css:100 to `.st-head h2` ekranu DEMO „Interface " +
+  "states”, którego produkt nie ma; poza tymi dwoma prototyp nie otwiera " +
+  "treści niczym wielkości --text-2xl";
+
 export const TITLE_BAND_ROWS = [
   {
     id: "today",
@@ -587,6 +745,15 @@ export const TITLE_BAND_ROWS = [
     // do kolumny treści, a w paśmie została data. Plik też był zły — od czasu
     // przed tym lotem ekran mieszka w `TodaySurface.tsx`, nie w `Wave2Surfaces`.
     app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:224-235)",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "OPENING_2XL",
+    citeOpening:
+      'v3/screens/today.js:133 — `<h2 class="td-greeting">Good morning, ' +
+      "Kacper</h2>` otwiera treść, a v3/screens/today.css:8-10 daje mu " +
+      "--text-2xl",
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "calendar",
@@ -597,6 +764,16 @@ export const TITLE_BAND_ROWS = [
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
     app: "CalendarSurface.tsx:640-670 — w paśmie trzy ghost-button nawigacji tygodnia, żadnej akcji z wypełnieniem",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    // `<p class="eyebrow" data-week-range>` NAD `<h1>`, oba w tym samym
+    // `<div>` (CalendarSurface.tsx:642-649).
+    todayStack: "STACKED",
+    prototypeOpening: "OPENING_2XL",
+    citeOpening:
+      'v3/screens/calendar.js:205 — `<h2 class="cal-title">This week</h2>` ' +
+      "otwiera treść, a v3/screens/calendar.css:21-23 daje mu --text-2xl",
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "inbox",
@@ -606,7 +783,18 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/inbox.js:287-288 — crumbbar(„Inbox”, `<span class="when">`)',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "Wave2Surfaces.tsx:283-303 — drugie dziecko pasma to licznik, nie akcja",
+    // ADRES POPRAWIONY PRZY PRZYRZĄDZIE P3: pole mówiło „Wave2Surfaces.tsx",
+    // a Skrzynka mieszka w `InboxSurface.tsx` od czasu, którego ta tabela nie
+    // pamięta. Nikt tego nie złapał, bo jedyna asercja nad tym polem sprawdza
+    // jego DŁUGOŚĆ. Adres, który nie prowadzi do pliku, jest przy odbiorze
+    // nieodróżnialny od adresu, który prowadzi.
+    app: "InboxSurface.tsx:283-303 — pasmo owija <p class=„eyebrow”> i <h1> jednym <div>; drugie dziecko pasma to licznik, nie akcja",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "STACKED",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "settings",
@@ -623,7 +811,19 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/settings.js:1003-1006 — `.st-panel-head` to `<h2 id="st-title">` i `.st-panel-sub`, bez slotu akcji; tryb nie woła crumbbara w ogóle',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "SettingsSurface.tsx:990-1007 — w paśmie `settings-help-entry`, klasa spoza zbioru akcji",
+    app: "SettingsSurface.tsx:990-1007 — w paśmie `settings-help-entry`, klasa spoza zbioru akcji; stos to eyebrow „Workspace”, <h1> i .settings-band-sub w jednym <div>",
+    prototypeStack: "ONE_ROW",
+    // JEDYNY EKRAN PROTOTYPU BEZ CRUMBBARA, więc jedyny z własnym cytatem na
+    // tej osi — i tym mocniejszy, bo prototyp trzyma tu głowę jako RZĄD.
+    citeStack:
+      "v3/screens/settings.js:1004-1007 — `.st-panel-head` to `<h2 " +
+      'id="st-title">` i `.st-panel-sub`, a v3/screens/settings.css:84-90 daje ' +
+      "im `display: flex; align-items: baseline`: tytuł i podtytuł stoją OBOK " +
+      "siebie, nie jeden pod drugim",
+    todayStack: "STACKED",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "projects",
@@ -634,6 +834,19 @@ export const TITLE_BAND_ROWS = [
     today: "IN_BAND",
     todayInline: "FLUSH_END",
     app: "Wave2Surfaces.tsx:53-73 (SurfaceHeader renderuje {action}) + :789 secondary-button „New project”",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    // TRZY WIERSZE: `<p class="eyebrow">{kicker}</p>`, `<h1>` i
+    // `<p>{description}</p>` w jednym `<div>` (Wave2Surfaces.tsx:96-105).
+    todayStack: "STACKED",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ: lektura JSX przewidywała
+    // `OPENING_SMALLER`, a ten ekran nie rysuje w kolumnie pracy ŻADNEGO
+    // `h1/h2/h3` — pierwszego nagłówka treści po prostu nie ma. Kolumna
+    // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
+    // wierszy, na których to widać.
+    todayOpening: "NO_OPENING",
     // JEDYNY DZIŚ WIERSZ „IN_BAND", czyli JEDYNY dowód, że ten przyrząd umie
     // zwrócić cokolwiek poza znaleziskiem. Strażnik `TITLE_BAND_NEVER_IN_BAND`
     // pilnuje, żeby ten dowód nie zniknął po cichu.
@@ -647,6 +860,19 @@ export const TITLE_BAND_ROWS = [
     today: "IN_BAND",
     todayInline: "FLUSH_END",
     app: "tasks/TasksSurface.tsx:460-495 — SurfaceTitleBand z akcją „New task” (primary-button) wpiętą w onCreateTask; addToGroup (:353-355) zostaje jako tworzenie W GRUPIE",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    // `SurfaceTitleBand.tsx:92-96` wstawia `<h1>` WPROST do `<header>`, bez
+    // opakowania — to jest świadek tej osi, sześciokrotny.
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ: lektura JSX przewidywała
+    // `OPENING_SMALLER`, a ten ekran nie rysuje w kolumnie pracy ŻADNEGO
+    // `h1/h2/h3` — pierwszego nagłówka treści po prostu nie ma. Kolumna
+    // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
+    // wierszy, na których to widać.
+    todayOpening: "NO_OPENING",
     // JEDYNY PODMIOT, KTÓREGO REJESTR NIE MA. Rejestr liczy dziewięć wpisów
     // przyczyny C2 i Zadań wśród nich nie ma; ten przelot mierzy, że prototyp
     // stawia w paśmie Zadań „+ New task", a nasze pasmo Zadań nie niesie ani
@@ -663,6 +889,17 @@ export const TITLE_BAND_ROWS = [
     today: "IN_BAND",
     todayInline: "FLUSH_END",
     app: "pipeline/PipelineSurface.tsx:840-872 — akcja w paśmie; .crumbbar skasowany razem ze swoją regułą w pipeline.module.css",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ: lektura JSX przewidywała
+    // `OPENING_SMALLER`, a ten ekran nie rysuje w kolumnie pracy ŻADNEGO
+    // `h1/h2/h3` — pierwszego nagłówka treści po prostu nie ma. Kolumna
+    // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
+    // wierszy, na których to widać.
+    todayOpening: "NO_OPENING",
   },
   {
     id: "renewals",
@@ -673,6 +910,12 @@ export const TITLE_BAND_ROWS = [
     today: "IN_BAND",
     todayInline: "FLUSH_END",
     app: "renewals/RenewalsSurface.tsx:806-835 — akcja w paśmie; licznik zostaje w swoim viewbarze z lotu 3",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "organizations",
@@ -683,6 +926,12 @@ export const TITLE_BAND_ROWS = [
     today: "IN_BAND",
     todayInline: "FLUSH_END",
     app: "StrategicDepthSurface.tsx:687-720 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "people",
@@ -693,6 +942,17 @@ export const TITLE_BAND_ROWS = [
     today: "IN_BAND",
     todayInline: "FLUSH_END",
     app: "people/PeopleSurface.tsx:484-517 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ: lektura JSX przewidywała
+    // `OPENING_SMALLER`, a ten ekran nie rysuje w kolumnie pracy ŻADNEGO
+    // `h1/h2/h3` — pierwszego nagłówka treści po prostu nie ma. Kolumna
+    // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
+    // wierszy, na których to widać.
+    todayOpening: "NO_OPENING",
   },
   {
     id: "meetings",
@@ -718,6 +978,12 @@ export const TITLE_BAND_ROWS = [
     // x 1224.1–1400 drift 0px vs tolerance 14px → IN_BAND | end gap 0px vs
     // tolerance 16px → FLUSH_END”.
     app: 'MeetingsSurface.tsx — <SurfaceTitleBand action={bandAction} title="Meetings" />; akcja bezwarunkowa, bez klucza Jamie prowadzi do tafli integracji zamiast się chować',
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
   },
   {
     id: "library",
@@ -727,7 +993,13 @@ export const TITLE_BAND_ROWS = [
     cite: "v3/screens/knowledge.js:802-804 („New note”, primary) i :967-968 („Add a source”, primary)",
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "library/LibraryShell.tsx:79-125 — slot akcji w paśmie, licznik zszedł do paska widoku; NotesReading i SourcesReading wstrzykują swoją akcję portalem",
+    app: "library/LibraryShell.tsx:79-125 — slot akcji w paśmie, licznik zszedł do paska widoku; NotesReading i SourcesReading wstrzykują swoją akcję portalem; stos to <p class=„eyebrow”>Sources and deliverables</p> nad <h1> w jednym <div> (:120-126)",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "STACKED",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
     // JEDEN WIERSZ NA DWA WPISY REJESTRU, i to jest świadome. Rejestr filuje
     // Notatki i Źródła osobno, bo porównywał ZRZUTY dwóch ekranów. Pasmo jest
     // JEDNO — ten sam `LibraryShell` nad każdym z trzech odczytów, z tym samym
@@ -743,6 +1015,36 @@ export const TITLE_BAND_ROWS = [
     today: "ABOVE_BAND",
     todayInline: "FLUSH_END",
     app: "record/ProjectRecordScreen.tsx:300-336 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), record-screen.module.css:62-68",
+    // `prototypeStack` NA TRZECH EKRANACH REKORDU JEST ZADEKLAROWANĄ
+    // RÓWNOWAŻNOŚCIĄ KSZTAŁTU, NIE ODCZYTEM, i musi to tu stać. Prototypowy
+    // rekord nie ma `<header>` w ogóle: `rcShell` (v3/screens/record.js:226)
+    // daje `.rc-main`, a w nim `<h1 class="rec-title">` jako PIERWSZE dziecko
+    // z `.rc-head` jako rodzeństwem POD nim. Reguły „tytuł jest bezpośrednim
+    // dzieckiem pasma" nie da się do tego przyłożyć dosłownie — orzekam więc
+    // równoważność: nad tytułem nie stoi tam nic, co niesie tekst. To
+    // repozytorium nosi lekcję o parach PRZEPISUJĄCYCH wartość prototypu
+    // zamiast go mierzyć, i ten wiersz mówi wprost, po której stronie granicy
+    // stoi.
+    prototypeStack: "ONE_ROW",
+    citeStack:
+      'v3/screens/record.js:432 — rcShell(`<h1 class="rec-title">…`) stawia ' +
+      "tytuł jako pierwsze dziecko `.rc-main` (v3/screens/record.js:226), " +
+      "a `.rc-head` (:436) jest jego rodzeństwem POD nim — nad tytułem nie " +
+      "stoi nic niosącego tekst",
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening:
+      NOT_2XL_CITE +
+      "; na rekordzie także sam tytuł prototypu jest mniejszy — `.rec-title` " +
+      "to --text-xl (v3/app.css:651)",
+    // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
+    // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
+    // (`styles.css:6669`) jest jedynym żywym konsumentem `--text-2xl`
+    // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
+    // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
+    // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby
+    // rozjazd nad ekranem, którego nie zmierzył.
+    todayOpening: "OPENING_SMALLER",
     // TRZECI KSZTAŁT POŁOŻENIA: nie „wiersz niżej", tylko RZĄD WYŻEJ. Przyrząd
     // szukający akcji wyłącznie POD pasmem przegapiłby ten ekran w całości.
     //
@@ -766,7 +1068,20 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/record.js:556-561 — drugim argumentem crumbbara są btn("Subscribe", { cls: "quiet" }) i <button class="icon-btn">, czyli DWIE kontrolki bez tła (app.css:306-314 baza bez `background`, :318 quiet zmienia sam kolor, :135-139 icon-btn dostaje tło dopiero na hover) — żadnego modyfikatora z PROTOTYPE_FILLED_MODIFIERS',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "record/TaskRecordScreen.tsx:475-480 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko ProjectRecordScreen (:208)",
+    app: "record/TaskRecordScreen.tsx:475-480 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko ProjectRecordScreen (:208); <h1> jest bezpośrednim dzieckiem header._header (:492-495)",
+    // Ta sama zadeklarowana równoważność co przy rekordzie projektu — powód
+    // stoi tam i nie powtarza się tu, żeby nie zrobić z jednego faktu trzech.
+    prototypeStack: "ONE_ROW",
+    citeStack:
+      'v3/screens/record.js:563 — rcShell(`<h1 class="rec-title">…`) z ' +
+      "`.rec-meta` (:564) jako rodzeństwem POD tytułem; nad tytułem nic",
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening:
+      NOT_2XL_CITE +
+      "; na rekordzie także sam tytuł prototypu jest mniejszy — `.rec-title` " +
+      "to --text-xl (v3/app.css:651)",
+    todayOpening: "OPENING_SMALLER",
     // WIERSZ, KTÓRY BYŁ ROZJAZDEM PRZEZ NIESYMETRYCZNY PREDYKAT, i dlatego stoi
     // tu z uzasadnieniem, a nie po cichu jako MATCH. Póki kolumna `prototype`
     // liczyła KAŻDY przycisk, a `today` tylko te z wypełnieniem, ten ekran był
@@ -783,7 +1098,22 @@ export const TITLE_BAND_ROWS = [
     cite: "v3: `grep -n crumbbar screens/record.js app.js` daje ekrany rekordu projektu (:429), zadania (:556) i organizacji (:773) — szansy NIE MA",
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "opportunity/OpportunityRecordScreen.tsx:482-487 — .crumbs z samym przyciskiem powrotu",
+    app: "opportunity/OpportunityRecordScreen.tsx:482-495 — .crumbs z samym przyciskiem powrotu; <h1> bezpośrednio w header._header",
+    // ŚLEPA PLAMA JEST TA SAMA NA WSZYSTKICH CZTERECH OSIACH i deklaruje się ją
+    // osobnym napisem, a nie ciszą: ekran, którego prototyp nie ma, jest
+    // MIERZONY i DRUKOWANY, ale nie może być rozjazdem.
+    prototypeStack: "NO_SCREEN",
+    citeStack:
+      "v3: `grep -n crumbbar screens/record.js app.js` daje rekord projektu " +
+      "(v3/screens/record.js:429), zadania (:556) i organizacji (v3/app.js:773) " +
+      "— szansy NIE MA, więc nie ma czego przyłożyć",
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NO_SCREEN",
+    citeOpening:
+      "v3: ten sam grep — prototyp nie ma ekranu rekordu szansy " +
+      "(v3/screens/record.js:429), więc nie ma treści, której otwarcie dałoby " +
+      "się porównać",
+    todayOpening: "OPENING_SMALLER",
     // ZADEKLAROWANA ŚLEPA PLAMA. Wiersz jest mierzony i drukowany, ale nie może
     // być znaleziskiem: nie ma prototypu, od którego miałby się rozjechać.
     // Stoi tu, żeby ekran nie wypadł z pokrycia po cichu — cisza o nim byłaby
@@ -820,6 +1150,47 @@ export const isTitleBandDivergence = (row) =>
 
 export const TITLE_BAND_DIVERGENCES = TITLE_BAND_ROWS.filter(
   isTitleBandDivergence,
+);
+
+/**
+ * Czy TEN wiersz jest rozjazdem na OSI SKŁADU (P3).
+ *
+ * OSOBNY PREDYKAT, A NIE TRZECI CZŁON `isTitleBandDivergence`, i to jest ta sama
+ * decyzja, którą podjął lot C2 przy osi poziomej: osie się NIE SUMUJĄ. Zlanie
+ * ich zabrałoby zdanie „miejsce akcji się trzyma, skład pasma się rozjechał" —
+ * czyli dokładnie ten werdykt, po który sięgnie lot L2.
+ *
+ * `no-screen` NIE JEST ROZJAZDEM, tak samo jak na osi akcji: ekran, którego
+ * prototyp nie ma, nie ma się od czego rozjechać. Bez tego członu P3 dokładałby
+ * rozjazd NIESPEŁNIALNY — wiersz, którego nie da się zamknąć żadną poprawką,
+ * bo nie ma wzorca, do którego miałaby doprowadzić.
+ */
+export const isTitleBandStackDivergence = (row) =>
+  row.prototype === "no-screen" ? false : row.todayStack !== row.prototypeStack;
+
+/**
+ * Czy TEN wiersz jest rozjazdem na OSI OTWARCIA (P3).
+ *
+ * PORÓWNANIE JEST BINARNE I DOTYCZY WYŁĄCZNIE `OPENING_2XL`. Powód stoi przy
+ * `TITLE_BAND_PROTOTYPE_OPENING_STATES` i sprowadza się do symetrii predykatu:
+ * kolumna prototypu jest CZYTANA (grep po czterech trafieniach `--text-2xl`),
+ * a kolumna `today` MIERZONA, więc rozjazdem wolno nazwać tylko to pytanie,
+ * które da się zadać obu stronom tym samym sposobem. Trzeci stan pomiaru
+ * (`NO_OPENING` wobec `OPENING_SMALLER`) jest drukowany i pilnowany przez dryf
+ * od kolumny `today`, ale nie robi rozjazdu z prototypem.
+ */
+export const isTitleBandOpeningDivergence = (row) =>
+  row.prototype === "no-screen"
+    ? false
+    : (row.prototypeOpening === "OPENING_2XL") !==
+      (row.todayOpening === "OPENING_2XL");
+
+export const TITLE_BAND_STACK_DIVERGENCES = TITLE_BAND_ROWS.filter(
+  isTitleBandStackDivergence,
+);
+
+export const TITLE_BAND_OPENING_DIVERGENCES = TITLE_BAND_ROWS.filter(
+  isTitleBandOpeningDivergence,
 );
 
 /**
@@ -984,6 +1355,38 @@ export const classifyTitleBandCensus = ({
         "anything but a finding. Projects is today's witness on this axis too (its „New project” " +
         "ends exactly where the band's content box ends); if it stopped being one, either the " +
         "band stopped pushing its action to the end or this rule is reading the wrong edge.",
+    );
+  // TEN SAM STRAŻNIK NA OSI SKŁADU (P3). Reguła brzmi „tytuł jest bezpośrednim
+  // dzieckiem pasma I nic niosącego tekst nie stoi przed nim" — literówka w
+  // którymkolwiek członie zwracałaby STACKED wszędzie, a „wszędzie czerwono"
+  // jest w tym repozytorium nieodróżnialne od „przyrząd nie działa".
+  if (!measured.some((entry) => entry.stack?.state === "ONE_ROW"))
+    failures.push(
+      "TITLE_BAND_NEVER_ONE_ROW: not one band in this whole pass came back with a single-row left " +
+        "stack. This axis then has NO evidence that it can return anything but a finding, and a " +
+        "probe that can only go red is indistinguishable from a broken one. Today and the six " +
+        "screens on SurfaceTitleBand are the witnesses (their <h1> is a direct child of the band); " +
+        "if they stopped being witnesses, either the shared band grew a wrapper or this rule " +
+        "stopped reading the title's parent.",
+    );
+  // DWA STRAŻNIKI MAJĄ PRZECIWNĄ POLARYZACJĘ NA BRAKUJĄCYM POLU, I TO JEST
+  // ŚWIADOME, a nie przeoczenie symetrii. `!some(stack?.state === "ONE_ROW")`
+  // ZAPALA SIĘ na `undefined` — pole, którego przelot nie przepisał do `judged`,
+  // ma być awarią. `every(opening?.state === "NO_OPENING")` na `undefined` NIE
+  // zapala, bo `undefined !== "NO_OPENING"` — i tak ma być, bo ten strażnik pyta
+  // o coś innego (patrz niżej). Zapomniane pole `opening` i tak nie przejdzie
+  // cicho: linia raportu czyta `entry.opening.state` BEZ `?.` i rzuca.
+  //
+  // STRAŻNIK OSI OTWARCIA MÓWI „ROZWIĄZAŁA SIĘ", A NIE „ZNALAZŁA 2XL", i to
+  // jest różnica, nie ostrożność. Dziś ta oś ma mieć prawo wrócić ZERO trafień
+  // `OPENING_2XL` — o to właśnie się pyta — więc strażnik na 2xl byłby czerwony
+  // od pierwszego dnia z powodu, o którym oś ma dopiero orzec. Świadkiem jest
+  // to, że sonda `--text-2xl` w ogóle się rozwiązuje i ma co porównywać.
+  if (measured.every((entry) => entry.opening?.state === "NO_OPENING"))
+    failures.push(
+      "TITLE_BAND_OPENING_NEVER_RESOLVED: not one screen in this pass produced a heading in its " +
+        "content column at all, so the opening axis measured NOTHING anywhere. „No screen opens " +
+        "with a big title” would then be a fact about this probe, not about the product.",
     );
 
   return failures;

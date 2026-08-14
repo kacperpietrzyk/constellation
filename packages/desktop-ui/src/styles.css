@@ -1699,9 +1699,9 @@ kbd {
    daje podbarwienie `--accent-quieter`, tekst pierwszorzędny i wagę 500,
    a `:222-226` dokłada 2,5-pikselową szynę tuszu przy LEWEJ krawędzi kolumny,
    z poświatą `--accent-glow`. Kontrakt mówi to samo dwa razy i obie razy
-   z cytatem w tę stronę: `.ui-craft/tokens.md:271-279`, sekcja „Form first —
+   z cytatem w tę stronę: `.ui-craft/tokens.md:372-382`, sekcja „Form first —
    ink and wash" („Ink is confined to … a 2–2.5 px rail (`v3/app.css:485-487`,
-   `:222-226`)") i `:291-296`, sekcja „Wash rarely travels alone" („where
+   `:222-226`)") i `:397-402`, sekcja „Wash rarely travels alone" („where
    the reference washes an object it also inks one edge of it … the wash says
    which object; the ink says the same thing on a channel that survives
    a grayscale print").
@@ -1930,8 +1930,8 @@ kbd {
    weight says it again in shape, and the inked rail says it a third time on a
    channel that survives a grayscale print. The wash is the shell's own
    `--nav-active-*` role rather than a raw accent tint — the component role
-   exists, so the new selector takes it (`.ui-craft/tokens.md:219-220`) — and
-   the rail is the reference's 2 px accent edge (`.ui-craft/tokens.md:239-241`,
+   exists, so the new selector takes it (`.ui-craft/tokens.md:225`) — and
+   the rail is the reference's 2 px accent edge (`.ui-craft/tokens.md:377-382`,
    ink confined to a rail). */
 .settings-mode-column .nav-item[aria-current="location"] {
   color: var(--nav-active-text);
@@ -3433,7 +3433,7 @@ kbd {
    a `.st-danger` dokłada wyłącznie kolor i barwę krawędzi na hoverze
    (`v3/screens/settings.css:176-179`). Kontrakt żąda tego samego: „the fill on
    a destructive action — the reference gives danger `--status-error` as colour
-   and border and never as a solid fill" (`.ui-craft/tokens.md:257`). Dlatego
+   and border and never as a solid fill" (`.ui-craft/tokens.md:335-336`). Dlatego
    przycisk potwierdzenia dostaje `secondary-button`, a wariant zaczepia się
    o klasę akcji, nie o nazwę pojemnika.
 

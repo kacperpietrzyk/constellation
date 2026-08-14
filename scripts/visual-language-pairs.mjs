@@ -1406,6 +1406,204 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "count", equals: 1 },
     status: "enforced",
   },
+  // ══ FAZA I, PRZYRZĄD P1 — SUFIT KOLUMNY CZYTELNEJ ═════════════════════════
+  // Jedyna pozycja tego przyrządu, która stoi w mapie POWŁOKI, i stoi tu
+  // dlatego, że `HARNESS` ląduje na Dzisiaj: `main[data-surface]` ma na
+  // lądowaniu wartość „today" bez ani jednego kliknięcia. Pozostałe dwanaście
+  // ekranów wymaga nawigacji i siedzi w mapie trasowanej — para na nieobecny
+  // podmiot wraca NOT_MEASURED, czyli awarią przyrządu w OBU statusach.
+  //
+  // TEZA CAŁEGO PRZYRZĄDU, JEDNYM ZDANIEM: czy sufit kolumny czytelnej, pod
+  // którym stoi treść ekranu, jest wartością zadeklarowaną DLA TEGO EKRANU
+  // i równą prototypowej — czy jedną liczbą powłoki, odziedziczoną przez
+  // wszystkie trzynaście. Dziś `.work-surface { --surface-measure: 72rem }`
+  // (`styles.css:2103`) rządzi dwunastoma ekranami i nie mierzy tego ANI JEDNA
+  // z 206 par: pięć par czytających `max-width` mierzy akapit (L4-12, L6-05),
+  // dymek (C5-01c), pasmo (D1-01b) albo cytuje regułę w prozie (D7-01a).
+  {
+    id: "P1-01",
+    lot: "P1",
+    position: 1,
+    kind: "restyle",
+    title: "Today declares its own reading measure",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "5",
+      value:
+        "`.td { max-width: 68rem; padding: var(--space-6) }` — sufit stoi w PLIKU EKRANU, nie w tokenach powłoki; `.td` jest jedynym dzieckiem `.scroller` (`v3/screens/today.js:131`)",
+    },
+    subject: {
+      selector:
+        '#main-content [class*="_today_"] > *:not(.surface-header):not(.view-band)',
+      why: "the clamp carrier the contract names by selector: `.surface-scroll > *:where(:not(.surface-header, .view-band))` (styles.css:6123-6127). Measured 2026-08-13 at 1440×900 in both themes: FOUR rendered children (p._capacity, section._section ×3), ONE distinct maxWidth — 1152px — so this selector says exactly one thing",
+      app: "packages/desktop-ui/src/TodaySurface.tsx:223 (nośnik), styles.css:6123-6127 (klamra), styles.css:2103 (jedyna wartość, wspólna dla dwunastu ekranów)",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 68 },
+    // `rem`, A NIE PIKSEL, i to nie jest ostrożność: `judgeVisualPair` dzieli
+    // przez `getComputedStyle(document.documentElement).fontSize`
+    // (`verify-renderer-layout.mjs:4485-4487`), więc ta para pyta o REGUŁĘ
+    // („ekran deklaruje 68 rem"), a nie o szerokość okna. Wszystkie liczby
+    // dokumentu przejścia są z 1662 px, a ta mapa chodzi przy 1440 px.
+    status: "pending: LOT L1",
+  },
+  // ══ FAZA I, PRZYRZĄD P2 — CHROM KARTY NA POJEMNIKU LISTY ══════════════════
+  // TEZA, JEDNYM ZDANIEM: lista wierszy stoi w POJEMNIKU, który ma ramkę,
+  // promień i przycięcie, a wiersz w środku NIE MA własnego rogu karty.
+  // Mierzone na wyliczonym stylu elementu O ROLI LISTY — nigdy na obecności
+  // reguły w arkuszu i nigdy na nazwie klasy modułu.
+  //
+  // DLACZEGO TEN PRZYRZĄD W OGÓLE ISTNIEJE. Wpis 3-1 dokumentu przejścia:
+  // sonda przeszła na Skrzynce wszystkie `div/ul/ol/section/table` szersze niż
+  // 200 px i wyższe niż 40 px i zebrała te z ramką ≥ 0,5 px albo promieniem
+  // ≥ 1 px — ZBIÓR PUSTY, przy 206 zielonych parach. Nie ma tu sprzeczności:
+  // trzynaście par tego rejestru czyta `borderRadius`/`borderTopWidth`
+  // i wszystkie siedzą na Bibliotece, Ustawieniach, rekordzie projektu,
+  // komentarzach i doku przechwytywania. Ani jedna nie stoi na Dzisiaj,
+  // Kalendarzu ani Skrzynce.
+  //
+  // PODMIOT WSKAZANY PRZEZ ROLĘ, I TO NIE JEST OZDOBA. Rodzic wiersza NIE
+  // NADAJE SIĘ na podmiot, bo jest asymetryczny między dwoma ekranami tej
+  // rodziny: na Dzisiaj `data-planned-row` siedzi na `<div>` WEWNĄTRZ gołego
+  // `<li>` (`TodaySurface.tsx:397-404`), więc `*:has(>[data-planned-row])`
+  // trafiłby w `<li>`, a chrom ma dostać LISTA; na Skrzynce `data-inbox-row`
+  // siedzi wprost na `<li>` (`InboxSurface.tsx:136-146`). Nazwa klasy modułu
+  // odpada osobno — `_rows_` zeruje selektor po cichu przy pierwszym
+  // przebudowaniu arkusza. Zostaje „element o roli listy, który zawiera
+  // ZADEKLAROWANE wiersze", i to samo zdanie działa na obu ekranach.
+  //
+  // PRZYPIĘCIE DO ROLI ARIA JEST ŚWIADOME i nie wolno go hartować do
+  // `:is(ul,ol,[role=list],[role=listbox])`: przebudowa, która zdejmie rolę,
+  // ma dać `NOT_MEASURED`, czyli CZERWIEŃ w obu statusach. To jest właściwy
+  // kierunek awarii i dokładnie to, co czyni możliwym złamanie tego przyrządu
+  // (`scripts/break-visual-language.mjs`, „the Today plan list's role").
+  //
+  // `:has()` BEZ SPACJI W ŚRODKU NAWIASU. Diagnostyka `NOT_MEASURED` dzieli
+  // selektor po `\s+` (`verify-renderer-layout.mjs:4406-4417`); spacja wewnątrz
+  // `:has()` rozbija go na dwa nieparsowalne kawałki i spis „każda część
+  // osobno" przestaje cokolwiek mówić, choć czerwień dalej pada.
+  //
+  // ── WZORZEC, KTÓRY TE SZEŚĆ PAR ZAKŁADA PO STRONIE LOTU L4 ────────────────
+  // ZAPISANE TUTAJ, ŻEBY NIKT NIE ODKRYWAŁ TEGO Z CZERWONEJ BRAMKI — ten sam
+  // ruch, co przy przyrządzie P1. Prototyp niesie chrom na OSOBNYM pudełku
+  // (`div.td-list`, `div.ib-list` opakowują wiersze), a te pary czytają element
+  // NIOSĄCY ROLĘ LISTY, czyli `<ul>`. Jeżeli L4 doda ramkę, promień
+  // i przycięcie WPROST na `ul.rows` / `ul[role]`, sześć par pozycji 1 i 3
+  // zzielenieje bez przepisywania czegokolwiek. Jeżeli L4 pójdzie za prototypem
+  // STRUKTURALNIE i wprowadzi opakowujący `<div>`, który weźmie chrom, te
+  // sześć par ZOSTANIE CZERWONYCH nad poprawną dostawą i trzeba je będzie
+  // PRZEPIĄĆ na to pudełko — decyzja należy do L4, ale koszt jest znany
+  // z góry i stoi zapisany tu, a nie w raporcie z czerwonego przelotu.
+  // Pary wiersza (P2-02, P2-04) są na tę zmianę odporne: ich podmiotem jest
+  // atrybut wiersza, którego żadna z dwóch dróg nie rusza.
+  //
+  // ── P2 · POZYCJA 1 — LISTA DZISIAJ STOI W POJEMNIKU Z RAMKĄ ───────────────
+  // Wpis 1-2 dokumentu przejścia.
+  {
+    id: "P2-01a",
+    lot: "P2",
+    position: 1,
+    kind: "restyle",
+    title: "the Today list stands in a container with a hairline border",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", ograniczenie „A row of a list is not a card"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "57-60",
+      value:
+        "`.td-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-panel) }`",
+    },
+    subject: {
+      selector: '#main-content [role="listbox"]:has([data-planned-row])',
+      why: "role plus the declared row attribute, so neither the module hash nor the tag is load-bearing; the approaching list on the same screen is also a listbox but carries data-approaching-row, so it cannot join this subject set",
+      app: "packages/desktop-ui/src/TodaySurface.tsx:393-396, today.module.css:181-189 (.rows — declares gap, margin, padding and list-style, and no border at all)",
+    },
+    read: { property: "borderTopWidth" },
+    expect: { kind: "literal", value: "1px" },
+    status: "pending: LOT L4",
+  },
+  {
+    id: "P2-01b",
+    lot: "P2",
+    position: 1,
+    kind: "restyle",
+    title: "and the Today container carries the card radius",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card", ograniczenie „The chrome belongs to the LIST, not to the section"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "57-60",
+      value: "`.td-list { border-radius: var(--radius-md) }`",
+    },
+    subject: {
+      selector: '#main-content [role="listbox"]:has([data-planned-row])',
+      why: "the same subject as P2-01a; the radius is read APART from the border because a 1px square frame satisfies one and not the other, and entry 1-2 names both",
+      app: "packages/desktop-ui/src/today.module.css:181-189",
+    },
+    // TOKEN, NIE LICZBA, i to jest ochrona przed asercją gnijącą od tokenu:
+    // `inbox.module.css:129-133` zapisuje wprost, że liczby promienia z tamtej
+    // okolicy są HISTORYCZNE (mierzone, gdy `--radius-md` miał 0.5625rem;
+    // R3 z 2026-08-07 dał mu 0.75rem). Wpisany literał „12px" zrobiłby z tej
+    // pary czerwień przy następnej zmianie tokenu, bez żadnej zmiany produktu.
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-md" },
+    status: "pending: LOT L4",
+  },
+  {
+    id: "P2-01c",
+    lot: "P2",
+    position: 1,
+    kind: "restyle",
+    title: "and the Today container clips its rows to that radius",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", zdanie „overflow: hidden on the plate is load-bearing"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "57-60",
+      value: "`.td-list { overflow: hidden }`",
+    },
+    subject: {
+      selector: '#main-content [role="listbox"]:has([data-planned-row])',
+      why: "the third declaration of the same one-line rule, and the one that makes the radius VISIBLE: without it the row hover fill (today.module.css:207-209) draws square corners outside a rounded edge, which is the defect the contract names by hand",
+      app: "packages/desktop-ui/src/today.module.css:181-189",
+    },
+    read: { property: "overflow" },
+    expect: { kind: "literal", value: "hidden" },
+    status: "pending: LOT L4",
+  },
+  // ── P2 · POZYCJA 2 — WIERSZ NIE JEST KARTĄ ────────────────────────────────
+  // DRUGA POŁOWA TEZY, I BEZ NIEJ PRZYRZĄD JEST DZIURAWY: pozycja 1 spełnia się
+  // także wtedy, gdy chrom stanie na POJEMNIKU, a na wierszu ZOSTANIE — czyli
+  // przy podwójnym zaokrągleniu, którego prototyp nie ma na żadnym ekranie.
+  {
+    id: "P2-02",
+    lot: "P2",
+    position: 2,
+    kind: "restyle",
+    title: "the Today row gives its card corner back to the list",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", ograniczenie „A row of a list is not a card"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "61-66",
+      value:
+        "`.td-row` declares a grid, padding and `border-bottom: 1px solid var(--border-subtle)` — and NO border-radius at all; `.td-row:last-child { border-bottom: 0 }`",
+    },
+    subject: {
+      selector: "#main-content [data-planned-row]",
+      why: "the declared row attribute, the same one the layout gate's todayPlannedRows floor is anchored to (verify-renderer-layout.mjs:1126-1129); the app puts --radius-md on the ROW",
+      app: "packages/desktop-ui/src/today.module.css:191-201 (.row, .meeting — border-radius: var(--radius-md))",
+    },
+    // „TEN ELEMENT NIE MA TEJ WŁASNOŚCI" ZAPISUJE SIĘ LITERAŁEM — ustalony
+    // kształt tego rejestru, precedens `L1-01a` (`literal: "none"`) i P1-04
+    // (`max-width` bez deklaracji). Dla promienia bez deklaracji wyliczona
+    // wartość to dokładnie „0px", a nie „none".
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "pending: LOT L4",
+  },
 ];
 
 /**
@@ -1490,6 +1688,36 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
       "zostaje wtedy z samym podbarwieniem 0,08 alfy, czyli w stanie połowicznym, który lot C1 " +
       "istnieje, żeby zamknąć. Zielone C1-01a NIE JEST dowodem, że szynę widać.",
   },
+  {
+    // ── PRZYRZĄD P2, POZYCJA 6, POŁOWA „DZISIAJ" ──────────────────────────────
+    // BLIŹNIAK ZE SKRZYNKI STOI W `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`, bo
+    // tamten ekran jest za nawigacją. Jedna pozycja briefu, dwa wpisy, dwie
+    // mapy — i to jest ten sam podział, co przy parach tego przyrządu.
+    lot: "P2",
+    position: 6,
+    title: "the row's hairline separator, on Today",
+    prototype:
+      "v3/screens/today.css:61-65 (`.td-row { border-bottom: 1px solid var(--border-subtle) }`) + `:66` (`.td-row:last-child { border-bottom: 0 }`)",
+    app: "packages/desktop-ui/src/today.module.css:181-189 — lista niesie `gap: 1px`, a wiersz (`:191-201`) nie deklaruje ŻADNEJ krawędzi (wpis 1-2: `border-bottom: 0px`)",
+    probe: "[data-planned-row]",
+    why:
+      "NIE „nie zdążyliśmy”, tylko „fikstura czyni asercję FAŁSZYWĄ”. Harness rysuje DOKŁADNIE " +
+      "JEDEN wiersz planu (`dev/CollaborationHarness.tsx` — jedno zadanie `task.list` z `startAt` " +
+      "wyprowadzonym z zegara), a jedyny wiersz JEST wierszem ostatnim — więc prototyp każe mu mieć " +
+      "`border-bottom: 0`. Para asertująca `1px` byłaby czerwona wobec kodu ZGODNEGO z prototypem, " +
+      "a para asertująca `0px` byłaby zielona nad listą bez ani jednego separatora. To zdanie jest " +
+      "wyrażalne dopiero przy DWÓCH wierszach w JEDNEJ liście. Liczba z sondy niżej mówi, ile ich " +
+      "dziś jest — wpis przestaje być prawdą w chwili, w której ta liczba przekroczy jeden.",
+    exit:
+      "drugie zadanie zaplanowane NA DZIŚ w `dev/CollaborationHarness.tsx` — a nie zadanie " +
+      "nieplanowane, bo tamto zasila sekcję `approaching`, czyli DRUGĄ listę po jednym wierszu, " +
+      "i niczego nie odblokowuje.",
+    greenWrong:
+      "Lot L4 może dołożyć wierszowi `border-bottom` i ZOSTAWIĆ `gap: 1px` na pojemniku " +
+      "(`today.module.css:185`), czyli dowieźć separator 2 px zamiast 1 px, przy wszystkich " +
+      "ośmiu parach P2 zielonych. To jest jedyna droga, którą ta poprawka może pojechać źle " +
+      "i nie zostać zauważona.",
+  },
 ];
 
 /**
@@ -1565,11 +1793,48 @@ export const VISUAL_LANGUAGE_EXPECTED = {
   // poprawnie od D2, brakowało stanu, w którym mogłaby to zrobić.
   // `positionsWithPairs` się nie rusza: pozycja 9 miała parę na swoją drugą
   // połowę (`Open Calendar →`) już wtedy.
-  pairs: 50,
+  //
+  // 50 → 51 PRZY PRZYRZĄDZIE P1 FAZY I, 2026-08-13, I NIE JEST TO POZYCJA
+  // EKRANOWA: to PRZYRZĄD, który mierzy rzecz rządzącą dwunastoma ekranami
+  // naraz — sufit kolumny czytelnej. `enforced` się NIE rusza, bo jedyna para
+  // tego przyrządu w tej mapie (P1-01, Dzisiaj) jest oczekująca na lot L1
+  // Fazy II; `pending` idzie 1 → 2 i P1-01 dołącza do L1-15a. Pozostałe
+  // dwanaście pozycji briefu P1 stoi w mapie trasowanej — nie „bez pary",
+  // tylko „nie w tej mapie", i tak są zapisane w `lots.P1` obu map.
+  //
+  // 51 → 55 I `notCovered` 3 → 4 PRZY PRZYRZĄDZIE P2 FAZY I, 2026-08-13, i tak
+  // samo jak przy P1 NIE JEST TO POZYCJA EKRANOWA: to PRZYRZĄD nad rodziną
+  // trzech ekranów (Dzisiaj, Skrzynka, Kalendarz), której chrom karty stoi
+  // w tej aplikacji na WIERSZU zamiast na POJEMNIKU. `enforced` się nie rusza —
+  // wszystkie cztery pary są oczekujące na lot L4 Fazy II; `pending` idzie
+  // 2 → 6. Pozycje 3 i 4 briefu (Skrzynka) stoją w mapie trasowanej, pozycja 5
+  // (taca Kalendarza) i 6 (separator wiersza) nie mają pary w ŻADNEJ z map
+  // i są wypisane jako `NOT_COVERED` z osobnymi warunkami wyjścia — połowa
+  // pozycji 6 tutaj, druga połowa i pozycja 5 w mapie trasowanej.
+  pairs: 55,
   enforced: 49,
-  pending: 1,
-  notCovered: 3,
+  pending: 6,
+  notCovered: 4,
   lots: {
+    P2: {
+      // Sześć pozycji briefu P2, rozciętych między dwie mapy tak samo jak przy
+      // locie C1 i przyrządzie P1: pozycje 1-2 tutaj (Dzisiaj = powierzchnia
+      // LĄDOWANIA, mierzalna bez kliknięcia), pozycje 3-4 w mapie trasowanej
+      // (Skrzynka = za nawigacją), pozycje 5 i 6 bez pary w obu mapach.
+      positionsInBrief: 6,
+      positionsWithPairs: 2,
+      positionsWithoutPairs: [3, 4, 5, 6],
+    },
+    P1: {
+      // Brief P1 ma trzynaście pozycji, po jednej na ekran, i ta sama
+      // trzynastka jest zadeklarowana w mapie trasowanej. Tutaj z parą stoi
+      // WYŁĄCZNIE pozycja 1 (Dzisiaj), bo przelot powłoki nie klika i w DOM-ie
+      // nie ma żadnego innego ekranu. Dwanaście pozostałych jest w
+      // `VISUAL_LANGUAGE_ROUTED_EXPECTED.lots.P1`.
+      positionsInBrief: 13,
+      positionsWithPairs: 1,
+      positionsWithoutPairs: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    },
     D2: {
       // Dziewięć pozycji, wszystkie z parą. Rachunek pozycji jest rachunkiem
       // ZDAŃ rejestru, nie wpisów: #13 i #54 to jedno zdanie o daszku (pozycja
@@ -2496,9 +2761,15 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // TA PARA NIE PYTA O ROZMIAR, I TO JEST POMIAR, NIE OSTROŻNOŚĆ. Ekran
     // szansy JUŻ dziś stoi na --text-xl (opportunity-record.module.css:29-38),
     // więc para o rozmiarze PASOWAŁABY od razu i przyrząd zgłosiłby ją jako
-    // „oczekująca, a pasuje". Waga 620 kontra 600 jest jawnie POZA zakresem
-    // lotu („nie rusza wag pisma 580/590/620"). Zostaje tracking: v3 deklaruje
-    // -0.022em, aplikacja nie deklaruje nic.
+    // „oczekująca, a pasuje". Waga 620 kontra 600 była jawnie POZA zakresem
+    // lotu 4 („nie rusza wag pisma 580/590/620") — i to zdanie ZOSTAJE, bo
+    // opisuje, dlaczego ta para trzyma się trackingu. Od 2026-08-13 waga tego
+    // samego podmiotu MA jednak własny pomiar i własnego właściciela:
+    // `P5-01b` czyta `fontWeight` na tym samym selektorze i pyta o
+    // przynależność do skali z `tokens.css`, a nie o liczbę 600. Ta para nie
+    // przejmuje tego zdania i nie musi — dwie własności, dwie pozycje, dwa
+    // przełączniki. Zostaje tracking: v3 deklaruje -0.022em, aplikacja nie
+    // deklaruje nic.
     contract: ".ui-craft/tokens.md (Type)",
     prototype: {
       file: "v3/app.css",
@@ -6478,6 +6749,861 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // wobec 24. Zostawienie samej pary byłoby wiecznym czerwonym wierszem nad
   // świadomą odmową; powód i arytmetyka stoją w `people/PeopleSurface.tsx`
   // przy pasie uczestnictwa, a pozycja jest w raporcie lotu w `notDelivered`.
+
+  // ══ FAZA I, PRZYRZĄD P1 — DWANAŚCIE EKRANÓW ZA NAWIGACJĄ ══════════════════
+  // Pozycje 2-13 briefu P1. Pozycja 1 (Dzisiaj) stoi w mapie powłoki.
+  // Wszystkie dwanaście czytają JEDNĄ własność — `maxWidth` — na nośniku treści
+  // ekranu; różnią się wyłącznie liczbą, której żąda prototyp, i to jest cała
+  // treść tego przyrządu: dziś tę liczbę deklaruje POWŁOKA raz, dla wszystkich.
+  //
+  // DLACZEGO PODMIOTEM JEST NOŚNIK TREŚCI, A NIE KORZEŃ EKRANU. Prototyp
+  // klamruje JEDNO pudełko na ekran (`.scroller > .td`, `> .ib`, `> .rn`,
+  // `> .mt`, `> .cal-screen`, `> .record`, `.st`), a ta aplikacja klamruje
+  // KAŻDE dziecko nośnika przewijania z osobna — i kontrakt nazywa ten zbiór
+  // wprost: `.surface-scroll > *:where(:not(.surface-header, .view-band))`
+  // (`styles.css:6123-6127`). Odczyt na KORZENIU został zmierzony 2026-08-13
+  // i odrzucony, bo daje CZTERY fałszywe werdykty z trzynastu: Projekty,
+  // Pipeline, Organizacje i Ludzie wyliczają na korzeniu „none" i byłyby
+  // zielone przy treści zaklamrowanej do 72 rem, a Ustawienia — jedyny ekran
+  // DZIŚ POPRAWNY — wyliczają na korzeniu „none" i byłyby czerwone.
+  //
+  // WZORZEC, KTÓRY TE PARY ZAKŁADAJĄ PO STRONIE L1: korzeń DEKLARUJE zmienną,
+  // dzieci KONSUMUJĄ — tak, jak robią to dziś Ustawienia
+  // (`.settings-surface { --surface-measure: 74rem }`, `styles.css:9397-9399`).
+  // Para przypięta do konsumenta robi się zielona, kiedy L1 powtórzy ten
+  // wzorzec, BEZ przepisywania pary. Gdyby L1 wybrał drugą drogę (literał
+  // `max-width` na korzeniu, jak w prototypie), jedenaście par zostanie
+  // czerwonych mimo poprawnego wyglądu i trzeba je będzie przepiąć na korzeń —
+  // decyzja jest zapisana TUTAJ, żeby nikt nie odkrywał jej z czerwonej bramki.
+  {
+    id: "P1-02",
+    lot: "P1",
+    position: 2,
+    kind: "restyle",
+    title: "Calendar declares its own reading measure",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/calendar.css",
+      lines: "17",
+      value:
+        "`.cal-screen { max-width: 84rem; padding: var(--space-6) }` — NAJSZERSZY ekran prototypu i jedyny szerszy od dzisiejszej powłoki",
+    },
+    route: { surface: "calendar" },
+    subject: {
+      selector:
+        '#main-content [class*="_calendar_"] > *:not(.surface-header):not(.view-band)',
+      why: "the clamp carrier on the refusal branch too: measured 2026-08-13, both themes — THREE rendered children (div._calendarState, div._week, section._section), ONE distinct maxWidth (1152px). The scenario client refuses the calendar (client/scenario-client.ts:81-94) and this subject is drawn anyway, which is why this screen is COVERED and not filed as not-covered",
+      app: "packages/desktop-ui/src/CalendarSurface.tsx:639",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 84 },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-03",
+    lot: "P1",
+    position: 3,
+    kind: "restyle",
+    title: "Inbox declares its own reading measure",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "8",
+      value:
+        "`.ib { max-width: 68rem; padding: var(--space-6) var(--space-6) 5.5rem }`",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector:
+        '#main-content [class*="_inbox_"] > *:not(.surface-header):not(.view-band)',
+      why: "measured 2026-08-13, both themes — THREE rendered children (section._section ×2, p._note), ONE distinct maxWidth (1152px)",
+      app: "packages/desktop-ui/src/InboxSurface.tsx:282",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 68 },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-04",
+    lot: "P1",
+    position: 4,
+    kind: "restyle",
+    title: "Tasks stands under no reading measure at all",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/tasks.css",
+      lines: "1-210",
+      value:
+        "ANI JEDNEJ reguły korzenia z `max-width`: `screens/tasks.js:533` wstawia treść WPROST do `.scroller`, a jedyne `max-width` w tym pliku stoją na podpisie widoku (`:64`, 52rem), na głowie kalendarza (`:142`, 56rem) i na karcie (`:186`, 100%)",
+    },
+    route: { surface: "tasks" },
+    subject: {
+      selector:
+        "#main-content [data-tasks-surface] > *:not(.surface-header):not(.view-band)",
+      why: "measured 2026-08-13, both themes — ONE rendered child (div._list), maxWidth 1152px. `data-tasks-surface` is written at FOUR sites in TasksSurface.tsx (:371 refusal, :417 record-unavailable, :425 open record, :689 the list) and they are MUTUALLY EXCLUSIVE branches of one ternary chain, which is why the probe read one carrier on this stop and one on the record stop — never two at once",
+      app: "packages/desktop-ui/src/tasks/TasksSurface.tsx:689 (gałąź listy — ta, którą mierzy ten przystanek); :371, :417 i :425 to trzy pozostałe gałęzie tego samego ternary",
+    },
+    read: { property: "maxWidth" },
+    // `literal: "none"`, A NIE LICZBA I NIE ZERO. „Brak sufitu" jest w tym
+    // przyrządzie wartością WYRAŻALNĄ, bo wyliczony `max-width` na elemencie
+    // bez deklaracji to dokładnie napis „none" — ten sam kształt, co L1-01a
+    // („element NIE MA tej własności") i D1-01b (pasmo bez sufitu).
+    expect: { kind: "literal", value: "none" },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-05",
+    lot: "P1",
+    position: 5,
+    kind: "restyle",
+    title: "Projects stands under no reading measure at all",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/projects.css",
+      lines: "1-270",
+      value:
+        "brak reguły korzenia z `max-width` (`screens/projects.js:353` wstawia treść wprost do `.scroller`); jedyny sufit w tym pliku to `--surface-read` na opisie projektu (`:259`), czyli sufit AKAPITU",
+    },
+    route: { surface: "projects" },
+    subject: {
+      selector:
+        ".surface-scroll.project-surface > *:not(.surface-header):not(.view-band)",
+      why: "measured 2026-08-13, both themes — ONE rendered child (section._collection), maxWidth 1152px. Two hand-written global classes and not a module hash, so the selector needs no `[class*=]`",
+      app: "packages/desktop-ui/src/Wave2Surfaces.tsx:640 i :767",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-06",
+    lot: "P1",
+    position: 6,
+    kind: "restyle",
+    title: "Pipeline stands under no reading measure at all",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/pipeline.css",
+      lines: "1-200",
+      value:
+        "ani jednego `max-width` w całym pliku; korzeniem jest `.pp-board` (`screens/pipeline.js:421`) i nie deklaruje sufitu — tablica lejka ma iść na całą kanwę",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector:
+        "#main-content [data-pipeline-surface] > *:not(.surface-header):not(.view-band)",
+      why: "measured 2026-08-13, both themes — ONE rendered child (div._scroller[data-scrolls-horizontally]), maxWidth 1152px. This is the pair that says the reading clamp is what makes the horizontal board scroll at 1440 px in the first place",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:804 (gałąź dostawy), :840, :864 i :964 to pozostałe gałęzie",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-07",
+    lot: "P1",
+    position: 7,
+    kind: "restyle",
+    title: "Organizations stands under no reading measure at all",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "1-120",
+      value:
+        "brak reguły korzenia z `max-width` (`screens/crm.js:388` wstawia treść wprost do `.scroller`); jedyne `max-width` w tym pliku to zapytanie kontenerowe `@container (max-width: 62rem)` (`:73`), czyli PRÓG, nie sufit",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector:
+        "#main-content [data-organizations-surface] > *:not(.surface-header):not(.view-band)",
+      why: "measured 2026-08-13, both themes — THREE rendered children (div._list, section.strategic-create-panel, div.strategic-layout), ONE distinct maxWidth (1152px)",
+      app: "packages/desktop-ui/src/StrategicDepthSurface.tsx:749 i :876",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-08",
+    lot: "P1",
+    position: 8,
+    kind: "restyle",
+    title: "People stands under no reading measure at all",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/crm.css",
+      lines: "1-120",
+      value:
+        "ten sam plik i ta sama nieobecność, co przy Organizacjach — prototyp rysuje oba ekrany CRM jedną rodziną klas (`screens/crm.js:550`)",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector:
+        "#main-content [data-people-surface] > *:not(.surface-header):not(.view-band)",
+      why: "measured 2026-08-13, both themes — ONE rendered child (div._list), maxWidth 1152px",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx:579 i :636",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-09",
+    lot: "P1",
+    position: 9,
+    kind: "restyle",
+    title: "Renewals declares its own reading measure",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/renewals.css",
+      lines: "9",
+      value: "`.rn { max-width: 68rem; padding: var(--space-6) }`",
+    },
+    route: { surface: "renewals" },
+    subject: {
+      selector:
+        "#main-content [data-renewals-surface] > *:not(.surface-header):not(.view-band)",
+      why: "measured 2026-08-13, both themes — THREE rendered children (section._section ×3: due, watching, closed), ONE distinct maxWidth (1152px)",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:749 i :874",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 68 },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-10",
+    lot: "P1",
+    position: 10,
+    kind: "restyle",
+    title: "Meetings declares the measure the prototype asks for, not 94rem",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "11",
+      value: "`.mt { max-width: 74rem; padding: var(--space-6) }`",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      // KORZEŃ, A NIE DZIECKO, I TO JEST JEDYNY TAKI PODMIOT W P1 —
+      // ZMIERZONY, NIE WYBRANY DLA WYGODY. Spotkania są jedynym ekranem tej
+      // aplikacji, który klamruje NA SOBIE (`styles.css:4829`,
+      // `max-width: 94rem`), a jego dziecko `.meeting-body` wylicza „none".
+      // Para na dziecko porównywałaby „none" z `rem 74`, a to zwraca
+      // NOT_MEASURED (`verify-renderer-layout.mjs:4038-4047`) — czyli awarię
+      // przyrządu w miejscu, w którym należy się werdykt.
+      selector: "#main-content .meeting-surface",
+      why: "the one screen that clamps on its own root: measured 2026-08-13, both themes — ONE rendered element, maxWidth 1504px = 94rem. The same class is worn by `.meeting-skeleton` (MeetingsSurface.tsx:502) and by the error panel (:520); the arrival marker already in ROUTED_ARRIVAL keeps this stop on the delivered screen",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx:1842, deklaracja w styles.css:4810-4832 (`max-width: 94rem` w :4829)",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 74 },
+    // POLECENIE DLA L1, NIE OSTRZEŻENIE: tę parę zamyka się ZMIANĄ LICZBY
+    // W MIEJSCU — `94rem` → `74rem` w `styles.css:4829` — a NIE przeniesieniem
+    // Spotkań na wzorzec Ustawień. Powód jest mechaniczny, nie estetyczny:
+    // skasowanie literału zostawiłoby na tym podmiocie „none", a `rem` na
+    // „none" wraca NOT_MEASURED (`verify-renderer-layout.mjs:4038-4047`), czyli
+    // AWARIĘ PRZYRZĄDU w środku Fazy II, na bramce bez flagi zwężającej
+    // przelot. Edycja jednoliniowa jest też dokładnie tym, co robi prototyp:
+    // `.mt { max-width: 74rem }` to literał na korzeniu, nie zmienna.
+    // Gdyby jakiś późniejszy lot MIMO TO przeniósł Spotkania na zmienną,
+    // podmiot ma zostać przepięty na `#main-content .meeting-surface >
+    // .meeting-body` W TYM SAMYM commicie.
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-11",
+    lot: "P1",
+    position: 11,
+    kind: "restyle",
+    title: "Library stands under no reading measure — and already does",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "1-400",
+      value:
+        "brak reguły korzenia z `max-width`: korzeniem jest `.kn-main.scroller` (`screens/knowledge.js:835`, `:974`), a jedyny sufit w tym pliku to `.kn-reader { max-width: var(--surface-read) }` (`:234`) — sufit AKAPITU (`v3/tokens.css:102`, 46rem), NIE ekranu",
+    },
+    route: { surface: "library", layout: "notes" },
+    subject: {
+      selector: '#main-content [data-height-bound="library"]',
+      why: 'Library reaches the band arrangement by its own road — `.shell` is a grid whose third row is the scroll box (library.module.css:16-23, LibraryShell.tsx:87) — so it has no `.surface-scroll` and never consumes `--surface-measure` at all. `data-height-bound` is written in the source as A DECLARATION, not a test hook (LibraryShell.tsx:167-176). Measured 2026-08-13, both themes — ONE rendered element, maxWidth "none"',
+      app: "packages/desktop-ui/src/library/LibraryShell.tsx:176, library.module.css:16-23",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
+    // ENFORCED, BO PASUJE DZIŚ — i to jest jedna z dwóch par tego przyrządu,
+    // które są zielone od pierwszego przelotu. Para oczekująca, która PASUJE,
+    // kładzie bramkę jako ROUTED_PENDING_ALREADY_MATCHES
+    // (`verify-renderer-layout.mjs:7089-7098`), a osłabianie oczekiwania po to,
+    // żeby ją utrzymać w „pending", jest w tym pliku zakazane wprost.
+    status: "enforced",
+  },
+  {
+    id: "P1-12",
+    lot: "P1",
+    position: 12,
+    kind: "restyle",
+    title: "the record body takes the widest measure the reference declares",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "650",
+      value:
+        "`.record { padding: var(--space-5) var(--space-6) 5rem; max-width: var(--surface-measure) }` → `v3/tokens.css:101` `--surface-measure: 92rem`. To jedyne użycie tego tokenu w CAŁYM prototypie — czyli w v3 `--surface-measure` NIE jest sufitem wszystkiego, tylko wartością, którą wybiera JEDEN ekran",
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '#main-content [data-record-kind="task"]',
+      why: "the record screen is the sole child of the tasks scroll box once a row is opened, so it wears the same `.surface-scroll > *` clamp as every list body. Measured 2026-08-13, both themes — ONE rendered element, maxWidth 1152px, i.e. the record reads NARROWER than the reference by 20 rem",
+      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:480, klamra styles.css:6123-6127",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 92 },
+    status: "pending: LOT L1",
+  },
+  {
+    id: "P1-13",
+    lot: "P1",
+    position: 13,
+    kind: "restyle",
+    title: "Settings declares its own reading measure — and already does",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "96",
+      value:
+        "`.st { max-width: 74rem; padding: var(--space-6) var(--space-6) 5rem }`",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector:
+        "#main-content .settings-surface > *:not(.surface-header):not(.view-band)",
+      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9397-9399) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
+      app: "packages/desktop-ui/src/SettingsSurface.tsx:963, styles.css:9397-9399",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "rem", value: 74 },
+    // ENFORCED, I TO JEST NAJWAŻNIEJSZA PARA CAŁEGO PRZYRZĄDU. Zielona pośród
+    // jedenastu czerwonych dowodzi, że ten przyrząd mierzy WARTOŚĆ, a nie
+    // własną obecność — dwanaście czerwieni bez ani jednej zieleni jest
+    // nieodróżnialne od selektora, który nigdy nie trafia. Jest też jedynym
+    // podmiotem, na którym da się napisać złamanie WARTOŚCIOWE.
+    status: "enforced",
+  },
+
+  // ══ FAZA I, PRZYRZĄD P2 — SKRZYNKA, POZYCJE 3 I 4 ═════════════════════════
+  // Teza przyrządu i uzasadnienie podmiotu przez ROLĘ stoją RAZ, przy parach
+  // P2-01a…P2-02 w mapie powłoki, i nie są tu przepisywane: ten sam kształt
+  // powielony w dwóch miejscach jest w tym repozytorium nazwaną klasą defektu.
+  // Tutaj tylko to, co jest INNE po tej stronie.
+  //
+  // WPIS 3-1 DOKUMENTU PRZEJŚCIA JEST NAJOSTRZEJSZYM DOWODEM CAŁEGO P2 i pada
+  // właśnie na tym ekranie: sonda przeszła wszystkie pojemniki szersze niż
+  // 200 px i wyższe niż 40 px, szukając ramki ≥ 0,5 px albo promienia ≥ 1 px —
+  // zbiór pusty. Prototyp ma tu dwie karty `div.ib-list`, 1 px i promień
+  // `--radius-md`.
+  //
+  // PRZYSTANEK ISTNIEJE OD PRZYRZĄDU P1 I NIE JEST DOPISYWANY PRZEZ TEN LOT.
+  // Marker przybycia Skrzynki (`ROUTED_ARRIVAL.inbox`) to
+  // `#main-content [data-inbox-row]`, dopisany przez P1 tego samego dnia.
+  // MARKER JEST ROZŁĄCZNY Z PODMIOTEM TYCH PAR i to jest tu nośne: złamanie
+  // P2 zdejmuje ROLĘ z `<ul>`, a nie atrybut z `<li>`, więc trasa dalej ląduje
+  // i czerwień wraca jako `ROUTED_NOT_MEASURED` („the selector, not the
+  // navigation"), a nie jako `ROUTED_ROUTE_FAILED` — czyli da się ją przypisać
+  // co do pary. Gdyby przybycie było przypięte do ROLI, to samo złamanie
+  // czytałoby się jak awaria powłoki.
+  {
+    id: "P2-03a",
+    lot: "P2",
+    position: 3,
+    kind: "restyle",
+    title: "the Inbox list stands in a container with a hairline border",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", ograniczenie „A row of a list is not a card"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "27-30",
+      value:
+        "`.ib-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-content); box-shadow: var(--shadow-sm) }`",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector: '#main-content [role="list"]:has([data-inbox-row])',
+      why: "role plus the declared row attribute, the same definition as P2-01a; the capture mailbox is empty in this fixture and renders a <p> instead of a <ul> (InboxSurface.tsx:361-365), and both mailboxes would carry the identical `.rows` rule anyway, so this subject cannot go ambiguous by growing",
+      app: "packages/desktop-ui/src/InboxSurface.tsx:340-344, inbox.module.css:56-63 (.rows — declares gap, margin, padding and list-style, and no border at all)",
+    },
+    read: { property: "borderTopWidth" },
+    expect: { kind: "literal", value: "1px" },
+    status: "pending: LOT L4",
+  },
+  {
+    id: "P2-03b",
+    lot: "P2",
+    position: 3,
+    kind: "restyle",
+    title: "and the Inbox container carries the card radius",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card", ograniczenie „The chrome belongs to the LIST, not to the section"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "27-30",
+      value: "`.ib-list { border-radius: var(--radius-md) }`",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector: '#main-content [role="list"]:has([data-inbox-row])',
+      why: "the same subject as P2-03a; read apart from the border for the reason given there, and against the TOKEN rather than a number for the reason given at P2-01b",
+      app: "packages/desktop-ui/src/inbox.module.css:56-63",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "token", token: "--radius-md" },
+    status: "pending: LOT L4",
+  },
+  {
+    id: "P2-03c",
+    lot: "P2",
+    position: 3,
+    kind: "restyle",
+    title: "and the Inbox container clips its rows to that radius",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", zdanie „overflow: hidden on the plate is load-bearing"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "27-30",
+      value: "`.ib-list { overflow: hidden }`",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector: '#main-content [role="list"]:has([data-inbox-row])',
+      why: "the Inbox row is the one place in this family where the contract's sentence is literal: the selected row draws a rail with ::before at its own left edge (v3/screens/inbox.css:45-47), which is exactly the square corner outside a rounded edge the constraint names",
+      app: "packages/desktop-ui/src/inbox.module.css:56-63",
+    },
+    read: { property: "overflow" },
+    expect: { kind: "literal", value: "hidden" },
+    status: "pending: LOT L4",
+  },
+  {
+    id: "P2-04",
+    lot: "P2",
+    position: 4,
+    kind: "restyle",
+    title: "the Inbox row gives its card corner back to the list",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Settings section card and list plate", ograniczenie „A row of a list is not a card"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "34-42",
+      value:
+        "`.ib-row` declares a grid, padding and `border-bottom: 1px solid var(--border-subtle)` — and NO border-radius; `.ib-row:last-child { border-bottom: 0 }`",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector: "#main-content [data-inbox-row]",
+      why: "the declared row attribute, written on the <li> itself (InboxSurface.tsx:136-146); the radius the app puts here is the SAME --radius-md the container is missing, which is the whole sentence of this instrument in one screen",
+      app: "packages/desktop-ui/src/inbox.module.css:65-72 (.row — border-radius: var(--radius-md))",
+    },
+    read: { property: "borderRadius" },
+    expect: { kind: "literal", value: "0px" },
+    status: "pending: LOT L4",
+  },
+
+  // ══ PRZYRZĄD P4 FAZY I — KONTROLKA, KTÓRĄ RYSUJE SYSTEM, NA POWIERZCHNI ═══
+  //    TREŚCI
+  //
+  // CZEGO TEN PRZYRZĄD **NIE** MIERZY, I DLACZEGO TO JEST PIERWSZE ZDANIE.
+  // Mandat P4 w planie lotów brzmi „rozwiązane `appearance` na kontrolce
+  // stojącej na powierzchni treści". `appearance` NIE NADAJE SIĘ na asercję
+  // i to jest zmierzone, nie wywnioskowane (sonda z 2026-08-13, oba motywy):
+  // Chromium wylicza dla KAŻDEGO `<button>`, `<select>`, `<input>` dowolnego
+  // typu, `<textarea>`, `<progress>` i `<meter>` dokładnie `auto`, a dla
+  // `<div>` i `<a>` dokładnie `none` — nigdy `menulist`, `textfield` czy
+  // `searchfield`. Z tego wynikają trzy rzeczy i każda osobno zabija asercję
+  // „`appearance` ma być `none`":
+  //   1. zdanie dokumentu przejścia 4-1 („`appearance: auto` na wszystkich
+  //      pięciu") jest PRAWDZIWE, ale nie niesie informacji — jest prawdziwe
+  //      także o zdrowych przyciskach tej aplikacji i o przyciskach prototypu;
+  //   2. asercja „`appearance: none`" jest CZERWONA NA PROTOTYPIE:
+  //      `grep -rn appearance docs/plans/2026-07-27-ui-ux-rebuild/v3/` nie
+  //      daje ANI JEDNEJ deklaracji CSS, a jedyny `<select>` prototypu
+  //      (`v3/screens/settings.js:331`, `.st-select`) jej nie deklaruje.
+  //      Prototyp wygrywa z kontraktem, więc ta asercja odpada;
+  //   3. asercja „`appearance: none`" jest SPEŁNIALNA BEZ NAPRAWY PRODUKTU —
+  //      lista opcji `<select>` nie jest elementem DOM-u i rysuje ją system
+  //      niezależnie od `appearance`. Jedna linijka CSS zazieleniłaby
+  //      przyrząd, a macOS dalej rysowałby listę. To jest nazwana w tym
+  //      repozytorium klasa „regex zielony, zachowanie zepsute".
+  // Ten sam wniosek stoi już zapisany po drugiej stronie, w kontrakcie:
+  // `.ui-craft/patterns.md`, „Pattern: Control size", ograniczenie „The native
+  // arrow stays" — `appearance` nie występuje NIGDZIE w drzewie v3.
+  //
+  // CO TEN PRZYRZĄD MIERZY ZAMIAST TEGO. Rzecz, której nie da się udawać
+  // jedną deklaracją: NIEOBECNOŚĆ natywnej kontrolki na powierzchni treści.
+  // Prototyp robi wybór PRZYCISKIEM OTWIERAJĄCYM MENU (`popover()`,
+  // `v3/app.js:1921-1961`), a przycisk otwierający menu to INNY ELEMENT, nie
+  // inny CSS. Zdanie przyrządu: *na powierzchni treści ekranu, którego
+  // prototypowy odpowiednik nie ma ani jednej kontrolki formularza, apka też
+  // nie ma ani jednej — liczone nad CAŁYM `#main-content`, nie nad wypisanymi
+  // kontrolkami.*
+  //
+  // DLACZEGO NIE DOSZYTO OSI DO SPISU B1, KTÓRY CHODZI PO TYCH SAMYCH
+  // PODMIOTACH. `controlPaintCensus` zbiera każdą narysowaną `button, input,
+  // textarea, select` w `#main-content` na trzynastu celach — czyli spacer
+  // i zbiór podmiotów są DOKŁADNIE te, których P4 potrzebuje. Ale ten spis
+  // czyta z nich TŁO i wyłącza z siebie natywny widżet własnym zapisem
+  // (`scripts/control-paint.mjs:117-118`: „Natywna strzałka `<select>` NIE
+  // należy do tego przyrządu — to osobna pozycja (Faza C, lot C5) i osobna
+  // właściwość"). Zapowiedziana „osobna pozycja" nigdy nie powstała: lot C5
+  // dowiózł WYŁĄCZNIE geometrię (C5-01c `maxInlineSize`, C5-02a `alignSelf`,
+  // C5-02b `flexGrow`, C5-03 `flexGrow`). P4 jest jej domknięciem, i robi to
+  // PARAMI, a nie doszyciem, z trzech powodów: nie ma czego doszyć jako
+  // własności (patrz wyżej); pytanie P4 to LICZBA ELEMENTÓW, a nie farba,
+  // więc licznik w spisie farby zrobiłby z jednego przyrządu dwa mieszkające
+  // w jednej funkcji; a para JEST w stanie wyrazić nieobecność i kosztuje
+  // zero sekund przelotu na przystankach, które już stoją.
+  //
+  // STARSZE RODZEŃSTWO TYCH PAR TO `D11-01`, i jest tu cytowane świadomie.
+  // Ta sama mechanika (`count`, `equals: 0`, nad `select`), to samo zdanie
+  // („mierzy, czego stać NIE MA, a nie co stoi") i to samo ryzyko („asercja
+  // o nieobecności jest spełniona także przez ekran, który się nie
+  // narysował"). Różnica jest w ZASIĘGU: D11-01 pyta o jeden pas jednego
+  // rekordu, P4 pyta o CAŁĄ powierzchnię treści sześciu ekranów. Dwa
+  // przyrządy zbieżne i świadome siebie nawzajem to dowód; dwa nieświadome to
+  // dryf, i to repozytorium ma na niego osobny wpis pamięci.
+  //
+  // DLACZEGO WSZYSTKIE OSIEM CZYTA `count`, A NIE WŁASNOŚĆ. Gałąź `count`
+  // w runnerze odkłada `{ state: "measured", matches: found.length }` i robi
+  // `continue` (`verify-renderer-layout.mjs:4382-4389`) ZANIM dojdzie do
+  // strażnika „selektor nie trafił w nic" (`:4392-4420`) i do strażnika
+  // `distinct.length > 1` (`:4451-4460`). Zero dopasowań jest więc dla tych
+  // par POMIAREM, nie awarią przyrządu, a pułapka wielu różnych wartości ich
+  // nie dotyczy. Wzorcowy zapis stoi przy `L1-09b`: „counted, not read".
+  //
+  // I JEDNA WŁASNOŚĆ, KTÓRĄ TRZEBA WYPISAĆ, BO ODBIERA FAZIE II DROGĘ NA
+  // SKRÓTY: `count` liczy `found`, czyli TAKŻE elementy nienarysowane.
+  // Kontrolka schowana `display: none` albo `hidden` NIE zamyka żadnej z tych
+  // par. Ukrycie nie jest przerobieniem.
+  //
+  // USTAWIENIA I EKRAN REKORDU SĄ WYŁĄCZONE, I ROZSTRZYGA TO REJESTR, NIE
+  // GUST. `count: 0` na tych powierzchniach zaprzeczyłoby wprost trzem parom
+  // `enforced`, które musiałyby wtedy wrócić `NOT_MEASURED` (zero dopasowań =
+  // brak podmiotu): C5-02a i C5-02b żądają `.settings-control select`, a
+  // C5-03 żąda `[class*="_railSelect_"]` na rekordzie projektu. Po stronie
+  // prototypu ta sama granica: jego JEDYNY `<select>` stoi w wierszu Ustawień
+  // (`v3/screens/settings.js:329-334`). Dwa niezależne źródła, jedna linia
+  // podziału.
+
+  {
+    id: "P4-01a",
+    lot: "P4",
+    position: 1,
+    kind: "restructure",
+    title: "the Tasks toolbar stops choosing with a native control",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/tasks.js",
+      lines: "507-531",
+      value:
+        '`.viewbar` prototypu trzyma WYŁĄCZNIE rysowane afordancje: `.segmented` z przyciskami układu, `chip tk-allviews` z „All views" + licznikiem + `chevDown`, `chip dashed` „Filter", `btn("Group: …", { cls: "quiet", icon: "group" })` i dwa `btn("", { cls: "quiet tk-iconbtn" })` na sortowanie i pola — ZERO `<select>`, ZERO `<input>`, ZERO `<textarea>` w całym pliku ekranu (534 linie, zmierzone)',
+    },
+    route: { surface: "tasks" },
+    subject: {
+      selector: "#main-content select",
+      why: "counted, not read: this pair asks whether the CONTENT SURFACE holds a control the engine draws, and the selector is TOTAL over that surface — it catches a select nobody named as well as the three that stand there today. Deliberately not a list of named ids: those are closable by renaming, and they say nothing about the fourth select someone adds next week. `count` counts UNRENDERED matches too, so hiding one does not close this pair",
+      app: "packages/desktop-ui/src/tasks/TasksSurface.tsx:575 (#tasks-view), :653 (#tasks-group), :670 (#tasks-sort)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "pending: LOT L6",
+  },
+  {
+    id: "P4-01b",
+    lot: "P4",
+    position: 1,
+    kind: "restructure",
+    title: "the Tasks toolbar stops searching with a native field",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/tasks.js",
+      lines: "507-531",
+      value:
+        'ten sam pas: prototyp nie stawia na ekranie Zadań ANI JEDNEGO `<input>` — filtrowanie robi `chip dashed` „Filter", a wyszukiwanie mieszka w omniboksie powłoki (`v3/app.css:183-194`)',
+    },
+    route: { surface: "tasks" },
+    subject: {
+      selector: "#main-content input",
+      why: 'input OF ANY TYPE, deliberately: an assertion written as `input[type="search"]` would be closable by changing one attribute, which fixes nothing a reader can see. Two pairs and not one on this position, because the `<select>` and the `<input>` break apart and are repaired by separate work — a single pair over `select, input` would go green over half a delivery, and its report line would not say which half',
+      app: "packages/desktop-ui/src/tasks/TasksSurface.tsx:565-571 (input#tasks-search, type=search)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "pending: LOT L6",
+  },
+  {
+    id: "P4-02a",
+    lot: "P4",
+    position: 2,
+    kind: "restructure",
+    title: "the Meetings list stops holding an integration picker",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "1-452",
+      value:
+        "cały ekran spotkań prototypu: ZERO `<select>`, ZERO `<input>`, ZERO `<textarea>` (452 linie, zmierzone) — konfiguracja integracji nie stoi na liście treści",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: "#main-content select",
+      why: 'total over the Meetings content surface; today it catches the „Key scope" picker of the Jamie card, and it will catch any other choice control that lands on this list. The destination for that form is decided and written down (Kacper, 2026-08-13: the Jamie form moves into Settings → Access and connections), so this pair is not asking for the feature to disappear — it is asking for it to stand where the reference puts it',
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx:775-786",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "pending: LOT L6",
+  },
+  {
+    id: "P4-02b",
+    lot: "P4",
+    position: 2,
+    kind: "restructure",
+    title: "the Meetings list stops holding a credential field",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "1-452",
+      value:
+        "jak wyżej — na liście spotkań prototypu nie stoi ani jedno pole formularza",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: "#main-content input",
+      why: 'the API key field is `type="password"`, not a text input — measured, and it is the second reason this instrument counts inputs of ANY type. The transition document calls it „a native text field" (10-1), which is wrong about the type and right about the symptom',
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx:787-794",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "pending: LOT L6",
+  },
+
+  // ── POZYCJA 3 — KONTROLA DODATNIA, I NIE JEST TO POZYCJA BRIEFU ───────────
+  //
+  // Plan lotów nazywa dla P4 DWA miejsca objawowe: Zadania (4-1, 4-2)
+  // i Spotkania (10-1). Trzecia pozycja jest własnością PRZYRZĄDU, nie planu,
+  // i stoi tu świadomie: przyrząd, który umie tylko czerwienieć, nie jest
+  // przyrządem, tylko sondą. Te same słowa stoją już w tym repozytorium
+  // (`scripts/control-paint.mjs:113-117`), zapisane przy spisie, który był
+  // dokładnie w tej sytuacji. Cztery pary `enforced`, zielone w dniu
+  // napisania, tym samym selektorem i tą samą mechaniką co cztery czerwone —
+  // jeżeli mechanika przestanie mierzyć, one przestaną być zielone.
+  //
+  // BRAMA PRZED ICH NAPISANIEM, SPRAWDZONA A NIE ZAŁOŻONA. Para `enforced`
+  // przeciwko zmyślonemu cytatowi prototypu jest tą samą wadą, co „przepisz
+  // wartość prototypu ręcznie zamiast go zmierzyć". Zmierzone 2026-08-13:
+  //   grep -c "<input\|<select\|<textarea" v3/screens/{pipeline,crm,renewals}.js
+  //     pipeline.js → 0 (424 linie), crm.js → 0 (551), renewals.js → 0 (280)
+  // Gdyby któryś plik miał kontrolkę, para NIE POWSTAJE — nie „idzie na
+  // pending", nie dostaje innego zakresu linii.
+  //
+  // TYLKO `select`, I TO TEŻ JEST POMIAR, NIE OSZCZĘDNOŚĆ. `input` świadomie
+  // NIE jest tu asertowany: pole tekstowe jest na tych ekranach afordancją
+  // dozwoloną (prototyp jej nie zakazuje — zakazuje wyłącznie wyboru
+  // natywnego), a „nigdy żadnego `input`" zamroziłoby w parze `enforced`
+  // ARTEFAKT DZISIEJSZEJ FIKSTURY. Kontrolka WYBORU jest natomiast prawdziwym
+  // niezmiennikiem: prototyp robi wybór przyciskiem na każdym ze swoich
+  // czternastu ekranów poza wierszem Ustawień.
+  //
+  // I RYZYKO TYCH CZTERECH PAR, WYPISANE TAK JAK PRZY `D11-01`: zero jest
+  // prawdą także o ekranie, który narysował panel odmowy zamiast treści.
+  // Chroni przed tym MARKER PRZYBYCIA — trasa, która nie dowiozła treści,
+  // pada jako `ROUTED_ROUTE_FAILED`, głośno i z nazwą ekranu, nigdy jako cicha
+  // zieleń. Każdy z tych czterech przystanków niesie zresztą kilkanaście
+  // innych par czytających narysowaną treść; nienarysowany ekran przewraca je
+  // wszystkie naraz, zanim zdąży uspokoić tę.
+  {
+    id: "P4-03a",
+    lot: "P4",
+    position: 3,
+    kind: "prescribed",
+    title: "the Pipeline board keeps choosing without a native control",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/pipeline.js",
+      lines: "1-424",
+      value:
+        "ZERO `<select>`, ZERO `<input>`, ZERO `<textarea>` w całym pliku ekranu lejka (424 linie, zmierzone)",
+    },
+    route: { surface: "pipeline" },
+    subject: {
+      selector: "#main-content select",
+      why: 'the positive control of this instrument: this surface is already at zero, and this pair is what keeps it there. `ROUTED_ARRIVAL.pipeline = "[data-pipeline-surface]"` proves the content drew before the count was taken, so „zero" here cannot be a fact about an empty screen',
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "P4-03b",
+    lot: "P4",
+    position: 3,
+    kind: "prescribed",
+    title: "the Organizations list keeps choosing without a native control",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "1-551",
+      value:
+        "ZERO `<select>`, ZERO `<input>`, ZERO `<textarea>` w pliku niosącym OBA ekrany CRM prototypu — Organizacje i Ludzi (551 linii, zmierzone)",
+    },
+    route: { surface: "organizations" },
+    subject: {
+      selector: "#main-content select",
+      why: 'the same positive control as P4-03a, on a screen whose arrival marker is a CONTENT marker (`ROUTED_ARRIVAL.organizations = "#main-content [data-org-row]"`) — and that matters more here than on the Pipeline, because this surface draws its root in the REFUSAL branch as well; the row marker is what separates „nothing to choose with" from „nothing at all"',
+      app: "packages/desktop-ui/src/organizations (the CRM organizations list body)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "P4-03c",
+    lot: "P4",
+    position: 3,
+    kind: "prescribed",
+    title: "the People list keeps choosing without a native control",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/crm.js",
+      lines: "1-551",
+      value:
+        "jak wyżej — ten sam plik niesie oba ekrany CRM i nie ma w nim ani jednej kontrolki formularza",
+    },
+    route: { surface: "people" },
+    subject: {
+      selector: "#main-content select",
+      why: 'the twin of P4-03b, and a separate pair for the reason lot D6 wrote down about this exact pair of screens: the two CRM lists live in two module sheets and are built by two components, so one pair would be green over half of anything. `ROUTED_ARRIVAL.people = "#main-content [data-person-row]"`',
+      app: "packages/desktop-ui/src/people (the CRM people list body)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "P4-03d",
+    lot: "P4",
+    position: 3,
+    kind: "prescribed",
+    title: "the Renewals list keeps choosing without a native control",
+    contract: '.ui-craft/patterns.md — „Pattern: Control size"',
+    prototype: {
+      file: "v3/screens/renewals.js",
+      lines: "1-280",
+      value:
+        "ZERO `<select>`, ZERO `<input>`, ZERO `<textarea>` w całym pliku ekranu odnowień (280 linii, zmierzone)",
+    },
+    route: { surface: "renewals" },
+    subject: {
+      selector: "#main-content select",
+      why: 'the fourth positive control, and the one closest to going wrong: this screen carries a view bar with a saved-view counter (L3-07 measures that the counter LEFT the title band), which is exactly the kind of strip a choice control gets added to. `ROUTED_ARRIVAL.renewals = "[data-renewals-surface]"`',
+      app: "packages/desktop-ui/src/renewals (the renewals surface body)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+
+  // ══ PRZYRZĄD P5 (FAZA I) — WAGA KROJU ZE ZBIORU ZADEKLAROWANEGO ═══════════
+  //
+  // DWIE PARY, JEDNA POZYCJA, I SĄ WYŁĄCZNIKIEM DOSTAWY, NIE CAŁYM PRZYRZĄDEM.
+  // Pytanie P5 jest TOTALNE nad ekranem („czy KAŻDA narysowana waga należy do
+  // skali, którą deklaruje `tokens.css`"), a para czyta JEDEN selektor i JEDNĄ
+  // własność. 91 deklaracji obcych wag w 34 arkuszach to nie 91 par, a dziewięć
+  // par (po jednej na obcą wartość) mierzyłoby WPISY Z LISTY zamiast reguły —
+  // czyli dokładnie „ręczną listę obok zamkniętego słownika". Sama reguła
+  // mieszka więc w przelotce `sweepTypeWeight` w `verify-renderer-layout.mjs`,
+  // a te dwie pary są jej WYŁĄCZNIKIEM: `TYPE_WEIGHT_OWNER` (na dole tego
+  // pliku) pyta je o status, dokładnie tak jak `RECORD_TITLE_BAND_OWNER` pyta
+  // `L4-01a`/`L4-01b` o rozmiar. Jedna pozycja, jeden przełącznik, żadnego
+  // drugiego miejsca do zapamiętania.
+  //
+  // NAMESPACE `P5`, A NIE `L5`, I JEST TO POMIAR, NIE GUST. `L1`-`L6` należą
+  // w tej mapie do lotów 1-6 Fazy 3 (`L5` ma dziś 14 par), a plan tej fali
+  // nazywa swoje loty również `L1`-`L11`. Para dopisana jako `L5-05` dałaby
+  // `ROUTED_DUPLICATE_ID` — czerwoną bramkę, która czyta się jak defekt
+  // produktu. Dotyczy to CAŁEJ Fazy I/II tego planu, nie tylko P5.
+  //
+  // ZERO NOWYCH PRZYSTANKÓW: obie trasy (`tasks` → rekord zadania, `pipeline`
+  // → rekord szansy) są klonami tras `L4-01b` i `L4-01c`, które ta mapa
+  // przechodzi od Fazy 3. Ani sekundy przelotu więcej, ani jednej edycji
+  // w `ROUTED_ARRIVAL`.
+  {
+    id: "P5-01a",
+    lot: "P5",
+    position: 1,
+    kind: "restyle",
+    title: "the task record title takes a weight from the declared scale",
+    contract: ".ui-craft/tokens.md (Type)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "651-652",
+      value:
+        "`.rec-title { font-size: var(--text-xl); font-weight: 600 }` — prototyp używa w całym `v3/` DOKŁADNIE czterech wag (400×3, 500×64, 600×85, 700×3) i ani jednej innej",
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '[data-record-kind="task"] #surface-title',
+      why: "ten sam podmiot i ta sama deklaracja, co L4-01b (rozmiar); `#surface-title` jest jedyny na stan ekranu i JEST TO ASERTOWANE (VISUAL_PROBE_TITLE_NOT_UNIQUE), więc selektor nie może trafić w dwie różne wartości",
+      app: "packages/desktop-ui/src/record/task-record.module.css:48 (`font-weight: 580`)",
+    },
+    read: { property: "fontWeight" },
+    // TOKEN, NIE LITERAŁ „600". `resolveAs` rozwiązuje `var(--weight-semibold)`
+    // PRZEZ TĘ SAMĄ WŁASNOŚĆ na próbce w żywym dokumencie, więc para pyta „czy
+    // waga JEST zadeklarowanym stopniem", a nie „czy równa się napisowi 600" —
+    // i psuje się razem ze skalą, zamiast ją cicho przeżyć. To jest ta sama
+    // różnica, którą L4-01a/b robią na rozmiarze przez `--text-xl`.
+    expect: { kind: "token", token: "--weight-semibold" },
+    // WŁAŚCICIELEM JEST LOT L5 FAZY II — waga 580 na tytule rekordu Zadania
+    // i Projektu. Napis statusu musi pasować do `^pending: LOT [A-Z]*\d+$`
+    // (`ROUTED_UNKNOWN_STATUS`), więc powód stoi tutaj, a nie w nim.
+    status: "pending: LOT L5",
+  },
+  {
+    id: "P5-01b",
+    lot: "P5",
+    position: 1,
+    kind: "restyle",
+    title:
+      "and so does the opportunity record title, which carries a different off-scale weight",
+    contract: ".ui-craft/tokens.md (Type)",
+    prototype: {
+      file: "v3/app.css",
+      lines: "651-652",
+      value: "`.rec-title { font-weight: 600 }`",
+    },
+    route: { surface: "pipeline", openRecord: "[data-pipeline-card]" },
+    subject: {
+      selector: '[data-record-kind="opportunity"] #surface-title',
+      why: "DRUGA WARTOŚĆ, nie druga kopia: Zadanie i Projekt rysują 580, Szansa 620 — jedna para nad jedną wartością nie umie powiedzieć, że to konwencja aplikacji, a nie literówka jednego arkusza. To także jedyny z trzech ekranów rekordu, którego ROZMIAR już pasuje, więc bez tej pary waga tego ekranu nie miałaby żadnego zdania nad sobą",
+      app: "packages/desktop-ui/src/opportunity/opportunity-record.module.css:49 (`font-weight: 620`)",
+    },
+    read: { property: "fontWeight" },
+    expect: { kind: "token", token: "--weight-semibold" },
+    // Jak wyżej: właścicielem jest lot L5 Fazy II, waga 620 na tytule rekordu
+    // Szansy. Powód nie mieści się w napisie, który czyta `auditRoutedMap`.
+    status: "pending: LOT L5",
+  },
 ];
 
 /**
@@ -6565,7 +7691,13 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "danych (klient scenariuszowy z czytelnym kalendarzem), nie linijka. Sam KSZTAŁT tej afordancji " +
       "jest zmierzony parami D2-03a i D2-03b na Dzisiaj — obie kontrolki biorą tę samą regułę " +
       "`.help-mark` — a to, że kontrolka Kalendarza NIĄ JEST, asertuje " +
-      "`desktop-ui/test/calendar.interaction.test.tsx`.",
+      "`desktop-ui/test/calendar.interaction.test.tsx`. " +
+      "DOPISEK PRZYRZĄDU P1 FAZY I, 2026-08-13: PRZYSTANEK NA KALENDARZU WRÓCIŁ " +
+      "(`ROUTED_ARRIVAL.calendar`), więc od tego przelotu nieosiągalny jest już wyłącznie PODMIOT, " +
+      "a nie ekran. Ten wpis ZOSTAJE i jego warunek wyjścia się nie zmienia — para P1-02 mierzy na " +
+      "tym samym przystanku sufit kolumny czytelnej, bo JEJ podmiot rysuje się w gałęzi ODMOWY, " +
+      "a znacznik pomocy nie. Kto będzie ten wpis kiedyś zamykał, nie potrzebuje już markera: " +
+      "potrzebuje tygodnia ze spotkaniem.",
     greenWrong:
       "Kontrolka pomocy na Kalendarzu może wrócić do dowolnego ROZMIARU bez zmiany klasy i żaden przelot pikseli tego nie zobaczy.",
   },
@@ -6789,6 +7921,95 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "`getComputedStyle` w przelocie, czyli przebudowa przyrządu; dla (2) druga organizacja w fiksturze.",
     greenWrong:
       "Wykrzyknik może zniknąć z „At risk”, a zielony kwadrat i kreskowana obwódka mogą nigdy nie powstać — cztery kształty zredukowałyby się wtedy do dwóch i żaden przelot by tego nie zobaczył.",
+  },
+  {
+    // ── PRZYRZĄD P2, POZYCJA 6, POŁOWA „SKRZYNKA" ─────────────────────────────
+    // BLIŹNIAK Z DZISIAJ STOI W `VISUAL_LANGUAGE_NOT_COVERED` (mapa powłoki).
+    // Przyczyna jest IDENTYCZNA i dlatego wpis jest krótki: powód pełną frazą
+    // stoi tam, tutaj stoją liczby tej fikstury.
+    lot: "P2",
+    position: 6,
+    scope: "druga połowa pozycji 6 — separator wiersza na Skrzynce",
+    title: "the row's hairline separator, on Inbox",
+    prototype:
+      "v3/screens/inbox.css:34-41 (`.ib-row { border-bottom: 1px solid var(--border-subtle) }`) + `:42` (`.ib-row:last-child { border-bottom: 0 }`)",
+    app: "packages/desktop-ui/src/inbox.module.css:56-63 (`gap: 1px` na liście) + `:65-72` (zero deklaracji krawędzi na wierszu)",
+    why:
+      "Fikstura czyni asercję FAŁSZYWĄ, nie „niewygodną”. `attention.inbox` harnessu niesie DOKŁADNIE " +
+      'JEDNĄ pozycję (`dev/CollaborationHarness.tsx:859-876`, `unreadCount: 1`, `destination.kind: "task"`, ' +
+      "czyli skrzynka `work`), więc jedyny wiersz JEST wierszem ostatnim, a prototyp każe ostatniemu " +
+      "mieć `border-bottom: 0`. Para asertująca `1px` byłaby czerwona wobec kodu zgodnego z prototypem; " +
+      "para asertująca `0px` byłaby zielona nad listą bez ani jednego separatora.",
+    exit:
+      "druga pozycja w `attention.inbox` fikstury, w TEJ SAMEJ skrzynce — czyli z `destination.kind` " +
+      "innym niż `capture`. Pozycja przechwytu utworzy DRUGĄ listę po jednym wierszu i niczego nie odblokuje.",
+    greenWrong:
+      "To samo, co przy bliźniaku z Dzisiaj: separator 2 px złożony z `gap: 1px` na pojemniku " +
+      "i `border-bottom: 1px` na wierszu przechodzi z kompletem par P2 na zielono.",
+  },
+  {
+    // ── PRZYRZĄD P2, POZYCJA 5 — TRZECI EKRAN RODZINY, TACA KALENDARZA ────────
+    lot: "P2",
+    position: 5,
+    scope: "trzeci ekran rodziny — taca Kalendarza",
+    title: "the Calendar tray has no container measurement",
+    prototype:
+      "v3/screens/calendar.css:200-203 (`.cal-tray` — ta sama trójka deklaracji co `.td-list` i `.ib-list`) + `:204-209` (`.cal-tray-item` z `border-bottom` i BEZ promienia)",
+    app: "packages/desktop-ui/src/CalendarSurface.tsx:802-809, calendar.module.css:360-367 (`.tray` — zero krawędzi, zero promienia, zero przycięcia)",
+    why:
+      "ZMIERZONE, NIE ZAŁOŻONE, i przyczyną jest FIKSTURA, nie brak przystanku. Taca rysuje się " +
+      "wyłącznie przy `tray.length > 0` (`CalendarSurface.tsx:802`), a `tray` to `approachingUnplanned(...)` " +
+      "(`:598`), które ODRZUCA każde zadanie z `startAt` (`today-plan.ts`, `if (task.startAt !== undefined) return false`). " +
+      "Jedyne zadanie tej fikstury MA `startAt` — właśnie po to, żeby sekcja planu na Dzisiaj nie była " +
+      "pusta (spłata wpisu przy `D2-09b`). Para napisana dziś wróciłaby `ROUTED_NOT_MEASURED`, czyli " +
+      "awarią przyrządu, a nie werdyktem o produkcie.",
+    exit:
+      "JEDNA rzecz, nie dwie: zadanie BEZ `startAt`, z `dueAt` wewnątrz horyzontu, w " +
+      "`dev/CollaborationHarness.tsx`. Warunek był dwuczęściowy, dopóki Kalendarz nie miał markera " +
+      "przybycia — marker DOPISAŁ przyrząd P1 tego samego dnia (`ROUTED_ARRIVAL.calendar` = " +
+      '`#main-content [class*="_week_"]`), więc druga część jest już spłacona i nie wolno jej tu ' +
+      "powtarzać: warunek wyjścia żądający roboty, która stoi zrobiona, jest wpisem, który nigdy " +
+      "nie zostanie zamknięty.",
+    greenWrong:
+      "Chrom karty na Kalendarzu może zostać nieoddany albo oddany NA WIERSZU (`.trayRow`) i żaden " +
+      "przelot tego nie zobaczy — a to jest dokładnie ta wada, którą P2 nazywa na dwóch pozostałych ekranach.",
+  },
+  {
+    // ── PRZYRZĄD P4 — KONTROLKI, KTÓRE RYSUJĄ SIĘ DOPIERO PO OTWARCIU ────────
+    //
+    // JEDEN WPIS NA CAŁĄ RESZTĘ PRODUKTU, i to jest świadome: rozbicie go na
+    // pozycję za pozycją udawałoby, że każda z nich ma osobny warunek wyjścia.
+    // Mają WSPÓLNY, i on jest przebudową przelotu, nie robotą ekranową.
+    lot: "P4",
+    position: 3,
+    scope: "kontrolki, które rysują się dopiero PO otwarciu czegoś",
+    title:
+      "native controls behind a panel, a dialog, a menu or a lens state have no measurement",
+    prototype:
+      "v3/app.js:1921-1961 (`popover`) + v3/app.css:886-892 (`.pop`) — prototyp robi KAŻDY wybór przyciskiem otwierającym menu, więc zdanie, którego brakuje pomiaru, jest po tamtej stronie jedno i to samo na wszystkich czternastu ekranach",
+    app: "packages/desktop-ui/src — `<select>` stoi w źródle renderera kilkadziesiąt razy, w ~25 plikach; ten przyrząd widzi z nich SZEŚĆ narysowanych (3 na Zadaniach, 1 na Spotkaniach, 2 poza jego zasięgiem w Ustawieniach i na rekordzie, gdzie mierzą je C5-02a/b i C5-03)",
+    why:
+      "Ta mapa zna kroki `surface`, `layout`, `treeKey`, `openRecord`, `recordTab`, `settingsMode` " +
+      "i `openPopover` — nie ma kroku „otwórz panel deala”, „otwórz dialog” ani „rozwiń wiersz”. " +
+      "Poza zasięgiem zostają: panel deala na Lejku, dialogi i menu, `SavedViewFilterForm` (rysuje " +
+      "się dopiero przy otwartym zapisanym widoku, a fikstura harnessu ma ZERO zapisanych widoków) " +
+      "oraz stan soczewki `library/sources`. Cisza tego przyrządu o nich NIE jest zdaniem o nich — " +
+      "i to jest cały powód, dla którego ten wpis istnieje zamiast pary napisanej „na wyrost”, " +
+      "która wróciłaby `ROUTED_NOT_MEASURED`, czyli awarią przyrządu.",
+    exit:
+      "DWUCZĘŚCIOWY, i obie części to robota przelotu albo fikstury, nie ekranu. PIERWSZA: krok " +
+      "trasy, który otwiera coś INNEGO niż dymek tej aplikacji. Istniejący `openPopover` się do " +
+      "tego nie nadaje i to jest sprawdzone w kodzie, nie założone — po kliknięciu wyzwalacza " +
+      'wymaga on narysowanego `[role="dialog"].inline-popover` (`verify-renderer-layout.mjs:6846-6882`) ' +
+      "i inaczej pada jako awaria trasy, więc panel deala, dialog, rozwinięty wiersz ani menu " +
+      "natywnego `<select>` nie przejdą przez ten krok. DRUGA: fikstura z co najmniej jednym " +
+      "zapisanym widokiem. Do tego czasu czwarty `<select>` Zadań — `ready` w `SavedViewFilterForm` " +
+      "— nie jest liczony przez P4-01a i nikt nie ma prawa czytać jego zieleni jako zdania o tym polu.",
+    greenWrong:
+      "Faza II może zamknąć P4-01a/b i P4-02a/b, przenosząc te same kontrolki o jedno kliknięcie " +
+      "dalej — do panelu, do dialogu albo do rozwijanego wiersza — i cały ten przyrząd zrobi się " +
+      "zielony nad produktem, który dalej wybiera natywnym widżetem. Tego NIE zobaczy żaden dzisiejszy " +
+      "przelot; zobaczy to Kacper przy odbiorze obok prototypu.",
   },
 ];
 
@@ -7024,7 +8245,64 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // wyzwalacz dymka i na jego panel. Nowa jest wyłącznie ta, która mówi, czego
   // w paśmie stać NIE MA — i której przed tym lotem nie było czym napisać, bo
   // kontrolka wtedy tam stała.
-  pairs: 156,
+  //
+  // 156 → 168 PRZY PRZYRZĄDZIE P1 FAZY I, 2026-08-13, I NIE JEST TO ANI LOT
+  // EKRANOWY, ANI ROZPAD ISTNIEJĄCYCH POZYCJI: to PRZYRZĄD nad rzeczą, która
+  // rządzi dwunastoma ekranami naraz — sufitem kolumny czytelnej. Dwanaście
+  // par, po jednej na ekran za nawigacją; trzynasta (Dzisiaj) stoi w mapie
+  // powłoki, bo tam da się ją zmierzyć bez kliknięcia. Osiem par siada na
+  // PRZYSTANKACH, KTÓRE JUŻ ISTNIAŁY (pipeline, renewals, meetings,
+  // organizations, people, library|notes, settings, tasks+openRecord) i nie
+  // kosztują ani sekundy przelotu więcej; nowe są CZTERY — `{surface:"tasks"}`
+  // i `{surface:"projects"}` (na trasie z `openRecord` ekranu listy nie ma już
+  // w DOM-ie) oraz `{surface:"calendar"}` i `{surface:"inbox"}`, których ta
+  // mapa nie odwiedzała nigdy. Markery przybycia dla dwóch ostatnich dopisane
+  // w tym samym przebiegu (`ROUTED_ARRIVAL.inbox`, `.calendar`).
+  //
+  // `notCovered` SIĘ NIE RUSZA, i to jest pomiar, nie przeoczenie: Kalendarz
+  // jest POKRYTY parą, a nie odmówiony. Powód stoi przy P1-02 i przy
+  // `ROUTED_ARRIVAL.calendar` — podmiot tej pary rysuje się w gałęzi ODMOWY.
+  //
+  // 168 → 172 PRZY PRZYRZĄDZIE P2 FAZY I, 2026-08-13, I NIE JEST TO LOT
+  // EKRANOWY: to drugi przyrząd tej fazy, nad rzeczą, której nie pyta ŻADNA
+  // z dotychczasowych par — czy lista wierszy stoi w pojemniku z chromem karty.
+  // Cztery pary na dwóch pozycjach, wszystkie na Skrzynce, wszystkie na
+  // PRZYSTANKU, KTÓRY JUŻ ISTNIEJE (`{surface:"inbox"}` dojechał tu razem
+  // z P1-03) — czyli ani sekundy przelotu więcej i ani jednej edycji
+  // w `ROUTED_ARRIVAL`. Pozycje 1-2 briefu (Dzisiaj) stoją w mapie powłoki.
+  //
+  // 172 → 180 PRZY PRZYRZĄDZIE P4 FAZY I, 2026-08-13, I TEŻ NIE JEST TO LOT
+  // EKRANOWY: to trzeci przyrząd tej fazy, nad rzeczą, o którą nie pyta ŻADNA
+  // z dotychczasowych par — czy na powierzchni treści stoi kontrolka, którą
+  // rysuje system. `grep -c appearance scripts/visual-language-pairs.mjs` → 0,
+  // to samo w `verify-renderer-layout.mjs`; cztery pary dotykające `<select>`
+  // (C5-01c, C5-02a/b, C5-03) mierzą wyłącznie GEOMETRIĘ, a spis B1 czyta ich
+  // TŁO i wyłącza natywny widżet własnym zapisem. Osiem par na trzech
+  // pozycjach, WSZYSTKIE na przystankach, które już istniały (`tasks` dojechał
+  // tu z P1-04, `meetings` z D1-06, `pipeline`, `organizations`, `people`
+  // i `renewals` stoją od Fazy 3 i D6) — czyli ani sekundy przelotu więcej
+  // i ani jednej edycji w `ROUTED_ARRIVAL`. To jest różnica wobec P1, który tę
+  // tabelę rusza; dwa przyrządy tej fazy nie wchodzą w nią obaj.
+  //
+  // CZTERY Z TYCH OŚMIU SĄ `enforced` I ZIELONE W DNIU NAPISANIA, i to jest
+  // KONTROLA DODATNIA, nie ozdoba — powód stoi przy wpisach `P4-03*`.
+  //
+  // 180 → 182 PRZY PRZYRZĄDZIE P5 FAZY I, 2026-08-13, I TEŻ NIE JEST TO LOT
+  // EKRANOWY: to czwarty przyrząd tej fazy, nad rzeczą, o którą nie pyta ŻADNA
+  // z dotychczasowych par — czy narysowana waga kroju należy do skali, którą
+  // tokeny DEKLARUJĄ. `grep -c fontWeight scripts/visual-language-pairs.mjs`
+  // dawał przed tym wpisem 3 (`D2-01b`, `D2-01d`, `L5-04`) i wszystkie trzy są
+  // asercjami o JEDNYM podmiocie z JEDNĄ wpisaną liczbą; zbiór dozwolony nie
+  // istniał jako dana po żadnej stronie, a `tokens.css` nie deklarował ani
+  // jednej wagi. Dwie pary na JEDNEJ pozycji, obie na przystankach, które już
+  // istniały (trasy `L4-01b` i `L4-01c`) — ani sekundy przelotu więcej i ani
+  // jednej edycji w `ROUTED_ARRIVAL`.
+  //
+  // OBIE SĄ `pending` I TO JEST ZAMIERZONE: para `pending`, która NIE pasuje,
+  // jest ciszą, a te dwie nie pasują (580 i 620 wobec rozwiązanego 600). Ich
+  // rolą jest być JEDYNYM wyłącznikiem werdyktu o wadze — patrz
+  // `TYPE_WEIGHT_OWNER` na dole tego pliku.
+  pairs: 182,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -7050,7 +8328,21 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // przezroczystość stanu PUSTEGO — i on ma mechanizm, którego tamte nie
   // miały: to jest drugie ramię tego samego wyrażenia, więc jedna fikstura
   // rysuje dokładnie jedno z dwojga.
-  notCovered: 14,
+  //
+  // 14 → 16 PRZY PRZYRZĄDZIE P2 FAZY I, 2026-08-13, I OBA PRZYROSTY SĄ
+  // ODMOWAMI Z ZAPISANYM WARUNKIEM WYJŚCIA, nie długiem bez adresu: separator
+  // wiersza na Skrzynce (jedna pozycja fikstury, więc jedyny wiersz jest
+  // ostatnim) i taca Kalendarza (jedyne zadanie fikstury ma `startAt`, więc
+  // taca się nie rysuje wcale). Trzeci wpis tej samej pozycji — separator na
+  // Dzisiaj — stoi w mapie powłoki.
+  //
+  // 16 → 17 PRZY PRZYRZĄDZIE P4 FAZY I, 2026-08-13, i jest to JEDEN wpis na
+  // całą resztę produktu, nie ogon bez adresu: kontrolki, które rysują się
+  // dopiero PO otwarciu panelu, dialogu, menu albo soczewki. Warunek wyjścia
+  // jest dla nich WSPÓLNY i jest przebudową przelotu (krok trasy naciskający
+  // kontrolkę WIERSZA) plus fikstura z zapisanym widokiem — rozbicie tego na
+  // wpis per ekran udawałoby, że każdy z nich ma osobne wyjście.
+  notCovered: 17,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -7090,6 +8382,75 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // dziś wyłącznie pikseli, nie deklaracji.
   blind: 1,
   lots: {
+    P5: {
+      // JEDNA POZYCJA BRIEFU (przyrząd P5), DWIE PARY — dwie RÓŻNE wartości
+      // poza skalą na dwóch rodzajach rekordu (580 i 620), a nie dwie kopie
+      // jednego zdania. `auditRoutedMap` liczy `pairs` i `positionsWithPairs`
+      // osobno, więc oba muszą tu stać, i oba muszą rosnąć razem z sumą wyżej.
+      //
+      // POZYCJI JEST JEDNA, MIMO ŻE PRZYRZĄD MIERZY CAŁĄ APLIKACJĘ, i to jest
+      // uczciwa arytmetyka, nie zaniżenie: pary są WYŁĄCZNIKIEM dostawy, a nie
+      // pokryciem. Zbiór wag mierzy przelotka `sweepTypeWeight` nad każdym
+      // narysowanym elementem niosącym własny tekst — łącznie z chromem paska
+      // bocznego, którego ta mapa nie dosięga wcale.
+      positionsInBrief: 1,
+      pairs: 2,
+      positionsWithPairs: 1, // 1
+      positionsWithoutPairs: [],
+    },
+    P4: {
+      // TRZY POZYCJE, OSIEM PAR, WSZYSTKIE TUTAJ — i to jest pierwszy przyrząd
+      // tej fazy, który nie zostawia ani jednej pozycji w mapie powłoki:
+      // powierzchnia lądowania (Dzisiaj) rysuje ZERO kontrolek, więc para nad
+      // nią mierzyłaby zero nad ekranem, na którym reguła nigdy nie była
+      // zagrożona. Rachunek pozycji jest rachunkiem ZDAŃ prototypu:
+      //   1. pas widoku Zadań wybiera rysowaną afordancją (4-1, 4-2) — DWIE
+      //      pary, bo `<select>` i `<input>` psują się osobno i naprawia je
+      //      osobna robota;
+      //   2. lista Spotkań nie trzyma formularza integracji (10-1) — te same
+      //      dwie, z tego samego powodu;
+      //   3. cztery ekrany, na których reguła już obowiązuje, mają na niej
+      //      zostać — cztery pary `enforced`, zielone w dniu napisania.
+      //
+      // POZYCJA 3 NIE JEST POZYCJĄ PLANU I MÓWIMY TO WPROST, żeby następny
+      // czytający nie szukał jej w briefie. Plan lotów nazywa dla P4 dwa
+      // miejsca objawowe — Zadania i Spotkania. Trzecia jest własnością
+      // PRZYRZĄDU: to jego kontrola dodatnia, bez której nie da się odróżnić
+      // „reguła jest łamana na dwóch ekranach" od „przyrząd czerwieni się
+      // wszędzie, gdzie spojrzy". Dlatego `positionsInBrief` to 3, a nie 2 —
+      // liczba ma się zgadzać z tym, co ta mapa naprawdę pokrywa, a nie
+      // z cudzym dokumentem.
+      //
+      // USTAWIENIA I EKRAN REKORDU SĄ WYŁĄCZONE i rozstrzyga to REJESTR, nie
+      // gust: `count: 0` tam zaprzeczyłoby C5-02a, C5-02b i C5-03 (wszystkie
+      // `enforced`), a prototyp trzyma swój JEDYNY `<select>` właśnie
+      // w wierszu Ustawień (`v3/screens/settings.js:329-334`). Dwa źródła,
+      // jedna linia podziału.
+      positionsInBrief: 3,
+      pairs: 8,
+      positionsWithPairs: 3, // 1, 2, 3
+      positionsWithoutPairs: [],
+    },
+    P2: {
+      // Sześć pozycji briefu P2, cztery pary TUTAJ na dwóch pozycjach
+      // (Skrzynka: pojemnik i wiersz). Pozycje 1-2 (Dzisiaj) są w mapie
+      // powłoki, pozycje 5-6 nie mają pary w ŻADNEJ z map i stoją wypisane
+      // w `notCovered` obu — ta sama arytmetyka, co przy P1 i C1: pozycja bez
+      // pary w TEJ mapie nie jest pozycją bez dowodu.
+      positionsInBrief: 6,
+      pairs: 4,
+      positionsWithPairs: 2, // 3, 4
+      positionsWithoutPairs: [1, 2, 5, 6],
+    },
+    P1: {
+      // Trzynaście pozycji briefu, dwanaście z parą TUTAJ, pozycja 1 (Dzisiaj)
+      // w mapie powłoki. Ta sama arytmetyka co przy C1, tylko w drugą stronę:
+      // pozycja bez pary w TEJ mapie nie jest pozycją bez dowodu.
+      positionsInBrief: 13,
+      pairs: 12,
+      positionsWithPairs: 12, // 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+      positionsWithoutPairs: [1], // Dzisiaj — mapa powłoki
+    },
     C1: {
       // Ta sama arytmetyka co w mapie powłoki, widziana z drugiej strony: lot
       // ma DWIE pozycje, ta mapa dowozi drugą, a pierwsza stoi jako jawnie
@@ -7416,4 +8777,40 @@ export const RECORD_TITLE_BAND_OWNER = {
   pairs: ["L4-01a", "L4-01b"],
   read: "fontSize",
   token: "--text-xl",
+};
+
+/**
+ * KTO JEST WŁAŚCICIELEM WERDYKTU O WADZE KROJU — ten sam wzorzec, DRUGI
+ * PRZEŁĄCZNIK, i to rozróżnienie jest całym powodem istnienia tego wpisu.
+ *
+ * Pasmo tytułu rekordu mierzy dwie rzeczy naraz: ROZMIAR i WAGĘ. Rozmiar jest
+ * DOWIEZIONY — lot 4 zamknął go i `RECORD_TITLE_BAND_OWNER` stoi dziś na dwóch
+ * wpisach „enforced", więc tamten band RZUCA. Waga nie jest dowieziona
+ * i rzucać jeszcze nie może: `break-test.mjs:333-345` odmawia startu pętli
+ * złamań od czerwonej bazy, więc jeden werdykt o wadze wpuszczony w cudzy
+ * przełącznik zabiłby WSZYSTKIE złamania w `break-visual-language.mjs`.
+ * Jeden band, dwa niezależne przełączniki — napisane, a nie domyślne.
+ *
+ * TO NIE JEST TRZECI WPIS POWTARZAJĄCY TĘ SAMĄ OCZEKIWANĄ WARTOŚĆ.
+ * `RECORD_TITLE_BAND_OWNER` mówi o `fontSize` i `--text-xl`; ten mówi
+ * o `fontWeight` i `--weight-semibold`. Wskazują na RÓŻNE pary, bo to różne
+ * pozycje o różnych właścicielach — a `read`/`token` stoją tu z tego samego
+ * powodu, co tam: rezolwer SPRAWDZA pary, na które wskazuje, więc uzbrojenie
+ * werdyktu o wadze parą czytającą rozmiar jest niemożliwe zamiast tylko
+ * niewskazane.
+ *
+ * CZEGO TEN WPIS NIE UZBRAJA: `TYPE_WEIGHT_NO_DECLARED_SCALE`,
+ * `TYPE_WEIGHT_SWEEP_MEASURED_NOTHING`, `TYPE_WEIGHT_UNREGISTERED`
+ * i `TYPE_WEIGHT_UNUSED_ENTRY` padają NIEZALEŻNIE od tego statusu, bo mówią
+ * o przyrządzie, a nie o rozjeździe — przyrząd, który nie ma zbioru, nie ma
+ * pomiaru albo ma nowy nieopisany rozjazd, jest zepsuty w każdym stanie
+ * dostawy.
+ */
+export const TYPE_WEIGHT_OWNER = {
+  lot: "P5",
+  position: 1,
+  label: "P5 #1",
+  pairs: ["P5-01a", "P5-01b"],
+  read: "fontWeight",
+  token: "--weight-semibold",
 };

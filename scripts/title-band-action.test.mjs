@@ -21,13 +21,23 @@ import {
   TITLE_BAND_ACTION_STATUS,
   TITLE_BAND_DIVERGENCES,
   TITLE_BAND_INLINE_STATES,
+  TITLE_BAND_OPENING_ARMED,
+  TITLE_BAND_OPENING_DIVERGENCES,
+  TITLE_BAND_OPENING_STATES,
+  TITLE_BAND_PROTOTYPE_OPENING_STATES,
+  TITLE_BAND_PROTOTYPE_STACK_STATES,
   TITLE_BAND_ROWS,
+  TITLE_BAND_STACK_ARMED,
+  TITLE_BAND_STACK_DIVERGENCES,
+  TITLE_BAND_STACK_STATES,
   TITLE_BAND_STATES,
   CSS_MODULE_HASH_PATTERN,
   classifyTitleBandAction,
   classifyTitleBandCensus,
   classifyTitleBandInline,
   isTitleBandDivergence,
+  isTitleBandOpeningDivergence,
+  isTitleBandStackDivergence,
   judgeActionAgainstBandEnd,
   judgeActionAgainstTitleRow,
   titleBandVerdictThrows,
@@ -534,6 +544,171 @@ test("every row carries an address on both sides of the comparison", () => {
   }
 });
 
+// ── PRZYRZĄD P3: SKŁAD PASMA I MIEJSCE WIDOCZNEGO TYTUŁU ────────────────────
+
+// STRAŻNIK SŁOWNIKA, i to nie jest formalność: obie nowe kolumny są NAPISAMI,
+// a literówka w napisie deklaracji jest cichym zezwoleniem na wszystko —
+// `"ONE_ROV"` nigdy nie zrówna się z żadnym pomiarem, więc wiersz stałby się
+// wiecznym rozjazdem, którego nie da się zamknąć.
+//
+// SŁOWNIKI SĄ DWA NA OŚ, I TO TEŻ JEST TREŚĆ. Kolumna `today` jest MIERZONA
+// przeglądarką, kolumna prototypu CZYTANA ze źródła — więc prototyp ma prawo
+// powiedzieć „nie ma takiego ekranu", a pomiar nie ma; i odwrotnie: pomiar
+// rozróżnia `OPENING_SMALLER` od `NO_OPENING`, a lektura prototypu tego
+// rozróżnienia nie unosi i dlatego go nie deklaruje.
+test("both new axes declare their states, and the two sides use different dictionaries", () => {
+  assert.deepEqual(TITLE_BAND_STACK_STATES, ["ONE_ROW", "STACKED"]);
+  assert.deepEqual(TITLE_BAND_OPENING_STATES, [
+    "OPENING_2XL",
+    "OPENING_SMALLER",
+    "NO_OPENING",
+  ]);
+  for (const row of TITLE_BAND_ROWS) {
+    assert.ok(
+      TITLE_BAND_STACK_STATES.includes(row.todayStack),
+      `${row.id} measures an undeclared stack state: ${row.todayStack}`,
+    );
+    assert.ok(
+      TITLE_BAND_PROTOTYPE_STACK_STATES.includes(row.prototypeStack),
+      `${row.id} claims an undeclared prototype stack state: ${row.prototypeStack}`,
+    );
+    assert.ok(
+      TITLE_BAND_OPENING_STATES.includes(row.todayOpening),
+      `${row.id} measures an undeclared opening state: ${row.todayOpening}`,
+    );
+    assert.ok(
+      TITLE_BAND_PROTOTYPE_OPENING_STATES.includes(row.prototypeOpening),
+      `${row.id} claims an undeclared prototype opening state: ${row.prototypeOpening}`,
+    );
+    // `NO_SCREEN` NIE JEST WOLNYM WYBOREM: wolno go postawić DOKŁADNIE tam,
+    // gdzie oś akcji już powiedziała „no-screen". Inaczej dowolny wiersz dałby
+    // się wyciszyć na dwóch nowych osiach, nie mówiąc o tym ani słowa.
+    assert.equal(
+      row.prototypeStack === "NO_SCREEN",
+      row.prototype === "no-screen",
+      `${row.id} silences the stack axis without declaring the screen missing`,
+    );
+    assert.equal(
+      row.prototypeOpening === "NO_SCREEN",
+      row.prototype === "no-screen",
+      `${row.id} silences the opening axis without declaring the screen missing`,
+    );
+  }
+});
+
+// KAŻDA NOWA KOLUMNA NIESIE ADRES PO STRONIE PROTOTYPU, tak samo jak `cite` —
+// inaczej dwie z czterech osi byłyby jedynymi bez źródła, a „prototyp składa
+// pasmo jednym wierszem" byłoby twierdzeniem bez odsyłacza. Regex dopuszcza
+// `.css`, bo obie te osi stoją na ARKUSZU prototypu tak samo jak na jego JS —
+// `.crumbs .cur` i `--text-2xl` są deklaracjami CSS.
+test("both new axes cite the prototype with a file and a line on every row", () => {
+  const address = /v3\/(app\.(js|css)|screens\/[a-z]+\.(js|css)):\d+/u;
+  for (const row of TITLE_BAND_ROWS) {
+    assert.match(
+      row.citeStack,
+      address,
+      `${row.id} does not cite the prototype's band composition`,
+    );
+    assert.match(
+      row.citeOpening,
+      address,
+      `${row.id} does not cite what opens the prototype's content`,
+    );
+  }
+});
+
+// ROZJAZDY WYPISANE Z NAZWY, nie policzone. „Pięć rozjazdów" dałoby się
+// osiągnąć również przez zepsucie kolumny prototypu na innych pięciu ekranach.
+test("the stack axis is red on exactly the five screens that wrap their title", () => {
+  assert.deepEqual(
+    TITLE_BAND_STACK_DIVERGENCES.map((row) => row.id),
+    ["calendar", "inbox", "settings", "projects", "library"],
+  );
+  // WARUNEK UZBROJENIA JAKO ASERCJA, nie jako proza — ta sama umowa co przy
+  // osi akcji, w obie strony.
+  assert.equal(
+    TITLE_BAND_STACK_ARMED,
+    TITLE_BAND_STACK_DIVERGENCES.length === 0,
+  );
+  assert.equal(TITLE_BAND_STACK_ARMED, false);
+});
+
+test("the opening axis is red on exactly the two screens the prototype opens at 2xl", () => {
+  assert.deepEqual(
+    TITLE_BAND_OPENING_DIVERGENCES.map((row) => row.id),
+    ["today", "calendar"],
+  );
+  assert.equal(
+    TITLE_BAND_OPENING_ARMED,
+    TITLE_BAND_OPENING_DIVERGENCES.length === 0,
+  );
+  assert.equal(TITLE_BAND_OPENING_ARMED, false);
+});
+
+// EKRAN BEZ PROTOTYPU NIE MOŻE BYĆ ROZJAZDEM NA ŻADNEJ Z CZTERECH OSI. Bez
+// tego P3 dokładałby rozjazd NIESPEŁNIALNY — wiersz, którego żadna poprawka nie
+// zamyka, bo nie ma wzorca, do którego miałaby doprowadzić. Ta sama pułapka,
+// którą oś akcji zapłaciła dwa razy (predykat farby i predykat miejsca).
+test("a screen the prototype does not have is never a divergence on the new axes", () => {
+  assert.equal(
+    isTitleBandStackDivergence({
+      prototype: "no-screen",
+      todayStack: "STACKED",
+      prototypeStack: "NO_SCREEN",
+    }),
+    false,
+  );
+  assert.equal(
+    isTitleBandOpeningDivergence({
+      prototype: "no-screen",
+      todayOpening: "OPENING_2XL",
+      prototypeOpening: "NO_SCREEN",
+    }),
+    false,
+  );
+});
+
+// PORÓWNANIE OSI 4 JEST BINARNE PO OBU STRONACH, i ten test jest jedynym
+// miejscem, które to zapisuje. Ekran, na którym prototyp nie otwiera treści
+// wielkości 2xl, jest ZGODNY zarówno wtedy, gdy nasza treść otwiera się
+// mniejszym nagłówkiem, jak i wtedy, gdy nie otwiera się żadnym — bo lektura
+// prototypu nie unosi tego rozróżnienia i orzekanie o nim byłoby przepisaniem
+// wartości prototypu zamiast jej zmierzenia.
+test("the opening axis judges the 2xl question, not the three measured states", () => {
+  assert.equal(
+    isTitleBandOpeningDivergence({
+      prototype: "no-action",
+      prototypeOpening: "NOT_2XL",
+      todayOpening: "OPENING_SMALLER",
+    }),
+    false,
+  );
+  assert.equal(
+    isTitleBandOpeningDivergence({
+      prototype: "no-action",
+      prototypeOpening: "NOT_2XL",
+      todayOpening: "NO_OPENING",
+    }),
+    false,
+  );
+  assert.equal(
+    isTitleBandOpeningDivergence({
+      prototype: "no-action",
+      prototypeOpening: "OPENING_2XL",
+      todayOpening: "OPENING_SMALLER",
+    }),
+    true,
+  );
+  assert.equal(
+    isTitleBandOpeningDivergence({
+      prototype: "action",
+      prototypeOpening: "NOT_2XL",
+      todayOpening: "OPENING_2XL",
+    }),
+    true,
+  );
+});
+
 // KANONICZNOŚĆ LISTY PRZYPIĘTA DO JEDYNEGO ŹRÓDŁA, bo bez tego `TITLE_BAND_ROWS`
 // jest CZWARTĄ ręcznie przepisaną kopią listy ekranów — a „ręczna lista obok
 // zamkniętego słownika" jest w tym repozytorium nazwaną klasą defektu i sam
@@ -686,14 +861,38 @@ const walk = {
     { id: "pipeline", seen: "pipeline" },
   ],
 };
+// ŚWIADKOWIE OSI P3 W KAŻDEJ FIKSTURZE ZDROWEGO PRZELOTU, i to nie jest
+// ozdoba fikstury. `TITLE_BAND_NEVER_ONE_ROW` czyta `entry.stack?.state`, więc
+// wpis BEZ tego pola zapala go tak samo jak wpis, który wrócił `STACKED` — i
+// tak ma być: pole, którego przelot nie przepisał do `judged`, jest awarią
+// przyrządu, a nie brakiem danych. Fikstury muszą więc nieść to, co niesie
+// zdrowy przelot, inaczej testy niżej mierzyłyby własne niedbalstwo.
+const ONE_ROW_WITNESS = {
+  stack: { state: "ONE_ROW" },
+  opening: { state: "OPENING_SMALLER" },
+};
 const measured = [
-  { id: "today", state: "NO_ACTION", inlineState: "NO_ACTION", titles: 1 },
-  { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
+  {
+    id: "today",
+    state: "NO_ACTION",
+    inlineState: "NO_ACTION",
+    titles: 1,
+    ...ONE_ROW_WITNESS,
+  },
+  {
+    id: "projects",
+    state: "IN_BAND",
+    inlineState: "FLUSH_END",
+    titles: 1,
+    stack: { state: "STACKED" },
+    opening: { state: "OPENING_SMALLER" },
+  },
   {
     id: "pipeline",
     state: "BELOW_BAND",
     inlineState: "INSET_FROM_END",
     titles: 1,
+    ...ONE_ROW_WITNESS,
   },
 ];
 const rows = TITLE_BAND_ROWS.filter((row) =>
@@ -709,8 +908,14 @@ test("a screen with no resolvable title band is NOT_MEASURED, never NO_ACTION", 
     walk,
     measured: [
       { id: "today", state: "NOT_MEASURED", titles: 0 },
-      { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
-      { id: "pipeline", state: "BELOW_BAND", titles: 1 },
+      {
+        id: "projects",
+        state: "IN_BAND",
+        inlineState: "FLUSH_END",
+        titles: 1,
+        ...ONE_ROW_WITNESS,
+      },
+      { id: "pipeline", state: "BELOW_BAND", titles: 1, ...ONE_ROW_WITNESS },
     ],
     rows,
   });
@@ -730,8 +935,14 @@ test("a title with no ancestor header is a failure, not a silent NOT_MEASURED", 
     walk,
     measured: [
       { id: "today", state: "NOT_MEASURED", titles: 1, band: null },
-      { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
-      { id: "pipeline", state: "BELOW_BAND", titles: 1 },
+      {
+        id: "projects",
+        state: "IN_BAND",
+        inlineState: "FLUSH_END",
+        titles: 1,
+        ...ONE_ROW_WITNESS,
+      },
+      { id: "pipeline", state: "BELOW_BAND", titles: 1, ...ONE_ROW_WITNESS },
     ],
     rows,
   });
@@ -745,8 +956,14 @@ test("two title ids on one screen is an instrument failure, not a richer measure
     walk,
     measured: [
       { id: "today", state: "NOT_MEASURED", titles: 2 },
-      { id: "projects", state: "IN_BAND", inlineState: "FLUSH_END", titles: 1 },
-      { id: "pipeline", state: "BELOW_BAND", titles: 1 },
+      {
+        id: "projects",
+        state: "IN_BAND",
+        inlineState: "FLUSH_END",
+        titles: 1,
+        ...ONE_ROW_WITNESS,
+      },
+      { id: "pipeline", state: "BELOW_BAND", titles: 1, ...ONE_ROW_WITNESS },
     ],
     rows,
   });
@@ -777,7 +994,10 @@ test("a declared row nobody reached fails, and says how many of how many", () =>
 test("a screen measured but absent from the canonical list fails", () => {
   const failures = classifyTitleBandCensus({
     walk: { ...walk, declared: [...walk.declared, "people"] },
-    measured: [...measured, { id: "people", state: "BELOW_BAND", titles: 1 }],
+    measured: [
+      ...measured,
+      { id: "people", state: "BELOW_BAND", titles: 1, ...ONE_ROW_WITNESS },
+    ],
     rows,
   });
   assert.equal(
@@ -846,4 +1066,64 @@ test("a pass that never returns IN_BAND is reported as a broken probe", () => {
   assert.ok(
     failures.some((failure) => failure.startsWith("TITLE_BAND_NEVER_IN_BAND")),
   );
+});
+
+// TEN SAM STRAŻNIK NA OSI SKŁADU. Reguła osi 3 jest koniunkcją dwóch członów
+// („tytuł jest bezpośrednim dzieckiem pasma" I „nic z tekstem nie stoi przed
+// nim"), więc literówka w którymkolwiek z nich zwraca `STACKED` na wszystkich
+// piętnastu ekranach — a przelot, o którym wiadomo wyłącznie, że umie
+// czerwienieć, jest nieodróżnialny od zepsutego.
+test("a pass whose bands never come back one-row is reported as a broken probe", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => ({
+      ...entry,
+      stack: { state: "STACKED" },
+    })),
+    rows,
+  });
+  assert.ok(
+    failures.some((failure) => failure.startsWith("TITLE_BAND_NEVER_ONE_ROW")),
+  );
+});
+
+// POLE, KTÓREGO PRZELOT NIE PRZEPISAŁ, JEST AWARIĄ — NIE BRAKIEM DANYCH.
+// `judged` buduje się WYBOREM pól, nie rozłożeniem obiektu, więc pominięcie
+// `stack` przy `judged.push` dawałoby `undefined` na ZDROWYM drzewie. Ten test
+// przypina kierunek pomyłki: `undefined` ma zapalać strażnika, a nie go mijać.
+test("a pass that forgot to carry the stack field fails like a pass with no witness", () => {
+  const failures = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => {
+      const withoutStack = { ...entry };
+      delete withoutStack.stack;
+      return withoutStack;
+    }),
+    rows,
+  });
+  assert.ok(
+    failures.some((failure) => failure.startsWith("TITLE_BAND_NEVER_ONE_ROW")),
+  );
+});
+
+// STRAŻNIK OSI OTWARCIA MÓWI „ROZWIĄZAŁA SIĘ", A NIE „ZNALAZŁA 2XL", i ten test
+// pilnuje właśnie tej różnicy: przelot, w którym ŻADEN ekran nie otwiera treści
+// na 2xl, jest dziś POPRAWNYM wynikiem — o to ta oś pyta. Przelot, w którym
+// żaden ekran nie ma w treści ANI JEDNEGO nagłówka, jest awarią sondy.
+test("an opening axis that resolved nowhere is a broken probe, but zero 2xl hits is not", () => {
+  const noHeadings = classifyTitleBandCensus({
+    walk,
+    measured: measured.map((entry) => ({
+      ...entry,
+      opening: { state: "NO_OPENING" },
+    })),
+    rows,
+  });
+  assert.ok(
+    noHeadings.some((failure) =>
+      failure.startsWith("TITLE_BAND_OPENING_NEVER_RESOLVED"),
+    ),
+  );
+  const noneAt2xl = classifyTitleBandCensus({ walk, measured, rows });
+  assert.deepEqual(noneAt2xl, []);
 });

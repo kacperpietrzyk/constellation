@@ -81,7 +81,13 @@ import {
   TITLE_BAND_ACTION_CLASSES,
   TITLE_BAND_ACTION_STATUS,
   TITLE_BAND_DIVERGENCES,
+  TITLE_BAND_OPENING_ARMED,
+  TITLE_BAND_OPENING_DIVERGENCES,
+  TITLE_BAND_OPENING_STATUS,
   TITLE_BAND_ROWS,
+  TITLE_BAND_STACK_ARMED,
+  TITLE_BAND_STACK_DIVERGENCES,
+  TITLE_BAND_STACK_STATUS,
   // Ten sam wzorzec co w spisie farby, i JEST TO OSOBNY EKSPORT, nie wspólny
   // import: dwa przyrządy dzielące jedną stałą przez trzeci plik dostają
   // krawędź, której żaden z nich nie potrzebuje, a pierwsza rozbieżność
@@ -91,10 +97,20 @@ import {
   classifyTitleBandCensus,
   classifyTitleBandInline,
   isTitleBandDivergence,
+  isTitleBandOpeningDivergence,
+  isTitleBandStackDivergence,
   titleBandVerdictThrows,
 } from "./title-band-action.mjs";
 import {
+  KNOWN_OFF_SCALE_WEIGHTS,
+  classifyTypeWeight,
+  declaredWeightScale,
+  unusedWeightEntries,
+  weightKey,
+} from "./type-weight.mjs";
+import {
   RECORD_TITLE_BAND_OWNER,
+  TYPE_WEIGHT_OWNER,
   VISUAL_LANGUAGE_EXPECTED,
   VISUAL_LANGUAGE_NOT_COVERED,
   VISUAL_LANGUAGE_PAIRS,
@@ -506,6 +522,22 @@ const derive = (attribute) => {
 const DECLARED_RECORD_KINDS = derive("data-record-kind");
 const DECLARED_HEIGHT_BOUND = derive("data-height-bound");
 
+// ── SKALA WAG KROJU: NAZWY Z ARKUSZA, WARTOŚCI Z ŻYWEGO KORZENIA ─────────────
+// Przyrząd P5. Trzecia deklaracja czytana ze źródła zamiast wypisana obok
+// niego, tą samą doktryną co `derive()` wyżej i `declaredStickyRules()` niżej:
+// lista dozwolonych wag wpisana W TYM PLIKU wyglądałaby identycznie i byłaby
+// zielona po skasowaniu wszystkich czterech tokenów.
+//
+// DWIE STRONY, BO JEDNA TO KONTROLA ŹRÓDŁA. Nazwy stopni biorą się z arkusza
+// (tutaj), ale wartości, do których przyrównuje się narysowaną wagę, biorą się
+// z `getComputedStyle(document.documentElement)` w przeglądarce — doktryna B
+// sondy wierności. Rozjazd między jednym a drugim jest osobną, nazwaną awarią
+// (`TYPE_WEIGHT_SCALE_NOT_LIVE`), a nie cichym wyborem jednej ze stron.
+const TYPE_WEIGHT_SHEET = path.join(RENDERER_SOURCE, "tokens.css");
+const TYPE_WEIGHT_SCALE = declaredWeightScale(
+  readFileSync(TYPE_WEIGHT_SHEET, "utf8"),
+);
+
 // Jeden przelot: otwórz każdy cel z nawigacji i sprawdź, czy powierzchnia mieści
 // się w swoim pudełku, a dokument w oknie. Zwracamy WSZYSTKIE przewinienia, nie
 // pierwsze — inaczej naprawa jednego ekranu ukrywa drugi.
@@ -580,6 +612,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       titleSelector,
       recordScreenSelector,
       RECORD_DOORS,
+      weightNames,
     }) => {
       const frame = () =>
         new Promise((resolve) =>
@@ -638,6 +671,13 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       // Ślepa plamka przelotki przepełnień, zbierana osobno — patrz komentarz
       // przy `sweepCollapsedText`.
       const collapsed = [];
+      // ── WAGI KROJU, JEDEN WPIS NA REGUŁĘ ARKUSZA ──────────────────────────
+      // Mapa, nie tablica, i klucz jest `sygnatura|waga` NA CAŁY PRZELOT, nie
+      // na przystanek: waga jest własnością reguły arkusza, a nie geometrii
+      // ekranu, więc `.nav-label` z chromu powłoki melduje się raz, a nie
+      // dwadzieścia trzy razy. Powierzchnie, na których ją zobaczono, zbierają
+      // się w polu `surfaces` i są RAPORTEM, nie asercją.
+      const typeWeights = new Map();
       const recordScreens = [];
       const heightBound = [];
       // Ile wierszy i kart NADAJĄCYCH SIĘ DO OTWARCIA narysował każdy cel.
@@ -899,6 +939,50 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         }
         collapsed.push(...worst.values());
       };
+      // ── KAŻDA NARYSOWANA WAGA KROJU (przyrząd P5) ─────────────────────────
+      //
+      // ZASIĘG: `document.body`, NIE `roots`, i to jest decyzja, nie
+      // przeoczenie. `roots` to widoczne dzieci `#main-content`, czyli TREŚĆ
+      // BEZ PASKA BOCZNEGO. Najcięższy wpis rejestru rozjazdów tej fali mówi
+      // dokładnie o chromie paska bocznego, a `.eyebrow, .nav-label,
+      // .section-label` (`styles.css:831-840`) niosą wagę 650. Przelotka
+      // zawężona do treści byłaby STRUKTURALNIE ślepa na najgorszy przypadek.
+      //
+      // Filtr kształtu jest przepisany z `sweepCollapsedText` co do warunku
+      // i to jest świadome — to ta sama definicja „element, który NIESIE
+      // tekst":
+      //   * `getClientRects().length > 0` — element w układzie, nie
+      //     `display: none` i nie schowana zakładka;
+      //   * tekst WŁASNY, bez potomków z elementami — bez tego każdy przodek
+      //     melduje się z cudzą treścią i jeden napis zajmuje kolumnę wpisów.
+      // Oba warunki stoją PRZED `getComputedStyle`, bo ta funkcja chodzi na
+      // każdym przystanku i każdej soczewce; odczyt stylu na całym drzewie
+      // liczyłby się w minutach.
+      const sweepTypeWeight = (scope, label) => {
+        if (scope === null || scope === undefined) return;
+        for (const element of scope.querySelectorAll("*")) {
+          if (element.getClientRects().length === 0) continue;
+          const ownText = [...element.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent ?? "")
+            .join("")
+            .trim();
+          if (ownText === "") continue;
+          const weight = window.getComputedStyle(element).fontWeight;
+          const name = signature(element);
+          const key = `${name}|${weight}`;
+          const previous = typeWeights.get(key);
+          if (previous === undefined) {
+            typeWeights.set(key, {
+              signature: name,
+              weight,
+              surfaces: [label],
+            });
+            continue;
+          }
+          if (!previous.surfaces.includes(label)) previous.surfaces.push(label);
+        }
+      };
       for (const id of ids) {
         // Settings is a MODE: entering it replaces the left column, so the nav
         // item for the next destination is not there to click. Without leaving
@@ -1057,6 +1141,10 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             sweepRecordScreens(root, label);
             sweepHeightBound(root, label);
           }
+          // POZA PĘTLĄ PO KORZENIACH i nad CAŁYM dokumentem — powód stoi przy
+          // `sweepTypeWeight`. Wołana raz na etykietę, więc powłoka nie jest
+          // liczona po razie na każdy korzeń.
+          sweepTypeWeight(document.body, label);
           // Ile wierszy NAPRAWDĘ się narysowało. Bez tego fikstura może się
           // opróżnić, a bramka dalej melduje „brak przepełnienia" — nad
           // geometrią, której nie ma.
@@ -1311,6 +1399,17 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         results,
         descendants,
         collapsed,
+        typeWeights: [...typeWeights.values()],
+        // Wartości stopni ROZWIĄZANE W ŻYWYM KORZENIU. Pusty napis znaczy
+        // „ta nazwa nic nie znaczy w dokumencie, który się właśnie narysował"
+        // — i to jest awaria przyrządu, a nie werdykt o produkcie.
+        resolvedWeightScale: weightNames.map((name) => ({
+          name,
+          value: window
+            .getComputedStyle(document.documentElement)
+            .getPropertyValue(name)
+            .trim(),
+        })),
         recordScreens,
         heightBound,
         openableRows,
@@ -1337,6 +1436,9 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       titleSelector: TITLE_SELECTOR,
       recordScreenSelector: RECORD_SCREEN_SELECTOR,
       RECORD_DOORS,
+      // Same NAZWY. Wartości rozwiązuje żywy korzeń po drugiej stronie —
+      // gdyby jechały tędy, ten przelot potwierdzałby arkusz arkuszem.
+      weightNames: TYPE_WEIGHT_SCALE.map((step) => step.name),
     },
   );
 
@@ -1891,6 +1993,13 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
     matchedCollapsedEntries,
     exercisedDoors,
     titleProblems,
+    // SUROWE ODCZYTY, nie werdykty, i to jest ta sama decyzja o księgowości,
+    // co przy rejestrze przepełnień: dwa z pięciu przelotów chodzą wyłącznie
+    // po Bibliotece, więc rozliczenie rejestru wag PER PRZELOT zapalałoby
+    // fałszywy `TYPE_WEIGHT_UNUSED_ENTRY` na każdej wąskiej geometrii.
+    // Klasyfikacja jest jedna, po wszystkich przelotach.
+    typeWeights: measured.typeWeights,
+    resolvedWeightScale: measured.resolvedWeightScale,
   };
 };
 
@@ -2483,12 +2592,25 @@ const judgeTitleBand = ({ entries, rootFontSizePx, where }) => {
 // `1.375rem` przy tekście przeskalowanym do 200% znaczy 44 px, a wpisana liczba
 // pikseli meldowałaby OVER nad tytułem, który urósł dokładnie tak, jak ma.
 //
-// WAGA JEST RAPORTOWANA, NIE OSĄDZANA, i to NIE jest ostrożność — to zakaz
-// zapisany w briefie. Lot 4: „Nie rusza wag pisma 580/590/620 (konwencja całej
-// aplikacji, nie dryf tego ekranu)". Podłoga 600 wzięta z v3 (`.rec-title
-// { font-weight: 600 }`) czerwieniłaby się WIECZNIE na 580, którego właściciel
-// tej pozycji ma zakaz ruszać — czyli asercja nie do spłacenia przez nikogo.
-// Liczba jest w wierszu raportu, żeby zmiana wagi nie przeszła w ciszy.
+// WAGA BYŁA RAPORTOWANA, NIE OSĄDZANA, I OD PRZYRZĄDU P5 JEST OSĄDZANA —
+// A PRZESŁANKA, KTÓRA TO ZDANIE UZASADNIAŁA, OKAZAŁA SIĘ FAŁSZYWA.
+// Stało tu: „Lot 4 ma zakaz ruszania wag 580/590/620, więc podłoga 600 z v3
+// (`.rec-title { font-weight: 600 }`) czerwieniłaby się WIECZNIE na 580,
+// którego właściciel tej pozycji ma zakaz ruszać — czyli asercja nie do
+// spłacenia przez nikogo". Pierwsza połowa dalej jest prawdą i dlatego to
+// zdanie tu ZOSTAJE zamiast zniknąć: zakaz dla lotu 4 był poprawny, a wyłączenie
+// było przy nim poprawne. Druga połowa przestała być prawdą 2026-08-13:
+// waga 580/620 ma od P5 WŁAŚCICIELA (`TYPE_WEIGHT_OWNER` → `P5-01a`/`P5-01b`,
+// lot L5 Fazy II), więc asercja jest do spłacenia i nie jest wieczna.
+//
+// I NIE JEST TO PODŁOGA 600, tylko PRZYNALEŻNOŚĆ do skali, którą `tokens.css`
+// deklaruje — pytanie brzmi „czy ta waga jest jednym z czterech stopni",
+// a nie „czy równa się sześciuset". Różnica jest cała: zbiór jest DANĄ czytaną
+// z arkusza, a nie listą w tym pliku, więc przyrząd psuje się razem ze skalą
+// zamiast ją cicho przeżyć.
+//
+// PRZEŁĄCZNIK JEST OSOBNY OD PRZEŁĄCZNIKA ROZMIARU — powód przy
+// `typeWeightBandDelivery()` niżej. Rozmiar jest dowieziony (lot 4), waga nie.
 //
 // ── WHAT CHANGED AFTER THE FIRST RUN OF THIS BAND, AND WHY ───────────────────
 // EVERYTHING ABOVE DESCRIBES THE MEASUREMENT AND THE MEASUREMENT STAYS. The
@@ -2592,6 +2714,86 @@ const RECORD_TITLE_BAND_STATUS =
         .map((entry) => `${entry.id}: ${entry.status}`)
         .join(", ");
 
+// ── DRUGI WŁAŚCICIEL NAD TYM SAMYM PASMEM: WAGA (przyrząd P5) ────────────────
+//
+// JEDEN BAND, DWA NIEZALEŻNE PRZEŁĄCZNIKI, I TO MUSI BYĆ NAPISANE, A NIE
+// DOMYŚLNE. `RECORD_TITLE_BAND.armed` jest dziś `true` — lot 4 dowiózł ROZMIAR
+// i oba jego wpisy stoją na „enforced". Waga NIE JEST dowieziona. Wpuszczenie
+// werdyktu o wadze w istniejące `if (RECORD_TITLE_BAND.armed)` zaczerwieniłoby
+// bramkę na dzisiejszym kodzie, a `break-test.mjs:333-345` odmawia startu
+// pętli złamań od czerwonej bazy — czyli jeden werdykt o wadze zabiłby
+// WSZYSTKIE osiemdziesiąt kilka złamań w `break-visual-language.mjs`.
+// Pożyczenie cudzego wyłącznika jest tu więc nie skrótem, tylko awarią.
+//
+// TO SAMO ROZSTRZYGNIĘCIE, CO PRZY `pending` W MAPIE PAR: „czerwony przyrząd"
+// znaczy „przyrząd MÓWI, że produkt się rozjeżdża", a nie „bramka wychodzi
+// kodem różnym od zera". Werdykt o wadze jest RAPORTOWANY w każdym przebiegu,
+// z liczbami i z nazwą właściciela, i zaczyna padać w chwili, gdy `P5-01a`
+// i `P5-01b` przejdą na „enforced".
+const typeWeightBandDelivery = () => {
+  const failures = [];
+  const statuses = [];
+  for (const id of TYPE_WEIGHT_OWNER.pairs) {
+    const pair = VISUAL_LANGUAGE_ROUTED_PAIRS.find((entry) => entry.id === id);
+    if (pair === undefined) {
+      failures.push(
+        `TYPE_WEIGHT_OWNER_MISSING: „${id}" is declared as an owner of the type-weight verdict ` +
+          "in visual-language-pairs.mjs (TYPE_WEIGHT_OWNER), and there is no pair with that id " +
+          "in VISUAL_LANGUAGE_ROUTED_PAIRS. The instrument cannot tell whether the position was " +
+          "delivered, so it judges nothing and says so.",
+      );
+      continue;
+    }
+    const mismatch = [
+      pair.lot === TYPE_WEIGHT_OWNER.lot
+        ? null
+        : `lot ${pair.lot}, not ${TYPE_WEIGHT_OWNER.lot}`,
+      pair.position === TYPE_WEIGHT_OWNER.position
+        ? null
+        : `position ${pair.position}, not ${TYPE_WEIGHT_OWNER.position}`,
+      pair.read?.property === TYPE_WEIGHT_OWNER.read
+        ? null
+        : `reads ${pair.read?.property ?? "nothing"}, not ${TYPE_WEIGHT_OWNER.read}`,
+      pair.expect?.token === TYPE_WEIGHT_OWNER.token
+        ? null
+        : `expects ${pair.expect?.token ?? pair.expect?.kind ?? "nothing"}, not ` +
+          `${TYPE_WEIGHT_OWNER.token}`,
+    ].filter((part) => part !== null);
+    if (mismatch.length > 0) {
+      failures.push(
+        `TYPE_WEIGHT_OWNER_DRIFTED: „${id}" is named as an owner of the type-weight verdict, ` +
+          `but it ${mismatch.join("; ")}. A WEIGHT verdict armed by a pair that measures ` +
+          "something else would fire for a reason no reader can trace back to what it judges.",
+      );
+      continue;
+    }
+    statuses.push({ id, status: pair.status });
+  }
+  return {
+    failures,
+    statuses,
+    armed:
+      failures.length === 0 &&
+      statuses.length === TYPE_WEIGHT_OWNER.pairs.length &&
+      statuses.every((entry) => entry.status === "enforced"),
+  };
+};
+const TYPE_WEIGHT_BAND = typeWeightBandDelivery();
+const TYPE_WEIGHT_BAND_STATUS =
+  TYPE_WEIGHT_BAND.statuses.length === 0
+    ? "no owning pair resolved — see the instrument failure on this run"
+    : TYPE_WEIGHT_BAND.statuses
+        .map((entry) => `${entry.id}: ${entry.status}`)
+        .join(", ");
+
+// Zbiór dozwolony, jako napisy — `getComputedStyle` oddaje napisy. Pusty zbiór
+// NIE znaczy „nic nie wolno": znaczy, że nie ma czego być członkiem, i wtedy
+// każde ramię tego przyrządu MILCZY o produkcie i krzyczy o sobie
+// (`TYPE_WEIGHT_NO_DECLARED_SCALE` niżej).
+const TYPE_WEIGHT_ALLOWED = new Set(
+  TYPE_WEIGHT_SCALE.map((step) => String(step.value)),
+);
+
 // ── THE BAND'S CENSUS: WHAT THIS RUN ACTUALLY MEASURED ───────────────────────
 // A pending measurement that measures nothing is indistinguishable from a
 // pending measurement that holds, and it is the cheaper of the two to write by
@@ -2637,7 +2839,15 @@ const judgeRecordTitleBand = ({
     const off = px - wantedPx;
     lines.push(
       `record title\t${group.signature}\ton ${group.surfaces.join(", ")}\t${px.toFixed(1)}px\t` +
-        `weight ${fontWeight} (reported, not judged — lot 4 may not touch 580/590/620)\t` +
+        `weight ${fontWeight} ${
+          TYPE_WEIGHT_ALLOWED.size === 0
+            ? "(NOT JUDGED — tokens.css declares no weight scale; see TYPE_WEIGHT_NO_DECLARED_SCALE)"
+            : TYPE_WEIGHT_ALLOWED.has(String(fontWeight))
+              ? `IN the declared scale (${[...TYPE_WEIGHT_ALLOWED].join("/")})`
+              : `OFF the declared scale (${[...TYPE_WEIGHT_ALLOWED].join("/")}) — [${
+                  TYPE_WEIGHT_OWNER.label
+                }, ${TYPE_WEIGHT_BAND.armed ? "enforced" : "pending"}]`
+        }\t` +
         `${
           Math.abs(off) <= RECORD_TITLE_TOLERANCE_PX
             ? "AT"
@@ -2649,6 +2859,30 @@ const judgeRecordTitleBand = ({
           RECORD_TITLE_BAND.armed ? "enforced" : "pending"
         }]`,
     );
+    // ── WAGA: OSOBNY WŁAŚCICIEL, OSOBNY PRZEŁĄCZNIK ─────────────────────────
+    // Do przyrządu P5 to zdanie było dopiskiem „reported, not judged" bez
+    // adresu — pomiarem bez osądu, czyli regułą NIEZMIERZONĄ. Teraz ma adres
+    // i cenę. Ramię stoi PRZED `continue` rozmiaru, bo tytuł o poprawnym
+    // rozmiarze i obcej wadze jest dokładnie tym przypadkiem, o którym rozmiar
+    // milczy: Szansa siedzi na `--text-xl` od zawsze i niesie wagę 620.
+    if (
+      TYPE_WEIGHT_ALLOWED.size > 0 &&
+      !TYPE_WEIGHT_ALLOWED.has(String(fontWeight))
+    ) {
+      const weightVerdict =
+        `the record title ${group.signature} on ${group.surfaces.join(", ")} draws at ` +
+        `weight ${fontWeight}, which is not one of the ${TYPE_WEIGHT_ALLOWED.size} steps ` +
+        `tokens.css declares (${[...TYPE_WEIGHT_ALLOWED].join("/")}); v3 gives .rec-title ` +
+        `font-weight: 600 (v3/app.css:651-652) and uses no other weight anywhere in v3/. ` +
+        `${TYPE_WEIGHT_OWNER.label} — the record screens carry two different off-scale weights.`;
+      if (TYPE_WEIGHT_BAND.armed) problems.push(weightVerdict);
+      else
+        pending.push(
+          `${weightVerdict} REPORTED, NOT THROWN: ${TYPE_WEIGHT_OWNER.label} has not been ` +
+            `delivered (${TYPE_WEIGHT_BAND_STATUS}), and this arm throws the moment those ` +
+            'entries flip to "enforced". Do not spend this by widening the scale.',
+        );
+    }
     if (Math.abs(off) <= RECORD_TITLE_TOLERANCE_PX) continue;
     // ONE SENTENCE, TWO DESTINATIONS. The measurement — which title, on which
     // screens, how many pixels against how many — is identical either way; the
@@ -5277,9 +5511,114 @@ const measureTitleBandActionInPage = async ({
         band: null,
         neighbourhood: [],
         actions: [],
+        // OBA POLA IDĄ TU JAKO `null` ŚWIADOMIE: pasmo nierozstrzygnięte ma
+        // zapalać `TITLE_BAND_NOT_MEASURED`, a nie udawać świadka osi P3. Ten
+        // sam powód, który wyżej każe przepisać `band` nietknięte.
+        stack: null,
+        opening: null,
       };
     const bandBox = box(band);
     const titleBox = box(title);
+
+    // ── OŚ 3 (P3): SKŁAD LEWEGO STOSU PASMA ─────────────────────────────────
+    // PODMIOTEM JEST OPAKOWANIE TYTUŁU, NIE PASMO: `SurfaceTitleBand` i Dziś
+    // wstawiają `<h1>` wprost do `<header>`, a Kalendarz, Skrzynka, Projekty,
+    // Ustawienia i Biblioteka owijają go `<div>`-em razem z nadtytułem i
+    // opisem. Różnica jest STRUKTURALNA i widać ją bez ani jednego piksela —
+    // czyli znaczy to samo przy 320, 760 i 1440 px, i przy 100%, 200% i 300%
+    // pisma. Reguła, powód i zadeklarowana równoważność trzech ekranów rekordu
+    // stoją w nagłówku `title-band-action.mjs`.
+    const stackHost = title.parentElement;
+    const stackRows =
+      stackHost === null || stackHost === band
+        ? []
+        : [...stackHost.children].filter(
+            (node) =>
+              node !== title &&
+              node instanceof HTMLElement &&
+              rendered(node) &&
+              (node.textContent ?? "").trim() !== "",
+          );
+    // DRUGI CZŁON: nic niosącego tekst nie stoi PRZED tytułem w paśmie. Bez
+    // niego wystarczy wyjąć nadtytuł z opakowania i postawić go jako
+    // rodzeństwo `<h1>`, żeby oś zzieleniała nad pasmem, które dalej rysuje
+    // dwa wiersze. Węzły ZAWIERAJĄCE tytuł są wyłączone — inaczej każde
+    // opakowanie liczyłoby się samo jako element „przed".
+    const beforeTitle = [...band.querySelectorAll("*")].filter(
+      (node) =>
+        node instanceof HTMLElement &&
+        node !== title &&
+        !node.contains(title) &&
+        (node.compareDocumentPosition(title) &
+          Node.DOCUMENT_POSITION_FOLLOWING) !==
+          0 &&
+        rendered(node) &&
+        (node.textContent ?? "").trim() !== "",
+    );
+    const stack = {
+      state:
+        stackHost === band && beforeTitle.length === 0 ? "ONE_ROW" : "STACKED",
+      before: beforeTitle.map((node) => signature(node)),
+      // ILE WIERSZY, A NIE TYLKO „CZY WIĘCEJ NIŻ JEDEN": Projekty i Ustawienia
+      // mają TRZY, Kalendarz, Skrzynka i Biblioteka DWA, a lot naprawczy, który
+      // zdejmie jeden z trzech, ma to zobaczyć jako DRYF, a nie jako ciszę.
+      // Liczba dotyczy STOSU TYTUŁU, nie pasma — pasmo rekordu ma 285 px
+      // wysokości i `rows=1`, bo jego pas plakietek jest osobnym dzieckiem
+      // pasma, a nie wierszem stosu tytułu.
+      rows: 1 + stackRows.length,
+      host: stackHost === null ? "-" : signature(stackHost),
+      extras: stackRows.map(
+        (node) =>
+          `${signature(node)} „${(node.textContent ?? "").trim().slice(0, 24)}" ` +
+          `${box(node).top}–${box(node).bottom}`,
+      ),
+    };
+
+    // ── OŚ 4 (P3): CZYM EKRAN OTWIERA TREŚĆ ─────────────────────────────────
+    // PIERWSZY narysowany nagłówek POZA pasmem, w kolumnie pracy. „Pierwszy",
+    // bo prototyp stawia otwarcie na początku treści (`.td-head`, `.cal-head`)
+    // — a „dowolny nagłówek 2xl gdziekolwiek" byłby innym pytaniem.
+    //
+    // TOKEN ROZWIĄZYWANY W TEJ SAMEJ STRONIE, NIE LICZBA PIKSELI: przy 200%
+    // pisma 28 px to nie jest 28 px, a `--text-2xl` to dalej `--text-2xl`. Ten
+    // sam idiom co `resolveAs` w przelocie par.
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.left = "-9999px";
+    probe.style.visibility = "hidden";
+    probe.style.fontSize = "var(--text-2xl)";
+    (work() ?? document.body).append(probe);
+    const wanted2xl = window.getComputedStyle(probe).fontSize;
+    probe.remove();
+
+    const openingNode =
+      [...(work()?.querySelectorAll("h1, h2, h3") ?? [])].find(
+        (node) =>
+          node instanceof HTMLElement &&
+          !band.contains(node) &&
+          rendered(node) &&
+          (node.textContent ?? "").trim() !== "",
+      ) ?? null;
+    const openingSize =
+      openingNode === null ? "" : window.getComputedStyle(openingNode).fontSize;
+    const opening = {
+      state:
+        openingNode === null
+          ? "NO_OPENING"
+          : openingSize === wanted2xl
+            ? "OPENING_2XL"
+            : "OPENING_SMALLER",
+      // OBIE STRONY PORÓWNANIA DRUKUJĄ SIĘ ZAWSZE. Bez tego „OPENING_SMALLER"
+      // nie daje się sprawdzić przy odbiorze: nie widać ani ile zmierzono,
+      // ani wobec czego.
+      size: openingSize,
+      wanted: wanted2xl,
+      signature: openingNode === null ? "-" : signature(openingNode),
+      sample:
+        openingNode === null
+          ? ""
+          : (openingNode.textContent ?? "").trim().slice(0, 32),
+    };
 
     // KONIEC PASMA JEST KRAWĘDZIĄ TREŚCI, NIE KRAWĘDZIĄ RAMKI, i ta różnica jest
     // całą poprawnością osi poziomej: `justify-content: flex-end` stawia ostatnie
@@ -5367,6 +5706,8 @@ const measureTitleBandActionInPage = async ({
         height: entry.box.height,
       })),
       actions,
+      stack,
+      opening,
     };
   };
 
@@ -5466,6 +5807,12 @@ const titleBandActionCensus = async (browser) => {
   const failures = [];
   const verdicts = [];
   const reported = [];
+  // OSOBNY KANAŁ RAPORTU DLA OSI P3, a nie wspólny z osią akcji. Podsumowanie
+  // osi akcji drukuje `reported.length` obok swojego „0 divergence(s)" —
+  // dorzucenie tam cudzych wierszy dałoby linię wewnętrznie sprzeczną („zero
+  // rozjazdów, siedem zgłoszonych"), czyli tę samą klasę, którą ten przelot ma
+  // zamykać.
+  const compositionReported = [];
   const started = Date.now();
   const report = (line) => console.log(`title band\t${line}`);
 
@@ -5503,6 +5850,16 @@ const titleBandActionCensus = async (browser) => {
   // które nie mówi który, każe odbierającemu wrócić do wierszy.
   let displacedRow = 0;
   let displacedInline = 0;
+  // LICZNIKI P3 SĄ WŁASNE, A NIE DOLICZANE DO TAMTYCH. Podsumowanie, które
+  // zlewałoby cztery osie w jedną liczbę, mówiłoby „osiem rozjazdów" nad
+  // ekranami, z których część rozjeżdża się na jednej osi, a część na dwóch —
+  // i kazałoby odbierającemu wracać do wierszy, żeby to rozdzielić.
+  let stackDivergent = 0;
+  let stackHeld = 0;
+  let stackNotComparable = 0;
+  let openingDivergent = 0;
+  let openingHeld = 0;
+  let openingNotComparable = 0;
 
   report(
     `walked\t${collected.declared.length} declared destination(s)\t` +
@@ -5530,6 +5887,13 @@ const titleBandActionCensus = async (browser) => {
         inlineState: "NOT_MEASURED",
         titles: entry.titles,
         band: entry.band,
+        // `judged` JEST BUDOWANE WYBOREM PÓL, NIE ROZŁOŻENIEM OBIEKTU, więc
+        // każde nowe pole trzeba przepisać W OBU miejscach. Pominięcie tego
+        // dałoby `entry.stack === undefined` na ZDROWYM drzewie, a wtedy
+        // `TITLE_BAND_NEVER_ONE_ROW` położyłby BAZĘ — jedyną rzecz, której
+        // bramka Fazy I nie toleruje.
+        stack: entry.stack ?? null,
+        opening: entry.opening ?? null,
       });
       report(
         `${entry.id}\tNOT_MEASURED\t„#surface-title" matched ${entry.titles} element(s), ` +
@@ -5560,6 +5924,8 @@ const titleBandActionCensus = async (browser) => {
       inlineState: inline.inlineState,
       titles: entry.titles,
       band: entry.band,
+      stack: entry.stack ?? null,
+      opening: entry.opening ?? null,
     });
     const row = byId.get(entry.id);
     // PRZEWIDZIANY ZNACZY PRZEWIDZIANY NA OBU OSIACH. Koniunkcja, nie sama
@@ -5637,8 +6003,103 @@ const titleBandActionCensus = async (browser) => {
       `(right x=${entry.band.right} − padding ${entry.band.paddingRight}) column-gap ${entry.band.columnGap}\t` +
       `title „${entry.title.sample}" ${span(entry.title)}\t${where}`;
     report(line);
+    // ── P3: DRUGA LINIA NA EKRAN, OBOK ISTNIEJĄCEJ ──────────────────────────
+    // OSOBNA LINIA, A NIE DOKLEJENIE DO POPRZEDNIEJ: tamta jest o MIEJSCU
+    // AKCJI i ma swoje kolumny cytowane w nagłówku `title-band-action.mjs`.
+    // Wsunięcie dwóch dalszych osi w jej środek unieważniłoby te cytaty przy
+    // każdym odczycie.
+    report(
+      `${entry.id}\tstack ${entry.stack.state} rows=${entry.stack.rows} in ${entry.stack.host}` +
+        (entry.stack.extras.length === 0
+          ? ""
+          : ` [${entry.stack.extras.join(" | ")}]`) +
+        (entry.stack.before.length === 0
+          ? ""
+          : ` (text before the title: ${entry.stack.before.join(", ")})`) +
+        `\topening ${entry.opening.state} ${entry.opening.signature} ` +
+        `${entry.opening.size === "" ? "—" : entry.opening.size} ` +
+        `(2xl = ${entry.opening.wanted}) „${entry.opening.sample}"` +
+        `\ttable says ${
+          row === undefined
+            ? "UNDECLARED"
+            : `${row.todayStack}/${row.todayOpening}, prototype ${row.prototypeStack}/${row.prototypeOpening}`
+        }`,
+    );
 
     if (row === undefined) continue;
+
+    // ── P3: OSIE SKŁADU I OTWARCIA, OSĄDZONE PRZED OSIĄ AKCJI ───────────────
+    // KOLEJNOŚĆ JEST WYMOGIEM, NIE GUSTEM: gałąź werdyktu osi akcji kończy się
+    // `continue`, więc osądzenie P3 pod nią znaczyłoby, że jeden padający
+    // werdykt o MIEJSCU AKCJI zabiera pomiar dwóch niezależnych osi na tym
+    // samym ekranie — i robi to po cichu, bo w raporcie widać wtedy tylko tamtą
+    // czerwień. Osie się nie sumują i nie mogą się nawzajem wyłączać.
+    const stackDivergentRow = isTitleBandStackDivergence(row);
+    if (stackDivergentRow) stackDivergent += 1;
+    else if (row.prototype === "no-screen") stackNotComparable += 1;
+    else stackHeld += 1;
+    const stackPredicted = entry.stack.state === row.todayStack;
+    if (
+      titleBandVerdictThrows({
+        predicted: stackPredicted,
+        divergent: stackDivergentRow,
+        armed: TITLE_BAND_STACK_ARMED,
+      })
+    )
+      verdicts.push(
+        stackPredicted
+          ? `TITLE_BAND_STACK_DIVERGED — ${entry.id}: the band's left stack is ENFORCED as one row ` +
+              `and this screen stacks ${entry.stack.rows} of them in ${entry.stack.host}` +
+              (entry.stack.extras.length === 0
+                ? ""
+                : ` (${entry.stack.extras.join(", ")})`) +
+              `. The prototype draws one — ${row.citeStack}. App: ${row.app}.`
+          : `TITLE_BAND_STACK_DRIFT — ${entry.id}: this pass measured ${entry.stack.state} ` +
+              `(rows=${entry.stack.rows}, host ${entry.stack.host}) and the canonical screen list ` +
+              `says ${row.todayStack}. Either the band grew or lost a row and nobody wrote it ` +
+              "down, or a lot delivered the fix and left the row behind. " +
+              `Measured: ${entry.stack.extras.join(", ") || "nothing beside the title"}. ` +
+              `App: ${row.app}.`,
+      );
+    else if (stackDivergentRow)
+      compositionReported.push(
+        `${entry.id}\tstack ${entry.stack.state} rows=${entry.stack.rows}\tthe prototype's band ` +
+          `carries ONE row on the left — ${row.citeStack}\t${entry.stack.extras.join(", ")}`,
+      );
+
+    const openingDivergentRow = isTitleBandOpeningDivergence(row);
+    if (openingDivergentRow) openingDivergent += 1;
+    else if (row.prototype === "no-screen") openingNotComparable += 1;
+    else openingHeld += 1;
+    const openingPredicted = entry.opening.state === row.todayOpening;
+    if (
+      titleBandVerdictThrows({
+        predicted: openingPredicted,
+        divergent: openingDivergentRow,
+        armed: TITLE_BAND_OPENING_ARMED,
+      })
+    )
+      verdicts.push(
+        openingPredicted
+          ? `TITLE_BAND_OPENING_DIVERGED — ${entry.id}: what opens this screen's content is ` +
+              `ENFORCED and this pass measured ${entry.opening.state} ` +
+              `(${entry.opening.signature} at ${entry.opening.size}, 2xl resolves to ` +
+              `${entry.opening.wanted}) against a prototype that says ${row.prototypeOpening} — ` +
+              `${row.citeOpening}. App: ${row.app}.`
+          : `TITLE_BAND_OPENING_DRIFT — ${entry.id}: this pass measured ${entry.opening.state} ` +
+              `(${entry.opening.signature} „${entry.opening.sample}" at ` +
+              `${entry.opening.size === "" ? "no size, no heading" : entry.opening.size}, 2xl ` +
+              `resolves to ${entry.opening.wanted}) and the canonical screen list says ` +
+              `${row.todayOpening}. Either the screen's first content heading changed size and ` +
+              "nobody wrote it down, or a lot delivered the fix and left the row behind. " +
+              `App: ${row.app}.`,
+      );
+    else if (openingDivergentRow)
+      compositionReported.push(
+        `${entry.id}\topening ${entry.opening.state} ${entry.opening.signature} ` +
+          `${entry.opening.size} (2xl = ${entry.opening.wanted})\tthe prototype opens this ` +
+          `screen's content at --text-2xl — ${row.citeOpening}`,
+      );
 
     // KSIĘGOWOŚĆ NAJPIERW, WERDYKT POTEM, i to nie jest kolejność estetyczna:
     // gałąź werdyktu kończy się `continue`, więc licząc po niej dostalibyśmy po
@@ -5703,12 +6164,19 @@ const titleBandActionCensus = async (browser) => {
     failures,
     verdicts,
     reported,
+    compositionReported,
     judged: judged.length,
     divergent,
     displacedRow,
     displacedInline,
     held,
     notComparable,
+    stackDivergent,
+    stackHeld,
+    stackNotComparable,
+    openingDivergent,
+    openingHeld,
+    openingNotComparable,
     elapsedMs: Date.now() - started,
   };
 };
@@ -5772,15 +6240,26 @@ const ROUTED_ARRIVAL = {
   // z przyczyną wyglądającą jak zły selektor. Wiersza w tym stanie nie ma.
   organizations: "#main-content [data-org-row]",
   people: "#main-content [data-person-row]",
-  // KALENDARZA TU NIE MA, I JEST TO POMIAR, NIE PRZEOCZENIE. Naprawa po
-  // przeglądzie lotu D2 dopisała ten przystanek razem z parą na bliźniaka
-  // znacznika pomocy i OBA PRZELOTY WRÓCIŁY `NOT_MEASURED`: klient scenariuszowy
-  // ODMAWIA kalendarza (`client/scenario-client.ts:81-94` —
+  // Skrzynka, dopisana przez przyrząd P1 Fazy I. `data-inbox-row` istniał od
+  // fali D (`InboxSurface.tsx:140`) i nie był przez nikogo ZADEKLAROWANY jako
+  // marker — to jedyna zmiana „bo przyrząd nie ma się o co zaczepić" w tym
+  // locie. WIERSZ, a nie korzeń, i to ten sam wybór, co przy Organizacjach
+  // i Ludziach: `[class*="_inbox_"]` niesie także stan bez skrzynki.
+  inbox: "#main-content [data-inbox-row]",
+  // KALENDARZ WRACA, I TO JEST POMIAR, NIE COFNIĘCIE DECYZJI. Naprawa po
+  // przeglądzie lotu D2 zdjęła ten przystanek razem z parą na bliźniaka
+  // znacznika pomocy, bo OBA PRZELOTY wróciły wtedy `NOT_MEASURED`: klient
+  // scenariuszowy ODMAWIA kalendarza (`client/scenario-client.ts:81-94` —
   // `availability: "provider_unavailable"`, `canRead: false`, `upcoming: []`),
-  // a przycisk rysuje się tylko nad tygodniem, w którym jakieś spotkanie stoi
-  // (`CalendarSurface.tsx`). Przystanek, na którym nie ma czego zmierzyć, to
-  // czas przelotu bez werdyktu — więc go nie ma, a bliźniak jest asertowany tam,
-  // gdzie fikstura go dosięga: `desktop-ui/test/calendar.interaction.test.tsx`.
+  // a TAMTEN przycisk rysuje się tylko nad tygodniem, w którym stoi jakieś
+  // spotkanie. PODMIOT PARY P1-02 NIE MA TEGO OGRANICZENIA — rysuje się
+  // w gałęzi ODMOWY: zmierzone 2026-08-13, oba motywy, trzy narysowane dzieci
+  // nośnika (`._calendarState`, `._week`, `._section`), wszystkie
+  // `max-width: 1152px`. Marker celuje w `._week`, a nie w `._calendarState`,
+  // bo kartę odmowy zabierze pierwsza działająca fikstura kalendarza,
+  // a tydzień zostanie. Podkreślnik po nazwie jest nośny: `[class*="_week_"]`
+  // NIE łapie `_weekNav_hash` (`calendar.module.css:79` wobec `:26`).
+  calendar: '#main-content [class*="_week_"]',
 };
 
 // RODZAJ REKORDU, KTÓREGO SIĘ SPODZIEWAMY PO TYCH DRZWIACH. Trzy drzwi, trzy
@@ -6172,9 +6651,19 @@ const auditRoutedMap = () => {
     // the routed map did not need it while every branch was unconditional,
     // and needs it now. A typo in a status is a pair that measures for
     // nobody.
+    // NAZWA LOTU MOŻE MIEĆ LITERĘ, I TO JEST POPRAWKA SŁOWNIKA, NIE
+    // ROZLUŹNIENIE STRAŻNIKA. Wzorzec brzmiał `^pending: LOT \d+$`, czyli
+    // umiał zapisać wyłącznie loty Fazy 3 numerowane cyfrą. Loty kolejnych faz
+    // nazywają się `L1`, `D10`, `C5` — i para oczekująca na `L1` nie miała
+    // ŻADNEGO napisu, którym mogłaby powiedzieć prawdę: albo kłamała
+    // („pending: LOT 1" to lot Fazy 3, dawno oddany, więc raport nie
+    // odróżniłby dwóch właścicieli), albo padała tutaj. Strażnik zostaje
+    // w mocy — dalej wymaga „enforced" albo „pending: LOT <nazwa>" — tylko
+    // nazwa może być tą, którą lot naprawdę nosi. Poszerzone przez przyrząd P1
+    // Fazy I, 2026-08-13, dla par P1-02 … P1-10 i P1-12.
     if (
       pair.status !== "enforced" &&
-      !/^pending: LOT \d+$/u.test(pair.status ?? "")
+      !/^pending: LOT [A-Z]*\d+$/u.test(pair.status ?? "")
     )
       failures.push(
         `ROUTED_UNKNOWN_STATUS: ${pair.id} „${pair.title}" carries the status „${pair.status}", ` +
@@ -7457,6 +7946,13 @@ const problems = [];
 const matchedRegistry = new Set();
 const matchedCollapsed = new Set();
 const doorsExercised = new Set();
+// ── ODCZYTY WAG, ZBIERANE PRZEZ WSZYSTKIE PRZELOTY ───────────────────────────
+// Klucz `sygnatura|waga`, Mapa POZA pętlą przelotów — ta sama księgowość, co
+// przy `matchedRegistry`, i z tego samego powodu: dwa z pięciu przelotów chodzą
+// wyłącznie po Bibliotece, więc rozliczanie rejestru per przelot zapaliłoby
+// fałszywy `TYPE_WEIGHT_UNUSED_ENTRY` na każdej wąskiej geometrii.
+const typeWeightReadings = new Map();
+const typeWeightScaleLive = new Map();
 try {
   for (const pass of passes) {
     const {
@@ -7466,9 +7962,28 @@ try {
       matchedCollapsedEntries,
       exercisedDoors,
       titleProblems,
+      typeWeights,
+      resolvedWeightScale,
     } = await sweep(browser, pass);
     for (const entry of matchedRegistryEntries) matchedRegistry.add(entry);
     for (const entry of matchedCollapsedEntries) matchedCollapsed.add(entry);
+    for (const reading of typeWeights) {
+      const key = weightKey(reading);
+      const previous = typeWeightReadings.get(key);
+      if (previous === undefined) {
+        typeWeightReadings.set(key, {
+          signature: reading.signature,
+          weight: reading.weight,
+          surfaces: new Set(reading.surfaces),
+          passes: new Set([pass.label]),
+        });
+        continue;
+      }
+      for (const surface of reading.surfaces) previous.surfaces.add(surface);
+      previous.passes.add(pass.label);
+    }
+    for (const step of resolvedWeightScale)
+      typeWeightScaleLive.set(step.name, step.value);
     for (const entry of exercisedDoors) doorsExercised.add(entry);
     for (const failure of failures) {
       problems.push(`${pass.label} — ${failure.surface}: ${failure.reason}`);
@@ -7643,6 +8158,8 @@ try {
   }
   for (const line of titleBand.reported)
     console.log(`title band\treported\t${line}`);
+  for (const line of titleBand.compositionReported)
+    console.log(`title band\tcomposition reported\t${line}`);
   console.log(
     `title band: ${TITLE_BAND_ACTION_STATUS} — ` +
       `${TITLE_BAND_ACTION_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
@@ -7654,6 +8171,24 @@ try {
       `${TITLE_BAND_DIVERGENCES.length} divergence(s) on the canonical list\t` +
       `${titleBand.verdicts.length} verdict(s) thrown, ${titleBand.reported.length} reported\t` +
       `${titleBand.elapsedMs} ms wall clock`,
+  );
+  // ── P3: OSOBNA LINIA PODSUMOWANIA DLA DWÓCH DALSZYCH OSI ─────────────────
+  // OSOBNA, A NIE DOPISANA DO TAMTEJ, z tego samego powodu, dla którego osie
+  // mają osobne liczniki: tamta linia jest cytowana w opisach lotów fali C i
+  // D2, a jej rozszerzenie unieważniłoby te cytaty. Ta linia jest jedynym
+  // miejscem, z którego przy odbiorze widać, że P3 w ogóle coś zmierzył.
+  console.log(
+    `title band composition: stack ${TITLE_BAND_STACK_STATUS}, opening ${TITLE_BAND_OPENING_STATUS} — ` +
+      `${TITLE_BAND_STACK_ARMED || TITLE_BAND_OPENING_ARMED ? "ENFORCED (a divergence fails this run)" : "PENDING (a divergence the screen list predicts is reported, any screen that drifted from it still fails)"}\t` +
+      `${titleBand.stackDivergent} screen(s) stack more than one row on the left of the band ` +
+      `(${titleBand.stackHeld} agree with the prototype, ${titleBand.stackNotComparable} have no ` +
+      `prototype counterpart)\t` +
+      `${titleBand.openingDivergent} screen(s) disagree with the prototype about opening the ` +
+      `content at --text-2xl (${titleBand.openingHeld} agree, ${titleBand.openingNotComparable} ` +
+      `have no prototype counterpart)\t` +
+      `${TITLE_BAND_STACK_DIVERGENCES.length} stack and ${TITLE_BAND_OPENING_DIVERGENCES.length} ` +
+      `opening divergence(s) on the canonical list\t` +
+      `${titleBand.compositionReported.length} reported`,
   );
   // ── P7 + PARY LOTÓW 2-6: PRZELOT TRAS ───────────────────────────────────
   // OSOBNY PRZELOT OD `visualLanguagePairs`, i to nie jest podział estetyczny:
@@ -7717,6 +8252,155 @@ try {
       `${matchedCollapsed.size} met; enforced on ${COLLAPSED_TEXT_ENFORCED_SURFACES.join(", ")}, ` +
       `collected and printed everywhere else`,
   );
+
+  // ── WAGA KROJU ZE ZBIORU ZADEKLAROWANEGO (przyrząd P5) ─────────────────────
+  //
+  // TRZY ASERCJE UZBROJONE OD PIERWSZEGO DNIA i jedna raportowana. Uzbrojone
+  // mówią o samym PRZYRZĄDZIE, nie o rozjeździe, więc wolno im padać dziś:
+  //   * `TYPE_WEIGHT_NO_DECLARED_SCALE` — nie ma zbioru, którego członkiem
+  //     cokolwiek mogłoby być. P5 tę deklarację STAWIA, więc jest zielona
+  //     natychmiast po dostawie, a jej złamaniem jest skasowanie skali.
+  //   * `TYPE_WEIGHT_SWEEP_MEASURED_NOTHING` — przelotka nie zebrała ani jednej
+  //     narysowanej wagi. „Pusta fikstura nie tylko nie mierzy, ona CHOWA".
+  //   * `TYPE_WEIGHT_UNREGISTERED` — waga spoza skali, której NIE MA
+  //     w rejestrze długu. Nowy rozjazd ma padać w dniu, w którym ląduje.
+  //   * `TYPE_WEIGHT_UNUSED_ENTRY` — wpis, którego żaden przelot nie spotkał,
+  //     czyli dług o nieistniejącej regule; ta sama kontrola co nad dwoma
+  //     rejestrami wyżej.
+  // Sam WERDYKT o przynależności (który ekran nosi obcą wagę) jest raportowany
+  // przez pasmo tytułu rekordu i rzuca dopiero po dostawie `P5-01a`/`P5-01b`.
+  //
+  // DWIE LICZBY W RAPORCIE, NIE JEDNA. Sygnatura W SKALI wypisana obok
+  // sygnatur w rejestrze jest dowodem, że przelotka ROZRÓŻNIA, a nie melduje
+  // wszystkiego. Sam licznik naruszeń nie odróżnia „zero naruszeń" od „zero
+  // pomiarów" — „bramka mierząca OBECNOŚĆ nigdy nie mierzy JAKOŚCI".
+  {
+    const readings = [...typeWeightReadings.values()];
+    const scaleLine = TYPE_WEIGHT_SCALE.map(
+      (step) =>
+        `${step.name}=${step.value}${
+          typeWeightScaleLive.get(step.name) === step.value
+            ? ""
+            : ` (live root: „${typeWeightScaleLive.get(step.name) ?? "—"}")`
+        }`,
+    ).join(", ");
+    for (const failure of TYPE_WEIGHT_BAND.failures) problems.push(failure);
+    if (TYPE_WEIGHT_SCALE.length === 0) {
+      problems.push(
+        `TYPE_WEIGHT_NO_DECLARED_SCALE: ${path.relative(root, TYPE_WEIGHT_SHEET)} declares no ` +
+          "--weight-* step at all, so „is this weight one of the declared steps” has nothing to " +
+          "be a member of. This is an instrument failure, not a verdict about the product: the " +
+          "allowed set is DATA read from that sheet, and a gate comparing drawn weights against " +
+          "an empty set would pass over anything. Restore the scale or move the declaration and " +
+          "tell this file where it went.",
+      );
+    } else {
+      const dead = TYPE_WEIGHT_SCALE.filter(
+        (step) => (typeWeightScaleLive.get(step.name) ?? "") === "",
+      );
+      if (dead.length > 0)
+        problems.push(
+          `TYPE_WEIGHT_NO_DECLARED_SCALE: ${dead
+            .map((step) => step.name)
+            .join(
+              ", ",
+            )} — declared in the sheet and resolving to nothing in the live document ` +
+            "root. Reading the name out of a stylesheet is a check on the SOURCE; this run asks " +
+            "the root that actually drew the letters, and it does not know these names.",
+        );
+      const drifted = TYPE_WEIGHT_SCALE.filter((step) => {
+        const live = typeWeightScaleLive.get(step.name) ?? "";
+        return live !== "" && live !== step.value;
+      });
+      if (drifted.length > 0)
+        problems.push(
+          `TYPE_WEIGHT_SCALE_NOT_LIVE: ${drifted
+            .map(
+              (step) =>
+                `${step.name} is ${step.value} in the sheet and „${typeWeightScaleLive.get(step.name)}" in the live root`,
+            )
+            .join(
+              "; ",
+            )}. A later cascade layer is overriding the scale, so the set this gate ` +
+            "judges against is not the set that drew the screen.",
+        );
+    }
+    if (readings.length === 0)
+      problems.push(
+        "TYPE_WEIGHT_SWEEP_MEASURED_NOTHING: not one drawn element carrying its own text was " +
+          "swept for a font weight in any pass. A registry with no readings is indistinguishable " +
+          "from a clean product, and it is the cheaper of the two to produce by accident.",
+      );
+    const seenKeys = new Set(typeWeightReadings.keys());
+    let inScale = 0;
+    const offScale = [];
+    for (const reading of readings) {
+      const decision = classifyTypeWeight({
+        signature: reading.signature,
+        weight: reading.weight,
+        allowed: TYPE_WEIGHT_ALLOWED,
+      });
+      if (decision.verdict === "no-scale") continue;
+      if (decision.verdict === "in-scale") {
+        inScale += 1;
+        continue;
+      }
+      offScale.push({ reading, decision });
+    }
+    for (const { reading, decision } of offScale) {
+      const where = [...reading.surfaces].sort().join(", ");
+      console.log(
+        `type weight\t${reading.signature}\t${reading.weight}\t${decision.verdict}\t` +
+          `on ${where}\t${decision.thread ?? "NO OWNER"}`,
+      );
+      if (decision.verdict !== "violation") continue;
+      problems.push(
+        `TYPE_WEIGHT_UNREGISTERED — ${reading.signature} draws at weight ${reading.weight} on ` +
+          `${where}, and ${reading.weight} is not one of the ${TYPE_WEIGHT_ALLOWED.size} steps ` +
+          `tokens.css declares (${[...TYPE_WEIGHT_ALLOWED].join("/")}). It is also not in ` +
+          "KNOWN_OFF_SCALE_WEIGHTS, so nobody owns it. The reference uses exactly those steps " +
+          "and no other weight anywhere in v3/; either take the declared step, or register the " +
+          "debt with the sheet it comes from and the thread that owns it.",
+      );
+    }
+    if (TYPE_WEIGHT_SCALE.length > 0)
+      for (const entry of unusedWeightEntries(seenKeys)) {
+        const line =
+          `TYPE_WEIGHT_UNUSED_ENTRY — the off-scale weight registry: ${entry.signature} at ` +
+          `weight ${entry.weight} (${entry.sheet}) was never drawn in any pass. Either the rule ` +
+          "took a declared step and the entry goes, or this gate stopped seeing that screen.";
+        if (REPORT_ONLY) console.log(`report: ${line}`);
+        else problems.push(line);
+      }
+    // Ta sama doktryna, co `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`: pozycja,
+    // której nie ma już czego spłacać, a której właściciel wciąż stoi na
+    // „pending", jest asercją napisaną tak, że nigdy nie padnie.
+    if (
+      TYPE_WEIGHT_SCALE.length > 0 &&
+      offScale.length === 0 &&
+      readings.length > 0 &&
+      !TYPE_WEIGHT_BAND.armed &&
+      TYPE_WEIGHT_BAND.failures.length === 0
+    )
+      problems.push(
+        `TYPE_WEIGHT_PENDING_ALREADY_CLEAN: nothing is off the declared scale — ${readings.length} ` +
+          `drawn weight(s) were swept and every one of them is a declared step, yet ` +
+          `${TYPE_WEIGHT_OWNER.label} is still pending (${TYPE_WEIGHT_BAND_STATUS}). Flip those ` +
+          'entries to "enforced" — do not soften the scale to keep the position open.',
+      );
+    console.log(
+      `type weight: ${TYPE_WEIGHT_OWNER.label} — ` +
+        `${TYPE_WEIGHT_BAND.armed ? "ENFORCED (a verdict fails this run)" : "PENDING (verdicts are reported, not thrown)"}\t` +
+        `owners ${TYPE_WEIGHT_BAND_STATUS}\t` +
+        `scale ${TYPE_WEIGHT_SCALE.length === 0 ? "NOT DECLARED" : scaleLine}\t` +
+        `${readings.length} signature/weight reading(s): ${inScale} in the declared scale, ` +
+        `${offScale.length} off it (${
+          offScale.filter((entry) => entry.decision.verdict === "violation")
+            .length
+        } unregistered, ${KNOWN_OFF_SCALE_WEIGHTS.length} registered debt(s))`,
+    );
+  }
+
   // Ta sama kontrola nad tabelą drzwi rekordu. Wpis, którego żaden przelot nie
   // wykonał, opisuje powierzchnię, która przestała rysować otwieralny wiersz —
   // i wtedy zdanie tej tabeli o niej jest zdaniem o niczym. Przy `navigates`

@@ -138,9 +138,9 @@
    obiektu i szyną akcentu przy jego lewej krawędzi, dokładnie tą parą, którą
    ma prototyp (`v3/screens/settings.css:120` — `.st-row[aria-selected="true"]`
    niesie `background: var(--accent-quieter)` i `box-shadow: inset 2px 0 0
-   var(--accent)`, i NIC WIĘCEJ; `.ui-craft/tokens.md:250-262` — wash na całym
+   var(--accent)`, i NIC WIĘCEJ; `.ui-craft/tokens.md:391-402` — wash na całym
    obiekcie jest dozwolony, a „wash rarely travels alone": tuszem na krawędzi
-   jest tutaj szyna; `:268-276` licencjonuje ZAZNACZENIE wiersza jako „gdzie
+   jest tutaj szyna; `:410-418` licencjonuje ZAZNACZENIE wiersza jako „gdzie
    czytelnik jest"). Wash mówi, który
    wiersz; szyna mówi to samo kanałem, który przeżyje wydruk w skali szarości
    i czytelnika nierozróżniającego barw.
@@ -338,7 +338,7 @@
 }
 
 /* SKUTEK LICZBY (`v3/screens/settings.css:206-218`, `.st-effect`;
-   KONTRAKT: `.ui-craft/tokens.md:193-194`, ograniczenie użycia 2 — „reading
+   KONTRAKT: `.ui-craft/tokens.md:316-317`, ograniczenie użycia 2 — „reading
    panels default to `panel-reading-*`; glass is not a universal card
    treatment" — więc to pudełko bierze płaską powierzchnię wklęsłą, nie szybę
    i nie kartę uniesioną; oraz `:85-92`, bo jego rytm jest rytmem wiersza
