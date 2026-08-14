@@ -15,6 +15,7 @@ import {
   declaredProperties,
   isVisuallyHidden,
   deriveHeadingClasses,
+  firstCitedLine,
   parseCssRules,
   readRendererSources,
   scanReadSources,
@@ -36,6 +37,10 @@ const FEWEST_PLAUSIBLE_COMPONENTS = 60; // 90 measured
 const FEWEST_PLAUSIBLE_SUBJECTS = 80; // 104 measured
 const FEWEST_PLAUSIBLE_DECLARED = 50; // 68 measured
 const FEWEST_PLAUSIBLE_HEADING_CLASS_SHEETS = 6; // 10 measured
+// Podłoga rejestru długu: 22 wpisy zmierzone 2026-08-14. Nie jest przypięta do
+// 22, bo wpisy WOLNO spłacać — jest przypięta do „nie zapadł się do zera",
+// czyli do jedynego zdarzenia, które czyni tę asercję bezprzedmiotową.
+const FEWEST_PLAUSIBLE_DEBT_ENTRIES = 12; // 22 measured
 
 /** A subject the way `collectHeadingSubjects` builds one, for the rule tests. */
 const subjectOf = (sheet, selector, declared, hidden = false) => ({
@@ -407,6 +412,61 @@ describe("heading typography — the renderer", () => {
         `${where} lists its missing properties out of order, so a matching subject would look like a mismatch.`,
       );
     }
+  });
+
+  it("makes the line number in every debt note resolve to the rule that entry registers", () => {
+    // DLACZEGO TA ASERCJA ISTNIEJE. Do 2026-08-14 rejestr sprawdzał, że wpis
+    // niesie właściciela, arkusz, notę i zbiór braków — i ANI JEDNA asercja nie
+    // pytała, czy numer linii w nocie w cokolwiek trafia. Przy pisaniu tego
+    // testu zmierzone: CZTERNAŚCIE z dwudziestu dwóch wpisów wskazywało obok
+    // własnej reguły (`.concept-help-dialog > header h2` cytowało `:8051`, gdy
+    // reguła stała w `:9864`), a rejestr był zielony. Numer bez asercji nad nim
+    // nie jest odsyłaczem, tylko prozą, która wygląda jak odsyłacz.
+    //
+    // ZASIĘG JEST WYPOWIEDZIANY, A NIE UDAWANY. Sprawdzany jest PIERWSZY cytat
+    // we WŁASNYM arkuszu wpisu — bo tylko dla niego `collectHeadingSubjects`
+    // zna prawdziwe linie reguły. Dalsze gołe `:N` w tej samej nocie zostają
+    // niesprawdzone i test mówi, ile ich jest, zamiast milczeć.
+    const linesBySubject = new Map(
+      scan.subjects.map((subject) => [
+        `${subject.sheet}|${subject.selector}`,
+        subject.lines,
+      ]),
+    );
+    let checked = 0;
+    let uncheckedContinuations = 0;
+    for (const entry of KNOWN_HEADING_TYPOGRAPHY_DEBT) {
+      const where = `${entry.sheet} „${entry.selector}"`;
+      const lines = linesBySubject.get(`${entry.sheet}|${entry.selector}`);
+      assert.ok(
+        lines !== undefined && lines.length > 0,
+        `${where} has no rule in the scanned tree at all, so its note cannot be checked — pay or delete the entry.`,
+      );
+      const cited = firstCitedLine(entry.note, entry.sheet);
+      assert.ok(
+        cited !== null,
+        `${where} carries a note with no \`${entry.sheet.split("/").pop()}:N\` in it, so nothing says where the rule is.`,
+      );
+      assert.ok(
+        lines.includes(cited),
+        `${where} cites ${entry.sheet}:${cited}, but that selector's rule is at ${lines.join(", ")}. ` +
+          "A line number nothing checks is how this registry carried fourteen wrong ones at once.",
+      );
+      checked += 1;
+      uncheckedContinuations += (entry.note.match(/(?<![\w./-]):\d+/g) ?? [])
+        .length;
+    }
+    // Zielone na ZERZE wykonanych sprawdzeń zdarzyło się w tym repozytorium.
+    assert.equal(
+      checked,
+      KNOWN_HEADING_TYPOGRAPHY_DEBT.length,
+      "The check skipped entries instead of judging them.",
+    );
+    assert.ok(
+      checked >= FEWEST_PLAUSIBLE_DEBT_ENTRIES,
+      `Only ${checked} debt entries were judged (${uncheckedContinuations} bare \`:N\` continuations sit outside this assertion's reach). ` +
+        "A registry this short cannot be right while the rest of this file is green.",
+    );
   });
 
   it("goes red on the tree the moment a debt entry is taken away", () => {

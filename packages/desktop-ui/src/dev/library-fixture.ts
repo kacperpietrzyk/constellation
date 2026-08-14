@@ -105,6 +105,12 @@ import {
   type StructuredDocumentNode,
 } from "@constellation/realtime-documents";
 import * as Y from "yjs";
+import {
+  DAYS_BACK_INTO_LAST_YEAR,
+  fixtureDayAt,
+  fixtureThisYearDay,
+  harnessTimeZone,
+} from "./fixture-days.js";
 
 const documentId = (suffix: string): DocumentId =>
   DocumentIdSchema.parse(`00000000-0000-4000-8000-0000000009${suffix}`);
@@ -176,6 +182,31 @@ interface DocumentShape {
   readonly updatedAt: string;
 }
 
+// ── DATY NOTATEK SĄ WYPROWADZONE Z ZEGARA, NIE WPISANE ──────────────────────
+//
+// Do lotu L10 stało tu dziewięć napisów z lipca 2026. Były nieszkodliwe, dopóki
+// data czytała się zawsze tak samo; od chwili, w której `formatDate` ma TRZY
+// gałęzie („Yesterday" / „Sep 30" / „Mar 31 2027"), wpisana data znaczy, że
+// fikstura rysuje tę gałąź, w której akurat stoi kalendarz — czyli że dwie
+// pozostałe jadą za zieloną bramką NIE ZMIERZONE. Fikstura, która czegoś nie
+// rysuje, nie „nie mierzy": ona CHOWA.
+//
+// ARYTMETYKA DNIA NIE STOI JUŻ TUTAJ, i to jest poprawka, nie przeprowadzka.
+// Pierwsza wersja tego bloku liczyła dzień przez `toISOString()`, czyli W UTC,
+// podczas gdy gałąź klasyfikuje się w strefie workspace'u — przez 4–8 %
+// przebiegów `at(-1)` było od czytelnika o DWA dni i kładło parę L10-03.
+// Powód, dowód i granice dziury: `fixture-days.ts`; zmierzone pod przesuniętym
+// zegarem w `test/fixture-days.test.ts`.
+//
+// JEDEN ODCZYT ZEGARA NA CAŁĄ FIKSTURĘ. Dziewięć osobnych `Date.now()` mogłoby
+// wypaść po dwóch stronach północy i dać zbiór, w którym „wczoraj" i „trzy dni
+// temu" nie są od siebie o dwa dni.
+const fixtureNow = Date.now();
+
+/** Dzień o zadanym przesunięciu od dnia CZYTELNIKA, w południe. */
+const at = (dayOffset: number): string =>
+  fixtureDayAt(dayOffset, fixtureNow, harnessTimeZone);
+
 const documentShapes: readonly DocumentShape[] = [
   {
     id: libraryDocumentIds.runbook,
@@ -189,7 +220,10 @@ const documentShapes: readonly DocumentShape[] = [
     // była którakolwiek inna, płaszczyzna pisania rysowałaby się PUSTA,
     // a strażnik `libraryNoteBody` bramki układu — ten, który powstał dokładnie
     // po takim pustym pomiarze — złapałby to jako awarię przyrządu.
-    updatedAt: "2026-07-31T12:40:00.000Z",
+    // WCZORAJ, i to jest teraz DRUGIE zadanie tej daty: głowa czytelni ma
+    // powiedzieć „updated Yesterday", czyli narysować gałąź względną, której
+    // przed tym lotem nie dosięgała ŻADNA fikstura w tym repozytorium.
+    updatedAt: at(-1),
   },
   {
     id: libraryDocumentIds.network,
@@ -197,7 +231,7 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — architektura sieci, adresacja i reguły wyjścia",
     role: "note" as const,
     version: 2,
-    updatedAt: "2026-07-29T16:41:00.000Z",
+    updatedAt: at(-8),
   },
   {
     id: libraryDocumentIds.handover,
@@ -205,7 +239,7 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — dokumentacja powdrożeniowa dla zespołu utrzymania",
     role: "deliverable" as const,
     version: 7,
-    updatedAt: "2026-07-31T11:05:00.000Z",
+    updatedAt: at(-2),
   },
   {
     id: libraryDocumentIds.identity,
@@ -216,7 +250,7 @@ const documentShapes: readonly DocumentShape[] = [
       "Orbit — model tożsamości, ról i uprawnień w środowisku klienta, wraz z mapowaniem grup katalogowych na role aplikacyjne oraz decyzją o źródle prawdy dla atrybutów działu i lokalizacji pracownika",
     role: "document" as const,
     version: 3,
-    updatedAt: "2026-07-28T13:22:00.000Z",
+    updatedAt: at(-12),
   },
   {
     id: libraryDocumentIds.retention,
@@ -224,7 +258,8 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — polityka retencji nagrań i dowodów",
     role: "note" as const,
     version: 1,
-    updatedAt: "2026-07-27T08:03:00.000Z",
+    // GAŁĄŹ „ROK BIEŻĄCY" — data daleka od dziś i pewnie w tym samym roku.
+    updatedAt: fixtureThisYearDay(fixtureNow, harnessTimeZone),
   },
   {
     id: libraryDocumentIds.migration,
@@ -232,7 +267,7 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — plan migracji danych z poprzedniego systemu",
     role: "document" as const,
     version: 5,
-    updatedAt: "2026-07-31T07:48:00.000Z",
+    updatedAt: at(-3),
   },
   {
     id: libraryDocumentIds.inventory,
@@ -241,7 +276,7 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — inwentarz maszyn i wersji",
     role: "note" as const,
     version: 2,
-    updatedAt: "2026-07-26T15:30:00.000Z",
+    updatedAt: at(-20),
   },
   {
     id: libraryDocumentIds.acceptance,
@@ -249,7 +284,7 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — kryteria odbioru i protokół testów akceptacyjnych",
     role: "deliverable" as const,
     version: 2,
-    updatedAt: "2026-07-30T17:19:00.000Z",
+    updatedAt: at(-5),
   },
   {
     id: libraryDocumentIds.rollback,
@@ -257,7 +292,10 @@ const documentShapes: readonly DocumentShape[] = [
     title: "Orbit — procedura wycofania wdrożenia",
     role: "note" as const,
     version: 1,
-    updatedAt: "2026-07-25T12:00:00.000Z",
+    // GAŁĄŹ „INNY ROK" — 366 dni wstecz, więc rok jest wypisany, i to bez
+    // przecinka. Dlaczego 366, a nie „ten sam dzień rok wcześniej":
+    // `fixture-days.ts`, `DAYS_BACK_INTO_LAST_YEAR`.
+    updatedAt: at(DAYS_BACK_INTO_LAST_YEAR),
   },
 ];
 

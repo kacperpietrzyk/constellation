@@ -8,6 +8,7 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 
+import { UI_LOCALE } from "../i18n.js";
 import styles from "./working-day-section.module.css";
 
 /**
@@ -25,7 +26,14 @@ import styles from "./working-day-section.module.css";
  * The day is sent WHOLE, because the schema refuses an end before its start
  * and a repeated weekday, and neither refusal can be made one field at a time.
  */
-const UI_LOCALE = "en-GB";
+/**
+ * The interface locale, IMPORTED and no longer restated. This file declared
+ * its own `const UI_LOCALE = "en-GB"` beside the two others in the tree
+ * (`i18n.ts`, `crm/money.ts`), and the third copy was the one that disagreed.
+ * Nothing on screen moves: `weekday: "short"` gives `Mon`…`Sun` in both, which
+ * is why nobody caught it — the defect was that a constant named after the
+ * whole interface was free to drift in one file.
+ */
 
 /**
  * Weekday names DERIVED, not written down. ISO numbers the days 1..7 from

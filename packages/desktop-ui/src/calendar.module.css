@@ -11,6 +11,14 @@
      skrócenie czasu — krótsza animacja to nadal animacja. */
 
 .calendar {
+  /* SUFIT KOLUMNY CZYTELNEJ TEGO EKRANU, I JEDYNY W CAŁEJ APLIKACJI SZERSZY
+     NIŻ DAWNA LICZBA POWŁOKI. Prototyp: `v3/screens/calendar.css:17` —
+     `.cal-screen { max-width: 84rem; padding: var(--space-6) }`. Kontrakt:
+     `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit „Content
+     stays in the reading column". Tydzień to siedem kolumn obok siebie, więc
+     ten ekran POTRZEBUJE więcej miejsca niż lista — nota o mechanizmie stoi
+     przy `.work-surface` w `styles.css`. */
+  --surface-measure: 84rem;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);

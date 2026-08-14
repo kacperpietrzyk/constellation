@@ -192,7 +192,9 @@
   --radius-2xl: 1.375rem;
   --radius-full: 999rem;
   /* Ile znaków ma zmieścić się w LINII prozy — a nie, jak szeroki jest ekran.
-     `--surface-measure` (72rem, styles.css) mówi drugą z tych rzeczy i nie
+     `--surface-measure` (od lotu L1 Fazy II wartość deklarowana przez EKRAN,
+     nie jedna liczba powłoki — patrz nota przy `.work-surface` w `styles.css`)
+     mówi drugą z tych rzeczy i nie
      zastępuje tej: dokument projektu ma na realnych danych 1 400–3 000 znaków,
      a wiersz tekstu na całą szerokość planu roboczego jest nie do czytania.
      Decyzja #29 ogranicza LINIĘ, nigdy wysokość — przypięcie do tego całej
@@ -564,7 +566,7 @@
                                            powierzchni
 
      `--accent-hover` ZSZEDŁ Z TEJ LISTY, i nie w Fazie C: niesie go
-     `renewals/renewals.module.css:670`. Wpis „czeka na Fazę 2, żaden hover nie
+     `renewals/renewals.module.css:676`. Wpis „czeka na Fazę 2, żaden hover nie
      niesie dziś akcentu" był nieprawdziwy w chwili, gdy go czytano.
      `--accent-glow` NIGDY na tej liście nie stał — patrz nota przy
      `--focus-ring` wyżej.
@@ -671,7 +673,7 @@
 
      ROLA JEST PARĄ `-bg` + `-text`, A NIE POJEDYNCZYM ALIASEM, i to jest wybór
      o POMIARZE, nie o nazewnictwie: `scripts/status-contrast.test.mjs` mierzy
-     KAŻDĄ rodzinę o kształcie `--X-bg` + `--X-text` (`:322-337`), więc ta para
+     KAŻDĄ rodzinę o kształcie `--X-bg` + `--X-text` (`:324-339`), więc ta para
      dostaje asercję NA WARSTWIE TOKENÓW za darmo — tam, gdzie ograniczenie jest
      ZADEKLAROWANE, a nie tylko tam, gdzie jest skonsumowane. Pojedynczy alias
      obok `--on-accent` nie byłby rodziną i nie zostałby zmierzony nigdzie.
@@ -722,7 +724,7 @@
      a v3 ma pięć, i przemianowanie rampy jest zapisem w `.ui-craft/tokens.md`,
      nie w tym pliku. Literał mówi prawdę: „nasza wartość, zmierzona, spoza v3".
      Sprawdzone, że pressed MUSI się różnić od hovera: pięć miejsc wywołania
-     (`styles.css:454`, `:619`, `:7845`, `:8028` oraz `.inline-popover`) używa
+     (`styles.css:454`, `:619`, `:7920`, `:8103` oraz `.inline-popover`) używa
      `:active` jako stanu osobnego, a `:active` przychodzi NA hoverze — trzy
      z nich nie mają przy tym żadnej innej różnicy niż kolor.
 
@@ -878,7 +880,18 @@
      stan, którego przy tej szerokości nie ma; jest tam dziś sprostowane
      pomiarem. ŁAMIE SIĘ GDZIE INDZIEJ: jednostki w zapytaniu medialnym liczą się
      od korzenia 16 px, więc przy 200 % i 300 % pisma szyna się NIE włącza,
-     kolumna zabiera 240 px zamiast 220, a panelowi pracy ubywa 20 px.
+     a kolumna zabiera 240 px zamiast 220.
+
+     ILE NAPRAWDĘ UBYWA PANELOWI PRACY — POPRAWKA LOTU L1, 2026-08-14. Stało tu
+     „ubywa 20 px" i ta liczba ZANIŻAŁA problem trzykrotnie, bo była z przelotu
+     1440 px, czyli z jedynego, na którym nic się nie psuje. Koszt jest w REM,
+     więc rośnie razem z pismem, a przelot bramki, na którym boli, jest węższy:
+       * 1440 px, 100 % pisma:   panel 1220 → 1200 px, ubywa  20 px
+       * 1024 px, 200 % pisma:   panel  584 →  544 px, ubywa  40 px
+       * 1092 px, 300 % pisma (Biblioteka): panel 432 → 372 px, ubywa 60 px,
+         czyli 13,9 % szerokości panelu.
+     Zmierzone sondą odtwarzającą pięć przelotów bramki; przy 760 i 320 px szyna
+     jest włączona i koszt wynosi zero.
 
      PRZEMIERZONE PO LOTACH 2-6, 2026-08-07, bo lot 1 mierzył to PRZED nimi
      i część jego liczb już nie obowiązuje. Wynik: bramka układu wraca ZIELONA
@@ -898,7 +911,33 @@
      Żaden z tych ekranów nie należy do tego lotu, żaden z 16 problemów
      Biblioteki nie ma wpisu w rejestrze, a `tasks:calendar` byłby nową wadą
      wprowadzoną cudzemu ekranowi. Przepisanie cudzych progów po to, żeby
-     zmieścić swój token, jest odwrotnością tego, po co ten rejestr istnieje. */
+     zmieścić swój token, jest odwrotnością tego, po co ten rejestr istnieje.
+
+     PRZEMIERZONE PONOWNIE PRZEZ LOT L1 FAZY II, 2026-08-14, NA DRZEWIE PO TYM
+     LOCIE — i to jest istotne, bo L1 zdjął sufit kolumny czytelnej z pięciu
+     ekranów, czyli zmienił arytmetykę przepełnień, na której stała cała ta
+     nota. Rejestr z 07.08 był mierzony na drzewie, którego już nie ma.
+     Wynik dzisiejszy: bramka wraca ZIELONA na 13,75 rem (exit 0) i CZERWONA na
+     15 rem (exit 1), z DWUNASTOMA problemami układu zamiast dwudziestu jeden:
+
+       * przelot 200 %: `projects:client` 194 → 234 px, `organizations`
+         61 → 72 px, `settings` 117 → 132 px — trzy wpisy rejestru długu, które
+         UROSŁY (`people` 25 → 35 px z 07.08 już się nie przelewa) — plus ten
+         sam JEDEN problem spoza rejestru, co wtedy: `tasks:calendar`,
+         `span._dow` przelewa się o 4 px.
+       * przelot „Library at 300 % text": OSIEM problemów na czterech stanach
+         Biblioteki (`p.eyebrow` 47 px ×4, `time.knowledge-row-when` 7 px ×2,
+         `section._section` 23 px, `h3` 1 px), wszystkie świeże — przy
+         13,75 rem ten przelot nie ma ANI JEDNEGO.
+
+     Skala zmalała (21 → 12), ale RODZAJ nie: dalej są to cudze ekrany, dalej
+     jest tam wada wnoszona Kalendarzowi zadań, a osiem świeżych przepełnień
+     Biblioteki nie ma właściciela. Dlatego para `L1-15a` zostaje ŚWIADOMIE
+     otwarta („pending") razem z dwoma jej objawami — `P-5` („Organizat…"
+     w pasku) i `13-3` („Access and connecti…" w trybie Ustawień) — a nie
+     zamknięta poluzowaniem cudzych progów. Zapasy po ewentualnej naprawie są
+     przy tym cienkie i warto je znać: najdłuższa etykieta pracy potrzebuje
+     13 px, najdłuższa etykieta Ustawień 6 px. */
   --sidebar-width: 13.75rem;
   --sidebar-rail: 3.25rem;
   --inspector-width: 20rem;

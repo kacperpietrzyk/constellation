@@ -41,7 +41,7 @@
 // Ten sam błąd raz już przepuścił złą liczbę i jest w repozytorium opisany:
 // „Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
 // `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero`"
-// (`styles.css:3946-3950`). Pasmo = `#surface-title`.closest("header") obejmuje
+// (`styles.css:3992-3996`). Pasmo = `#surface-title`.closest("header") obejmuje
 // jedną regułą wszystkie cztery.
 //
 // ── MIARA, I DLACZEGO NIE JEST PROSTOKĄTEM PASMA ────────────────────────────
@@ -225,7 +225,7 @@
 // dalej niż próg.
 //
 // PRZYPADEK BRZEGOWY, WYPISANY, BO JEST DZIŚ NA WYSTAWIE: Lejek ma akcję
-// w `.crumbbar` z `margin-inline-start: auto` (`pipeline.module.css:72-81`), więc
+// w `.crumbbar` z `margin-inline-start: auto` (`pipeline.module.css:80-89`), więc
 // jej prawa krawędź stoi o WYŚCIÓŁKĘ crumbbara (`var(--space-4)`, 16 px) przed
 // końcem pasma — DOKŁADNIE na tolerancji, czyli `FLUSH_END` przez `≤`. To jest
 // odczyt prawdziwy (ta akcja naprawdę jest dosunięta do prawej), ale stoi na
@@ -744,7 +744,7 @@ export const TITLE_BAND_ROWS = [
     // SKŁAD PASMA PRZELICZONY 2026-08-11: lot D2 wyprowadził akapit pojemności
     // do kolumny treści, a w paśmie została data. Plik też był zły — od czasu
     // przed tym lotem ekran mieszka w `TodaySurface.tsx`, nie w `Wave2Surfaces`.
-    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:224-235)",
+    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:226-237)",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -909,7 +909,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/renewals.js:217 — btn("New renewal", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "renewals/RenewalsSurface.tsx:806-835 — akcja w paśmie; licznik zostaje w swoim viewbarze z lotu 3",
+    app: "renewals/RenewalsSurface.tsx:817-846 — akcja w paśmie; licznik zostaje w swoim viewbarze z lotu 3",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1014,7 +1014,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/record.js:429-433 — `crumbbar(ślad, btn("New task", { cls: "primary", icon: "plus", act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)`: filled action w crumbbarze, tytuł rekordu w NASTĘPNYM paśmie — dwa rodzeństwa sklejone `+`, więc prototyp stawia tu akcję RZĄD WYŻEJ niż tytuł',
     today: "ABOVE_BAND",
     todayInline: "FLUSH_END",
-    app: "record/ProjectRecordScreen.tsx:300-336 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), record-screen.module.css:62-68",
+    app: "record/ProjectRecordScreen.tsx:300-336 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), record-screen.module.css:89-95",
     // `prototypeStack` NA TRZECH EKRANACH REKORDU JEST ZADEKLAROWANĄ
     // RÓWNOWAŻNOŚCIĄ KSZTAŁTU, NIE ODCZYTEM, i musi to tu stać. Prototypowy
     // rekord nie ma `<header>` w ogóle: `rcShell` (v3/screens/record.js:226)
@@ -1039,7 +1039,7 @@ export const TITLE_BAND_ROWS = [
       "to --text-xl (v3/app.css:651)",
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
     // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
-    // (`styles.css:6669`) jest jedynym żywym konsumentem `--text-2xl`
+    // (`styles.css:6744`) jest jedynym żywym konsumentem `--text-2xl`
     // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
     // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
     // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby

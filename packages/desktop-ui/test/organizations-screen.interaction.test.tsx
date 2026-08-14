@@ -1278,9 +1278,14 @@ test("the record's What we know carries each fact's freshness, which the retired
     `[data-organization-fact="${staleFactId}"]`,
   );
   assert.ok(stale, "the stale fact is not on the record");
+  // ROK JEST OPCJONALNY W TYM WYRAŻENIU, i to nie jest poluzowanie asercji:
+  // reguła dnia POMIJA rok bieżący („verified Feb 11") i wypisuje każdy inny
+  // („verified Feb 11 2026"). Wyrażenie pytające o rok na sztywno byłoby
+  // czerwone albo w tym roku, albo w każdym następnym — czyli dokładnie tą
+  // asercją gnijącą od kalendarza, która położyła `main` tej fali.
   assert.match(
     stale.textContent ?? "",
-    /verified.*Feb.*2026/su,
+    /verified.*Feb\s*11/su,
     "a fact states its state but not when it was last checked, which is the half the retired ledger carried",
   );
 

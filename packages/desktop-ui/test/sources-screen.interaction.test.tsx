@@ -299,8 +299,24 @@ test("the observation date and the added date are drawn as two different facts",
     added,
     "the two dates print the same thing, so one format call is reading one field twice",
   );
-  assert.ok(observed.includes(older.observedAt.slice(0, 4)));
-  assert.ok(added.includes(older.createdAt.slice(0, 4)));
+  // ROK W OBIE STRONY, bo reguła dnia (lot L10) ma o nim dwa zdania naraz:
+  // rok bieżący jest POMINIĘTY, każdy inny WYPISANY. Asercja „napis zawiera
+  // swój rok" była prawdziwa tylko dla starego formatu i zgniłaby przy każdej
+  // fiksturze, która trafi w rok bieżący; ta pyta o regułę i jest mocniejsza,
+  // bo łapie też odwrotny błąd — rok bieżący wydrukowany mimo wszystko.
+  const currentYear = String(new Date().getFullYear());
+  const saysItsYear = (printed: string, instant: string): boolean =>
+    instant.slice(0, 4) === currentYear
+      ? !printed.includes(currentYear)
+      : printed.includes(instant.slice(0, 4));
+  assert.ok(
+    saysItsYear(observed, older.observedAt),
+    `the observation date does not follow the year rule: ${observed}`,
+  );
+  assert.ok(
+    saysItsYear(added, older.createdAt),
+    `the added date does not follow the year rule: ${added}`,
+  );
 });
 
 test("what rests on a source is read from the source's end, and named", () => {

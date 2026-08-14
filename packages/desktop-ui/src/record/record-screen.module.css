@@ -5,6 +5,33 @@
    as well as when the window shrinks, and a screen that only answers the window
    lays itself out for a width it does not have. */
 .screen {
+  /* NAJSZERSZY SUFIT, JAKI DEKLARUJE REFERENCJA, I JEDYNE UŻYCIE
+     `--surface-measure` W CAŁYM PROTOTYPIE: `v3/app.css:650` — `.record {
+     max-width: var(--surface-measure) }` → `v3/tokens.css:101`
+     `--surface-measure: 92rem`. Czyli w referencji ta zmienna NIE jest sufitem
+     wszystkiego, tylko wartością, którą wybiera JEDEN ekran. Kontrakt:
+     `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit „Content
+     stays in the reading column".
+
+     DEKLARACJA JEST OBOWIĄZKOWA, A NIE OZDOBNA, I NOSI JĄ TROJE, NIE DWOJE —
+     policzone z importów `record-screen.module.css`, a nie z pamięci
+     (pierwsza wersja tej noty wymieniała dwóch konsumentów i była niepełna):
+     1. rekord zadania (`record/TaskRecordScreen.tsx:49`) rysuje się WEWNĄTRZ
+        korzenia Zadań (`tasks/TasksSurface.tsx:425`, `.tasks`);
+     2. rekord projektu (`record/ProjectRecordScreen.tsx:56`) wewnątrz
+        `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:640`);
+     3. rekord szansy (`opportunity/OpportunityRecordScreen.tsx:49`, nosi
+        `.screen` w `:482`) wewnątrz `.surface-scroll` + `.pipeline`
+        (`pipeline/PipelineSurface.tsx:863-866` — tablica lejka oddaje kanwę
+        rekordowi w swoim własnym slocie).
+     WSZYSTKIE TRZY korzenie deklarują od lotu L1 `--surface-measure: none`
+     (`tasks/tasks.module.css:18`, `styles.css` przy `.project-surface`,
+     `pipeline/pipeline.module.css:65`), więc bez tej linijki każdy z tych
+     rekordów dziedziczyłby BRAK sufitu zamiast najszerszego z nich — rekord
+     szansy przeszedł tym samym ruchem z 72rem powłoki na 92rem referencji.
+     Zmierzone sondą przed zmianą: `none` odziedziczone → `maxWidth: "none"`,
+     własne 92rem → 1472 px przy korzeniu 16 px. */
+  --surface-measure: 92rem;
   container-type: inline-size;
   display: flex;
   flex-direction: column;

@@ -1,6 +1,28 @@
 /* PAT-05 — otwarty klient jest jednym spokojnym kontekstem operacyjnym.
    Sekcje dzielą fakty według decyzji użytkownika, ale nie udają osobnych kart. */
 .organization-context {
+  /* TEN NOŚNIK JEST EKRANEM, WIĘC DEKLARUJE SWÓJ SUFIT (Faza II, lot L1 —
+     naprawa po przeglądzie). Test na „ekran" jest w tym repozytorium
+     rozstrzygalny z markupu, a nie z nazwy: `surface-header` + eyebrow +
+     `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1778-1783`). Pełny
+     kontekst organizacji ma wszystkie trzy, więc nota przy `.work-surface`
+     w `styles.css` liczyła go do chromu powłoki BŁĘDNIE, a on brał 72rem
+     powłoki — wartość, której referencja nie zna w ogóle.
+
+     92rem, BO TO REKORD. Prototyp ma jeden sufit rekordu i jeden nośnik, który
+     go nosi: `v3/app.css:650` (`.record { max-width: var(--surface-measure) }`)
+     → `v3/tokens.css:101` (`--surface-measure: 92rem`) — najszerszy sufit, jaki
+     referencja deklaruje. Pełny kontekst organizacji jest rekordem organizacji
+     (eyebrow „Organization · full context", `<h1>` = nazwa organizacji), więc
+     bierze tę samą liczbę co trzy ekrany rekordu w `record/record-screen.module.css`,
+     zamiast dziedziczyć wartość powłoki. Kontrakt: `.ui-craft/patterns.md`,
+     „Pattern: Surface title band", akapit „Content stays in the reading column".
+
+     NIE ZMIERZONE ŻADNĄ PARĄ, i to jest zapisane, a nie przemilczane: żadna
+     trasa bramki układu nie odwiedza tego ekranu, więc rejestr par nie zobaczy
+     ani tej deklaracji, ani jej regresji. Ekran, który dostanie trasę, dostaje
+     też parę P1 — dopiero wtedy ta linijka ma strażnika. */
+  --surface-measure: 92rem;
   container-type: inline-size;
 }
 .organization-context__header {

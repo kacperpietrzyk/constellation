@@ -11,6 +11,7 @@ import {
 } from "@constellation/contracts";
 
 import type { ScenarioFixtures } from "../src/client/scenario-client.js";
+import { formatDate } from "../src/i18n.js";
 import {
   populatedBootstrap,
   populatedRelationshipWorkspace,
@@ -259,11 +260,47 @@ test('C22 — "Time to start" holds exactly the contracts whose lead window has 
   // correctly, and without the `?` this assertion goes RED on 2026-09-29 and
   // again on 2026-10-01, on nobody's branch. That is the delay fuse that has
   // already reddened `main` twice in this programme.
+  //
+  // AND THE SAME PARAGRAPH ARMED A SECOND FUSE IN THE SAME LINE, WHICH IS WHY
+  // THE EXPECTED WORDS ARE NO LONGER TYPED OUT HERE. `ends Sep 30` was written
+  // by hand, with only the YEAR made optional — but the day rule this lot
+  // introduced does not only drop the year: within one day of the expiry it
+  // replaces the whole date with a word. Against this pinned expiry and the
+  // real clock (there are no fake timers in this file — see the note at the
+  // top) the row reads „ends Tomorrow" on 2026-09-29, „ends Today" on 09-30 and
+  // „ends Yesterday" on 10-01, so a typed-out `Sep 30` is red on THREE days
+  // this September, on nobody's branch.
+  //
+  // WHAT THIS ASSERTION IS ACTUALLY ABOUT IS ORDER, NOT WORDS: the row must
+  // LEAD with the expiry, whatever the day rule decided to call it. So the
+  // expected phrase is derived from the same `formatDate` the surface calls,
+  // over the fixture's own `expiresAt` — no date is written down and nothing
+  // rots. That is not circular, because the WORDS are asserted elsewhere over
+  // the pure function with the clock as an input (`test/i18n.test.ts`) and on
+  // the rendered DOM by the layout gate's pair L10-06; here they are a value
+  // this assertion is deliberately indifferent to. (The regex escape is not
+  // load-bearing for „Sep 30" — it is there because the derived phrase is
+  // whatever the rule says on the day the suite runs, and nobody should have to
+  // re-check that list of possible words for metacharacters.)
+  const sharedRenewal = populatedRelationshipWorkspace.records.find(
+    (record) => record.kind === "renewal" && record.id === renewalRecordId,
+  );
+  assert.ok(
+    sharedRenewal !== undefined && sharedRenewal.kind === "renewal",
+    "the shared fixture no longer carries the renewal this assertion reads",
+  );
+  const expiryWords = formatDate(
+    sharedRenewal.expiresAt,
+    populatedBootstrap.workspace.timezone,
+  );
   const name = rowsIn("due")[0]?.getAttribute("aria-label") ?? "";
   assert.match(
     name,
-    /ends Sep 30, 2026, \d+ days? ago|ends Sep 30, 2026, (today|in \d+ days?)/u,
-    `the row's accessible name does not lead with the expiry date: ${name}`,
+    new RegExp(
+      `ends ${expiryWords.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}, (?:\\d+ days? ago|today|in \\d+ days?)`,
+      "u",
+    ),
+    `the row's accessible name does not lead with the expiry date „${expiryWords}": ${name}`,
   );
   assert.match(
     name,
@@ -329,7 +366,8 @@ test("C22 — an empty Time to start is a computed answer, and irrelevant is clo
   );
   assert.match(
     empty.textContent ?? "",
-    /2 contracts under watch — the nearest lead opens in \d+ days?, on \w+ \d+, 20\d\d\./u,
+    // „on May 16 2099" — rok wypisany BEZ PRZECINKA, bo nie jest bieżący.
+    /2 contracts under watch — the nearest lead opens in \d+ days?, on \w+ \d+ 20\d\d\./u,
     `the empty section does not carry the computed count and date: ${empty.textContent ?? ""}`,
   );
 

@@ -2,6 +2,20 @@
    własny arkusz — tutaj jest wyłącznie to, co wspólne dla wszystkich pięciu. */
 
 .tasks {
+  /* TEN EKRAN NIE STOI POD ŻADNYM SUFITEM KOLUMNY CZYTELNEJ, i to jest
+     deklaracja, nie brak. Prototyp: `v3/screens/tasks.css` nie ma ANI JEDNEJ
+     reguły korzenia z `max-width` (`screens/tasks.js:533` wstawia treść wprost
+     do `.scroller`); trzy sufity w tym pliku siedzą na podpisie widoku (`:64`),
+     na głowie kalendarza (`:142`) i na karcie (`:186`), czyli na PUDEŁKACH.
+     Kontrakt: `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit
+     „Content stays in the reading column".
+
+     `none` JEST WARTOŚCIĄ, NIE USUNIĘCIEM DEKLARACJI, i musi nią być: klamra
+     `.surface-scroll > *` ma zapasowe `58rem` (`styles.css`), więc samo zdjęcie
+     liczby dałoby temu ekranowi węższą kolumnę niż miał. Ekran rekordu, który
+     rysuje się WEWNĄTRZ tego korzenia (`TasksSurface.tsx:425`), odziedziczyłby
+     to `none` — dlatego `record-screen.module.css` deklaruje swoje 92rem. */
+  --surface-measure: none;
   /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`: odstęp kolumny
      jest nazwany, bo pasmo tytułu i pasek widoku go odejmują, żeby stanąć na
      sobie tak, jak stoją w prototypie. */
@@ -25,7 +39,7 @@
      neither `visible` nor `clip`, and `hidden` on ONE axis computes the other
      axis to `auto` — which made THIS box the scrollport for everything under
      it. It never scrolls: its height is not constrained, and the pane above it
-     (`styles.css:2095-2105`, `.work-surface { overflow: auto }` — conditional since lot D10: `.work-surface:has(> .surface-header)` makes the carrier a non-scrolling flex column, and Tasks is a screen that lot deliberately did NOT migrate) is what
+     (`styles.css:2095-2151`, `.work-surface { overflow: auto }` — conditional since lot D10: `.work-surface:has(> .surface-header)` makes the carrier a non-scrolling flex column, and Tasks is a screen that lot deliberately did NOT migrate) is what
      actually moves. A task opened as a record renders inside this same wrapper
      (`TasksSurface.tsx:381-383`), so on the task record alone the bar pinned
      to a box that stands still. Measured 2026-08-07: `projects › record` held

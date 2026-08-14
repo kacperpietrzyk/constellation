@@ -15,7 +15,7 @@ import { Icon } from "../components/Icon.js";
 import { InlinePopover } from "../components/InlinePopover.js";
 import type { DocumentEntityTargetKind } from "../document-entity-reference.js";
 import { TopicHelp } from "../help/TopicHelp.js";
-import { formatDate } from "../i18n.js";
+import { dayFormOf, formatDate } from "../i18n.js";
 import {
   ALL_NOTES,
   UNFILED,
@@ -617,8 +617,21 @@ export const NotesReading = ({
                                 now has an element that is only the timestamp,
                                 which is the first point at which the machine
                                 readable value has somewhere to live. */}
+                            {/* `data-day-form` — TA SAMA reguła co w głowie
+                                czytelni, na tym samym napisie, i to jest
+                                jedyne miejsce w tej aplikacji, w którym
+                                fikstura umie postawić WSZYSTKIE TRZY gałęzie
+                                obok siebie: `updatedAt` notatki nie niesie
+                                żadnej semantyki sekcji, więc data da się w niej
+                                przypiąć bez przestawiania czegokolwiek. Bez
+                                tego dwie z trzech gałęzi jechałyby za zieloną
+                                bramką NIE ZMIERZONE. */}
                             <time
                               className="knowledge-row-when"
+                              data-day-form={dayFormOf(
+                                note.updatedAt,
+                                snapshot.bootstrap.workspace.timezone,
+                              )}
                               dateTime={note.updatedAt}
                             >
                               {formatDate(

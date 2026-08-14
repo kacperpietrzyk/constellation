@@ -3,6 +3,13 @@
    `.warn`/`.empty` (defekt, który trafił prototyp dwa razy) jest niemożliwa. */
 
 .inbox {
+  /* SUFIT KOLUMNY CZYTELNEJ TEGO EKRANU. Prototyp: `v3/screens/inbox.css:8` —
+     `.ib { max-width: 68rem; padding: var(--space-6) var(--space-6) 5.5rem }`.
+     Kontrakt: `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit
+     „Content stays in the reading column". Trzy pudełka niżej w tym arkuszu
+     (`.section`, `.failed`, `.note`) czytają tę zmienną i idą za korzeniem same
+     — mechanizm opisany przy `.work-surface` w `styles.css`. */
+  --surface-measure: 68rem;
   display: flex;
   flex-direction: column;
   gap: var(--space-8);

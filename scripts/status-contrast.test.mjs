@@ -1459,7 +1459,7 @@ test("podział tokenów --text-* domyka się i nie gubi ani jednego", () => {
 test("tekst zdaje AA na każdej kryjącej powierzchni czytania", () => {
   // `--text-disabled` NIE JEST tu zwolniony. Wyjątek „Incidental" w SC 1.4.3
   // zwalnia tekst będący częścią NIEAKTYWNEJ kontrolki — a ten token maluje
-  // w tym repo także treść żywą: `.amountNone` (pipeline.module.css:393),
+  // w tym repo także treść żywą: `.amountNone` (pipeline.module.css:401),
   // `.state_none` (project-record.module.css:80), ikonę w aktywnym wierszu
   // (`styles.css:1599`) i kropkę jako `background` (task-table.module.css:285).
   // Wyjątek nie obejmuje żadnego z tych czterech, więc próg zostaje 4,5.

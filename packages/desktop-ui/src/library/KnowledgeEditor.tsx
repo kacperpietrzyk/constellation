@@ -57,7 +57,7 @@ import { DOCUMENT_SCHEMA_EXTENSIONS } from "../document-editor-extensions.js";
 
 import { useInlineSuggestions } from "../components/InlineSuggestions.js";
 import { Icon } from "../components/Icon.js";
-import { countLabel, formatDate, formatDateTime } from "../i18n.js";
+import { countLabel, dayFormOf, formatDate, formatDateTime } from "../i18n.js";
 import { folderPath, isUnfiled } from "./folder-tree.js";
 import { roleCopy, type DocumentItem } from "./library-chrome.js";
 
@@ -1476,7 +1476,20 @@ export const KnowledgeEditor = ({
           <p className="document-editor-meta">
             <span>
               updated{" "}
-              <time dateTime={document.updatedAt}>
+              {/* WPIS 11-6 — „updated Yesterday". Prototyp mówi w tej głowie
+                  dzień WZGLĘDNY (`v3/screens/knowledge.js:747`, przez `fmtDay`
+                  z `v3/app.js:69-77`), a tu stało „updated Jul 31, 2026" —
+                  data, którą czytelnik musi odjąć od dzisiaj, żeby się
+                  dowiedzieć, czy notatka jest świeża. Napis przychodzi z jednej
+                  definicji `formatDate`; atrybut mówi bramce, którą gałąź tej
+                  reguły ekran narysował. */}
+              <time
+                dateTime={document.updatedAt}
+                data-day-form={dayFormOf(
+                  document.updatedAt,
+                  snapshot.bootstrap.workspace.timezone,
+                )}
+              >
                 {formatDate(
                   document.updatedAt,
                   snapshot.bootstrap.workspace.timezone,

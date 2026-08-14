@@ -11,7 +11,7 @@
 // To nie jest teoria. Na drzewie z 2026-08-07 ta bramka znalazła
 // `.nav-count--attention` (`styles.css:1254`): `color: var(--on-accent)` na
 // `background: var(--accent)`, czyli w motywie CIEMNYM 3,54:1 przy progu 4,5.
-// Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:568` wymienia ją w tabeli
+// Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:570` wymienia ją w tabeli
 // stopni akcentu pod nagłówkiem „PONIŻEJ" — a mimo to plakietka została tak
 // pomalowana i wszystkie 27 asercji `status-contrast` zostało zielonych.
 // Para `--accent` × `--on-accent` nie jest rodziną `--X-bg`/`--X-text`, więc
@@ -27,8 +27,8 @@
 // ── DLACZEGO OSOBNY PLIK, A NIE ROZSZERZENIE `status-contrast.test.mjs` ──────
 // Bo `status-contrast.test.mjs` sam, w trzech osobnych miejscach, nazywa koszt
 // rzutu na poziomie modułu: kasuje CAŁY plik, a `EXIT=1` z zera wykonanych testów
-// wygląda identycznie jak `EXIT=1` z prawdziwej czerwieni (`:370-373`, `:588-594`,
-// `:857-859`). Ta bramka czyta ~39 arkuszy ODKRYTYCH Z DYSKU; jeden arkusz
+// wygląda identycznie jak `EXIT=1` z prawdziwej czerwieni (`:372-375`, `:590-596`,
+// `:859-861`). Ta bramka czyta ~39 arkuszy ODKRYTYCH Z DYSKU; jeden arkusz
 // o kształcie, którego nie umiem rozłożyć, wyzerowałby wtedy 27 zielonych asercji
 // o tokenach, które z nim nie mają nic wspólnego. Różne podmioty, różne tryby
 // awarii, rozdzielony promień rażenia.
@@ -67,7 +67,7 @@
 //     jest tu istotą: zieleń z niezmienionej liczby wierszy dowodzi, że przyszła
 //     ze ZMIENIONEJ WARTOŚCI, a nie ze zniknięcia konsumenta z pomiaru.
 //   * Złamanie w CSS MODULE, żeby udowodnić, że przelot naprawdę tam sięga:
-//     `renewals.module.css:291 .state_renewed` z `--status-success` na
+//     `renewals.module.css:297 .state_renewed` z `--status-success` na
 //     `--text-disabled` (oba tokeny ISTNIEJĄ — podmiana na nieistniejący
 //     wywaliłaby `css-token-lint` z zupełnie innego powodu i udawała sukces).
 //     Złapane w trzech wierszach: 4,11:1 i 4,41:1 w ciemnym, 4,38:1 w jasnym,

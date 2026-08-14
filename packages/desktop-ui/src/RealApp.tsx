@@ -3607,7 +3607,7 @@ export const RealApp = ({
                   className="nav-item settings-mode-back"
                   data-settings-back="true"
                   // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
-                  // rule `.nav-item > span { display: none }` (styles.css:3599)
+                  // rule `.nav-item > span { display: none }` (styles.css:3645)
                   // takes BOTH children out of the accessibility tree, and the
                   // only way out of settings mode was left announcing itself as
                   // „‹". The label is now on the button, so it survives the
