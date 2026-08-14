@@ -1200,14 +1200,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             count("[data-renewal-row]"),
           );
           // ZAWĘŻONY DO EKRANU DZIŚ, I TO JEST CAŁA TREŚĆ TEGO SELEKTORA.
-          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:404`
+          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:420`
           // i `CalendarSurface.tsx:217` — a te liczniki idą `Math.max` po
           // WSZYSTKICH powierzchniach przelotu. Selektor po samym atrybucie
           // byłby więc spełniony kopią z Kalendarza także wtedy, gdy sekcja
           // planu na Dziś opustoszeje do zera: próg spełniony przez NIE TEN
           // podmiot, czyli dokładnie ta porażka, o której ten plik pisze przy
           // `renewalRows` („próg musi umieć powiedzieć, KTÓRY podmiot
-          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:396`)
+          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:412`)
           // — jedyne wystąpienie w `src`, sprawdzone grepem — a nie zahaszowana
           // nazwa klasy modułu, która zeruje licznik po cichu przy pierwszym
           // przebudowaniu arkusza.
@@ -2950,7 +2950,7 @@ const paintAlpha = (literal) => {
 
 // Wyliczony `outline` → „czy to w ogóle coś rysuje". Trzy warunki, bo trzy różne
 // sposoby na kontur, którego nie widać: styl `none`, zerowa grubość i alfa 0.
-// Dzisiejsza aplikacja trafia w ten trzeci (`tokens.css:881` daje przy fokusie
+// Dzisiejsza aplikacja trafia w ten trzeci (`tokens.css:1165` daje przy fokusie
 // `outline: 2px solid transparent` jako podkładkę pod tryb wymuszonych kolorów),
 // a v3 stawia tam `outline: 2px solid var(--accent)` — czyli linię pierścienia.
 const outlineOf = (paint) => {
@@ -3044,7 +3044,7 @@ const describeBorder = (border) =>
 //
 // KAŻDE RAMIĘ MA WŁASNY WARUNEK WIDOCZNOŚCI i to nie jest ozdoba. Ramię konturu
 // porównujące SAM NAPIS byłoby zielone na wszystkich dziewięciu przystankach:
-// `tokens.css:881` stawia przy fokusie `outline: 2px solid transparent` jako
+// `tokens.css:1165` stawia przy fokusie `outline: 2px solid transparent` jako
 // podkładkę pod tryb wymuszonych kolorów, więc napis konturu zmienia się ZAWSZE
 // (zmierzone: `none 0px …` → `solid 2px rgba(0, 0, 0, 0)` na całej dziewiątce,
 // w obu motywach). Ten werdykt mierzyłby wtedy podkładkę, a nie wskaźnik.
@@ -3294,7 +3294,7 @@ const measureTheme = async (
         "cannot tell that control's focus ring from its own shadow, and it measured NOTHING about " +
         "the ring there. Instrument failure, not a verdict about the accent.",
     );
-  // ZMIANA, KTÓRĄ WIDAĆ — nie każda zmiana napisu. `tokens.css:881` ustawia przy
+  // ZMIANA, KTÓRĄ WIDAĆ — nie każda zmiana napisu. `tokens.css:1165` ustawia przy
   // fokusie `outline: 2px solid transparent`, więc SAM NAPIS konturu zmienia się
   // na KAŻDEJ kontrolce, także na tej, która nadpisze pierścień własnym cieniem.
   // Wpuszczenie takiej kontrolki tutaj kazałoby sondzie osądzić CUDZY cień jako
@@ -3702,7 +3702,7 @@ const measureTheme = async (
       // z KSZTAŁTU, nie z nazwy klasy: pytanie brzmi „czy człowiek to widzi",
       // a nie „czy to się nazywa skip-link". Afordancja dostępnościowa siedzi
       // dziś nad początkiem układu (`transform: translate(-50%, -180%)`,
-      // `styles.css:4434-4444`) i zjeżdża w kadr dopiero z fokusem.
+      // `styles.css:4480-4490`) i zjeżdża w kadr dopiero z fokusem.
       //
       // CELOWO NIE liczymy „poniżej zgięcia" jako zaparkowania: kontrolka pod
       // spodem jest osiągalna przewinięciem, a ta nad początkiem kadru — tylko
@@ -4193,18 +4193,44 @@ const judgeVisualPair = (pair, measured, rootFontSizePx, theme) => {
     };
 
   if (expect.kind === "count") {
+    // ── CO SIĘ LICZY, ZALEŻY OD TEGO, O CO PYTA OCZEKIWANIE ─────────────────
+    // Poprawka po przeglądzie adwersarialnym lotu L10, i jest to JEDNA reguła,
+    // nie dwa wyjątki:
+    //
+    //   • oczekiwanie OBECNOŚCI („dokładnie 1", „co najmniej 2") jest
+    //     spełnione tylko przez coś, co człowiek WIDZI. Do tej poprawki liczyło
+    //     się `found.length`, więc pusty nośnik — `<span>` bez tekstu ma zerową
+    //     szerokość — albo element schowany `display: none` liczył się jako 1.
+    //     Para L10-01 pytała wtedy „czy dzień tygodnia stoi we własnym
+    //     elemencie" i była zielona nad elementem, w którym nic nie stało;
+    //   • oczekiwanie NIEOBECNOŚCI („dokładnie 0") jest obalane przez KAŻDE
+    //     dopasowanie, także schowane. Filtr `rendered()` po tej stronie
+    //     ROZLUŹNIŁBY dwadzieścia dwie pary, które mówią „tego tu nie ma":
+    //     kontrolka przeniesiona pod `display: none` przechodziłaby jako
+    //     skasowana. To jest odwrotność tego, co ta poprawka ma zrobić.
+    //
+    // Obie liczby są raportowane, więc czytelnik czerwieni widzi, czy podmiotu
+    // NIE MA, czy tylko go nie widać.
+    const wantsAbsence = expect.equals === 0;
+    // `visible` niosą wyłącznie pomiary z selektora; pomiar tokenowy go nie ma.
+    const visible = measured.visible ?? measured.matches;
+    const counted = wantsAbsence ? measured.matches : visible;
     const wanted =
       expect.equals === undefined
         ? `at least ${expect.atLeast}`
         : `exactly ${expect.equals}`;
     const met =
       expect.equals === undefined
-        ? measured.matches >= expect.atLeast
-        : measured.matches === expect.equals;
+        ? counted >= expect.atLeast
+        : counted === expect.equals;
     return {
       state: met ? "MATCH" : "DIFFERS",
-      observed: `${measured.matches} element(s) match „${pair.subject.selector}"`,
-      expected: `${wanted} element(s)`,
+      observed:
+        `${counted} ${wantsAbsence ? "" : "rendered "}element(s) match „${pair.subject.selector}"` +
+        (wantsAbsence || visible === measured.matches
+          ? ""
+          : ` (${measured.matches} matched, ${measured.matches - visible} of them not rendered)`),
+      expected: `${wanted} ${wantsAbsence ? "" : "rendered "}element(s)`,
     };
   }
 
@@ -4606,10 +4632,21 @@ const measureVisualLanguageInPage = async ({
       continue;
     }
     if (pair.expect.kind === "count") {
+      // DWIE LICZBY, NIE JEDNA — poprawka po przeglądzie adwersarialnym lotu
+      // L10. `accentCount` tuż niżej filtrował przez `rendered()` od zawsze;
+      // ten kanał był jedynym, który tego nie robił, więc pusty albo schowany
+      // nośnik liczył się jako obecny. Którą z dwóch liczb bierze werdykt,
+      // rozstrzyga oczekiwanie — powód stoi przy porównaniu.
+      //
+      // ZERO ZOSTAJE DOBRZE OKREŚLONE i to jest warunek, żeby ta zmiana nie
+      // popsuła istniejących złamań: `count` dalej robi `continue` PRZED
+      // strażnikiem „zero dopasowań", więc złamanie zdejmujące podmiot wraca
+      // `DIFFERS  observed: 0 element(s)` — werdykt, nie awaria przyrządu.
       measurements.push({
         id: pair.id,
         state: "measured",
         matches: found.length,
+        visible: found.filter(rendered).length,
       });
       continue;
     }
@@ -5413,7 +5450,7 @@ const controlPaintCensus = async (browser) => {
 // asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
 // przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
 // „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
-// przyklejenia (`:4949`).
+// przyklejenia (`:5010`).
 
 const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
 
@@ -5459,7 +5496,7 @@ const measureTitleBandActionInPage = async ({
   // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
   // więc pada głośno jako `TITLE_BAND_NOT_MEASURED`) — czyli przypadek, nie
   // reguła. Kryterium jest teraz to samo co przy `parkedOutOfFrame`
-  // (`:2944-2954`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
+  // (`:2990-3000`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
   // kadrem znaczą „niewidoczne", a „poniżej zgięcia" NIE — tamto jest zwykłym
   // układem, to jest ukryciem.
   const rendered = (element) => {
@@ -6209,7 +6246,7 @@ const titleBandActionCensus = async (browser) => {
 // zamiast ekranu, zmierzy pary Pipeline'u na powierzchni lądowania i wpisze
 // je wszystkie jako awarię przyrządu.
 const ROUTED_ARRIVAL = {
-  // PipelineSurface.tsx:737 / RenewalsSurface.tsx:774 — deklaracja korzenia
+  // PipelineSurface.tsx:737 / RenewalsSurface.tsx:785 — deklaracja korzenia
   // ekranu, ta sama, z której pary tej mapy biorą przedrostek podmiotu.
   pipeline: "[data-pipeline-surface]",
   renewals: "[data-renewals-surface]",
@@ -6258,7 +6295,7 @@ const ROUTED_ARRIVAL = {
   // `max-width: 1152px`. Marker celuje w `._week`, a nie w `._calendarState`,
   // bo kartę odmowy zabierze pierwsza działająca fikstura kalendarza,
   // a tydzień zostanie. Podkreślnik po nazwie jest nośny: `[class*="_week_"]`
-  // NIE łapie `_weekNav_hash` (`calendar.module.css:79` wobec `:26`).
+  // NIE łapie `_weekNav_hash` (`calendar.module.css:87` wobec `:34`).
   calendar: '#main-content [class*="_week_"]',
 };
 

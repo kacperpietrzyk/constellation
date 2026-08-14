@@ -215,16 +215,16 @@ export const approachingUnplanned = (
     );
 };
 
-/** Ile dni dzieli termin od dnia, który ekran pokazuje (ujemne = po terminie). */
-export const daysUntil = (
-  value: string,
-  dayKey: string,
-  timeZone: string,
-): number => {
-  const target = Date.parse(`${dateKeyInZone(value, timeZone)}T00:00:00.000Z`);
-  const today = Date.parse(`${dayKey}T00:00:00.000Z`);
-  return Math.round((target - today) / 86_400_000);
-};
+/**
+ * Ile dni dzieli termin od dnia, który ekran pokazuje (ujemne = po terminie).
+ *
+ * MIESZKA TERAZ W `i18n.ts` i jest stąd RE-EKSPORTOWANA, a nie przepisana:
+ * ta sama liczba rozstrzyga teraz także, czy data ma się przeczytać słowem
+ * („Yesterday") czy dniem miesiąca, więc `formatDate` musi ją znać — a `i18n`
+ * nie może zaimportować tego modułu, bo ten importuje `i18n`. Dwadzieścia
+ * wywołań w drzewie zostaje pod tą samą nazwą i tym samym adresem.
+ */
+export { daysUntil } from "./i18n.js";
 
 /** „3h 15m", „45m", „0m" — bez zer, które nic nie wnoszą. */
 export const formatSpan = (minutes: number): string => {

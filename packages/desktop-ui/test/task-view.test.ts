@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import {
   FieldDefinitionIdSchema,
@@ -66,6 +66,18 @@ type PlanAuthorship = NonNullable<WorkTask["plannedBy"]>;
 const WARSAW = "Europe/Warsaw";
 const TODAY = "2026-07-27"; // Monday
 const NOW = new Date("2026-07-27T07:00:00.000Z"); // 09:00 in Warsaw
+
+/* THE CLOCK THIS FILE STANDS ON, PINNED — dopisane w locie L10.
+ *
+ * `TODAY` i `NOW` mówiły dotąd, na którym dniu stoi scenariusz, ale mówiły to
+ * WYŁĄCZNIE funkcjom, którym są podawane parametrem. Od chwili, w której data
+ * czyta się regułą dnia („Today" / „Jul 31" / „Mar 31 2027"), `formatDate`
+ * czyta zegar MASZYNY — i zdanie o zadaniu z 27 lipca 2026 zaczyna zależeć od
+ * dnia, w którym ktoś uruchomił testy. Pinowanie zegara jest odwrotnością
+ * wpisywania daty w asercję: to nie asercja udaje, że zna kalendarz, tylko
+ * scenariusz mówi, którego dnia się dzieje. Bez tego trzy asercje niżej gniłyby
+ * z każdym rokiem, a `main` tej fali padł już raz dokładnie tak. */
+mock.timers.enable({ apis: ["Date"], now: NOW });
 
 const uuid = (seed: number): string =>
   `20000000-0000-4000-8000-${String(seed).padStart(12, "0")}`;
@@ -390,10 +402,13 @@ test("the plan and the deadline are two different facts, read from different fie
     dueAt: "2026-07-31T21:59:59.999Z",
   });
 
-  const spoken = "planned for Jul 27, 2026, 13:00 to 14:30 reserved, by you";
+  // „Today", bo scenariusz stoi na tym dniu i reguła dnia mówi dzień sąsiedni
+  // słowem — to jest ta sama zmiana, którą widać na ekranie.
+  const spoken = "planned for Today, 13:00 to 14:30 reserved, by you";
   assert.equal(planSentence(both, prose), spoken);
   assert.equal(planSentence(both, prose), planSentence(planOnly, prose));
-  assert.equal(dueSentence(both, prose), "due Jul 31, 2026");
+  // Rok bieżący pominięty i bez przecinka — reguła dnia, nie `dateStyle`.
+  assert.equal(dueSentence(both, prose), "due Jul 31");
   assert.equal(dueSentence(both, prose), dueSentence(dueOnly, prose));
 
   // Each sentence is silent where its OWN field is silent, and neither
@@ -414,7 +429,7 @@ test("the plan and the deadline are two different facts, read from different fie
     dueAt: "2026-07-21T21:59:59.999Z",
     completionState: "completed",
   });
-  assert.equal(dueSentence(done, prose), "due Jul 21, 2026");
+  assert.equal(dueSentence(done, prose), "due Jul 21");
 
   // Who planned it is said in the name this reader may use. An agent is named
   // because a learning agent is asked "why is this here" daily.
@@ -452,9 +467,9 @@ test("the three plan states are told apart by startAt and calendarBlock together
   // exists elsewhere on the record.
   assert.equal(planSentence(unplanned, prose), "not planned");
 
-  const day = "planned for Jul 27, 2026, no time reserved";
-  const hour = "planned for Jul 27, 2026, 13:00 to 14:30 reserved";
-  const longerHour = "planned for Jul 27, 2026, 13:00 to 16:00 reserved";
+  const day = "planned for Today, no time reserved";
+  const hour = "planned for Today, 13:00 to 14:30 reserved";
+  const longerHour = "planned for Today, 13:00 to 16:00 reserved";
   assert.equal(planSentence(dayOnly, prose), day);
   assert.equal(planSentence(reserved, prose), hour);
 
@@ -539,8 +554,8 @@ test("buildRows gives every row a name carrying the plan, the deadline and the p
   // when the order or the separator breaks, and the order is what a listener
   // hears — they cannot skim back to the start of the row.
   const spoken =
-    "Przegląd architektury, Doing, Northstar, planned for Jul 27, 2026, " +
-    "13:00 to 14:30 reserved, by you, due Jul 31, 2026, urgent priority, " +
+    "Przegląd architektury, Doing, Northstar, planned for Today, " +
+    "13:00 to 14:30 reserved, by you, due Jul 31, urgent priority, " +
     "Anna Nowak";
   assert.equal(rowFor(built, "Przegląd architektury").accessibleName, spoken);
 

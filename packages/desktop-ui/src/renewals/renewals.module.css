@@ -21,6 +21,12 @@
    its tracks have a definite number to shrink against. */
 
 .renewals {
+  /* SUFIT KOLUMNY CZYTELNEJ TEGO EKRANU. Prototyp: `v3/screens/renewals.css:9`
+     — `.rn { max-width: 68rem; padding: var(--space-6) }`. Kontrakt:
+     `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit „Content
+     stays in the reading column". Mechanizm — nota przy `.work-surface`
+     w `styles.css`. */
+  --surface-measure: 68rem;
   /* ODSTĘP KOLUMNY, I OD LOTU D10 JUŻ TYLKO TYLE. Historia tej jednej liczby
      jest w tym pliku dwuzdaniowa i warto ją mieć w całości: najpierw nota przy
      `.viewbar` mówiła, że pasma „nie mogą stać flush, bo `.renewals` trzyma swój

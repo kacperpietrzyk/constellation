@@ -235,7 +235,7 @@ export const sumByCurrency = (
     .sort((left, right) => right.amountMinor - left.amountMinor);
 };
 
-// The locale of the INTERFACE, matching `i18n.ts:23`. Grouping an amount is
+// The locale of the INTERFACE, matching `i18n.ts:32`. Grouping an amount is
 // interface chrome, not record content, so it does not follow the Polish
 // collation the record lists use.
 const UI_LOCALE = "en-US";

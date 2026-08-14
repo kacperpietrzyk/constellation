@@ -112,7 +112,7 @@ export const LibraryShell = ({
           co na nim znaczy „utwórz" (Notatki otwierają dymek z formularzem,
           Źródła mają własny), a powłoka wie, GDZIE ta akcja stoi. Ten sam
           wzorzec, co `inspectorHost` w tym samym pliku i w
-          `KnowledgeEditor.tsx:1558`; przeniesienie formularzy do powłoki
+          `KnowledgeEditor.tsx:1571`; przeniesienie formularzy do powłoki
           znaczyłoby przeniesienie ich stanu, czyli przebudowę dwóch odczytów
           w locie o POŁOŻENIU akcji. Historia przechwyceń akcji tworzenia nie ma
           i slot zostaje wtedy pusty — „ten odczyt nie ma akcji" jest

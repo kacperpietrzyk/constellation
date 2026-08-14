@@ -28,6 +28,7 @@ import { dateKeyInZone } from "../i18n.js";
 import { RealApp } from "../RealApp.js";
 import { createScenarioClient } from "../client/scenario-client.js";
 import { crmRecords } from "./crm-fixture.js";
+import { harnessTimeZone } from "./fixture-days.js";
 import {
   libraryCaptures,
   libraryDocumentIds,
@@ -66,7 +67,13 @@ const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000006");
 // z kluczem dnia W TEJ strefie (`today-plan.ts:163-164`). Fikstura licząca
 // dzień w innej strefie niż deklaruje, rysuje pusty plan przez kilka godzin na
 // dobę i nikt nie umie powiedzieć dlaczego.
-const harnessTimeZone = "Europe/Warsaw";
+//
+// STĄD IMPORT, A NIE DRUGI NAPIS: daty w fiksturach Library i CRM liczą się TĄ
+// SAMĄ stałą (`fixture-days.ts`), a dwa napisy „Europe/Warsaw" obok siebie to
+// dokładnie ten kształt, który w tym repozytorium rozjeżdża się bez żadnego
+// przyrządu nad sobą. Deklaracja `timezone:` niżej i arytmetyka dnia w obu
+// fiksturach są teraz JEDNĄ wartością.
+
 // WYPROWADZONE Z ZEGARA, NIGDY WPISANE. Wpisana data w fiksturze położyła
 // `main` tego repozytorium dwa razy — asercja przestaje mierzyć to, co mierzyła,
 // nie dlatego, że ktoś zmienił kod, tylko dlatego, że minął dzień. Południe UTC
@@ -408,7 +415,7 @@ const client = createScenarioClient({
           // Wpis #6 był oddany w kodzie od lotu D2 i NIEMIERZALNY, bo ta
           // fikstura nie rysowała ANI JEDNEGO `[data-planned-row]` — ekran stał
           // na „Nothing is planned for today", więc warunek plakietki
-          // (`TodaySurface.tsx:191-197`: którykolwiek dzisiejszy wiersz planu
+          // (`TodaySurface.tsx:193-199`: którykolwiek dzisiejszy wiersz planu
           // z `plannedBy.principalKind === "agent"`) nie miał jak być spełniony.
           // To nie było „za trudne do zmierzenia", tylko „nie ma czego mierzyć",
           // a rozwiązaniem jest fikstura, nie niższy próg.
@@ -421,7 +428,7 @@ const client = createScenarioClient({
           startAt: plannedStartAt,
           // Ten sam `agentPrincipalId`, którym stoi grant „Orbit Runner"
           // w `agent.access` niżej: `principalName` rozwiązuje imię właśnie po
-          // grancie (`TodaySurface.tsx:61-67`), więc inny identyfikator dałby
+          // grancie (`TodaySurface.tsx:62-68`), więc inny identyfikator dałby
           // ogólne „An agent" i plakietka mierzyłaby gałąź zapasową zamiast
           // właściwej.
           plannedBy: {

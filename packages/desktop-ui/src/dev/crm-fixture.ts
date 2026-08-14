@@ -54,6 +54,7 @@ import {
 } from "@constellation/contracts";
 
 import type { RelationshipWorkspaceProjection } from "../client/workflow.js";
+import { fixtureDayAt, harnessTimeZone } from "./fixture-days.js";
 import { librarySources } from "./library-fixture.js";
 
 const recordId = (suffix: string) =>
@@ -109,7 +110,9 @@ export const crmRecordIds = {
   edrContract: recordId("19"),
 } as const;
 
-const DAY_MS = 86_400_000;
+// JEDEN ODCZYT ZEGARA NA CAŁĄ FIKSTURĘ — inaczej dwa pola tego samego rekordu
+// mogą wypaść po dwóch stronach północy.
+const fixtureNow = Date.now();
 
 /**
  * A day offset from today, at midday. Midday and not midnight because the
@@ -117,9 +120,16 @@ const DAY_MS = 86_400_000;
  * is the previous day in half the world, and a fixture whose row changes
  * section by time zone is a fixture that measures a different screen on a
  * different machine.
+ *
+ * THE SAME SENTENCE APPLIES TO THE DAY THE OFFSET COUNTS FROM, and this file
+ * used to get that half wrong: „today" came out of `toISOString()`, i.e. out of
+ * the UTC day, while the screens classify against the workspace zone. For two
+ * hours a night the two disagree and every offset here was off by one. The
+ * arithmetic now lives in `fixture-days.ts`, is shared with the Library fixture
+ * that carried the identical copy, and is measured under a shifted clock.
  */
 const at = (dayOffset: number): string =>
-  `${new Date(Date.now() + dayOffset * DAY_MS).toISOString().slice(0, 10)}T12:00:00.000Z`;
+  fixtureDayAt(dayOffset, fixtureNow, harnessTimeZone);
 
 /** The same instant as a calendar date, for the fields that carry a day. */
 const on = (dayOffset: number): string => at(dayOffset).slice(0, 10);

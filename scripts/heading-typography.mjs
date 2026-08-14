@@ -119,24 +119,24 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".document-canvas h1",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:6263, inside :6128-6790. The note canvas sets its own font-size as a clamp and then leaves prose headings on the UA scale, so an <h1> in a note draws at 2em of that clamp. Three subjects, one rule.",
+    note: "styles.css:7814, inside the `.document-canvas` block that opens at :7785. The note canvas sets its own font-size as a clamp and then leaves prose headings on the UA scale, so an <h1> in a note draws at 2em of that clamp. Three subjects, one rule.",
   },
   {
     sheet: "styles.css",
     selector: ".document-canvas h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:6263 — same rule, UA 1.5em.",
+    note: "styles.css:7814 — same rule, UA 1.5em.",
   },
   {
     sheet: "styles.css",
     selector: ".document-canvas h3",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:6263 — same rule, UA 1.17em.",
+    note: "styles.css:7814 — same rule, UA 1.17em.",
   },
   // ── Settings, lot 6 by file scope, NOT named by any of its eight items ────
-  // Everything here is inside `styles.css:7417-8378` or a `settings/*.module.css`
+  // Everything here is inside `styles.css:7492-8463` or a `settings/*.module.css`
   // that lot 6 owns, and NONE of its eight items is about a heading. The lot can
   // take them for free while it is in the file; it is not obliged to.
   {
@@ -144,56 +144,56 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".onboarding-step h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:7533.",
+    note: "styles.css:9403.",
   },
   {
     sheet: "styles.css",
     selector: ".settings-copy h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:7743.",
+    note: "styles.css:9615.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:7818.",
+    note: "styles.css:9694.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog > header h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:7988. This rule is a REFINEMENT of `.concept-help-dialog h2` (:7818) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :7818 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
+    note: "styles.css:9864. This rule is a REFINEMENT of `.concept-help-dialog h2` (:9694) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :9694 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-layout article h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:7911.",
+    note: "styles.css:9787.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-export-terms h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:8021.",
+    note: "styles.css:9897.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-limitations h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:8062.",
+    note: "styles.css:9938.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-preview h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:8062 — same rule, second ancestor.",
+    note: "styles.css:9938 — same rule, second ancestor.",
   },
   {
     sheet: "settings/activity-section.module.css",
@@ -231,42 +231,42 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".surface-load-state h1",
     missing: ["font-size", "font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:3076. The loading and failure state of EVERY lazy surface, so it is seen on the way into most screens. `.center-state h1` (:3055) is the same shape done right (--text-xl / 590) and the two classes never co-occur.",
+    note: "styles.css:4227. The loading and failure state of EVERY lazy surface, so it is seen on the way into most screens. `.center-state h1` (:4206) is the same shape done right (--text-xl / 590) and the two classes never co-occur.",
   },
   {
     sheet: "styles.css",
     selector: ".workspace-context h2",
     missing: ["font-size", "font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:5764. Co-occurs with `inspector-empty`, which has no heading rule at all, so nothing covers it.",
+    note: "styles.css:7294. Co-occurs with `inspector-empty`, which has no heading rule at all, so nothing covers it.",
   },
   {
     sheet: "styles.css",
     selector: ".hub-enrollment h4",
     missing: ["font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:5990 — outside the Settings region lot 6 owns.",
+    note: "styles.css:7520 — outside the Settings region lot 6 owns.",
   },
   {
     sheet: "organizations/organizations.module.css",
     selector: ".emptyState h2",
     missing: ["font-weight"],
     owner: "outside Phase 3",
-    note: "organizations.module.css:633 — Wave C empty state.",
+    note: "organizations.module.css:642 — Wave C empty state.",
   },
   {
     sheet: "people/people.module.css",
     selector: ".emptyState h2",
     missing: ["font-weight"],
     owner: "outside Phase 3",
-    note: "people.module.css:795 — Wave C empty state.",
+    note: "people.module.css:803 — Wave C empty state.",
   },
   {
     sheet: "pipeline/pipeline.module.css",
     selector: ".emptyState h2",
     missing: ["font-weight"],
     owner: "outside Phase 3",
-    note: "pipeline.module.css:854 — Wave C empty state. Lot 2 owns this SHEET but none of its eleven items is about a heading, and an empty pipeline is not drawn on the seeded fixture.",
+    note: "pipeline.module.css:862 — Wave C empty state. Lot 2 owns this SHEET but none of its eleven items is about a heading, and an empty pipeline is not drawn on the seeded fixture.",
   },
   {
     sheet: "projects/project-context.module.css",
@@ -681,6 +681,31 @@ const filesUnder = (root, extension) =>
 
 const relative = (root, file) =>
   path.relative(root, file).split(path.sep).join("/");
+
+/**
+ * PIERWSZY NUMER LINII, KTÓRY WPIS REJESTRU CYTUJE WE WŁASNYM ARKUSZU.
+ *
+ * Po co to jest: do naprawy L1 (2026-08-14) test tego rejestru sprawdzał, że
+ * wpis „niesie właściciela i arkusz", i NIC nie sprawdzało, czy numer w polu
+ * `note` w cokolwiek trafia. Zmierzone w chwili, gdy powstała ta funkcja:
+ * CZTERNAŚCIE z dwudziestu dwóch wpisów wskazywało obok własnej reguły, część
+ * o tysiąc osiemset linii — i wszystkie były zielone. To nie był skutek lotu
+ * L1; to był dług starszy od tej fali, który przechodził, bo nikt go nie
+ * mierzył. Cytat z numerem linii bez asercji nad tym numerem jest komentarzem,
+ * nie odsyłaczem.
+ *
+ * Rozpoznaje `<basename arkusza>:N` — tylko własny arkusz wpisu, bo tylko dla
+ * niego znamy prawdziwe linie reguły. Dalsze gołe `:N` w tej samej nocie
+ * (idiom „wyżej w tym pliku") NIE są tu zwracane; zasięg asercji jest zapisany
+ * w teście, żeby nikt nie wziął częściowego pokrycia za pełne.
+ */
+export const firstCitedLine = (note, sheet) => {
+  if (typeof note !== "string" || typeof sheet !== "string") return null;
+  const base = sheet.split("/").pop();
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = new RegExp(`${escaped}:(\\d+)`).exec(note);
+  return found === null ? null : Number(found[1]);
+};
 
 /** Everything the scan needs, read off a renderer source directory. */
 export const readRendererSources = (root) => ({

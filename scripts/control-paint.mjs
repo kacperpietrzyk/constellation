@@ -36,8 +36,8 @@
 //            KAŻDY stan soczewki `[data-layout]` na celu, który je deklaruje.
 //   NIEOBJĘTE — wszystko, co rysuje się dopiero PO WYBORZE albo PO OTWARCIU:
 //            panel deala na Lejku (`pipeline/PipelineSurface.tsx:1020-1037` →
-//            `.moveButton`, `pipeline.module.css:225`, i `.dealPanelLink`,
-//            `:206` — obie bez tła w spoczynku, obie tej samej klasy co dług
+//            `.moveButton`, `pipeline.module.css:233`, i `.dealPanelLink`,
+//            `:214` — obie bez tła w spoczynku, obie tej samej klasy co dług
 //            niżej), otwarty ekran rekordu, dialogi i menu. Spis ich NIE WIDZI,
 //            więc cisza o nich nie jest zdaniem o nich. Domknięcie tego jest
 //            robotą osobnego lotu (Faza B, B2), nie ozdobą tego pliku.
@@ -71,7 +71,7 @@
 //   * NIE MA UZNAWANIA WARTOŚCI WYPROWADZONYCH Z TOKENU, i to jest ŚWIADOME.
 //     Legalne jest tło RÓWNE rozwiązanemu napisowi tokenu, więc
 //     `color-mix(in oklch, var(--surface-stage), transparent 22%)`
-//     (`styles.css:4726`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
+//     (`styles.css:4772`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
 //     czyli werdykt SPOZA rejestru, czyli PADA. Rozpoznanie takiej wartości
 //     wymagałoby porównania „z dokładnością do alfy" po konwersji przestrzeni
 //     WEWNĄTRZ przyrządu, czyli arytmetyki, której poprawności ten przyrząd nie

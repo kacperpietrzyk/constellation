@@ -30,6 +30,7 @@ import {
   countLabel,
   dateKeyInZone,
   dayDistance,
+  dayFormOf,
   formatDate,
   instantForZonedDate,
 } from "../i18n.js";
@@ -278,7 +279,17 @@ const RenewalRow = ({
         {/* THE DATES LEAD. The lead window stands beside them because it is
             what says whether the date is already your problem. */}
         <div className={styles.dates} data-renewal-dates>
-          <b>
+          {/* WPIS 9-2 — DATA MÓWI, KTÓRĄ GAŁĄŹ NARYSOWAŁA. Napis nie zmienia
+              się tutaj ani o znak: „ends Sep 30" zamiast „ends Sep 20, 2026"
+              przychodzi z jednej definicji `formatDate` (`i18n.ts`), tak jak
+              w prototypie przychodzi z `fmtDay` (`v3/app.js:69-77`) do
+              `v3/screens/renewals.js:51`. Atrybut jest tym, o co bramka może
+              zapytać: napis daty jest liczbą, która gnije nazajutrz, a nazwa
+              gałęzi trzyma się reguły. Liczy ją `dayFormOf`, czyli TA SAMA
+              funkcja, którą liczy napis — trzeci ekran przeliczający „czy to
+              rok bieżący" u siebie byłby tą samą wadą, którą ten lot zamyka
+              na `UI_LOCALE`. */}
+          <b data-day-form={dayFormOf(renewal.expiresAt, timeZone)}>
             {clock.closed ? "ended" : "ends"}{" "}
             {formatDate(renewal.expiresAt, timeZone)}
           </b>

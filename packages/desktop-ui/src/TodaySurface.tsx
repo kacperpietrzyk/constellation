@@ -13,6 +13,7 @@ import {
   countLabel,
   dateKeyInZone,
   dayDistance,
+  formatBandDay,
   formatDate,
   formatTime,
 } from "./i18n.js";
@@ -113,6 +114,7 @@ export const TodaySurface = ({
   const timezone = snapshot.bootstrap.workspace.timezone;
   const workingDay = snapshot.bootstrap.workspace.workingDay;
   const dayKey = dateKeyInZone(new Date(), timezone);
+  const band = formatBandDay(new Date(), timezone);
 
   // Spotkania nie mogą przyjść z kernela: stan kalendarza jest świadomie
   // lokalny dla urządzenia. Odmowa jest ODPOWIEDZIĄ, nie awarią — dzień bez
@@ -260,8 +262,22 @@ export const TodaySurface = ({
             (`v3/screens/today.js:130`) — element, którego tamten selektor NIE
             dopasowuje — więc zgodność z prototypem i wyjście z kolizji są tym
             samym ruchem. */}
+        {/* WPIS 1-7 — PASMO MÓWI DZIEŃ TYGODNIA I PEŁNĄ NAZWĘ MIESIĄCA.
+            Prototyp: `v3/screens/today.js:129-130` — „Monday, 27 July 2026".
+            Tu stało „Aug 13, 2026", czyli ten sam format, którym ekran opisuje
+            termin zadania — a na ekranie, którego CAŁA treść to „dzisiaj",
+            dzień tygodnia jest informacją, nie ozdobą: to on mówi, czy dzień
+            jeszcze się broni, czy jest piątkiem.
+
+            NIE `formatDate`, I TO NIE JEST NIEDOPATRZENIE: `formatDate` mówi
+            teraz o dniu bieżącym „Today", a „Today | Today" nie jest zdaniem.
+            Pasmo ma własną regułę, bo ma własne czytanie.
+
+            DZIEŃ TYGODNIA W SWOIM WŁASNYM ELEMENCIE — jedyny kształt, o który
+            bramka może zapytać bez wpisywania daty, która zgnije nazajutrz. */}
         <span className={styles.bandDate} data-band-date>
-          {formatDate(new Date(), timezone)}
+          <span data-band-weekday>{band.weekday}</span>
+          {`, ${band.remainder}`}
         </span>
       </header>
 

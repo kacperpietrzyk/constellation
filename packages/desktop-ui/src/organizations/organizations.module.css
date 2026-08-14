@@ -20,6 +20,15 @@
    INSIDE each cell. */
 
 .organizations {
+  /* ŻADNEGO SUFITU KOLUMNY CZYTELNEJ — mechanizm w nocie przy `.tasks`
+     w `tasks/tasks.module.css`. Prototyp: `v3/screens/crm.css` nie ma reguły
+     korzenia z `max-width` (`screens/crm.js:388` wstawia treść wprost do
+     `.scroller`), a jedyne `max-width` w tym pliku to zapytanie kontenerowe
+     `@container (max-width: 62rem)` (`:73`), czyli PRÓG, nie sufit. Kontrakt:
+     `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit „Content
+     stays in the reading column". To sufit powłoki ucinał tu tabelę
+     (wpis 7-4 dokumentu przejścia). */
+  --surface-measure: none;
   /* ODSTĘP KOLUMNY, I OD LOTU D10 JUŻ TYLKO TYLE. Nota, która tu stała,
      mówiła: „ta zmienna ma nazwę, bo pasma nad listą go odejmują" — i przestała
      być prawdą o tym ekranie. Pasma są dziś RODZEŃSTWEM tego pudełka, a nie

@@ -2710,7 +2710,7 @@ const outcome = runBreakTests({
       // P1 jest dziś MATCH — czyli jedynym, który da się przewrócić z zieleni
       // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
       // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
-      // (`styles.css:2103`), wylicza 1152 px zamiast 1184 i para `enforced`
+      // (`styles.css:2149`), wylicza 1152 px zamiast 1184 i para `enforced`
       // wrzuca WERDYKT (`verify-renderer-layout.mjs:7083-7088`), który idzie do
       // `problems`.
       //
@@ -2721,7 +2721,7 @@ const outcome = runBreakTests({
       // `--surface-measure` na żadnym ekranie.
       //
       // NAPIS DO TRAFIENIA JEST JEDNOKROTNY: `--surface-measure: 74rem`
-      // występuje w `styles.css` dokładnie raz (`:9398`).
+      // występuje w `styles.css` dokładnie raz (`.settings-surface`).
       name: "take the Settings screen's own reading measure away: the one screen that declares its ceiling inherits the shell's",
       expectRedContains: ["P1-13"],
       file: "packages/desktop-ui/src/styles.css",
@@ -2755,8 +2755,10 @@ const outcome = runBreakTests({
       // tylko Skrzynka: (a) `styles.inbox` występuje w pliku DOKŁADNIE RAZ,
       // więc `replaceOnce` ma w co trafić; (b) marker przybycia tego ekranu to
       // `[data-inbox-row]`, a nie ta klasa, a sama klasa niesie wyłącznie
-      // `display:flex; flex-direction:column; gap` (`inbox.module.css:5-9`) —
-      // nic, co gasi wiersz — więc trasa DALEJ LĄDUJE i czerwień jest
+      // `--surface-measure: 68rem; display:flex; flex-direction:column; gap`
+      // (`inbox.module.css:12-15`; przed lotem L1 były to trzy deklaracje
+      // z `:5-9`, sufit dołożył czwartą) — nic z tego nie gasi wiersza, więc
+      // trasa DALEJ LĄDUJE i czerwień jest
       // o selektorze, nie o nawigacji (`ROUTED_ROUTE_FAILED` nie niesie
       // identyfikatorów par, więc trasa, która pada, minęłaby
       // `expectRedContains`); (c) `_inbox_` nie występuje w ŻADNYM skrypcie
@@ -2924,7 +2926,7 @@ const outcome = runBreakTests({
       // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
       // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
       // `h2 „Deadline this week or already late…"` o 16 px
-      // (`CalendarSurface.tsx:791-799`, reguła `calendar.module.css:343-351`).
+      // (`CalendarSurface.tsx:791-799`, reguła `calendar.module.css:351-359`).
       // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
       // mówiącej `OPENING_SMALLER`.
       //
@@ -2940,7 +2942,7 @@ const outcome = runBreakTests({
       // zapaliła.
       //
       // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
-      // pada w tym arkuszu dwa razy (`:45`, `:348`) i `font-weight: 560` też
+      // pada w tym arkuszu dwa razy (`:53`, `:356`) i `font-weight: 560` też
       // dwa razy, a `replaceOnce` rzuca przy dwóch trafieniach. Czterowierszowy
       // blok jest w tym pliku jedyny — sprawdzone przed napisaniem tego wpisu.
       name: "let the Calendar section heading open the screen at 2xl: the opening axis loses a witness",
@@ -3153,6 +3155,158 @@ const outcome = runBreakTests({
           "          sweepTypeWeight(document.body, label);",
           "          sweepTypeWeight(null, label);",
           "the type-weight sweep's scope",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L1 — SUFIT WRACA DO POWŁOKI ──────────────────────────
+      //
+      // CO DOKŁADNIE DOWIÓZŁ TEN LOT, wyrażone jako rzecz, którą da się cofnąć:
+      // sufit kolumny czytelnej przestał być JEDNĄ liczbą powłoki i stał się
+      // wartością, którą deklaruje ekran. Zdjęcie tej jednej deklaracji
+      // z korzenia Dzisiaj nie zostawia ekranu bez sufitu — oddaje go z powrotem
+      // powłoce, bo `.work-surface` dalej niesie swoje 72rem dla chromu, który
+      // ekranem nie jest. Produkt po złamaniu wygląda DOKŁADNIE tak, jak
+      // wyglądał przed lotem L1: 1152 px zamiast 1088 px.
+      //
+      // ZŁAMANIE WARTOŚCIOWE, A NIE ZABICIE PODMIOTU, i to jest wybór, nie
+      // wygoda. Selektor pary zostaje nietknięty i dalej trafia w cztery
+      // narysowane dzieci, więc czerwień jest WERDYKTEM o liczbie
+      // (`observed: 1152px` wobec `expected: 68rem`), a nie `NOT_MEASURED`,
+      // czyli awarią przyrządu. Ta różnica jest w tym repozytorium nazwana:
+      // złamanie, które kasuje podmiot, dowodzi tylko, że selektor żyje.
+      //
+      // DLACZEGO DZISIAJ, A NIE SPOTKANIA ANI REKORD. Oba tamte podmioty niosą
+      // sufit LITERAŁEM na własnym korzeniu, więc jego zdjęcie zostawia
+      // wyliczone „none", a `rem` porównany z „none" wraca NOT_MEASURED
+      // (`verify-renderer-layout.mjs`) — czyli znowu awaria przyrządu zamiast
+      // werdyktu. Dzisiaj stoi dodatkowo w mapie POWŁOKI (`HARNESS` ląduje na
+      // tym ekranie bez kliknięcia), więc dowód nie kosztuje ani jednego kroku
+      // trasy.
+      //
+      // SPRAWDZONE PRZED NAPISANIEM: kotwica jest w tym arkuszu jedyna
+      // (`--surface-measure` pada w `today.module.css` dwa razy — raz jako
+      // deklaracja korzenia, raz jako konsument w `.capacity` — a czterowierszowy
+      // blok z `gap: var(--space-8)` tylko raz), więc `replaceOnce` nie ma
+      // drugiego trafienia, na którym mógłby paść.
+      name: "give the reading measure back to the shell: Today stops declaring its own ceiling",
+      expectRedContains: ["P1-01"],
+      file: "packages/desktop-ui/src/today.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  --surface-measure: 68rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);`,
+          `  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);`,
+          "the Today screen's own reading measure",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L10 — PASMO GUBI DZIEŃ TYGODNIA ──────────────────────
+      //
+      // Wpis 1-7 mówi jedno zdanie: na ekranie, którego cała treść to
+      // „dzisiaj", data podaje DZIEŃ TYGODNIA. Element z tym dniem albo jest,
+      // albo go nie ma, więc złamaniem jest jego zdjęcie — a napis pasma
+      // zostaje pełny („, 14 August 2026"), czyli produkt po złamaniu wygląda
+      // dokładnie tak, jak wyglądał przed lotem: bez informacji, którą wpis
+      // nazywa.
+      //
+      // TO JEST ZDJĘCIE PODMIOTU I MIMO TO WERDYKT, NIE AWARIA PRZYRZĄDU —
+      // zmierzone, nie założone: przelot na kodzie sprzed tego lotu wrócił dla
+      // tej pary `DIFFERS  enforced  observed: 0 rendered element(s)`, bo `count` jest
+      // dobrze określony na zerze (`verify-renderer-layout.mjs` robi `continue`
+      // przed strażnikiem „zero dopasowań"). Dlatego wolno tu użyć kształtu,
+      // który przy `rem` albo `token` byłby `NOT_MEASURED`.
+      name: "the Today band drops the weekday from its date",
+      expectRedContains: ["L10-01"],
+      file: "packages/desktop-ui/src/TodaySurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "<span data-band-weekday>{band.weekday}</span>",
+          "{band.weekday}",
+          "the weekday element in the Today band",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L10 — ROK BIEŻĄCY WRACA NA KAŻDĄ DATĘ ────────────────
+      //
+      // Wpis 9-2: rok bieżący jest POMIJANY. Złamanie jest WARTOŚCIOWE, nie
+      // kasujące podmiot — element daty zostaje na miejscu i dalej deklaruje
+      // gałąź, tylko deklaruje ZŁĄ: notatka z tego roku mówi „Jan 15 2026"
+      // zamiast „Jan 15". Czerwień jest więc zdaniem o REGULE, a nie o tym, że
+      // selektor żyje.
+      //
+      // CZERWONA MA BYĆ JEDNA PARA, I TO JEST CELOWANIE, NIE OSZCZĘDNOŚĆ:
+      // L10-04 stoi na notatce przypiętej do roku bieżącego, a L10-05 na
+      // notatce sprzed roku — druga po złamaniu dalej pasuje, bo „inny rok"
+      // jest tu odpowiedzią poprawną. Złamanie, po którym czerwienieją obie,
+      // nie umiałoby powiedzieć, którą z dwóch gałęzi zepsuło.
+      name: "the day rule forgets which year the reader is standing in",
+      expectRedContains: ["L10-04"],
+      file: "packages/desktop-ui/src/i18n.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  days >= -1 && days <= 1
+    ? "relative"
+    : year === todayYear
+      ? "thisYear"
+      : "otherYear";`,
+          `  days >= -1 && days <= 1 ? "relative" : "otherYear";`,
+          "the current-year branch of the day rule",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L10 — WCZORAJ PRZESTAJE BYĆ SŁOWEM ───────────────────
+      //
+      // Wpis 11-6: dzień sąsiedni czyta się słowem. Złamanie zwęża gałąź
+      // względną do samego „dzisiaj", więc głowa czytelni wraca do „updated
+      // Aug 13" — znowu daty, którą czytelnik musi odjąć od dzisiaj. Znowu
+      // złamanie WARTOŚCIOWE: `<time>` stoi, `data-day-form` stoi, mówi tylko
+      // „thisYear" tam, gdzie reguła każe mówić „relative".
+      //
+      // DLACZEGO TO JEST OSOBNE ZŁAMANIE OD POPRZEDNIEGO: trzy gałęzie tej
+      // reguły psują się osobno i naprawia je osobna robota. Jedno złamanie na
+      // całą funkcję dowodziłoby tylko, że para umie paść na czymkolwiek w tym
+      // pliku.
+      name: "yesterday stops being a word and goes back to being a date",
+      expectRedContains: ["L10-03"],
+      file: "packages/desktop-ui/src/i18n.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "  days >= -1 && days <= 1",
+          "  days === 0",
+          "the relative branch of the day rule",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L10 — ZŁAMANIE PO STRONIE SŁÓW, NIE ATRYBUTU ─────────
+      //
+      // TRZY ZŁAMANIA WYŻEJ STOJĄ PO STRONIE `dayFormFromDays`, czyli po
+      // stronie WYBORU GAŁĘZI. Przegląd adwersarialny zmierzył, że to jest
+      // cała odporność tego lotu: napis idzie z `formatDayFromDays`, atrybut
+      // z `dayFormFromDays`, i podmiana samych SŁÓW wewnątrz gałęzi zostawia
+      // atrybut nietknięty. Cztery pary czytające `data-day-form` przechodzą
+      // wtedy na zielono nad produktem, który wrócił do „updated Aug 13".
+      //
+      // TO ZŁAMANIE JEST DOWODEM, ŻE L10-06 CZYTA CO INNEGO NIŻ L10-03. Gałąź
+      // względna oddaje datę zamiast słowa; `dayFormFromDays` nie jest ruszone,
+      // więc `data-day-form` dalej mówi „relative" i L10-03 zostaje ZIELONA.
+      // Czerwona ma być dokładnie jedna para — ta, która czyta tekst.
+      name: "the relative branch keeps its name but goes back to printing a date",
+      expectRedContains: ["L10-06"],
+      file: "packages/desktop-ui/src/i18n.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '      return days === 0 ? "Today" : days === 1 ? "Tomorrow" : "Yesterday";',
+          "      return `${day.month} ${day.day}`;",
+          "the words of the relative branch",
         ),
     },
   ]),

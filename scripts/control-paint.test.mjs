@@ -588,7 +588,7 @@ test("THE WITNESSES ARE JUDGED PER THEME, because a union hides the theme that d
 });
 
 test("A COLOR-MIX OVER A TOKEN IS DELIBERATELY A FINDING, and the interpolation space decides WHICH kind", () => {
-  // Idiom tego arkusza (`styles.css:4726`) i prototypu (`v3/app.css:466`).
+  // Idiom tego arkusza (`styles.css:4772`) i prototypu (`v3/app.css:466`).
   // Wartość wyliczona nie jest napisem tokenu, więc mieszanka zapisana
   // `in oklch` wychodzi jako OFF_PALETTE — werdykt SPOZA rejestru, czyli PADA.
   // Zapisane, bo Faza C na to wejdzie: albo wpis w rejestrze, albo uzbrojenie

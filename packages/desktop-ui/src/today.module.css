@@ -6,6 +6,13 @@
    sama, żeby czytało się jak reszta. */
 
 .today {
+  /* SUFIT KOLUMNY CZYTELNEJ TEGO EKRANU. Prototyp: `v3/screens/today.css:5` —
+     `.td { max-width: 68rem; padding: var(--space-6) }`. Kontrakt:
+     `.ui-craft/patterns.md`, „Pattern: Surface title band", akapit „Content
+     stays in the reading column". Dlaczego zmienna na korzeniu, a nie literał
+     jak w prototypie — nota przy `.work-surface` w `styles.css`, gdzie ta
+     liczba stała do lotu L1 jako JEDNA na dwanaście ekranów. */
+  --surface-measure: 68rem;
   display: flex;
   flex-direction: column;
   gap: var(--space-8);

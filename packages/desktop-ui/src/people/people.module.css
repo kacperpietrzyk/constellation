@@ -7,6 +7,14 @@
    screen loses nothing. */
 
 .people {
+  /* ŻADNEGO SUFITU KOLUMNY CZYTELNEJ — mechanizm w nocie przy `.tasks`
+     w `tasks/tasks.module.css`. Prototyp: `v3/screens/crm.css`, ta sama
+     nieobecność reguły korzenia co przy Organizacjach — oba ekrany CRM rysuje
+     jedna rodzina klas (`screens/crm.js:550`). Kontrakt: `.ui-craft/patterns.md`,
+     „Pattern: Surface title band", akapit „Content stays in the reading
+     column". To sufit powłoki ucinał tu adresy e-mail (wpis 8-2 dokumentu
+     przejścia). */
+  --surface-measure: none;
   /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`. */
   --surface-stack-gap: var(--space-3);
   display: flex;

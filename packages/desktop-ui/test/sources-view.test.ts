@@ -188,13 +188,18 @@ describe("the observation date and the added date are two facts", () => {
    * twice, so each function takes the SOURCE and reaches for its own field.
    */
   it("prints different days for a source whose facts differ", () => {
+    // ROK DODANIA WYPROWADZONY Z ZEGARA, nie wpisany: reguła dnia POMIJA rok
+    // bieżący („Jul 20"), więc asercja „napis zawiera 2026" była prawdziwa
+    // tylko do końca tamtego roku i fałszywa od pierwszej zmiany formatu. Rok
+    // wstecz co do dnia jest innym rokiem kalendarzowym każdego dnia roku.
+    const addedYear = new Date().getUTCFullYear() - 1;
     const old = source("07", {
       observedAt: "2019-11-04T14:00:00.000Z",
-      createdAt: "2026-07-20T14:00:00.000Z",
+      createdAt: `${addedYear}-07-20T14:00:00.000Z`,
     });
     assert.notEqual(observationDay(old), addedDay(old));
     assert.ok(observationDay(old).includes("2019"));
-    assert.ok(addedDay(old).includes("2026"));
+    assert.ok(addedDay(old).includes(String(addedYear)));
   });
 
   it("reads each field from its own source, so neither can take the other's", () => {
