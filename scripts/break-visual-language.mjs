@@ -2710,8 +2710,8 @@ const outcome = runBreakTests({
       // P1 jest dziś MATCH — czyli jedynym, który da się przewrócić z zieleni
       // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
       // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
-      // (`styles.css:2149`), wylicza 1152 px zamiast 1184 i para `enforced`
-      // wrzuca WERDYKT (`verify-renderer-layout.mjs:7083-7088`), który idzie do
+      // (`styles.css:2163`), wylicza 1152 px zamiast 1184 i para `enforced`
+      // wrzuca WERDYKT (`verify-renderer-layout.mjs:7466-7471`), który idzie do
       // `problems`.
       //
       // CZYM RÓŻNI SIĘ OD POZOSTAŁYCH: najbliższe mu złamanie czternaste („put
@@ -2745,7 +2745,7 @@ const outcome = runBreakTests({
       // selektorem. Dla pary `pending` nie ma innej drogi — `pending + DIFFERS`
       // jest zielone, `pending + MATCH` żąda poprawki produktu (niewyrażalnej
       // przez `replaceOnce`), a `NOT_MEASURED` JEST ŚLEPE NA STATUS
-      // (`verify-renderer-layout.mjs:7050-7057`) i kładzie bramkę niezależnie
+      // (`verify-renderer-layout.mjs:7433-7440`) i kładzie bramkę niezależnie
       // od tego, czy para jest oczekująca. Po zdjęciu klasy modułowej
       // z nośnika `[class*="_inbox_"]` nie trafia w nic, para wraca
       // `ROUTED_NOT_MEASURED` razem ze spisem części selektora — czyli
@@ -2786,20 +2786,20 @@ const outcome = runBreakTests({
       // `PENDING_ALREADY_MATCHES`) jest POPRAWKĄ, nie edycją jednego napisu,
       // i `replaceOnce` tego nie wyrazi. Jedyną gałęzią osądu, która pada
       // NIEZALEŻNIE OD STATUSU, jest `NOT_MEASURED`
-      // (`verify-renderer-layout.mjs:4555-4562` — status jest tam wyłącznie
+      // (`verify-renderer-layout.mjs:4563-4570` — status jest tam wyłącznie
       // DRUKOWANY, nie sprawdzany), więc złamanie musi ZABIĆ ISTNIENIE
       // PODMIOTU. Ten sam wybór, z tego samego powodu, zrobiło złamanie P1
       // nad Skrzynką.
       //
       // ZABIJANA JEST ROLA, A NIE ATRYBUT WIERSZA, i to jest wybór o
       // najmniejszym koszcie ubocznym. `[data-planned-row]` jest kotwicą progu
-      // `rowCounts.todayPlannedRows` (`verify-renderer-layout.mjs:1126-1129`)
+      // `rowCounts.todayPlannedRows` (`verify-renderer-layout.mjs:1134-1137`)
       // ORAZ podmiotem czwartej pary tego przyrządu (P2-02), więc skasowanie
       // atrybutu zapaliłoby trzy czerwienie naraz i żadnej nie dałoby się
       // przypisać. `role="listbox"` nie jest czytane przez ŻADNĄ bramkę tego
       // repozytorium — sprawdzone grepem po `scripts/`: jedyne wystąpienie
       // poza parami P2 to komentarz o liście Źródeł
-      // (`verify-renderer-layout.mjs:1087`). Wiersze zachowują własne
+      // (`verify-renderer-layout.mjs:1095`). Wiersze zachowują własne
       // `role="option"`, więc pary innych ekranów czytające `[role="option"]`
       // (D3, D7) też stoją nietknięte.
       //
@@ -2831,8 +2831,8 @@ const outcome = runBreakTests({
       //
       // NIE JEST TO KOPIA POPRZEDNIEGO I RÓŻNICA NIE JEST KOSMETYCZNA: tamto
       // pada w `visualLanguagePairs` jako `VISUAL_LANGUAGE_NOT_MEASURED`
-      // (`:4555`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
-      // (`:7071`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
+      // (`:4563`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
+      // (`:7454`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
       // drugie dowodzi, że pary P2 naprawdę są mierzone PO DOJŚCIU na miejsce.
       //
       // DOWODZI TEŻ ROZŁĄCZNOŚCI PODMIOTU I MARKERA PRZYBYCIA. Marker
@@ -2869,54 +2869,22 @@ const outcome = runBreakTests({
           "the Inbox work list's role",
         ),
     },
-    {
-      // ── FAZA I, PRZYRZĄD P3, ZŁAMANIE PIERWSZE — OŚ SKŁADU PASMA ──────────
-      // SKRZYNKA GUBI NADTYTUŁ, A TABELA DALEJ MÓWI „STACKED".
-      //
-      // KIERUNEK JEST ODWROTNY NIŻ WE WSZYSTKICH POPRZEDNICH ZŁAMANIACH TEGO
-      // PLIKU i to jest cała jego wartość: tamte PSUJĄ produkt, a to go
-      // POPRAWIA. Spis pasma ma w nagłówku zapisane, że dryf od kolumny
-      // `today` znaczy jedno z dwojga — „ktoś przesunął i nie zapisał" albo
-      // „lot dowiózł poprawkę i zostawił wiersz" — i do dziś udowodniony był
-      // wyłącznie pierwszy z nich. Bez tego dowodu tabela mogłaby zacząć
-      // kłamać w kierunku, którego nikt nie sprawdził, a lot L2 zamknąłby
-      // rozjazd bez ani jednej czerwonej lampki po drodze.
-      //
-      // TO JEST DOKŁADNIE POPRAWKA, KTÓREJ ŻĄDA OŚ 3: po tej edycji `<h1>` jest
-      // bezpośrednim dzieckiem `<header>`, w paśmie nie stoi nic z tekstem
-      // przed tytułem, a przelot mierzy `ONE_ROW` wobec tabeli mówiącej
-      // `STACKED`.
-      //
-      // NAZWA W `expectRedContains` JEST JEDNYM ZŁĄCZONYM LITERAŁEM, NIE DWOMA
-      // FRAGMENTAMI. Samo „inbox" trafia w dowolne miejsce czterominutowego
-      // wyjścia (bramka drukuje ten ekran w kilkunastu przelotach), więc
-      // złamanie mogłoby przejść na CUDZEJ czerwieni. To jest ten sam napis,
-      // który buduje werdykt `TITLE_BAND_STACK_DRIFT`.
-      //
-      // ŻADNE Z POPRZEDNICH ZŁAMAŃ NIE DOTYKA TEGO PASMA: jedyne inne, które
-      // edytuje `InboxSurface.tsx` (P2), zdejmuje rolę z `<ul>` w TREŚCI i pada
-      // jako `ROUTED_NOT_MEASURED` na parach P2-03a — inna gałąź kodu, inny
-      // przelot, inny napis.
-      name: "take the eyebrow out of the Inbox band: the stack column stops describing the product",
-      expectRedContains: ["TITLE_BAND_STACK_DRIFT — inbox"],
-      file: "packages/desktop-ui/src/InboxSurface.tsx",
-      edit: (text) =>
-        replaceOnce(
-          text,
-          `        <div>
-          <p className="eyebrow">Signals and captures</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Inbox
-          </h1>
-        </div>
-`,
-          `        <h1 id="surface-title" tabIndex={-1}>
-          Inbox
-        </h1>
-`,
-          "the Inbox band eyebrow wrapper",
-        ),
-    },
+    // ── ZŁAMANIE FAZY I / P3 „take the eyebrow out of the Inbox band" STAŁO
+    // TU I ZOSTAŁO SKASOWANE PRZEZ LOT L2, a nie przeniesione. Powód jest
+    // mechaniczny, nie porządkowy: jego kotwicą był `<div>` z nadtytułem
+    // Skrzynki, którego ten lot już nie rysuje, więc `replaceOnce` PADAŁBY przy
+    // każdym zbiorczym przebiegu harnessu — i czytałoby się to jak zepsuty
+    // harness, a nie jak zamknięta pozycja.
+    //
+    // CO SIĘ ZE ZŁAMANIEM STAŁO: dowodziło dryfu od kolumny `today` W STRONĘ
+    // POPRAWKI (przyrząd ma zauważyć, że lot dowiózł i nie zapisał). Ten dryf
+    // JEST dowiedziony — zobaczyliśmy go w przebiegu bramki po samej farbie,
+    // pięć razy naraz: `TITLE_BAND_STACK_DRIFT — calendar/inbox/projects/
+    // library/settings`, na drzewie, którego tabela jeszcze nie znała. Jego
+    // miejsce zajmuje złamanie niżej, o TYM SAMYM podmiocie i przeciwnym
+    // kierunku: wraca nadtytuł, a przelot pisze `TITLE_BAND_STACK_DRIFT` —
+    // z tego samego powodu, dla którego pisał go wtedy (pomiar rozjeżdża się
+    // z kolumną `today`), tylko w drugą stronę.
     {
       // ── FAZA I, PRZYRZĄD P3, ZŁAMANIE DRUGIE — OŚ OTWARCIA TREŚCI ─────────
       // NAGŁÓWEK SEKCJI KALENDARZA UDAJE OTWARCIE EKRANU.
@@ -2926,7 +2894,7 @@ const outcome = runBreakTests({
       // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
       // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
       // `h2 „Deadline this week or already late…"` o 16 px
-      // (`CalendarSurface.tsx:791-799`, reguła `calendar.module.css:361-369`).
+      // (`CalendarSurface.tsx:816-824`, reguła `calendar.module.css:383-391`).
       // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
       // mówiącej `OPENING_SMALLER`.
       //
@@ -2942,7 +2910,7 @@ const outcome = runBreakTests({
       // zapaliła.
       //
       // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
-      // pada w tym arkuszu dwa razy (`:53`, `:366`) i `font-weight: 560` też
+      // pada w tym arkuszu dwa razy (`:75`, `:388`) i `font-weight: 560` też
       // dwa razy, a `replaceOnce` rzuca przy dwóch trafieniach. Czterowierszowy
       // blok jest w tym pliku jedyny — sprawdzone przed napisaniem tego wpisu.
       name: "let the Calendar section heading open the screen at 2xl: the opening axis loses a witness",
@@ -3673,6 +3641,387 @@ const outcome = runBreakTests({
     (selectedTask &&
       !(surface === "tasks" && activeContext.record === true)) ||`,
           "the missing task-record guard on the preview panel",
+        ),
+    },
+    // ── FAZA II, LOT L11 (POWŁOKA) — DZIESIĘĆ ZŁAMAŃ ──────────────────────
+    //
+    // Każde celuje w JEDNĄ parę (albo w jeden test) i każde jest odwróceniem
+    // dokładnie tej rzeczy, którą lot dowiózł — nie „zepsuciem powłoki
+    // w okolicy". Podział, policzony z tego pliku, a nie z pamięci autora
+    // (bo liczba przepisana zamiast odczytanej myli się o jeden, i akurat tu
+    // pomyliła się o jeden przy pierwszym zapisie tej noty):
+    //   * CZTERY zabijają ISTNIENIE podmiotu — glif kafla, marker tożsamości,
+    //     drugi poziom pod Zadaniami — albo je PRZYWRACAJĄ (znacznik zakładki);
+    //   * PIĘĆ jest WARTOŚCIOWYCH: element stoi, mierzy się, i mówi albo waży
+    //     co innego (rozmiar glifu, napis kafla, treść miejsca na imię, napis
+    //     wyszukiwarki, cyfra w mapie skrótów);
+    //   * JEDNO nie robi ani jednego, ani drugiego i dlatego jest osobne:
+    //     wiersz zapisanego widoku traci CEL. Nic nie znika, nic nie zmienia
+    //     wartości — znika tylko to, co się dzieje po kliknięciu, czego żadna
+    //     para bramki nie umie zobaczyć.
+    //
+    // BYŁO ICH SZEŚĆ NA BRAMKĘ + JEDNO WŁASNE. Przegląd adwersarialny
+    // pokazał, że dwa z nich nazywały się szerzej, niż sięgała ich edycja
+    // („stops naming the reader" kasowało sam ZACZEP), a trzy rzeczy, które
+    // lot oddał, nie miały złamania w ogóle: rozmiar glifu, TREŚĆ miejsca na
+    // imię i cel wiersza zapisanego widoku. Trzy złamania doszły, dwa zostały
+    // przemianowane na to, co naprawdę robią, a każda igła nazywa DOKŁADNY
+    // identyfikator pary — `["L11-01"]` trafiało po rozcięciu w L11-01a i
+    // L11-01b naraz, czyli dowodziło „któraś z dwóch zauważyła".
+    {
+      // NAZWA MÓWI, CO EDYCJA ROBI, i po przeglądzie adwersarialnym już nie
+      // więcej: kasuje GLIF, a nie „to, że kafel się przełącza" — czego żadna
+      // para nie umie zobaczyć. Czerwone są tu OBIE pary pozycji 2: L11-01a
+      // nie ma czego policzyć, a L11-01b nie ma czego zmierzyć.
+      name: "the workspace tile loses the glyph in its third track",
+      expectRedContains: ["L11-01a", "L11-01b"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <Icon name="chevron-right" />
+            </button>`,
+          `            </button>`,
+          "the workspace tile's chevron",
+        ),
+    },
+    {
+      // ── ZŁAMANIE WARTOŚCIOWE PO STRONIE ARKUSZA ──────────────────────────
+      //
+      // Glif stoi, jest narysowany i policzalny — ma tylko rozmiar, którego
+      // prototyp nie zna. To jest dokładnie ten rozjazd, który para L11-01
+      // CYTOWAŁA na swojej prototypowej stronie („0,75 rem") nad produktem
+      // stojącym na 0,85 i którego nie umiała zobaczyć, bo pytała wyłącznie
+      // „czy w trzecim torze stoi jedno dziecko". Czerwona ma być DOKŁADNIE
+      // JEDNA para: `L11-01b`. `L11-01a` zostaje zielona i to jest dowód, że
+      // rozcięcie na dwie pary nie było kosmetyką.
+      name: "the workspace chevron goes back to a size the prototype does not have",
+      expectRedContains: ["L11-01b"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.workspace-switcher > svg {
+  width: 0.75rem;`,
+          `.workspace-switcher > svg {
+  width: 0.85rem;`,
+          "the chevron's size in the sheet",
+        ),
+    },
+    {
+      // ZŁAMANIE WARTOŚCIOWE: `<small>` stoi, jest narysowany i mierzalny —
+      // mówi tylko z powrotem samą USTERKĘ, bez miejsca. To jest dosłownie
+      // napis, który ten kafel niósł w podglądzie deweloperskim przed lotem,
+      // i którego żadna para nie widziała.
+      name: "the workspace tile goes back to reporting a fault instead of a place",
+      expectRedContains: ["L11-02"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "  return `${place} · ${state}`;",
+          '  return "Data Home needs attention";',
+          "the storage line of the workspace tile",
+        ),
+    },
+    {
+      // NAZWA BYŁA WIĘKSZA NIŻ EDYCJA. Ta zmiana kasuje ZACZEP, po którym
+      // bramka znajduje imię, i zostawia imię narysowane na ekranie —
+      // czytelnik jest dalej nazwany. Dowodzi więc istnienia MARKERA, a nie
+      // nazwania, i dokładnie tak się teraz nazywa. Złamanie po stronie SŁÓW
+      // stoi zaraz niżej i jest osobnym pytaniem.
+      name: "the foot of the left column loses the marker that finds the reader's name",
+      expectRedContains: ["L11-03a"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <span className="sidebar-foot-who" data-sidebar-identity="true">`,
+          `              <span className="sidebar-foot-who">`,
+          "the identity marker in the sidebar foot",
+        ),
+    },
+    {
+      // ── ZŁAMANIE, KTÓRE PRZEGLĄD ADWERSARIALNY WYKONAŁ NA ŻYWO ────────────
+      //
+      // Zmienia SAME SŁOWA, nie ruszając ani struktury, ani zaczepu: stopka
+      // dalej ma element `[data-sidebar-identity]`, dalej jest narysowany,
+      // a w miejscu człowieka stoi zastępnik, którego kontrakt zakazuje po
+      // imieniu („no »You«"). Przed rozcięciem pary bramka wracała po tej
+      // edycji ZIELONA w OBU motywach — cały lot nie miał ani jednego
+      // przyrządu na treść tego miejsca. Czerwona ma być dokładnie `L11-03b`;
+      // `L11-03a` zostaje zielona, bo element nadal istnieje.
+      name: "the foot of the left column fills the reader's place with a placeholder",
+      expectRedContains: ["L11-03b"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `              <span className="sidebar-foot-who" data-sidebar-identity="true">
+                {viewerName}`,
+          `              <span className="sidebar-foot-who" data-sidebar-identity="true">
+                {"You"}`,
+          "the words in the identity slot",
+        ),
+    },
+    {
+      // JEDEN LITERAŁ, CZTERY MIEJSCA — i to jest właśnie powód, dla którego
+      // napis jest stałą. Złamanie dowodzi obu rzeczy naraz: że para czyta
+      // treść etykiety, i że cztery drogi do tej obietnicy mają jedno źródło.
+      name: "the search control goes back to promising only a search",
+      expectRedContains: ["L11-04"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `const SEARCH_CONTROL_LABEL = "Search and run…";`,
+          `const SEARCH_CONTROL_LABEL = "Search";`,
+          "the search control's promise",
+        ),
+    },
+    {
+      // ZŁAMANIE PRZEZ PRZYWRÓCENIE, nie przez skasowanie — bo para L11-05
+      // mówi „tego tu nie ma". Element wraca bez reguły arkusza, i to nie
+      // osłabia dowodu: para liczy DOPASOWANIA, także niewidoczne, dokładnie
+      // po to, żeby element przeniesiony pod `display: none` nie przechodził
+      // jako skasowany.
+      name: "the tab gets its meaningless ring back before the title",
+      expectRedContains: ["L11-05"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                  <span>{tab.label}</span>`,
+          `                  <span className="shell-tab-kind" aria-hidden="true" />
+                  <span>{tab.label}</span>`,
+          "the tab kind marker",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L11 — SIÓDME ZŁAMANIE, INNY PRZYRZĄD ─────────────────
+      //
+      // JEDYNE ZŁAMANIE TEGO LOTU, KTÓREGO BRAMKA UKŁADU NIE ZOBACZY, i dlatego
+      // niesie WŁASNY `verify`. Mapa skrótów nie jest wyliczoną własnością CSS
+      // — przeglądarka nie ma z niej czego odczytać — więc pilnuje jej
+      // `assert.deepEqual` nad CAŁYM zbiorem `[id, shortcut]` w
+      // `packages/desktop-preload/test/client.test.ts`. Ten test chodzi
+      // w `npm run check`, czyli na trzech systemach, i kosztuje sekundy
+      // zamiast trzech przelotów przeglądarki.
+      //
+      // ZŁAMANIE ODTWARZA DOKŁADNIE TEN STAN, KTÓRY LOT ZASTAŁ: Meetings wraca
+      // na dziewiątkę. Poprzednia asercja (unikalność i zasięg [1..9]) byłaby
+      // po tym ZIELONA — dziewiątka jest unikalna i mieści się w zasięgu — i to
+      // jest cały powód, dla którego rozjazd z prototypem przeżył w tym
+      // rejestrze dwie fale.
+      name: "the shortcut map drifts from the prototype again at 8",
+      // „meetings", NIE „shortcut": zmierzone przez uruchomienie tego złamania
+      // na miejscu — w wyjściu `assert.deepEqual` słowo „shortcut" nie pada ANI
+      // RAZU (diff pokazuje pary `[id, cyfra]`), a „meetings" trzy razy. Igła
+      // dobrana z wydruku, nie z nazwy pola.
+      expectRedContains: ["meetings"],
+      verify: {
+        command: "node",
+        args: ["--test", "packages/desktop-preload/dist/test/client.test.js"],
+      },
+      file: "packages/desktop-preload/src/surface-registry.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    id: "meetings",
+    label: "Meetings",
+    icon: "meetings",
+    group: "Knowledge",
+    shortcut: 8,`,
+          `    id: "meetings",
+    label: "Meetings",
+    icon: "meetings",
+    group: "Knowledge",
+    shortcut: 9,`,
+          "the Meetings shortcut in the surface registry",
+        ),
+    },
+    {
+      // GAŁĄŹ, NIE DANE: fikstura dalej niesie zapisany widok, a drugi poziom
+      // pod Zadaniami znika, bo nikt go nie rysuje. Para na dzieciach Projektów
+      // (`L1-02`) zostaje przy tym ZIELONA — projekt dalej rysuje swoją gałąź
+      // — i to jest dowód, że nowa para pyta o Zadania, a nie o „drugi poziom
+      // gdziekolwiek".
+      name: "Tasks loses its second level in the navigation tree",
+      expectRedContains: ["L11-06"],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                          : item.id === "tasks" && !railMode`,
+          `                          : item.id === "tasks" && railMode`,
+          "the Tasks branch of the second navigation level",
+        ),
+    },
+    {
+      // ── DZIEWIĄTE ZŁAMANIE, DRUGI PRZYRZĄD Z WŁASNYM `verify` ────────────
+      //
+      // WIERSZ ZOSTAJE, TRACI TYLKO CEL. Pojemnik drugiego poziomu stoi,
+      // wiersze stoją, nazwa widoku stoi na wierszu — a kliknięcie prowadzi na
+      // goły cel „Tasks", czyli na „All work". `L11-06` liczy POJEMNIK, więc
+      // zostaje ZIELONA i to jest cała treść tego złamania: bramka układu nie
+      // ma jak zobaczyć afordancji bez celu, a kontrakt lotu żąda wprost, żeby
+      // wiersze „actually OPEN what they name".
+      //
+      // WŁASNY `verify`, bo dowód jest zachowaniem po KLIKNIĘCIU, a przelot
+      // powłoki nie klika ani razu. Igła jest zdaniem asercji, nie nazwą pola:
+      // test czeka na grupy widoku po polu i pada z komunikatem o wierszu,
+      // który nie otworzył tego, co nazywa.
+      name: "the saved-view row in the navigation becomes an affordance with no target",
+      expectRedContains: ["never opened the view it names"],
+      verify: { command: "npm", args: ["run", "test:interaction"] },
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                {...navHandlers(tasksSavedViewContext(view.id))}`,
+          `                {...navHandlers(destinationContext("tasks", "Tasks"))}`,
+          "the target of a saved-view row",
+        ),
+    },
+    // ── LOT L2: CZTERY ZŁAMANIA NA TO, CO TEN LOT DOWIÓZŁ ─────────────────
+    //
+    // Trzy osie spisu pasma tytułu dostają z tego lotu własne złamanie — skład
+    // (oś 3, przestawiona z „pending" na „enforced"), wysokość pasma (oś 5,
+    // nowa i uzbrojona) i to, co pasmo niesie (oś 6, nowa; przy naprawie po
+    // przeglądzie adwersarialnym zeszła na „pending", bo trasa rekordu zadania
+    // okazała się rozjazdem). Oś bez złamania jest zdaniem, o którym wiadomo
+    // wyłącznie, że jest dziś zielone. Oś 6 dostaje DWA: ma dwie flagi mierzone
+    // dwoma różnymi zdaniami o tekście i jedna zielona nie mówi nic o drugiej.
+    //
+    // WSZYSTKIE CZTERY NAZYWAJĄ CZERWIEŃ Z RODZINY `_DRIFT`, NIE `_DIVERGED`,
+    // i to jest poprawka po przeglądzie adwersarialnym: poprzednio nazywały
+    // `_DIVERGED` i ŻADNE z nich nie mogło wrócić czerwienią, którą nazywa.
+    // Mechanika, przeczytana w `title-band-action.mjs`
+    // (`titleBandVerdictThrows = !predicted || (armed && divergent)`) i w obu
+    // gałęziach napisu w `verify-renderer-layout.mjs`: `predicted` znaczy
+    // „pomiar zgadza się z kolumną `today` tabeli". Złamanie produktu rusza
+    // POMIAR, a nie tabelę, więc `predicted` robi się `false` i przelot pisze
+    // `_DRIFT`. `_DIVERGED` pada w sytuacji ODWROTNEJ — pomiar zgodny
+    // z tabelą, a tabela rozjechana z prototypem — czyli po złamaniu TABELI,
+    // nie produktu. Ten sam autor użył tego poprawnie o dwa złamania wyżej
+    // (oś otwarcia: `TITLE_BAND_OPENING_DRIFT — calendar`).
+    //
+    // CO Z TEGO WYNIKA DLA UZBROJENIA: `_DRIFT` pada niezależnie od `armed`,
+    // więc te cztery złamania dowodzą, że osie MIERZĄ, a nie że są uzbrojone.
+    // Uzbrojenie każdej z nich jest przypięte osobno, w
+    // `title-band-action.test.mjs` („what each L2 axis does with a divergence
+    // it predicted comes from its own status"), i tamten test czyta STAŁE
+    // `TITLE_BAND_*_ARMED`, więc przestawienie statusu go przewraca.
+    {
+      // ZŁAMANIE — SKRZYNKA DOSTAJE NADTYTUŁ Z POWROTEM.
+      //
+      // Dokładnie ta wada, którą ten lot zdjął: `<p class="eyebrow">` nad
+      // `<h1>`, oba w jednym `<div>`, czyli pasmo policzone na jeden wiersz
+      // rysujące dwa. Tabela mówi ONE_ROW, pomiar powie STACKED — pomiar
+      // rozjeżdża się z tabelą, więc przelot pisze `TITLE_BAND_STACK_DRIFT`
+      // i robi to niezależnie od uzbrojenia osi (powód przy nagłówku bloku).
+      //
+      // DLACZEGO SKRZYNKA, a nie któryś z czterech pozostałych oddanych ekranów:
+      // Skrzynka jest NIEOSIĄGALNA dla mapy powłoki (przelot par nie klika ani
+      // razu) i nie ma żadnej pary w mapie trasowanej, więc czerwień może
+      // przyjść WYŁĄCZNIE z tej osi — żadna para jej nie podrobi.
+      name: "the Inbox band gets its eyebrow back: the stack axis loses its delivery",
+      expectRedContains: ["TITLE_BAND_STACK_DRIFT — inbox"],
+      file: "packages/desktop-ui/src/InboxSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <h1 id="surface-title" tabIndex={-1}>
+          Inbox
+        </h1>`,
+          `        <div>
+          <p className="eyebrow">Signals and captures</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            Inbox
+          </h1>
+        </div>`,
+          "the Inbox band's title",
+        ),
+    },
+    {
+      // ZŁAMANIE — BIBLIOTEKA WRACA DO WŁASNEGO PASMA.
+      //
+      // Jedna klasa mniej i pasmo Biblioteki przestaje być pasmem powłoki:
+      // wraca do własnej wysokości (zmierzone przed tym lotem: 60 px przy 40 px
+      // na dziewięciu innych ekranach), bo `min-height`, kreska i rozkład idą
+      // z reguły `.surface-header`, której ten nagłówek już nie nosi. Oś 5
+      // czyta wtedy `OWN_HEAD` tam, gdzie tabela mówi `SHELL_BAND`.
+      //
+      // TO JEST ZŁAMANIE NA REGULE, NIE NA LICZBIE: nie zmienia ani jednego
+      // piksela w żadnym arkuszu, tylko zabiera deklarację przynależności.
+      // Dokładnie o to ta oś pyta.
+      name: "the Library band stops being the shell's band: the height axis loses its delivery",
+      expectRedContains: ["TITLE_BAND_HEIGHT_DRIFT — library"],
+      file: "packages/desktop-ui/src/library/LibraryShell.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "<header className={`surface-header ${styles.header}`}>",
+          "<header className={styles.header}>",
+          "the Library band's shared class",
+        ),
+    },
+    {
+      // ZŁAMANIE — KONTROLKA WYSZUKIWANIA GUBI SKRÓT.
+      //
+      // Przycisk ZOSTAJE, jego etykieta ZOSTAJE, znika sam glif skrótu — i oś 6
+      // ma zgasnąć flagę `SEARCH`, bo mierzy SŁOWA kontrolki, a nie jej
+      // obecność. To jest jedyne złamanie w tym pliku, które sprawdza, czy
+      // przyrząd czyta tekst: gdyby oś pytała „czy w paśmie jest przycisk",
+      // wróciłaby zielona nad pasmem, które obiecuje wyszukiwanie bez
+      // powiedzenia, czym się je otwiera — a prototyp pisze tam `kbd: "⌘K"`
+      // wprost (`v3/screens/knowledge.js:803`).
+      //
+      // I DOKŁADNIE TO SIĘ STAŁO. Do przeglądu adwersarialnego oś czytała
+      // `leadText(node) + aria-label`, a `LibraryShell.tsx` wpisuje w
+      // `aria-label` całe „Search notes and records (⌘K)" — więc to złamanie
+      // wracało ZIELONE na złamanym produkcie, czyli najgorszy z możliwych
+      // wyników dla złamania. Naprawione po stronie osi, nie po stronie
+      // produktu: `aria-label` ma tam stać (jest jedynym nośnikiem obietnicy
+      // w stanie zwiniętym), tylko nie jest ODPOWIEDZIĄ na pytanie tej osi.
+      name: "the Library search control drops its shortcut: the carries axis stops reading words",
+      expectRedContains: ["TITLE_BAND_CARRIES_DRIFT — library"],
+      file: "packages/desktop-ui/src/library/LibraryShell.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `            <span className={styles.searchHint}>{modifierLabel}K</span>
+`,
+          "",
+          "the shortcut glyph in the Library band",
+        ),
+    },
+    {
+      // ZŁAMANIE — TRASA REKORDU PRZESTAJE NAZYWAĆ REKORD.
+      //
+      // Pasmo zostaje, odnośnik do kolekcji zostaje, znika CZŁON MÓWIĄCY, GDZIE
+      // JESTEŚ — czyli wraca dokładnie to, co apka miała przed tym lotem:
+      // „‹ Tasks" i nic o rekordzie (wpis 12-2 rejestru przejścia). Trasa spada
+      // wtedy do JEDNEGO członu, a jeden człon nie jest trasą, więc oś 6 czyta
+      // `NAME_ONLY`/`NO_TRAIL` tam, gdzie tabela mówi `TRAIL`/`TRAIL_2_TITLE`.
+      //
+      // WERDYKT MUSI PRZYJŚĆ Z EKRANU REKORDU ZADANIA, i dlatego złamanie
+      // celuje w `TaskRecordScreen`: to jedyny z trzech rekordów, którego
+      // prototyp ma i którego trasa jest w prototypie trzyczłonowa
+      // (`v3/screens/record.js:556-562`).
+      name: "the task record's trail stops naming the record: the carries axis loses the trail",
+      expectRedContains: ["TITLE_BAND_CARRIES_DRIFT — tasks/record:task"],
+      file: "packages/desktop-ui/src/record/TaskRecordScreen.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        <span aria-hidden="true" className={screen.crumbSeparator}>
+          ›
+        </span>
+        <span className={screen.crumbCurrent}>{task.title}</span>
+`,
+          "",
+          "the current crumb of the task record",
         ),
     },
   ]),

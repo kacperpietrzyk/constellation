@@ -386,6 +386,121 @@ test("a view grouped by a workspace field draws that field's options, in the ord
   );
 });
 
+/* ── DRUGI POZIOM LEWEJ KOLUMNY OTWIERA TO, CO NAZYWA ────────────────────────
+ *
+ * Lot L11 dostawił pod Zadaniami wiersze zapisanych widoków i dopisał do
+ * kontraktu zdanie, którego nic nie mierzyło: „they must actually OPEN what
+ * they name, or they are an affordance with no target". Bramka układu liczy
+ * POJEMNIK (`L11-06` — `[data-nav-children="tasks"]`), więc wiersz prowadzący
+ * na „All work" przechodziłby ją na zielono z nazwą cudzego widoku na sobie.
+ * Zmierzył to przegląd adwersarialny; cała zdolność — pole `savedViewId` na
+ * kontekście, jego gałąź w walidacji zapisu, `requestedViewId`/`onViewOpened`
+ * na ekranie — nie miała ani jednego testu.
+ *
+ * DWA WIERSZE, NIE JEDEN, I DRUGI Z NICH JAKO PIERWSZY. Test otwierający
+ * „jedyny widok" byłby zielony także wtedy, gdyby wiersz otwierał widok
+ * PIERWSZY z listy albo dowolny; te dwa widoki rysują się inaczej (tablica po
+ * osobach kontra lista po polu), więc pomyłka o jeden jest tu widoczna
+ * w TREŚCI ekranu, a nie tylko w identyfikatorze.
+ */
+const navChildRows = (): HTMLElement[] => [
+  ...container.querySelectorAll<HTMLElement>(
+    '.sidebar [data-nav-children="tasks"] button',
+  ),
+];
+
+const navChildNamed = (name: string): HTMLElement => {
+  const row = navChildRows().find((node) => node.textContent === name);
+  assert.ok(
+    row,
+    `the second level under Tasks draws no row named „${name}" (it draws: ${navChildRows()
+      .map((node) => node.textContent)
+      .join(", ")})`,
+  );
+  return row;
+};
+
+test("a saved-view row in the navigation opens the view it names, and stops claiming the page when the reader leaves it", async () => {
+  await openTasks();
+  assert.deepEqual(
+    navChildRows().map((row) => row.textContent),
+    ["Kto co trzyma", "Praca po rodzaju"],
+    "the second level under Tasks does not name the workspace's saved views",
+  );
+  assert.equal(
+    boardColumns().length,
+    0,
+    "Tasks already opens as a board, so opening one from the navigation proves nothing",
+  );
+
+  // DRUGI WIERSZ. Lista po polu, nie tablica po osobach.
+  await act(async () => {
+    navChildNamed("Praca po rodzaju").click();
+  });
+  const byField = ["Warsztat", "Analiza", "Przegląd", "No value"];
+  await waitForCondition(
+    () => groupLabels().length === byField.length,
+    "the row named „Praca po rodzaju” never opened the view it names",
+  );
+  assert.deepEqual(
+    groupLabels(),
+    byField,
+    "the navigation row opened something other than the view written on it",
+  );
+  assert.equal(
+    boardColumns().length,
+    0,
+    "the row named a list view and the screen drew a board",
+  );
+  assert.equal(
+    navChildNamed("Praca po rodzaju").getAttribute("aria-current"),
+    "page",
+    "the open view's row does not say it is the current page",
+  );
+
+  // PIERWSZY WIERSZ, z tego samego miejsca: inny widok, inny rysunek.
+  await act(async () => {
+    navChildNamed("Kto co trzyma").click();
+  });
+  await waitForCondition(
+    () => boardColumns().length > 0,
+    "the row named „Kto co trzyma” did not open the board that view stores",
+  );
+  assert.deepEqual(
+    boardColumns().map(columnLabel),
+    ["Kacper", "Marta", "Unassigned"],
+    "the board the navigation opened is not the one that view groups by",
+  );
+  assert.equal(
+    navChildNamed("Praca po rodzaju").getAttribute("aria-current"),
+    null,
+    "two rows claim to be the current page at once",
+  );
+
+  // DROGA POWROTNA. Czytelnik przełącza się kontrolką ekranu na „All work",
+  // a wiersz w nawigacji ma o tym USŁYSZEĆ. Bez `onViewOpened` kontekst
+  // zakładki dalej niósłby identyfikator widoku, a wiersz nosiłby
+  // `aria-current="page"` nad ekranem, który tego widoku nie pokazuje —
+  // kłamiąca bieżąca strona jest gorsza niż brak wiersza.
+  await choose("tasks-view", "");
+  // CZEKANIE JEST NA BIEŻĄCEJ STRONIE, NIE NA TABLICY, i to nie jest wygodny
+  // wybór podmiotu — zmierzone: „All work" ZOSTAWIA soczewkę tam, gdzie
+  // czytelnik ją zostawił (`TasksSurface.tsx`, `openView`: nie ma widoku, więc
+  // nie ma z czego zasiać, a ściąganie go z powrotem na listę byłoby wyborem,
+  // o który nikt nie prosił). Tablica stoi więc dalej i asercja na niej
+  // mierzyłaby cudzą decyzję zamiast drogi powrotnej.
+  await waitForCondition(
+    () =>
+      navChildRows().every((row) => row.getAttribute("aria-current") === null),
+    "a navigation row still claims the page after the reader left its view with the screen's own control",
+  );
+  assert.deepEqual(
+    navChildRows().map((row) => row.textContent),
+    ["Kto co trzyma", "Praca po rodzaju"],
+    "the second level lost a row on the way back to All work",
+  );
+});
+
 /** The stored view kept its field grouping while the workspace stopped
  *  declaring the field, and asks to be drawn as a board. Reachable: the kernel
  *  checks the field resolves to a choice field at WRITE time only

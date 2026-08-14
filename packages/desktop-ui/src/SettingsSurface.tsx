@@ -987,14 +987,22 @@ export const SettingsSurface = ({
           liczy ją funkcją `s.n()` z własnej fikstury; ten ekran ma zapisane
           wprost, że byłby to fakt o workspace, a nie o sekcji, i że raz już
           tak napisano. Podtytuł zostaje ZDANIEM O SEKCJI. */}
+      {/* PASMO NIE JEST STOSEM I NIE JEST TRZEMA FRAGMENTAMI (wpis 13-4).
+          Do lotu L2 stały tu obok siebie nadtytuł „Workspace", tytuł
+          i podtytuł — trzy napisy, z których żaden nie był wyraźnie tytułem
+          strony, opakowane wspólnym `<div>`-em. Prototyp nazywa ekran RAZ
+          i stawia podtytuł OBOK nazwy, na tej samej linii bazowej:
+          `.st-panel-head` to `<h2 id="st-title">` plus `.st-panel-sub`
+          (`v3/screens/settings.js:1004-1007`), a `v3/screens/settings.css:84-90`
+          daje im `display: flex; align-items: baseline`. Nadtytuł znika,
+          podtytuł zostaje — bo on JEDEN mówi, co ta sekcja robi w tym
+          workspace — a `<h1>` jest teraz bezpośrednim dzieckiem pasma, więc
+          spis pasma tytułu mierzy tu jeden wiersz. */}
       <header className="surface-header wave2-header settings-header">
-        <div>
-          <p className="eyebrow">Workspace</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Settings
-          </h1>
-          <p className="settings-band-sub">{categoryStatus[activeCategory]}</p>
-        </div>
+        <h1 id="surface-title" tabIndex={-1}>
+          Settings
+        </h1>
+        <p className="settings-band-sub">{categoryStatus[activeCategory]}</p>
         <button
           type="button"
           className="settings-help-entry"

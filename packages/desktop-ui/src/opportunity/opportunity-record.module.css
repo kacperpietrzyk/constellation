@@ -443,7 +443,7 @@
    invented for a state it never painted is a fourth doctrine competing with
    the paint. The word is on the row either way.
 
-   Selected by DECLARATION (`OpportunityRecordScreen.tsx:832` stamps
+   Selected by DECLARATION (`OpportunityRecordScreen.tsx:840` stamps
    `data-offer-state`) and not by a class this sheet would have to be handed,
    so nothing outside this file changes to carry the colour. */
 .offerState[data-offer-state="accepted"] {

@@ -41,14 +41,14 @@
 // Ten sam błąd raz już przepuścił złą liczbę i jest w repozytorium opisany:
 // „Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
 // `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero`"
-// (`styles.css:3992-3996`). Pasmo = `#surface-title`.closest("header") obejmuje
+// (`styles.css:4005-4009`). Pasmo = `#surface-title`.closest("header") obejmuje
 // jedną regułą wszystkie cztery.
 //
 // ── MIARA, I DLACZEGO NIE JEST PROSTOKĄTEM PASMA ────────────────────────────
 //
 // Kuszące „środek akcji leży wewnątrz prostokąta pasma" jest ZIELONE NA TEJ
 // WADZIE, której szukamy. `.surface-header` ma `flex-wrap: wrap` postawione
-// świadomie (`styles.css:1826-1831`, żeby przy 200% nie robić poziomego paska
+// świadomie (`styles.css:2468-2473`, żeby przy 200% nie robić poziomego paska
 // przewijania), więc pasmo, które ZAWINĘŁO, rośnie tak, żeby objąć OBA rzędy —
 // i akcja w drugim rzędzie leży wtedy „wewnątrz pasma". Prostokąt pasma nie
 // odróżnia więc rzędu tytułu od rzędu pod nim. Pasma rekordu są tu jeszcze
@@ -62,7 +62,7 @@
 // Obie wysokości są ODCZYTANE W TYM SAMYM PRZELOCIE, więc próg rośnie razem
 // z pismem i ta reguła znaczy to samo przy 100%, 200% i 300%. NIE MA TU ANI
 // JEDNEJ LICZBY PIKSELI i nie ma `--header-band-height`: ten token jest
-// `min-height`, czyli podłogą, a nie wysokością pasma (`styles.css:1818`),
+// `min-height`, czyli podłogą, a nie wysokością pasma (`styles.css:2456-2457`),
 // więc wzorzec z niego zbudowany opisywałby pasmo, którego nie ma.
 //
 // ZAPAS JEST DUŻY I ZMIERZONY, żeby nikt nie musiał wierzyć w finezję progu:
@@ -481,6 +481,192 @@ export const TITLE_BAND_PROTOTYPE_OPENING_STATES = [
   "NO_SCREEN",
 ];
 
+// ── OŚ PIĄTA (L2) — CZY TO JEST PASMO POWŁOKI, I CZY MA JEGO WYSOKOŚĆ ───────
+//
+// Osie 1-4 pytają, CO w paśmie stoi. Ta pyta, CZY TO JEST TO SAMO PASMO — bo
+// „jedno pasmo wszędzie" jest zdaniem o RÓWNOŚCI między ekranami, a żadna
+// z tamtych osi go nie stawia. Ekran może mieć jednowierszowy stos, akcję na
+// końcu i mimo to rysować własny nagłówek o innej wysokości: Biblioteka robiła
+// dokładnie to (`header._header h=60` przy `header.surface-header h=40` na
+// dziewięciu innych ekranach), a Projekty i Ustawienia rozjeżdżały się o kilka
+// pikseli z powodu, który zdejmuje dopiero oś składu (44,9 i 45 przy 40).
+//
+// PYTANIE JEST O DEKLARACJĘ I O RÓWNOŚĆ, NIE O LICZBĘ PIKSELI, i to jest ta
+// sama reguła co przy sufitach kolumny w locie L1. Przelot rozwiązuje
+// `--header-band-height` W TEJ SAMEJ STRONIE i porównuje z nią zmierzoną
+// wysokość pasma, więc w spisie nie stoi ani jedna wpisana liczba pikseli.
+// Prototyp deklaruje to jedną regułą dla obu swoich pasm:
+// `.crumbbar { min-height: var(--header-band-height) }` (`v3/app.css:282-283`)
+// i `.viewbar` tak samo (`:295-297`).
+//
+// ZAKRES TEJ OSI TO JEDNA STRONA: 1440×900 przy domyślnym korzeniu — spis
+// otwiera dokładnie jedną (`verify-renderer-layout.mjs`, `titleBandActionCensus`
+// → `browser.newPage({ viewport: { width: 1440, height: 900 } })`). Do
+// przeglądu adwersarialnego L2 stało tu zdanie „przy 200% pisma pyta o tę samą
+// rzecz co przy 100%" — i było NIEPRAWDZIWE w obie strony. Po pierwsze, żaden
+// przelot tej osi przy 200% nie chodzi, więc obietnica nie miała świadka. Po
+// drugie, gdyby chodził, ta oś byłaby tam CZERWONA z powodu, który ten sam
+// plik ma zapisany dwa razy wyżej: `--header-band-height` jest PODŁOGĄ
+// (`min-height`, `styles.css:2456-2457`), a przy 200% pisma pasmo świadomie się
+// zawija (`flex-wrap: wrap`, `styles.css:2468-2473`) i rośnie ponad nią —
+// asercja RÓWNOŚCI (±0,5 px) mówiłaby wtedy „SHELL_BAND_OFF" o produkcie
+// zaprojektowanym tak, jak jest. Sufity kolumny przy 200%/300% mierzą INNE
+// przeloty tego pliku i to jest właściwe miejsce na tamto pytanie.
+//
+// KLASA JEST CZĘŚCIĄ PYTANIA, nie skrótem do niego. Wysokość równa tokenowi
+// można trafić przypadkiem — własnym nagłówkiem z własną wyściółką, która
+// akurat daje 40 px przy jednej szerokości i rozjeżdża się przy drugiej.
+// Zdanie brzmi więc „to jest pasmo powłoki I stoi na jego wysokości",
+// a nie „to jest 40 px".
+//
+// TRZY EKRANY REKORDU ODPOWIADAJĄ `OWN_HEAD` PO OBU STRONACH, i to jest
+// ZADEKLAROWANA RÓWNOWAŻNOŚĆ, dokładnie ta sama, którą oś składu ma zapisaną
+// przy `prototypeStack` rekordów: podmiotem tej osi jest pasmo, w którym stoi
+// TYTUŁ, a w prototypie tytuł rekordu (`<h1 class="rec-title">`,
+// `v3/screens/record.js:432`) nie stoi w żadnym `<header>` — stoi w `.rc-main`,
+// pod crumbbarem, który jest jego RODZEŃSTWEM. Nasz rekord ma tam własną głowę
+// (285,1 px na zadaniu), więc obie strony mówią „to nie jest pasmo powłoki".
+// Trasa rekordu — to, co prototyp trzyma w crumbbarze — jest podmiotem OSI
+// SZÓSTEJ, nie tej.
+
+/** Stany, w jakich PRZELOT może zmierzyć pasmo niosące tytuł. */
+export const TITLE_BAND_HEIGHT_STATES = [
+  "SHELL_BAND",
+  "SHELL_BAND_OFF",
+  "OWN_HEAD",
+];
+
+/** Stany, którymi wolno opisać PROTOTYP na osi piątej. */
+export const TITLE_BAND_PROTOTYPE_HEIGHT_STATES = [
+  "SHELL_BAND",
+  "OWN_HEAD",
+  "NO_SCREEN",
+];
+
+// ── OŚ SZÓSTA (L2) — CO PASMO NIESIE OPRÓCZ NAZWY EKRANU ───────────────────
+//
+// TA OŚ MIERZY SŁOWA, I TO JEST JEJ CAŁY POWÓD. Cztery wcześniejsze osie
+// mierzą strukturę i geometrię — a dwa wpisy rejestru przejścia, które ten lot
+// zamyka, są o TREŚCI widocznej dla człowieka: `11-7` („pasmo Biblioteki nie ma
+// wyszukiwania, które prototyp ma") i `12-2` („okruszek jest w treści, nie
+// w paśmie, a pasmo stoi puste"). Przyrząd mierzący obecność WĘZŁA odpowiedziałby
+// „jest pasmo" na obu i byłby zielony nad produktem, o którym rejestr mówi, że
+// nie niesie tego, co ma nieść.
+//
+// PODMIOTEM JEST PIERWSZE NARYSOWANE `<header>` W KOLUMNIE PRACY, nie
+// `#surface-title.closest("header")`, i ta różnica jest tu istotą: na dwunastu
+// ekranach kolekcji oba są tym samym elementem, a na rekordzie NIE SĄ —
+// prototyp otwiera rekord crumbbarem z trasą, a tytuł stawia w paśmie NIŻEJ
+// (`v3/screens/record.js:429-432`, `:556-562`). Oś czytająca wyłącznie pasmo
+// tytułu nie miałaby na rekordzie gdzie zobaczyć trasy i wpis `12-2` zostałby
+// bez przyrządu — dokładnie to zapisał P3, oddając ten wpis lotowi L2.
+//
+// FLAGI SĄ DWIE I OBIE SĄ ZDANIAMI O TEKŚCIE:
+//
+//   * `SEARCH` — w paśmie stoi kontrolka, której WIDOCZNY tekst nazywa
+//     wyszukiwanie i podaje jego skrót. Prototyp: `btn("Search notes and
+//     records", { cls: "quiet", icon: "search", act: "palette", kbd: "⌘K" })`
+//     (`v3/screens/knowledge.js:803`) — jeden ekran na piętnaście, i to jest
+//     ważne: `grep -n 'act: "palette"' v3/app.js v3/screens/*.js` daje JEDNO
+//     trafienie, więc czternaście wierszy BEZ tej flagi jest świadkiem, że
+//     się ona nie zapala wszędzie. Nie „czternaście wierszy `NAME_ONLY`" —
+//     tak tu stało i było nieprawdą: `NAME_ONLY` mówi dziś JEDENAŚCIE
+//     wierszy, bo trzy rekordy odpowiadają `TRAIL`.
+//   * `TRAIL` — pasmo prowadzące NIE JEST pasmem tytułu i niesie trasę:
+//     PIERWSZY człon nazywa kolekcję (porównanie z etykietą tej powierzchni
+//     w szynie powłoki, słowo w słowo), a członów jest co najmniej dwa.
+//     Zapisane przez POROWNANIE TEKSTÓW, a nie przez szukanie szewronu: glif
+//     separatora jest wyborem rysunku (prototyp rysuje go ikoną,
+//     `icon("chev")`), a zdanie „pasmo mówi, gdzie jesteś" jest wyborem
+//     produktu. Warunek „to nie jest pasmo tytułu" jest konieczny — bez niego
+//     KAŻDY ekran kolekcji zapalałby `TRAIL`, bo jego pasmo z definicji niesie
+//     tytuł i akcję.
+//
+// FLAGA MÓWI „PASMO NIESIE TRASĘ", KSZTAŁT MÓWI „TAKĄ" — i to jest druga
+// kolumna tej osi, dołożona po przeglądzie adwersarialnym L2. Pierwsza wersja
+// pytała „czy jest jakiś przycisk z tekstem I jakiś liść o tekście równym
+// tytułowi" i odpowiadała `TRAIL` na dwie RÓŻNE trasy naraz. Zmierzone sondą na
+// żywej apce: podmiana pierwszego członu „Tasks" na „Wombat" NIE gasiła flagi,
+// czyli połowa zdania („odnośnik do KOLEKCJI") nie była mierzona niczym; a trasa
+// prototypowego rekordu zadania ma TRZY człony i bieżącym jest IDENTYFIKATOR,
+// nie tytuł — obie różnice mieściły się w jednym słowie `TRAIL` i wiersz
+// meldował zgodność z prototypem nad dwoma rozjazdami.
+//
+// DLACZEGO POWTÓRZONA NAZWA REKORDU NIE JEST TU WADĄ NA REKORDZIE PROJEKTU:
+// prototyp pisze ją tam dwa razy — `crumbbar("Projects › <p.title>")` nad
+// `<h1 class="rec-title">` z tym samym tytułem (`v3/screens/record.js:429-432`).
+// Okruszek mówi, GDZIE jesteś; tytuł mówi, CO czytasz. Na rekordzie ZADANIA
+// prototyp rozstrzyga to inaczej (`v3/screens/record.js:556-562`): bieżącym
+// członem jest `t.id.toUpperCase()`, czyli „T1", a tytuł stoi wyłącznie
+// w `<h1>`. Dlatego kształt trasy jest OSOBNYM słowem, a nie sufiksem flagi —
+// dwa ekrany rekordu z tą samą flagą mają w prototypie dwa różne kształty.
+// Rejestr osobno notuje ten sam AKAPIT postawiony dwa razy jako wpis `12-1` —
+// to jest inna rzecz i inny lot.
+
+/** Stany, w jakich PRZELOT może zmierzyć zawartość pasma prowadzącego. */
+export const TITLE_BAND_CARRIES_STATES = [
+  "NAME_ONLY",
+  "SEARCH",
+  "TRAIL",
+  "SEARCH+TRAIL",
+];
+
+/** Stany, którymi wolno opisać PROTOTYP na osi szóstej. */
+export const TITLE_BAND_PROTOTYPE_CARRIES_STATES = [
+  "NAME_ONLY",
+  "SEARCH",
+  "TRAIL",
+  "SEARCH+TRAIL",
+  "NO_SCREEN",
+];
+
+/**
+ * KSZTAŁTY TRASY — druga kolumna osi szóstej.
+ *
+ * Skala arności jest ZAMKNIĘTA na 2-3 DLA PIĘTNASTU EKRANÓW TEJ TABELI i to
+ * jest odczyt, nie ostrożność: `grep -n "crumbbar(" v3/app.js v3/screens/*.js`
+ * daje trzydzieści kilka wywołań, a wśród ekranów, które ta tabela deklaruje,
+ * najdłuższa trasa ma trzy człony (rekord zadania,
+ * `v3/screens/record.js:556-562`); jednoczłonowe „crumbbary" kolekcji nie są
+ * trasą i wracają `NO_TRAIL`.
+ *
+ * POZA TĄ PIĘTNASTKĄ PROTOTYP MA TRASY DŁUŻSZE i dlatego `TRAIL_OFF_SCALE`
+ * istnieje, zamiast być ostrożnością na zapas: czytelnia notatki
+ * (`v3/screens/knowledge.js:849-854`) skleja `Notes › <ścieżka folderów…> ›
+ * <tytuł>`, czyli tyle członów, ile ma zagnieżdżenie folderu. Tego ekranu ta
+ * tabela nie deklaruje (u nas jest odczytem Biblioteki, nie powierzchnią), więc
+ * czwarty człon nie ma prawa wpaść po cichu do jednego ze znanych stanów.
+ * `TRAIL_3_TITLE` jest dziś przez nic nieużywany i stoi tu świadomie: to jedyny
+ * kształt z tej czwórki, który prototyp mógłby dostać jednym ruchem (trzeci
+ * człon dołożony do rekordu projektu), a słownik bez niego kazałby go dopisywać
+ * razem z poprawką.
+ *
+ * `TITLE` kontra `OTHER` mówi o BIEŻĄCYM członie: czy powtarza tytuł rekordu
+ * (prototypowy rekord projektu), czy niesie coś innego (prototypowy rekord
+ * zadania niesie identyfikator, prototypowy ekran Zadań — nazwę zapisanego
+ * widoku). Przelot umie powiedzieć wyłącznie „to jest tytuł" albo „to nie jest
+ * tytuł" — nazwanie tego „identyfikatorem" byłoby wpisaniem po stronie pomiaru
+ * czegoś, czego pomiar nie widzi.
+ */
+export const TITLE_BAND_TRAIL_SHAPES = [
+  "NO_TRAIL",
+  "TRAIL_2_TITLE",
+  "TRAIL_2_OTHER",
+  "TRAIL_3_TITLE",
+  "TRAIL_3_OTHER",
+  "TRAIL_OFF_SCALE",
+];
+
+/** Kształty, którymi wolno opisać PROTOTYP na drugiej kolumnie osi szóstej. */
+export const TITLE_BAND_PROTOTYPE_TRAIL_SHAPES = [
+  "NO_TRAIL",
+  "TRAIL_2_TITLE",
+  "TRAIL_2_OTHER",
+  "TRAIL_3_TITLE",
+  "TRAIL_3_OTHER",
+  "NO_SCREEN",
+];
+
 /**
  * Ta sama umowa co `TITLE_BAND_ACTION_STATUS`: pozycja NIEODDANA raportuje,
  * rzuca to, co ODDANE i ZEPSUTE — oraz KAŻDY dryf od kolumny `today`, również
@@ -490,11 +676,51 @@ export const TITLE_BAND_PROTOTYPE_OPENING_STATES = [
  * ROZSTRZYGNĄĆ: odpowiednia lista rozjazdów jest PUSTA. Faza II (loty L2 i L3)
  * jest jedynym miejscem, w którym ten przełącznik wolno ruszyć.
  */
-export const TITLE_BAND_STACK_STATUS = "pending";
+export const TITLE_BAND_STACK_STATUS = "enforced";
 export const TITLE_BAND_STACK_ARMED = TITLE_BAND_STACK_STATUS === "enforced";
 export const TITLE_BAND_OPENING_STATUS = "pending";
 export const TITLE_BAND_OPENING_ARMED =
   TITLE_BAND_OPENING_STATUS === "enforced";
+
+/**
+ * OŚ PIĄTA JEST UZBROJONA OD PIERWSZEGO DNIA, i to jest różnica wobec osi 3
+ * i 4, którą trzeba powiedzieć wprost. Tamte powstały w Fazie I jako pomiar
+ * NIEODDANEJ roboty i musiały mieć stan „pending", żeby bramka nie była
+ * czerwona przez całą fazę. Ta powstaje RAZEM z poprawką, którą mierzy — lot L2
+ * zamyka ją w tym samym przebiegu — więc „pending" znaczyłoby tu wyłącznie „nie
+ * ufam własnej dostawie". Warunek przełączenia jest ten sam i daje się
+ * rozstrzygnąć: odpowiednia lista rozjazdów jest PUSTA.
+ *
+ * OŚ SZÓSTA WYSZŁA Z LOTU UZBROJONA I ZOSTAŁA ROZBROJONA PRZY NAPRAWIE — powód
+ * stoi przy jej własnej stałej niżej i jest wart przeczytania, zanim ktoś ją
+ * z powrotem uzbroi „dla symetrii".
+ */
+export const TITLE_BAND_HEIGHT_STATUS = "enforced";
+export const TITLE_BAND_HEIGHT_ARMED = TITLE_BAND_HEIGHT_STATUS === "enforced";
+/**
+ * OŚ SZÓSTA ZESZŁA Z „enforced" NA „pending", I TO JEST ODWRÓCENIE WŁASNEJ
+ * DEKLARACJI LOTU L2, a nie zmiękczenie oczekiwania.
+ *
+ * Lot oddał tę oś uzbrojoną z zerem rozjazdów. Przegląd adwersarialny pokazał,
+ * że zero było funkcją SŁABOŚCI POMIARU: kolumna prototypu mówiła `TRAIL`
+ * o trasie, której przelot nie umiał odróżnić od naszej, choć różni się dwoma
+ * rzeczami naraz (trzy człony zamiast dwóch, identyfikator zamiast tytułu
+ * w członie bieżącym — `v3/screens/record.js:556-562`). Po dołożeniu kolumny
+ * kształtu rozjazdy są DWA i oba są prawdziwe, więc oś nie może zostać
+ * uzbrojona, nie kładąc bramki na dostawie, której ten lot nie planował.
+ *
+ * DLACZEGO NIE POPRAWKA PRODUKTU: trzeci człon (projekt) jest osiągalny, ale
+ * człon bieżący prototypu to `t.id.toUpperCase()`, a nasze zadania nie mają
+ * ŻADNEGO identyfikatora dla człowieka (`Task` nie niesie `externalId`).
+ * Kształt `TRAIL_3_OTHER` jest więc dziś nieosiągalny w całości — to jest
+ * „prototyp przed domeną", czyli robota do zapisania, nie defekt do ukrycia.
+ *
+ * WARUNEK PRZEŁĄCZENIA, rozstrzygalny tak samo jak przy trzech osiach wyżej:
+ * `TITLE_BAND_CARRIES_DIVERGENCES` jest PUSTE.
+ */
+export const TITLE_BAND_CARRIES_STATUS = "pending";
+export const TITLE_BAND_CARRIES_ARMED =
+  TITLE_BAND_CARRIES_STATUS === "enforced";
 
 /**
  * Werdykt o JEDNEJ akcji względem JEDNEGO tytułu.
@@ -732,6 +958,69 @@ const NOT_2XL_CITE =
   "states”, którego produkt nie ma; poza tymi dwoma prototyp nie otwiera " +
   "treści niczym wielkości --text-2xl";
 
+/**
+ * Cytat drugiej kolumny osi 6 dla ekranów, których pasmo prototypu NIE niesie
+ * trasy.
+ *
+ * Jeden napis i z tego samego powodu co dwa wyżej: to jest fakt o prototypie
+ * jako całości, wyliczony JEDNYM greem, a nie czternaście osobnych odczytów.
+ * `grep -n "crumbbar(" v3/app.js v3/screens/*.js` daje trzydzieści kilka
+ * wywołań; wszystkie poza czterema przekazują jednoczłonowy
+ * `<span class="cur">Nazwa</span>`, bez separatora i bez drugiego członu.
+ * Czterema wyjątkami są trzy ekrany rekordu i ekran Zadań — każdy z nich ma tu
+ * swój własny cytat.
+ */
+const NO_TRAIL_CITE =
+  'v3/app.js:677-682 + `grep -n "crumbbar(" v3/app.js v3/screens/*.js` — pasmo ' +
+  "tego ekranu dostaje w prototypie jeden człon " +
+  '(`<span class="cur">Nazwa</span>`), bez separatora `<span class="sep">` ' +
+  "i bez drugiego członu: nie ma tu trasy, od której moglibyśmy się rozjechać";
+
+/**
+ * JEDYNY EKRAN KOLEKCJI, KTÓREGO PASMO PROTOTYPU NIESIE DWA CZŁONY.
+ *
+ * Znalezione greem, nie pamięcią: `grep -n "crumbbar(" v3/app.js
+ * v3/screens/*.js` daje trzydzieści kilka wywołań i to jest jedyne poza
+ * rekordami, w którym drugim członem jest coś innego niż nazwa ekranu.
+ *
+ * RÓWNOWAŻNOŚĆ ZADEKLAROWANA, NIE ODCZYT, i musi to tu stać tak samo jak przy
+ * `prototypeStack` rekordów: prototypowy ekran Zadań nie ma osobnego pasma
+ * tytułu, więc członu „pasmo prowadzące nie jest pasmem tytułu" nie da się do
+ * niego przyłożyć dosłownie. Orzekam równoważność po SŁOWACH: w paśmie
+ * prowadzącym prototypu stoi nazwa kolekcji, separator i nazwa bieżącego
+ * widoku, a w naszym — sama nazwa ekranu.
+ */
+const TASKS_TRAIL_CITE =
+  'v3/screens/tasks.js:507-509 — crumbbar(`<button data-go=\'{"kind":"tasks"}\'>' +
+  'Tasks</button><span class="sep">…</span><span class="cur">${v.name}</span>`, …): ' +
+  "pasmo prototypu mówi, W KTÓRYM ZAPISANYM WIDOKU stoisz, a nasze pasmo Zadań " +
+  "niesie samą nazwę ekranu (`tasks/TasksSurface.tsx` przez `SurfaceTitleBand`), " +
+  "więc tej informacji nie ma w paśmie w ogóle";
+
+const PROJECT_RECORD_TRAIL_CITE =
+  'v3/screens/record.js:429-432 — dwa człony: `<button data-go=\'{"kind":"projects"}\'>' +
+  'Projects</button>` i `<span class="cur">${p.title}</span>`, czyli bieżącym ' +
+  "członem jest TYTUŁ rekordu — ten sam napis, który stoi niżej w " +
+  '`<h1 class="rec-title">`. Nasz rekord projektu robi dokładnie to samo';
+
+/**
+ * TRASA, KTÓRA RÓŻNI SIĘ OD NASZEJ DWOMA RZECZAMI NARAZ — i to jest wiersz, na
+ * którym oś szósta wyszła z lotu L2 mówiąc „zgoda z prototypem".
+ */
+const TASK_RECORD_TRAIL_CITE =
+  "v3/screens/record.js:556-562 — TRZY człony: `Tasks`, tytuł projektu " +
+  '(skracany do 34 znaków) i `<span class="cur">${t.id.toUpperCase()}</span>`, ' +
+  "czyli IDENTYFIKATOR zadania; tytuł zadania stoi wyłącznie niżej, w " +
+  '`<h1 class="rec-title">` (:563). Nasza trasa ma dwa człony i bieżącym jest ' +
+  "tytuł. Trzeci człon (projekt) jest osiągalny, człon bieżący NIE JEST: nasze " +
+  "zadania nie mają żadnego identyfikatora dla człowieka — to jest prototyp " +
+  "przed domeną, zapisany jako robota, a nie ukryty jako zgodność";
+
+const OPPORTUNITY_RECORD_TRAIL_CITE =
+  "wiersz `no-screen` — `grep -n crumbbar v3/screens/record.js` daje rekord " +
+  "projektu (v3/screens/record.js:429) i zadania (:556), szansy NIE MA, więc " +
+  "obie kolumny osi 6 mówią NO_SCREEN i predykat wyłącza ten wiersz";
+
 export const TITLE_BAND_ROWS = [
   {
     id: "today",
@@ -754,6 +1043,17 @@ export const TITLE_BAND_ROWS = [
       "Kacper</h2>` otwiera treść, a v3/screens/today.css:8-10 daje mu " +
       "--text-2xl",
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "calendar",
@@ -763,17 +1063,30 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/calendar.js:202 — crumbbar(„Calendar”, `<span class="when">`)',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "CalendarSurface.tsx:640-670 — w paśmie trzy ghost-button nawigacji tygodnia, żadnej akcji z wypełnieniem",
+    app: "CalendarSurface.tsx:659-695 — po locie L2 pasmo to <h1> i grupa prawej strony (zakres tygodnia + trzy ghost-button nawigacji); pojemność tygodnia zeszła do treści, akcji z wypełnieniem dalej nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
-    // `<p class="eyebrow" data-week-range>` NAD `<h1>`, oba w tym samym
-    // `<div>` (CalendarSurface.tsx:642-649).
-    todayStack: "STACKED",
+    // ODDANE W LOCIE L2: stał tu `<p class="eyebrow" data-week-range>` NAD
+    // `<h1>`, oba w jednym `<div>`. Zakres tygodnia jest teraz po PRAWEJ
+    // stronie pasma, za tytułem, tam gdzie prototyp trzyma swój `<span
+    // class="when">`.
+    todayStack: "ONE_ROW",
     prototypeOpening: "OPENING_2XL",
     citeOpening:
       'v3/screens/calendar.js:205 — `<h2 class="cal-title">This week</h2>` ' +
       "otwiera treść, a v3/screens/calendar.css:21-23 daje mu --text-2xl",
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "inbox",
@@ -788,13 +1101,24 @@ export const TITLE_BAND_ROWS = [
     // pamięta. Nikt tego nie złapał, bo jedyna asercja nad tym polem sprawdza
     // jego DŁUGOŚĆ. Adres, który nie prowadzi do pliku, jest przy odbiorze
     // nieodróżnialny od adresu, który prowadzi.
-    app: "InboxSurface.tsx:283-303 — pasmo owija <p class=„eyebrow”> i <h1> jednym <div>; drugie dziecko pasma to licznik, nie akcja",
+    app: "InboxSurface.tsx:291-308 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
-    todayStack: "STACKED",
+    todayStack: "ONE_ROW",
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "settings",
@@ -811,7 +1135,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/settings.js:1003-1006 — `.st-panel-head` to `<h2 id="st-title">` i `.st-panel-sub`, bez slotu akcji; tryb nie woła crumbbara w ogóle',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "SettingsSurface.tsx:990-1007 — w paśmie `settings-help-entry`, klasa spoza zbioru akcji; stos to eyebrow „Workspace”, <h1> i .settings-band-sub w jednym <div>",
+    app: "SettingsSurface.tsx:1001-1014 — po locie L2 pasmo to <h1>, .settings-band-sub na wspólnej linii bazowej i `settings-help-entry` (klasa spoza zbioru akcji); nadtytuł „Workspace” i opakowanie zeszły",
     prototypeStack: "ONE_ROW",
     // JEDYNY EKRAN PROTOTYPU BEZ CRUMBBARA, więc jedyny z własnym cytatem na
     // tej osi — i tym mocniejszy, bo prototyp trzyma tu głowę jako RZĄD.
@@ -820,10 +1144,21 @@ export const TITLE_BAND_ROWS = [
       'id="st-title">` i `.st-panel-sub`, a v3/screens/settings.css:84-90 daje ' +
       "im `display: flex; align-items: baseline`: tytuł i podtytuł stoją OBOK " +
       "siebie, nie jeden pod drugim",
-    todayStack: "STACKED",
+    todayStack: "ONE_ROW",
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "projects",
@@ -833,12 +1168,13 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/projects.js:343 — btn("New project", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "Wave2Surfaces.tsx:53-73 (SurfaceHeader renderuje {action}) + :789 secondary-button „New project”",
+    app: "Wave2Surfaces.tsx:101-114 — SurfaceHeader po locie L2 to <h1> i {action}, bez nadtytułu i bez zdania opisowego; akcja to secondary-button „New project”",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
-    // TRZY WIERSZE: `<p class="eyebrow">{kicker}</p>`, `<h1>` i
-    // `<p>{description}</p>` w jednym `<div>` (Wave2Surfaces.tsx:96-105).
-    todayStack: "STACKED",
+    // ODDANE W LOCIE L2: stały tu TRZY WIERSZE — `<p class="eyebrow">`, `<h1>`
+    // i `<p>{description}</p>` w jednym `<div>`. Wariant rysuje teraz sam
+    // `<h1>` i akcję, a jego pasmo zeszło z 44,9 px na 40.
+    todayStack: "ONE_ROW",
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ: lektura JSX przewidywała
@@ -847,6 +1183,17 @@ export const TITLE_BAND_ROWS = [
     // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
     // wierszy, na których to widać.
     todayOpening: "NO_OPENING",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
     // JEDYNY DZIŚ WIERSZ „IN_BAND", czyli JEDYNY dowód, że ten przyrząd umie
     // zwrócić cokolwiek poza znaleziskiem. Strażnik `TITLE_BAND_NEVER_IN_BAND`
     // pilnuje, żeby ten dowód nie zniknął po cichu.
@@ -859,7 +1206,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/tasks.js:507-513 — btn("New task", { cls: "primary", icon: "plus", act: "new-task" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "tasks/TasksSurface.tsx:460-495 — SurfaceTitleBand z akcją „New task” (primary-button) wpiętą w onCreateTask; addToGroup (:353-355) zostaje jako tworzenie W GRUPIE",
+    app: "tasks/TasksSurface.tsx:522-557 — SurfaceTitleBand z akcją „New task” (primary-button) wpiętą w onCreateTask; addToGroup (:415-417) zostaje jako tworzenie W GRUPIE",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     // `SurfaceTitleBand.tsx:92-96` wstawia `<h1>` WPROST do `<header>`, bez
@@ -873,6 +1220,22 @@ export const TITLE_BAND_ROWS = [
     // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
     // wierszy, na których to widać.
     todayOpening: "NO_OPENING",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    // KOLUMNA POPRAWIONA PRZY NAPRAWIE L2, i poprzednia była NIEPRAWDZIWA, nie
+    // niedokładna: stało tu „crumbbar przyjmuje nazwę i akcję i nic więcej",
+    // a `v3/screens/tasks.js:507-509` przekazuje DWA człony. Zdanie było
+    // prawdziwe o trzynastu ekranach i fałszywe o tym jednym, przy którym
+    // stało.
+    prototypeCarries: "TRAIL",
+    citeCarries:
+      "v3/screens/tasks.js:507-509 — pasmo prototypu niesie obok nazwy kolekcji nazwę bieżącego zapisanego widoku; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran, więc wyszukiwania w tym paśmie prototyp nie ma",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "TRAIL_2_OTHER",
+    citeTrail: TASKS_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
     // JEDYNY PODMIOT, KTÓREGO REJESTR NIE MA. Rejestr liczy dziewięć wpisów
     // przyczyny C2 i Zadań wśród nich nie ma; ten przelot mierzy, że prototyp
     // stawia w paśmie Zadań „+ New task", a nasze pasmo Zadań nie niesie ani
@@ -900,6 +1263,17 @@ export const TITLE_BAND_ROWS = [
     // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
     // wierszy, na których to widać.
     todayOpening: "NO_OPENING",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "renewals",
@@ -916,6 +1290,17 @@ export const TITLE_BAND_ROWS = [
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "organizations",
@@ -932,6 +1317,17 @@ export const TITLE_BAND_ROWS = [
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "people",
@@ -953,6 +1349,17 @@ export const TITLE_BAND_ROWS = [
     // `today` jest POMIAREM, nie przewidywaniem, i to jest jeden z pięciu
     // wierszy, na których to widać.
     todayOpening: "NO_OPENING",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "meetings",
@@ -984,6 +1391,17 @@ export const TITLE_BAND_ROWS = [
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      "v3/app.js:677-682 — `crumbbar(crumbs, actions)` przyjmuje nazwę i akcję i nic więcej; `grep -n 'act: \"palette\"' v3/app.js v3/screens/*.js` daje JEDNO trafienie i nie jest nim ten ekran",
+    todayCarries: "NAME_ONLY",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "library",
@@ -993,13 +1411,24 @@ export const TITLE_BAND_ROWS = [
     cite: "v3/screens/knowledge.js:802-804 („New note”, primary) i :967-968 („Add a source”, primary)",
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "library/LibraryShell.tsx:79-125 — slot akcji w paśmie, licznik zszedł do paska widoku; NotesReading i SourcesReading wstrzykują swoją akcję portalem; stos to <p class=„eyebrow”>Sources and deliverables</p> nad <h1> w jednym <div> (:120-126)",
+    app: "library/LibraryShell.tsx:158-175 — po locie L2 pasmo nosi też klasę `surface-header` (jedna wysokość z pozostałymi), a jego prawa strona to cicha kontrolka „Search notes and records” z glifem skrótu plus slot akcji, do którego NotesReading i SourcesReading wstrzykują swoją akcję portalem; nadtytuł „Sources and deliverables” zszedł",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
-    todayStack: "STACKED",
+    todayStack: "ONE_ROW",
     prototypeOpening: "NOT_2XL",
     citeOpening: NOT_2XL_CITE,
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "SEARCH",
+    citeCarries:
+      'v3/screens/knowledge.js:803 — `btn("Search notes and records", { cls: "quiet", icon: "search", act: "palette", kbd: "⌘K" })` stoi w paśmie obok akcji tworzenia; jedyne trafienie `act: "palette"` w całym prototypie',
+    todayCarries: "SEARCH",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
     // JEDEN WIERSZ NA DWA WPISY REJESTRU, i to jest świadome. Rejestr filuje
     // Notatki i Źródła osobno, bo porównywał ZRZUTY dwóch ekranów. Pasmo jest
     // JEDNO — ten sam `LibraryShell` nad każdym z trzech odczytów, z tym samym
@@ -1014,7 +1443,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/record.js:429-433 — `crumbbar(ślad, btn("New task", { cls: "primary", icon: "plus", act: "new-task" })) + rcShell(`<h1 class="rec-title">…`)`: filled action w crumbbarze, tytuł rekordu w NASTĘPNYM paśmie — dwa rodzeństwa sklejone `+`, więc prototyp stawia tu akcję RZĄD WYŻEJ niż tytuł',
     today: "ABOVE_BAND",
     todayInline: "FLUSH_END",
-    app: "record/ProjectRecordScreen.tsx:300-336 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), record-screen.module.css:89-95",
+    app: "record/ProjectRecordScreen.tsx:312-354 — .crumbs z .actions renderowane PRZED nagłówkiem, tak jak w prototypie; lot C2 dołożył tam primary-button „New task” (jedyne wypełnienie akcentu w tym pasie), a lot L2 zrobił z tego rzędu PASMO (<header> o wysokości `--header-band-height`) niosące trasę „Projects › <tytuł>”",
     // `prototypeStack` NA TRZECH EKRANACH REKORDU JEST ZADEKLAROWANĄ
     // RÓWNOWAŻNOŚCIĄ KSZTAŁTU, NIE ODCZYTEM, i musi to tu stać. Prototypowy
     // rekord nie ma `<header>` w ogóle: `rcShell` (v3/screens/record.js:226)
@@ -1039,12 +1468,23 @@ export const TITLE_BAND_ROWS = [
       "to --text-xl (v3/app.css:651)",
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
     // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
-    // (`styles.css:6744`) jest jedynym żywym konsumentem `--text-2xl`
+    // (`styles.css:6765`) jest jedynym żywym konsumentem `--text-2xl`
     // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
     // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
     // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby
     // rozjazd nad ekranem, którego nie zmierzył.
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "OWN_HEAD",
+    citeHeight:
+      'v3/screens/record.js:429-432 — tytuł rekordu (`<h1 class="rec-title">`) nie stoi w prototypie w ŻADNYM `<header>`: jest dzieckiem `.rc-main`, a crumbbar jest jego rodzeństwem. Równoważność zadeklarowana, nie zmierzona — ten sam przypadek i ten sam powód co przy `prototypeStack` tego wiersza',
+    todayHeight: "OWN_HEAD",
+    prototypeCarries: "TRAIL",
+    citeCarries:
+      'v3/screens/record.js:429-432 — `crumbbar("Projects › <p.title>", btn("New task", …))` nad `<h1 class="rec-title">` z tym samym tytułem: nazwa rekordu pada w paśmie i w tytule, i to jest wybór prototypu',
+    todayCarries: "TRAIL",
+    prototypeTrail: "TRAIL_2_TITLE",
+    citeTrail: PROJECT_RECORD_TRAIL_CITE,
+    todayTrail: "TRAIL_2_TITLE",
     // TRZECI KSZTAŁT POŁOŻENIA: nie „wiersz niżej", tylko RZĄD WYŻEJ. Przyrząd
     // szukający akcji wyłącznie POD pasmem przegapiłby ten ekran w całości.
     //
@@ -1068,14 +1508,16 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/record.js:556-561 — drugim argumentem crumbbara są btn("Subscribe", { cls: "quiet" }) i <button class="icon-btn">, czyli DWIE kontrolki bez tła (app.css:306-314 baza bez `background`, :318 quiet zmienia sam kolor, :135-139 icon-btn dostaje tło dopiero na hover) — żadnego modyfikatora z PROTOTYPE_FILLED_MODIFIERS',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    // TRZY CYTATY, TRZY JAWNE ŚCIEŻKI — poprawka przy naprawie po przeglądzie
-    // lotu L9. Środkowy stał jako goła kontynuacja `:208`, czytana przez
-    // narzędzie przeliczające jako ciąg dalszy `TaskRecordScreen.tsx`, gdzie
-    // pod tym numerem stoi `.split(/\n{2,}/u)` z pomocnika tekstu, a nie żaden
-    // slot. Chodziło o `ProjectRecordScreen.tsx` i o deklarację propsa, więc
-    // ścieżka jest teraz wypisana; trzeci cytat też, bo inaczej kontynuowałby
-    // od tamtego pliku.
-    app: "record/TaskRecordScreen.tsx:476-481 — .crumbs niesie WYŁĄCZNIE przycisk powrotu; slot .actions przyjmuje tylko record/ProjectRecordScreen.tsx:213; <h1> jest bezpośrednim dzieckiem header._header (record/TaskRecordScreen.tsx:493-496)",
+    // TRZY CYTATY, TRZY JAWNE ŚCIEŻKI — dyscyplina z naprawy po przeglądzie
+    // lotu L9, utrzymana nad TREŚCIĄ, którą oddał lot L2. Środkowy cytat stał
+    // kiedyś jako goła kontynuacja `:208`, czytana przez narzędzie
+    // przeliczające jako ciąg dalszy `TaskRecordScreen.tsx`, gdzie pod tym
+    // numerem stoi `.split(/\n{2,}/u)` z pomocnika tekstu, a nie żaden slot.
+    // Chodziło o `ProjectRecordScreen.tsx` i o deklarację propsa, więc ścieżka
+    // jest wypisana; trzeci cytat też, bo inaczej kontynuowałby od tamtego
+    // pliku. ZDANIE O PRODUKCIE JEST ZDANIEM PO LOCIE L2, nie sprzed niego:
+    // `.crumbs` nie jest już samym przyciskiem powrotu.
+    app: "record/TaskRecordScreen.tsx:501-508 — po locie L2 .crumbs jest PASMEM (<header>) i niesie trasę „Tasks › <tytuł zadania>” zamiast samego „‹ Tasks”; slot .actions przyjmuje tylko record/ProjectRecordScreen.tsx:213; <h1> jest bezpośrednim dzieckiem header._header (record/TaskRecordScreen.tsx:516-519) POD tym pasmem",
     // Ta sama zadeklarowana równoważność co przy rekordzie projektu — powód
     // stoi tam i nie powtarza się tu, żeby nie zrobić z jednego faktu trzech.
     prototypeStack: "ONE_ROW",
@@ -1089,6 +1531,17 @@ export const TITLE_BAND_ROWS = [
       "; na rekordzie także sam tytuł prototypu jest mniejszy — `.rec-title` " +
       "to --text-xl (v3/app.css:651)",
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "OWN_HEAD",
+    citeHeight:
+      'v3/screens/record.js:429-432 — tytuł rekordu (`<h1 class="rec-title">`) nie stoi w prototypie w ŻADNYM `<header>`: jest dzieckiem `.rc-main`, a crumbbar jest jego rodzeństwem. Równoważność zadeklarowana, nie zmierzona — ten sam przypadek i ten sam powód co przy `prototypeStack` tego wiersza',
+    todayHeight: "OWN_HEAD",
+    prototypeCarries: "TRAIL",
+    citeCarries:
+      'v3/screens/record.js:556-562 — `crumbbar("Tasks › <projekt> › T1", …)`: pasmo prowadzące niesie odnośnik do kolekcji i nazwę TEGO rekordu, a tytuł stoi niżej, w `.rc-main`',
+    todayCarries: "TRAIL",
+    prototypeTrail: "TRAIL_3_OTHER",
+    citeTrail: TASK_RECORD_TRAIL_CITE,
+    todayTrail: "TRAIL_2_TITLE",
     // WIERSZ, KTÓRY BYŁ ROZJAZDEM PRZEZ NIESYMETRYCZNY PREDYKAT, i dlatego stoi
     // tu z uzasadnieniem, a nie po cichu jako MATCH. Póki kolumna `prototype`
     // liczyła KAŻDY przycisk, a `today` tylko te z wypełnieniem, ten ekran był
@@ -1105,7 +1558,7 @@ export const TITLE_BAND_ROWS = [
     cite: "v3: `grep -n crumbbar screens/record.js app.js` daje ekrany rekordu projektu (:429), zadania (:556) i organizacji (:773) — szansy NIE MA",
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "opportunity/OpportunityRecordScreen.tsx:482-495 — .crumbs z samym przyciskiem powrotu; <h1> bezpośrednio w header._header",
+    app: "opportunity/OpportunityRecordScreen.tsx:487-495 — po locie L2 .crumbs jest PASMEM (<header>) z trasą „Pipeline › <tytuł szansy>”; <h1> bezpośrednio w header._header pod nim",
     // ŚLEPA PLAMA JEST TA SAMA NA WSZYSTKICH CZTERECH OSIACH i deklaruje się ją
     // osobnym napisem, a nie ciszą: ekran, którego prototyp nie ma, jest
     // MIERZONY i DRUKOWANY, ale nie może być rozjazdem.
@@ -1121,6 +1574,17 @@ export const TITLE_BAND_ROWS = [
       "(v3/screens/record.js:429), więc nie ma treści, której otwarcie dałoby " +
       "się porównać",
     todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "NO_SCREEN",
+    citeHeight:
+      "wiersz `no-screen` — `grep -n crumbbar v3/screens/record.js` daje rekord projektu (v3/screens/record.js:429) i zadania (:556), szansy NIE MA, więc obie kolumny tej osi mówią NO_SCREEN i predykat wyłącza ten wiersz, tak samo jak na osiach 1, 3 i 4",
+    todayHeight: "OWN_HEAD",
+    prototypeCarries: "NO_SCREEN",
+    citeCarries:
+      "wiersz `no-screen` — `grep -n crumbbar v3/screens/record.js` daje rekord projektu (v3/screens/record.js:429) i zadania (:556), szansy NIE MA, więc obie kolumny tej osi mówią NO_SCREEN i predykat wyłącza ten wiersz, tak samo jak na osiach 1, 3 i 4",
+    todayCarries: "TRAIL",
+    prototypeTrail: "NO_SCREEN",
+    citeTrail: OPPORTUNITY_RECORD_TRAIL_CITE,
+    todayTrail: "TRAIL_2_TITLE",
     // ZADEKLAROWANA ŚLEPA PLAMA. Wiersz jest mierzony i drukowany, ale nie może
     // być znaleziskiem: nie ma prototypu, od którego miałby się rozjechać.
     // Stoi tu, żeby ekran nie wypadł z pokrycia po cichu — cisza o nim byłaby
@@ -1192,8 +1656,49 @@ export const isTitleBandOpeningDivergence = (row) =>
     : (row.prototypeOpening === "OPENING_2XL") !==
       (row.todayOpening === "OPENING_2XL");
 
+/**
+ * Czy TEN wiersz jest rozjazdem na OSI WYSOKOŚCI PASMA (L2).
+ *
+ * PORÓWNANIE JEST BINARNE, tak samo jak na osi otwarcia i z tego samego
+ * powodu: kolumna prototypu odpowiada na pytanie CZYTELNE ze źródła („czy
+ * tytuł tego ekranu stoi w paśmie, które prototyp deklaruje jednym
+ * `min-height: var(--header-band-height)`"), a kolumna `today` jest POMIAREM
+ * o trzech stanach. Rozjazdem jest niezgodność na tym jednym pytaniu; trzeci
+ * stan pomiaru (`SHELL_BAND_OFF` wobec `OWN_HEAD`) rozróżnia PRZYCZYNĘ i jest
+ * drukowany, a pilnuje go dryf od kolumny `today`.
+ */
+export const isTitleBandHeightDivergence = (row) =>
+  row.prototype === "no-screen"
+    ? false
+    : (row.prototypeHeight === "SHELL_BAND") !==
+      (row.todayHeight === "SHELL_BAND");
+
+/**
+ * Czy TEN wiersz jest rozjazdem na OSI ZAWARTOŚCI PASMA (L2).
+ *
+ * Tu porównanie jest PEŁNE, a nie binarne, i to jest różnica wobec dwóch
+ * poprzednich: obie strony odpowiadają dokładnie tym samym słownikiem, bo obie
+ * są czytane tym samym pytaniem — „czy w paśmie prowadzącym stoi wyszukiwanie,
+ * trasa, oba, czy sama nazwa". Po stronie prototypu odpowiedź wychodzi
+ * z gretu po `act: "palette"` i z crumbbarów rekordu; po naszej — z tekstu
+ * narysowanych kontrolek.
+ */
+export const isTitleBandCarriesDivergence = (row) =>
+  row.prototype === "no-screen"
+    ? false
+    : row.todayCarries !== row.prototypeCarries ||
+      row.todayTrail !== row.prototypeTrail;
+
 export const TITLE_BAND_STACK_DIVERGENCES = TITLE_BAND_ROWS.filter(
   isTitleBandStackDivergence,
+);
+
+export const TITLE_BAND_HEIGHT_DIVERGENCES = TITLE_BAND_ROWS.filter(
+  isTitleBandHeightDivergence,
+);
+
+export const TITLE_BAND_CARRIES_DIVERGENCES = TITLE_BAND_ROWS.filter(
+  isTitleBandCarriesDivergence,
 );
 
 export const TITLE_BAND_OPENING_DIVERGENCES = TITLE_BAND_ROWS.filter(
@@ -1394,6 +1899,35 @@ export const classifyTitleBandCensus = ({
       "TITLE_BAND_OPENING_NEVER_RESOLVED: not one screen in this pass produced a heading in its " +
         "content column at all, so the opening axis measured NOTHING anywhere. „No screen opens " +
         "with a big title” would then be a fact about this probe, not about the product.",
+    );
+  // STRAŻNIK OSI PIĄTEJ. Ta sama polaryzacja co przy `NEVER_ONE_ROW`
+  // (`undefined` ZAPALA), bo pole niepodane w `judged` ma być awarią, a nie
+  // ciszą. Świadkiem jest dziewięć ekranów, których pasmo rysuje
+  // `SurfaceTitleBand` albo gołe `.surface-header`; gdyby ani jeden nie wrócił
+  // `SHELL_BAND`, znaczyłoby to albo że sonda `--header-band-height` nie
+  // rozwiązuje się w tej stronie, albo że klasa pasma przestała się zgadzać —
+  // i w obu przypadkach rozjazdy tej osi byłyby faktem o przyrządzie.
+  if (!measured.some((entry) => entry.height?.state === "SHELL_BAND"))
+    failures.push(
+      "TITLE_BAND_HEIGHT_NEVER_ON_BAND: not one screen in this pass carried its title in the " +
+        "shell's own band at the band height the shell declares. Either „--header-band-height” " +
+        "stopped resolving in the page, or „.surface-header” stopped being the class the bands " +
+        "wear — and then every finding on this axis is a fact about the probe, not the product.",
+    );
+  // STRAŻNIK OSI SZÓSTEJ MÓWI „UMIE WRÓCIĆ SAMĄ NAZWĄ", a nie „znalazła trasę".
+  // Ten kierunek jest wybrany świadomie: `NAME_ONLY` jest odpowiedzią, której
+  // ta oś ma udzielać na JEDENASTU ekranach z piętnastu, więc detektor
+  // zapalający flagę wszędzie jest zepsuty w sposób NIEWIDOCZNY dla porównania
+  // z prototypem tylko wtedy, gdy zapala ją na wszystkich naraz. Odwrotny
+  // strażnik („ani jednej trasy") byłby czerwony na każdym drzewie, na którym
+  // rekord nie został jeszcze oddany — czyli mierzyłby robotę, a nie przyrząd.
+  if (!measured.some((entry) => entry.carries?.state === "NAME_ONLY"))
+    failures.push(
+      "TITLE_BAND_CARRIES_NEVER_NAME_ONLY: every band in this pass came back carrying something " +
+        "beside the screen's name. Eleven of the fifteen declared screens are MEASURED carrying " +
+        "nothing else (the „todayCarries” column), so " +
+        "a pass that finds a search control or a trail on all of them is reading its own " +
+        "detectors wrong, not describing the product.",
     );
 
   return failures;

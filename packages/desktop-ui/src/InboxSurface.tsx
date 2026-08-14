@@ -280,13 +280,18 @@ export const InboxSurface = ({
 
   return (
     <div className={`surface-scroll ${styles.inbox}`}>
+      {/* PASMO JEDNOWIERSZOWE: NAZWA PO LEWEJ, LICZBA PO PRAWEJ. Prototyp:
+          `crumbbar("Inbox", <span class="when">4 to decide · 3 to route</span>)`
+          (`v3/screens/inbox.js:287-288`) — po lewej jedno nazwanie, nic nad nim.
+          Stał tu nadtytuł „Signals and captures", czyli zdanie TŁUMACZĄCE ekran
+          w miejscu, w którym prototyp go NAZYWA (wpis 3-2 rejestru przejścia),
+          i pasmo rysowało przez niego dwa wiersze. Nazwa, która przestaje
+          wystarczać, poprawia się w NAZWIE — dokładnie to mówi nota przy
+          crumbbarze Skrzynki w prototypie (`v3/screens/inbox.js:283-286`). */}
       <header className="surface-header">
-        <div>
-          <p className="eyebrow">Signals and captures</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Inbox
-          </h1>
-        </div>
+        <h1 id="surface-title" tabIndex={-1}>
+          Inbox
+        </h1>
         {attention.kind === "ready" && (
           <p
             className={styles.waiting}

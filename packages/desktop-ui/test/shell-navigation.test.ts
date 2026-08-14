@@ -30,6 +30,7 @@ import {
   serializeShellNavigation,
   settingsCategoryContext,
   taskContext,
+  tasksSavedViewContext,
 } from "../src/client/shell-navigation.js";
 
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000001");
@@ -580,6 +581,76 @@ describe("shell navigation across a version upgrade", () => {
       restored.tabs.map((tab) => tab.libraryReading),
       [undefined, "captures"],
     );
+  });
+
+  // ZAPISANY WIDOK ZADAŃ — trzecie pole tej samej rodziny co kategoria
+  // Ustawień i odczyt Biblioteki, i JEDYNE z trzech, które nie miało ani
+  // jednego testu. Zmierzył to przegląd adwersarialny lotu L11: doszło pole na
+  // SERIALIZOWANYM kontekście, gałąź w `isRestorableShellContext`, konstruktor
+  // kontekstu, para propsów na ekranie i efekt — a w diffie lotu nie było ani
+  // jednej nowej asercji. Kontrakt tego samego lotu żąda od wiersza, żeby
+  // OTWIERAŁ to, co nazywa; ta połowa (przeżycie zapisu) jest tutaj, druga
+  // (kliknięcie naprawdę otwiera widok) w `tasks-saved-view.interaction.test.tsx`.
+  it("reopens Tasks on the saved view the row named, and keeps it on the destination tab", () => {
+    const fallback = destinationContext("today", "Today");
+    const deep = tasksSavedViewContext("view-segment-mssp");
+    // TEN SAM KLUCZ CO ZWYKŁY CEL, i to jest treść, nie szczegół: Zadania są
+    // JEDNYM celem o wielu widokach, więc otwarcie innego widoku podmienia tę
+    // samą zakładkę zamiast robić drugą pod tym samym ekranem.
+    assert.equal(deep.key, "destination:tasks");
+    assert.equal(deep.label, "Tasks");
+
+    let state = createShellNavigation(fallback);
+    state = openShellContext(state, deep);
+    const restored = restoreShellNavigation(
+      serializeShellNavigation(state),
+      fallback,
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.savedViewId),
+      [undefined, "view-segment-mssp"],
+    );
+    assert.equal(activeShellContext(restored).savedViewId, "view-segment-mssp");
+
+    // DRUGI WIDOK PODMIENIA TEN SAM WPIS, nie dokłada zakładki — inaczej lewa
+    // kolumna z trzema widokami produkowałaby trzy zakładki „Tasks", z których
+    // żadna nie mówi, czym się różni od pozostałych.
+    const switched = openShellContext(
+      state,
+      tasksSavedViewContext("view-renewals"),
+    );
+    assert.equal(switched.tabs.length, 2);
+    assert.equal(activeShellContext(switched).savedViewId, "view-renewals");
+  });
+
+  it("refuses a saved view identifier that is not a string", () => {
+    // KSZTAŁT, NIE SŁOWNIK: widoki nie mają zamkniętej listy, więc walidacja
+    // sprawdza to jedno, co da się sprawdzić bez odczytu. Widok SKASOWANY
+    // między sesjami jest legalny i otwiera „All work" — odrzucenie zapisu
+    // byłoby wtedy utratą zakładki za coś, co nie jest błędem.
+    const restored = restoreShellNavigation(
+      JSON.stringify({
+        version: 3,
+        state: {
+          tabs: [
+            {
+              key: "destination:tasks",
+              label: "Tasks",
+              surface: "tasks",
+              savedViewId: 7,
+            },
+          ],
+          activeKey: "destination:tasks",
+          history: [
+            { key: "destination:today", label: "Today", surface: "today" },
+          ],
+          historyIndex: 0,
+        },
+      }),
+      destinationContext("today", "Today"),
+    );
+    assert.equal(activeShellContext(restored).surface, "today");
+    assert.equal(restored.tabs.length, 1);
   });
 
   it("refuses a saved reading that is not one of the three", () => {

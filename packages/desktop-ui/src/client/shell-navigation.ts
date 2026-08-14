@@ -99,6 +99,23 @@ export interface ShellContext {
    *  `libraryReading`: zapis bez tego pola czyta się dalej, a ten z nim czyta
    *  starsza wersja, bo walidacja nie odrzuca nadmiarowych kluczy. */
   readonly settingsCategory?: SettingsCategoryId;
+  /** Który ZAPISANY WIDOK Zadań ma być otwarty po wejściu.
+   *
+   *  Ta sama relacja co przy Bibliotece i jej trzech odczytach: Zadania są
+   *  jednym celem o wielu zapisanych widokach, więc pole siedzi na kontekście,
+   *  a nie w stanie powłoki — drugi poziom lewej kolumny musi umieć POWIEDZIEĆ,
+   *  który widok otwiera, a nie tylko zaprowadzić na ekran, gdzie czytelnik
+   *  wybierze go drugi raz sam.
+   *
+   *  Identyfikator jest tu zwykłym napisem, a nie znakowanym typem, i to jest
+   *  ta sama decyzja co przy `taskId`/`projectId` wyżej: kontekst przeżywa
+   *  serializację, więc walidacja przy odczycie i tak sprawdza NAPIS. Widok
+   *  skasowany między sesjami nie zwraca nic i ekran otwiera się na „All work"
+   *  — to jest ta sama degradacja co przy `activeViewId` wybranym z listy.
+   *
+   *  Nie wymaga podbicia `NAVIGATION_STATE_VERSION` z tego samego powodu co
+   *  `libraryReading` i `settingsCategory`. */
+  readonly savedViewId?: string;
 }
 
 // Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
@@ -165,6 +182,14 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (
     context.settingsCategory !== undefined &&
     !isSettingsCategory(context.settingsCategory)
+  )
+    return false;
+  // Identyfikator widoku nie ma słownika, więc sprawdzany jest KSZTAŁT — tak
+  // samo jak przy identyfikatorach rekordów wyżej. Widok, którego już nie ma,
+  // nie unieważnia zapisu: ekran otwiera się wtedy na „All work".
+  if (
+    context.savedViewId !== undefined &&
+    typeof context.savedViewId !== "string"
   )
     return false;
   // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
@@ -471,6 +496,25 @@ export const libraryReadingContext = (
   label,
   surface: "library",
   libraryReading: reading,
+});
+
+/**
+ * Zadania otwarte NA KONKRETNYM ZAPISANYM WIDOKU.
+ *
+ * Klucz jest ten sam co u zwykłego celu (`destination:tasks`) — dokładnie jak
+ * przy {@link libraryReadingContext} i {@link settingsCategoryContext}:
+ * Zadania to jeden cel, więc otwarcie ich na innym widoku podmienia tę samą
+ * zakładkę, zamiast robić drugą pod tym samym ekranem.
+ *
+ * ETYKIETA ZOSTAJE „Tasks", z tego samego powodu co przy Ustawieniach:
+ * `migrateRestoredContext` czyta etykietę zakładki-celu Z REJESTRU, więc nazwa
+ * widoku i tak nie przeżyłaby zapisania sesji.
+ */
+export const tasksSavedViewContext = (savedViewId: string): ShellContext => ({
+  key: "destination:tasks",
+  label: desktopSurfaceLabel("tasks"),
+  surface: "tasks",
+  savedViewId,
 });
 
 /**

@@ -17,9 +17,9 @@
      policzone z importów `record-screen.module.css`, a nie z pamięci
      (pierwsza wersja tej noty wymieniała dwóch konsumentów i była niepełna):
      1. rekord zadania (`record/TaskRecordScreen.tsx:50`) rysuje się WEWNĄTRZ
-        korzenia Zadań (`tasks/TasksSurface.tsx:425`, `.tasks`);
+        korzenia Zadań (`tasks/TasksSurface.tsx:487`, `.tasks`);
      2. rekord projektu (`record/ProjectRecordScreen.tsx:56`) wewnątrz
-        `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:640`);
+        `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`);
      3. rekord szansy (`opportunity/OpportunityRecordScreen.tsx:49`, nosi
         `.screen` w `:482`) wewnątrz `.surface-scroll` + `.pipeline`
         (`pipeline/PipelineSurface.tsx:863-866` — tablica lejka oddaje kanwę
@@ -54,13 +54,53 @@
 
 /* The way back and the record's own verbs on one line. The trail is first in
    the DOM as well as first on screen: it is the thing a reader who arrived by
-   mistake wants, and it must not be behind four buttons in the tab order. */
+   mistake wants, and it must not be behind four buttons in the tab order.
+
+   OD LOTU L2 TO JEST PASMO, A NIE RZĄD W TREŚCI (wpis 12-2). Prototyp otwiera
+   każdy rekord `crumbbar`-em: `min-height: var(--header-band-height)`,
+   `align-items: center`, włoskowa kreska pod spodem (`v3/app.css:282-285`) —
+   ta sama trójka, którą niesie `.surface-header` na dwunastu pozostałych
+   ekranach. Wysokość jest TOKENEM, nie liczbą: przy 200% pisma pasmo ma rosnąć
+   razem z tekstem, dlatego `min-block-size`, a nie `block-size`.
+
+   `flex-wrap` ZOSTAJE: przy 300% pisma trasa i akcje nie mieszczą się
+   w jednym rzędzie i mają się złamać, a nie wystawać poza ekran. Pasmo rośnie
+   wtedy o drugi rząd — dokładnie tak, jak `.surface-header` z tego samego
+   powodu. */
 .crumbs {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
   min-inline-size: 0;
+  min-block-size: var(--header-band-height);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+/* Separator trasy. Prototyp rysuje tu szewron ikoną (`icon("chev")`,
+   `v3/screens/record.js:557`) w barwie `--text-disabled` (`v3/app.css:290`);
+   u nas jest to znak, bo cała trasa jest tekstem i ma się łamać razem z nim.
+   `aria-hidden` w JSX, bo czytnik ekranu dostaje trasę jako dwa osobne
+   elementy, a nie jako zdanie z „większe niż" w środku. */
+.crumbSeparator {
+  color: var(--text-disabled);
+  flex: none;
+  font-size: var(--text-xs);
+}
+
+/* Bieżący człon trasy — nazwa TEGO rekordu. Waga i ucinanie z `.crumbs .cur`
+   prototypu (`v3/app.css:292`): `white-space: nowrap` jest tam całą regułą
+   „lewa strona pasma to jeden wiersz", więc długi tytuł ucina się wielokropkiem
+   zamiast rozpychać pasmo na dwa rzędy. */
+.crumbCurrent {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .back {

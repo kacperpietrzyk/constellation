@@ -2,7 +2,7 @@
    close glyph and metrics; sizing comes from the global `svg` rule and the
    consuming control (e.g. `.icon-button`).
 
-   THIS FILE IS ON THE HOT PATH. `RealApp.tsx:54` imports it statically, so its
+   THIS FILE IS ON THE HOT PATH. `RealApp.tsx:58` imports it statically, so its
    chunk sits behind a `modulepreload` and every glyph here is paid for at
    window open, whether or not anything renders it. The map below is a plain
    object literal inside the component — nothing tree-shakes an unused entry.

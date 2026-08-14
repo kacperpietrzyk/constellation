@@ -155,7 +155,7 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
  * CO TA ZAMIANA KOSZTUJE, POWIEDZIANE WPROST. Nadchodzące rysują ALBO stan
  * pusty, ALBO kartę z wierszami — to dwa ramiona jednego wyrażenia
  * (`MeetingsSurface.tsx:880`), a bramka chodzi po JEDNYM adresie
- * (`verify-renderer-layout.mjs:116`), więc jedna fikstura rysuje jedno ramię.
+ * (`verify-renderer-layout.mjs:124`), więc jedna fikstura rysuje jedno ramię.
  * Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (farba karty, farba
  * wpuszczonego wiersza, jego trzy ścieżki, szerokość akcji) przeciwko JEDNEMU
  * (przezroczystość stanu pustego). Ten jeden stoi wypisany w
@@ -440,7 +440,7 @@ const client = createScenarioClient({
           // record screen reads `description` off THIS capped list
           // (`TaskRecordScreen.tsx:387` — `snapshot.tasks.find(...)`), never off
           // `work.overview`, and it draws `.prose` only when the string is
-          // non-empty (`:653-667`). While this field was absent the screen drew
+          // non-empty (`:676-690`). While this field was absent the screen drew
           // the "No context saved yet" note instead, so the reading measure of
           // the whole record family — the one thing lot 4 #12 is about — was
           // never on the page for anything to measure.
@@ -509,7 +509,7 @@ const client = createScenarioClient({
           statusId,
           // NOT "actionable", and the difference is a whole element. The record
           // says the operational state out loud only when it is NOT the default
-          // (`TaskRecordScreen.tsx:508`) — an "actionable" task draws no
+          // (`TaskRecordScreen.tsx:531`) — an "actionable" task draws no
           // `.why` span at all. A harness whose only task was actionable
           // therefore held a screen on which lot 4 #2's subject did not exist,
           // and the pair reading it was unfalsifiable rather than pending.

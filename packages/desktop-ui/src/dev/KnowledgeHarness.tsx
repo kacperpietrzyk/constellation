@@ -283,6 +283,11 @@ export const KnowledgeHarness = () => {
             setInspectorOpen(true);
           }}
           onEntityActivate={() => undefined}
+          // Ten harness nie ma powłoki, więc nie ma też palety wyszukiwania,
+          // którą pasmo Biblioteki otwiera w aplikacji. Kontrolka ma się
+          // NARYSOWAĆ (jest częścią pasma i tak ją mierzy bramka układu),
+          // a jej brak działania jest tu prawdą o harnessie.
+          onOpenSearch={() => undefined}
           onReload={async () => undefined}
           onFailure={() => undefined}
           captureHistory={{

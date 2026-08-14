@@ -53,7 +53,7 @@
 // strony. Paleta NIE JEST WPISANA: bierze się ją z żywych własności `--*` na
 // korzeniu dokumentu i rozwiązuje SONDĄ W TEJ SAMEJ STRONIE, przez TĘ SAMĄ
 // właściwość, którą czyta podmiot (mechanika `expect.kind: "token"`,
-// `verify-renderer-layout.mjs:3687-3704`). Bez tego „oklch(…)" nigdy nie
+// `verify-renderer-layout.mjs:3695-3712`). Bez tego „oklch(…)" nigdy nie
 // zrównałoby się z „rgb(…)", a przyrząd meldowałby rozjazd na samej notacji.
 //
 // CZEGO TU CELOWO NIE MA I DLACZEGO — bo literał farby byłby dokładnie tą wadą,
@@ -71,7 +71,7 @@
 //   * NIE MA UZNAWANIA WARTOŚCI WYPROWADZONYCH Z TOKENU, i to jest ŚWIADOME.
 //     Legalne jest tło RÓWNE rozwiązanemu napisowi tokenu, więc
 //     `color-mix(in oklch, var(--surface-stage), transparent 22%)`
-//     (`styles.css:4772`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
+//     (`styles.css:4785`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
 //     czyli werdykt SPOZA rejestru, czyli PADA. Rozpoznanie takiej wartości
 //     wymagałoby porównania „z dokładnością do alfy" po konwersji przestrzeni
 //     WEWNĄTRZ przyrządu, czyli arytmetyki, której poprawności ten przyrząd nie

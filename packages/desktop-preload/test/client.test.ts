@@ -29,13 +29,34 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
   const shortcuts = desktopSurfaceRegistry.flatMap((surface) =>
     surface.shortcut === null ? [] : [surface.shortcut],
   );
-  // Cyfry są PRZYPISANE DO CELÓW, nie rozdawane po kolei: docelowy zbiór ma
-  // jedenaście celów, a klawiatura dziewięć skrótów, więc numeracja jest
-  // zarezerwowana pod kształt docelowy i w trakcie fal zostają w niej dziury
-  // (6 czeka na Pipeline; 8 zajęły People). Asercja o ciągłym [1..9] wymuszałaby
-  // przenumerowanie skrótów przy każdej fali — czyli cyfrę, która zmienia
-  // znaczenie pod ręką. Niezmiennik jest inny: cyfry są unikalne i mieszczą
-  // się w zasięgu klawiatury.
+  // Cyfry są PRZYPISANE DO CELÓW, nie rozdawane po kolei, a przypisuje je
+  // prototyp v3 (`v3/app.js:156-169`, pole `key`): cel bez odpowiednika po
+  // tamtej stronie nie dostaje cyfry, więc w zbiorze zostają dziury i asercja
+  // o ciągłym [1..9] byłaby fałszywa.
+  //
+  // CAŁY ZBIÓR, NIE POJEDYNCZE WPISY — i to jest różnica wobec poprzedniej
+  // wersji tego testu, która pytała wyłącznie o unikalność i zasięg. Mapa
+  // rozjeżdżała się z prototypem od cyfry 8 (u nas People, tam Meetings)
+  // i ŻADNA asercja tego nie widziała, bo unikalność i zasięg były spełnione
+  // przez oba przypisania. Ta sama lekcja co przy `resolveRenewal` w fali C:
+  // asertuj cały zbiór kluczy, bo pojedynczy klucz jest ślepy na przestawienie.
+  assert.deepEqual(
+    desktopSurfaceRegistry.map((surface) => [surface.id, surface.shortcut]),
+    [
+      ["today", 1],
+      ["calendar", 2],
+      ["inbox", 3],
+      ["tasks", 4],
+      ["projects", 5],
+      ["pipeline", 6],
+      ["organizations", 7],
+      ["people", null],
+      ["renewals", null],
+      ["meetings", 8],
+      ["library", 9],
+      ["settings", null],
+    ],
+  );
   assert.equal(new Set(shortcuts).size, shortcuts.length);
   assert.equal(
     shortcuts.every(

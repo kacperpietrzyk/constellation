@@ -24,11 +24,33 @@
   gap: var(--space-6);
 }
 
+/* PRAWA POŁOWA PASMA, nie jego lewy stos. Do lotu L2 ten pojemnik trzymał
+   nadtytuł-zakres NAD tytułem i przez to pasmo policzone na jeden wiersz
+   rysowało dwa; teraz stoi PO `<h1>` i niesie to, co prototyp daje drugiemu
+   argumentowi `crumbbar` — zakres tygodnia i kontrolki tego odczytu
+   (`v3/screens/calendar.js:202`). `align-items: center`, bo równa się do rzędu
+   tytułu, a nie do linii bazowej nieistniejącego już stosu. */
 .headline {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: var(--space-4);
+}
+
+/* ZAKRES TYGODNIA W PAŚMIE. Wartości są z prototypu (`v3/app.css:441`,
+   `.when`), a nie z sąsiedniego arkusza — ale ta sama trójka stoi już
+   w `today.module.css` (`.bandDate`), bo Dzisiaj rysuje w paśmie dokładnie tę
+   samą rzecz. To jest DRUGIE miejsce tego odczytu i mówię to wprost: oba są
+   CSS Modułami dwóch leniwych chunków, więc jedna reguła musiałaby zamieszkać
+   w arkuszu ścieżki gorącej. Kiedy trzeci ekran zażąda tego samego, ta
+   wymiana się opłaci; przy dwóch nie opłaca się jeszcze. */
+.when {
+  flex: none;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .weekNav {
@@ -382,7 +404,7 @@
    „The chrome belongs to the LIST, not to the section".
 
    NIE PRZYCINA — I JEST TO ŚWIADOMY ROZJAZD Z PROTOTYPEM, KTÓRY PRZYCINA
-   (`:202` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
+   (`:224` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
    miał: jego wiersz tacy też jest ogniskowalny (`v3/screens/calendar.js:101` —
    `role="option"` z wędrującym `tabindex`), jego reguła ogniska sięga 3 px
    twardym konturem i 5 px poświatą poza pudełko (`v3/app.css:36-43`), a
