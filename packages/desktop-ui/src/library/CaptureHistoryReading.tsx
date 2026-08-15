@@ -214,7 +214,25 @@ export const CaptureHistoryReading = ({
         What was processed stays checkable, and reversible when versions match.
       </p>
       {snapshot.captures.length === 0 ? (
+        /* SZCZEBEL PODANY JAWNIE, BO PUSTY STAN STOI NA MIEJSCU REJESTRU.
+           `InlineState` ma domyślnie `h3` — dobry szczebel wszędzie tam, gdzie
+           pustka jest pustką SEKCJI stojącej pod nagłówkiem `h2`. Tutaj jest
+           odwrotnie: ta gałąź ZASTĘPUJE całą sekcję `history-ledger` razem z jej
+           `<h2>Kept originals</h2>`, więc na pustym obszarze roboczym jest
+           JEDYNYM nagłówkiem treści i staje wprost pod `h1` pasma. `h3` robił
+           tam dziurę h1→h3.
+
+           I TO NIE JEST OSTROŻNOŚĆ, TYLKO NAPRAWA ZMIERZONEJ WADY: dokładnie ta
+           dziura położyła wszystkie trzy zadania `Packaged local Alpha`
+           (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [3]` —
+           cytat z ładunku TAMTEGO przebiegu, sprzed zmiany kształtu pola: dziś
+           niesie ono opis `h1->h3 h3 "..."`, a nie samą cyfrę) —
+           zamiatanie paczkowanej alfy wchodzi na `captures` PRZED wykonaniem
+           pierwszej wrzutki, czyli na tę właśnie gałąź. Bramka układu przeszła
+           nad tym na zielono, bo jej fikstura ma wrzutki; złamanie, które to
+           odtwarza, stoi w `scripts/break-empty-state-outline.mjs`. */
         <InlineState
+          headingLevel="h2"
           title="Capture history is empty"
           detail="The first Quick Capture will appear here with what it became."
         />

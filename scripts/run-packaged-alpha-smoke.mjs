@@ -1300,12 +1300,30 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             // więc drabina policzona nad jednym korzeniem nie jest drabiną
             // ekranu. Dzieci nośnika są w kolejności dokumentu, a
             // \`querySelectorAll\` też — złożenie zachowuje kolejność.
-            const headings = withinRoots("h1, h2, h3, h4, h5, h6").map(
+            const headingNodes = withinRoots("h1, h2, h3, h4, h5, h6");
+            const headings = headingNodes.map(
               (element) => Number(element.tagName.slice(1))
             );
+            // WERDYKT MÓWI, KTÓRY NAGŁÓWEK PRZESKOCZYŁ, a nie samą cyfrę jego
+            // szczebla — i to jest poprawka po zdarzeniu, nie ozdoba. Do tej
+            // wersji ładunek niósł \`headingJumps: [3]\`, czyli „gdzieś na tym
+            // ekranie jest \`h3\` po czymś płytszym niż \`h2\`": z trzech systemów
+            // CI wracała liczba, po której trzeba było dopiero ODTWARZAĆ, o który
+            // nagłówek chodzi. Repozytorium ma nazwaną klasę „werdykt bez
+            // pomiaru"; ten wiersz ją stąd usuwa.
             const headingJumps = headings
               .slice(1)
-              .filter((level, index) => level - headings[index] > 1);
+              .map((level, index) => ({ level, previous: headings[index], index: index + 1 }))
+              .filter((step) => step.level - step.previous > 1)
+              .map((step) => {
+                const element = headingNodes[step.index];
+                return (
+                  "h" + step.previous + "→h" + step.level + " " +
+                  element.tagName.toLowerCase() +
+                  (element.id ? "#" + element.id : "") +
+                  ' "' + (element.textContent || "").trim().slice(0, 40) + '"'
+                );
+              });
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
@@ -1325,7 +1343,14 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           }
           return results;
         })()`);
-        const invalidNarrowSurface = narrowSurfaces.find(
+        // WSZYSTKIE WADLIWE POWIERZCHNIE, NIE PIERWSZA. Tu stało `.find()`, więc
+        // jeden przebieg mówił o JEDNYM ekranie — a przebieg kosztuje
+        // spakowanie aplikacji i chodzi na trzech systemach. Przy rozdziale
+        // Biblioteki na trzy cele (lot D3) znaczyło to, że o wadzie na drugim
+        // z nich dałoby się dowiedzieć dopiero w NASTĘPNYM cyklu CI, po
+        // naprawieniu pierwszej. Zbieranie kosztuje jedno słowo i oddaje cały
+        // obraz naraz.
+        const invalidNarrowSurfaces = narrowSurfaces.filter(
           (surface) =>
             surface.documentWidth > 320 ||
             !surface.surfacePresent ||
@@ -1336,9 +1361,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             surface.missingAriaReferences.length > 0 ||
             surface.headingJumps.length > 0,
         );
-        if (invalidNarrowSurface !== undefined) {
+        if (invalidNarrowSurfaces.length > 0) {
           throw new Error(
-            `PACKAGED_ALPHA_NARROW_SURFACE_INVALID:${JSON.stringify(invalidNarrowSurface)}`,
+            `PACKAGED_ALPHA_NARROW_SURFACE_INVALID:${JSON.stringify(invalidNarrowSurfaces)}`,
           );
         }
 

@@ -13,6 +13,18 @@ import { defineConfig } from "vitest/config";
 // poza zdarzeniami, układem pudełkowym w wersji zerowej i `localStorage`.
 export default defineConfig({
   plugins: [react()],
+  // JEDEN KATALOG SPOZA PACZKI, WPUSZCZONY IMIENNIE. `empty-state-outline`
+  // osądza konspekt nagłówków REGUŁĄ, która stoi w `scripts/heading-outline.mjs`
+  // i jest tą samą, uzbrojoną regułą, co w bramce układu — przepisanie jej do
+  // tej paczki byłoby drugą kopią kształtu obok pierwszej, czyli klasą defektu,
+  // którą to repozytorium ma już nazwaną. Bez tego wpisu Vite odmawia
+  // rozwiązania pliku spoza katalogu projektu, i to komunikatem „Cannot find
+  // module" nad plikiem, który istnieje.
+  //
+  // WPUSZCZONY JEST `scripts`, A NIE KORZEŃ REPOZYTORIUM, bo szeroka reguła
+  // pozwoliłaby każdemu przyszłemu testowi sięgnąć po dowolny plik projektu
+  // i przestałaby cokolwiek znaczyć.
+  server: { fs: { allow: [".", "../../scripts"] } },
   test: {
     environment: "happy-dom",
     include: ["test/**/*.interaction.test.ts?(x)"],

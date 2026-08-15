@@ -193,6 +193,33 @@ export const HEADING_OUTLINE_LEVELS_ARMED =
 // przełączanie układów i wchodzenie w stany pustki na przystanku to robota
 // PRZELOTKI (`verify-renderer-layout.mjs`), nie reguły nad zebraną tablicą.
 // Reguła jest gotowa na te ekrany w dniu, w którym przelotka je odwiedzi.
+//
+// ── SPIS WYŻEJ ZGNIŁ, ZANIM KTOKOLWIEK GO PRZECZYTAŁ, I DRUGA ZBIÓRKA STĄD
+//    WYNIKŁA ────────────────────────────────────────────────────────────────
+//
+// Cztery nazwy w akapicie `NO_HEADINGS` („tasks, projects, pipeline, people")
+// to RĘCZNA LISTA OBOK OTWARTEGO ZBIORU POWIERZCHNI, czyli klasa defektu, którą
+// to repozytorium ma nazwaną. Lot D3 dołożył `captures` po tym, jak lista
+// została napisana, i nikt jej nie dopisał — a Historia wrzutek na pustym
+// obszarze roboczym rysuje `InlineState`, którego domyślnym szczeblem jest
+// `h3`. Konspekt `h1 → h3`, czyli dokładnie ten defekt, którego ta oś pilnuje.
+//
+// TA OŚ PRZESZŁA WTEDY NA ZIELONO I MIAŁA RACJĘ: przelotka odwiedza `captures`
+// (wiersz `captures NO_OPENING band h1 content h2` w raporcie), tyle że na
+// ZASIANEJ fiksturze, gdzie rejestr wrzutek ma wiersze i rysuje
+// `h2 Kept originals`. Zmierzone jeszcze raz osobno: przy 320 px na tej samej
+// fiksturze konspekt jest identyczny, więc winna była DANE, a nie szerokość.
+// Wadę znalazł paczkowany smoke — trzy systemy, dwadzieścia minut, po fakcie
+// (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [3]`).
+//
+// DRUGIE MIEJSCE ZBIÓRKI, TA SAMA REGUŁA:
+// `packages/desktop-ui/test/empty-state-outline.interaction.test.tsx` montuje
+// powłokę na fiksturze BEZ danych, chodzi po całym `desktopSurfaceRegistry`
+// i podaje zebrane konspekty TEJ funkcji. Reguła nie jest tam przepisana, tylko
+// zaimportowana z tego pliku — inaczej byłyby to dwa słowniki tego samego
+// kształtu. Podział pracy: przelotka odpowiada za stany Z DANYMI i za wszystko,
+// co wymaga pikseli; tamten plik za stany PUSTE, których żadna fikstura bramki
+// nie rysuje. Złamania na obu ekranach: `scripts/break-empty-state-outline.mjs`.
 
 /** How a heading is printed in a report line and in a failure. */
 export const describeHeading = (heading) =>
