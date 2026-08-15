@@ -1927,20 +1927,40 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Separate data boundaries</h2>
+                {/* WPIS 13-5 DOKUMENTU PRZEJŚCIA, CZĘŚĆ KONTEKSTOWA. Trzy wejścia
+                    pomocy w kategoriach Ustawień były podkreślonymi zdaniami
+                    stojącymi POD akapitem sekcji — czyli nie „przy rzeczy", tylko
+                    pod nią, w rozmiarze kontrolki. Prototyp nie ma pomocy
+                    w Ustawieniach w ogóle, więc regułą jest tu wzorzec, a nie
+                    kopia: `patterns.md` — „Pattern: On-demand help mark",
+                    plakietka MNIEJSZA od etykiety i STOJĄCA PRZY NIEJ
+                    (`v3/app.css:893-903`). Znak wchodzi więc do nagłówka sekcji,
+                    a nie zostaje osobnym piętrem pod akapitem: plakietka pod
+                    zdaniem nie stoi przy niczym.
+
+                    NAZWA ZOSTAJE TA, KTÓRA TU BYŁA — te trzy kontrolki miały
+                    własne, dobre napisy, a prototypowa formuła („What this means:
+                    <termin>") jest regułą dla wyzwalaczy, które nazwy nie miały,
+                    bo ich etykietą było całe pytanie. */}
+                <h2>
+                  Separate data boundaries{" "}
+                  <span className="help-anchor" data-help-topic="data-home">
+                    <button
+                      type="button"
+                      className="help-mark"
+                      aria-haspopup="dialog"
+                      aria-label="Explain Data Home, Hub and MCP"
+                      onClick={() => setConceptHelpTopic("data-home")}
+                    >
+                      ?
+                    </button>
+                  </span>
+                </h2>
                 <p>
                   Every workspace has its own encrypted database, Data Home, Hub
                   credentials and local MCP endpoint. Switching restarts the app
                   safely.
                 </p>
-                <button
-                  type="button"
-                  className="settings-context-help"
-                  aria-haspopup="dialog"
-                  onClick={() => setConceptHelpTopic("data-home")}
-                >
-                  Explain Data Home, Hub and MCP
-                </button>
               </div>
               <div className="settings-control workspace-registry-control">
                 <div className="workspace-registry-list">
@@ -2036,19 +2056,39 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Data, backup and recovery</h2>
+                {/* WPIS 13-5 DOKUMENTU PRZEJŚCIA, CZĘŚĆ KONTEKSTOWA. Trzy wejścia
+                    pomocy w kategoriach Ustawień były podkreślonymi zdaniami
+                    stojącymi POD akapitem sekcji — czyli nie „przy rzeczy", tylko
+                    pod nią, w rozmiarze kontrolki. Prototyp nie ma pomocy
+                    w Ustawieniach w ogóle, więc regułą jest tu wzorzec, a nie
+                    kopia: `patterns.md` — „Pattern: On-demand help mark",
+                    plakietka MNIEJSZA od etykiety i STOJĄCA PRZY NIEJ
+                    (`v3/app.css:893-903`). Znak wchodzi więc do nagłówka sekcji,
+                    a nie zostaje osobnym piętrem pod akapitem: plakietka pod
+                    zdaniem nie stoi przy niczym.
+
+                    NAZWA ZOSTAJE TA, KTÓRA TU BYŁA — te trzy kontrolki miały
+                    własne, dobre napisy, a prototypowa formuła („What this means:
+                    <termin>") jest regułą dla wyzwalaczy, które nazwy nie miały,
+                    bo ich etykietą było całe pytanie. */}
+                <h2>
+                  Data, backup and recovery{" "}
+                  <span className="help-anchor" data-help-topic="recovery">
+                    <button
+                      type="button"
+                      className="help-mark"
+                      aria-haspopup="dialog"
+                      aria-label="Explain recovery"
+                      onClick={() => setConceptHelpTopic("recovery")}
+                    >
+                      ?
+                    </button>
+                  </span>
+                </h2>
                 <p>
                   {snapshot.dataHome?.descriptor.displayName ??
                     "Data Home state is unavailable right now."}
                 </p>
-                <button
-                  type="button"
-                  className="settings-context-help"
-                  aria-haspopup="dialog"
-                  onClick={() => setConceptHelpTopic("recovery")}
-                >
-                  Explain recovery
-                </button>
               </div>
               <div className="settings-control">
                 <span
@@ -2451,19 +2491,39 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Access and agents</h2>
+                {/* WPIS 13-5 DOKUMENTU PRZEJŚCIA, CZĘŚĆ KONTEKSTOWA. Trzy wejścia
+                    pomocy w kategoriach Ustawień były podkreślonymi zdaniami
+                    stojącymi POD akapitem sekcji — czyli nie „przy rzeczy", tylko
+                    pod nią, w rozmiarze kontrolki. Prototyp nie ma pomocy
+                    w Ustawieniach w ogóle, więc regułą jest tu wzorzec, a nie
+                    kopia: `patterns.md` — „Pattern: On-demand help mark",
+                    plakietka MNIEJSZA od etykiety i STOJĄCA PRZY NIEJ
+                    (`v3/app.css:893-903`). Znak wchodzi więc do nagłówka sekcji,
+                    a nie zostaje osobnym piętrem pod akapitem: plakietka pod
+                    zdaniem nie stoi przy niczym.
+
+                    NAZWA ZOSTAJE TA, KTÓRA TU BYŁA — te trzy kontrolki miały
+                    własne, dobre napisy, a prototypowa formuła („What this means:
+                    <termin>") jest regułą dla wyzwalaczy, które nazwy nie miały,
+                    bo ich etykietą było całe pytanie. */}
+                <h2>
+                  Access and agents{" "}
+                  <span className="help-anchor" data-help-topic="agent-access">
+                    <button
+                      type="button"
+                      className="help-mark"
+                      aria-haspopup="dialog"
+                      aria-label="Explain agent access"
+                      onClick={() => setConceptHelpTopic("agent-access")}
+                    >
+                      ?
+                    </button>
+                  </span>
+                </h2>
                 <p>
                   Role, Space scope and agent capabilities stay separate
                   settings.
                 </p>
-                <button
-                  type="button"
-                  className="settings-context-help"
-                  aria-haspopup="dialog"
-                  onClick={() => setConceptHelpTopic("agent-access")}
-                >
-                  Explain agent access
-                </button>
               </div>
             </section>
 

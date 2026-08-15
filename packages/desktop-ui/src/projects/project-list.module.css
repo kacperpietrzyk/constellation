@@ -41,7 +41,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 
 .groupCount {
@@ -49,22 +49,19 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Pytajnik stoi tylko przy PIERWSZEJ grupie: powód jest ten sam dla każdego
-   stanu, a cztery znaki zapytania jeden pod drugim to dekoracja. */
-.help {
-  margin-inline-start: auto;
-  flex: none;
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
-  padding: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--text-xs);
-  line-height: 1;
-}
+/* TU STAŁA CZWARTA FORMA POMOCY W PRODUKCIE, I LOT L7 FAZY II JĄ SKASOWAŁ.
+   Reguła `.help` rysowała własny okrągły „?" o boku 1,25 rem — kształt bliski
+   prototypowemu, ale przepisany obok globalnej `.help-mark`, ze swoim
+   rozmiarem, swoją obwódką i swoim kolorem. Pomoc rysuje odtąd `TopicHelp`,
+   czyli ta sama jedna reguła co wszędzie indziej.
+
+   `margin-inline-start: auto` NIE MA TU ODPOWIEDNIKA I NIE WRACA. To była
+   jedna deklaracja, która robiła cały wpis 5-4: odpychała pytanie na prawą
+   krawędź okna, podczas gdy etykieta i liczba, których dotyczy, zostawały po
+   lewej. Prototyp trzyma je razem (`v3/screens/projects.js:231` —
+   `${label}${count}${helpBtn("health")}` w jednym rzędzie), a odstęp daje
+   `gap: var(--space-2)` z `.groupHead` wyżej. Regułą tej fali jest, że żadne
+   wywołanie nie przestawia plakietki pomocy — asertuje to para lotu L7. */
 
 .rows {
   display: flex;
@@ -278,7 +275,7 @@
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
-  font-weight: 590;
+  font-weight: var(--weight-medium);
   white-space: nowrap;
 }
 

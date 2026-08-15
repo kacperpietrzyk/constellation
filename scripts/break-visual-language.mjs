@@ -1119,12 +1119,14 @@ const outcome = runBreakTests({
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 1.125rem;
   height: 1.125rem;`,
           `.help-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 4rem;
   height: 1.125rem;`,
           "the help mark's width",
@@ -2710,8 +2712,8 @@ const outcome = runBreakTests({
       // P1 jest dziś MATCH — czyli jedynym, który da się przewrócić z zieleni
       // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
       // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
-      // (`styles.css:2163`), wylicza 1152 px zamiast 1184 i para `enforced`
-      // wrzuca WERDYKT (`verify-renderer-layout.mjs:7466-7471`), który idzie do
+      // (`styles.css:2247`), wylicza 1152 px zamiast 1184 i para `enforced`
+      // wrzuca WERDYKT (`verify-renderer-layout.mjs:8034-8040`), który idzie do
       // `problems`.
       //
       // CZYM RÓŻNI SIĘ OD POZOSTAŁYCH: najbliższe mu złamanie czternaste („put
@@ -2745,7 +2747,7 @@ const outcome = runBreakTests({
       // selektorem. Dla pary `pending` nie ma innej drogi — `pending + DIFFERS`
       // jest zielone, `pending + MATCH` żąda poprawki produktu (niewyrażalnej
       // przez `replaceOnce`), a `NOT_MEASURED` JEST ŚLEPE NA STATUS
-      // (`verify-renderer-layout.mjs:7433-7440`) i kładzie bramkę niezależnie
+      // (`verify-renderer-layout.mjs:8003-8010`) i kładzie bramkę niezależnie
       // od tego, czy para jest oczekująca. Po zdjęciu klasy modułowej
       // z nośnika `[class*="_inbox_"]` nie trafia w nic, para wraca
       // `ROUTED_NOT_MEASURED` razem ze spisem części selektora — czyli
@@ -2786,7 +2788,7 @@ const outcome = runBreakTests({
       // `PENDING_ALREADY_MATCHES`) jest POPRAWKĄ, nie edycją jednego napisu,
       // i `replaceOnce` tego nie wyrazi. Jedyną gałęzią osądu, która pada
       // NIEZALEŻNIE OD STATUSU, jest `NOT_MEASURED`
-      // (`verify-renderer-layout.mjs:4563-4570` — status jest tam wyłącznie
+      // (`verify-renderer-layout.mjs:4871-4879` — status jest tam wyłącznie
       // DRUKOWANY, nie sprawdzany), więc złamanie musi ZABIĆ ISTNIENIE
       // PODMIOTU. Ten sam wybór, z tego samego powodu, zrobiło złamanie P1
       // nad Skrzynką.
@@ -2831,8 +2833,8 @@ const outcome = runBreakTests({
       //
       // NIE JEST TO KOPIA POPRZEDNIEGO I RÓŻNICA NIE JEST KOSMETYCZNA: tamto
       // pada w `visualLanguagePairs` jako `VISUAL_LANGUAGE_NOT_MEASURED`
-      // (`:4563`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
-      // (`:7454`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
+      // (`:4600`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
+      // (`:7491`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
       // drugie dowodzi, że pary P2 naprawdę są mierzone PO DOJŚCIU na miejsce.
       //
       // DOWODZI TEŻ ROZŁĄCZNOŚCI PODMIOTU I MARKERA PRZYBYCIA. Marker
@@ -2894,7 +2896,7 @@ const outcome = runBreakTests({
       // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
       // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
       // `h2 „Deadline this week or already late…"` o 16 px
-      // (`CalendarSurface.tsx:816-824`, reguła `calendar.module.css:383-391`).
+      // (`CalendarSurface.tsx:825-833`, reguła `calendar.module.css:383-391`).
       // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
       // mówiącej `OPENING_SMALLER`.
       //
@@ -2905,14 +2907,15 @@ const outcome = runBreakTests({
       // "calendar.module.css" scripts/break-visual-language.mjs` → 0: ani jedno
       // z poprzednich złamań nie dotyka tego arkusza.
       //
-      // WAGA 560 ZOSTAJE NIETKNIĘTA ŚWIADOMIE: jest podmiotem osobnego wpisu
-      // rejestru, a złamanie ruszające dwie rzeczy naraz nie mówi, która
-      // zapaliła.
+      // WAGA ZOSTAJE NIETKNIĘTA ŚWIADOMIE: to osobna oś i osobny lot (L5 Fazy II
+      // przepisał ją z 560 na `var(--weight-semibold)`), a złamanie ruszające
+      // dwie rzeczy naraz nie mówi, która zapaliła.
       //
       // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
-      // pada w tym arkuszu dwa razy (`:75`, `:388`) i `font-weight: 560` też
-      // dwa razy, a `replaceOnce` rzuca przy dwóch trafieniach. Czterowierszowy
-      // blok jest w tym pliku jedyny — sprawdzone przed napisaniem tego wpisu.
+      // pada w tym arkuszu dwa razy (`:75`, `:388`), a `font-weight:
+      // var(--weight-semibold)` po locie L5 jeszcze częściej; `replaceOnce`
+      // rzuca przy dwóch trafieniach. Czterowierszowy blok jest w tym pliku
+      // jedyny — sprawdzone maszynowo po przepisaniu wagi.
       name: "let the Calendar section heading open the screen at 2xl: the opening axis loses a witness",
       expectRedContains: ["TITLE_BAND_OPENING_DRIFT — calendar"],
       file: "packages/desktop-ui/src/calendar.module.css",
@@ -2922,11 +2925,11 @@ const outcome = runBreakTests({
           `  gap: var(--space-2);
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 560;`,
+  font-weight: var(--weight-semibold);`,
           `  gap: var(--space-2);
   margin: 0;
   font-size: var(--text-2xl);
-  font-weight: 560;`,
+  font-weight: var(--weight-semibold);`,
           "the Calendar section heading size",
         ),
     },
@@ -3051,20 +3054,18 @@ const outcome = runBreakTests({
       // wpisy (`TYPE_WEIGHT_UNUSED_ENTRY`), czyli czerwień o zupełnie innej
       // nazwie niż to złamanie.
       //
-      // CZERWIEŃ TEGO ZŁAMANIA MA SZEŚĆ WIERSZY, NIE TRZY, i mówimy to tutaj,
-      // żeby czytający raport nie wziął połowy z nich za regresję: trzy
-      // `TYPE_WEIGHT_UNREGISTERED` na wadze 655 (to jest nazwana czerwień)
-      // ORAZ trzy `TYPE_WEIGHT_UNUSED_ENTRY` na `p.eyebrow|650`,
-      // `p.nav-label|650` i `p.section-label|650`, bo po tej edycji nikt już
-      // nie rysuje 650 pod tymi sygnaturami. Osierocenie zachodzi przy OBU
-      // wartościach — różnicą jest to, że 655 dokłada do niego asercję, którą
-      // to złamanie NAZYWA. `expectRedContains` jest listą ZAWIERANIA
-      // (`break-test.mjs:203-213` odrzuca tylko BRAKI), więc dodatkowe wiersze
-      // niczego nie unieważniają.
+      // CZERWIEŃ TEGO ZŁAMANIA MIAŁA SZEŚĆ WIERSZY DO LOTU L5 FAZY II, DZIŚ MA
+      // TRZY, i to jest różnica, którą tamten lot dowiózł: trzy
+      // `TYPE_WEIGHT_UNREGISTERED` na wadze 655 i ANI JEDNEGO
+      // `TYPE_WEIGHT_UNUSED_ENTRY`, bo rejestr długu jest pusty i nie ma czego
+      // osierocić. `expectRedContains` jest listą ZAWIERANIA
+      // (`break-test.mjs:203-213` odrzuca tylko BRAKI), więc ta zmiana liczby
+      // wierszy niczego w tym złamaniu nie unieważnia.
       //
-      // IGŁA SPRAWDZONA NA UNIKALNOŚĆ: sam napis `font-weight: 650;` stoi
-      // w `styles.css` DZIEWIĘĆ razy, więc krótsza igła rzuciłaby na
-      // wielokrotnym trafieniu; ten siedmiowierszowy blok występuje raz.
+      // IGŁA PRZEPISANA RAZEM Z PRODUKTEM: reguła nie niesie już literału 650,
+      // tylko `var(--weight-semibold)`. Sam napis `font-weight:
+      // var(--weight-semibold);` stoi w `styles.css` wiele razy, więc igłą
+      // zostaje CAŁY siedmiowierszowy blok, który występuje raz.
       name: "give a shell label an off-scale weight nobody registered: a new divergence has to fail the run the day it lands",
       expectRedContains: ["TYPE_WEIGHT_UNREGISTERED", "655"],
       file: "packages/desktop-ui/src/styles.css",
@@ -3077,7 +3078,7 @@ const outcome = runBreakTests({
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 650;`,
+  font-weight: var(--weight-semibold);`,
           `.eyebrow,
 .nav-label,
 .section-label {
@@ -3104,12 +3105,21 @@ const outcome = runBreakTests({
       // Zaostrzenie filtra kształtu dałoby liczbę mniejszą, a nie zero, czyli
       // dowodziłoby czegoś, czego ta nazwa nie mówi.
       //
-      // CZERWIEŃ JEST TU SZEROKA I TO JEST NIEUNIKNIONE: obok nazwanego
-      // `TYPE_WEIGHT_SWEEP_MEASURED_NOTHING` wypada 46 wierszy
-      // `TYPE_WEIGHT_UNUSED_ENTRY`, bo rejestr, którego nikt nie spotkał, jest
-      // z definicji cały martwy. `expectRedContains` jest listą ZAWIERANIA
-      // (`break-test.mjs:203-213`), więc czerwień nazwana jest sprawdzana,
-      // a reszta nie unieważnia dowodu.
+      // CZERWIEŃ BYŁA TU SZEROKA I PRZESTAŁA BYĆ PO LOCIE L5 FAZY II: obok
+      // nazwanego `TYPE_WEIGHT_SWEEP_MEASURED_NOTHING` wypadało 46 wierszy
+      // `TYPE_WEIGHT_UNUSED_ENTRY` (rejestr, którego nikt nie spotkał, jest
+      // z definicji cały martwy), a dziś rejestr jest pusty, więc zostaje sama
+      // nazwana czerwień. `expectRedContains` jest listą ZAWIERANIA
+      // (`break-test.mjs:203-213`), więc dowód jest ten sam w obu stanach.
+      //
+      // CZEGO TO ZŁAMANIE NIE DOWODZI, i dlatego lot naprawczy dołożył obok
+      // niego podłogę: ono zabija przelotkę CAŁKOWICIE, więc dowodzi wyłącznie
+      // progu ZERA. Zwężenie zasięgu z `document.body` do treści albo zaostrzenie
+      // filtra dałoby odczytów MNIEJ, a nie zero — i do lotu naprawczego nie
+      // istniała asercja, która by to zobaczyła. Widzi to teraz
+      // `TYPE_WEIGHT_SWEEP_SHRANK` (podłoga `TYPE_WEIGHT_EXPECTED.readingsFloor`).
+      // Kolejność `if/else if` w przyrządzie jest zamierzona: przy zerze pada
+      // nazwa z tego złamania, nie podłoga, więc ta igła dalej trafia.
       //
       // EDYCJA IDZIE W `scripts/`, NIE W PRODUKT, i dlatego przywrócenie jest
       // czyste: ten plik nie przechodzi przez `tsc -b`, więc nie ma `dist`,
@@ -4022,6 +4032,522 @@ const outcome = runBreakTests({
 `,
           "",
           "the current crumb of the task record",
+        ),
+    },
+    // ── ZŁAMANIE USUNIĘTE PRZEZ LOT NAPRAWCZY L5, I POWODEM JEST POMIAR ──────
+    //
+    // Stało tu „put the shell label's paid-off weight back at 650: a debt that
+    // was cleared stops being a licence". Nazwa obiecywała dowód, którego ten
+    // harness wydać NIE MOŻE. Teza brzmiała „pada wartość, którą rejestr KIEDYŚ
+    // licencjonował", czyli była twierdzeniem o PRZESZŁYM stanie tablicy —
+    // a przyrząd widzi wyłącznie dzisiejsze drzewo. Zmierzone wprost:
+    // `classifyTypeWeight` nad pustym rejestrem oddaje `{verdict:"violation"}`
+    // dla 650 i dla 655 IDENTYCZNIE, więc czerwień pod tą nazwą nie odróżnia
+    // „dług spłacony" od „wartość nigdy niewidziana".
+    //
+    // Złamanie edytowało DOKŁADNIE ten sam siedmiowierszowy blok
+    // `.eyebrow/.nav-label/.section-label`, co istniejące „655" wyżej,
+    // asertowało tę samą nazwę `TYPE_WEIGHT_UNREGISTERED` i różniło się jedną
+    // cyfrą — czyli kosztowało 15-18 minut harnessu za dowód, który już stoi
+    // obok. Blok jest dalej pokryty: kotwicą złamania „655" jest ta sama
+    // deklaracja `font-weight: var(--weight-semibold);` w tym bloku, więc
+    // cofnięcie reguły do literału wywraca tamto złamanie na braku igły.
+    {
+      // ── FAZA II, LOT L5 — PASMO TYTUŁU REKORDU ZACZYNA RZUCAĆ ─────────────
+      //
+      // DRUGA POŁOWA DOSTAWY, I JEST TO INNY PRZYRZĄD NIŻ WYŻEJ. Ramię wagi
+      // w `judgeRecordTitleBand` (`verify-renderer-layout.mjs`) do tego lotu
+      // MELDOWAŁO — `TYPE_WEIGHT_BAND.armed` czyta status par `P5-01a`/`P5-01b`,
+      // a te stały „pending: LOT L5". Lot przerzucił obie na „enforced", więc
+      // obca waga na TYTULE rekordu jest od teraz werdyktem, a nie wierszem
+      // raportu.
+      //
+      // ŁAMANY JEST TYTUŁ SZANSY, NIE ZADANIA, I TO JEST WYBÓR: rozmiar tytułu
+      // Szansy zgadzał się z prototypem od zawsze (`--text-xl`), więc ramię
+      // ROZMIARU nad tym ekranem milczy i czerwień, która wypada, może przyjść
+      // WYŁĄCZNIE z ramienia wagi. Na Zadaniu obie osie mówiłyby naraz i dowód
+      // byłby nadokreślony.
+      //
+      // CZERWIEŃ MA TRZY ŹRÓDŁA I WSZYSTKIE TRZY SĄ TĄ SAMĄ DOSTAWĄ: werdykt
+      // pasma, `TYPE_WEIGHT_UNREGISTERED` (620 nie ma już wpisu) i para
+      // `P5-01b`, która jest dziś `enforced`, więc jej DIFFERS jest czerwienią.
+      // IGŁA CZERWIENI CELUJE W RAMIĘ PASMA, NIE W PRZELOTKĘ, i to jest wybór:
+      // `TYPE_WEIGHT_UNREGISTERED` napisze o tej samej wadze zdanie „draws at
+      // weight 620 ON …", a ramię pasma „draws at weight 620, WHICH IS NOT one
+      // of the …". Sprawdzany jest ten drugi napis plus fraza o dostawie L5,
+      // która stoi WYŁĄCZNIE w werdykcie pasma — inaczej to złamanie byłoby
+      // zaliczone przez czerwień, której nie nazywa.
+      name: "the opportunity record title goes back to 620: the record-title band's weight arm has to throw, not report",
+      expectRedContains: [
+        "draws at weight 620, which is not one of the",
+        "delivered by lot L5 of phase II",
+      ],
+      file: "packages/desktop-ui/src/opportunity/opportunity-record.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+  text-wrap: balance;`,
+          `  font-size: var(--text-xl);
+  font-weight: 620;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+  text-wrap: balance;`,
+          "the opportunity record title's weight",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L5 — PRZEŁĄCZNIK DOSTAWY JEST NOŚNY ──────────────────
+      //
+      // TRZECIA STRONA, I ŁAMIE PRZYRZĄD, A NIE PRODUKT. Dwa złamania wyżej
+      // cofają farbę; to cofa samą DEKLARACJĘ DOSTAWY i pyta, czy bramka umie
+      // powiedzieć, że produkt jest czysty, a właściciel wciąż udaje, że nie.
+      // Bez niego dałoby się przepisać wszystkie 92 deklaracje, zostawić pary
+      // na „pending" i mieć zielony przebieg z wyłączonym ramieniem wagi —
+      // czyli dowieźć farbę i po cichu zdjąć pomiar.
+      //
+      // DWIE NAZWANE CZERWIENIE NARAZ, i to nie jest hałas, tylko dwie różne
+      // asercje o tym samym: `ROUTED_PENDING_ALREADY_MATCHES` mówi „para
+      // pasuje, a status kłamie", a `TYPE_WEIGHT_PENDING_ALREADY_CLEAN` mówi
+      // „nie ma czego spłacać, a pozycja stoi otwarta". Pierwsza pilnuje MAPY
+      // PAR, druga PRZELOTKI WAG — dwa przyrządy, jeden przełącznik.
+      // Sprawdzana jest ta druga, bo to ona należy do P5.
+      //
+      // NAZWA PIERWSZEJ POPRAWIONA PRZEZ LOT NAPRAWCZY: stało tu
+      // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`, czyli ramię MAPY POWŁOKI.
+      // `P5-01b` leży w mapie TRASOWANEJ (`VISUAL_LANGUAGE_ROUTED_PAIRS`), więc
+      // pada wariant trasowany. Złamanie działało mimo błędu, bo
+      // `expectRedContains` sprawdza wyłącznie nazwę drugiej asercji — myliła
+      // się proza, nie dowód, i dlatego nie znalazł tego żaden przebieg.
+      name: "leave the type-weight position pending over a clean product: a status that cannot fail is not a measurement",
+      expectRedContains: ["TYPE_WEIGHT_PENDING_ALREADY_CLEAN"],
+      file: "scripts/visual-language-pairs.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    expect: { kind: "token", token: "--weight-semibold" },
+    // Jak wyżej — dowiezione przez lot L5 Fazy II. OBIE muszą stać
+    // „enforced" razem: \`TYPE_WEIGHT_OWNER.pairs\` wymienia je obie
+    // i \`typeWeightBandDelivery()\` uzbraja pasmo dopiero, gdy KAŻDA z nich
+    // jest „enforced" — jedna przerzucona zostawiłaby werdykt raportowany.
+    status: "enforced",`,
+          `    expect: { kind: "token", token: "--weight-semibold" },
+    status: "pending: LOT L5",`,
+          "the delivery switch of the type-weight position",
+        ),
+    },
+    {
+      // ZŁAMANIE — ZNAK ROZWINIĘCIA WRACA PRZED ETYKIETĘ (L8-01…L8-04).
+      //
+      // Wpis P-15. Złamaniem jest PRZENIESIENIE WARSTWY, nie skasowanie znaku:
+      // po tej edycji szewron dalej się rysuje, dalej obraca się przy
+      // `aria-expanded` i dalej ma tę samą geometrię — stoi tylko z powrotem
+      // PRZED słowem, czyli dokładnie tam, gdzie stał do 2026-08-15 na
+      // wszystkich dwudziestu trzech wyzwalaczach dymka.
+      //
+      // CZERWIENIĄ SĄ WSZYSTKIE CZTERY PARY NARAZ, i to jest własność tego
+      // przyrządu, nie niedbałość złamania: `readValue` oddaje `PSEUDO_ABSENT`
+      // dla warstwy, której `content` wyliczyło się na `none`, więc zniknięcie
+      // `::after` zabiera podmiot każdej z nich. Osobność par pokazują trzy
+      // złamania NIŻEJ, z których każde zostawia warstwę na miejscu i rusza
+      // dokładnie jedną deklarację.
+      //
+      // TRZY HUNKI, A NIE JEDEN, I TO JEST POPRAWKA PO PRZEGLĄDZIE
+      // ADWERSARIALNYM. Pierwsza wersja tego złamania cofała SAM ZNAK i
+      // zostawiała wyciszenie akcji głównej na `::after` — czyli w stanie,
+      // w którym nic już nie wycisza. Zmierzone sondą w jednej sesji
+      // przeglądarki (`scratchpad/nap8-probe-actionslot.mjs`, 1092×900, pismo
+      // 300 %): akcja główna pasma Biblioteki odzyskiwała wtedy szewron
+      // i przelot dostawał TRZY dodatkowe czerwienie spoza tego wpisu —
+      // `div._actionSlot overflows its own box by 19 / 19 / 11 px`, co do
+      // piksela tyle, ile stało w przebiegu „przed" tego lotu. Ten sam pomiar
+      // na stanie HEAD bajt w bajt (znak ORAZ wyciszenie na `::before`) daje
+      // zero przepełnień. Złamanie cofa więc CAŁY wpis, żeby jedyną czerwienią
+      // były cztery pary, które ono nazywa; sprzężenie znacznika z wyciszeniem
+      // ma własne złamanie niżej.
+      name: "the popover mark goes back in front of the label: twenty-three triggers point sideways again",
+      // IGŁA MUSI BYĆ WERDYKTEM, A NIE SAMYM `id`, i to też jest poprawka po
+      // przeglądzie. `classifyBreakOutcome` szuka fragmentu w CAŁYM wyjściu
+      // (`break-test.mjs:203-213`), a raport przelotu drukuje wiersz z `id` dla
+      // KAŻDEJ pary niezależnie od werdyktu (`verify-renderer-layout.mjs
+      // :8012-8015`). Zmierzone na zielonym przebiegu (`scratchpad/
+      // gate-final.txt`): napis „L8-01" pada tam 2 razy, a „— L8-01 „" ZERO
+      // razy. Forma trasowanego werdyktu to `— ${id} „${title}"`
+      // (`:8035-8040`) i tę samą formę ma `ROUTED_NOT_MEASURED` (`:8004`),
+      // więc igła w tym kształcie pokrywa OBA kanały czerwieni i nie da się
+      // jej spełnić zielenią.
+      expectRedContains: ["— L8-01 „", "— L8-02 „", "— L8-03 „", "— L8-04 „"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          replaceOnce(
+            text,
+            `.inline-popover-trigger::after {
+  content: "";
+  display: inline-block;
+  width: 0.32em;
+  height: 0.32em;
+  margin-left: 0.25rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.2em) rotate(45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.inline-popover-trigger[aria-expanded="true"]::after {
+  transform: translateY(-0.02em) rotate(225deg);
+}`,
+            `.inline-popover-trigger::before {
+  content: "";
+  display: inline-block;
+  width: 0.32em;
+  height: 0.32em;
+  margin-right: 0.5em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.14em) rotate(-45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.inline-popover-trigger[aria-expanded="true"]::before {
+  transform: translateY(-0.2em) rotate(45deg);
+}`,
+            "the layer the popover's disclosure mark is drawn on",
+          ),
+          `.inline-popover-trigger.primary-button::after {
+  content: none;
+}`,
+          `.inline-popover-trigger.primary-button::before {
+  content: none;
+}`,
+          "the layer the primary action's silencer points at",
+        ),
+    },
+    {
+      // ZŁAMANIE — WYCISZENIE ZOSTAJE NA STAREJ WARSTWIE, ZNAK NIE.
+      //
+      // Nie mierzy żadnej pary L8 i celowo: mierzy SPRZĘŻENIE, o którym
+      // arkusz mówi prozą („`::before` zostawione tutaj nie wyciszyłoby
+      // niczego i akcja główna pasma Biblioteki odzyskałaby szewron po
+      // cichu"), a którego do przeglądu adwersarialnego lotu L8 nie pilnowało
+      // NIC. Zdanie w komentarzu, którego żaden przyrząd nie umie obalić,
+      // przeżyje każdego, kto pamięta, dlaczego je napisano.
+      //
+      // JEDNOWIERSZOWA EDYCJA I JEDNO ŹRÓDŁO CZERWIENI. Znak zostaje na
+      // `::after`, więc CZTERY pary L8 zostają ZIELONE — zmierzone sondą:
+      // wyzwalacz w paśmie okruchów rekordu projektu nie ma klasy
+      // `primary-button` i nic się na nim nie zmienia. Czerwień przychodzi
+      // z zamiatania przepełnień przy 300 % pisma: 12 px na czytelni notatek
+      // i 5 px na źródłach (`scratchpad/nap8-probe-2.mjs`, stan
+      // „WYCISZENIE zostawione na ::before").
+      name: "the primary action's silencer is left on the layer the mark just left",
+      expectRedContains: ["descendant div._actionSlot overflows its own box"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.inline-popover-trigger.primary-button::after {
+  content: none;
+}`,
+          `.inline-popover-trigger.primary-button::before {
+  content: none;
+}`,
+          "the layer the primary action's silencer points at",
+        ),
+    },
+    {
+      // ZŁAMANIE — ZNAK ZOSTAJE ZA ETYKIETĄ I POKAZUJE W BOK (L8-01).
+      //
+      // Druga połowa wpisu P-15, i istnieje osobno, bo psuje się osobno.
+      // Rejestr skarży się na DWIE rzeczy naraz („przed etykietą" ORAZ
+      // „wskazuje w bok"), a poprawka, która przenosi znak za słowo i zostawia
+      // go obróconym w bok, oddaje połowę wpisu. Para, która pyta wyłącznie
+      // o istnienie `::after`, byłaby nad taką połową ZIELONA — dlatego L8-01
+      // czyta podmacierz obrotu, a nie samą obecność warstwy.
+      //
+      // KOTWICĄ JEST `margin-left`, NIE SAM `transform`, i to nie jest ozdoba
+      // napisu: identyczny wiersz `transform: translateY(-0.2em) rotate(45deg);`
+      // stoi w tym arkuszu DRUGI RAZ — na otwartym `<details>`
+      // (`.support-report-details[open] > summary::before`), czyli pod
+      // zwijaczem sekcji, którego ten lot świadomie nie ruszył. `replaceOnce`
+      // pada przy wielokrotnym trafieniu, więc bez kotwicy to złamanie nie
+      // wykonałoby się wcale.
+      //
+      // L8-02, L8-03 I L8-04 ZOSTAJĄ ZIELONE, i to jest treść tego złamania:
+      // przerwa, krawędzie i wymiar się nie zmieniają, więc raport pokazuje
+      // JEDNĄ czerwoną parę z czterech i dowodzi, że pary mierzą cztery różne
+      // deklaracje.
+      name: "the popover mark keeps its place and turns sideways: half of P-15 comes back and only one pair notices",
+      // Werdykt, nie sam `id` — powód przy złamaniu wyżej. Tu igła jest
+      // WĘŻSZA niż tam i to jest treść tego złamania: `L8-02`, `L8-03`
+      // i `L8-04` zostają zielone, bo przerwa, krawędzie i wymiar się nie
+      // ruszają. Czego ta igła NIE UMIE powiedzieć: „a tamte trzy zostały
+      // zielone". Sprawdzone w kodzie, nie założone — `classifyBreakOutcome`
+      // (`break-test.mjs:203-213`) zna wyłącznie `expectRedContains`, czyli
+      // fragmenty, które MAJĄ paść; pola na fragment, który ma być NIEOBECNY,
+      // ten harness nie ma. Dodanie go jest zmianą we wspólnym harnessie
+      // wołanym przez wszystkie loty i nie należy do naprawy jednego wpisu.
+      expectRedContains: ["— L8-01 „"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  margin-left: 0.25rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.2em) rotate(45deg);`,
+          `  margin-left: 0.25rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.14em) rotate(-45deg);`,
+          "the direction the popover's disclosure mark points",
+        ),
+    },
+    {
+      // ZŁAMANIE — ZNAK ZOSTAJE ZA ETYKIETĄ, OBRACA SIĘ TAK SAMO I POKAZUJE
+      // W GÓRĘ (L8-03).
+      //
+      // To jest dziura, którą pierwsza wersja tego lotu zostawiła otwartą,
+      // wypisana wprost przez przegląd adwersarialny i POTWIERDZONA POMIAREM
+      // na żywym podmiocie (`scratchpad/nap8-probe-2.mjs`): po tej edycji
+      // `transform` wraca BAJT W BAJT ten sam
+      // (`matrix(0.707107, 0.707107, -0.707107, 0.707107, 0, -2.6)`),
+      // `marginLeft` się nie rusza, a glif jest obrócony o 180° i pokazuje
+      // W GÓRĘ. Trzy pary z czterech zostają wtedy ZIELONE nad znakiem, który
+      // mówi coś przeciwnego niż jego własny tytuł.
+      //
+      // DLATEGO `L8-03` CZYTA `borderStyle`, A NIE `borderWidth`: zmierzone,
+      // że skrót szerokości wraca jako „0px 1px 1px 0px" — deklarowane 1,5 px
+      // zaokrągla się do piksela urządzenia — więc asercja na nim byłaby
+      // asercją o DPR maszyny. `borderStyle` jest bezwymiarowy.
+      name: "the popover mark points up: the same rotation with the ink moved to the other two edges",
+      expectRedContains: ["— L8-03 „"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  margin-left: 0.25rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;`,
+          `  margin-left: 0.25rem;
+  border-left: 1.5px solid currentColor;
+  border-top: 1.5px solid currentColor;`,
+          "which two edges of the popover's disclosure mark carry ink",
+        ),
+    },
+    {
+      // ZŁAMANIE — ZNAK GAŚNIE W MIEJSCU (L8-04).
+      //
+      // Najtańsza połowa tej samej dziury: `width: 0` zabiera glif z ekranu
+      // i zostawia `transform`, `marginLeft` oraz `borderStyle` mówiące
+      // dokładnie to, co dziś. Zmierzone tą samą sondą — `width` spada
+      // 4.15625px → 0px, pozostałe trzy odczyty nie drgają — więc bez `L8-04`
+      // trzy pary byłyby zielone nad kontrolką bez wskaźnika rozwinięcia.
+      //
+      // KOTWICĄ JEST `margin-left`, jak w złamaniach wyżej i z tego samego
+      // powodu: goła para `width: 0.32em; height: 0.32em;` stoi w tym arkuszu
+      // dwa razy — drugi raz pod zwijaczem sekcji `<details>`, którego ten lot
+      // świadomie nie ruszył — a `replaceOnce` pada przy wielokrotnym
+      // trafieniu.
+      name: "the popover mark is switched off in place: zero width with every other declaration intact",
+      expectRedContains: ["— L8-04 „"],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  width: 0.32em;
+  height: 0.32em;
+  margin-left: 0.25rem;`,
+          `  width: 0;
+  height: 0.32em;
+  margin-left: 0.25rem;`,
+          "the body of the popover's disclosure mark",
+        ),
+    },
+    // ── LOT L7: PIĘĆ ZŁAMAŃ NA TO, CO TEN LOT DOWIÓZŁ ─────────────────────
+    //
+    // Lot zbiegł SIEDEMNAŚCIE afordancji pomocy w CZTERECH formach do jednej
+    // reguły `.help-mark`, dołożył pięć plakietek tam, gdzie prototyp je ma,
+    // a aplikacja nie miała, i zdjął jedyną deklarację, która plakietkę
+    // przestawiała. Trzy pierwsze złamania mierzy BRAMKA UKŁADU (kształt,
+    // położenie, istnienie podmiotu), dwa ostatnie muszą podać SWÓJ przyrząd
+    // — i to jest treść, nie oszczędność: bramka układu czyta WYLICZONE
+    // WŁASNOŚCI, więc etykieta wracająca z „?" na całe pytanie NIE RUSZA
+    // ani jednej z nich (`.help-mark` deklaruje `width: 1.125rem` wprost, więc
+    // pudełko zostaje osiemnastopikselowe nad dowolnie długim napisem). Oś
+    // „co jest narysowane w środku znaku" należy do kontraktu tras w jsdom
+    // i tylko on może ją zobaczyć.
+    {
+      // ZŁAMANIE PIERWSZE — POMOC WRACA DO PODKREŚLONEGO ZDANIA.
+      //
+      // Odtwarza dokładnie tę deklarację, którą lot skasował z modułu
+      // `TopicHelp`: kropkowane podkreślenie było JEDYNĄ rzeczą, która
+      // odróżniała formę słowną od znacznika, i wraca bez ruszania rozmiaru.
+      // Para na szerokości byłaby nad tym ZIELONA — dlatego pozycja 1 ma dwie
+      // pary, a nie jedną.
+      name: "help takes its dotted underline back: the mark reads as a link in prose again",
+      // IGŁA JEST WERDYKTEM, NIE SAMYM `id`, I TO JEST POPRAWKA PO PRZEGLĄDZIE
+      // ODBIORCZYM — dokładnie ta sama, którą lot L8 zrobił 200 linii wyżej
+      // w tym pliku. `classifyBreakOutcome` szuka fragmentu w CAŁYM wyjściu
+      // (`break-test.mjs:203-213`), a przelot drukuje wiersz raportu z `id`
+      // dla KAŻDEJ pary niezależnie od werdyktu — wywołanie `report()` stoi
+      // NAD gałęzią `if (judged.state === "MATCH")` (`verify-renderer-layout
+      // .mjs:4879-4882` w powłoce, `:8017-8020` w trasie). Igła „L7-01b" była
+      // więc spełniona przez DOWOLNĄ czerwień w przebiegu i nie mówiła nic
+      // o parze, którą nazywa.
+      //
+      // ZMIERZONE DWUSTRONNIE na dwóch zapisanych przelotach tego lotu, a nie
+      // wywnioskowane. W ZIELONYM (`scratchpad/L7-gate-po3.txt`, ostatnia
+      // linia `GATE_EXIT=0`): „L7-01b" pada 2×, „— L7-01b „" ZERO razy.
+      // W CZERWONYM (`scratchpad/L7-gate-po.txt`, `GATE_EXIT=1`, para wróciła
+      // wtedy DIFFERS/NOT_MEASURED z kotwicy przed przepięciem): „L7-01b"
+      // pada 4×, a „— L7-01b „" 2× — po jednym na motyw. Ta sama forma
+      // `— ${id} „${title}"` niesie OBA kanały czerwieni w OBU mapach:
+      // werdykt enforced (`:4888-4893` powłoka, `:8035-8040` trasa) oraz
+      // `NOT_MEASURED` (`:4872-4876` powłoka, `:7990-7995` i `:8004` trasa),
+      // co widać w czerwonym pliku na wierszu 1170:
+      // „VISUAL_LANGUAGE_NOT_MEASURED (dark) — L7-01a „on-demand help is
+      // a mark…". Zielenią nie da się jej spełnić.
+      expectRedContains: ["— L7-01b „"],
+      file: "packages/desktop-ui/src/help/topic-help.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.trigger.trigger::before,
+.trigger.trigger::after {
+  content: none;
+}`,
+          `.trigger.trigger {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.trigger.trigger::before,
+.trigger.trigger::after {
+  content: none;
+}`,
+          "the help trigger's own sheet",
+        ),
+    },
+    {
+      // ZŁAMANIE DRUGIE — WYWOŁANIE ZNOWU PRZESTAWIA PLAKIETKĘ (wpis 5-4).
+      //
+      // `2rem`, A NIE `auto`, I POWÓD JEST O PRZYRZĄDZIE, NIE O WIERNOŚCI.
+      // Wadą w kodzie było `margin-inline-start: auto`, ale wartość WYLICZONA
+      // marginesu `auto` w rzędzie flex jest rozdzieloną wolną przestrzenią,
+      // a ILE jej tam jest, NIE ZOSTAŁO ZMIERZONE — przy zerowej wolnej
+      // przestrzeni `auto` wyliczyłoby się do `0px` i to złamanie wróciłoby
+      // ZIELONE nad żywym rozjazdem. Złamanie, które MOŻE być zielone, nie
+      // jest złamaniem. Liczba jawna dowodzi tej samej reguły („żadne
+      // wywołanie nie przestawia tej plakietki") i dowodzi jej na pewno.
+      name: "a call site pushes the help mark away from the label it stands beside",
+      // Igła w kształcie werdyktu z tego samego powodu i z tym samym pomiarem
+      // co przy złamaniu pierwszym; tu jest to werdykt TRASOWANY
+      // (`— ${id} „${title}"`, `verify-renderer-layout.mjs:8035-8040`), a więc
+      // ta sama forma. W zielonym przelocie „L7-04a" pada 2×, „— L7-04a „"
+      // ZERO razy (`scratchpad/L7-gate-po3.txt`).
+      expectRedContains: ["— L7-04a „"],
+      file: "packages/desktop-ui/src/projects/project-list.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.groupCount {
+  color: var(--text-tertiary);`,
+          `.groupHead :global(.help-mark) {
+  margin-inline-start: 2rem;
+}
+
+.groupCount {
+  color: var(--text-tertiary);`,
+          "the Projects group head sheet",
+        ),
+    },
+    {
+      // ZŁAMANIE TRZECIE — PLAKIETKA PRZESTAJE SIĘ PRZEDSTAWIAĆ.
+      //
+      // Zabija ISTNIENIE PODMIOTU, a nie jego wartość, i to jest jedyny
+      // schemat, który dowodzi, że deklaracja `data-help-topic` naprawdę
+      // niesie pomiar: bez atrybutu selektory par trafiają w ZERO elementów,
+      // co daje `NOT_MEASURED`, czyli czerwień. Dowodzi przy okazji tego
+      // samego o parze D3-01b, która stoi na tym atrybucie od lotu D3.
+      name: "the help mark stops declaring itself, so every assertion over it goes quiet",
+      // IGŁA MÓWI TERAZ, ŻE TO ZŁAMANIE JEST NADOKREŚLONE — bo jest, i to
+      // była druga połowa uwagi z przeglądu. `TopicHelp.tsx` jest WSPÓLNY dla
+      // szesnastu montaży, więc zdjęcie z niego atrybutu zabija podmiot par
+      // L7 ORAZ pary D3-01b z lotu D3, która stoi na tym samym atrybucie
+      // w czytelni Biblioteki. Igła „L7-02b" nie odróżniała tej czerwieni od
+      // czerwieni złamania pierwszego ani drugiego; para z DRUGIEGO LOTU
+      // odróżnia ją od obu, bo żadne z tamtych dwóch jej nie rusza — jedno
+      // wraca do arkusza modułu, drugie do arkusza Projektów.
+      // Forma werdyktu i pomiar dwustronny — jak przy złamaniu pierwszym
+      // („L7-02b" 2× w zielonym przelocie, „— L7-02b „" zero razy).
+      expectRedContains: ["— L7-02b „", "— D3-01b „"],
+      file: "packages/desktop-ui/src/help/TopicHelp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `<span className={styles.help} data-help-topic={id}>`,
+          `<span className={styles.help}>`,
+          "the help anchor's own declaration",
+        ),
+    },
+    {
+      // ZŁAMANIE CZWARTE, PIERWSZY WŁASNY `verify` TEGO LOTU — ETYKIETĄ ZNOWU
+      // JEST CAŁE PYTANIE.
+      //
+      // To jest DOKŁADNIE stan sprzed lotu, odtworzony jedną linią, i bramka
+      // układu jest nad nim ZIELONA: `.help-mark` deklaruje `width: 1.125rem`
+      // i `border-radius: var(--radius-full)` wprost, więc pudełko zostaje
+      // okrągłe i osiemnastopikselowe, choćby wylewało się z niego zdanie.
+      // Zobaczyć to może wyłącznie przyrząd pytający, CO JEST W ŚRODKU znaku
+      // — a takiego przyrządu przed tym lotem nie było i to jest zapisane
+      // w rejestrze jako `greenWrong` wpisu, który ten lot zamyka.
+      name: "the help trigger draws the whole question again instead of the one mark",
+      expectRedContains: ["instead of the one-character mark"],
+      verify: { command: "npm", args: ["run", "test:interaction"] },
+      file: "packages/desktop-ui/src/help/TopicHelp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        label="?"`,
+          `        label={topic.question}`,
+          "the help trigger's visible label",
+        ),
+    },
+    {
+      // ZŁAMANIE PIĄTE, DRUGI WŁASNY `verify` — ZMIERZONA ŚLEPOTA WRACA.
+      //
+      // Odtwarza CO DO KSZTAŁTU kontrolkę, która stała na Projektach przez
+      // cztery wydania: okrągły „?" w `<span aria-hidden="true">`, z nazwą,
+      // bez `onClick`, bez tematu i bez `aria-haspopup`. Kotwica `TopicHelp`
+      // ZOSTAJE obok, więc pierwsza asercja kontraktu (zbiór tematów w obie
+      // strony) jest nad tym złamaniem ZIELONA — czerwień może dać wyłącznie
+      // nowe zamiatanie po widocznym znaku.
+      //
+      // `aria-hidden` W ŚRODKU JEST CZĘŚCIĄ ZŁAMANIA, NIE OZDOBĄ: zamiatanie
+      // liczące nazwę dostępną zobaczyłoby tu PUSTY napis i przeszłoby obok,
+      // czyli powtórzyłoby tę samą ślepotę. Dlatego oracle czyta surowy
+      // `textContent`, a nie nazwę — powód stoi przy funkcji `visibleText`.
+      name: "a second round question mark reaches a screen without declaring itself as help",
+      expectRedContains: ["stands outside any [data-help-topic] anchor"],
+      verify: { command: "npm", args: ["run", "test:interaction"] },
+      file: "packages/desktop-ui/src/projects/ProjectListLayout.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          {position === 0 && <TopicHelp topic="project-health" />}`,
+          `          {position === 0 && <TopicHelp topic="project-health" />}
+          {position === 0 && (
+            <button aria-label="How health is worked out" type="button">
+              <span aria-hidden="true">?</span>
+            </button>
+          )}`,
+          "the Projects group head",
         ),
     },
   ]),

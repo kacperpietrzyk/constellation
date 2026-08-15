@@ -741,20 +741,29 @@ export const CalendarSurface = ({
             stał w tej samej klasie (`ghost-button compact`) i niósł to samo
             zdanie — a lot D2 poprawił tylko jeden z dwóch, przez co jeden ekran
             mówił „?", a sąsiedni dalej zdanie. Naprawa po przeglądzie zdejmuje
-            ten rozjazd: jedna afordancja, jeden kształt (`v3/app.css:896-904`,
+            ten rozjazd: jedna afordancja, jeden kształt (`v3/app.css:896-903`,
             `.helpb`). Etykieta idzie do `aria-label`, bo znak „?" sam nie mówi
             czytnikowi ekranu, o co pyta. */}
+        {/* OWIJKA `data-help-topic` DOPISANA PRZEZ LOT L7 FAZY II, z tego
+            samego powodu co jej bliźniaczka na Dzisiaj: kontrakt trasy zbiera
+            pomoc po tym atrybucie i bez niego nie ma o tej kontrolce zdania.
+            Warunek zostaje NA OWIJCE, a nie schodzi na przycisk — tydzień bez
+            spotkania nie tłumaczy zachowania rzeczy, której nie ma na ekranie,
+            i to jest zapisany powód, dla którego bliźniak nie ma pomiaru
+            pikselowego w tej fiksturze. */}
         {week.days.some((day) => day.meetings.length > 0) ? (
-          <button
-            type="button"
-            className="help-mark"
-            aria-haspopup="dialog"
-            aria-label="Why the calendar is read-only"
-            data-meeting-help
-            onClick={() => setHelpTopic("calendar-meetings")}
-          >
-            ?
-          </button>
+          <span className="help-anchor" data-help-topic="calendar-meetings">
+            <button
+              type="button"
+              className="help-mark"
+              aria-haspopup="dialog"
+              aria-label="Why the calendar is read-only"
+              data-meeting-help
+              onClick={() => setHelpTopic("calendar-meetings")}
+            >
+              ?
+            </button>
+          </span>
         ) : null}
         {meetingsState.kind === "loading" ? (
           <p className={styles.quiet} aria-busy="true">

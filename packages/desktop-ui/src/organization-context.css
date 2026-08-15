@@ -56,7 +56,7 @@
   color: var(--text-primary);
   font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
-  font-weight: 560;
+  font-weight: var(--weight-semibold);
 }
 .organization-context__grid {
   display: grid;

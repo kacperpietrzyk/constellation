@@ -37,16 +37,16 @@
    NAMED DIVERGENCE: the token is -0.035em, the reference asks for -0.022em.
    The token is what the other two record titles already wear, and a fourth
    literal tracking inside one family of screens buys a closer number at the
-   price of the family reading as one thing. The weight stays 620 — the
-   reference says 600, and the 580/590/620 convention is out of this lot's
-   scope. */
+   price of the family reading as one thing. The weight was 620 until lot L5
+   of phase II took it to `--weight-semibold`, which is the reference's 600
+   and a step of the declared scale rather than a fourth number. */
 .title {
   margin: 0;
   max-inline-size: var(--surface-read);
   min-inline-size: 0;
   color: var(--text-primary);
   font-size: var(--text-xl);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
   overflow-wrap: anywhere;
@@ -144,7 +144,7 @@
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -276,7 +276,7 @@
   margin: 0 0 var(--space-1);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -409,7 +409,7 @@
   min-inline-size: 0;
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
   overflow-wrap: anywhere;
 }
 

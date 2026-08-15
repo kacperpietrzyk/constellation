@@ -568,7 +568,7 @@ test("B5 …and EVERY meeting says why, rather than being silently inert", async
   assert.equal(help.getAttribute("aria-haspopup"), "dialog");
   // WPIS #4 REJESTRU, MIERZONY TUTAJ, BO PRZELOT PIKSELI TU NIE DOJEŻDŻA.
   // Kształt tej afordancji — okrągły znacznik „?" mniejszy od etykiety, przy
-  // której stoi (`v3/app.css:896-904`) — jest zmierzony parami D2-03a i D2-03b
+  // której stoi (`v3/app.css:896-903`) — jest zmierzony parami D2-03a i D2-03b
   // na Dzisiaj. Bliźniak na Kalendarzu bierze tę samą regułę TYLKO wtedy, gdy
   // niesie tę samą klasę, a klienta scenariuszowego bramki układu nie da się
   // doprowadzić do tygodnia ze spotkaniem (odmawia kalendarza), więc żaden

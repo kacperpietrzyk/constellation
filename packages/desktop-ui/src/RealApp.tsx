@@ -28,7 +28,6 @@ import type {
   DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
 
-import { CaptureDialog } from "./CaptureDialog.js";
 import { StrategicRecordInspector } from "./StrategicRecordInspector.js";
 import {
   LazySurfaceBoundary,
@@ -120,6 +119,19 @@ const OpportunityRecordScreen = lazy(
 const RecordCommentsPanel = lazy(() =>
   import("./record/RecordCommentsPanel.js").then((module) => ({
     default: module.RecordCommentsPanel,
+  })),
+);
+// Lazy for the same measured reason as the four above, and this one was the
+// last big eager dialog in the entry chunk. Capture is twenty kilobytes of
+// source — a recorder, a retention control and three consent sentences — behind
+// `captureOpen`, which is false at every first paint there has ever been. It
+// was static here only because it predates the record screens, and it cost the
+// hot path on every window that never captures anything. The dev harness
+// imports it too, but `main.tsx` reaches that harness through `import()`, so
+// nothing about this module was ever needed before the reader asks for it.
+const CaptureDialog = lazy(() =>
+  import("./CaptureDialog.js").then((module) => ({
+    default: module.CaptureDialog,
   })),
 );
 import {
@@ -3827,8 +3839,8 @@ export const RealApp = ({
                   data-settings-back="true"
                   // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
                   // rule `.desktop-shell.rail .nav-item > span { display: none }`
-                  // (styles.css:4574, inside the rail block that begins at
-                  // :4570) takes BOTH children out of the accessibility tree,
+                  // (styles.css:4658, inside the rail block that begins at
+                  // :4654) takes BOTH children out of the accessibility tree,
                   // and the
                   // only way out of settings mode was left announcing itself as
                   // „‹". The label is now on the button, so it survives the
@@ -5430,62 +5442,66 @@ export const RealApp = ({
         <span className="context-thread" aria-hidden="true" />
       )}
       {captureOpen && (
-        <CaptureDialog
-          busy={capturing}
-          client={client}
-          defaultVoiceRetentionPolicy={
-            bootstrap.workspace.voiceAudioRetentionPolicy
-          }
-          workspaceName={bootstrap.workspace.name}
-          onClose={() => !capturing && dismissCapture()}
-          onSubmit={async (original) => {
-            if (!client) return "The desktop is unavailable right now.";
-            setCapturing(true);
-            setNotice(undefined);
-            const result = await submitQuickCapture(
-              client,
-              state.snapshot,
-              original,
-            );
-            setCapturing(false);
-            if (result.kind !== "success") {
-              showFailure(result);
-              return result.message;
+        <Suspense fallback={null}>
+          <CaptureDialog
+            busy={capturing}
+            client={client}
+            defaultVoiceRetentionPolicy={
+              bootstrap.workspace.voiceAudioRetentionPolicy
             }
-            setState({ kind: "ready", snapshot: result.snapshot });
-            const captureResult = result.result;
-            if (captureResult.kind === "task") {
-              const task = result.snapshot.tasks.find(
-                (item) => item.id === captureResult.taskId,
+            workspaceName={bootstrap.workspace.name}
+            onClose={() => !capturing && dismissCapture()}
+            onSubmit={async (original) => {
+              if (!client) return "The desktop is unavailable right now.";
+              setCapturing(true);
+              setNotice(undefined);
+              const result = await submitQuickCapture(
+                client,
+                state.snapshot,
+                original,
               );
-              openContext(
-                taskContext(captureResult.taskId, task?.title ?? "New task"),
-              );
-              setReceipts((current) => ({
-                ...current,
-                [captureResult.taskId]: result.receipt,
-              }));
-            } else if (captureResult.kind === "review") {
-              openContext(destinationContext("inbox", "Inbox"));
-            } else if (captureResult.kind === "voice_note") {
-              openContext(libraryReadingContext("captures", "Capture history"));
-            } else {
-              openContext(destinationContext("library", "Library"));
-            }
-            setCaptureOpen(false);
-            pushToast({
-              message:
-                captureResult.kind === "task"
-                  ? "Capture filed as a task."
-                  : captureResult.kind === "knowledge_source"
-                    ? "Capture filed as a knowledge source."
-                    : captureResult.kind === "voice_note"
-                      ? "The voice note is safe and waiting for an agent to transcribe it."
-                      : "This capture needs a decision and went to the inbox.",
-            });
-            return undefined;
-          }}
-        />
+              setCapturing(false);
+              if (result.kind !== "success") {
+                showFailure(result);
+                return result.message;
+              }
+              setState({ kind: "ready", snapshot: result.snapshot });
+              const captureResult = result.result;
+              if (captureResult.kind === "task") {
+                const task = result.snapshot.tasks.find(
+                  (item) => item.id === captureResult.taskId,
+                );
+                openContext(
+                  taskContext(captureResult.taskId, task?.title ?? "New task"),
+                );
+                setReceipts((current) => ({
+                  ...current,
+                  [captureResult.taskId]: result.receipt,
+                }));
+              } else if (captureResult.kind === "review") {
+                openContext(destinationContext("inbox", "Inbox"));
+              } else if (captureResult.kind === "voice_note") {
+                openContext(
+                  libraryReadingContext("captures", "Capture history"),
+                );
+              } else {
+                openContext(destinationContext("library", "Library"));
+              }
+              setCaptureOpen(false);
+              pushToast({
+                message:
+                  captureResult.kind === "task"
+                    ? "Capture filed as a task."
+                    : captureResult.kind === "knowledge_source"
+                      ? "Capture filed as a knowledge source."
+                      : captureResult.kind === "voice_note"
+                        ? "The voice note is safe and waiting for an agent to transcribe it."
+                        : "This capture needs a decision and went to the inbox.",
+              });
+              return undefined;
+            }}
+          />
+        </Suspense>
       )}
       {searchOpen && client && (
         <SearchOverlay

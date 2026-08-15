@@ -45,6 +45,7 @@ export const InlinePopover = ({
   panelLabel,
   open,
   onOpenChange,
+  triggerAriaLabel,
   triggerClassName,
   disabled = false,
   children,
@@ -55,6 +56,22 @@ export const InlinePopover = ({
   readonly panelLabel: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /**
+   * The trigger's accessible name, when its visible content cannot be it.
+   *
+   * DODANE PRZEZ LOT L7 FAZY II, I JEST TO JEDYNY SPOSÓB, W JAKI PLAKIETKA
+   * POMOCY MOŻE BYĆ RÓWNOCZEŚNIE ZNAKIEM „?" I NAZWANĄ KONTROLKĄ. Do tego lotu
+   * wyzwalacz pomocy niósł CAŁE PYTANIE jako widoczną etykietę, więc nazwa
+   * brała się sama z treści; prototyp rysuje jeden znak i nazwę podaje osobno
+   * (`v3/app.js:2004` — `aria-label="What this means: ${title}"`). Bez tego
+   * pola „?" byłoby przyciskiem bez nazwy, czyli kontrolką, której czytnik
+   * ekranu nie umie zapowiedzieć — a to jest gorsze niż podkreślony link,
+   * który ten lot usuwa.
+   *
+   * Pominięte NIE ustawia atrybutu wcale, więc dwadzieścia kilka pozostałych
+   * wyzwalaczy dymka w produkcie zachowuje nazwę wziętą z widocznej etykiety.
+   */
+  readonly triggerAriaLabel?: string;
   readonly triggerClassName?: string;
   readonly disabled?: boolean;
   readonly children: ReactNode;
@@ -161,6 +178,7 @@ export const InlinePopover = ({
         }`}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={triggerAriaLabel}
         aria-controls={open ? panelId : undefined}
         disabled={disabled}
         onClick={() => onOpenChange(!open)}

@@ -25,7 +25,7 @@
    `position: sticky` is silently inert under any ancestor whose overflow is
    neither `visible` nor `clip`, and the three record screens do not share one
    wrapper:
-     · project record  — `.surface-scroll .project-surface` (`styles.css:5130`,
+     · project record  — `.surface-scroll .project-surface` (`styles.css:5214`,
        containment only, no overflow) → the scrollport is `.work-surface`, and
        the bar pins. Measured 2026-08-07: HELD, 195 of 194.6 px scrolled,
        `document.elementFromPoint` landing on this strip.
@@ -110,7 +110,7 @@
 .tab[aria-selected="true"] {
   border-block-end-color: var(--accent);
   color: var(--text-primary);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
 }
 
 /* Quieter than the label it trails, and tabular so a count that changes while

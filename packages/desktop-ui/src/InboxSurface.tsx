@@ -1,5 +1,6 @@
 import { captureRecoveryActions } from "./CollaborationSurfaces.js";
 import type { AttentionInboxProjection, DataSlice } from "./client/workflow.js";
+import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDateTime, recordKindLabels } from "./i18n.js";
 import {
@@ -336,6 +337,15 @@ export const InboxSurface = ({
                   {mailboxes.work.length}
                 </span>
               </h2>
+              {/* WPIS 3-6 DOKUMENTU PRZEJŚCIA. Prototyp ma plakietkę przy OBU
+                  głowach Skrzynki (`v3/screens/inbox.js:292` i `:301`),
+                  ta apka nie miała jej przy żadnej — a to jest ekran, na
+                  którym różnica między dwiema sekcjami JEST całą treścią:
+                  pierwsza to decyzje o pracy, druga to rzeczy, które nie
+                  weszły do systemu. Czytelnik, któremu nikt tego nie
+                  powiedział, czyta dwie listy tego samego. Odstęp bierze
+                  `gap` z `.sectionHead`. */}
+              <TopicHelp topic="inbox-work" />
             </div>
             {mailboxes.work.length === 0 ? (
               <p className={styles.emptyState}>
@@ -362,6 +372,8 @@ export const InboxSurface = ({
                   {mailboxes.captures.length}
                 </span>
               </h2>
+              {/* WPIS 3-6, DRUGA GŁOWA — `v3/screens/inbox.js:301`. */}
+              <TopicHelp topic="inbox-plumbing" />
             </div>
             {mailboxes.captures.length === 0 ? (
               <p className={styles.emptyState}>

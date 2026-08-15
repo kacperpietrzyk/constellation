@@ -57,7 +57,7 @@ const judge = (overrides, palette = PALETTE) =>
   classifyControlPaint({ group: group(overrides), palette, uaPaint: UA_DARK });
 
 test("THE DEFECT THIS EXISTS FOR: a control painted by the engine, not by this stylesheet", () => {
-  // `styles.css:509-512` resetuje `button` bez `background`, a w całym arkuszu
+  // `styles.css:535-538` resetuje `button` bez `background`, a w całym arkuszu
   // nie ma ani jednej deklaracji `appearance` — więc niewciśnięty chip maluje
   // się systemowym `ButtonFace` i jest JAŚNIEJSZY od wciśniętego.
   const decision = judge({});
@@ -66,7 +66,7 @@ test("THE DEFECT THIS EXISTS FOR: a control painted by the engine, not by this s
 });
 
 test("A DELIBERATELY TRANSPARENT CONTROL IS NOT A FINDING — the false positive that would kill this instrument", () => {
-  // `.ghost-button` (`styles.css:787`) mówi `background: transparent` i mówi to
+  // `.ghost-button` (`styles.css:813`) mówi `background: transparent` i mówi to
   // świadomie; arkusz powtarza to 38 razy. Przyrząd zgłaszający te kontrolki
   // zostałby skasowany przy pierwszym czerwonym przebiegu — i słusznie, bo
   // fałszywe trafienie jest wadą PRZYRZĄDU.
@@ -455,7 +455,7 @@ test("the CSS Modules content hash is stripped, or one stylesheet edit would voi
 });
 
 test("the census covers exactly the group the reset rule names", () => {
-  // `styles.css:501-505` wymienia `button, input, textarea, select`. Spis
+  // `styles.css:527-531` wymienia `button, input, textarea, select`. Spis
   // węższy od przyczyny nie umiałby powiedzieć, że pole „Change title" na
   // Źródłach ma tę samą wadę co chip na Organizacjach — a ma.
   assert.deepEqual(CONTROL_PAINT_TAGS, [
@@ -588,7 +588,7 @@ test("THE WITNESSES ARE JUDGED PER THEME, because a union hides the theme that d
 });
 
 test("A COLOR-MIX OVER A TOKEN IS DELIBERATELY A FINDING, and the interpolation space decides WHICH kind", () => {
-  // Idiom tego arkusza (`styles.css:4785`) i prototypu (`v3/app.css:466`).
+  // Idiom tego arkusza (`styles.css:4869`) i prototypu (`v3/app.css:466`).
   // Wartość wyliczona nie jest napisem tokenu, więc mieszanka zapisana
   // `in oklch` wychodzi jako OFF_PALETTE — werdykt SPOZA rejestru, czyli PADA.
   // Zapisane, bo Faza C na to wejdzie: albo wpis w rejestrze, albo uzbrojenie

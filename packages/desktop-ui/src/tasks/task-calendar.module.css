@@ -35,7 +35,7 @@
 
 .lead strong {
   color: var(--text-primary);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
 }
 
 /* A real button that reads as a link: the way out of this narrower question
@@ -278,7 +278,7 @@
   gap: var(--space-2);
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 560;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
 }
 

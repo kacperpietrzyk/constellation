@@ -22,8 +22,25 @@
  * not CRM, and an assertion whose name lies is the other failure this wave
  * keeps finding.
  *
- * The `question` is the trigger's own visible label, so the button always has
- * an accessible name and the name always matches the panel it opens.
+ * WHERE THE `question` GOES, SINCE LOT L7 OF PHASE II — and this paragraph is
+ * a CORRECTION, not an addition. It used to read "the `question` is the
+ * trigger's own visible label, so the button always has an accessible name and
+ * the name always matches the panel it opens", and that lot inverted every
+ * clause of it while leaving the sentence standing. A contract in the source
+ * that states the opposite of the code outlives everybody who remembers why it
+ * was written, so it is rewritten here rather than annotated.
+ *
+ * What is true now: the trigger's VISIBLE label is the one character `?`
+ * (`TopicHelp.tsx`), because the reference draws this affordance as a round
+ * mark smaller than the label it stands beside and never as a sentence in
+ * prose (`v3/app.css:896-903`, one class, eleven calls). The `question` is the
+ * PANEL's name (`panelLabel={topic.question}`), and the trigger's accessible
+ * name is DECLARED, not derived — `triggerAriaLabel` in the reference's own
+ * wording, "What this means: <term>". The guarantee therefore survives with a
+ * different mechanism behind it: the button still always has a name, and that
+ * name still names the thing the panel is about. It is asserted, both halves,
+ * in `test/topic-help.interaction.test.tsx` — the `aria-label` must be there
+ * and must not be the glyph.
  */
 
 /* THE SHAPE OF AN ENTRY. It does NOT name the ids: the ids are the array, and
@@ -46,7 +63,10 @@ type HelpTopicShape = {
   readonly id: string;
   /** What the topic is called, above the answer. */
   readonly term: string;
-  /** The trigger's label. A question, because that is what a reader has. */
+  /** The PANEL's name, and a question, because that is what a reader has.
+   *  It was the trigger's visible label until lot L7 of phase II turned the
+   *  trigger into the one-character mark; the label a reader hears now is
+   *  `What this means: <term>`, declared on the button itself. */
   readonly question: string;
   /** ONE paragraph, at most 180 characters. A topic that grows is a lecture. */
   readonly answer: string;
@@ -137,6 +157,94 @@ export const helpTopics = [
     question: "What do these three states mean?",
     answer:
       "Available means a copy is kept here. Reference only means the address is held, not the content. Unavailable means the address no longer answers.",
+  },
+
+  /* SZEŚĆ TEMATÓW DOPISANYCH PRZEZ LOT L7 FAZY II, I ICH TREŚĆ JEST WZIĘTA
+   * Z PROTOTYPU, A NIE NAPISANA TUTAJ.
+   *
+   * Lot przebiera wyzwalacz pomocy w jedną formę, a `patterns.md` mówi wprost,
+   * że „a lot restyling the trigger has no licence to grow the topic". Cztery
+   * wpisy dokumentu przejścia (1-6, 3-6, 10-4, 11-8) i jeden wpis planu (5-4)
+   * to jednak nie forma, tylko BRAK: prototyp stawia tam plakietkę, a aplikacja
+   * nie ma w tym miejscu żadnej. Plakietka bez tematu jest ozdobą, więc temat
+   * musi powstać — i powstaje przez PRZEPISANIE mapy `HELP` prototypu
+   * (`v3/app.js:1975-2000`), a nie przez wymyślenie własnych zdań. Adres
+   * każdego zdania stoi przy nim.
+   *
+   * `term` jest tu rzeczownikiem, a nie tytułem prototypu, i to jest jedyne
+   * miejsce, w którym te wpisy odchodzą od tamtej strony. Powód jest po naszej
+   * stronie: `term` rysuje się jako nagłówek panelu (`TopicHelp.tsx`), a każdy
+   * z dziesięciu tematów, które tu już stały, jest rzeczownikiem. Tytuł
+   * prototypu bywa całym zdaniem („How the free time is worked out"), więc
+   * przepisany dosłownie dałby panel mówiący nagłówkiem to, co mówi pytanie.
+   *
+   * SPOTKANIA (wpis 10-4) NIE MAJĄ TU WPISU I TO JEST WYBÓR: prototypowy
+   * `helpBtn("outlook")` na sekcji spotkań pyta o dokładnie tę rzecz, którą
+   * w tej aplikacji tłumaczy temat pojęciowy `calendar-meetings` — ten sam,
+   * który niosą znaczniki na Dzisiaj i na Kalendarzu. Jedenasty temat obok
+   * istniejącego byłby drugą listą przy zamkniętym słowniku.
+   */
+
+  {
+    // `v3/screens/today.js:99` — `helpBtn("capacity")` stoi PRZY wierszu
+    // wolnego czasu. Zdanie: `v3/app.js:1978-1979`.
+    id: "capacity",
+    term: "Free time",
+    question: "How is the free time worked out?",
+    answer:
+      "Your working day minus the meetings in it, minus the time already blocked for work. The length of the day is yours to set, in Settings.",
+  },
+  {
+    // `v3/screens/today.js:149` — przy głowie sekcji terminów.
+    // Zdanie: `v3/app.js:1980-1981`.
+    id: "unplanned",
+    term: "Unplanned deadlines",
+    question: "What is listed here?",
+    answer:
+      "A deadline is meant to warn you before it lands. Listed here is work with a date coming up that nothing has been scheduled against.",
+  },
+  {
+    // `v3/screens/inbox.js:292` — przy pierwszej głowie Skrzynki.
+    // Zdanie: `v3/app.js:1982-1983`.
+    id: "inbox-work",
+    term: "Signals about work",
+    question: "What lands here?",
+    answer:
+      "Each one names a record and leads to it. A comment on your records never lands here; a mention does.",
+  },
+  {
+    // `v3/screens/inbox.js:301` — przy drugiej głowie Skrzynki.
+    // Zdanie: `v3/app.js:1984-1985`.
+    id: "inbox-plumbing",
+    term: "Captures that did not land",
+    question: "Why is this separate?",
+    answer:
+      "Plumbing, not thinking. Something arrived and could not be filed — deciding is a moment, and none of it is work you planned.",
+  },
+  {
+    // `v3/screens/knowledge.js:807` — w głowie kolumny folderów.
+    // Zdanie: `v3/app.js:1996-1997`.
+    id: "folders",
+    term: "Folders and references",
+    question: "What is a folder?",
+    answer:
+      "A folder says where a note lives, and it lives in exactly one. A reference says what a note is about, and there can be any number of those.",
+  },
+  {
+    // `v3/screens/projects.js:231` — `helpBtn("health")` PRZY etykietą grupy
+    // sygnału. Zdanie: `v3/app.js:1994-1995`.
+    //
+    // TEN TEMAT ZASTĘPUJE KONTROLKĘ, KTÓRA NIE ROBIŁA NIC. Do tego lotu
+    // `ProjectListLayout.tsx` rysowała własny okrągły „?" bez `onClick`, bez
+    // `data-help-topic` i bez `aria-haspopup` — czyli afordancję, która nie
+    // otwierała niczego i której najostrzejsza bramka pomocy w tym repozytorium
+    // NIE WIDZIAŁA, bo chodzi po `[data-help-topic]`. Kontrakt trasy Projektów
+    // asertował „ten ekran nie niesie pomocy" i był zielony nad żywym „?".
+    id: "project-health",
+    term: "Project health",
+    question: "How is health worked out?",
+    answer:
+      "Counted from the tasks under the project: what is overdue, what is blocked, what has waited past its date, and how long nothing has moved. Never typed in.",
   },
 ] as const satisfies readonly HelpTopicShape[];
 

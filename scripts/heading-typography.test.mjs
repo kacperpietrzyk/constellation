@@ -15,9 +15,11 @@ import {
   declaredProperties,
   isVisuallyHidden,
   deriveHeadingClasses,
+  citedContinuations,
   firstCitedLine,
   parseCssRules,
   readRendererSources,
+  ruleSelectorsByLine,
   scanReadSources,
   selectorCovers,
   splitSelectorList,
@@ -434,7 +436,6 @@ describe("heading typography — the renderer", () => {
       ]),
     );
     let checked = 0;
-    let uncheckedContinuations = 0;
     for (const entry of KNOWN_HEADING_TYPOGRAPHY_DEBT) {
       const where = `${entry.sheet} „${entry.selector}"`;
       const lines = linesBySubject.get(`${entry.sheet}|${entry.selector}`);
@@ -453,8 +454,6 @@ describe("heading typography — the renderer", () => {
           "A line number nothing checks is how this registry carried fourteen wrong ones at once.",
       );
       checked += 1;
-      uncheckedContinuations += (entry.note.match(/(?<![\w./-]):\d+/g) ?? [])
-        .length;
     }
     // Zielone na ZERZE wykonanych sprawdzeń zdarzyło się w tym repozytorium.
     assert.equal(
@@ -464,8 +463,73 @@ describe("heading typography — the renderer", () => {
     );
     assert.ok(
       checked >= FEWEST_PLAUSIBLE_DEBT_ENTRIES,
-      `Only ${checked} debt entries were judged (${uncheckedContinuations} bare \`:N\` continuations sit outside this assertion's reach). ` +
+      `Only ${checked} debt entries were judged. ` +
         "A registry this short cannot be right while the rest of this file is green.",
+    );
+  });
+
+  it("makes every bare `:N` continuation in a note resolve to the rule it names", () => {
+    // DLACZEGO TA ASERCJA ISTNIEJE, i jest to ta sama historia o jeden cytat
+    // dalej. Asercja wyżej pilnuje PIERWSZEGO cytatu wpisu i wprost mówiła, że
+    // dalsze gołe `:N` zostają niesprawdzone — DRUKOWAŁA nawet, ile ich jest.
+    // Zmierzone przy naprawie po przeglądzie adwersarialnym lotu L8
+    // (2026-08-15): takich cytatów były CZTERY, a DWA mijały swoją regułę —
+    // jeden zgnił dług wcześniej niż ta fala, drugi zgnił wstawką lotu L8
+    // i celował w regułę o czymś zupełnie innym. Test drukował „4 unchecked
+    // continuation(s)" i był zielony, a raport lotu przepisał to jako „22
+    // wpisy, 0 błędnych". Liczba, którą przyrząd DRUKUJE zamiast SPRAWDZAĆ,
+    // czyta się przy odbiorze jak pomiar.
+    //
+    // CZEGO TA ASERCJA ŻĄDA: kontynuacja ma wskazywać linię, w której W TYM
+    // ARKUSZU zaczyna się reguła, a nota ma nazywać jej selektor — albo
+    // w grzbiecikach, albo przez to, że jest to selektor samego wpisu. Reguła
+    // NIE MUSI być podmiotem nagłówkowym (rejestr cytuje tak blok
+    // `.document-canvas`), więc sprawdzane jest przez `ruleSelectorsByLine`,
+    // a nie przez `collectHeadingSubjects`. Sam „numer, pod którym cokolwiek
+    // się zaczyna" nie wystarczy: `:4222` był POPRAWNĄ linią startu reguły
+    // `.capture-footer > span` i całkiem złym odsyłaczem.
+    const sheets = new Map(
+      sources.stylesheets.map((sheet) => [sheet.name, sheet.css]),
+    );
+    let continuations = 0;
+    for (const entry of KNOWN_HEADING_TYPOGRAPHY_DEBT) {
+      const css = sheets.get(entry.sheet);
+      assert.ok(
+        css !== undefined,
+        `${entry.sheet} „${entry.selector}" names a stylesheet the scan never read.`,
+      );
+      const byLine = ruleSelectorsByLine(css);
+      const quoted = new Set(
+        [...entry.note.matchAll(/`([^`]+)`/gu)].map((found) =>
+          found[1].trim().replace(/\s+/gu, " "),
+        ),
+      );
+      quoted.add(entry.selector);
+      for (const line of citedContinuations(entry.note)) {
+        continuations += 1;
+        const selectors = byLine.get(line) ?? [];
+        assert.ok(
+          selectors.length > 0,
+          `${entry.sheet} „${entry.selector}" cites :${line} as a continuation, but no rule starts on that ` +
+            "line of that sheet. An insertion above it moved the rule and nothing moved the number.",
+        );
+        assert.ok(
+          selectors.some((selector) => quoted.has(selector)),
+          `${entry.sheet} „${entry.selector}" cites :${line}, and the rule that starts there is ` +
+            `„${selectors.join(", ")}" — which the note never names. The note quotes ` +
+            `${[...quoted].map((one) => `„${one}"`).join(", ")}. A number pointing at somebody else's ` +
+            "rule reads exactly like a reference and carries none of the meaning.",
+        );
+      }
+    }
+    // Ten rejestr NIÓSŁ kontynuacje w chwili pisania tej asercji (cztery).
+    // Zero znaczyłoby, że regex przestał je widzieć — czyli zieleń na zerze
+    // wykonanych sprawdzeń, którą ten plik zna z asercji wyżej.
+    assert.ok(
+      continuations > 0,
+      "No bare `:N` continuation was found in any note, so this assertion judged nothing. " +
+        "Either every continuation was removed from the registry — then delete this test — or " +
+        "the pattern stopped matching them.",
     );
   });
 

@@ -46,7 +46,7 @@
 .switch[aria-pressed="true"] {
   background: var(--surface-selected);
   color: var(--text-primary);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
 }
 
 /* Pierścienia nie deklaruje tu nic — należy do reguły globalnej w `tokens.css`.

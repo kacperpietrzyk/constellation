@@ -47,9 +47,9 @@
      deklaracje), 500 (64), 600 (85), 700 (3) — policzone w całym
      `docs/plans/2026-07-27-ui-ux-rebuild/v3`. Aplikacja miała w chwili
      postawienia tej skali DZIEWIĘĆ wartości poza nią (550, 560, 570, 580,
-     590, 620, 630, 650, 750 — 91 deklaracji), z których prototyp nie używa
-     ani jednej. Rejestr tego długu i jego właściciel stoją
-     w `scripts/type-weight.mjs`.
+     590, 620, 630, 650, 750 — 92 deklaracje), z których prototyp nie używa
+     ani jednej; lot L5 Fazy II przepisał wszystkie 92 na te cztery stopnie,
+     więc rejestr w `scripts/type-weight.mjs` jest dziś PUSTY.
 
      STOPNIE, PO NAZWIE: `--weight-regular` 400, `--weight-medium` 500,
      `--weight-semibold` 600, `--weight-bold` 700. Ta proza jest tu świadomie,
@@ -724,7 +724,7 @@
      a v3 ma pięć, i przemianowanie rampy jest zapisem w `.ui-craft/tokens.md`,
      nie w tym pliku. Literał mówi prawdę: „nasza wartość, zmierzona, spoza v3".
      Sprawdzone, że pressed MUSI się różnić od hovera: pięć miejsc wywołania
-     (`styles.css:454`, `:619`, `:7941`, `:8124` oraz `.inline-popover`) używa
+     (`styles.css:480`, `:645`, `:8025`, `:8208` oraz `.inline-popover`) używa
      `:active` jako stanu osobnego, a `:active` przychodzi NA hoverze — trzy
      z nich nie mają przy tym żadnej innej różnicy niż kolor.
 
@@ -789,7 +789,7 @@
   /* AKTYWNA NAWIGACJA niesie akcent — najcichszy jego stopień jako wypełnienie
      (`v3/app.css:218-220`), a od Fazy C tusz pełnej mocy idzie na SZYNĘ przy
      lewej krawędzi kolumny, nie na obramowanie wiersza (`v3/app.css:222-226`,
-     `.ui-craft/tokens.md:397-402`, sekcja „Wash rarely travels alone").
+     `.ui-craft/tokens.md:445-450`, sekcja „Wash rarely travels alone").
      Zwykłe zaznaczenie wiersza i hover ZOSTAJĄ
      neutralne (`--surface-selected`, `--surface-hover`): akcent na hoverze albo
      na każdym zaznaczeniu łamie regułę małej powierzchni. */

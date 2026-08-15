@@ -7,6 +7,7 @@ import { afterEach, beforeEach, test } from "vitest";
 import { StrategicRecordIdSchema } from "@constellation/contracts";
 
 import type { ScenarioFixtures } from "../src/client/scenario-client.js";
+import { conceptHelpTopics } from "../src/components/ConceptHelpDialog.js";
 import { helpTopics } from "../src/help/help-topics.js";
 import { assertNoNode, assertSameNode } from "./dom-assert.js";
 import {
@@ -40,9 +41,62 @@ import {
  * and stay green in three gates at once; a screen with no rows has no anchors,
  * so "no `title=` and no stray trigger" would be true of a blank page. Each
  * route below waits for the thing its help hangs beside before it asserts.
+ *
+ * THIS FILE'S TOTALITY IS A FUNCTION OF WHICH SCREENS IT MOUNTS, and that
+ * sentence is here because the omission was real and cost a registry entry.
+ * "Nothing else draws that mark" is swept per SCOPE, so a mark on a screen no
+ * test below mounts is not caught — it is simply not looked at. Until the L7
+ * acceptance review the two screens nobody looked at were the landing surface
+ * and the Inbox, which between them carry four of the six marks lot L7 added.
+ *
+ * EVERY HELP ANCHOR IN THE PRODUCT AND THE CHANNEL THAT SEES IT, counted in
+ * the sources rather than assumed — 22 anchors, and a new one on a screen that
+ * is not in this list is invisible to all three channels until somebody adds
+ * the mount:
+ *   • this file — Today, Inbox, Organizations, Pipeline, Renewals, People,
+ *     the opportunity record, Meetings (+ its inspector), Sources, Notes,
+ *     Projects (both lenses), the capture history;
+ *   • `calendar.interaction.test.tsx` — the Calendar twin, by class, glyph and
+ *     name, because the pixel pass cannot reach a week with a meeting in it;
+ *   • `settings-navigation-contract.test.ts` — the three Settings anchors,
+ *     over the SOURCE, because Settings is a mode and no routed stop enters it.
  */
 
-const KNOWN_TOPIC_IDS = new Set<string>(helpTopics.map((topic) => topic.id));
+/* DWIE TABLICE, JEDEN SŁOWNIK DEKLARACJI — i obie są ZAMKNIĘTE oraz OBIE
+ * wyprowadzone, a nie przepisane. Pomoc na żądanie otwiera w tej aplikacji dwa
+ * różne panele: dymek `TopicHelp` (tematy ≤180 znaków) i okno pojęciowe
+ * `ConceptHelpDialog` (SZEŚĆ tematów z nawigatorem — policzone w źródle,
+ * `conceptHelpTopics`; „pięć" stało tu do przeglądu odbiorczego L7 i było
+ * liczbą przepisaną, a nie odczytaną). Lot L7 Fazy II zbiegł
+ * WYZWALACZ obu do jednej formy i do jednej deklaracji (`data-help-topic`),
+ * więc ten zbiór musi znać oba źródła — inaczej znacznik na Dzisiaj,
+ * na Kalendarzu, na Spotkaniach albo w Ustawieniach czytałby się jako
+ * „wyzwalacz wskazujący na temat, który nie istnieje".
+ *
+ * DLACZEGO NIE TRZECI ATRYBUT DLA OKNA POJĘCIOWEGO, co było pierwszym
+ * pomysłem tego lotu: druga deklaracja obok zamkniętego słownika to nazwana
+ * w tym repozytorium klasa długu, a asercja z dwiema gałęziami jest dokładnie
+ * tym miejscem, w którym trzecia forma pomocy weszłaby niezauważona. */
+const KNOWN_TOPIC_IDS = new Set<string>([
+  ...helpTopics.map((topic) => topic.id),
+  ...conceptHelpTopics.map((topic) => topic.id),
+]);
+
+/* CO WIDZI OKO — i to jest CELOWO coś innego niż `accessibleName` wyżej.
+ *
+ * Tamta funkcja WYCINA poddrzewa `aria-hidden`, bo pyta o nazwę, którą usłyszy
+ * czytnik ekranu, a treść schowana przed czytnikiem tej nazwy nie tworzy. Ta
+ * funkcja ich NIE wycina, bo pyta o kształt narysowany na ekranie —
+ * `aria-hidden` nie chowa niczego przed okiem.
+ *
+ * RÓŻNICA JEST DOWIEDZIONA, NIE ESTETYCZNA. Martwy pytajnik Projektów, który
+ * przez cztery wydania stał pod zieloną asercją „ten ekran nie niesie pomocy",
+ * był napisany dokładnie tak:
+ *   `<button aria-label="How health is worked out"><span aria-hidden="true">?</span></button>`
+ * Zamiatanie oparte na `accessibleName` zobaczyłoby tam PUSTY napis i przeszłoby
+ * obok — czyli powtórzyłoby dokładnie tę ślepotę, którą ma zamykać. */
+const visibleText = (element: Element): string =>
+  (element.textContent ?? "").trim();
 
 /* ZAKRESEM JEST EKRAN, A NIE JEGO PRZEWIJANE PUDEŁKO — dwa ekrany CRM-owej
  * listy noszą tu inny adres niż pozostałe i to nie jest niekonsekwencja.
@@ -236,9 +290,66 @@ const assertHelpContract = (scope: HTMLElement, expected: string[]): void => {
       "BUTTON",
       `the help trigger for ${id} is a <${trigger.tagName.toLowerCase()}>, not a button — only a button is reachable by keyboard and announced as a control`,
     );
+    /* THE NAME IS DECLARED, NOT DERIVED — and "declared" is the whole of the
+     * claim, because after lot L7 the derived name is always available and
+     * always useless.
+     *
+     * WHAT THIS REPLACED, AND THE MEASUREMENT THAT CONDEMNED IT. The check
+     * here was `accessibleName(trigger).length > 0`, and `accessibleName`
+     * falls back to `textContent` when there is no `aria-label`. Every badge
+     * this product draws puts a plain-text `?` inside the button, so the
+     * fallback returns "?", length 1, and the assertion was true BY THE SHAPE
+     * OF THE MARK — it could no longer fail over anything the lot delivered.
+     * Executed, not reasoned: dropping `aria-label` from the Meetings badge
+     * left the file at `Tests 11 passed (11)`.
+     *
+     * `InlinePopover.tsx` states the rule this restores in its own words —
+     * `triggerAriaLabel` is the ONLY way a badge can be both the `?` sign and
+     * a named control — so the assertion asks for the attribute, and asks the
+     * name to say WHICH thing it stands by rather than repeat the glyph. Six
+     * hand-written anchors (Today, Calendar, Meetings and three Settings
+     * headings) carry that attribute by hand and nothing checked it before. */
+    const declaredName = (trigger.getAttribute("aria-label") ?? "").trim();
     assert.ok(
-      accessibleName(trigger).length > 0,
-      `the help trigger for ${id} has no accessible name`,
+      declaredName.length > 0,
+      `the help trigger for ${id} has no aria-label, so its only accessible name is the glyph it draws — "${accessibleName(trigger)}" is what a screen reader would announce, and a mark that announces itself as "?" says nothing about what it explains`,
+    );
+    assert.ok(
+      declaredName !== visibleText(trigger),
+      `the help trigger for ${id} is named "${declaredName}", which is the mark itself rather than the thing it stands beside`,
+    );
+    // AND ITS VISIBLE TEXT IS THE ONE CHARACTER, which is the FORM half of
+    // the claim and the half nothing checked before lot L7 of phase II. Up to
+    // that lot this trigger drew the WHOLE QUESTION under a dotted underline
+    // ("What do these three states mean?") in ten places on seven screens,
+    // and every assertion in this file was green over it: they all ask what
+    // the control IS and what it OPENS, never what it LOOKS LIKE.
+    assert.equal(
+      visibleText(trigger),
+      "?",
+      `the help trigger for ${id} draws "${visibleText(trigger)}" instead of the one-character mark — on-demand help has ONE shape in the reference (v3/app.css:896-903, eleven calls through one function) and a second shape here is the drift this contract exists to catch`,
+    );
+  }
+
+  // 2b. AND NOTHING ELSE DRAWS THAT MARK. The converse of the check above, and
+  //     it is the one that closes a MEASURED blindness rather than a supposed
+  //     one: `ProjectListLayout.tsx` drew a round `?` with no `onClick`, no
+  //     `data-help-topic` and no `aria-haspopup`, and this file asserted
+  //     "Projects carries no help at all" over it — green, because every loop
+  //     here walks `[data-help-topic]` and a control that does not declare
+  //     itself is not "wrong" to them, it is ABSENT.
+  //
+  //     THE ORACLE IS THE GLYPH, NOT THE WORDING, and that is deliberate: the
+  //     reference's own name for this control is "What this means: <term>",
+  //     which does not start with a question, and a check keyed on phrasing
+  //     is exactly the copy-scanner shape this repository has already been
+  //     burned by. One character is checkable and cannot be satisfied by
+  //     rewording.
+  for (const button of scope.querySelectorAll<HTMLElement>("button")) {
+    if (visibleText(button) !== "?") continue;
+    assert.ok(
+      button.closest("[data-help-topic]") !== null,
+      `a button drawing the help mark stands outside any [data-help-topic] anchor, so every assertion in this file is blind to it: ${button.outerHTML.slice(0, 160)}`,
     );
   }
 
@@ -267,6 +378,57 @@ const assertHelpContract = (scope: HTMLElement, expected: string[]): void => {
     `an explanation survived as a \`title\` attribute:\n${titled.join("\n")}`,
   );
 };
+
+/* TODAY AND INBOX — THE TWO SCREENS THIS FILE HAD NO CHANNEL FOR, and four of
+ * the six badges lot L7 added stand on them.
+ *
+ * MEASURED HOLE, NOT A TIDYING-UP. `assertHelpContract` was called from
+ * thirteen places and none of them was the landing surface or the Inbox, so
+ * the sweep that is supposed to be TOTAL over the product ("nothing else draws
+ * that mark") simply did not walk two screens. On the Inbox the consequence
+ * was exact: both of its pairs COUNT anchors (`L7-03a`, `L7-03b`), and a badge
+ * redrawn as the whole question under a dotted underline would have been MATCH
+ * over both of them — the layout gate cannot see it either, because
+ * `.help-mark` declares `width: 1.125rem` outright, which the lot's own break
+ * declaration says in this repository's break file.
+ *
+ * WHY THE EXPECTED SET ON TODAY DOES NOT NAME `capacity`, and why that is a
+ * fact about the fixture rather than a softened assertion. The `capacity`
+ * badge draws in the THIRD branch of the capacity line, which needs
+ * `capacity.isWorkingDay` AND `meetingsState.kind === "ready"`
+ * (`TodaySurface.tsx`, the `[data-capacity]` paragraph). This fixture answers
+ * no calendar query at all, so that branch is unreachable here on every day of
+ * the week — which is the good half: the set below cannot rot into a weekday,
+ * the failure mode that took this lot's first pass down. The badge itself is
+ * NOT unmeasured: `L7-01a`/`L7-01b` stand on the deadline heading's anchor on
+ * the same screen and under the same rule, and the free-time twin is written
+ * into `VISUAL_LANGUAGE_NOT_COVERED` with its exit condition. What this test
+ * adds is the sweep — a second `?` reaching Today, or the badge going back to
+ * a sentence, is red here even though no pair moves. */
+test("Today carries the deadline and calendar topics, and no second mark hides beside them", async () => {
+  await mountShell();
+  await waitFor(
+    () => container.querySelector("[data-capacity]") !== null,
+    "Today drew no capacity line, so the landing surface was never on screen",
+  );
+  assertHelpContract(surfaceNode('main[data-surface="today"]'), [
+    "calendar-meetings",
+    "unplanned",
+  ]);
+});
+
+test("the Inbox carries both of its topics as marks, and nothing hides in a title", async () => {
+  await mountShell();
+  await goTo("inbox");
+  await waitFor(
+    () => container.querySelector("[data-inbox-row]") !== null,
+    "the Inbox drew no row, so its anchors were never on screen",
+  );
+  assertHelpContract(surfaceNode('main[data-surface="inbox"]'), [
+    "inbox-plumbing",
+    "inbox-work",
+  ]);
+});
 
 test("the client list carries the reading's topic, and nothing hides in a title", async () => {
   await mountShell();
@@ -416,7 +578,11 @@ test("Meetings carries the attachment topic, and nothing hides in a title", asyn
       () => inspectorHost.querySelector(".meeting-result-notes") !== null,
       "the attached-notes section never opened",
     );
-    assertHelpContract(container, []);
+    // WPIS 10-4, DOWIEZIONY PRZEZ LOT L7: sekcja nadchodzących niesie odtąd
+    // plakietkę przy kłódce, na tym samym temacie pojęciowym, który niosą
+    // znaczniki na Dzisiaj i na Kalendarzu. Zbiór jest porównywany w OBIE
+    // strony, więc zniknięcie tej plakietki jest tu czerwienią, a nie ciszą.
+    assertHelpContract(container, ["calendar-meetings"]);
     assertHelpContract(inspectorHost, ["attached-notes"]);
   } finally {
     inspectorHost.remove();
@@ -498,10 +664,16 @@ test("a topic opens as a named dialog with one paragraph, and Escape hands the f
   assert.ok(trigger);
   const topic = helpTopics.find((entry) => entry.id === "lead-time");
   assert.ok(topic);
+  /* NAZWA IDZIE ZA WZOREM PROTOTYPU, ODKĄD ETYKIETĄ JEST JEDEN ZNAK.
+     `v3/app.js:2004` — `aria-label="What this means: ${esc(h.title)}"`. Do lotu
+     L7 nazwą było samo pytanie, bo pytanie BYŁO widoczną etykietą; teraz „?"
+     nie mówi czytnikowi ekranu, o co pyta, więc nazwa musi powiedzieć, PRZY
+     CZYM ten znak stoi. Panel dalej nazywa się pytaniem — sprawdzone niżej —
+     więc obie rzeczy są nazwane i nazwane różnie, i to jest zamierzone. */
   assert.equal(
     accessibleName(trigger),
-    topic.question,
-    "the trigger does not read as the question the panel answers",
+    `What this means: ${topic.term}`,
+    "the trigger does not name the thing it stands beside",
   );
 
   await act(async () => {
@@ -610,7 +782,12 @@ test("the Notes reading carries the arrangement topic, and no path hides in a ti
     () => container.querySelector('[role="treeitem"]') !== null,
     "the Notes reading drew no folder tree, so the sweep would have measured an empty screen",
   );
-  assertHelpContract(surfaceNode("[data-notes-screen]"), ["note-arrangement"]);
+  // WPIS 11-8: głowa kolumny folderów niesie odtąd plakietkę, jak
+  // `v3/screens/knowledge.js:807`.
+  assertHelpContract(surfaceNode("[data-notes-screen]"), [
+    "folders",
+    "note-arrangement",
+  ]);
 });
 
 /* THE PROJECTS "BY CLIENT" LENS — the deadline DATE, in the row's name.
@@ -649,6 +826,20 @@ test("the projects by-client lens puts the deadline date in the row, not in a to
     () => container.querySelector("[data-project-row]") !== null,
     "Projects drew no row, so the sweep below would have measured an empty screen",
   );
+  /* WPIS 5-4, ZMIERZONY PRZED PRZEŁĄCZENIEM SOCZEWKI — i to jest kotwica
+     dowodu, nie dodatkowa asercja. Plakietka `project-health` stoi w GŁOWIE
+     GRUPY domyślnego układu (`ProjectListLayout.tsx`), a soczewka „by client"
+     rysuje inny komponent bez grup, więc zbiór poniżej jest tam pusty
+     PRAWIDŁOWO. Asercja tylko po przełączeniu byłaby zielona także wtedy,
+     gdyby plakietki nie było nigdzie.
+
+     PRZED LOTEM L7 OBIE POŁOWY BYŁY PUSTE I OBIE BYŁY ZIELONE, podczas gdy
+     domyślny układ rysował okrągły „?" bez `onClick`, bez tematu i bez
+     deklaracji, że cokolwiek otwiera. Zbiór był pusty nie dlatego, że
+     pytajnika nie było, tylko dlatego, że pytajnik nie przedstawił się jako
+     pomoc — a każda pętla w tym pliku chodzi po `[data-help-topic]`. */
+  assertHelpContract(surfaceNode(".project-surface"), ["project-health"]);
+
   const lens = container.querySelector<HTMLElement>('[data-layout="client"]');
   assert.ok(lens, "the by-client lens has no way in");
   await act(async () => {
@@ -677,6 +868,10 @@ test("the projects by-client lens puts the deadline date in the row, not in a to
     `the dated project's row does not say ${expected} anywhere a screen reader would hear it:\n${named.join("\n")}`,
   );
 
+  // A W SOCZEWCE „BY CLIENT" PLAKIETKI NIE MA, I TO JEST STAN ZAMIERZONY:
+  // ten układ nie ma głów grup zdrowia, więc nie ma etykiety, przy której
+  // znak miałby stać. Pusty zbiór znaczy tu coś innego niż przed lotem —
+  // znaczy „zmierzone i nieobecne", a nie „niewidzialne dla przyrządu".
   assertHelpContract(surfaceNode(".project-surface"), []);
 });
 

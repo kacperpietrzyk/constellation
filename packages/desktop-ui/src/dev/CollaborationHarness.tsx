@@ -134,7 +134,7 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
  * a jego zapisany powód — „`available` wygasiłoby gałąź «Grant access»" —
  * BYŁ NIEPRAWDĄ, i to sprawdzalną w dwóch linijkach. Napis na tym przycisku
  * bierze się z `platform === "macos" && availability === "permission_required"`
- * (`MeetingsSurface.tsx:603-608`); ta fikstura deklarowała `platform: "other"`,
+ * (`MeetingsSurface.tsx:612-617`); ta fikstura deklarowała `platform: "other"`,
  * więc rysowała „Check again", a „Grant access" NIE POJAWIŁO SIĘ tu ani razu.
  * Koszt, którym uzasadniono odmowę pomiaru, nigdy nie był płacony.
  *
@@ -154,7 +154,7 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
  *
  * CO TA ZAMIANA KOSZTUJE, POWIEDZIANE WPROST. Nadchodzące rysują ALBO stan
  * pusty, ALBO kartę z wierszami — to dwa ramiona jednego wyrażenia
- * (`MeetingsSurface.tsx:880`), a bramka chodzi po JEDNYM adresie
+ * (`MeetingsSurface.tsx:909`), a bramka chodzi po JEDNYM adresie
  * (`verify-renderer-layout.mjs:124`), więc jedna fikstura rysuje jedno ramię.
  * Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (farba karty, farba
  * wpuszczonego wiersza, jego trzy ścieżki, szerokość akcji) przeciwko JEDNEMU
@@ -415,7 +415,7 @@ const client = createScenarioClient({
           // Wpis #6 był oddany w kodzie od lotu D2 i NIEMIERZALNY, bo ta
           // fikstura nie rysowała ANI JEDNEGO `[data-planned-row]` — ekran stał
           // na „Nothing is planned for today", więc warunek plakietki
-          // (`TodaySurface.tsx:193-199`: którykolwiek dzisiejszy wiersz planu
+          // (`TodaySurface.tsx:194-200`: którykolwiek dzisiejszy wiersz planu
           // z `plannedBy.principalKind === "agent"`) nie miał jak być spełniony.
           // To nie było „za trudne do zmierzenia", tylko „nie ma czego mierzyć",
           // a rozwiązaniem jest fikstura, nie niższy próg.
@@ -428,7 +428,7 @@ const client = createScenarioClient({
           startAt: plannedStartAt,
           // Ten sam `agentPrincipalId`, którym stoi grant „Orbit Runner"
           // w `agent.access` niżej: `principalName` rozwiązuje imię właśnie po
-          // grancie (`TodaySurface.tsx:62-68`), więc inny identyfikator dałby
+          // grancie (`TodaySurface.tsx:63-69`), więc inny identyfikator dałby
           // ogólne „An agent" i plakietka mierzyłaby gałąź zapasową zamiast
           // właściwej.
           plannedBy: {
