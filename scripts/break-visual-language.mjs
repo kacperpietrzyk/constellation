@@ -4686,9 +4686,9 @@ const outcome = runBreakTests({
         );
         return replaceOnce(
           opened,
-          `        {dayGreeting(greetingPart, viewerName)}
+          `        {greeting}
       </h2>`,
-          `        {dayGreeting(greetingPart, viewerName)}
+          `        {greeting}
       </p>`,
           "the greeting's closing tag",
         );
