@@ -36,6 +36,36 @@
   white-space: nowrap;
 }
 
+/* WPIS 1-1 — CZYM TEN EKRAN OTWIERA TREŚĆ.
+
+   Prototyp: `v3/screens/today.css:8-10` — `.td-greeting { font-size:
+   var(--text-2xl); font-weight: 600; letter-spacing: -0.02em; margin-bottom:
+   0.375rem }`, rysowane z `v3/screens/today.js:133`. Kontrakt:
+   `.ui-craft/patterns.md`, „Pattern: Surface title band", ograniczenie
+   „A band names the screen; it does not open it".
+
+   STOPIEŃ I WAGA SĄ ZADEKLAROWANE OBIE, i to nie jest gadatliwość: w tym
+   pakiecie nie ma resetu nagłówków, więc `h2` bez autorskiej wagi bierze 700
+   od przeglądarki — czyli wartość spoza skali z `tokens.css`, którą przyrząd
+   P5 (`scripts/type-weight.mjs`) zapala jako dług, a `heading-typography.mjs`
+   liczy jako regułę nagłówka bez deklaracji.
+
+   UJEMNY MARGINES JEST TĄ SAMĄ ROBOTĄ CO PRZY `.capacity` NIŻEJ — znosi
+   `gap: var(--space-8)` kolumny, bo powitanie należy do GŁOWY ekranu, a nie do
+   rytmu sekcji; w prototypie oba siedzą wewnątrz `.td-head`. Pojemność zjeżdża
+   pod nie o `0.375rem`, dokładnie tyle, ile prototyp daje `.td-greeting`
+   jako `margin-bottom`. */
+.greeting {
+  max-width: var(--surface-measure, 58rem);
+  width: 100%;
+  margin: calc(-1 * var(--space-8)) auto 0;
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
 /* Jedyna liczba na tym ekranie, która naprawdę coś znaczy: ile miejsca
    zostało — i od wpisu #3 stoi POD tytułem, przy lewej krawędzi kolumny, a nie
    u prawego końca pasma (`v3/screens/today.css:12-17`, `.td-capacity`).
@@ -51,8 +81,15 @@
      od tytułu niż sekcje od siebie — a ona należy do głowy ekranu, nie do
      rytmu sekcji. Po zniesieniu odstępu zostaje sam margines pasma, tak jak
      w prototypie, gdzie pojemność jest wewnątrz `.td-head`, a nie kolejnym
-     blokiem po nim (`v3/screens/today.js:132-136`). */
-  margin: calc(-1 * var(--space-8)) auto 0;
+     blokiem po nim (`v3/screens/today.js:132-136`).
+
+     OD WPISU 1-1 ODSTĘP NIE JEST ZEROWY, TYLKO 0,375 rem: nad pojemnością stoi
+     teraz powitanie, a prototyp daje mu dokładnie tyle
+     (`v3/screens/today.css:10` — `.td-greeting { margin-bottom: 0.375rem }`).
+     Liczba jest w tym samym `calc`, a nie w drugiej deklaracji, żeby
+     zniesienie odstępu kolumny i odstęp od powitania nie mogły się rozjechać
+     na dwie reguły. */
+  margin: calc(-1 * var(--space-8) + 0.375rem) auto 0;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;

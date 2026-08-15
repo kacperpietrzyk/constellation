@@ -81,6 +81,14 @@ const waitFor = async (
 type Mounted = {
   readonly commands: CommandEnvelope[];
   readonly detachedNow: () => readonly string[];
+  readonly syncCalls: () => number;
+  readonly connectionCalls: () => number;
+};
+
+/* CO EKRAN MÓWI O ŹRÓDLE — dwa ramiona podawane z zewnątrz, bo ekran po locie
+   L6 nie mówi o nim NIC i tylko ZACHOWANIE akcji pasma je rozróżnia. */
+type SourceOptions = {
+  readonly jamie?: "configured" | "unconfigured" | "refused";
 };
 
 const mountMeetings = async (
@@ -91,6 +99,7 @@ const mountMeetings = async (
      sprawdzona w OBU, bo defekt, który położył paczkowaną alfę, siedział
      w tym ramieniu, którego domyślna fikstura NIE rysuje. */
   shapeLoop: (loop: MeetingLoopSurface) => MeetingLoopSurface = (loop) => loop,
+  { jamie = "configured" }: SourceOptions = {},
 ): Promise<Mounted> => {
   // Derived from the clock the test runs on, never pinned: a fixture whose
   // instants are written down is a defect with a delay fuse.
@@ -119,9 +128,20 @@ const mountMeetings = async (
       }),
     },
   });
+  let syncCalls = 0;
+  let connectionCalls = 0;
   const client: ConstellationRendererClient = {
     ...base,
-    getJamieStatus: async () => ({ configured: true, scope: "personal" }),
+    getJamieStatus: async () => {
+      if (jamie === "refused") throw new Error("the Jamie status read refused");
+      return jamie === "configured"
+        ? { configured: true, scope: "personal" as const }
+        : { configured: false };
+    },
+    syncJamie: async () => {
+      syncCalls += 1;
+      return base.syncJamie();
+    },
     getMeetingLoop: async () => shapeLoop(meetingLoopFixture(now, detached)),
     runQuery: async (query: QueryEnvelope) =>
       query.queryName === "document.backlinks"
@@ -168,6 +188,9 @@ const mountMeetings = async (
         inspectorHost,
         onInspectorOpen: () => undefined,
         onMeetingSelected: () => undefined,
+        onOpenConnections: () => {
+          connectionCalls += 1;
+        },
         onOpenSources: () => undefined,
       }),
     );
@@ -185,7 +208,20 @@ const mountMeetings = async (
       inspectorHost.querySelector(".meeting-result-notes p") !== null,
     "the attached-notes section never rendered",
   );
-  return { commands, detachedNow: () => detached };
+  return {
+    commands,
+    detachedNow: () => detached,
+    syncCalls: () => syncCalls,
+    connectionCalls: () => connectionCalls,
+  };
+};
+
+const bandAction = (): HTMLButtonElement => {
+  const button = [...container.querySelectorAll("button")].find((candidate) =>
+    /Import from Jamie/u.test(candidate.textContent ?? ""),
+  );
+  assert.ok(button, "the Meetings title band carries no Jamie action at all");
+  return button as HTMLButtonElement;
 };
 
 const attachedTitles = (): string[] =>
@@ -549,5 +585,85 @@ test("the heading ladder never skips a level when nothing is coming up", async (
       .map((element) => Number(element.tagName.slice(1)))
       .includes(3),
     `the empty upcoming state drew no level-three heading: ${headingLadder(container)}`,
+  );
+});
+
+/* CO EKRAN SPOTKAŃ MÓWI O SWOIM ŹRÓDLE — I DLACZEGO TO STOI TUTAJ, A NIE
+   W BRAMCE UKŁADU.
+ *
+ * Wpis 10-1 (lot L6, Faza II) zabrał z tego ekranu KARTĘ KONFIGURACJI Jamie
+ * i postawił ją w Ustawieniach. Raport tamtego lotu twierdził, że „zostaje
+ * sama lista, STATUS POŁĄCZENIA i akcja pasma" — i to było nieprawdą
+ * o produkcie: `grep -n "jamie\." MeetingsSurface.tsx` zwraca DOKŁADNIE JEDNO
+ * trafienie i jest nim `onClick` przycisku pasma. Zniknęły cztery ramiona,
+ * które ten ekran rysował przedtem („Checking…", „Check again", „Connected
+ * workspace/personal key" i sam formularz), więc ekran nie mówi o źródle nic,
+ * a stan połączenia jest czytany WYŁĄCZNIE po to, żeby akcja wiedziała, dokąd
+ * prowadzi.
+ *
+ * CZY TAK MA BYĆ, JEST DECYZJĄ KACPRA, NIE MOJĄ — wpis 10-1 mówi „przenieś
+ * konfigurację", nie „przestań mówić o źródle", a prototyp nie rozstrzyga tego
+ * w żadną stronę: `v3/screens/meetings.js` (452 linie) nie niesie ani jednej
+ * kontrolki i ani jednego zdania o integracji. Czego jednak nie może być, to
+ * żeby ten wybór nie był pilnowany przez NIC — a tak było do tej chwili: żadna
+ * para bramki i żaden test nie mierzył, co Spotkania mówią o źródle, w ŻADNĄ
+ * stronę, więc cicha zmiana w dowolną stronę przechodziła bez śladu.
+ *
+ * Te trzy testy pinują DZISIEJSZE zachowanie po jego jedynym obserwowalnym
+ * śladzie — po tym, dokąd prowadzi akcja pasma w każdym z trzech stanów
+ * odczytu. Nie mierzą wyglądu, bo nie ma czego mierzyć; mierzą to, że decyzja
+ * z 10-1 jest przeprowadzką, a nie zgubieniem drogi do klucza.
+ */
+
+test("with a key configured, the band action imports and does not send the reader to Settings", async () => {
+  const mount = await mountMeetings();
+  await act(async () => {
+    bandAction().click();
+  });
+  await waitFor(
+    () => mount.syncCalls() === 1,
+    "the band action did not import from Jamie even though a key is configured",
+  );
+  assert.equal(
+    mount.connectionCalls(),
+    0,
+    "the band action walked away to Settings while a key was configured",
+  );
+});
+
+test("with no key, the band action leads to the Settings section that now holds the form", async () => {
+  const mount = await mountMeetings(undefined, { jamie: "unconfigured" });
+  await act(async () => {
+    bandAction().click();
+  });
+  await waitFor(
+    () => mount.connectionCalls() === 1,
+    "with no key the band action led nowhere — the form moved to Settings and this is the only way left to it from this screen",
+  );
+  assert.equal(
+    mount.syncCalls(),
+    0,
+    "the surface asked Jamie to sync without a key",
+  );
+});
+
+/* RAMIĘ ODMOWY, ZAPISANE JAKO ZASTANE, NIE JAKO POŻĄDANE. `loadJamieStatus`
+   ustawia `{kind:"error"}` przy odmowie odczytu, a ekran nie odróżnia tego
+   stanu od „nie ma klucza": prowadzi do Ustawień w obu. Ten test mówi, że tak
+   JEST — żeby zmiana tego stanu rzeczy była widoczna jako zmiana, a nie
+   przemknęła jako poprawka kosmetyczna. */
+test("when the status read refuses, the screen still offers the only door it has", async () => {
+  const mount = await mountMeetings(undefined, { jamie: "refused" });
+  await act(async () => {
+    bandAction().click();
+  });
+  await waitFor(
+    () => mount.connectionCalls() === 1,
+    "a refused status read left the band action doing nothing at all",
+  );
+  assert.equal(
+    mount.syncCalls(),
+    0,
+    "the surface asked Jamie to sync after failing to read whether it could",
   );
 });

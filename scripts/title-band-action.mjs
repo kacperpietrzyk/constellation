@@ -41,14 +41,14 @@
 // Ten sam błąd raz już przepuścił złą liczbę i jest w repozytorium opisany:
 // „Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
 // `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero`"
-// (`styles.css:4089-4093`). Pasmo = `#surface-title`.closest("header") obejmuje
+// (`styles.css:4161-4165`). Pasmo = `#surface-title`.closest("header") obejmuje
 // jedną regułą wszystkie cztery.
 //
 // ── MIARA, I DLACZEGO NIE JEST PROSTOKĄTEM PASMA ────────────────────────────
 //
 // Kuszące „środek akcji leży wewnątrz prostokąta pasma" jest ZIELONE NA TEJ
 // WADZIE, której szukamy. `.surface-header` ma `flex-wrap: wrap` postawione
-// świadomie (`styles.css:2468-2473`, żeby przy 200% nie robić poziomego paska
+// świadomie (`styles.css:2540-2545`, żeby przy 200% nie robić poziomego paska
 // przewijania), więc pasmo, które ZAWINĘŁO, rośnie tak, żeby objąć OBA rzędy —
 // i akcja w drugim rzędzie leży wtedy „wewnątrz pasma". Prostokąt pasma nie
 // odróżnia więc rzędu tytułu od rzędu pod nim. Pasma rekordu są tu jeszcze
@@ -62,7 +62,7 @@
 // Obie wysokości są ODCZYTANE W TYM SAMYM PRZELOCIE, więc próg rośnie razem
 // z pismem i ta reguła znaczy to samo przy 100%, 200% i 300%. NIE MA TU ANI
 // JEDNEJ LICZBY PIKSELI i nie ma `--header-band-height`: ten token jest
-// `min-height`, czyli podłogą, a nie wysokością pasma (`styles.css:2456-2457`),
+// `min-height`, czyli podłogą, a nie wysokością pasma (`styles.css:2528-2529`),
 // więc wzorzec z niego zbudowany opisywałby pasmo, którego nie ma.
 //
 // ZAPAS JEST DUŻY I ZMIERZONY, żeby nikt nie musiał wierzyć w finezję progu:
@@ -86,7 +86,7 @@
 // potrzebny dalej.)
 //
 // `.ghost-button` do tego zbioru NIE NALEŻY, i to jest pomiar, nie gust. Jest
-// świadomie przezroczysty (`styles.css:813`) — to odpowiednik prototypowego
+// świadomie przezroczysty (`styles.css:885`) — to odpowiednik prototypowego
 // `.btn` bez modyfikatora — i siedzi na rzeczach, które akcją główną nie są:
 // trzy strzałki tygodnia na Kalendarzu i „Areas and initiatives" na Projektach.
 // (Trzeci przykład, „Why read-only?", stał tu do 2026-08-11 i wypadł, bo ta
@@ -96,7 +96,7 @@
 // (jego pasmo NIESIE trzy ghosty, a prototypowy Kalendarz nie ma w paśmie
 // żadnej akcji), czyli czerwień nad ekranem, o którym rejestr rozjazdów nie ma
 // nic do powiedzenia. Wypełnienie niosą `--action-primary-bg` i
-// `--action-secondary-bg` (`styles.css:752`, `:787`) — i to są dwie klasy niżej.
+// `--action-secondary-bg` (`styles.css:824`, `:859`) — i to są dwie klasy niżej.
 //
 // TEN SAM PREDYKAT MUSI STAĆ PO STRONIE PROTOTYPU, i to jest wada, która ten
 // przyrząd już raz miała: kolumna `today` liczyła wyłącznie przyciski
@@ -507,8 +507,8 @@ export const TITLE_BAND_PROTOTYPE_OPENING_STATES = [
 // przelot tej osi przy 200% nie chodzi, więc obietnica nie miała świadka. Po
 // drugie, gdyby chodził, ta oś byłaby tam CZERWONA z powodu, który ten sam
 // plik ma zapisany dwa razy wyżej: `--header-band-height` jest PODŁOGĄ
-// (`min-height`, `styles.css:2456-2457`), a przy 200% pisma pasmo świadomie się
-// zawija (`flex-wrap: wrap`, `styles.css:2468-2473`) i rośnie ponad nią —
+// (`min-height`, `styles.css:2528-2529`), a przy 200% pisma pasmo świadomie się
+// zawija (`flex-wrap: wrap`, `styles.css:2540-2545`) i rośnie ponad nią —
 // asercja RÓWNOŚCI (±0,5 px) mówiłaby wtedy „SHELL_BAND_OFF" o produkcie
 // zaprojektowanym tak, jak jest. Sufity kolumny przy 200%/300% mierzą INNE
 // przeloty tego pliku i to jest właściwe miejsce na tamto pytanie.
@@ -678,7 +678,26 @@ export const TITLE_BAND_PROTOTYPE_TRAIL_SHAPES = [
  */
 export const TITLE_BAND_STACK_STATUS = "enforced";
 export const TITLE_BAND_STACK_ARMED = TITLE_BAND_STACK_STATUS === "enforced";
-export const TITLE_BAND_OPENING_STATUS = "pending";
+/**
+ * OŚ CZWARTA UZBROJONA W LOCIE L3 (Faza II), 2026-08-15, i warunek, który to
+ * dopuszczał, jest ROZSTRZYGNIĘTY, a nie przegłosowany:
+ * `TITLE_BAND_OPENING_DIVERGENCES` jest PUSTE, bo obie kolumny `todayOpening`,
+ * które mówiły `OPENING_SMALLER`, mówią teraz `OPENING_2XL` — i obie zmieniły
+ * się razem z FARBĄ, nie zamiast niej.
+ *
+ * DLACZEGO PRZEPISANIE TABELI NIE JEST TU DZIURĄ. Kolumna `today` nie jest
+ * oczekiwaniem, tylko DEKLARACJĄ tego, co przelot ma zastać: dryf od niej
+ * rzuca `TITLE_BAND_OPENING_DRIFT` NIEZALEŻNIE od `armed`
+ * (`titleBandVerdictThrows`: `!predicted || (armed && divergent)`). Wpisanie
+ * `OPENING_2XL` bez pomalowania ekranu daje więc czerwień, a nie ciszę — i to
+ * jest dokładnie ten strażnik, który pilnował tej osi przez całą jej fazę
+ * „pending".
+ *
+ * CO UZBROJENIE DOKŁADA: drugie ramię, `TITLE_BAND_OPENING_DIVERGES`. Od teraz
+ * ekran, który PRZESTANIE otwierać treść stopniem `--text-2xl` tam, gdzie
+ * prototyp go otwiera, kładzie bramkę zamiast dopisać wiersz raportu.
+ */
+export const TITLE_BAND_OPENING_STATUS = "enforced";
 export const TITLE_BAND_OPENING_ARMED =
   TITLE_BAND_OPENING_STATUS === "enforced";
 
@@ -1033,7 +1052,7 @@ export const TITLE_BAND_ROWS = [
     // SKŁAD PASMA PRZELICZONY 2026-08-11: lot D2 wyprowadził akapit pojemności
     // do kolumny treści, a w paśmie została data. Plik też był zły — od czasu
     // przed tym lotem ekran mieszka w `TodaySurface.tsx`, nie w `Wave2Surfaces`.
-    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:227-238)",
+    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:236-247)",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1042,7 +1061,13 @@ export const TITLE_BAND_ROWS = [
       'v3/screens/today.js:133 — `<h2 class="td-greeting">Good morning, ' +
       "Kacper</h2>` otwiera treść, a v3/screens/today.css:8-10 daje mu " +
       "--text-2xl",
-    todayOpening: "OPENING_SMALLER",
+    // ODDANE W LOCIE L3 (wpis 1-1): treść otwiera teraz `<h2>` powitania
+    // w `--text-2xl` (`TodaySurface.tsx`, `today.module.css` — `.greeting`),
+    // postawione PRZED akapitem pojemności, więc jest pierwszym nagłówkiem
+    // poza pasmem. Do tego lotu pierwszym nagłówkiem był `h2#today-meetings`
+    // „In the calendar" — 13 px wobec 28 px, czyli nagłówek SEKCJI w miejscu
+    // otwarcia EKRANU.
+    todayOpening: "OPENING_2XL",
     prototypeHeight: "SHELL_BAND",
     citeHeight:
       "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
@@ -1063,7 +1088,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/calendar.js:202 — crumbbar(„Calendar”, `<span class="when">`)',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "CalendarSurface.tsx:659-695 — po locie L2 pasmo to <h1> i grupa prawej strony (zakres tygodnia + trzy ghost-button nawigacji); pojemność tygodnia zeszła do treści, akcji z wypełnieniem dalej nie ma",
+    app: "CalendarSurface.tsx:673-709 — po locie L2 pasmo to <h1> i grupa prawej strony (zakres tygodnia + trzy ghost-button nawigacji); pojemność tygodnia zeszła do treści, akcji z wypełnieniem dalej nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     // ODDANE W LOCIE L2: stał tu `<p class="eyebrow" data-week-range>` NAD
@@ -1075,7 +1100,13 @@ export const TITLE_BAND_ROWS = [
     citeOpening:
       'v3/screens/calendar.js:205 — `<h2 class="cal-title">This week</h2>` ' +
       "otwiera treść, a v3/screens/calendar.css:21-23 daje mu --text-2xl",
-    todayOpening: "OPENING_SMALLER",
+    // ODDANE W LOCIE L3 (wpis 2-3): treść otwiera `<h2>` nazwy oglądanego
+    // tygodnia w `--text-2xl` (`CalendarSurface.tsx`, `calendar.module.css`
+    // — `.weekTitle`), przed wierszem pojemności. Napis JEST wyprowadzony
+    // z `weekOffset`, a nie stały jak w prototypie — prototyp nie ma nawigacji
+    // tygodnia, więc „This week" nad siatką następnego tygodnia byłoby u nas
+    // zdaniem nieprawdziwym. Oś pyta o STOPIEŃ, nie o słowa.
+    todayOpening: "OPENING_2XL",
     prototypeHeight: "SHELL_BAND",
     citeHeight:
       "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
@@ -1135,7 +1166,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/settings.js:1003-1006 — `.st-panel-head` to `<h2 id="st-title">` i `.st-panel-sub`, bez slotu akcji; tryb nie woła crumbbara w ogóle',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "SettingsSurface.tsx:1001-1014 — po locie L2 pasmo to <h1>, .settings-band-sub na wspólnej linii bazowej i `settings-help-entry` (klasa spoza zbioru akcji); nadtytuł „Workspace” i opakowanie zeszły",
+    app: "SettingsSurface.tsx:1085-1098 — po locie L2 pasmo to <h1>, .settings-band-sub na wspólnej linii bazowej i `settings-help-entry` (klasa spoza zbioru akcji); nadtytuł „Workspace” i opakowanie zeszły",
     prototypeStack: "ONE_ROW",
     // JEDYNY EKRAN PROTOTYPU BEZ CRUMBBARA, więc jedyny z własnym cytatem na
     // tej osi — i tym mocniejszy, bo prototyp trzyma tu głowę jako RZĄD.
@@ -1206,7 +1237,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/tasks.js:507-513 — btn("New task", { cls: "primary", icon: "plus", act: "new-task" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "tasks/TasksSurface.tsx:522-557 — SurfaceTitleBand z akcją „New task” (primary-button) wpiętą w onCreateTask; addToGroup (:415-417) zostaje jako tworzenie W GRUPIE",
+    app: "tasks/TasksSurface.tsx:536-571 — SurfaceTitleBand z akcją „New task” (primary-button) wpiętą w onCreateTask; addToGroup (:429-431) zostaje jako tworzenie W GRUPIE",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     // `SurfaceTitleBand.tsx:92-96` wstawia `<h1>` WPROST do `<header>`, bez
@@ -1468,7 +1499,7 @@ export const TITLE_BAND_ROWS = [
       "to --text-xl (v3/app.css:651)",
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
     // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
-    // (`styles.css:6849`) jest jedynym żywym konsumentem `--text-2xl`
+    // (`styles.css:6811`) jest jedynym żywym konsumentem `--text-2xl`
     // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
     // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
     // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby

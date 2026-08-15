@@ -592,7 +592,7 @@ const RECORD_DOORS = {
   projects: "opens",
   // Jedyne drzwi do rekordu szansy, potwierdzone przy zdjęciu `[data-renewal-row]`.
   pipeline: "opens",
-  // `taskContext(id, title)` BEZ `{ record: true }` — `RealApp.tsx:2462-2465`.
+  // `taskContext(id, title)` BEZ `{ record: true }` — `RealApp.tsx:2457-2460`.
   // Wiersz istnieje na tym ekranie dopiero od fikstury lotu D9.
   calendar: "navigates",
 };
@@ -1208,14 +1208,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             count("[data-renewal-row]"),
           );
           // ZAWĘŻONY DO EKRANU DZIŚ, I TO JEST CAŁA TREŚĆ TEGO SELEKTORA.
-          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:451`
+          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:509`
           // i `CalendarSurface.tsx:217` — a te liczniki idą `Math.max` po
           // WSZYSTKICH powierzchniach przelotu. Selektor po samym atrybucie
           // byłby więc spełniony kopią z Kalendarza także wtedy, gdy sekcja
           // planu na Dziś opustoszeje do zera: próg spełniony przez NIE TEN
           // podmiot, czyli dokładnie ta porażka, o której ten plik pisze przy
           // `renewalRows` („próg musi umieć powiedzieć, KTÓRY podmiot
-          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:443`)
+          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:501`)
           // — jedyne wystąpienie w `src`, sprawdzone grepem — a nie zahaszowana
           // nazwa klasy modułu, która zeruje licznik po cichu przy pierwszym
           // przebudowaniu arkusza.
@@ -1338,7 +1338,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // promować je na własny ekran. Nie jest to defekt produktu, tylko jego
         // zapisane rozstrzygnięcie: `RealApp.tsx:2886-2888` mówi wprost „the
         // ONE place a list promotes a task to its own screen", a Kalendarz
-        // (`:2462-2465`) i Dziś (`:2416-2419`) świadomie nie są tym miejscem.
+        // (`:2457-2460`) i Dziś (`:2411-2414`) świadomie nie są tym miejscem.
         //
         // DRUGA POŁOWA TEGO DEFEKTU BYŁA GORSZA OD CZERWIENI, KTÓRA GO ODKRYŁA.
         // `measure(`${id}:${kind}`)` niżej podstawia „record", kiedy nic się nie
@@ -3038,17 +3038,17 @@ const outlineOf = (paint) => {
 //
 // TEN AKAPIT MÓWIŁ „SIEDEM" I WYMIENIAŁ DWA WYJĄTKI (`button.nav-item.active`,
 // `button.capture-dock`), i tak BYŁO, zanim lot FOK przeniósł lekarstwo na ROLĘ
-// CIENIA: `styles.css:634-659` zapamiętuje cień spoczynkowy pod drugą nazwą
+// CIENIA: `styles.css:706-731` zapamiętuje cień spoczynkowy pod drugą nazwą
 // i przy `:focus-visible` remapuje SAM TOKEN na „pierścień, potem to, co było"
 // (`--elevation-rest: var(--control-focus-ring), var(--elevation-rest-resting)`).
 // Kontrolka z własnym cieniem rysuje go więc dalej, a pierścień stoi PRZED nim,
 // czyli nie ma już czego nadpisywać. Zmierzone na przystanku 8
-// (`button.capture-dock`, `styles.css:1966`): przy fokusie
+// (`button.capture-dock`, `styles.css:2038`): przy fokusie
 // `oklch(0.55 0.21 295) 0px 0px 0px 1px` i trzy warstwy własnej elewacji za nim.
 // Wykluczenie zostaje w kodzie, bo jest poprawne dla kontrolki, która ten remap
 // ominie — ale DZIŚ nie odsiewa ani jednego przystanku.
 //
-// Aktywna pozycja nawigacji (`styles.css:1181`) jest trzecim przystankiem Tab na
+// Aktywna pozycja nawigacji (`styles.css:1253`) jest trzecim przystankiem Tab na
 // każdym ekranie (WCAG 2.4.7).
 //
 // PODŁOGA LICZBY PODMIOTÓW. Werdykt liczony na zbiorze, który fikstura albo
@@ -3183,7 +3183,7 @@ const measureTheme = async (
       applied: document.documentElement.dataset.theme ?? "",
       // ODCISK MALOWANIA POWŁOKI, nie nazwa motywu. `body` jedzie
       // `background: var(--surface-stage)` i `color: var(--text-primary)`
-      // (`styles.css:522-524`), a oba tokeny są remapowane przez blok jasny —
+      // (`styles.css:594-596`), a oba tokeny są remapowane przez blok jasny —
       // więc równy odcisk w obu przebiegach ZNACZY, że przełączenie nie zaszło.
       fingerprint: `${shell.backgroundColor} on ${shell.color}`,
     };
@@ -3316,7 +3316,7 @@ const measureTheme = async (
   // kontrolki dałoby czerwień, która nie mówi nic o `--focus-ring`.
   //
   // DZIŚ NIE ODSIEWA NIKOGO — zmierzone, nie założone: lot FOK remapuje przy
-  // `:focus-visible` same tokeny cienia (`styles.css:634-659`), więc pierścień
+  // `:focus-visible` same tokeny cienia (`styles.css:706-731`), więc pierścień
   // stoi PRZED cieniem własnym kontrolki i nadpisywać nie ma czego. Wszystkie
   // dziewięć przystanków wpada do `painting` w obu motywach. Filtr zostaje jako
   // zabezpieczenie na kontrolkę, która ten remap ominie własną deklaracją
@@ -3346,7 +3346,7 @@ const measureTheme = async (
   // pierścień fokusa — zmierzone przed lotem FOK: dwa przystanki
   // (`.nav-item.active`, `.capture-dock`) dostawały werdykt o „pierścieniu",
   // który był ich własną elewacją. Po remapie ról cienia
-  // (`styles.css:634-659`) oba niosą pierścień naprawdę i ten warunek ich już
+  // (`styles.css:706-731`) oba niosą pierścień naprawdę i ten warunek ich już
   // nie dotyczy.
   // Kontur liczy się więc dopiero, gdy jest WIDOCZNY (styl, grubość, alfa), czyli
   // dokładnie wtedy, gdy zapis prototypowy (`outline: 2px solid var(--accent)`)
@@ -3452,7 +3452,7 @@ const measureTheme = async (
   // chodzenie po celach KLIKA, a kliknięcie przestawia `activeElement` — więc
   // zbiór przystanków jest zbiorem afordancji LĄDOWANIA. Zmierzone: nie ma w nim
   // ani `.primary-button`, ani `.secondary-button`, a `.secondary-button` jedzie
-  // `box-shadow: var(--elevation-rest)` (`styles.css:773`), czyli ma dokładnie
+  // `box-shadow: var(--elevation-rest)` (`styles.css:845`), czyli ma dokładnie
   // ten kształt, który przed lotem FOK dawał odpowiedź „NIE".
   //
   // NIE PODNOSZĘ BUDŻETU TABÓW, żeby po niego sięgnąć, i to jest decyzja
@@ -3747,7 +3747,7 @@ const measureTheme = async (
       // z KSZTAŁTU, nie z nazwy klasy: pytanie brzmi „czy człowiek to widzi",
       // a nie „czy to się nazywa skip-link". Afordancja dostępnościowa siedzi
       // dziś nad początkiem układu (`transform: translate(-50%, -180%)`,
-      // `styles.css:4577-4587`) i zjeżdża w kadr dopiero z fokusem.
+      // `styles.css:4649-4659`) i zjeżdża w kadr dopiero z fokusem.
       //
       // CELOWO NIE liczymy „poniżej zgięcia" jako zaparkowania: kontrolka pod
       // spodem jest osiągalna przewinięciem, a ta nad początkiem kadru — tylko
@@ -5036,7 +5036,7 @@ const measureControlPaintInPage = async ({
   // „no rule of this stylesheet set it" zamiast „nie znam tej wartości".
   // SONDA SIEDZI W SHADOW ROOCIE, i to nie jest ostrożność, tylko poprawka
   // zmierzonej wady: sonda wstawiona wprost do dokumentu łapie REGUŁY TYPOWE
-  // tego arkusza — `styles.css:539-545` daje `select` tło z tokenu — więc
+  // tego arkusza — `styles.css:611-617` daje `select` tło z tokenu — więc
   // przyrząd drukował własny token aplikacji jako „farbę tej przeglądarki",
   // a strażnik przezroczystości sądził dla `select` token zamiast silnika.
   // Selektory dokumentu nie sięgają do shadow roota, a `color-scheme` sięga
@@ -5491,11 +5491,11 @@ const controlPaintCensus = async (browser) => {
 //
 // JEDNA SZEROKOŚĆ — 1440×900, jak pary i jak spis farby. Przy 320 px i przy
 // 200% tekstu akcja LEGALNIE stoi wiersz niżej: `.surface-header` ma
-// `flex-wrap: wrap` postawione świadomie (`styles.css:1925-1930`), więc
+// `flex-wrap: wrap` postawione świadomie (`styles.css:1997-2002`), więc
 // asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
 // przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
 // „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
-// przyklejenia (`:5106`).
+// przyklejenia (`scripts/verify-renderer-layout.mjs:7583`, kubełek `STICKY_NOT_EXERCISED`; goły `:N` wiązał tę referencję z ARKUSZEM, nie z tym plikiem, i po locie L6 wskazywał na skasowaną `.meeting-integration-form` — nazwa pliku dopisana przy scaleniu torów Fazy II, 2026-08-15, bo goła kontynuacja nie umie wyrazić samoodniesienia).
 
 const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
 
@@ -5535,13 +5535,13 @@ const measureTitleBandActionInPage = async ({
   // WIDOCZNOŚĆ MIERZONA TAK SAMO JAK W RESZCIE TEGO PLIKU, i to jest poprawka,
   // nie ozdoba. „Szerokość i wysokość > 0" przepuszcza element 1×1 przycięty
   // `clip: rect(0,0,0,0)` — a dokładnie tak wygląda `#surface-title` w stanie
-  // ładowania Spotkań (`MeetingsSurface.tsx:493` + `.sr-only`,
-  // `styles.css:687-694`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
+  // ładowania Spotkań (`MeetingsSurface.tsx:494` + `.sr-only`,
+  // `styles.css:759-766`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
   // całego werdyktu: środek w rogu kadru, tolerancja pół piksela. Dziś ratuje
   // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
   // więc pada głośno jako `TITLE_BAND_NOT_MEASURED`) — czyli przypadek, nie
   // reguła. Kryterium jest teraz to samo co przy `parkedOutOfFrame`
-  // (`:3087-3097`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
+  // (`:3159-3169`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
   // kadrem znaczą „niewidoczne", a „poniżej zgięcia" NIE — tamto jest zwykłym
   // układem, to jest ukryciem.
   const rendered = (element) => {
@@ -6624,7 +6624,7 @@ const ROUTED_ARRIVAL = {
   // Biblioteka: przełącznik soczewek (LibraryShell.tsx:126). Ten sam znacznik,
   // po którym przelot geometrii wylicza obiektywy.
   library: "#main-content [data-layout]",
-  // Spotkania: `MeetingsSurface.tsx:788` — korzeń ekranu, ta sama klasa, którą
+  // Spotkania: `MeetingsSurface.tsx:1780` — korzeń ekranu, ta sama klasa, którą
   // arkusz obsługuje jako nośnik rynny. Dopisane przy naprawie po przeglądzie
   // lotu D1: pierwsza para tej mapy nad Spotkaniami potrzebowała przystanku,
   // a ekran jest osiągalny dla obu spisów (B1 i B2 mierzą go od lotu D1), więc
@@ -6660,7 +6660,7 @@ const ROUTED_ARRIVAL = {
   // `max-width: 1152px`. Marker celuje w `._week`, a nie w `._calendarState`,
   // bo kartę odmowy zabierze pierwsza działająca fikstura kalendarza,
   // a tydzień zostanie. Podkreślnik po nazwie jest nośny: `[class*="_week_"]`
-  // NIE łapie `_weekNav_hash` (`calendar.module.css:109` wobec `:56`).
+  // NIE łapie `_weekNav_hash` (`calendar.module.css:142` wobec `:56`).
   calendar: '#main-content [class*="_week_"]',
 };
 

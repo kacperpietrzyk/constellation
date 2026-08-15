@@ -13,7 +13,7 @@
      `none` JEST WARTOŚCIĄ, NIE USUNIĘCIEM DEKLARACJI, i musi nią być: klamra
      `.surface-scroll > *` ma zapasowe `58rem` (`styles.css`), więc samo zdjęcie
      liczby dałoby temu ekranowi węższą kolumnę niż miał. Ekran rekordu, który
-     rysuje się WEWNĄTRZ tego korzenia (`TasksSurface.tsx:487`), odziedziczyłby
+     rysuje się WEWNĄTRZ tego korzenia (`TasksSurface.tsx:501`), odziedziczyłby
      to `none` — dlatego `record-screen.module.css` deklaruje swoje 92rem. */
   --surface-measure: none;
   /* Patrz nota przy tej samej zmiennej w `pipeline.module.css`: odstęp kolumny
@@ -39,9 +39,9 @@
      neither `visible` nor `clip`, and `hidden` on ONE axis computes the other
      axis to `auto` — which made THIS box the scrollport for everything under
      it. It never scrolls: its height is not constrained, and the pane above it
-     (`styles.css:2193-2249`, `.work-surface { overflow: auto }` — conditional since lot D10: `.work-surface:has(> .surface-header)` makes the carrier a non-scrolling flex column, and Tasks is a screen that lot deliberately did NOT migrate) is what
+     (`styles.css:2265-2321`, `.work-surface { overflow: auto }` — conditional since lot D10: `.work-surface:has(> .surface-header)` makes the carrier a non-scrolling flex column, and Tasks is a screen that lot deliberately did NOT migrate) is what
      actually moves. A task opened as a record renders inside this same wrapper
-     (`TasksSurface.tsx:443-445`), so on the task record alone the bar pinned
+     (`TasksSurface.tsx:457-459`), so on the task record alone the bar pinned
      to a box that stands still. Measured 2026-08-07: `projects › record` held
      the bar (195 of 194.6 px scrolled, the cursor landing on the strip);
      `tasks › record` was asked for 408.1 px of scroll and moved 0. Same
@@ -118,32 +118,13 @@
    dodawała nic, a odbierała kontur, którym `tokens.css` podkłada tryb
    wymuszonych kolorów — zmierzone tam: `outline: none 0px` zamiast Highlight. */
 
-.search,
-.control {
-  display: flex;
-  flex-wrap: wrap;
-  min-inline-size: 0;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-tertiary);
-  font-size: var(--text-sm);
-}
-
-.searchLabel {
-  color: var(--text-tertiary);
-}
-
-.search input,
-.control select {
-  min-inline-size: 0;
-  max-inline-size: 100%;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--surface-content);
-  padding: var(--space-1) var(--space-2);
-  color: var(--text-primary);
-  font: inherit;
-}
+/* `.search`, `.searchLabel` i `.control` STĄD ZNIKNĘŁY RAZEM ZE SWOIMI
+   PODMIOTAMI (wpisy 4-1 i 4-2). Ubierały pole wyszukiwania i trzy `<select>`
+   w obwódkę i tło, czyli malowały NATYWNĄ kontrolkę tak, żeby mniej raziła —
+   a rzecz, którą prototyp stawia w tym pasie, to przycisk otwierający menu, nie
+   ładniejszy widżet systemu. Wyzwalacze biorą chrom z `.inline-popover-trigger`
+   (`styles.css`), wspólny z pozostałymi siedmioma dymkami aplikacji, więc
+   pigułka pasa Zadań nie jest siódmym prywatnym wyglądem tej samej rzeczy. */
 
 .count {
   margin: 0;

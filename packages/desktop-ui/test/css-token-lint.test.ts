@@ -189,7 +189,9 @@ describe("css token lint", () => {
   // siatką bezpieczeństwa przy przepinaniu warstwy tokenów.
 
   it("lets a compact density change spacing without hiding content or shrinking type", () => {
-    // Wzięte z `interaction-recovery-contract.test.ts:765`, gdzie ta reguła była
+    // Wzięte z `interaction-recovery-contract.test.ts:809` (test o nazwie „lets
+    // a compact density change spacing, and never what a reader can see"),
+    // gdzie ta reguła była
     // przywiązana do jednej powierzchni i do jej nazwy klasy. To jest lint CSS-a,
     // nie asercja o ekranie Pracy: dotyczy KAŻDEJ reguły trybu zwartego, także
     // tych, które dopiero powstaną. Tamta kopia jeszcze stoi i zniknie razem

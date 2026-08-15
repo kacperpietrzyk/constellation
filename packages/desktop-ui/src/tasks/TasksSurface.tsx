@@ -35,7 +35,6 @@ import {
   TASK_GROUPING_LABELS,
   TASK_LAYOUTS,
   TASK_LAYOUT_LABELS,
-  TASK_SORT_LABELS,
   buildRows,
   groupTasks,
   groupingFromSavedView,
@@ -87,6 +86,21 @@ const SavedViewFilterForm = lazy(async () => ({
 // eager destination, and the hot path has a few hundred bytes of gzip left.
 const SavedViewManager = lazy(async () => ({
   default: (await import("./SavedViewManager.js")).SavedViewManager,
+}));
+
+// Cztery pigułki pasa widoku, w miejscu trzech `<select>` i jednego pola
+// wyszukiwania. Leniwe z tego samego mierzonego powodu co dwie rzeczy wyżej,
+// i z jednego dodatkowego: `InlinePopover` ma dziś OŚMIU konsumentów i ANI
+// JEDNEGO na ścieżce gorącej. Statyczny import wciągnąłby tam portal, obsługę
+// ognisk i cały arkusz dymka.
+//
+// JEDEN KOMPONENT, A NIE CZTERY WYWOŁANIA TUTAJ, I JEST TO POMIAR. Pierwsza
+// wersja tej dostawy trzymała `ChoicePopover`/`FieldPopover` leniwe, ale ich
+// cztery wywołania — z mapowaniem opcji i budowaniem etykiet — stały w tym
+// pliku, czyli na ścieżce gorącej: +186 B gzip przy 192 B zapasu. Powód
+// i liczby stoją w nagłówku `TaskViewControls.tsx`.
+const TaskViewControls = lazy(async () => ({
+  default: (await import("./TaskViewControls.js")).TaskViewControls,
 }));
 
 // One collection of work, five lenses over it. The layout switcher changes how
@@ -620,41 +634,58 @@ export const TasksSurface = ({
           </small>
         )}
 
-        <div className={styles.search}>
-          <label className={styles.searchLabel} htmlFor="tasks-search">
-            Search
-          </label>
-          <input
-            id="tasks-search"
-            onChange={(event) => setSearch(event.target.value)}
-            type="search"
-            value={search}
-          />
-        </div>
+        {/* CZTERY RYSOWANE PIGUŁKI W MIEJSCU CZTERECH NATYWNYCH KONTROLEK —
+            wpisy 4-1 i 4-2, jedna dostawa, bo to jedna zmiana: kto rysuje
+            widżet i gdzie stoi jego stan. Cytat z obu stron stoi w nagłówku
+            `components/ChoicePopover.tsx`; tu zostaje to, co wynika z niego dla
+            TEGO pasa.
 
-        <div className={styles.control}>
-          <label htmlFor="tasks-view">View</label>
-          <select
-            id="tasks-view"
-            onChange={(event) =>
-              openView(
-                projection?.savedViews.find(
-                  (view) => view.id === event.target.value,
-                ),
-              )
-            }
-            value={activeViewId ?? ""}
-          >
-            <option value="">All work</option>
-            {projection?.savedViews
-              .filter((view) => view.state === "active")
-              .map((view) => (
-                <option key={view.id} value={view.id}>
-                  {view.name}
-                </option>
-              ))}
-          </select>
-        </div>
+            ETYKIETY ZNIKAJĄ RAZEM Z KONTROLKAMI, i to nie jest sprzątanie po
+            drodze (4-2). `Search`, `View`, `Group` i `Sort` stały tu jako
+            widoczny tekst obok pola — czyli pas widoku był formularzem
+            w produkcie, który nigdzie indziej formularza nie udaje. Prototyp
+            nie wypisuje ani jednej z tych czterech: stan siedzi W TREŚCI
+            pigułki (`v3/screens/tasks.js:524` — `btn("Group: ${TK_GROUP_LABEL
+            [grp]}")`). Dlatego wyzwalacz każdej z nich NAZYWA WYBRANĄ RZECZ,
+            a nie oś wyboru.
+
+            LENIWE Z POMIARU, NIE Z OSTROŻNOŚCI, I POMIAR JEST CIAŚNIEJSZY, NIŻ
+            MÓWIŁ KOMENTARZ OBOK. `TasksSurface` jest importowany statycznie
+            przez `RealApp.tsx`, czyli siedzi na ścieżce gorącej — a ta miała
+            w dniu tego lotu **192 B** zapasu gzip, nie „kilkaset" i nie 2,3 kB:
+            zmierzone `node scripts/verify-renderer-bundle.mjs` na bazie
+            `01afd3d`, 173 808 B przy suficie 174 000 B. `InlinePopover` na tej
+            ścieżce NIE JEST i wciągnięcie go tam razem z portalem i obsługą
+            ognisk zjadłoby ten zapas na ekranie, którego wiele wizyt nie
+            filtruje.
+
+            OSIEROCONE PO TEJ ZMIANIE `id` NIE ZNIKAJĄ: pigułka dostaje to samo
+            `tasks-view` / `tasks-group` / `tasks-sort`, które nosił `<select>`.
+            Adres rzeczy jest umową z każdym, kto po niej sięga — w tym z 20
+            miejscami w `test/tasks-saved-view.interaction.test.tsx`. */}
+        <LazySurfaceBoundary label="View controls">
+          <Suspense fallback={null}>
+            <TaskViewControls
+              activeViewId={activeViewId}
+              groupingOptions={groupingOptions}
+              groupingValue={groupingValue}
+              onChooseView={(chosen) =>
+                openView(
+                  projection?.savedViews.find((view) => view.id === chosen),
+                )
+              }
+              onGrouping={(chosen) => setGrouping(groupingFromOption(chosen))}
+              onSearch={setSearch}
+              onSort={setSort}
+              savedViews={(projection?.savedViews ?? []).filter(
+                (view) => view.state === "active",
+              )}
+              search={search}
+              sort={sort}
+              sorts={SORTS}
+            />
+          </Suspense>
+        </LazySurfaceBoundary>
 
         {/* Editing lives beside the picker and only with a view open: there is
             nothing to edit on "All work", and a stored view is the only thing
@@ -709,38 +740,6 @@ export const TasksSurface = ({
             </Suspense>
           </LazySurfaceBoundary>
         )}
-
-        <div className={styles.control}>
-          <label htmlFor="tasks-group">Group</label>
-          <select
-            id="tasks-group"
-            onChange={(event) =>
-              setGrouping(groupingFromOption(event.target.value))
-            }
-            value={groupingValue}
-          >
-            {groupingOptions.map((candidate) => (
-              <option key={candidate.value} value={candidate.value}>
-                {candidate.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={styles.control}>
-          <label htmlFor="tasks-sort">Sort</label>
-          <select
-            id="tasks-sort"
-            onChange={(event) => setSort(event.target.value as TaskSort)}
-            value={sort}
-          >
-            {SORTS.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {TASK_SORT_LABELS[candidate]}
-              </option>
-            ))}
-          </select>
-        </div>
 
         <p aria-live="polite" className={styles.count} role="status">
           {countLabel(rows.length, "task")}

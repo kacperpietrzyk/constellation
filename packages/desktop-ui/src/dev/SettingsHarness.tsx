@@ -27,7 +27,6 @@ export const SettingsHarness = () => (
       onWrote={async () => undefined}
       onFailure={() => undefined}
       onOpenRecovery={() => undefined}
-      onNavigate={() => undefined}
       onUndo={() => undefined}
     />
   </main>

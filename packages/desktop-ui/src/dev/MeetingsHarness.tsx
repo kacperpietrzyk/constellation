@@ -182,6 +182,7 @@ export const MeetingsHarness = () => {
           inspectorHost={inspectorHost}
           onInspectorOpen={() => setInspectorOpen(true)}
           onMeetingSelected={() => undefined}
+          onOpenConnections={() => undefined}
           onOpenSources={() => undefined}
         />
       </div>

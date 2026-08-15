@@ -54,6 +54,22 @@
   font-size: var(--text-sm);
 }
 
+/* DWA PRZYCISKI WYSOKOŚCI WIERSZA STOJĄ OBOK SIEBIE — I TA REGUŁA JEST
+   BRAKUJĄCĄ POŁOWĄ WPISU 4-3. Znacznik wołał `styles.density` od dnia, w którym
+   powstał; tej nazwy w tym pliku NIE BYŁO, więc CSS Modules dawał
+   `class="undefined"`, a `<fieldset>` malował się domyślnym `border: 2px
+   groove` przeglądarki. Element jest odtąd `div[role="group"]`
+   (`SavedViewManager.tsx`), a odstęp jest zadeklarowany zamiast dziedziczony po
+   niczym: `.manager` ma `gap`, ale para przycisków ma być bliżej siebie niż
+   sąsiednie pigułki, bo to jest JEDNA kontrolka o dwóch stanach. */
+.density {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 /* What "this view" means, said before the click rather than discovered after
    it. A reader who cannot see what is being kept has to save one to find out. */
 .note {

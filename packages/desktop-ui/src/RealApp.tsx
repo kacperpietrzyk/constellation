@@ -81,6 +81,7 @@ import {
 } from "./i18n.js";
 
 import { TodaySurface } from "./TodaySurface.js";
+import { viewerDisplayName } from "./viewer-identity.js";
 import { InboxSurface } from "./InboxSurface.js";
 import { inboxWaitingCount } from "./inbox-triage.js";
 import { countLiveRecords } from "./crm/record-census.js";
@@ -1989,15 +1990,9 @@ export const RealApp = ({
   // KTO CZYTA — jedyna rzecz, jaką stopka paska bocznego ma powiedzieć
   // (`v3/app.js:660-664`). Odczyt jest już w migawce powłoki, więc to nie jest
   // nowe zapytanie ani nowa zdolność; `undefined` znaczy „nie dało się
-  // zapytać" i rysuje NIC, a nie zastępnik.
-  const accessSlice = state.snapshot.access;
-  const viewerName =
-    accessSlice.kind === "ready"
-      ? accessSlice.data.members.find(
-          (member) =>
-            member.principalId === accessSlice.data.currentPrincipalId,
-        )?.displayName
-      : undefined;
+  // zapytać" i rysuje NIC, a nie zastępnik. Reguła zeszła do
+  // `viewer-identity.ts` w locie L3, bo powitanie na Dzisiaj pyta o TO SAMO.
+  const viewerName = viewerDisplayName(state.snapshot.access);
   const coordinatedDataHome =
     state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
   // DRUGA LINIA KAFLA — MIEJSCE, SEPARATOR, STAN. Cztery gałęzie i ich powody
@@ -2510,6 +2505,14 @@ export const RealApp = ({
               inspectorHost={meetingInspectorHost}
               onInspectorOpen={() => setMeetingInspectorOpen(true)}
               onMeetingSelected={setSelectedMeetingId}
+              /* GDZIE STOI KONFIGURACJA JAMIE (wpis 10-1, lot L6). Formularz
+                 zszedł z tego ekranu do Ustawień, więc akcja pasma „Import from
+                 Jamie" bez zapisanego klucza otwiera TĘ kategorię Ustawień,
+                 zamiast przewijać do tafli, której na tym ekranie już nie ma.
+                 `openSettingsCategory`, a nie gołe przejście na powierzchnię:
+                 Ustawienia są trybem powłoki i mają jedną drogę wejścia
+                 (`RealApp.tsx:5533-5538` mówi to wprost). */
+              onOpenConnections={() => openSettingsCategory("access")}
               /* „Open Sources →" na prawym końcu nagłówka „Jamie results"
                  (wpis #65). Ta sama droga, którą powłoka otwiera każdy inny
                  odczyt Biblioteki, więc etykieta jest UCZCIWA: `library/
@@ -2719,9 +2722,6 @@ export const RealApp = ({
             onWrote={refreshAfter}
             onFailure={showFailure}
             onOpenRecovery={() => setRecoveryOpen(true)}
-            onNavigate={(next, label) =>
-              openContext(destinationContext(next, label))
-            }
             // The surface owns the fact of which section is in view; the
             // shell's left column is the only navigator that shows it.
             onCategoryChange={setSettingsCategory}
@@ -3839,8 +3839,8 @@ export const RealApp = ({
                   data-settings-back="true"
                   // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
                   // rule `.desktop-shell.rail .nav-item > span { display: none }`
-                  // (styles.css:4658, inside the rail block that begins at
-                  // :4654) takes BOTH children out of the accessibility tree,
+                  // (styles.css:4730, inside the rail block that begins at
+                  // :4726) takes BOTH children out of the accessibility tree,
                   // and the
                   // only way out of settings mode was left announcing itself as
                   // „‹". The label is now on the button, so it survives the

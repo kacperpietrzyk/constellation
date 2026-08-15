@@ -9,7 +9,7 @@
 // tokenie tła przechodzi bez pomiaru, o ile ta konkretna para nie jest rodziną.
 //
 // To nie jest teoria. Na drzewie z 2026-08-07 ta bramka znalazła
-// `.nav-count--attention` (`styles.css:1338`): `color: var(--on-accent)` na
+// `.nav-count--attention` (dziś `styles.css:2144`): `color: var(--on-accent)` na
 // `background: var(--accent)`, czyli w motywie CIEMNYM 3,54:1 przy progu 4,5.
 // Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:570` wymienia ją w tabeli
 // stopni akcentu pod nagłówkiem „PONIŻEJ" — a mimo to plakietka została tak
@@ -59,7 +59,7 @@
 // Bramka, która nie umie zzielenieć, nie jest pomiarem tylko blokadą; bramka,
 // która nie umie sczerwienieć, nie mierzy nic. Sprawdzone oba kierunki:
 //   * NA DZISIEJSZYM DRZEWIE, bez żadnego złamania: 5/6, jedna porażka —
-//     `dark/styles.css:1254 .nav-count--attention: 3.54:1`. Czerwień nie jest
+//     `dark/styles.css:2060 .nav-count--attention: 3.54:1`. Czerwień nie jest
 //     tu inscenizowana, tylko ZASTANA.
 //   * `.nav-count--attention` przestawione TYMCZASOWO na
 //     `--action-primary-bg` / `--action-primary-text`: 6/6 zielone, przy
@@ -197,8 +197,11 @@ if (!tokensEntry) {
 //
 // PRZEŁAMANIA LINII ZOSTAJĄ. Komentarz zamieniony na pusty napis przesuwa
 // wszystko pod nim: pierwsza wersja tej bramki wskazała `.nav-count--attention`
-// na `styles.css:1111`, a reguła stoi w wierszu 1254 — różnica jest dokładnie
-// sumą komentarzy nad nią. Bramka wskazująca nie ten wiersz każe człowiekowi
+// o 106 wierszy WYŻEJ, niż reguła stoi — różnica była dokładnie sumą
+// komentarzy nad nią. Zapisany jest tu ODSTĘP, a nie dwa numery wierszy,
+// i to jest poprawka po przeglądzie: dwa numery bezwzględne obok siebie gniją
+// osobno, więc jedno zdanie zaczęło podawać dwa różne wiersze tej samej
+// reguły (dziś stoi ona w `styles.css:2144`). Bramka wskazująca nie ten wiersz każe człowiekowi
 // szukać defektu ręcznie i podważa własny raport.
 const withoutComments = (css) =>
   css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
@@ -674,7 +677,7 @@ const INACTIVE_COMPONENT = {
 // marki NIE NIESIE ŻADNEGO TEKSTU (to `<svg>` z kółkami i kreskami malowanymi
 // `currentColor`, `components/BrandMark.tsx`), a do tego jest wycięty
 // z drzewa dostępności i stoi obok wypisanej nazwy produktu
-// (`RealApp.tsx:1821-1822`, `.brand-row strong` = „Constellation").
+// (`RealApp.tsx:1822-1823`, `.brand-row strong` = „Constellation").
 // SPRAWDZANE JEST TO, CO DA SIĘ SPRAWDZIĆ: obecność atrybutu przy tej klasie.
 // „Nazwa stoi obok" jest twierdzeniem o drzewie DOM i zostaje prozą.
 const DECORATIVE_EXEMPTIONS = [

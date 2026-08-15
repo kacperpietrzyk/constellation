@@ -59,6 +59,30 @@
   gap: var(--space-1);
 }
 
+/* WPIS 2-3 — CZYM TEN EKRAN OTWIERA TREŚĆ.
+
+   Prototyp: `v3/screens/calendar.css:21-23` — `.cal-title { font-size:
+   var(--text-2xl); font-weight: 600; letter-spacing: -0.02em; margin-bottom:
+   0.375rem }`, rysowane z `v3/screens/calendar.js:205`. Kontrakt:
+   `.ui-craft/patterns.md`, „Pattern: Surface title band", ograniczenie
+   „A band names the screen; it does not open it".
+
+   TE SAME TRZY DEKLARACJE CO `.greeting` NA DZISIAJ, I TAK MA BYĆ — prototyp
+   pisze je dwa razy, w dwóch arkuszach ekranów, bo to są DWA OTWARCIA dwóch
+   ekranów, a nie jedna reguła wspólna. Wspólna reguła powłokowa dałaby ją
+   jedenastu pozostałym ekranom, którym kontrakt jej WPROST zabrania.
+
+   STOPIEŃ I WAGA OBIE — bez resetu nagłówków w tym pakiecie `h2` bez wagi
+   bierze 700 od przeglądarki, czyli wartość spoza skali `tokens.css`. */
+.weekTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
 /* Jedyna liczba, która naprawdę coś znaczy: ile miejsca zostało w tygodniu. */
 .capacity {
   display: flex;
@@ -80,11 +104,20 @@
   color: var(--text-quaternary);
 }
 
+/* Wiersz pojemności i odmów. UJEMNY GÓRNY MARGINES ZNOSI ODSTĘP KOLUMNY
+   (`.calendar` wyżej ma `gap: var(--space-6)`) i zostawia 0,375 rem — tyle, ile
+   prototyp daje `.cal-title` jako `margin-bottom` (`v3/screens/calendar.css:23`).
+   Bez tego pojemność stałaby 24 px pod tytułem, czyli tak daleko jak sekcje od
+   siebie, a ona należy do GŁOWY ekranu: w prototypie `.cal-capacity` jest
+   wewnątrz `.cal-head`, a nie kolejnym blokiem po nim
+   (`v3/screens/calendar.js:204-212`). Ten sam ruch, którego Dzisiaj używa dla
+   `.capacity` od wpisu #3. */
 .calendarState {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
+  margin-top: calc(-1 * var(--space-6) + 0.375rem);
 }
 
 .quiet {
@@ -404,7 +437,7 @@
    „The chrome belongs to the LIST, not to the section".
 
    NIE PRZYCINA — I JEST TO ŚWIADOMY ROZJAZD Z PROTOTYPEM, KTÓRY PRZYCINA
-   (`:224` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
+   (`:257` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
    miał: jego wiersz tacy też jest ogniskowalny (`v3/screens/calendar.js:101` —
    `role="option"` z wędrującym `tabindex`), jego reguła ogniska sięga 3 px
    twardym konturem i 5 px poświatą poza pudełko (`v3/app.css:36-43`), a

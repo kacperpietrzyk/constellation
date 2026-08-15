@@ -122,16 +122,24 @@ export const recordKindLabels: Readonly<Record<string, string>> =
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
 const cachedFormatter = (
-  style: "dateTime" | "time",
+  style: "dateTime" | "time" | "hour",
   timeZone: string | undefined,
 ): Intl.DateTimeFormat => {
   const key = `${style}:${timeZone ?? ""}`;
   const cached = formatterCache.get(key);
   if (cached) return cached;
+  // `hour` DOŁOŻONE TU, A NIE JAKO SZÓSTY WŁASNY CACHE W TYM PLIKU: pora dnia
+  // (wpis 1-1) potrzebuje dokładnie tego, co ta funkcja już robi — pamięci per
+  // strefa i degradacji do strefy maszyny przy identyfikatorze, którego silnik
+  // nie zna. `hourCycle: "h23"` jest jedyną opcją, przy której północ czyta się
+  // jako 0, a nie 24 — pomyłka o godzinę niewidoczna w każdym teście, który nie
+  // chodzi o północy.
   const options: Intl.DateTimeFormatOptions =
     style === "dateTime"
       ? { dateStyle: "medium", timeStyle: "short", hour12: false }
-      : { hour: "2-digit", minute: "2-digit", hour12: false };
+      : style === "hour"
+        ? { hour: "numeric", hourCycle: "h23" }
+        : { hour: "2-digit", minute: "2-digit", hour12: false };
   let formatter: Intl.DateTimeFormat;
   try {
     formatter = new Intl.DateTimeFormat(UI_LOCALE, { ...options, timeZone });
@@ -492,4 +500,65 @@ export const instantForZonedDate = (
   let utc = wallUtc - (zone === "" ? 0 : zoneOffsetMs(zone, wallUtc));
   if (zone !== "") utc = wallUtc - zoneOffsetMs(zone, utc);
   return new Date(utc).toISOString();
+};
+
+// ── WPIS 1-1: KTÓRA TO PORA DNIA, W STREFIE WORKSPACE'U ────────────────────
+//
+// Powitanie prototypu (`v3/screens/today.js:133` — „Good morning, Kacper")
+// potrzebuje dwóch faktów: imienia i PORY. Pora jest tu, a nie na ekranie,
+// z tego samego powodu, dla którego jest tu `dateKeyInZone`: liczy się ją
+// w strefie WORKSPACE'U, nie na zegarze maszyny. Fala E zapłaciła już raz za
+// pomiar doby maszyny zamiast dnia czytelnika, a pora dnia jest tą samą
+// pomyłką skróconą do godzin — czytelnik w Warszawie o 21:00 nie ma „good
+// morning" dlatego, że proces stoi w UTC.
+//
+// ZBIÓR JEST ZAMKNIĘTY I EKSPORTOWANY, bo asercja na napisie „Good morning"
+// gnije w południe. Test pyta o PRZYNALEŻNOŚĆ do zbioru, ekran pisze atrybut
+// `data-greeting-part`, i żadna z tych dwóch rzeczy nie zna godziny.
+//
+// GRANICE: 5–11 rano, 12–17 popołudnie, reszta wieczór. To jest wybór, nie
+// pomiar — i dlatego stoi w JEDNYM miejscu, z którego można go zmienić raz.
+
+/** Pory dnia, którymi wolno otworzyć ekran. Zamknięty zbiór. */
+export const DAY_PARTS = ["morning", "afternoon", "evening"] as const;
+
+export type DayPart = (typeof DAY_PARTS)[number];
+
+/** Pora dnia w strefie workspace'u. Nigdy nie zwraca wartości spoza `DAY_PARTS`. */
+export const dayPartOf = (
+  value: string | number | Date,
+  timeZone?: string,
+): DayPart => {
+  const read = Number.parseInt(
+    cachedFormatter("hour", timeZone).format(new Date(value)),
+    10,
+  );
+  const hour = Number.isNaN(read) ? 0 : read % 24;
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  return "evening";
+};
+
+const dayPartGreetings: Readonly<Record<DayPart, string>> = {
+  morning: "Good morning",
+  afternoon: "Good afternoon",
+  evening: "Good evening",
+};
+
+/**
+ * Zdanie, którym ekran otwiera treść.
+ *
+ * IMIĘ JEST OPCJONALNE, ELEMENT NIE JEST. Odczyt dostępu bywa niedostępny,
+ * a nagłówek, który znika razem z nim, kasuje otwarcie ekranu — czyli tę samą
+ * rzecz, którą ten lot dowozi. Degraduje się więc TEKST, nigdy element:
+ * bez imienia zostaje samo „Good morning", a nie „Good morning, You".
+ * Zastępnik w miejscu imienia jest gorszy niż jego brak (ta sama reguła, którą
+ * lot L11 zapisał przy stopce paska bocznego).
+ */
+export const dayGreeting = (part: DayPart, name?: string): string => {
+  const salutation = dayPartGreetings[part];
+  const trimmed = name?.trim();
+  return trimmed === undefined || trimmed === "" || trimmed === "You"
+    ? salutation
+    : `${salutation}, ${trimmed}`;
 };

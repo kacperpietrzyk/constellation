@@ -633,6 +633,20 @@ export const CalendarSurface = ({
     startInstant === undefined ? startKey : formatDate(startInstant, timezone)
   } – ${endInstant === undefined ? endKey : formatDate(endInstant, timezone)}`;
 
+  // JAK NAZYWA SIĘ OGLĄDANY TYDZIEŃ (wpis 2-3). Cztery gałęzie, wszystkie
+  // wyprowadzone z `weekOffset` — jednej liczby, która wybiera też dane.
+  // „Last/Next week" mają własne słowa, bo „1 week back" o wczorajszym
+  // tygodniu czyta się jak wynik odejmowania, a nie jak nazwa.
+  const weekTitle = showingThisWeek
+    ? "This week"
+    : weekOffset === 1
+      ? "Next week"
+      : weekOffset === -1
+        ? "Last week"
+        : weekOffset > 1
+          ? `${countLabel(weekOffset, "week")} ahead`
+          : `${countLabel(-weekOffset, "week")} back`;
+
   const totals = week.totals;
 
   return (
@@ -693,6 +707,41 @@ export const CalendarSurface = ({
           </div>
         </div>
       </header>
+
+      {/* WPIS 2-3 — TO SAMO CO 1-1, NA DRUGIM Z DWÓCH EKRANÓW, KTÓRE PROTOTYP
+          OTWIERA DUŻYM TYTUŁEM. Dokument przejścia pisze przy tym wpisie „ta
+          sama rzecz co 1-1 — i to jest wzorzec, nie wypadek na jednym
+          ekranie".
+
+          Prototyp: `v3/screens/calendar.js:204-205` — `<header
+          class="cal-head"><h2 class="cal-title">This week</h2>`, a
+          `v3/screens/calendar.css:21-23` daje mu `--text-2xl`, wagę 600
+          i `letter-spacing: -0.02em`. Kontrakt: `.ui-craft/patterns.md`,
+          „Pattern: Surface title band", ograniczenie „A band names the screen;
+          it does not open it" — wymienia oba te ekrany z nazwy i ostrzega, że
+          reguły nie wolno rozdać pozostałym jedenastu.
+
+          TYTUŁ MÓWI, KTÓRY TYDZIEŃ, BO NASZ EKRAN UMIE POKAZAĆ INNY NIŻ
+          BIEŻĄCY. Prototyp ma tu napis stały, bo nie ma nawigacji tygodnia;
+          my mamy trzy `ghost-button` w paśmie (`data-week-step`), więc „This
+          week" nad siatką następnego tygodnia byłoby zdaniem NIEPRAWDZIWYM.
+          Nazwa jedzie z tego samego `weekOffset`, który wybiera dane, a nie
+          z drugiego źródła — i dlatego nie może się z nimi rozjechać.
+
+          NIE POWTARZA ZAKRESU Z PASMA. Zakres („Aug 10 – Tomorrow") stoi
+          w paśmie przy prawej krawędzi (`data-week-range`); tytuł mówi
+          POŁOŻENIE tygodnia względem dzisiaj, czyli rzecz, której tamten napis
+          nie niesie. Atrybut niesie pozycję ze ZBIORU ZAMKNIĘTEGO, żeby
+          asercja pytała o regułę, a nie o napis, który zmieni się nazajutrz. */}
+      <h2
+        className={styles.weekTitle}
+        data-week-title
+        data-week-position={
+          weekOffset === 0 ? "current" : weekOffset > 0 ? "ahead" : "back"
+        }
+      >
+        {weekTitle}
+      </h2>
 
       <div className={styles.calendarState}>
         {/* Pojemność policzona bez kalendarza to nie pojemność. Dopóki

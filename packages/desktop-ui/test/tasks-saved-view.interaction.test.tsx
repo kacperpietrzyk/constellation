@@ -149,22 +149,47 @@ const openTasks = async (): Promise<void> => {
   );
 };
 
-/** A `<select>` the way a person changes one: React owns the value, so the
- *  native setter has to be used or the component never hears about it. */
+/**
+ * Wybór w pasie widoku — dwa kliknięcia, bo tam nie ma już `<select>`.
+ *
+ * DO LOTU L6 stały tu trzy natywne kontrolki, a ta funkcja podstawiała im
+ * wartość natywnym setterem i wysyłała `change`. Wpisy 4-1 i 4-2 zamieniły je
+ * na przyciski otwierające rysowane menu (`components/ChoicePopover.tsx`),
+ * więc zmiana wyboru jest tym, czym jest dla człowieka: naciśnij pigułkę,
+ * naciśnij wiersz.
+ *
+ * SYGNATURA ZOSTAJE, i to jest cała różnica dla dwudziestu wywołań niżej.
+ * Wyzwalacz nosi TO SAMO `id`, które nosił `<select>` (`tasks-view`,
+ * `tasks-group`, `tasks-sort`), a wiersz menu niesie w `data-choice` tę samą
+ * wartość, którą niosło `<option value>`.
+ *
+ * PANEL SZUKA SIĘ W `document.body`, NIE W `container`: `InlinePopover`
+ * portaluje go poza drzewo ekranu (`InlinePopover.tsx:198-210`). Asercja
+ * pisana na `container` byłaby zielona tylko dlatego, że nigdy nie zobaczyła
+ * panelu.
+ *
+ * PIGUŁKI SĄ ŁADOWANE LENIWIE (budżet ścieżki gorącej), więc pierwsze wywołanie
+ * czeka na wyzwalacz zamiast zakładać, że już jest.
+ */
 const choose = async (selectId: string, value: string): Promise<void> => {
-  const select = container.querySelector<HTMLSelectElement>(`#${selectId}`);
-  assert.ok(select, `the Tasks view bar carries no #${selectId}`);
+  await waitForCondition(
+    () => container.querySelector(`#${selectId}`) !== null,
+    `the Tasks view bar never drew #${selectId}`,
+  );
+  const trigger = container.querySelector<HTMLButtonElement>(`#${selectId}`);
+  assert.ok(trigger, `the Tasks view bar carries no #${selectId}`);
+  await act(async () => {
+    trigger.click();
+  });
+  const row = document.body.querySelector<HTMLButtonElement>(
+    `[role="dialog"] [data-choice="${CSS.escape(value)}"]`,
+  );
   assert.ok(
-    [...select.options].some((option) => option.value === value),
-    `#${selectId} offers no option ${value}`,
+    row,
+    `the menu behind #${selectId} offers no row for ${value === "" ? "(all work)" : value}`,
   );
   await act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set;
-    setter?.call(select, value);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    row.click();
   });
 };
 
