@@ -11,10 +11,13 @@ import {
   countLabel,
   dateKeyInZone,
   dayDistance,
+  dayGreeting,
+  dayPartOf,
   formatBandDay,
   formatDate,
   formatTime,
 } from "./i18n.js";
+import { viewerDisplayName } from "./viewer-identity.js";
 import {
   approachingUnplanned,
   dayCapacity,
@@ -136,6 +139,12 @@ export const TodaySurface = ({
   const workingDay = snapshot.bootstrap.workspace.workingDay;
   const dayKey = dateKeyInZone(new Date(), timezone);
   const band = formatBandDay(new Date(), timezone);
+  // OTWARCIE EKRANU (wpis 1-1) — dwa fakty, oba z rzeczy, które ten ekran już
+  // ma: pora dnia z TEJ SAMEJ strefy, z której liczy się klucz dnia, i imię
+  // czytelnika z migawki dostępu, jedną regułą wspólną ze stopką powłoki.
+  const greetingPart = dayPartOf(new Date(), timezone);
+  const viewerName = viewerDisplayName(snapshot.access);
+  const greeting = dayGreeting(greetingPart, viewerName);
 
   // Spotkania nie mogą przyjść z kernela: stan kalendarza jest świadomie
   // lokalny dla urządzenia. Odmowa jest ODPOWIEDZIĄ, nie awarią — dzień bez
@@ -301,6 +310,55 @@ export const TodaySurface = ({
           {`, ${band.remainder}`}
         </span>
       </header>
+
+      {/* WPIS 1-1 — EKRAN OTWIERA TREŚĆ ZDANIEM DO CZŁOWIEKA, NIE PASKIEM
+          STATYSTYKI.
+
+          Prototyp: `v3/screens/today.js:130-133` — pasmo NAZYWA ekran
+          (`<span class="cur">Today</span>`), a treść otwiera
+          `<h2 class="td-greeting">Good morning, Kacper</h2>` w `--text-2xl`
+          (`v3/screens/today.css:8-10`, waga 600, `letter-spacing: -0.02em`).
+          Kontrakt: `.ui-craft/patterns.md`, „Pattern: Surface title band",
+          ograniczenie „A band names the screen; it does not open it" — i tam
+          też stoi, że robi tak DOKŁADNIE JEDEN ekran obok Kalendarza, więc to
+          nie jest reguła do rozdania wszystkim.
+
+          `h1` W PAŚMIE ZOSTAJE WIDOCZNY, i to jest różnica wobec prototypu
+          przeczytana, a nie przeoczona. Prototyp trzyma `h1` jako `sr-only`,
+          bo nazwanie ekranu niesie u niego `<span class="cur">` w paśmie —
+          u nas tym nazwaniem JEST `h1#surface-title`. Ukrycie go zabiłoby
+          podmiot pięciu osi przyrządu pasma (`#surface-title`) i dałoby awarię
+          przyrządu w miejsce poprawki.
+
+          NAGŁÓWEK JEST BEZWARUNKOWY, DEGRADUJE SIĘ TEKST. Odczyt dostępu bywa
+          niedostępny; nagłówek znikający razem z imieniem kasowałby dokładnie
+          tę rzecz, którą ten lot dowozi, i to w stanie, którego fikstura
+          bramki nie rysuje. Bez imienia zostaje samo „Good morning"
+          (`i18n.ts`, `dayGreeting`) — nigdy „Good morning, You".
+
+          PORA DNIA IDZIE ZE STREFY WORKSPACE'U, nie z zegara maszyny, tą samą
+          stałą, którą ten ekran liczy klucz dnia. Atrybut niesie pozycję ze
+          ZBIORU ZAMKNIĘTEGO (`DAY_PARTS`), bo asercja na napisie „Good
+          morning" jest asercją, która gnije w południe.
+
+          `data-greeting-named` PORÓWNUJE SŁOWA, A NIE STAN ODCZYTU. Pierwsza
+          wersja liczyła go jako `viewerName === undefined`, czyli odpowiadała
+          „czy odczyt dostępu się udał", deklarując „czy powitanie niesie imię"
+          — a `dayGreeting` odrzuca też `""`, same spacje i „You", więc dla
+          członka o takim `displayName` atrybut mówił `"true"` nad napisem BEZ
+          imienia. Teraz jest DOSŁOWNIE funkcją napisu: powitanie z imieniem
+          porównane z powitaniem bez niego. Rozjechać się nie ma czemu, bo
+          predykat jest jeden i jest nim sama treść. */}
+      <h2
+        className={styles.greeting}
+        data-today-greeting
+        data-greeting-part={greetingPart}
+        data-greeting-named={
+          greeting === dayGreeting(greetingPart) ? "false" : "true"
+        }
+      >
+        {greeting}
+      </h2>
 
       {/* Pojemność policzona bez kalendarza to nie pojemność: gdy spotkania
           nie są przeczytane, `dayCapacity` dostaje pustą listę i „8h wolnego"

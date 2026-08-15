@@ -50,8 +50,8 @@
 
    ── CEL DOTYKOWY, NAZWANY, BO 34 PX TO NIE 44 PX ────────────────────────────
    `--row-height` to 2,125 rem = 34 px przy korzeniu 16 px, a sąsiednie
-   kontrolki Ustawień — `.settings-help-entry` (`styles.css:8224`) i kontrolka
-   kategorii (`:9077`) — trzymają 2,75 rem = 44 px. Rozbieżność jest
+   kontrolki Ustawień — `.settings-help-entry` (`styles.css:8211`) i kontrolka
+   kategorii (`:9064`) — trzymają 2,75 rem = 44 px. Rozbieżność jest
    ZAMIERZONA i oto jej pełny rachunek:
 
      * SPEŁNIA WCAG 2.5.8 „Target Size (Minimum)", poziom AA: minimum to

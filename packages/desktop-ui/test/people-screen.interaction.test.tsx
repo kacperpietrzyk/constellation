@@ -460,7 +460,7 @@ test("an unavailable slice says why and offers a way back, and never an empty li
     "People turned an unavailable slice into an empty screen rather than saying so",
   );
   // The slice's OWN message, not a sentence written on this screen: a fixed
-  // line names nothing a reader can act on. `TasksSurface.tsx:419-430` is the
+  // line names nothing a reader can act on. `TasksSurface.tsx:433-444` is the
   // pattern this deliberately does not copy.
   assert.ok(
     (message.textContent ?? "").trim().length > 20,

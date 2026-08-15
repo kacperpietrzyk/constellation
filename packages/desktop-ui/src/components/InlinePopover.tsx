@@ -47,6 +47,7 @@ export const InlinePopover = ({
   onOpenChange,
   triggerAriaLabel,
   triggerClassName,
+  triggerId,
   disabled = false,
   children,
 }: {
@@ -73,6 +74,13 @@ export const InlinePopover = ({
    */
   readonly triggerAriaLabel?: string;
   readonly triggerClassName?: string;
+  /**
+   * `id` of the trigger button, for callers that replaced a named native
+   * control with this one and want the name to survive the swap. Optional and
+   * absent by default: seven of the eight consumers never needed an address,
+   * and an id minted for everyone would be an id nobody can rely on.
+   */
+  readonly triggerId?: string | undefined;
   readonly disabled?: boolean;
   readonly children: ReactNode;
 }) => {
@@ -173,6 +181,7 @@ export const InlinePopover = ({
       <button
         type="button"
         ref={triggerRef}
+        id={triggerId}
         className={`inline-popover-trigger${
           triggerClassName ? ` ${triggerClassName}` : ""
         }`}

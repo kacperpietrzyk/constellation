@@ -176,6 +176,7 @@ export const MeetingsSurface = ({
   inspectorHost,
   onInspectorOpen,
   onMeetingSelected,
+  onOpenConnections,
   onOpenSources,
 }: {
   readonly client: ConstellationRendererClient;
@@ -191,6 +192,11 @@ export const MeetingsSurface = ({
      (`TodaySurface.tsx` — `onOpenCalendar`): powierzchnia nie zna powłoki, więc
      drogę podaje jej `RealApp`. */
   readonly onOpenSources: () => void;
+  /* GDZIE STOI KONFIGURACJA JAMIE — druga połowa wpisu 10-1. Formularz zszedł
+     do Ustawień, więc akcja pasma, która bez klucza prowadziła do niego przez
+     przewinięcie, musi teraz prowadzić do Ustawień. Ten sam wzorzec i ten sam
+     powód co `onOpenSources` wyżej: ekran nie zna powłoki. */
+  readonly onOpenConnections: () => void;
 }) => {
   const [state, setState] = useState<MeetingState>({ kind: "loading" });
   const [preview, setPreview] = useState<CalendarWritePreview>();
@@ -203,10 +209,6 @@ export const MeetingsSurface = ({
   const [responsibilityItemId, setResponsibilityItemId] = useState<string>();
   const [responsibilityName, setResponsibilityName] = useState("");
   const [jamie, setJamie] = useState<JamieState>({ kind: "loading" });
-  const [jamieApiKey, setJamieApiKey] = useState("");
-  const [jamieScope, setJamieScope] = useState<"personal" | "workspace">(
-    "personal",
-  );
   const [jamieBusy, setJamieBusy] = useState(false);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string>();
   const [visibleTranscriptMeetingId, setVisibleTranscriptMeetingId] =
@@ -244,7 +246,6 @@ export const MeetingsSurface = ({
      warunkowo to zmienna liczba zaczepów między przebiegami: ekran Spotkań
      przestał się renderować w całości, a sonda geometrii wróciła z `band: null`
      zamiast z komunikatem — awaria, którą lint tego repozytorium przepuścił. */
-  const jamieSectionRef = useRef<HTMLElement | null>(null);
   const detachRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const reattachRef = useRef<HTMLButtonElement | null>(null);
   const pendingFocusRef = useRef<string | undefined>(undefined);
@@ -651,10 +652,17 @@ export const MeetingsSurface = ({
      akcją, której czytelnik bez klucza nigdy nie zobaczy — a to jest właśnie
      stan, w którym ma ona najwięcej do powiedzenia.
 
-     BEZ KLUCZA NIE ODMAWIA, TYLKO PROWADZI: naciśnięcie przewija do tafli
-     integracji i daje jej ognisko, czyli robi tę samą rzecz co ręczne szukanie
-     jej w treści. Martwy przycisk „disabled" mówiłby czytelnikowi, że nic nie
-     da się zrobić, a dokładnie w tym stanie da się.
+     BEZ KLUCZA NIE ODMAWIA, TYLKO PROWADZI — i od lotu L6 prowadzi DALEJ NIŻ
+     przedtem. Do wpisu 10-1 naciśnięcie przewijało do tafli integracji stojącej
+     w treści TEGO ekranu i dawało ognisko jej polu. Tafla zeszła do Ustawień
+     („Access and connections" → „Calendar and Jamie"), więc przycisk otwiera
+     TĘ kategorię Ustawień. Zdanie się nie zmieniło: martwy przycisk „disabled"
+     mówiłby czytelnikowi, że nic nie da się zrobić, a dokładnie w tym stanie
+     da się — tylko jedno okno dalej.
+
+     DROGĘ PODAJE POWŁOKA, NIE EKRAN. Ten sam precedens co `onOpenSources` obok:
+     powierzchnia nie wie, gdzie w powłoce stoją Ustawienia, i nie ma prawa
+     wiedzieć. `RealApp` wiąże to z `openSettingsCategory("access")`.
 
      `secondary-button`, NIE `primary-button`: prototypowy modyfikator to
      `bordered` (`v3/app.css:319` — `background: var(--surface-raised)`), czyli
@@ -682,11 +690,7 @@ export const MeetingsSurface = ({
           importFromJamie();
           return;
         }
-        const section = jamieSectionRef.current;
-        if (section === null) return;
-        section.scrollIntoView({ block: "nearest" });
-        const field = section.querySelector("input");
-        if (field instanceof HTMLInputElement) field.focus();
+        onOpenConnections();
       }}
       type="button"
     >
@@ -694,125 +698,31 @@ export const MeetingsSurface = ({
       {jamieBusy ? "Importing…" : "Import from Jamie"}
     </button>
   );
-  const jamieConnection = (
-    <div className="meeting-integration-wrap">
-      {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
-          statusu; pełny opis i formularz wracają dopiero po odłączeniu. */}
-      <section
-        className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
-        aria-labelledby="jamie-title"
-        ref={jamieSectionRef}
-      >
-        {jamie.kind === "ready" && jamie.configured ? (
-          <p className="meeting-integration-summary">
-            <span className="eyebrow" id="jamie-title">
-              Jamie
-            </span>
-            <span className="meeting-integration-status">
-              Connected{" "}
-              {jamie.scope === "workspace" ? "workspace key" : "personal key"}
-            </span>
-          </p>
-        ) : (
-          <div>
-            <p className="eyebrow">Result source</p>
-            <h2 id="jamie-title">Jamie</h2>
-            <p>
-              Jamie records and transcribes. Constellation imports the result
-              and its durable task ids.
-            </p>
-          </div>
-        )}
-        {jamie.kind === "loading" ? (
-          <span className="meeting-integration-status">Checking…</span>
-        ) : jamie.kind === "error" ? (
-          <button className="secondary-button" onClick={loadJamieStatus}>
-            Check again
-          </button>
-        ) : jamie.configured ? (
-          <div className="meeting-integration-actions">
-            <button
-              className="primary-button"
-              disabled={jamieBusy}
-              onClick={importFromJamie}
-            >
-              {jamieBusy ? "Syncing…" : "Sync the last 90 days"}
-            </button>
-            <button
-              className="quiet-button"
-              disabled={jamieBusy}
-              onClick={() => {
-                setJamieBusy(true);
-                void client.disconnectJamie().then(() => {
-                  setJamieBusy(false);
-                  setNotice(
-                    "Jamie key disconnected. Imported results were kept.",
-                  );
-                  loadJamieStatus();
-                });
-              }}
-            >
-              Disconnect
-            </button>
-          </div>
-        ) : (
-          <form
-            className="meeting-integration-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setJamieBusy(true);
-              void client
-                .configureJamie({ apiKey: jamieApiKey, scope: jamieScope })
-                .then(() => {
-                  setJamieApiKey("");
-                  setJamieBusy(false);
-                  setNotice(
-                    "Jamie key saved in the operating system credential store.",
-                  );
-                  loadJamieStatus();
-                })
-                .catch(() => {
-                  setJamieBusy(false);
-                  setNotice(
-                    "Could not save the Jamie key. Check its format and the system credential store.",
-                  );
-                });
-            }}
-          >
-            <label>
-              Key scope
-              <select
-                value={jamieScope}
-                onChange={(event) =>
-                  setJamieScope(event.target.value as typeof jamieScope)
-                }
-              >
-                <option value="personal">Personal</option>
-                <option value="workspace">Workspace</option>
-              </select>
-            </label>
-            <label>
-              API key
-              <input
-                type="password"
-                autoComplete="off"
-                value={jamieApiKey}
-                onChange={(event) => setJamieApiKey(event.target.value)}
-                placeholder="jk_…"
-                required
-              />
-            </label>
-            <button
-              className="primary-button"
-              disabled={jamieBusy || jamieApiKey.trim().length < 19}
-            >
-              {jamieBusy ? "Securing…" : "Connect Jamie"}
-            </button>
-          </form>
-        )}
-      </section>
-    </div>
-  );
+  /* KARTA KONFIGURACJI JAMIE STAŁA TU I ZESZŁA DO USTAWIEŃ — WPIS 10-1,
+     decyzja Kacpra z Fazy 0, oddana w locie L6 (Faza II).
+
+     BYŁO: `<div class="meeting-integration-wrap">` z sekcją `RESULT SOURCE /
+     Jamie`, a w niej `Key scope` jako natywny `<select>`, `API key` jako
+     natywny `<input type="password">` i przycisk `Connect Jamie` — formularz
+     administracyjny wstawiony MIĘDZY nagłówek sekcji „Jamie results" a samą
+     listę wyników.
+
+     JEST: `SettingsSurface.tsx`, kategoria `access` („Access and connections"),
+     sekcja „Calendar and Jamie". Ta sama sekcja miała dotąd JEDEN przycisk
+     („Open connections"), który prowadził tutaj — czyli kierunek był odwrócony
+     i ekran pracy trzymał ustawienia ekranu ustawień.
+
+     DWA CYTATY. Prototyp: `v3/screens/meetings.js:1-452` — cały ekran spotkań
+     ma ZERO `<select>`, ZERO `<input>` i ZERO `<textarea>` (zmierzone), a jego
+     jedyny `<select>` w całym drzewie stoi w wierszu Ustawień
+     (`v3/screens/settings.js:331`). Kontrakt: `.ui-craft/patterns.md`,
+     „Pattern: Control size" — na powierzchni treści wybór nie jest natywną
+     kontrolką; wyjątkiem jest wiersz Ustawień.
+
+     CO ZOSTAŁO TUTAJ i dlaczego to nie jest połowa roboty: `jamie` (stan
+     połączenia) i `importFromJamie` (synchronizacja). Import wyników jest
+     ROBOTĄ NA TYM EKRANIE i prototyp stawia go w paśmie tytułu
+     (`v3/screens/meetings.js:431-433`). Zeszła wyłącznie KONFIGURACJA. */
 
   /* REKOMPOZYCJA CIAŁA EKRANU — WPISY #63, #64 I #65 REJESTRU JAKO JEDNA
      ROBOTA, BO KAŻDY Z NICH OSOBNO ZOSTAWIŁBY EKRAN GORSZYM NIŻ BYŁ.
@@ -1059,7 +969,6 @@ export const MeetingsSurface = ({
           Open Sources →
         </button>
       </div>
-      {jamieConnection}
       {surface.completed.length === 0 ? (
         <div className="meeting-empty">
           <h3>No result imported yet</h3>

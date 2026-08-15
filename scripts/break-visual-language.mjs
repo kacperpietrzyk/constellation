@@ -2712,7 +2712,7 @@ const outcome = runBreakTests({
       // P1 jest dziś MATCH — czyli jedynym, który da się przewrócić z zieleni
       // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
       // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
-      // (`styles.css:2247`), wylicza 1152 px zamiast 1184 i para `enforced`
+      // (`styles.css:2319`), wylicza 1152 px zamiast 1184 i para `enforced`
       // wrzuca WERDYKT (`verify-renderer-layout.mjs:8034-8040`), który idzie do
       // `problems`.
       //
@@ -2896,7 +2896,7 @@ const outcome = runBreakTests({
       // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
       // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
       // `h2 „Deadline this week or already late…"` o 16 px
-      // (`CalendarSurface.tsx:825-833`, reguła `calendar.module.css:383-391`).
+      // (`CalendarSurface.tsx:874-882`, reguła `calendar.module.css:416-424`).
       // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
       // mówiącej `OPENING_SMALLER`.
       //
@@ -2912,7 +2912,7 @@ const outcome = runBreakTests({
       // dwie rzeczy naraz nie mówi, która zapaliła.
       //
       // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
-      // pada w tym arkuszu dwa razy (`:75`, `:388`), a `font-weight:
+      // pada w tym arkuszu dwa razy (`:99`, `:421`), a `font-weight:
       // var(--weight-semibold)` po locie L5 jeszcze częściej; `replaceOnce`
       // rzuca przy dwóch trafieniach. Czterowierszowy blok jest w tym pliku
       // jedyny — sprawdzone maszynowo po przepisaniu wagi.
@@ -2934,59 +2934,166 @@ const outcome = runBreakTests({
         ),
     },
     {
-      // ZŁAMANIE PRZYRZĄDU P4 — I PIERWSZE W TYM PLIKU, KTÓRE DOWODZI TRZECIEJ
-      // GAŁĘZI OSĄDU. Wszystkie wcześniejsze złamania pokazują albo
-      // `NOT_MEASURED` po zabiciu podmiotu, albo werdykt nad parą `enforced`.
-      // Tu czerwień ma nazwę `ROUTED_PENDING_ALREADY_MATCHES` i znaczy coś
-      // innego: para P4-01b jest zapisana jako NIEODDANA, a produkt nagle
-      // spełnia jej oczekiwanie.
+      // ── FAZA II, LOT L6 · ZŁAMANIE 1 Z 5 — NATYWNA KONTROLKA WRACA ────────
       //
-      // CZERWIEŃ NIE JEST TU ZDANIEM O PRODUKCIE i nikt nie ma prawa jej tak
-      // przeczytać: to jest zdanie o REJESTRZE („przerzuć wpis na enforced albo
-      // oczekiwanie jest napisane tak, że nigdy nie padnie"). Skasowanie pola
-      // wyszukiwania NIE naprawia ekranu Zadań — prototyp zastępuje je
-      // omniboksem powłoki, a nie pustym miejscem.
+      // TO ZŁAMANIE ZASTĄPIŁO INNE, I POWÓD JEST WART ZAPISANIA. Stało tu
+      // „delete the Tasks search field: a pending count-0 pair starts matching
+      // without a delivery" — złamanie Fazy I, którego czerwienią było
+      // `ROUTED_PENDING_ALREADY_MATCHES`: para `P4-01b` była wtedy `pending`,
+      // a skasowanie pola sprawiało, że nagle PASOWAŁA. Lot L6 oddał tamtą
+      // parę, więc jej status jest dziś `enforced` i tamta czerwień nie ma jak
+      // powstać; sam napis do podmiany też zniknął razem z polem. Złamanie,
+      // którego kotwicy nie ma w źródle, nie jest złamaniem słabym — jest
+      // AWARIĄ HARNESSU (`replaceOnce` rzuca), więc zostawienie go tu byłoby
+      // zostawieniem czerwieni, która nie mówi nic o produkcie.
       //
-      // DLACZEGO TO JEST MOCNIEJSZY DOWÓD NIŻ SCHEMAT „ZABIJ PODMIOT →
-      // NOT_MEASURED", którym chodzą pozostałe pary `pending` tej fazy. Tamten
-      // schemat mówi „selektor żyje". Ten mówi więcej: podmiot żyje, jest
-      // LICZONY, a licznik naprawdę reaguje na jego zniknięcie — czyli
-      // dzisiejsze „nie pasuje" jest POMIAREM, a nie martwym selektorem, i para
-      // zauważy dostawę lotu L6 w tej samej chwili, w której ona nastąpi.
-      // Dla pary `count` zabicie podmiotu jest właśnie tym, co para MIERZY,
-      // więc daje `pending` + MATCH zamiast `NOT_MEASURED`.
+      // CO DOWODZI TA WERSJA: że pary `P4-01a/b` mierzą DOSTAWĘ, a nie
+      // dzisiejszy przypadek. Wstawiony `<select>` jest jednym elementem
+      // w pasie widoku — dokładnie tym, co lot stamtąd zdjął — i licznik
+      // `#main-content select` idzie z 0 na 1, więc para `enforced` rzuca
+      // werdykt. Bez tego złamania zieleń czterech par `P4-01*`/`P4-02*` byłaby
+      // nieodróżnialna od selektora, który przestał trafiać w cokolwiek.
       //
-      // DLACZEGO AKURAT TO POLE: jest jedynym `<input>` na powierzchni treści
-      // Zadań, więc jedna edycja zeruje licznik CAŁEJ pary. Trzy `<select>`
-      // obok są nietknięte, więc P4-01a musi zostać DIFFERS — i to jest druga
-      // rzecz, którą ten przebieg dowodzi: złamanie jednej pary nie rusza
-      // sąsiedniej. `<label htmlFor="tasks-search">` zostaje osierocona i to
-      // jest w porządku dla złamania: bramka układu nie ma sondy sierocej
-      // etykiety (sprawdzone), a `noUnusedLocals` jest w tym repozytorium
-      // wyłączony, więc nieużywane `setSearch` dalej się kompiluje. Gdyby
-      // złamanie nie zbudowało się, `break-test.mjs` zgłosiłby to osobno
-      // („the build refused the broken tree"), a nie zaliczył jako czerwień.
-      //
-      // SPRAWDZONE PRZED NAPISANIEM: `grep -rn "tasks-search" packages scripts`
-      // → wyłącznie `TasksSurface.tsx` (etykieta i pole). Złamanie nie może
-      // więc zapalić cudzej czerwieni i zostać zaliczone z niewłaściwego
-      // powodu. Domyślny `verify` wystarcza — pary P4 chodzą w tym samym
-      // przelocie co reszta mapy trasowanej.
-      name: "delete the Tasks search field: a pending count-0 pair starts matching without a delivery",
-      expectRedContains: ["ROUTED_PENDING_ALREADY_MATCHES", "P4-01b"],
+      // WSTAWKA, A NIE KASOWANIE, i to jest wybór: skasowanie czegoś z pasa
+      // dowodziłoby, że para reaguje na ZNIKANIE, a ona pilnuje dokładnie
+      // odwrotnego kierunku — żeby natywna kontrolka nie WRÓCIŁA. Złamanie ma
+      // iść w stronę, w którą naprawdę psuje się produkt.
+      name: "put a native select back into the Tasks view band: the delivered count-0 pair stops matching",
+      expectRedContains: ["P4-01a", "#main-content select"],
       file: "packages/desktop-ui/src/tasks/TasksSurface.tsx",
       edit: (text) =>
         replaceOnce(
           text,
-          `          <input
-            id="tasks-search"
-            onChange={(event) => setSearch(event.target.value)}
-            type="search"
-            value={search}
-          />
-`,
-          "",
-          "the Tasks search field",
+          `        <p aria-live="polite" className={styles.count} role="status">`,
+          `        <select id="tasks-broken">
+          <option value="a">A</option>
+        </select>
+        <p aria-live="polite" className={styles.count} role="status">`,
+          "the Tasks count line, as the anchor for a native select",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L6 · ZŁAMANIE 2 Z 5 — ETYKIETA WRACA NAD PAS ─────────
+      //
+      // Wpis 4-2 ma DWIE połowy i psują się osobno: „nie ma etykiet" oraz
+      // „stan stoi w treści pigułki". To złamanie celuje w pierwszą. Etykieta
+      // wstawiona obok pigułki jest dokładnie tym, co pas miał przed lotem —
+      // „Group" napisane obok kontrolki zamiast w niej — i para `II6-01a`
+      // (`#main-content .view-band label`, count 0) idzie z 0 na 1.
+      //
+      // BEZ TEGO ZŁAMANIA para `II6-01a` jest nieodróżnialna od selektora,
+      // który nie trafia: `.view-band` mogłaby zmienić nazwę klasy, a licznik
+      // dalej pokazywałby zero i dalej byłby zielony. To jest ta sama wada, co
+      // „pusta fikstura chroni fałszywą asercję" — tylko po stronie selektora.
+      name: "label a control in the Tasks view band again: the form-style label count stops being zero",
+      expectRedContains: ["II6-01a", ".view-band label"],
+      file: "packages/desktop-ui/src/tasks/TaskViewControls.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `    <ChoicePopover
+      choices={groupingOptions}`,
+          `    <label htmlFor="tasks-group">Group</label>
+    <ChoicePopover
+      choices={groupingOptions}`,
+          "the grouping chip, as the anchor for a returning field label",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L6 · ZŁAMANIE 3 Z 5 — PIGUŁKA PRZESTAJE MÓWIĆ STAN ───
+      //
+      // Druga połowa wpisu 4-2, i to jest połowa, którą najłatwiej zgubić przy
+      // porządkach: wyzwalacz dalej jest rysowaną pigułką, dalej otwiera
+      // rysowane menu, dalej nie ma obok siebie etykiety — a przestaje mówić,
+      // KTÓRE grupowanie jest wybrane. Produkt wygląda wtedy poprawnie
+      // i informuje gorzej niż `<select>`, który przynajmniej pokazywał wybraną
+      // opcję. Para `II6-01b` czyta `textContent` wyzwalacza i szuka „Group: "
+      // Z ODSTĘPEM, więc napis „Group" sam werdykt zapala.
+      //
+      // ZŁAMANIE NIE RUSZA MENU, tylko treść wyzwalacza — czyli dowodzi, że
+      // para pilnuje WIDOCZNEGO STANU, a nie istnienia kontrolki. `II6-01a`
+      // zostaje przy tym zielona (etykiet dalej nie ma), więc ten przebieg
+      // pokazuje też, że dwie pary jednej pozycji nie zapalają się razem.
+      name: "strip the grouping out of the group chip: the pill stops naming the state it carries",
+      expectRedContains: ["II6-01b", "Group: "],
+      file: "packages/desktop-ui/src/tasks/TaskViewControls.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '      trigger={`Group: ${groupingOptions.find((candidate) => candidate.value === groupingValue)?.label ?? "None"}`}',
+          '      trigger="Group"',
+          "the grouping chip's stateful trigger text",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L6 · ZŁAMANIE 4 Z 5 — RAMKA FORMULARZA WRACA ─────────
+      //
+      // Wpis 4-3. Obwódki ~2 px nikt nie narysował: brała się z `<fieldset>`
+      // i z klasy `.density`, której w arkuszu modułu NIE BYŁO. To złamanie
+      // przywraca element (bez klasy, dokładnie w stanie, w jakim stał), więc
+      // przeglądarka znów maluje `border: 2px groove`, a para `II6-02a`
+      // (`#main-content fieldset`, count 0) idzie z 0 na 1. Zapala się przy tym
+      // także jej świadek `II6-02b` — podmiana zabiera `aria-label="Row height"`
+      // razem z `<div>`, więc para obecności spada na 0. Obie czerwienie są
+      // o tej samej pozycji i obie są pożądane.
+      //
+      // DOWODZI TEGO, CZEGO PARA CZYTAJĄCA `borderWidth` DOWIEŚĆ NIE MOŻE:
+      // że asercja jest o ELEMENCIE. Para pisana na grubość obwódki byłaby
+      // zielona po dopisaniu `border: 0` do `<fieldset>`, czyli po zamknięciu
+      // objawu bez zamknięcia jego przyczyny.
+      name: "wrap the density switch in a fieldset again: the browser draws its default frame back",
+      expectRedContains: ["II6-02a", "#main-content fieldset"],
+      file: "packages/desktop-ui/src/tasks/SavedViewManager.tsx",
+      // DWIE PODMIANY, BO JSX MUSI SIĘ SKOMPILOWAĆ. Sam otwierający znacznik
+      // zostawiłby `<fieldset>` domknięty przez `</div>` i złamanie
+      // zdegradowałoby się do „the build refused the broken tree" — czyli do
+      // czerwieni, która NIE JEST zdaniem o parze. Zamykający znacznik jest
+      // wyszukiwany razem z linią pod nim, bo samo `      </div>` stoi w tym
+      // pliku więcej niż raz, a `replaceOnce` żąda jednego trafienia.
+      edit: (text) =>
+        replaceOnce(
+          replaceOnce(
+            text,
+            '      <div aria-label="Row height" className={styles.density} role="group">',
+            '      <fieldset className={styles.density}>\n        <legend className="sr-only">Row height</legend>',
+            "the density group, as the anchor for a returning fieldset",
+          ),
+          `          Compact
+        </button>
+      </div>`,
+          `          Compact
+        </button>
+      </fieldset>`,
+          "the density group's closing tag",
+        ),
+    },
+    {
+      // ── FAZA II, LOT L6 · ZŁAMANIE 5 Z 5 — FORMULARZ NIE DOJECHAŁ ─────────
+      //
+      // TO JEST ZŁAMANIE PRZECIWKO NAJŁATWIEJSZEMU SPOSOBOWI OSZUKANIA TEGO
+      // LOTU, i dlatego istnieje. Pary `P4-02a` i `P4-02b` mówią, że na liście
+      // Spotkań nie ma już `<select>` ani `<input>` — a to zdanie jest
+      // prawdziwe RÓWNIEŻ o produkcie, z którego konfigurację Jamie po prostu
+      // skasowano. Wpis 10-1 nie mówił „usuń", mówił „przenieś do Ustawień".
+      //
+      // Złamanie kasuje pole klucza z Ustawień i nie rusza Spotkań, więc obie
+      // pary `P4-02*` zostają ZIELONE, a czerwień przychodzi wyłącznie z pary
+      // dodatniej `II6-03` (`#jamie-key`, count 1 → 0). Dokładnie to jest jej
+      // tezą: dostawa jest przeprowadzką, nie usunięciem, i bramka umie
+      // odróżnić jedno od drugiego.
+      name: "delete the Jamie key field from Settings: the moved form turns out to have been dropped",
+      expectRedContains: ["II6-03", "#jamie-key"],
+      file: "packages/desktop-ui/src/SettingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                  <input
+                    autoComplete="off"
+                    id="jamie-key"`,
+          `                  <input
+                    autoComplete="off"
+                    id="jamie-key-removed"`,
+          "the Jamie key field in Settings",
         ),
     },
     {
@@ -4548,6 +4655,116 @@ const outcome = runBreakTests({
             </button>
           )}`,
           "the Projects group head",
+        ),
+    },
+    {
+      // ── LOT L3, ZŁAMANIE PIERWSZE — POWITANIE PRZESTAJE BYĆ NAGŁÓWKIEM ──
+      //
+      // Element ZOSTAJE, jego klasa zostaje, jego 28 px zostaje, jego słowa
+      // zostają. Zmienia się jedna rzecz: `<h2>` staje się `<p>`. Ekran
+      // wygląda wtedy identycznie na zrzucie i nie ma go jak odróżnić okiem —
+      // a oś czwarta ma zaczerwienieć, bo pyta o PIERWSZY NAGŁÓWEK w treści,
+      // nie o pierwszy duży napis. To jest cała różnica między otwarciem,
+      // które czytnik ekranu wymieni w spisie, a napisem, który dla niego nie
+      // istnieje.
+      //
+      // Po złamaniu pierwszym nagłówkiem poza pasmem zostaje `h2#today-meetings`
+      // („In the calendar", 13 px), czyli dokładnie ten stan, w jakim ten ekran
+      // był przed tym lotem — a tabela mówi już `OPENING_2XL`, więc werdykt
+      // przychodzi ramieniem DRYFU, nie ramieniem uzbrojenia.
+      name: "Today's greeting stops being a heading: the same 28px words, no longer an opening",
+      expectRedContains: ["TITLE_BAND_OPENING_DRIFT — today"],
+      file: "packages/desktop-ui/src/TodaySurface.tsx",
+      edit: (text) => {
+        const opened = replaceOnce(
+          text,
+          `      <h2
+        className={styles.greeting}`,
+          `      <p
+        className={styles.greeting}`,
+          "the greeting's element",
+        );
+        return replaceOnce(
+          opened,
+          `        {dayGreeting(greetingPart, viewerName)}
+      </h2>`,
+          `        {dayGreeting(greetingPart, viewerName)}
+      </p>`,
+          "the greeting's closing tag",
+        );
+      },
+    },
+    {
+      // ── LOT L3, ZŁAMANIE DRUGIE — TYTUŁ TYGODNIA GUBI JEDEN STOPIEŃ ─────
+      //
+      // Nagłówek zostaje nagłówkiem, zostaje pierwszy w treści, zostaje na
+      // swoim miejscu i dalej mówi, który tydzień. Schodzi o JEDEN stopień
+      // skali: `--text-2xl` → `--text-xl`, czyli 28 px → 22 px. Różnica jest
+      // na zrzucie prawie niewidoczna i to jest sedno tego złamania —
+      // przyrząd, który pyta „czy jest duży nagłówek", przechodzi je, a ten
+      // ma paść, bo porównuje z tokenem ROZWIĄZANYM W TEJ SAMEJ STRONIE.
+      //
+      // DRUGA POŁOWA DOWODU: gdyby oś trzymała wpisane 28 px zamiast sondy
+      // `--text-2xl`, to złamanie byłoby nieodróżnialne od przeskalowania
+      // pisma na 200% — a tam 28 px to nie jest 28 px.
+      name: "the Calendar's week title drops a step of the scale: 2xl becomes xl and nothing else changes",
+      expectRedContains: ["TITLE_BAND_OPENING_DRIFT — calendar"],
+      file: "packages/desktop-ui/src/calendar.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.weekTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-2xl);`,
+          `.weekTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-xl);`,
+          "the week title's step",
+        ),
+    },
+    {
+      // ── LOT L3, ZŁAMANIE TRZECIE — I JEST JEDYNYM, KTÓRE MIERZY SAMO
+      //    UZBROJENIE, a nie farbę pod nim.
+      //
+      // Dwa złamania wyżej przychodzą ramieniem DRYFU, które działało już
+      // wtedy, gdy oś stała na „pending" — czyli dowodzą, że podmiot żyje, ale
+      // NIE dowodzą, że przełącznik tego lotu cokolwiek zmienił. Ramię
+      // uzbrojenia zapala się przy `predicted && divergent`, a tego nie da się
+      // wywołać jedną edycją farby: trzeba ekranu, na którym pomiar ZGADZA SIĘ
+      // z tabelą, a tabela NIE ZGADZA SIĘ z prototypem.
+      //
+      // Zadania są tym ekranem za jedną wartość: mierzone `NO_OPENING`, tabela
+      // `NO_OPENING`, prototyp `NOT_2XL`. Przepisanie kolumny PROTOTYPU na
+      // `OPENING_2XL` mówi więc „prototyp otwiera ten ekran dużym tytułem,
+      // a my nie" — zdanie tej samej postaci, co dwa prawdziwe rozjazdy, które
+      // ten lot właśnie zamknął. Przed uzbrojeniem ta sama edycja dawała
+      // WYŁĄCZNIE wiersz w raporcie i bramkę zieloną; po uzbrojeniu ma
+      // rzucić.
+      //
+      // ŚWIADOMIE ŁAMIE TEŻ `scripts/title-band-action.test.mjs` (asercja
+      // „prototyp otwiera dokładnie dwa ekrany"), ale to złamanie weryfikuje
+      // się bramką układu, a nie testami jednostkowymi, więc czerwień przyjdzie
+      // z osi — i tak ma być: obie rzeczy pilnują tej samej liczby.
+      name: "the prototype column claims a twelfth screen opens at 2xl: the newly armed axis has to throw where it used to report",
+      expectRedContains: ["TITLE_BAND_OPENING_DIVERGED — tasks"],
+      file: "scripts/title-band-action.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          // KOTWICA JEST ZDANIEM WŁASNYM WIERSZA ZADAŃ, nie samą nazwą pola:
+          // `prototypeOpening: "NOT_2XL"` stoi w tym pliku dwanaście razy,
+          // a komentarz „PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ" — trzy. Słowo
+          // „sześciokrotny" pada RAZ, w komentarzu należącym do Zadań, więc
+          // `replaceOnce` nie ma gdzie trafić obok.
+          `    // opakowania — to jest świadek tej osi, sześciokrotny.
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",`,
+          `    // opakowania — to jest świadek tej osi, sześciokrotny.
+    todayStack: "ONE_ROW",
+    prototypeOpening: "OPENING_2XL",`,
+          "the prototype's opening column on Tasks",
         ),
     },
   ]),

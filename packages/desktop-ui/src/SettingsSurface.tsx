@@ -55,7 +55,6 @@ import {
   ConceptHelpDialog,
   type ConceptHelpTopicId,
 } from "./components/ConceptHelpDialog.js";
-import type { SurfaceId } from "./client/wave2-fixtures.js";
 import {
   notesImportLimitations,
   type NotesImportLimitationId,
@@ -179,7 +178,6 @@ export const SettingsSurface = ({
   onWrote,
   onFailure,
   onOpenRecovery,
-  onNavigate,
   requestedCategory,
   onCategoryChange,
   onUndo,
@@ -197,7 +195,12 @@ export const SettingsSurface = ({
   readonly onWrote: (message: string) => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
   readonly onOpenRecovery: () => void;
-  readonly onNavigate: (surface: SurfaceId, label: string) => void;
+  /* `onNavigate` ZDJĘTE W LOCIE L6 (Faza II, wpis 10-1). Ustawienia miały
+     JEDNO wyjście na inny ekran — przycisk „Open connections" prowadzący na
+     Spotkania po formularz Jamie. Formularz stoi teraz TUTAJ, więc wyjścia nie
+     ma, a prop, którego nikt nie czyta, jest tą samą wadą co ręczna lista obok
+     zamkniętego słownika: osiem miejsc wołających podawało funkcję, żeby
+     zaspokoić typ. Zdjęte razem z tymi ośmioma. */
   /**
    * Category the CONTEXT asked for — the per-category deep link. Undefined
    * whenever nobody asked, which is the ordinary case: the screen then picks
@@ -329,6 +332,27 @@ export const SettingsSurface = ({
   const [accessBusy, setAccessBusy] = useState(false);
   const [agentGrantDetails, setAgentGrantDetails] =
     useState<AgentGrantDetails>();
+  // KONFIGURACJA JAMIE, PRZENIESIONA TU ZE ŚRODKA LISTY SPOTKAŃ (wpis 10-1).
+  // Stan jest przepisany 1:1 z `MeetingsSurface`, łącznie z kształtem
+  // `JamieState`, bo to ta sama rzecz w innym miejscu — nie druga jej wersja.
+  // `client` jest tu OPCJONALNY (`ConstellationRendererClient | undefined`),
+  // czego na Spotkaniach nie było; każde wywołanie ma więc strażnika, a przy
+  // jego braku sekcja mówi „nie da się sprawdzić" zamiast wisieć na „Checking…".
+  const [jamie, setJamie] = useState<
+    | { readonly kind: "loading" }
+    | { readonly kind: "error" }
+    | {
+        readonly kind: "ready";
+        readonly configured: boolean;
+        readonly scope?: "personal" | "workspace";
+      }
+  >({ kind: "loading" });
+  const [jamieApiKey, setJamieApiKey] = useState("");
+  const [jamieScope, setJamieScope] = useState<"personal" | "workspace">(
+    "personal",
+  );
+  const [jamieBusy, setJamieBusy] = useState(false);
+  const [jamieMessage, setJamieMessage] = useState<SectionMessage>();
   const [busyRetention, setBusyRetention] = useState(false);
   const [busyWorkspace, setBusyWorkspace] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
@@ -440,6 +464,66 @@ export const SettingsSurface = ({
     }, 15_000);
   };
   useEffect(() => clearWorkspaceTimeout, []);
+
+  /* TRZY WYWOŁANIA INTEGRACJI, PRZENIESIONE ZE SPOTKAŃ RAZEM Z FORMULARZEM.
+     `syncJamie` NIE PRZYSZŁO i to jest granica przeniesienia: import wyników
+     jest ROBOTĄ NA SPOTKANIACH i zostaje akcją ich pasma tytułu, dokładnie tam,
+     gdzie stawia ją prototyp (`v3/screens/meetings.js:431-433`). Tutaj mieszka
+     wyłącznie to, co konfiguruje połączenie. */
+  const loadJamieStatus = () => {
+    if (!client) {
+      setJamie({ kind: "error" });
+      return;
+    }
+    setJamie({ kind: "loading" });
+    void client
+      .getJamieStatus()
+      .then((status) => setJamie({ kind: "ready", ...status }))
+      .catch(() => setJamie({ kind: "error" }));
+  };
+  useEffect(loadJamieStatus, [client]);
+
+  const connectJamie = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!client) return;
+    setJamieBusy(true);
+    try {
+      await client.configureJamie({ apiKey: jamieApiKey, scope: jamieScope });
+      setJamieApiKey("");
+      setJamieMessage({
+        tone: "status",
+        text: "Jamie key saved in the operating system credential store.",
+      });
+    } catch {
+      setJamieMessage({
+        tone: "alert",
+        text: "Could not save the Jamie key. Check its format and the system credential store.",
+      });
+    } finally {
+      setJamieBusy(false);
+      loadJamieStatus();
+    }
+  };
+
+  const disconnectJamie = async (): Promise<void> => {
+    if (!client) return;
+    setJamieBusy(true);
+    try {
+      await client.disconnectJamie();
+      setJamieMessage({
+        tone: "status",
+        text: "Jamie key disconnected. Imported results were kept.",
+      });
+    } catch {
+      setJamieMessage({
+        tone: "alert",
+        text: "Could not reach the credential store. The key is unchanged.",
+      });
+    } finally {
+      setJamieBusy(false);
+      loadJamieStatus();
+    }
+  };
 
   const createWorkspace = (event: FormEvent) => {
     event.preventDefault();
@@ -2335,8 +2419,8 @@ export const SettingsSurface = ({
                     POPRAWIONE PRZY ODBIORZE — poprzednia wersja tego zdania
                     mówiła „i JEDYNY, który prototyp maluje imiennie", i było to
                     nieprawdą policzalną w źródle: `.btn.primary` stoi na tym
-                    ekranie prototypu trzy razy (`:779` „Import N notes",
-                    `:812` tutaj, `:830` „Export to Markdown…"), z czego dwa
+                    ekranie prototypu trzy razy (`:863` „Import N notes",
+                    `:896` tutaj, `:914` „Export to Markdown…"), z czego dwa
                     pierwsze są dwoma stanami tej samej tafli. Zdanie uczyłoby
                     następnego czytelnika, że akcent na przycisku eksportu jest
                     wymysłem tego lotu, podczas gdy prototyp maluje go imiennie
@@ -2705,22 +2789,110 @@ export const SettingsSurface = ({
               }}
             />
 
+            {/* KONFIGURACJA INTEGRACJI MIESZKA TUTAJ — WPIS 10-1, DECYZJA
+                KACPRA Z FAZY 0, ODDANA W LOCIE L6.
+
+                Do tej chwili karta `RESULT SOURCE / Jamie` — `Key scope` jako
+                natywny `<select>`, `API key` jako natywne pole i przycisk
+                `Connect Jamie` — stała W ŚRODKU LISTY TREŚCI ekranu Spotkań
+                (`MeetingsSurface.tsx`, sekcja `.meeting-integration`), a TA
+                sekcja Ustawień miała jeden przycisk, który prowadził NA TAMTEN
+                EKRAN. Kierunek był odwrócony: ekran, na którym się pracuje,
+                trzymał formularz administracyjny, a ekran ustawień odsyłał do
+                niego. Prototyp nie ma na liście spotkań ani jednej kontrolki
+                formularza (`v3/screens/meetings.js:1-452`, zmierzone: zero
+                `<select>`, zero `<input>`, zero `<textarea>`), a jedyny
+                `<select>` całego prototypu stoi w WIERSZU USTAWIEŃ
+                (`v3/screens/settings.js:331`, `.st-select`). Kontrakt mówi to
+                samo z drugiej strony: `.ui-craft/patterns.md`, „Pattern:
+                Control size" — na powierzchni treści wybór nie jest natywną
+                kontrolką, a jedynym wyjątkiem jest wiersz Ustawień.
+
+                DLATEGO TA KARTA ZOSTAJE FORMULARZEM, i to nie jest niekonsekwencja
+                wobec pasa Zadań obok. Ustawienia są jedynym miejscem, w którym
+                prototyp natywną kontrolkę STAWIA, a przyrząd P4 wyłącza je
+                z pomiaru wprost — bo `count: 0` tutaj zaprzeczyłoby trzem parom
+                `enforced` (`C5-02a`, `C5-02b`, `C5-03`), które mierzą geometrię
+                `.settings-control > select`. Dwa niezależne źródła, jedna linia
+                podziału.
+
+                CO ZOSTAJE NA SPOTKANIACH: sama lista i akcja pasma „Import from
+                Jamie". Bez klucza ta akcja nie odmawia — prowadzi tutaj. */}
             <section>
               <div className="settings-copy">
                 <h2>Calendar and Jamie</h2>
                 <p>
                   Constellation reads Calendar and imports Jamie results; it
-                  does not record or transcribe.
+                  does not record or transcribe. The key is kept in the
+                  operating system credential store, never in the workspace
+                  file.
                 </p>
+                {jamieMessage && (
+                  <p role={jamieMessage.tone}>{jamieMessage.text}</p>
+                )}
               </div>
-              <div className="settings-control settings-actions">
-                <button
-                  type="button"
-                  onClick={() => onNavigate("meetings", "Meetings")}
+              {jamie.kind === "loading" ? (
+                <div className="settings-control settings-actions">
+                  <span>Checking…</span>
+                </div>
+              ) : jamie.kind === "error" ? (
+                <div className="settings-control settings-actions">
+                  <button onClick={loadJamieStatus} type="button">
+                    Check again
+                  </button>
+                </div>
+              ) : jamie.configured ? (
+                <div className="settings-control settings-actions">
+                  <span>
+                    Connected with a{" "}
+                    {jamie.scope === "workspace" ? "workspace" : "personal"} key
+                  </span>
+                  <button
+                    disabled={jamieBusy || !client}
+                    onClick={() => void disconnectJamie()}
+                    type="button"
+                  >
+                    {jamieBusy ? "Disconnecting…" : "Disconnect"}
+                  </button>
+                </div>
+              ) : (
+                <form
+                  className="settings-control settings-actions"
+                  onSubmit={(event) => void connectJamie(event)}
                 >
-                  Open connections
-                </button>
-              </div>
+                  <label htmlFor="jamie-scope">Key scope</label>
+                  <select
+                    id="jamie-scope"
+                    onChange={(event) =>
+                      setJamieScope(
+                        event.target.value as "personal" | "workspace",
+                      )
+                    }
+                    value={jamieScope}
+                  >
+                    <option value="personal">Personal</option>
+                    <option value="workspace">Workspace</option>
+                  </select>
+                  <label htmlFor="jamie-key">API key</label>
+                  <input
+                    autoComplete="off"
+                    id="jamie-key"
+                    onChange={(event) => setJamieApiKey(event.target.value)}
+                    placeholder="jk_…"
+                    required
+                    type="password"
+                    value={jamieApiKey}
+                  />
+                  <button
+                    disabled={
+                      jamieBusy || !client || jamieApiKey.trim().length < 19
+                    }
+                    type="submit"
+                  >
+                    {jamieBusy ? "Securing…" : "Connect Jamie"}
+                  </button>
+                </form>
+              )}
             </section>
           </div>
 

@@ -59,12 +59,42 @@ const mountSettings = async (): Promise<DesktopSnapshot> => {
         onWrote: async () => undefined,
         onFailure: () => undefined,
         onOpenRecovery: () => undefined,
-        onNavigate: () => undefined,
         onUndo: () => undefined,
       }),
     );
   });
   return snapshot;
+};
+
+/* Wpisanie i wybranie TAK, JAK ROBI TO CZŁOWIEK — przez natywny setter.
+   React trzyma wartość kontrolki, więc samo przypisanie `element.value` jest
+   przez niego nadpisywane i komponent nigdy się o zmianie nie dowiaduje.
+   Ten sam wzorzec, którego używał `choose()` na ekranie Zadań, zanim tamte
+   kontrolki przestały być natywne. */
+const setFieldValue = async (
+  field: HTMLInputElement,
+  value: string,
+): Promise<void> => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
+const setSelectValue = async (
+  select: HTMLSelectElement,
+  value: string,
+): Promise<void> => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value",
+    )?.set?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 };
 
 const categoryPicker = (): HTMLSelectElement | null =>
@@ -277,7 +307,6 @@ test("a requested category is the one the screen opens on", async () => {
         onWrote: async () => undefined,
         onFailure: () => undefined,
         onOpenRecovery: () => undefined,
-        onNavigate: () => undefined,
         onUndo: () => undefined,
         requestedCategory: "data",
       }),
@@ -436,4 +465,114 @@ test("the workspace category holds the funnel and the working day", async () => 
     [clock(day.startMinute), clock(day.endMinute)],
     "the hours shown must be the hours the workspace works",
   );
+});
+
+/* KONFIGURACJA JAMIE STOI W USTAWIENIACH I NAPRAWDĘ PISZE — wpis 10-1,
+   Faza II, lot L6.
+
+   TEN TEST ISTNIEJE, BO JEGO BRAK BYŁ USTALENIEM TAMTEGO LOTU. Karta
+   `RESULT SOURCE / Jamie` została wyjęta z ciała listy Spotkań i przeniesiona
+   tutaj, a wszystkie 354 testy interakcyjne przeszły PO TEJ ZMIANIE bez jednej
+   poprawki — czyli ścieżki zapisu klucza nie wykonywał ani jeden z nich, ani
+   przed przeprowadzką, ani po niej. Bramka układu (para `II6-03`) mówi
+   wyłącznie, że pole `#jamie-key` ISTNIEJE i jest narysowane; „istnieje" jest
+   w tym repozytorium nazwaną klasą fałszywego spokoju (agent buduje komponent,
+   nikt go nie montuje, bramka zielona).
+
+   MIERZONE JEST TO, CO DOSTAJE KERNEL, a nie to, co pokazuje ekran: para
+   `{ apiKey, scope }` przechwycona na kliencie. Napis w polu i etykieta opcji
+   dają się przepisać bez skutku dla działania; argument komendy nie.
+
+   PRÓG DŁUGOŚCI KLUCZA JEST CZĘŚCIĄ UMOWY, nie ozdobą — przycisk jest wyłączony
+   poniżej 19 znaków (tyle ma najkrótszy klucz `jk_…`), więc test wpisuje klucz
+   za KRÓTKI i sprawdza, że nic nie poszło, zanim wpisze prawidłowy. Bez tej
+   połowy „zapis działa" byłoby prawdziwe także o formularzu, który wysyła
+   wszystko, co dostanie. */
+test("the Jamie key is configured from Settings, and the write carries what was typed", async () => {
+  const { SettingsSurface } = await import("../src/SettingsSurface.js");
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+
+  const configured: { apiKey: string; scope: string }[] = [];
+  let disconnects = 0;
+  const base = createScenarioClient({ queries: shellQueries });
+  const client = {
+    ...base,
+    getJamieStatus: async () => ({ configured: false }) as const,
+    configureJamie: async (input: {
+      readonly apiKey: string;
+      readonly scope: "personal" | "workspace";
+    }) => {
+      configured.push({ apiKey: input.apiKey, scope: input.scope });
+    },
+    disconnectJamie: async () => {
+      disconnects += 1;
+    },
+  };
+  const snapshot = await loadDesktopSnapshot(base);
+
+  root = createRoot(container);
+  await act(async () => {
+    root.render(
+      createElement(SettingsSurface, {
+        client,
+        snapshot,
+        onReload: async () => undefined,
+        onWrote: async () => undefined,
+        onFailure: () => undefined,
+        onOpenRecovery: () => undefined,
+        onUndo: () => undefined,
+      }),
+    );
+  });
+
+  const field = container.querySelector<HTMLInputElement>("#jamie-key");
+  const scope = container.querySelector<HTMLSelectElement>("#jamie-scope");
+  assert.ok(
+    field,
+    "Settings draws no Jamie key field — entry 10-1 is not delivered",
+  );
+  assert.ok(scope, "Settings draws no Jamie key-scope control");
+  assert.equal(
+    field.type,
+    "password",
+    "a credential typed in the clear is a different thing from a credential",
+  );
+
+  const form = field.closest("form");
+  assert.ok(
+    form,
+    "the Jamie field stands outside a form, so Enter submits nothing",
+  );
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  assert.ok(submit, "the Jamie form has no submit control");
+
+  // Klucz za krótki: przycisk musi być wyłączony i nic nie może pojechać.
+  await setFieldValue(field, "jk_tooshort");
+  assert.equal(
+    submit.disabled,
+    true,
+    "a key below the 19-character floor must not be sendable",
+  );
+  assert.deepEqual(configured, [], "a refused key was sent anyway");
+
+  await setFieldValue(field, "jk_live_0123456789abcdef");
+  await setSelectValue(scope, "workspace");
+  assert.equal(submit.disabled, false, "a well-formed key must be sendable");
+  await act(async () => {
+    form.requestSubmit(submit);
+  });
+
+  assert.deepEqual(
+    configured,
+    [{ apiKey: "jk_live_0123456789abcdef", scope: "workspace" }],
+    "the write must carry the key that was typed and the scope that was chosen",
+  );
+  assert.equal(
+    field.value,
+    "",
+    "the field must be cleared after the key reaches the credential store",
+  );
+  assert.equal(disconnects, 0, "configuring must not disconnect");
 });

@@ -1469,11 +1469,43 @@ export const KnowledgeEditor = ({
           a afordancja, która nigdzie nie prowadzi, jest kłamstwem, którego ten
           arkusz nie chce (ta sama zasada, co brak strzałki wyjścia w „What
           rests on this"). */}
+      {/* WPIS 11-4 — NAD TYTUŁEM NOTATKI NIE STOI NIC.
+
+          Prototyp odpowiada tu DWA RAZY i różnie, więc oba adresy stoją
+          wypisane, żeby nikt nie odczytał z tego reguły szerszej niż jest:
+          `v3/screens/knowledge.js:744-745` — czytelnia NOTATKI otwiera się
+          `<header class="kn-reader-head"><h2 class="kn-reader-title">`, bez
+          czegokolwiek nad tytułem; `v3/screens/knowledge.js:909-911` —
+          czytelnia ŹRÓDŁA stawia nad tytułem `<p class="kn-reader-kind">`
+          z ikoną i rodzajem. Reguła prototypu brzmi więc „nadtytuł mówi
+          RODZAJ ŹRÓDŁA", a nie „głowa czytelni nie ma nadtytułu". Nasza
+          czytelnia źródeł (`library/SourcesReading.tsx`, `.eyebrow` z
+          `sourceKindCopy`) jest ZGODNA i ten lot jej nie rusza.
+
+          ROLA NIE ZNIKA, TYLKO SCHODZI DO WIERSZA METADANYCH — i to jest
+          poprawka do wpisu, nie jego rozszerzenie. `roleCopy`
+          (`library/library-chrome.tsx:13-17`) ma TRZY wartości, a wiersz listy
+          obok pokazuje rolę WYŁĄCZNIE wtedy, gdy notatka nie ma ani folderu,
+          ani referencji (`library/NotesReading.tsx` — trzecia gałąź wyrażenia
+          przy `knowledge-row-context`). Samo skasowanie nadtytułu zabrałoby
+          więc jedyne miejsce, w którym widać, że czytana rzecz jest
+          deliverablem. Wiersz metadanych jest tym, czym w prototypie jest
+          `.kn-reader-meta` (`v3/screens/knowledge.css:246-249`): ciąg faktów
+          rozdzielanych kropką, i rodzaj czytanej rzeczy jest faktem tej samej
+          klasy co „updated" i folder.
+
+          CZEGO TO NIE DOTYKA: `document-inspector-header` w tym samym pliku ma
+          własny `.eyebrow` z tym samym napisem — to jest głowa PANELU
+          INSPEKTORA, inny obiekt niż czytelnia, i wpis 11-4 jej nie
+          obejmuje. */}
       <header className="knowledge-editor-header">
         <div className="document-editor-identity">
-          <p className="eyebrow">{roleCopy[document.role]}</p>
           <h2 id="document-title">{document.title}</h2>
           <p className="document-editor-meta">
+            <span data-document-role>{roleCopy[document.role]}</span>
+            <span aria-hidden="true" className="document-editor-meta-dot">
+              ·
+            </span>
             <span>
               updated{" "}
               {/* WPIS 11-6 — „updated Yesterday". Prototyp mówi w tej głowie

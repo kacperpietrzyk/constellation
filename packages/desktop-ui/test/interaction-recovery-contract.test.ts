@@ -543,7 +543,46 @@ describe("interaction recovery contracts", () => {
       completedMountedAt > upcomingMountedAt,
       "Coming up leads; Jamie results follow it in the same column",
     );
-    assert.match(meetings, /\{jamieConnection\}[\s\S]*meeting-results-browser/);
+    // TAFLA INTEGRACJI ZESZŁA Z TEGO EKRANU — WPIS 10-1, FAZA II, LOT L6.
+    // Stało tu `assert.match(meetings, /\{jamieConnection\}[\s\S]*meeting-
+    // results-browser/)`, czyli asercja o KOLEJNOŚCI karty konfiguracji Jamie
+    // wobec listy wyników. Karta stoi dziś w Ustawieniach („Access and
+    // connections” → „Calendar and Jamie”), więc tamta asercja pytała o rzecz,
+    // której nie ma. Zamiast ją skasować, pyta się o TĘ SAMĄ POZYCJĘ z drugiej
+    // strony: na liście treści Spotkań nie ma ani jednego `<select>` ani
+    // `<input>`, czyli tego, po co ta karta tu stała. Asercja negatywna trzyma
+    // pozycję, której asercja skasowana nie trzyma wcale — a bramka układu
+    // mierzy to samo na żywym drzewie parami `P4-02a` i `P4-02b`.
+    //
+    // PYTAMY O UŻYCIE, NIE O WYRAZ — tak samo jak asercja o szynie niżej.
+    // Pierwsza wersja tej poprawki brzmiała `doesNotMatch(meetings,
+    // /<select[\\s>]/)` i BYŁA CZERWONA, i słusznie: ekran dalej niesie pięć
+    // natywnych kontrolek w INSPEKTORZE (routing wyniku, rodzaj nowej pozycji).
+    // Asercja totalna nad plikiem mierzyłaby coś innego niż wpis 10-1, który
+    // mówi o LIŚCIE TREŚCI. Żywy licznik nad powierzchnią treści prowadzą pary
+    // `P4-02a` i `P4-02b` bramki układu (`#main-content select|input` → 0);
+    // tutaj pilnujemy, że nie ma po czym wrócić.
+    //
+    // PYTAMY O ZDOLNOŚĆ, NIE O NAPIS — POPRAWKA PO PRZEGLĄDZIE. Pierwsza wersja
+    // tej pary asercji brzmiała `doesNotMatch(meetings, /className={?`?"?meeting-
+    // integration/)` i `doesNotMatch(meetings, /<button[^>]*>\s*Connect Jamie/)`.
+    // Obie były do obejścia bez oporu: pierwszą przechodzi tafla wróconą jako
+    // `styles.meetingIntegration` (CSS Module), jako `class=` w szablonie albo
+    // przez `classNames(...)`; druga zależała od tego, jak Prettier złamie
+    // znacznik. Formularz konfiguracji jest natomiast rozpoznawalny po czymś,
+    // czego nie da się przepisać: MUSI wołać `configureJamie` albo
+    // `disconnectJamie`, bo inaczej niczego nie konfiguruje. Ta asercja pyta
+    // więc o ZDOLNOŚĆ ZAPISU — dziś ten ekran nie ma jej wcale (zero trafień
+    // w pliku), a wołają ją WYŁĄCZNIE Ustawienia. Powrót karty w jakiejkolwiek
+    // notacji zapali ją, a `II6-03` w bramce układu pilnuje drugiej połowy:
+    // że pole naprawdę stoi tam, dokąd zeszło.
+    assert.doesNotMatch(meetings, /configureJamie|disconnectJamie/u);
+    // A ARKUSZ NIE MA PO CZYM JEJ ODMALOWAĆ: osiemnaście reguł
+    // `.meeting-integration*` zeszło razem z podmiotem i w `styles.css` nie
+    // został ANI JEDEN selektor — zostały dwa zdania komentarza o tym, dlaczego
+    // ich nie ma, więc pytamy o UŻYCIE (`.meeting-integration` na początku
+    // reguły), nie o wyraz.
+    assert.doesNotMatch(styles, /^\s*\.meeting-integration/mu);
     assert.match(
       styles,
       /\.meeting-body\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,

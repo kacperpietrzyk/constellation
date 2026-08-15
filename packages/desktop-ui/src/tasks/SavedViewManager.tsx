@@ -349,9 +349,42 @@ export const SavedViewManager = ({
 
       {/* Row height, per device. Compact may change SPACING only — never
           `display`, `visibility` or `font-size` — because density that hides
-          content or shrinks type is not density. */}
-      <fieldset className={styles.density}>
-        <legend className="sr-only">Row height</legend>
+          content or shrinks type is not density.
+
+          WPIS 4-3 — „PRZEŁĄCZNIK GĘSTOŚCI MA STALE ZAPALONĄ OBWÓDKĘ ~2 px,
+          KTÓRA CZYTA SIĘ JAK ZAPOMNIANY PIERŚCIEŃ OGNISKOWANIA". Nikt tej
+          obwódki nie narysował. `<fieldset>` stał tu z `className={styles
+          .density}`, a `saved-view-manager.module.css` NIE MA I NIGDY NIE MIAŁ
+          reguły `.density` — zmierzone gremem po całym pliku. CSS Modules
+          rozwiązuje nieistniejącą nazwę do `undefined`, więc element dostawał
+          dosłownie `class="undefined"` i zostawał przy domyślnym arkuszu
+          przeglądarki: `border: 2px groove`. Żadna reguła w `styles.css` tego
+          nie zdejmowała (jedyne trzy wystąpienia `fieldset` w tym arkuszu
+          celują w `.evidence-inspector`).
+
+          ROZSTRZYGNIĘCIE: SCHODZI OBWÓDKA, ZOSTAJE PRZEŁĄCZNIK — i to jest
+          wybór na dowodzie, nie na gust. Prototyp nie ma przełącznika gęstości
+          w ogóle, ale „nie ma" jest tu NIEOBECNOŚCIĄ ZDOLNOŚCI, nie zmierzoną
+          wadą wzorca: gęstość jest żywa i czytana przez wiersze listy
+          (`task-list.module.css:237`) i komórki tabeli
+          (`task-table.module.css:388-389`), a fala ma dwa zapisane przypadki,
+          w których wada prototypu NIE została skopiowana. Sam wpis 4-3 nazywa
+          w nagłówku OBWÓDKĘ, nie przełącznik. Kasowanie działającej zdolności,
+          żeby zazielenić licznik, jest odwrotnością tego, co ten lot oddaje.
+
+          `<fieldset>` USTĘPUJE `role="group"`, zamiast dostać `border: 0`.
+          Zerowanie obwódki zostawiłoby w drzewie element, którego jedyny powód
+          istnienia to grupa pól formularza — a to jest ten sam „udawany
+          formularz", co etykiety zdjęte z pasa obok (4-2). Nazwa grupy nie
+          ginie: `<legend class="sr-only">` zamienia się w `aria-label`, czyli
+          to samo zdanie dla czytnika ekranu bez elementu, który maluje ramkę.
+          Para `II6-02a` pilnuje tego jako REGUŁY — na powierzchni treści
+          Zadań nie ma ANI JEDNEGO `<fieldset>` — więc powrót ramki przez inny
+          formularz na tym ekranie też ją zapali, a `II6-02b` pyta o tę grupę
+          wprost, żeby tamto zero nie mogło być prawdą o niezamontowanym
+          chunku. NIE `L6-02`: `L6-02a`/`L6-02b` istnieją w tej samej mapie
+          i należą do numerycznego lotu 6 Fazy 3. */}
+      <div aria-label="Row height" className={styles.density} role="group">
         <button
           aria-pressed={density === "comfortable"}
           className={styles.action}
@@ -368,7 +401,7 @@ export const SavedViewManager = ({
         >
           Compact
         </button>
-      </fieldset>
+      </div>
     </div>
   );
 };

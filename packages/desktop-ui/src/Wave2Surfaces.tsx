@@ -664,7 +664,7 @@ export const ProjectsSurface = ({
               {/* KROK POTWIERDZENIA ODCHODZI RAZEM Z KONTROLKĄ FORMULARZA
                   (lot D11, wpisy #51 i #55). Wybór szablonu wysyła JEDNĄ
                   komendę, a toast niesie działające Cofnij przez 8 s
-                  (`RealApp.tsx:1320`, `refreshAfter` `:1534+`) — więc pomyłka
+                  (`RealApp.tsx:1321`, `refreshAfter` `:1535+`) — więc pomyłka
                   kosztuje jedno kliknięcie wstecz. Nazwa dostępna szła dotąd
                   z `sr-only` etykiety `<label for>`; dymek nie ma czego takiego,
                   więc niesie ją TREŚĆ wyzwalacza plus `panelLabel`. */}

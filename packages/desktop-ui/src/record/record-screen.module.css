@@ -17,7 +17,7 @@
      policzone z importów `record-screen.module.css`, a nie z pamięci
      (pierwsza wersja tej noty wymieniała dwóch konsumentów i była niepełna):
      1. rekord zadania (`record/TaskRecordScreen.tsx:50`) rysuje się WEWNĄTRZ
-        korzenia Zadań (`tasks/TasksSurface.tsx:487`, `.tasks`);
+        korzenia Zadań (`tasks/TasksSurface.tsx:501`, `.tasks`);
      2. rekord projektu (`record/ProjectRecordScreen.tsx:56`) wewnątrz
         `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`);
      3. rekord szansy (`opportunity/OpportunityRecordScreen.tsx:49`, nosi

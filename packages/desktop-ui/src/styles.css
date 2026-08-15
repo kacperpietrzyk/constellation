@@ -475,6 +475,78 @@
   gap: var(--space-2);
 }
 
+/* WIERSZ MENU JEST CICHY, A NIE WYPEŁNIONY AKCJĄ GŁÓWNĄ (Faza II, lot L6).
+   `.inline-popover button` niżej maluje przycisk akcji — tło `--action-primary
+   -bg`, cień, biały napis — i to jest właściwe dla „Zapisz" na dole formularza.
+   Lista, z której WYBIERA SIĘ JEDNĄ RZECZ, jest czym innym, i prototyp mówi to
+   wprost w swoim arkuszu (`v3/app.css:911-921`): `.pop button` nie ma tła,
+   niesie `--text-secondary`, dostaje `--surface-hover` pod kursorem, a wybrany
+   wiersz podnosi się do `--text-primary` i zapala glif `check` dosunięty do
+   prawej. Kontrakt: `.ui-craft/patterns.md`, „Pattern: Control size" —
+   po przepisaniu przez P4 wybór na powierzchni treści NIE JEST natywną
+   kontrolką, więc menu, które ją zastępuje, musi wyglądać jak menu.
+
+   DOTYKA TO RÓWNIEŻ `ApplyTemplatePopover` — jedynego innego konsumenta
+   `.popover-choices` — I TAK MA BYĆ. Lot D11 postawił tamten panel, cytując
+   dokładnie ten sam `.pop` prototypu, i wziął wygląd, który wtedy był
+   dostępny. Dwa panele robiące tę samą rzecz mają wyglądać tak samo; osobna
+   klasa dla drugiego byłaby drugą odpowiedzią na jedno pytanie.
+
+   ALE NIC TEGO DRUGIEGO EKRANU NIE MIERZY, i to trzeba powiedzieć obok
+   „tak ma być", bo inaczej zdanie o zamiarze czyta się jak zdanie o dowodzie.
+   Jedyna para lotu D11 (`visual-language-pairs.mjs`, `D11-01`) pyta
+   o NIEOBECNOŚĆ `<select>` w szynie rekordu projektu, a nie o farbę wierszy
+   menu; żadna para nie otwiera dziś `ApplyTemplatePopover`, więc zmiana jego
+   wyglądu jest ZAMIERZONA I NIEZMIERZONA. Warunkiem wyjścia jest krok trasy
+   otwierający ten panel na rekordzie projektu — ten sam warunek, który wpis
+   `LII6-03` stawia całej rodzinie „za kliknięciem". */
+.inline-popover .popover-choices button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  padding: 0.3125rem var(--space-2);
+  color: var(--text-secondary);
+  text-align: start;
+}
+
+.inline-popover .popover-choices button:hover {
+  background: var(--surface-hover);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.inline-popover .popover-choices button:active {
+  background: var(--surface-pressed);
+}
+
+.inline-popover .popover-choices button[aria-checked="true"] {
+  color: var(--text-primary);
+}
+
+/* Glif idzie na prawy koniec wiersza. `margin-inline-start: auto` zamiast
+   `justify-content: space-between`, bo wiersz NIEWYBRANY nie rysuje glifu
+   w ogóle — a rozstrzelanie, które w połowie przypadków nie ma czego
+   rozstrzelić, jest deklaracją martwą przy każdym wierszu poza jednym. */
+.inline-popover .popover-choices button svg {
+  margin-inline-start: auto;
+  color: var(--accent);
+}
+
+/* Pole schowane za pigułką: etykieta nad polem, nie obok niego. Panel jest
+   węższy niż pas, więc para „etykieta obok pola" łamałaby się i tak. */
+.inline-popover .popover-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inline-popover .popover-field label {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
 .inline-popover input,
 .inline-popover select,
 .inline-popover textarea {
@@ -984,8 +1056,8 @@ kbd {
    pierścienia, wyżej w tym pliku. */
 /* WYPEŁNIENIE JEST TU, NA KONTROLCE, A NIE W `--action-primary-bg`, i to jest
    ograniczenie zakresu, nie wygoda: ten token czytają jako tło jeszcze SZEŚĆ
-   innych reguł w TRZECH arkuszach (policzone: `styles.css:495`, `:6160`,
-   `:10413`, `:10597`, `tasks/saved-view-filters.module.css:124`,
+   innych reguł w TRZECH arkuszach (policzone: `styles.css:567`, `:6122`,
+   `:10400`, `:10584`, `tasks/saved-view-filters.module.css:124`,
    `record/record-comments.module.css:415`), a warunek właściciela mówi
    o JEDNEJ parze. Gradient w tokenie wciągnąłby je wszystkie pod jedno
    zwolnienie wydane na jedną kontrolkę. Skrót
@@ -1765,9 +1837,9 @@ kbd {
 
    TWO CARRIERS, BOTH NAMED, because excluding one would fix an instance and
    leave its twin asleep: `.active` is the paint carrier on the surface list
-   (`RealApp.tsx:1947`, `:2026`, `:3415`) and `[aria-current]` covers both the
+   (`RealApp.tsx:1948`, `:2021`, `:3415`) and `[aria-current]` covers both the
    `"page"` that always travels with it and the `"location"` of the settings
-   mode column (`:1445`), which until now won only by source order.
+   mode column (`:1446`), which until now won only by source order.
 
    `:active` (the next rule) is deliberately NOT narrowed: a press is a
    momentary answer to the reader's own finger, not a claim about where they
@@ -1813,7 +1885,7 @@ kbd {
    bycie NA „Projects": `v3/app.js:573` stawia `aria-current="page"` również na
    celu nadrzędnym, gdy trasa to `project`, więc pod jednym otwartym projektem
    świecą DWA wiersze — rodzic i dziecko. Ta aplikacja świadomie zerowała
-   rodzica (`RealApp.tsx:2027-2037`), żeby nie mieć dwóch `aria-current`
+   rodzica (`RealApp.tsx:2022-2032`), żeby nie mieć dwóch `aria-current`
    naraz; rozstrzygnięcie zostaje, bo dotyczy DEKLARACJI, a nie farby. Nośnikiem
    farby jest osobna deklaracja `data-nav-open`, dopisana w tym locie.
 
@@ -2679,12 +2751,12 @@ kbd {
    SPRAWDZONE, ŻE NIE ŁAPIE NIKOGO PRZYPADKIEM. Wszystkie sześć pozostałych
    miejsc rysujących `.surface-header` trzyma je o poziom GŁĘBIEJ, więc żadne nie
    jest bezpośrednim dzieckiem `.work-surface`: Spotkania w `<section
-   class="meeting-surface">` (`MeetingsSurface.tsx:1858`), ekran rekordu projektu
+   class="meeting-surface">` (`MeetingsSurface.tsx:1767`), ekran rekordu projektu
    w `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`), pełny kontekst
    organizacji w `.surface-scroll.organization-context`
    (`StrategicDepthSurface.tsx:1778`), historia wrzutek w
    `.surface-scroll.history-surface` (`CaptureHistoryReading.tsx:199`),
-   Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:963`)
+   Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:1047`)
    i martwy `TasksSurface` w `.surface-scroll` (`Wave2Surfaces.tsx:196`).
 
    SIŁA SELEKTORA JEST TU CELOWO WYŻSZA, nie przypadkiem. `:has()` wnosi siłę
@@ -2744,7 +2816,7 @@ kbd {
 
    ŻADNA BRAMKA TEGO NIE WIDZI: harness nie rysuje ani komunikatu, ani plakietki
    (`.condition-banner` wisi na `build.channel === "developer-preview"`,
-   `RealApp.tsx:1976`), więc przelot melduje o niej „no stop draws it". Zmierzone
+   `RealApp.tsx:1977`), więc przelot melduje o niej „no stop draws it". Zmierzone
    sondą lotu przez WSTRZYKNIĘCIE obu węzłów do nośnika, przy 1440 px, z obiema
    stronami — z tą deklaracją i po jej zdjęciu:
 
@@ -2797,7 +2869,7 @@ kbd {
 }
 /* `p:last-child` NIE WYSTARCZA i przez to opis bywał WIĘKSZY od tytułu.
    W Ustawieniach po akapicie stoi jeszcze przycisk pomocy
-   (`SettingsSurface.tsx:951-960`), więc akapit nie jest ostatnim dzieckiem
+   (`SettingsSurface.tsx:1035-1044`), więc akapit nie jest ostatnim dzieckiem
    i zostawał na 14 px w kolorze pisma podstawowego — obok tytułu 13 px.
    Dopóki tytuł miał 30-42 px, odwrócenie było niewidoczne; skrócenie tytułu
    w Fazie 2 je ujawniło. Reguła celuje więc w KAŻDY akapit nagłówka, a nie
@@ -3199,7 +3271,7 @@ kbd {
      prototyp nie deklaruje wysokości wcale, a stojące tu 3,15 rem było jedynym
      powodem, dla którego dok mierzył 50 px zamiast wysokości swojej treści.
      `box-shadow` ZOSTAJE na `--capture-shadow`, i to nie jest przeoczenie:
-     `styles.css:634-659` remapuje ten token przy `:focus-visible` na
+     `styles.css:706-731` remapuje ten token przy `:focus-visible` na
      „pierścień, potem cień spoczynkowy", więc podmiana go na `--shadow-lg`
      zabrałaby dokowi pierścień ogniska. */
   padding: 0.4375rem 0.75rem;
@@ -4805,7 +4877,7 @@ kbd {
     max-width: 28rem;
     /* PRÓG DOTYKU WRACA — I TYLKO TUTAJ. Lot powłoki Fazy 3 zdjął z doku
        `min-height: 3.15rem`, bo prototyp nie deklaruje wysokości wcale
-       (`:2408-2412`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
+       (`:2480-2484`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
        wysokość swojej treści, 33 px. Ale w wąskim oknie ta sama liczba jest
        CELEM DOTYKU, a paczkowany smoke żąda tam 44 px na każdym z trzech
        podmiotów (`run-packaged-alpha-smoke.mjs:921-924`).
@@ -4875,7 +4947,7 @@ kbd {
    `--surface-window` jest tu nieprzezroczystym ZASTĘPSTWEM dla rozmycia:
    element bez rozmycia niczego nie zastępuje, tylko dostaje CUDZY kolor.
    Faza 3 zdjęła szkło z lewej kolumny i z pasma zakładek („prototyp nie stawia
-   szkła w powłoce", `:956-959`, `:1710`), ale nie zdjęła ich stąd — więc każdy,
+   szkła w powłoce", `:1028-1031`, `:1782`), ale nie zdjęła ich stąd — więc każdy,
    kto ma włączoną redukcję przezroczystości, dostawał pasek boczny w kolorze
    okna zamiast w planie paska.
 
@@ -5054,106 +5126,25 @@ kbd {
   gap: var(--space-6);
   align-items: start;
 }
-.meeting-integration-wrap {
-  container-type: inline-size;
-}
-.meeting-integration {
-  display: grid;
-  grid-template-columns: minmax(16rem, 1fr) minmax(24rem, 1.2fr);
-  gap: var(--space-6);
-  align-items: end;
-  padding: var(--space-5);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  /* WPIS #64, DRUGA POŁOWA — TAFLA INTEGRACJI PRZESTAJE BYĆ WPUSZCZONA.
-     Dopóki siedziała WEWNĄTRZ podniesionej karty „Jamie results", wpuszczenie
-     dawało jeden stopień w dół od tafli nad nią. Po rekompozycji jej sekcja
-     jest przezroczysta, więc `--surface-sunken` leżałby WPROST NA KANWIE —
-     a to jest dokładnie odwrócenie, które wpis nazywa.
-     I jest drugi powód, mocniejszy od geometrii: prototyp wydaje wpuszczenie
-     na znaczenie „nic tu nie da się zmienić" (`v3/screens/meetings.css:6-9`),
-     a to jest FORMULARZ, w który wpisuje się klucz. */
-  background: var(--panel-reading-bg);
-  box-shadow: var(--shadow-sm);
-}
-@container (max-width: 46rem) {
-  .meeting-integration {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-  .meeting-integration-form,
-  .meeting-integration-actions {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-}
-.meeting-integration h2 {
-  margin: var(--space-1) 0;
-  font-size: var(--text-lg);
-  font-weight: 500;
-}
-.meeting-integration p {
-  max-width: 42rem;
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-.meeting-integration-form,
-.meeting-integration-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: flex-end;
-  gap: var(--space-3);
-}
-.meeting-integration-form label {
-  display: grid;
-  gap: var(--space-1);
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-}
-.meeting-integration-form input,
-.meeting-integration-form select {
-  min-width: 10rem;
-  min-height: 2.75rem;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--input-bg);
-  color: var(--text-primary);
-  font: inherit;
-}
-.meeting-integration-form input {
-  min-width: 15rem;
-}
-.meeting-integration-status {
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-}
-/* Po połączeniu Jamie panel integracji zwija się do jednego wiersza statusu:
-   pełny opis i formularz wracają dopiero po odłączeniu klucza. */
-.meeting-integration--connected {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3) var(--space-5);
-  padding: var(--space-3) var(--space-5);
-}
-.meeting-integration-summary {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  margin: 0;
-}
-.meeting-integration--connected .meeting-integration-actions {
-  align-items: center;
-}
-.meeting-integration-actions .primary-button,
-.meeting-integration-actions .quiet-button {
-  min-height: 2.75rem;
-}
+/* REGUŁY `.meeting-integration*` ZDJĘTE RAZEM ZE SWOIM PODMIOTEM — wpis 10-1,
+   Faza II, lot L6. Stało tu 18 reguł ubierających kartę konfiguracji Jamie:
+   siatka dwukolumnowa, tafla `--panel-reading-bg`, wiersz statusu po
+   połączeniu, oraz `min-width`/`min-height` dla `<input>` i `<select>`
+   formularza. Karta zeszła do Ustawień („Access and connections” → „Calendar
+   and Jamie”) i wzięła tam chrom Ustawień (`.settings-copy`,
+   `.settings-control`, `.settings-actions`), którego geometrię mierzą pary
+   `C5-02a`, `C5-02b` i `C5-03` — czyli nie przyjechał za nią ani jeden
+   prywatny wygląd tej samej rzeczy.
+
+   PARA `D7-02d` CZYTAŁA `backgroundColor` NA `.meeting-integration` i została
+   zdjęta w tym samym przebiegu, bo selektor bez podmiotu daje
+   `ROUTED_NOT_MEASURED` — ślepe na status, czyli czerwień o awarii przyrządu
+   nad rzeczą oddaną zgodnie z planem. Powód i to, co mierzy drabinę jasności
+   Spotkań po niej, stoją przy miejscu, z którego wpis wyjęto
+   (`scripts/visual-language-pairs.mjs`).
+
+   Warianty wąskiego okna i `@media (prefers-contrast)` niżej w tym pliku
+   zeszły razem z nimi. */
 /* SEKCJA JEST PRZEZROCZYSTA, KARTĄ JEST LISTA W ŚRODKU — wpisy #64 i #65
    naraz. Farba, którą nosiła `.meeting-completed`, robiła trzy rzeczy jednym
    pudełkiem: trzymała nagłówek w środku (#65), stała jako przeciwwaga
@@ -6000,27 +5991,8 @@ kbd {
   .meeting-surface {
     --surface-gutter: var(--space-4);
   }
-  /* Wyściółka sekcji zniknęła stąd, bo zniknęła z sekcji: karta ma dziś
-     wyściółkę na wierszu, a nie na pudełku wokół nagłówka. */
-  .meeting-integration--connected {
-    align-items: stretch;
-  }
-  .meeting-integration-summary {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .meeting-integration-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-  }
-  .meeting-integration-actions .primary-button,
-  .meeting-integration-actions .quiet-button {
-    width: 100%;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
+  /* Wąskie okno tafli integracji zeszło razem z nią do Ustawień (wpis 10-1,
+     lot L6). Sekcja Ustawień zwija się własnymi regułami `.settings-*`. */
   .meeting-sec-head {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -6075,15 +6047,6 @@ kbd {
   .meeting-brief {
     grid-template-columns: 1fr;
   }
-  .meeting-integration-form {
-    display: grid;
-    width: 100%;
-  }
-  .meeting-integration-form input,
-  .meeting-integration-form select {
-    width: 100%;
-    min-width: 0;
-  }
   .meeting-result-detail {
     padding: var(--space-5);
   }
@@ -6137,7 +6100,6 @@ kbd {
 }
 @media (forced-colors: active) {
   .calendar-capability,
-  .meeting-integration,
   .meeting-empty,
   .meeting-upcoming-list,
   .meeting-result-list,
@@ -6355,7 +6317,7 @@ kbd {
    `:focus-visible` jest DOŁOŻONE do pary z prototypu: pozycje nawigacji chodzą
    strzałkami, więc bez tego czytelnik klawiatury nigdy by tego skrótu nie
    zobaczył. Krycie, nie `display`, żeby wiersz nie zmieniał szerokości kolumn
-   pod kursorem; globalna reguła ruchu (`styles.css:3605-3614`) zeruje to
+   pod kursorem; globalna reguła ruchu (`styles.css:3677-3686`) zeruje to
    przejście przy `prefers-reduced-motion`, więc lokalny wyjątek byłby martwy. */
 .nav-item kbd {
   margin-left: auto;
@@ -7706,9 +7668,34 @@ kbd {
    rzędzie nie mieszczą się w kolumnie czytania przy 200% tekstu, a rząd, który
    nie umie się złamać, wypycha czytelnię w bok — dokładnie ta klasa wady, na
    którą ten arkusz nosi już pięć deklaracji. */
+/* WPIS 11-4, DRUGA POŁOWA — RZĄD AKCJI ZAWSZE STOI POD TYTUŁEM, A NIE OBOK
+   NIEGO, I TO JEST POPRAWKA DO BAZY `28rem` STOJĄCEJ WYŻEJ.
+
+   Baza `1 1 28rem` mówiła „zejdź na własną linię, gdy nie mieścisz się obok" —
+   i przy 1440 px naprawdę schodziła, więc komentarz nad `.document-editor-identity`
+   opisywał stan prawdziwy przy JEDNEJ szerokości. Zmierzone 2026-08-15 na
+   fiksturze Library, ten sam tytuł notatki (58 znaków, `--text-xl`):
+
+     1440 px → głowa 708 px, tytuł dostaje 660 px, potrzebuje 567,5 px → 1 wiersz
+     1662 px → głowa 930 px, tytuł dostaje  353 px, potrzebuje 567,5 px → 2 WIERSZE
+
+   Czyli szersze okno dawało tytułowi MNIEJ miejsca: rząd akcji mieścił się
+   wtedy obok i zabierał 28 rem z 930 px, a `.document-editor-identity` zjeżdżała
+   do swojej bazy 18 rem. To jest dokładnie wpis 11-4 („tytuł łamie się na dwa
+   wiersze") i dokładnie ta szerokość, przy której mierzono dokument przejścia.
+
+   BAZA 100% CZYNI TAMTEN KOMENTARZ PRAWDZIWYM PRZY KAŻDEJ SZEROKOŚCI. Prototyp
+   nie ma tu warunku w ogóle: `.kn-reader-head` jest blokiem, a `.kn-actions`
+   (`v3/screens/knowledge.css:253`) ma `margin-top: var(--space-4)` i stoi POD
+   wierszem metadanych zawsze — nie „gdy się nie mieści".
+
+   CZEGO ŻADEN PRZYRZĄD TEGO REPOZYTORIUM NIE ZOBACZY: bramka układu chodzi
+   przy 320 / 760 / 1440 px, a ta wada zaczyna się POWYŻEJ 1440. Pilnują jej DWA
+   testy `test/reading-head-shape.interaction.test.tsx` — spis WSZYSTKICH reguł
+   arkusza o tym podmiocie i wartość obowiązująca przy 5 szerokościach. */
 .document-editor-actions {
   display: flex;
-  flex: 1 1 28rem;
+  flex: 1 1 100%;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
@@ -8513,7 +8500,7 @@ kbd {
 
    Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
    znika. Samo `background: var(--panel-reading-bg)` stoi w regule bazowej
-   `.knowledge-writing-plane` (`:8023`), a nie tu — druga deklaracja tego samego
+   `.knowledge-writing-plane` (`:8010`), a nie tu — druga deklaracja tego samego
    selektora wygrywała kolejnością i czyniła wartość bazową martwą. */
 .knowledge-writing-plane .document-canvas {
   padding: var(--space-5) 0 var(--space-10);
@@ -8937,13 +8924,13 @@ kbd {
   }
   /* MARTWA DEKLARACJA, NIE ZMIANA ZDANIA. Do lotu D3 ten rząd był siatką
      i wąski krok mówił mu `justify-items: start`; lot przeniósł bazę na `flex`
-     (`:7275`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
+     (`:7237`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
      robi NIC — więc reguła prosiła o lewą, a kaskada dawała prawą z bazowego
-     `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: przy
-     `flex: 1 1 28rem` element i tak wypełnia linię węższą niż 28 rem.
+     `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: od lotu L3
+     baza rzędu to `flex: 1 1 100%`, więc wypełnia linię przy każdej szerokości.
 
      CZEMU AKURAT LEWA: pasek narzędzi jest OSTATNIM DZIECKIEM tego rzędu
-     (`KnowledgeEditor.tsx:1514` i `:1541`), a nie jego rodzeństwem, i reguła
+     (`KnowledgeEditor.tsx:1546` i `:1573`), a nie jego rodzeństwem, i reguła
      dwie niżej daje mu w tym kroku `width: 100%` — więc zajmuje całą linię
      i układa swoje przyciski od lewej. Pozostali członkowie rzędu, którzy
      zawinęli się nad niego, stają na tej samej krawędzi zamiast wisieć nad nim
@@ -10133,7 +10120,7 @@ kbd {
 /* ── KONTROLKA WYBORU BIERZE SZEROKOŚĆ SWOJEJ TREŚCI (Faza C, lot C5) ─────────
    `align-self: start`, A NIE SKREŚLENIE `stretch` — i to jest cała różnica
    między poprawką a jej pozorem. `.settings-control` jest kolumną
-   (`:9018-9024`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
+   (`:9005-9011`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
    dziecko na całą szerokość tafli; sam wpis `align-self: stretch` był tu
    powtórzeniem domyślnej wartości i skasowanie go NIE ZMIENIŁOBY NICZEGO.
    Kontrolka wraca do szerokości własnej treści dopiero wtedy, gdy powie
@@ -10142,8 +10129,8 @@ kbd {
    DLACZEGO SELEKTOR MA `>`, a reguła geometrii niżej go NIE MA. Te dwie
    deklaracje mówią o dwóch RÓŻNYCH osiach i sięgają dwóch różnych zbiorów.
    `.settings-control` bywa kolumną (dziecko wprost, np. `#voice-audio-retention`
-   — `SettingsSurface.tsx:1906-1919`), ale bywa też pojemnikiem RZĘDÓW
-   (`.settings-control > div` ustawia `display: flex` w poziomie, `:8836-8840`),
+   — `SettingsSurface.tsx:1990-2003`), ale bywa też pojemnikiem RZĘDÓW
+   (`.settings-control > div` ustawia `display: flex`, `styles.css:10024-10028`),
    a w rzędzie osią poprzeczną jest PION: `align-self: start` przykleiłoby tam
    kontrolkę do górnej krawędzi rzędu obok rozciągniętych pól tekstowych. Oś
    pozioma w rzędzie to `flex`, i tym zajmuje się reguła niżej.
@@ -10157,7 +10144,7 @@ kbd {
 
    TRZECI KSZTAŁT, DOPISANY PO PRZEGLĄDZIE (2026-08-11): ZAPYTANIE KONTENEROWE.
    Wyliczanka wyżej wymieniała dwa kształty i milczała o `@container (max-width:
-   47.5rem)` (`:10723-10753`), który przewraca `.settings-control > div` w KOLUMNĘ
+   47.5rem)` (`:10710-10740`), który przewraca `.settings-control > div` w KOLUMNĘ
    z `align-items: stretch` i daje polom tekstowym `width: 100%`. Zarzut brzmiał:
    w tym trybie sufit `16rem` obowiązuje kontrolkę, a sąsiednie pole rozpycha się
    na całość, więc parzystość pole↔kontrolka się rozjeżdża.
@@ -10213,7 +10200,7 @@ kbd {
 
    `flex: 1` KAZAŁ KONTROLCE ZJEŚĆ CAŁE WOLNE MIEJSCE RZĘDU, więc pole wyboru
    z napisem „Task" stało tak samo szerokie jak sąsiadujące z nim pole tekstowe
-   na etykietę (`SettingsSurface.tsx:1555-1591`). Reguła nad tą zbiera pola
+   na etykietę (`SettingsSurface.tsx:1639-1675`). Reguła nad tą zbiera pola
    tekstowe I kontrolkę wyboru w jeden materiał — i to jest słuszne, prototyp
    trzyma `.st-input` i `.st-select` w jednej geometrii — ale `flex: 1` jest
    właściwością POLA TEKSTOWEGO: pole rośnie, bo rośnie jego treść. Kontrolka
@@ -10267,7 +10254,7 @@ kbd {
 }
 
 /* `:not(.primary-button)` NIE JEST OZDOBĄ SELEKTORA — jest całą pozycją #4.
-   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:750-753`) ma 0,1,0,
+   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:822-825`) ma 0,1,0,
    więc bez zawężenia dopisanie klasy do przycisku zostawiłoby go dokładnie
    w tym samym drugoplanowym wypełnieniu, a znacznik i tak czytałby się
    poprawnie. To jest ta sama klasa awarii, którą lot 5 oddał na `:hover`
@@ -10286,7 +10273,7 @@ kbd {
    JEDEN `:not()` Z LISTĄ, A NIE DWA `:not()` PO SOBIE — I TO NIE JEST STYL.
    Łańcuch `:not(.primary-button):not(.settings-row)` waży 0,3,1, a to o stopień
    WIĘCEJ niż 0,2,1 sprzed dopisku — i o stopień więcej niż
-   `.settings-control.support-report-action > button` (`:8783`), które waży
+   `.settings-control.support-report-action > button` (`:8770`), które waży
    dokładnie 0,2,1 i wygrywało dotąd KOLEJNOŚCIĄ. Zmierzone, nie wydedukowane:
    z łańcuchem sonda wierności zameldowała przycisk raportu wsparcia jako
    `oklch(100% 0 0 / 0.76)` zamiast akcentu, w obu motywach. `:not(a, b)` bierze
@@ -10308,7 +10295,7 @@ kbd {
 }
 /* DRUGA POŁOWA WPISU #71 REJESTRU, ODDANA NA POMIARZE, NIE NA ODCZYCIE — i to
    jest istotne, bo dwa odczyty kodu stały tu naprzeciwko siebie. Komentarz przy
-   `.settings-control select` (`:9808-9827`, lot C5) mówił „wysokość NIE JEST
+   `.settings-control select` (`:9795-9814`, lot C5) mówił „wysokość NIE JEST
    wadą, bo `.settings-control button` ma tę samą podłogę 2,75 rem"; przeliczenie
    Fazy D mówiło „teza wpisu stoi, bo sąsiednie POLE TEKSTOWE nie deklaruje
    żadnej podłogi". Obie prozy były prawdziwe i żadna nie była zmierzona.
@@ -10360,7 +10347,7 @@ kbd {
 /* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,
    czyli dokładnie tam, gdzie stała, więc remis z
    `.settings-control.support-report-action > button:hover:not(:disabled)`
-   (`:8797`) dalej rozstrzyga kolejność, a nie ten dopisek. */
+   (`:8784`) dalej rozstrzyga kolejność, a nie ten dopisek. */
 .settings-control
   button:not(.primary-button, .settings-row):not(:disabled):hover {
   background: var(--action-secondary-hover);

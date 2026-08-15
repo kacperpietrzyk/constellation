@@ -862,21 +862,40 @@ test("the carries axis says three different things, and says each on the screens
   assert.deepEqual(byShape("TRAIL_2_OTHER", "prototypeTrail"), ["tasks"]);
 });
 
-test("the opening axis is red on exactly the two screens the prototype opens at 2xl", () => {
+test("the opening axis is armed, and it is armed over the two screens it was built for", () => {
+  // ODDANE W LOCIE L3. Do niego ta asercja mówiła `["today", "calendar"]`
+  // i `ARMED === false` — czyli ZAPISYWAŁA rozjazd, którego lot L2 świadomie
+  // nie ruszał. Teraz mówi to samo zdanie w drugą stronę.
   assert.deepEqual(
     TITLE_BAND_OPENING_DIVERGENCES.map((row) => row.id),
-    ["today", "calendar"],
+    [],
   );
   assert.equal(
     TITLE_BAND_OPENING_ARMED,
     TITLE_BAND_OPENING_DIVERGENCES.length === 0,
   );
-  // NADAL `false`, I TO JEST WYNIK LOTU L2, NIE JEGO ZALEGŁOŚĆ. Ta oś pyta,
-  // czy ekran OTWIERA treść tytułem wielkości 2xl — czyli o wpisy 1-1 i 2-3
-  // rejestru przejścia, które należą do lotu L3 i są jego całą robotą. L2
-  // zamknął oś SKŁADU pasma i nie dotknął treści pod nim, więc zostawia tę oś
-  // dokładnie tak czerwoną, jak ją zastał: dwa ekrany, wypisane z nazwy wyżej.
-  assert.equal(TITLE_BAND_OPENING_ARMED, false);
+  assert.equal(TITLE_BAND_OPENING_ARMED, true);
+
+  // PUSTA LISTA MUSI BYĆ PUSTA Z WŁAŚCIWEGO POWODU, i bez tej drugiej połowy
+  // asercja wyżej jest do zaliczenia trzema sposobami, z których żaden nie
+  // jest poprawką: skasowaniem obu wierszy, przepisaniem kolumny PROTOTYPU na
+  // `NOT_2XL`, albo przepisaniem obu kolumn naraz. Dlatego pytamy osobno,
+  // które ekrany prototyp otwiera stopniem 2xl (dokładnie te dwa, przeczytane
+  // z `grep -n "text-2xl" v3/app.css v3/screens/*.css`) i osobno, że nasza
+  // strona odpowiada na nich tym samym.
+  const openingBy = (side, state) =>
+    TITLE_BAND_ROWS.filter((row) => row[side] === state).map((row) => row.id);
+  assert.deepEqual(openingBy("prototypeOpening", "OPENING_2XL"), [
+    "today",
+    "calendar",
+  ]);
+  assert.deepEqual(openingBy("todayOpening", "OPENING_2XL"), [
+    "today",
+    "calendar",
+  ]);
+  // I ANI JEDEN EKRAN WIĘCEJ. Kontrakt ostrzega wprost: „A lot that gives
+  // every screen a large title is not following this page."
+  assert.equal(openingBy("todayOpening", "OPENING_2XL").length, 2);
 });
 
 // EKRAN BEZ PROTOTYPU NIE MOŻE BYĆ ROZJAZDEM NA ŻADNEJ Z CZTERECH OSI. Bez

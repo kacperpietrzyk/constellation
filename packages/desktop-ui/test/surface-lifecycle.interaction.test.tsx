@@ -363,6 +363,7 @@ const mountMeetings = async (
         inspectorHost: null,
         onInspectorOpen: () => undefined,
         onMeetingSelected: () => undefined,
+        onOpenConnections: () => undefined,
         onOpenSources: () => undefined,
       }),
     );
