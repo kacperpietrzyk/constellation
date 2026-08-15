@@ -49,11 +49,11 @@
 //
 // REGUŁA: tło jest legalne, jeżeli (a) jest W PEŁNI PRZEZROCZYSTE — arkusz
 // mówi „background: transparent" 38 razy i mówi to świadomie (`.ghost-button`,
-// `styles.css:787`) — albo (b) rozwiązuje się do wartości Z PALETY TOKENÓW tej
+// `styles.css:813`) — albo (b) rozwiązuje się do wartości Z PALETY TOKENÓW tej
 // strony. Paleta NIE JEST WPISANA: bierze się ją z żywych własności `--*` na
 // korzeniu dokumentu i rozwiązuje SONDĄ W TEJ SAMEJ STRONIE, przez TĘ SAMĄ
 // właściwość, którą czyta podmiot (mechanika `expect.kind: "token"`,
-// `verify-renderer-layout.mjs:3695-3712`). Bez tego „oklch(…)" nigdy nie
+// `verify-renderer-layout.mjs:3732-3749`). Bez tego „oklch(…)" nigdy nie
 // zrównałoby się z „rgb(…)", a przyrząd meldowałby rozjazd na samej notacji.
 //
 // CZEGO TU CELOWO NIE MA I DLACZEGO — bo literał farby byłby dokładnie tą wadą,
@@ -71,7 +71,7 @@
 //   * NIE MA UZNAWANIA WARTOŚCI WYPROWADZONYCH Z TOKENU, i to jest ŚWIADOME.
 //     Legalne jest tło RÓWNE rozwiązanemu napisowi tokenu, więc
 //     `color-mix(in oklch, var(--surface-stage), transparent 22%)`
-//     (`styles.css:4785`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
+//     (`styles.css:4869`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
 //     czyli werdykt SPOZA rejestru, czyli PADA. Rozpoznanie takiej wartości
 //     wymagałoby porównania „z dokładnością do alfy" po konwersji przestrzeni
 //     WEWNĄTRZ przyrządu, czyli arytmetyki, której poprawności ten przyrząd nie
@@ -88,7 +88,7 @@
 //     wskazującą na zepsuty przyrząd tam, gdzie zepsuty przyrząd nie jest
 //     przyczyną.
 //   * SONDA GOŁEJ KONTROLKI NIE SIĘGA `select` W PEŁNI. Arkusz tej aplikacji
-//     daje `select` tło z tokenu (`styles.css:513-519`), więc sonda wstawiona
+//     daje `select` tło z tokenu (`styles.css:539-545`), więc sonda wstawiona
 //     do dokumentu czytała TOKEN, nie silnik, i drukowała go jako „farbę tej
 //     przeglądarki". Sonda siedzi teraz w OTWARTYM shadow roocie — selektory
 //     dokumentu tam nie sięgają, a `color-scheme` jako własność dziedziczona
@@ -107,7 +107,7 @@ import { parseColor } from "./color-contrast.mjs";
 /**
  * Rodzaje kontrolek objętych spisem.
  *
- * DOKŁADNIE TA GRUPA, którą wymienia reguła resetu (`styles.css:501-505`) —
+ * DOKŁADNIE TA GRUPA, którą wymienia reguła resetu (`styles.css:527-531`) —
  * bo to ona jest przyczyną i to o niej ten przyrząd wydaje zdanie. `input`,
  * `textarea` i `select` są tu również jako KONTROLA DODATNIA: jeżeli spis
  * potrafi wrócić z werdyktem „w palecie" tylko dlatego, że nigdy nie zobaczył
@@ -316,7 +316,7 @@ export const KNOWN_CONTROL_PAINT = [];
  * dałaby „zero legalnych kontrolek" i wyglądałaby jak sukces. Trzy świadkowie,
  * trzy różne legalne kształty:
  *
- *   * `ghost-button`  — świadomie PRZEZROCZYSTA (`styles.css:787`). To jest ten
+ *   * `ghost-button`  — świadomie PRZEZROCZYSTA (`styles.css:813`). To jest ten
  *                       świadek, o którego pyta zadanie: kontrolka bez tła,
  *                       która NIE JEST wadą. Zgłoszenie jej byłoby fałszywym
  *                       trafieniem, czyli wadą przyrządu.

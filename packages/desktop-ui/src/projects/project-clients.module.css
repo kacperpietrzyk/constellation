@@ -33,7 +33,7 @@
 }
 
 .groupLabel {
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;

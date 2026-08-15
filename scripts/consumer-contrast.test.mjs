@@ -9,7 +9,7 @@
 // tokenie tła przechodzi bez pomiaru, o ile ta konkretna para nie jest rodziną.
 //
 // To nie jest teoria. Na drzewie z 2026-08-07 ta bramka znalazła
-// `.nav-count--attention` (`styles.css:1254`): `color: var(--on-accent)` na
+// `.nav-count--attention` (`styles.css:1338`): `color: var(--on-accent)` na
 // `background: var(--accent)`, czyli w motywie CIEMNYM 3,54:1 przy progu 4,5.
 // Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:570` wymienia ją w tabeli
 // stopni akcentu pod nagłówkiem „PONIŻEJ" — a mimo to plakietka została tak
@@ -197,7 +197,7 @@ if (!tokensEntry) {
 //
 // PRZEŁAMANIA LINII ZOSTAJĄ. Komentarz zamieniony na pusty napis przesuwa
 // wszystko pod nim: pierwsza wersja tej bramki wskazała `.nav-count--attention`
-// na `styles.css:1085`, a reguła stoi w wierszu 1254 — różnica jest dokładnie
+// na `styles.css:1111`, a reguła stoi w wierszu 1254 — różnica jest dokładnie
 // sumą komentarzy nad nią. Bramka wskazująca nie ten wiersz każe człowiekowi
 // szukać defektu ręcznie i podważa własny raport.
 const withoutComments = (css) =>

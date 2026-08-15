@@ -302,7 +302,7 @@
   color: var(--text-primary);
   box-shadow: var(--elevation-rest);
   font-size: var(--text-sm);
-  font-weight: 620;
+  font-weight: var(--weight-medium);
 }
 
 .strategic-create-toggle:hover {
@@ -384,20 +384,41 @@
   opacity: 0.45;
 }
 
-.inline-popover-trigger::before {
+/* ŚLAD ROZWINIĘCIA STOI ZA ETYKIETĄ I POKAZUJE W DÓŁ (Faza II, lot L8, wpis
+   P-15 dokumentu przejścia). Do 2026-08-15 ten znak stał PRZED słowem
+   i pokazywał W BOK — czyli mówił „tu się wchodzi", a nie „to się rozwija" —
+   i robił to na WSZYSTKICH dwudziestu trzech wyzwalaczach dymka w produkcie,
+   bo niesie go ta jedna reguła.
+
+   Prototyp: `v3/screens/record.js:485-486` i `:500-501` składają przycisk
+   otwierający dymek jako `${etykieta}${icon("chevDown")}` — znak IDZIE ZA
+   słowem i pokazuje W DÓŁ; `v3/screens/record.css:245-251` daje mu
+   `gap: 0.25rem`, i to jest ta „duża przerwa" z rejestru zmierzona po tamtej
+   stronie. To samo zdanie powtarza się przy `All views`
+   (`v3/screens/tasks.js:511`), przy `Route` (`v3/screens/inbox.js:161`)
+   i w powłoce (`v3/app.js:651`).
+
+   JEDYNY znak PRZED etykietą, jaki prototyp ma, to zwijacz sekcji nawigacji
+   (`v3/app.js:599`), i on w stanie spoczynku pokazuje W DÓŁ, a dopiero
+   zwinięcie obraca go w bok (`v3/app.css:206-207`). Obie strony mówią więc
+   jedną regułę: wskaźnik rozwinięcia albo idzie ZA etykietą, albo pokazuje
+   W DÓŁ. Ta kontrolka łamała ją NA OBU OSIACH NARAZ.
+
+   Kontrakt: `.ui-craft/patterns.md` — „Pattern: Disclosure mark". */
+.inline-popover-trigger::after {
   content: "";
   display: inline-block;
   width: 0.32em;
   height: 0.32em;
-  margin-right: 0.5em;
+  margin-left: 0.25rem;
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
-  transform: translateY(-0.14em) rotate(-45deg);
+  transform: translateY(-0.2em) rotate(45deg);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
-.inline-popover-trigger[aria-expanded="true"]::before {
-  transform: translateY(-0.2em) rotate(45deg);
+.inline-popover-trigger[aria-expanded="true"]::after {
+  transform: translateY(-0.02em) rotate(225deg);
 }
 
 /* WYZWALACZ, KTÓRY JEST AKCJĄ GŁÓWNĄ SWOJEGO POJEMNIKA (Faza C, lot C2).
@@ -412,13 +433,18 @@
    Rejestr notował oba te ekrany jako „ekran bez ANI JEDNEJ powierzchni
    wypełnionej akcentem", a akcję tworzenia jako „bladą obwódkową pigułkę
    › New content" — pigułkę składały dokładnie te dwie deklaracje: obwódka wyżej
-   i szewron w `::before`. Znika obwódka i szewron; ikona akcji jest wtedy tą
-   samą ikoną, którą niosą akcje główne pozostałych ekranów. */
+   i szewron w pseudoelemencie. Znika obwódka i szewron; ikona akcji jest wtedy
+   tą samą ikoną, którą niosą akcje główne pozostałych ekranów.
+
+   PSEUDOELEMENT JEST TU `::after`, ODKĄD LOT L8 PRZENIÓSŁ ZNAK ZA ETYKIETĘ.
+   Wyciszenie musi wskazywać TĘ SAMĄ warstwę, co reguła, którą wycisza —
+   `::before` zostawione tutaj nie wyciszyłoby niczego i akcja główna pasma
+   Biblioteki odzyskałaby szewron po cichu. */
 .inline-popover-trigger.primary-button {
   border-color: transparent;
 }
 
-.inline-popover-trigger.primary-button::before {
+.inline-popover-trigger.primary-button::after {
   content: none;
 }
 
@@ -834,7 +860,7 @@ kbd {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
@@ -898,7 +924,7 @@ kbd {
   padding: 0 var(--space-4);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: var(--weight-medium);
   transition:
     background var(--duration-fast),
     transform var(--duration-instant),
@@ -958,8 +984,8 @@ kbd {
    pierścienia, wyżej w tym pliku. */
 /* WYPEŁNIENIE JEST TU, NA KONTROLCE, A NIE W `--action-primary-bg`, i to jest
    ograniczenie zakresu, nie wygoda: ten token czytają jako tło jeszcze SZEŚĆ
-   innych reguł w TRZECH arkuszach (policzone: `styles.css:469`, `:6076`,
-   `:10298`, `:10482`, `tasks/saved-view-filters.module.css:124`,
+   innych reguł w TRZECH arkuszach (policzone: `styles.css:495`, `:6160`,
+   `:10413`, `:10597`, `tasks/saved-view-filters.module.css:124`,
    `record/record-comments.module.css:415`), a warunek właściciela mówi
    o JEDNEJ parze. Gradient w tokenie wciągnąłby je wszystkie pod jedno
    zwolnienie wydane na jedną kontrolkę. Skrót
@@ -1002,8 +1028,8 @@ kbd {
    kontrastu czytają `tokens.css`, a to jest `styles.css`), więc pierwsza zmiana
    akcentu zabrałaby ten stan po cichu. Wygaszenie nie zniknęło, tylko przestało
    być kolorem: reguła `kbd` wyżej daje skrótowi mniejszy stopień pisma
-   (`--text-2xs`) i grubość 600 przy 650 przycisku, czyli ten sam sygnał niesiony
-   kształtem, a nie kontrastem. */
+   (`--text-2xs`). RELACJĘ ODWRÓCIŁ LOT L5: przycisk zszedł 650 → 500, więc `kbd`
+   (600) jest dziś CIĘŻSZY od etykiety — otwarte, w `scripts/type-weight.mjs`. */
 .primary-button kbd {
   margin-left: var(--space-2);
 }
@@ -1057,7 +1083,7 @@ kbd {
   background: transparent;
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: 550;
+  font-weight: var(--weight-medium);
   cursor: pointer;
   transition:
     color var(--duration-fast),
@@ -1073,7 +1099,7 @@ kbd {
   background: var(--surface-pressed);
 }
 /* WPIS #4 REJESTRU — POMOC NA ŻĄDANIE MA KSZTAŁT PRZYPISU, NIE KSZTAŁT AKCJI.
-   Prototyp: `v3/app.css:896-904` — `.helpb` to okrąg 1,125 rem
+   Prototyp: `v3/app.css:896-903` — `.helpb` to okrąg 1,125 rem
    (`border-radius: var(--radius-full)`, włoskowa obwódka, `background: none`)
    z jednym znakiem „?" złożonym `--text-2xs` wagą 600, w kolorze
    czwartorzędnym; komentarz nad regułą mówi wprost, po co: „wielkość znaku ma
@@ -1094,11 +1120,50 @@ kbd {
    w prototypie, który też nie maluje tła.
 
    CEL DOTYKOWY: pole jest większe niż glif, bo znak stoi w pudełku 1,125 rem,
-   a nie w samym tuszu — ta sama uwaga stoi przy regule prototypu. */
+   a nie w samym tuszu — ta sama uwaga stoi przy regule prototypu.
+
+   LOT L7 FAZY II: TA REGUŁA JEST ODTĄD JEDYNĄ FORMĄ WYZWALACZA KONTEKSTOWEGO.
+   Do tego lotu brały ją DWA montaże z siedemnastu (Dzisiaj i Kalendarz),
+   a pozostałe piętnaście rysowały trzy inne kształty: dziesięć razy `TopicHelp`
+   z całym pytaniem pod kropkowanym podkreśleniem, cztery razy słowne wejścia
+   Ustawień, raz własny okrągły „?" Projektów, który niczego nie otwierał.
+   Prototyp ma jedną klasę i jedenaście wywołań (`v3/app.css:896-903`,
+   `v3/app.js:2001-2005`); teraz jedną klasę ma i aplikacja.
+
+   PO LOCIE, POLICZONE W ŹRÓDŁACH PRZY PRZEGLĄDZIE ODBIORCZYM, a nie przepisane
+   z liczby sprzed lotu: tę regułę bierze **22 plakietki** (16 montaży
+   `<TopicHelp>` + 6 ręcznych kotwic okna pojęciowego) z **23 afordancji
+   pomocy** w produkcie. Dwudziesta trzecia — globalne wejście w nagłówku
+   Ustawień — zostaje słowna z powodem zapisanym w kontrakcie i widocznym niżej
+   w tym arkuszu przy `.settings-help-entry`. „Siedemnaście" było liczbą SPRZED
+   lotu i przez chwilę stało w kilku miejscach jako liczba PO nim.
+
+   `flex: none`, I JEST TO ODZYSKANA DEKLARACJA, NIE OZDOBA. Skasowana razem
+   z regułą `.help` w `projects/project-list.module.css` (HEAD `:52-67`)
+   deklarowała `flex: none` obok `inline-size: 1.25rem`; kiedy wszystkie
+   wywołania zeszły pod tę jedną regułę, sama `width` została, a ona w rzędzie
+   flex jest tylko BAZĄ, od której `flex-shrink: 1` odejmuje. Przelot par chodzi
+   wyłącznie przy 1440 × 900 (`verify-renderer-layout.mjs`), więc ściśnięta
+   plakietka przy 320 albo 760 px nie ma pomiaru w ŻADNEJ mapie — a przypis,
+   który kurczy się pierwszy, przestaje być okręgiem, czyli przestaje być tą
+   rzeczą, którą ta reguła nazywa. Deklaracja wraca do jedynego miejsca, gdzie
+   dziś mieszka forma tej kontrolki.
+
+   POZYCJA NIE NALEŻY DO TEJ REGUŁY, I TO JEST ROZSTRZYGNIĘTE POMIAREM.
+   Prototyp trzyma odstęp na komponencie (`margin-inline-start: 0.375rem`),
+   aplikacja bierze go z `gap` rodzica w każdym miejscu, w którym plakietka
+   stoi — a jedyne wywołanie, które kiedykolwiek napisało tu własną wartość,
+   dosunęło znak na DRUGI KONIEC WIERSZA (`margin-inline-start: auto`
+   w `projects/project-list.module.css`, wpis 5-4 dokumentu przejścia: pytanie
+   przy x ≈ 1670, rzecz przy x ≈ 60). Dopisanie tu marginesu podwoiłoby odstęp
+   wszędzie, gdzie rodzic już go daje; regułą jest więc, że ŻADNE WYWOŁANIE NIE
+   PRZESTAWIA TEJ PLAKIETKI, a nie że komponent nosi konkretną liczbę. To ta
+   reguła jest asertowana, nie piksel. */
 .help-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 1.125rem;
   height: 1.125rem;
   padding: 0;
@@ -1118,6 +1183,25 @@ kbd {
 .help-mark:hover {
   color: var(--text-secondary);
   border-color: var(--border-strong);
+}
+/* JEDNA DEKLARACJA POMOCY, NIEZALEŻNIE OD TEGO, CO SIĘ OTWIERA (lot L7,
+   Faza II). Ta owijka nie maluje niczego, czego nie maluje `.help` w module
+   `TopicHelp` — jej robotą jest NIEŚĆ `data-help-topic` tam, gdzie wyzwalacz
+   otwiera okno pojęciowe zamiast dymka: na Dzisiaj, na Kalendarzu, na
+   Spotkaniach i w trzech kategoriach Ustawień.
+
+   PO CO, SKORO PANEL JEST INNY: kontrakt trasy zbiera afordancje pomocy
+   wyłącznie po `data-help-topic` i porównuje ten zbiór W OBIE STRONY z tym, co
+   ekran ma nieść. Znacznik bez atrybutu nie jest dla niego „inny" — jest
+   NIEISTNIEJĄCY, więc jego forma, nazwa i to, czy w ogóle coś otwiera, stoją
+   poza pomiarem. Zmierzone: `test/topic-help.interaction.test.tsx` twierdził
+   „Projekty nie niosą żadnej pomocy" nad żywym, martwym pytajnikiem, bo ten
+   pytajnik się nie przedstawił. Jedna deklaracja dla obu paneli zamyka tę
+   dziurę bez drugiej gałęzi w asercji — a druga gałąź jest dokładnie tym
+   miejscem, w którym trzecia forma weszłaby niezauważona. */
+.help-anchor {
+  display: inline-flex;
+  align-items: center;
 }
 /* A SHARED BUTTON MATERIAL THAT USED TO LIVE IN A LAZY SURFACE SHEET. These
    two rules stood in `access-surface.css`, which only ever loaded when the
@@ -1288,7 +1372,7 @@ kbd {
 }
 .brand-row strong {
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-wide);
 }
 /* ZNAK MARKI JEST KAFLEM, NIE SZARYM GLIFEM (`v3/app.css:98-103`). Prototyp
@@ -1432,7 +1516,7 @@ kbd {
 }
 .workspace-switcher strong {
   font-size: var(--text-sm);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
 }
 .workspace-switcher small {
   color: var(--text-quaternary);
@@ -1556,7 +1640,7 @@ kbd {
   color: var(--text-quaternary);
   background: transparent;
   font-size: var(--text-2xs);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.1em;
   line-height: 1;
   text-align: left;
@@ -1714,12 +1798,12 @@ kbd {
    daje podbarwienie `--accent-quieter`, tekst pierwszorzędny i wagę 500,
    a `:222-226` dokłada 2,5-pikselową szynę tuszu przy LEWEJ krawędzi kolumny,
    z poświatą `--accent-glow`. Kontrakt mówi to samo dwa razy i obie razy
-   z cytatem w tę stronę: `.ui-craft/tokens.md:372-382`, sekcja „Form first —
+   z cytatem w tę stronę: `.ui-craft/tokens.md:420-430`, sekcja „Form first —
    ink and wash" („Ink is confined to … a 2–2.5 px rail (`v3/app.css:485-487`,
-   `:222-226`)") i `:397-402`, sekcja „Wash rarely travels alone" („where
-   the reference washes an object it also inks one edge of it … the wash says
-   which object; the ink says the same thing on a channel that survives
-   a grayscale print").
+   `:222-226`)") i `.ui-craft/tokens.md:445-450`, sekcja „Wash rarely travels
+   alone" — PLIK JAWNIE, bo goła kontynuacja brała plik z `v3/app.css` i była
+   fałszywa pod OBOMA odczytami („the wash says which object; the ink says the
+   same thing on a channel that survives a grayscale print").
 
    ODWRÓCENIE NOŚNIKA, NIE ZDJĘCIE SYGNAŁU: znika ramka, zostaje ta sama
    wartość `var(--accent)` — tyle że na szynie. Pomiar kontrastu, którym
@@ -1945,8 +2029,8 @@ kbd {
    weight says it again in shape, and the inked rail says it a third time on a
    channel that survives a grayscale print. The wash is the shell's own
    `--nav-active-*` role rather than a raw accent tint — the component role
-   exists, so the new selector takes it (`.ui-craft/tokens.md:225`) — and
-   the rail is the reference's 2 px accent edge (`.ui-craft/tokens.md:377-382`,
+   exists, so the new selector takes it (`.ui-craft/tokens.md:273`) — and
+   the rail is the reference's 2 px accent edge (`.ui-craft/tokens.md:425-430`,
    ink confined to a rail). */
 .settings-mode-column .nav-item[aria-current="location"] {
   color: var(--nav-active-text);
@@ -2595,7 +2679,7 @@ kbd {
    SPRAWDZONE, ŻE NIE ŁAPIE NIKOGO PRZYPADKIEM. Wszystkie sześć pozostałych
    miejsc rysujących `.surface-header` trzyma je o poziom GŁĘBIEJ, więc żadne nie
    jest bezpośrednim dzieckiem `.work-surface`: Spotkania w `<section
-   class="meeting-surface">` (`MeetingsSurface.tsx:1829`), ekran rekordu projektu
+   class="meeting-surface">` (`MeetingsSurface.tsx:1858`), ekran rekordu projektu
    w `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`), pełny kontekst
    organizacji w `.surface-scroll.organization-context`
    (`StrategicDepthSurface.tsx:1778`), historia wrzutek w
@@ -2784,7 +2868,7 @@ kbd {
 .task-panel > header h2 {
   margin: 0;
   font-size: var(--text-sm);
-  font-weight: 630;
+  font-weight: var(--weight-semibold);
 }
 .task-panel > header span {
   color: var(--text-quaternary);
@@ -2861,7 +2945,7 @@ kbd {
 .task-column-head span {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
 }
 .task-filter-control select,
@@ -2963,7 +3047,7 @@ kbd {
 }
 .task-copy strong {
   font-size: var(--text-sm);
-  font-weight: 570;
+  font-weight: var(--weight-medium);
 }
 .task-copy span {
   color: var(--text-quaternary);
@@ -3058,7 +3142,7 @@ kbd {
 .state-panel h1 {
   margin: 0;
   font-size: var(--text-xl);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.015em;
 }
 .state-panel p {
@@ -3085,7 +3169,7 @@ kbd {
 .empty-state h3 {
   margin: 0 0 0.35rem;
   font-size: var(--text-base);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
 }
 .empty-state p {
   max-width: 34rem;
@@ -3115,7 +3199,7 @@ kbd {
      prototyp nie deklaruje wysokości wcale, a stojące tu 3,15 rem było jedynym
      powodem, dla którego dok mierzył 50 px zamiast wysokości swojej treści.
      `box-shadow` ZOSTAJE na `--capture-shadow`, i to nie jest przeoczenie:
-     `styles.css:608-633` remapuje ten token przy `:focus-visible` na
+     `styles.css:634-659` remapuje ten token przy `:focus-visible` na
      „pierścień, potem cień spoczynkowy", więc podmiana go na `--shadow-lg`
      zabrałaby dokowi pierścień ogniska. */
   padding: 0.4375rem 0.75rem;
@@ -3249,7 +3333,7 @@ kbd {
 }
 .inspector-header span {
   font-size: var(--text-sm);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
 }
 .inspector-header small {
   color: var(--text-quaternary);
@@ -3326,7 +3410,7 @@ kbd {
 .document-inspector-header h3 {
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.02em;
   line-height: var(--leading-snug);
 }
@@ -3364,7 +3448,7 @@ kbd {
 .inspector-body > h2 {
   margin: var(--space-3) 0 var(--space-2);
   font-size: var(--text-lg);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.02em;
   line-height: var(--leading-snug);
 }
@@ -3492,7 +3576,7 @@ kbd {
    a `.st-danger` dokłada wyłącznie kolor i barwę krawędzi na hoverze
    (`v3/screens/settings.css:176-179`). Kontrakt żąda tego samego: „the fill on
    a destructive action — the reference gives danger `--status-error` as colour
-   and border and never as a solid fill" (`.ui-craft/tokens.md:335-336`). Dlatego
+   and border and never as a solid fill" (`.ui-craft/tokens.md:383-384`). Dlatego
    przycisk potwierdzenia dostaje `secondary-button`, a wariant zaczepia się
    o klasę akcji, nie o nazwę pojemnika.
 
@@ -3942,7 +4026,7 @@ kbd {
 .capture-header h2 {
   margin: 0.5rem 0 0;
   font-size: var(--text-xl);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.025em;
 }
 .capture-dialog form {
@@ -4039,7 +4123,7 @@ kbd {
 .capture-file > strong {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 580;
+  font-weight: var(--weight-medium);
   overflow-wrap: anywhere;
 }
 .capture-file > .secondary-button {
@@ -4060,7 +4144,7 @@ kbd {
 .capture-voice-status strong {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 580;
+  font-weight: var(--weight-medium);
 }
 .capture-voice-status span:last-child {
   color: var(--text-quaternary);
@@ -4139,7 +4223,7 @@ kbd {
   overflow: hidden;
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 580;
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4219,7 +4303,7 @@ kbd {
 .center-state h1 {
   margin: var(--space-3) 0 var(--space-2);
   font-size: var(--text-xl);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 .center-state > p:not(.eyebrow) {
   max-width: 32rem;
@@ -4293,7 +4377,7 @@ kbd {
 .release-continuity h3 {
   margin: var(--space-1) 0 var(--space-1);
   font-size: var(--text-sm);
-  font-weight: 580;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
 }
 .release-continuity p:not(.eyebrow),
@@ -4495,7 +4579,7 @@ kbd {
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-sunken);
   font-size: var(--text-2xs);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
 }
 /* Unread is a compact info-blue dot plus screen-reader text, not a full-row
@@ -4721,7 +4805,7 @@ kbd {
     max-width: 28rem;
     /* PRÓG DOTYKU WRACA — I TYLKO TUTAJ. Lot powłoki Fazy 3 zdjął z doku
        `min-height: 3.15rem`, bo prototyp nie deklaruje wysokości wcale
-       (`:2324-2328`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
+       (`:2408-2412`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
        wysokość swojej treści, 33 px. Ale w wąskim oknie ta sama liczba jest
        CELEM DOTYKU, a paczkowany smoke żąda tam 44 px na każdym z trzech
        podmiotów (`run-packaged-alpha-smoke.mjs:921-924`).
@@ -4791,7 +4875,7 @@ kbd {
    `--surface-window` jest tu nieprzezroczystym ZASTĘPSTWEM dla rozmycia:
    element bez rozmycia niczego nie zastępuje, tylko dostaje CUDZY kolor.
    Faza 3 zdjęła szkło z lewej kolumny i z pasma zakładek („prototyp nie stawia
-   szkła w powłoce", `:930-933`, `:1626`), ale nie zdjęła ich stąd — więc każdy,
+   szkła w powłoce", `:956-959`, `:1710`), ale nie zdjęła ich stąd — więc każdy,
    kto ma włączoną redukcję przezroczystości, dostawał pasek boczny w kolorze
    okna zamiast w planie paska.
 
@@ -5644,7 +5728,7 @@ kbd {
 }
 .meeting-markdown strong {
   color: var(--text-primary);
-  font-weight: 550;
+  font-weight: var(--weight-medium);
 }
 .meeting-markdown code {
   padding: 0.1rem 0.3rem;
@@ -5724,7 +5808,7 @@ kbd {
    generous height keeps them comfortable pointer and touch targets. */
 .meeting-item-actions .secondary-button {
   min-height: 2.75rem;
-  font-weight: 550;
+  font-weight: var(--weight-medium);
 }
 .meeting-responsibility-form {
   grid-column: 1 / -1;
@@ -6224,7 +6308,7 @@ kbd {
 .section-heading h2 {
   margin: 0.2rem 0 0;
   font-size: var(--text-base);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.015em;
 }
 .section-heading > span {
@@ -6271,7 +6355,7 @@ kbd {
    `:focus-visible` jest DOŁOŻONE do pary z prototypu: pozycje nawigacji chodzą
    strzałkami, więc bez tego czytelnik klawiatury nigdy by tego skrótu nie
    zobaczył. Krycie, nie `display`, żeby wiersz nie zmieniał szerokości kolumn
-   pod kursorem; globalna reguła ruchu (`styles.css:3521-3530`) zeruje to
+   pod kursorem; globalna reguła ruchu (`styles.css:3605-3614`) zeruje to
    przejście przy `prefers-reduced-motion`, więc lokalny wyjątek byłby martwy. */
 .nav-item kbd {
   margin-left: auto;
@@ -6349,7 +6433,7 @@ kbd {
 }
 .condition-banner strong {
   font-size: var(--text-sm);
-  font-weight: 620;
+  font-weight: var(--weight-medium);
 }
 .condition-banner div span {
   color: var(--text-tertiary);
@@ -6443,7 +6527,7 @@ kbd {
 }
 .compact-record-list strong {
   font-size: var(--text-sm);
-  font-weight: 570;
+  font-weight: var(--weight-medium);
 }
 .compact-record-list small,
 .compact-record-list em {
@@ -6708,7 +6792,7 @@ kbd {
 .overview-intent label {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
-  font-weight: 580;
+  font-weight: var(--weight-medium);
 }
 .overview-intent input,
 .overview-intent textarea {
@@ -6763,7 +6847,7 @@ kbd {
 .overview-intent h2 {
   margin: var(--space-2) 0;
   font-size: var(--text-2xl);
-  font-weight: 580;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
 }
 .overview-intent > p:last-child {
@@ -6804,7 +6888,7 @@ kbd {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: var(--text-sm);
-  font-weight: 630;
+  font-weight: var(--weight-semibold);
 }
 .history-ledger > header span {
   color: var(--text-quaternary);
@@ -6859,7 +6943,7 @@ kbd {
 }
 .history-row-copy strong {
   font-size: var(--text-sm);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
 }
 .history-row-copy small {
   color: var(--text-tertiary);
@@ -6917,7 +7001,7 @@ kbd {
 }
 .processing-timeline strong {
   font-size: var(--text-sm);
-  font-weight: 580;
+  font-weight: var(--weight-medium);
 }
 .processing-timeline span {
   color: var(--text-quaternary);
@@ -7093,7 +7177,7 @@ kbd {
 }
 .search-results strong {
   font-size: var(--text-sm);
-  font-weight: 580;
+  font-weight: var(--weight-medium);
 }
 .search-results small,
 .search-results em {
@@ -7156,7 +7240,7 @@ kbd {
 .undo-dialog h2 {
   margin: var(--space-1) 0 0;
   font-size: var(--text-xl);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 .undo-dialog dl {
   margin: 0;
@@ -7254,7 +7338,7 @@ kbd {
 .shortcuts-dialog h2 {
   margin: var(--space-1) 0 0;
   font-size: var(--text-xl);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 .shortcuts-groups {
   display: grid;
@@ -7267,7 +7351,7 @@ kbd {
   margin: 0 0 var(--space-2);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
@@ -7369,7 +7453,7 @@ kbd {
 .recovery-header h2 {
   margin: var(--space-2) 0 0;
   font-size: var(--text-xl);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
 }
 .recovery-header > div > p:last-child {
@@ -7394,7 +7478,7 @@ kbd {
 .data-home-summary-heading h3 {
   margin: var(--space-2) 0 0;
   font-size: var(--text-md);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.02em;
 }
 .data-home-availability {
@@ -7457,7 +7541,7 @@ kbd {
   margin: var(--space-1) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-sm);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 .data-home-facts span {
   display: block;
@@ -7980,7 +8064,7 @@ kbd {
 .evidence-inspector legend {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-medium);
 }
 .quick-source-form input,
 .new-knowledge-form > input,
@@ -8321,7 +8405,7 @@ kbd {
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-style: normal;
-  font-weight: 750;
+  font-weight: var(--weight-bold);
 }
 /* The third grid in this stack whose implicit `auto` column was sized by its
    content rather than by its box. Declared, so a long title or an unbreakable
@@ -8429,7 +8513,7 @@ kbd {
 
    Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
    znika. Samo `background: var(--panel-reading-bg)` stoi w regule bazowej
-   `.knowledge-writing-plane` (`:7939`), a nie tu — druga deklaracja tego samego
+   `.knowledge-writing-plane` (`:8023`), a nie tu — druga deklaracja tego samego
    selektora wygrywała kolejnością i czyniła wartość bazową martwą. */
 .knowledge-writing-plane .document-canvas {
   padding: var(--space-5) 0 var(--space-10);
@@ -8716,7 +8800,7 @@ kbd {
 }
 .attachment-state.unavailable {
   color: var(--text-secondary);
-  font-weight: 650;
+  font-weight: var(--weight-medium);
 }
 .evidence-option {
   display: grid;
@@ -8853,7 +8937,7 @@ kbd {
   }
   /* MARTWA DEKLARACJA, NIE ZMIANA ZDANIA. Do lotu D3 ten rząd był siatką
      i wąski krok mówił mu `justify-items: start`; lot przeniósł bazę na `flex`
-     (`:7191`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
+     (`:7275`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
      robi NIC — więc reguła prosiła o lewą, a kaskada dawała prawą z bazowego
      `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: przy
      `flex: 1 1 28rem` element i tak wypełnia linię węższą niż 28 rem.
@@ -8966,7 +9050,7 @@ kbd {
 .restore-preview h3 {
   margin: 0;
   font-size: var(--text-lg);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
 }
 .recovery-section p,
@@ -8989,7 +9073,7 @@ kbd {
 .recovery-restore-section label {
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 620;
+  font-weight: var(--weight-medium);
 }
 .recovery-code-entry {
   display: grid;
@@ -9548,15 +9632,26 @@ kbd {
   display: none;
 }
 
-.settings-help-entry,
-.settings-context-help {
+/* JEDNA POZYCJA, NIE CZTERY (lot L7, Faza II). Ta reguła obsługiwała dwie
+   klasy: globalne wejście w paśmie ORAZ trzy wejścia kontekstowe stojące pod
+   akapitami kategorii. Trzy kontekstowe są odtąd plakietkami `.help-mark`
+   w nagłówkach swoich sekcji, więc `.settings-context-help` nie istnieje
+   w żadnym pliku `.tsx` i zniknęła stąd razem z nimi.
+
+   TO JEDNO ZOSTAJE SŁOWNE, I JEST TO ŚWIADOMY WYJĄTEK Z ZAPISANYM POWODEM,
+   a nie reszta niedokończonej roboty. `.ui-craft/surfaces/contextual-concept-
+   help.md` („Visual contract"): „Wejście GLOBALNE w nagłówku Ustawień zostaje
+   przyciskiem ze słowami — ono nie stoi przy żadnej etykiecie, więc nie ma
+   czego być mniejsze." Prototyp nie ma pomocy w Ustawieniach w ogóle, więc
+   nie ma tu strony, z którą można by ten jeden przycisk porównać — a wzorzec
+   mówi o znaku MNIEJSZYM OD ETYKIETY, PRZY KTÓREJ STOI. */
+.settings-help-entry {
   background: transparent;
   border: 0;
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xs);
-  min-height: 2.75rem;
   padding: 0;
   text-align: start;
   text-decoration: underline;
@@ -9565,25 +9660,49 @@ kbd {
   width: fit-content;
 }
 
-/* TEN JEDEN STOI W PAŚMIE, WIĘC BIERZE RYTM PASMA. 2,75 rem (44 px) to cel
-   dotyku i zostaje wszędzie tam, gdzie ta kontrolka stoi w TREŚCI
-   (`.settings-context-help`) — ale w paśmie ta liczba była JEDYNYM powodem, dla
-   którego pasmo Ustawień miało 45 px przy 40 px na jedenastu pozostałych
-   ekranach (zmierzone spisem pasma tytułu: `band SHELL_BAND_OFF 45px (declared
-   40px)`). Wysokość rzędu chromu bierze więc tę samą podłogę, co każda inna
-   kontrolka pasma: `.primary-button`/`.secondary-button` mają 1,75 rem
-   (`styles.css`, reguła nad nimi), i to jest liczba, którą pasmo mieści.
-   CZEGO TO NIE ŁAMIE, sprawdzone: paczkowany smoke żąda celu 44 px wyłącznie od
+/* TEN JEDEN STOI W PAŚMIE, WIĘC BIERZE RYTM PASMA, I JEST TO JEGO JEDYNA
+   PODŁOGA — nad regułą stało do przeglądu odbiorczego L7 drugie `min-height`,
+   2,75 rem, i było MARTWE.
+
+   POLICZONE, NIE OSZACOWANE: `className="settings-help-entry"` występuje
+   w produkcie DOKŁADNIE RAZ i jest bezpośrednim dzieckiem `.settings-header`
+   (`SettingsSurface.tsx`, przycisk „Explain data and access"), więc reguła
+   z tą samą własnością i wyższą swoistością wygrywała ZAWSZE. 2,75 rem (44 px)
+   było podłogą kontrolek pomocy stojących w TREŚCI, dopóki takie kontrolki
+   istniały; lot L7 zamienił wszystkie trzy na plakietki `.help-mark`, po czym
+   ta deklaracja nie miała już ani jednego konsumenta. Zdjęta razem z tym
+   zdaniem, bo deklaracja bez konsumenta czyta się jak obowiązujący próg —
+   wysokość kontrolki nie zmienia się przez to o piksel.
+
+   CZEGO TO NIE UKRYWA, I TO JEST WAŻNIEJSZE NIŻ SAMA DEKLARACJA: plakietka
+   pomocy MA 18 px, czyli MNIEJ niż cel dotykowy 44 px, i jest to
+   ROZSTRZYGNIĘCIE PROTOTYPU (`v3/app.css:896-903` — `.helpb` to 1,125 rem;
+   komentarz nad regułą nazywa tę kontrolkę „dopiskiem, nie kontrolką do
+   klikania na co dzień"). Prototyp wygrywa co do zamiaru i ta fala tego nie
+   przekręca — ale przejście z 44 px na 18 px nastąpiło bez noty i to jest
+   nota. NIE MIERZY tego dziś NIC: paczkowany smoke żąda 44 px wyłącznie od
    `.search-control`, `.nav-item` i `.capture-dock`
    (`run-packaged-alpha-smoke.mjs:953-955`) — kontrolek POWŁOKI, a nie tej.
-   Lot L7 ma tę pozycję zamienić na plakietkę `?` przy rzeczy (wpisy P-14 i
-   13-5) i wtedy ta reguła zniknie razem z nią. */
+   Wpisane też do rejestru (`visual-language-pairs.mjs`, lot 6, pozycja 8),
+   którego zdanie o tym progu przestało być prawdziwe razem z lotem L7.
+
+   DLACZEGO PASMO MA 1,75 rem: 2,75 rem było JEDYNYM powodem, dla którego pasmo
+   Ustawień miało 45 px przy 40 px na jedenastu pozostałych ekranach (zmierzone
+   spisem pasma tytułu: `band SHELL_BAND_OFF 45px (declared 40px)`). Wysokość
+   rzędu chromu bierze więc tę samą podłogę, co każda inna kontrolka pasma:
+   `.primary-button`/`.secondary-button` mają 1,75 rem (`styles.css`, reguła nad
+   nimi), i to jest liczba, którą pasmo mieści.
+   LOT L7 WYKONANY, I TA REGUŁA ZOSTAJE — sprostowanie do zdania, które tu
+   stało („L7 zamieni tę pozycję na plakietkę i wtedy ta reguła zniknie").
+   Wpis 13-5 obejmuje CZTERY kontrolki, nie jedną: trzy kontekstowe zeszły na
+   plakietki, a to jedno wejście zostaje słowne z powodu zapisanego w kontrakcie
+   (`contextual-concept-help.md`, „Visual contract") — nie stoi przy żadnej
+   etykiecie, więc nie ma czego być mniejsze. */
 .settings-header .settings-help-entry {
   min-height: 1.75rem;
 }
 
-.settings-help-entry:hover,
-.settings-context-help:hover {
+.settings-help-entry:hover {
   color: var(--text-primary);
   text-decoration-color: currentColor;
 }
@@ -9670,10 +9789,6 @@ kbd {
      rozciąga się na całą szerokość kategorii, czyli dokładnie tyle, ile
      wcześniej dawał jej własny tor. */
   max-width: var(--surface-read);
-}
-
-.settings-context-help {
-  margin-top: var(--space-1);
 }
 
 .concept-help-backdrop {
@@ -10018,7 +10133,7 @@ kbd {
 /* ── KONTROLKA WYBORU BIERZE SZEROKOŚĆ SWOJEJ TREŚCI (Faza C, lot C5) ─────────
    `align-self: start`, A NIE SKREŚLENIE `stretch` — i to jest cała różnica
    między poprawką a jej pozorem. `.settings-control` jest kolumną
-   (`:8934-8940`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
+   (`:9018-9024`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
    dziecko na całą szerokość tafli; sam wpis `align-self: stretch` był tu
    powtórzeniem domyślnej wartości i skasowanie go NIE ZMIENIŁOBY NICZEGO.
    Kontrolka wraca do szerokości własnej treści dopiero wtedy, gdy powie
@@ -10042,14 +10157,14 @@ kbd {
 
    TRZECI KSZTAŁT, DOPISANY PO PRZEGLĄDZIE (2026-08-11): ZAPYTANIE KONTENEROWE.
    Wyliczanka wyżej wymieniała dwa kształty i milczała o `@container (max-width:
-   47.5rem)` (`:9540-9559`), który przewraca `.settings-control > div` w KOLUMNĘ
+   47.5rem)` (`:10723-10753`), który przewraca `.settings-control > div` w KOLUMNĘ
    z `align-items: stretch` i daje polom tekstowym `width: 100%`. Zarzut brzmiał:
    w tym trybie sufit `16rem` obowiązuje kontrolkę, a sąsiednie pole rozpycha się
    na całość, więc parzystość pole↔kontrolka się rozjeżdża.
 
    ROZSTRZYGNIĘTE POMIAREM, NIE OSZACOWANE, i wychodzi na to, że ten tryb NIE
    DOSIĘGA ani jednej kontrolki wyboru. Kontenerem jest `.settings-sections`
-   (`:8641-8643`), więc próg 47,5 rem to 760 px SZEROKOŚCI TAFLI, a nie okna:
+   (`:9710-9712`), więc próg 47,5 rem to 760 px SZEROKOŚCI TAFLI, a nie okna:
    przy oknie 1440 px tafla ma 1140 px (zapytanie nieaktywne), przy 900 px ma
    608 px (zapytanie AKTYWNE). Zmierzone w obu stanach na tej samej fiksturze:
    sześć NARYSOWANYCH kontrolek wyboru, rodzicem żadnej z nich NIE JEST
@@ -10152,7 +10267,7 @@ kbd {
 }
 
 /* `:not(.primary-button)` NIE JEST OZDOBĄ SELEKTORA — jest całą pozycją #4.
-   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:724-727`) ma 0,1,0,
+   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:750-753`) ma 0,1,0,
    więc bez zawężenia dopisanie klasy do przycisku zostawiłoby go dokładnie
    w tym samym drugoplanowym wypełnieniu, a znacznik i tak czytałby się
    poprawnie. To jest ta sama klasa awarii, którą lot 5 oddał na `:hover`
@@ -10171,7 +10286,7 @@ kbd {
    JEDEN `:not()` Z LISTĄ, A NIE DWA `:not()` PO SOBIE — I TO NIE JEST STYL.
    Łańcuch `:not(.primary-button):not(.settings-row)` waży 0,3,1, a to o stopień
    WIĘCEJ niż 0,2,1 sprzed dopisku — i o stopień więcej niż
-   `.settings-control.support-report-action > button` (`:8699`), które waży
+   `.settings-control.support-report-action > button` (`:8783`), które waży
    dokładnie 0,2,1 i wygrywało dotąd KOLEJNOŚCIĄ. Zmierzone, nie wydedukowane:
    z łańcuchem sonda wierności zameldowała przycisk raportu wsparcia jako
    `oklch(100% 0 0 / 0.76)` zamiast akcentu, w obu motywach. `:not(a, b)` bierze
@@ -10193,7 +10308,7 @@ kbd {
 }
 /* DRUGA POŁOWA WPISU #71 REJESTRU, ODDANA NA POMIARZE, NIE NA ODCZYCIE — i to
    jest istotne, bo dwa odczyty kodu stały tu naprzeciwko siebie. Komentarz przy
-   `.settings-control select` (`:9693-9712`, lot C5) mówił „wysokość NIE JEST
+   `.settings-control select` (`:9808-9827`, lot C5) mówił „wysokość NIE JEST
    wadą, bo `.settings-control button` ma tę samą podłogę 2,75 rem"; przeliczenie
    Fazy D mówiło „teza wpisu stoi, bo sąsiednie POLE TEKSTOWE nie deklaruje
    żadnej podłogi". Obie prozy były prawdziwe i żadna nie była zmierzona.
@@ -10245,7 +10360,7 @@ kbd {
 /* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,
    czyli dokładnie tam, gdzie stała, więc remis z
    `.settings-control.support-report-action > button:hover:not(:disabled)`
-   (`:8713`) dalej rozstrzyga kolejność, a nie ten dopisek. */
+   (`:8797`) dalej rozstrzyga kolejność, a nie ten dopisek. */
 .settings-control
   button:not(.primary-button, .settings-row):not(:disabled):hover {
   background: var(--action-secondary-hover);
@@ -10649,6 +10764,21 @@ kbd {
   }
 }
 
+/* TEN SAM KSZTAŁT CO WYŻEJ, PRZEPISANY — I OD LOTU L8 (Faza II) JEST TO
+   POWTÓRZENIE ŚWIADOME, nie „restated-shape drift" do posprzątania.
+   Osiem deklaracji jest identycznych z blokiem `.inline-popover-trigger`
+   (`:387` i dalej), ale ZDANIE, które mówią, jest inne, bo inny jest element:
+
+     • tam wyzwalacz DYMKA — prototyp stawia znak ZA etykietą i w dół
+       (`v3/screens/record.js:485-486`, `v3/screens/record.css:245-251`);
+     • tutaj zwijacz SEKCJI — prototyp stawia znak PRZED etykietą, w dół
+       przy sekcji otwartej i w bok przy zwiniętej (`v3/app.js:599`,
+       `v3/app.css:206-207`). Dokładnie to, co ta reguła robi.
+
+   Dlatego lot L8 przeniósł znak na wyzwalaczu dymka, a TEGO nie ruszył —
+   i dlatego nie da się już ich scalić w jedną regułę: po tamtej poprawce
+   jedna warstwa to `::after`, a druga `::before`. Wspólna reguła byłaby tu
+   BŁĘDEM, nie oszczędnością. */
 .support-report-details summary::before,
 .technical-revisions summary::before {
   content: "";
@@ -10690,7 +10820,7 @@ kbd {
   margin: 0;
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 550;
+  font-weight: var(--weight-semibold);
 }
 .meeting-result-routing > header p,
 .meeting-result-participants > header p {

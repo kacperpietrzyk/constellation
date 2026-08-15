@@ -177,7 +177,7 @@
 .author {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 
 /* ROLA AGENTA JEST PLAKIETKĄ, NIE SZARYM DOPISKIEM (rejestr, wpis #56).
@@ -490,7 +490,7 @@
   border-color: var(--accent-edge);
   background: var(--accent-quieter);
   color: var(--accent);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
 }
 
 /* The hover above is `.mentionChip:hover:not(:disabled)` — three simple

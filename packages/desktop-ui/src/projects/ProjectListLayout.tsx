@@ -1,5 +1,6 @@
 import type { ProjectId } from "@constellation/contracts";
 
+import { TopicHelp } from "../help/TopicHelp.js";
 import {
   compositionSentence,
   deadlineSentence,
@@ -98,16 +99,30 @@ export const ProjectListLayout = ({
           {/* Only the first header carries it: the answer is the same for
               every state, and four stacked question marks are decoration.
               A real button, never a `title=` — an explanation hidden in a
-              tooltip does not exist for a keyboard or a finger. */}
-          {position === 0 && (
-            <button
-              aria-label="How health is worked out"
-              className={styles.help}
-              type="button"
-            >
-              <span aria-hidden="true">?</span>
-            </button>
-          )}
+              tooltip does not exist for a keyboard or a finger.
+
+              WPIS 5-4 DOKUMENTU PRZEJŚCIA, DOMKNIĘTY PRZEZ LOT L7 FAZY II —
+              I DWIE RZECZY BYŁY TU ZŁE, NIE JEDNA.
+
+              Widoczna: prototyp stawia `helpBtn("health")` ZARAZ ZA liczbą
+              grupy (`v3/screens/projects.js:231`), a arkusz tej apki dawał
+              znakowi `margin-inline-start: auto`, więc pytanie odjeżdżało na
+              prawą krawędź okna (x ≈ 1670), a rzecz, której dotyczy, została
+              przy x ≈ 60. Odległość między pytaniem a rzeczą była całą
+              szerokością ekranu.
+
+              Niewidoczna, i to ona jest gorsza: ten przycisk NIE MIAŁ
+              `onClick`. Był okrągłym „?", który nie otwierał niczego —
+              i przechodził przez najostrzejszą bramkę pomocy w repozytorium
+              (`test/topic-help.interaction.test.tsx`), bo bramka chodzi po
+              `[data-help-topic]`, a kontrolka, która się pomocą nie
+              przedstawiła, jest dla niej niewidzialna. Kontrakt trasy
+              Projektów asertował „ten ekran nie niesie żadnej pomocy" i był
+              zielony nad żywym pytajnikiem.
+
+              `TopicHelp` naprawia obie naraz: jedna forma z `styles.css`,
+              zadeklarowany temat, prawdziwy dymek. */}
+          {position === 0 && <TopicHelp topic="project-health" />}
         </div>
         <div
           aria-label={`${group.label} — by deadline`}

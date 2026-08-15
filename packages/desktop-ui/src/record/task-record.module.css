@@ -39,13 +39,13 @@
      The three record screens carried three different title sizes: 28px here
      and on the project, 22px on the opportunity. `--text-xl` is 22px and is
      what the reference gives every record title, so it is the one this family
-     converges on rather than the largest of the three. The weight stays 580 —
-     the reference says 600, and this lot is forbidden to touch the 580/590/620
-     convention, so the divergence is recorded and not paid. */
+     converges on rather than the largest of the three. The weight was 580
+     until lot L5 of phase II paid it: `--weight-semibold` is the reference's
+     600 and a step of the scale `tokens.css` declares. */
   max-inline-size: var(--surface-read);
   color: var(--text-primary);
   font-size: var(--text-xl);
-  font-weight: 580;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
   text-wrap: balance;
@@ -444,9 +444,9 @@ button.chip:hover {
    The task record was the only screen in this family running its
    micro-headings a step larger and a shade louder than the project and the
    opportunity ones — 12px tertiary against 11px quaternary. The size and the
-   colour come down to the family's; the weight goes to 590 because that is
-   what the other two sheets already declare, which is adopting the
-   application's convention rather than touching it.
+   colour come down to the family's; the weight went to 590 because that is
+   what the other two sheets already declared — and lot L5 of phase II then
+   took all three to `--weight-semibold`, the reference's 600.
 
    THE TRACKING IS A LITERAL AND THAT IS DELIBERATE. `--tracking-wide` is
    0.025em, the reference is 0.07em, and the token has consumers outside this
@@ -463,7 +463,7 @@ button.chip:hover {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -684,7 +684,7 @@ button.row:hover {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }

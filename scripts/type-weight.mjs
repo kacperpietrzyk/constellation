@@ -14,7 +14,7 @@
 // Prototyp v3 używa DOKŁADNIE czterech wag i ani jednej innej: 400 (3
 // deklaracje), 500 (64), 600 (85), 700 (3). Aplikacja miała w chwili
 // postawienia tego przyrządu DZIEWIĘĆ wartości poza tym zbiorem — 550, 560,
-// 570, 580, 590, 620, 630, 650, 750, razem 91 deklaracji — i NIC tego nie
+// 570, 580, 590, 620, 630, 650, 750, razem 92 deklaracje — i NIC tego nie
 // mierzyło. Trzy pary w `visual-language-pairs.mjs` czytają `fontWeight`
 // (`D2-01b`, `D2-01d`, `L5-04`) i wszystkie trzy są asercjami o JEDNYM
 // podmiocie z JEDNĄ wpisaną liczbą; żadna nie pyta o PRZYNALEŻNOŚĆ do zbioru,
@@ -44,7 +44,9 @@
 //   "known-debt" — DŁUG, nie licencja. Wpis w rejestrze niżej z nazwanym
 //                  właścicielem i wskazanym arkuszem. Wpis nie zwalnia z
 //                  pomiaru: ZMIANA wartości na inną spoza skali dalej pada, bo
-//                  wpis wiąże sygnaturę Z KONKRETNĄ liczbą.
+//                  wpis wiąże sygnaturę Z KONKRETNĄ liczbą. REJESTR JEST DZIŚ
+//                  PUSTY (lot L5 Fazy II), więc ten werdykt nie zapada na
+//                  niczym — powód i cena stoją przy samej tablicy.
 //   "violation"  — waga spoza skali, której nikt nie zarejestrował. Nowy
 //                  rozjazd ma padać w dniu, w którym ląduje.
 //
@@ -102,484 +104,103 @@ export const declaredWeightScale = (tokensCssText) => {
 };
 
 /**
- * DŁUG WAGI ZMIERZONY, NIE ZGADNIĘTY. Każdy wpis pochodzi z przebiegu
- * `LAYOUT_PORT=5405 npm run test:renderer-layout` na tym drzewie 2026-08-13
- * i niesie właściciela oraz arkusz, w którym waga jest zadeklarowana.
+ * DŁUG WAGI: SPŁACONY, NIE ZAPOMNIANY. Ta tablica jest dziś PUSTA i to jest
+ * dowieziony stan, a nie brak pomiaru — lot L5 Fazy II przepisał na stopnie
+ * skali WSZYSTKIE 92 deklaracje obcych wag w arkuszach aplikacji, czyli
+ * dziewięć wartości (550, 560, 570, 580, 590, 620, 630, 650, 750) w 34
+ * arkuszach. Przed tym lotem stały tu 46 wpisów: tyle par `sygnatura|waga`
+ * poza skalą narysował przelot z 2026-08-13, bo 92 deklaracje w arkuszach to
+ * NIE 92 narysowane elementy — część reguł opisuje stany puste, dialogi
+ * i popovery, których fikstura nie rysuje.
  *
- * REJESTR JEST PRZEPISANY Z WYDRUKU BRAMKI, A NIE Z GREPU PO ARKUSZACH, i to
- * jest jedyny sposób, w jaki wolno go zapełnić. 91 deklaracji w arkuszach to
- * NIE 91 narysowanych elementów: część reguł opisuje stany puste, dialogi
- * i popovery, których fikstura nie rysuje. Wpis o czymś, czego przelot nigdy
- * nie widzi, jest martwy z definicji i pada jako `TYPE_WEIGHT_UNUSED_ENTRY` —
- * czyli grep dałby rejestr, który sam siebie wywraca.
+ * TRZY LICZBY, KTÓRE ZNACZĄ TRZY RÓŻNE RZECZY, i mieszanie ich jest sposobem,
+ * w jaki lot wygląda na dowieziony:
+ *   * 92 — deklaracje w arkuszach (grep, przepisane co do jednej);
+ *   * 46 — pary `sygnatura|waga`, które przelot NARYSOWAŁ (rejestr, dziś zero);
+ *   *  4 — wpisy rejestru rozjazdów, które plan lotu przewidywał (P-12, 2-4,
+ *          3-8, 12-3). Plan liczył OBJAWY widoczne przy tej fiksturze.
  *
- * `surfaces` jest RAPORTEM z tamtego przebiegu, nie asercją: mówi, gdzie ta
- * reguła się narysowała, i nie bierze udziału w dopasowaniu.
+ * CZEGO TEN LOT NIE ZMIERZYŁ, MIMO ŻE PRZEPISAŁ — I JEST TEGO WIĘKSZOŚĆ, NIE
+ * GARSTKA. Pierwsza wersja tego akapitu wyliczała zbiór niezmierzony jako
+ * CZTERY pozycje (570, 750 i `.trustBoundary`). To była nieprawda i obala ją
+ * pomiar, nie zdanie. Przelot z 2026-08-13 wypisał „0 unregistered, 46
+ * registered debt(s)", więc te 46 kluczy `sygnatura|waga` to WSZYSTKIE obce
+ * wagi, jakie którykolwiek przelot NARYSOWAŁ — gdyby narysował 47., wrócił
+ * by czerwony. Zestawione z 92 podstawieniami daje to trzy liczby:
+ *   * 42 z 92 podstawionych linii wskazuje pole `sheet` któregoś z 46 wpisów,
+ *     czyli mają ŚWIADKA — z zastrzeżeniem, które stoi niżej przy kształcie
+ *     wpisu: `sheet` to NAJLEPSZY DOWÓD, nie pewnik, bo `font-weight` dziedziczy;
+ *   * 50 z 92 nie wskazuje żaden wpis. O nich przelot nie powiedział NIC;
+ *   * 33 z tych 50 stoi w regule, która nie może wyprodukować ŻADNEGO
+ *     z narysowanych kluczy o tej wadze (podmiot selektora ma inny znacznik
+ *     albo inną klasę) — te są niezmierzone dowodliwie, a nie tylko bez świadka.
+ * Skrajny przypadek: waga 580 ma 11 podstawień i JEDEN narysowany klucz
+ * (`h1._title`); 570 i 750 mają po zerze kluczy, więc żadna z ich trzech
+ * deklaracji nie mogła się narysować. Wszystkie 92 są przepisane u ŹRÓDŁA
+ * i to jest wszystko, co o pięćdziesięciu z nich wolno powiedzieć —
+ * NIE ZMIERZONE, nie „przeszło". Populacja po tej stronie to dialogi, stany
+ * puste, `capture-*`, `recovery-*`, `shortcuts-*` i `undo-dialog`, czyli
+ * dokładnie to, czego fikstura harnessu nie rysuje.
  *
- * `sheet` TEŻ NIE BIERZE UDZIAŁU W DOPASOWANIU i jest NAJLEPSZYM DOWODEM,
- * a nie pewnikiem — mówimy to wprost, bo inaczej następny czytający weźmie te
- * numery za pomiar. Przelotka widzi WYLICZONĄ wagę, a `font-weight` jest
- * własnością DZIEDZICZONĄ: `span` o wadze 550 wewnątrz `.ghost-button` nie ma
- * własnej reguły i nigdy jej nie miał. Numer przy takim wpisie wskazuje więc
- * regułę, z której waga PRZYSZŁA, a nie regułę na tym elemencie; wpisy, przy
- * których to rozróżnienie jest żywe, mają to dopisane. Rozstrzyga to lot,
- * który dług spłaca, a nie ten przyrząd.
+ * CZEGO NIE OBEJMUJE UZASADNIENIE „TOKEN, NIE LITERAŁ": lot podstawił token
+ * tam, gdzie waga BYŁA POZA SKALĄ, i tylko tam. W arkuszach źródłowych
+ * pakietów stoi dziś 126 literałów W SKALI (400×8, 500×55, 600×60, 700×3) plus jeden
+ * w skrócie `font:`. Nie są zaległością tego lotu — jego zakresem było
+ * dziewięć wartości spoza skali — ale argument „arkusz psuje się RAZEM ze
+ * skalą" ich NIE DOTYCZY, a bez tego zdania czytałby się, jakby dotyczył.
  *
- * SYGNATURA BYWA WIELOZNACZNA I TO TEŻ JEST WYPISANE. `signature()` skleja
- * znacznik z klasami po zdjęciu hasha modułu, więc `h2._railHeading` z trzech
- * arkuszy rekordu jest tu JEDNYM wpisem. To jest znany problem tego pomiaru
- * (ten sam, przez który raport przyklejenia mówi „AMBIGUOUS"), a nie skutek
- * uboczny klucza: rejestr o kluczu `arkusz:linia` nie dałby się dopasować do
- * niczego, co widzi przeglądarka.
+ * CO TEN LOT ZEPSUŁ SAM, I MÓWIMY TO JAKO REGRESJĘ, A NIE JAKO ZASTANY OGON:
+ * `kbd` (`styles.css`, reguła nad `.primary-button kbd`) stoi 600. PRZED tym
+ * lotem przycisk stał 650, czyli skrót był LŻEJSZY od etykiety, którą wycisza;
+ * po zejściu przycisku na 500 jest CIĘŻSZY. Relację odwrócił ten lot.
+ * Prototyp nie deklaruje wagi dla `.btn .kbd` w ogóle: dziedziczy ją
+ * z przycisku i tłumi kryciem 0,6 (`v3/app.css:334`), czyli w prototypie skrót
+ * ma DOKŁADNIE wagę przycisku. Obie liczby (600 i 500) należą do skali, więc
+ * reguła tego pliku milczy i milczeć powinna — dlatego zapis stoi tutaj.
+ * WARUNEK WYJŚCIA: `kbd` bierze wagę z przycisku (albo `var(--weight-medium)`
+ * globalnie), ale `kbd` jest regułą ELEMENTU, używaną też w omniboksie,
+ * w nawigacji i w arkuszu skrótów, więc to szersza decyzja niż sam przycisk
+ * i osobny lot — nie cicha poprawka doklejona do tego.
  *
- * CZEGO TU NIE MA, MIMO ŻE STOI W ARKUSZACH: wagi 570 i 750. Deklaracje
- * istnieją, ale ŻADEN z pięciu przelotów ich nie narysował — sekcje Ustawień
- * otwiera się kliknięciem, którego ta bramka nie robi, a część reguł opisuje
- * stany puste, dialogi i popovery, których fikstura nie rysuje. Dopisanie ich
- * z grepu dałoby wpisy martwe w dniu narodzin (`TYPE_WEIGHT_UNUSED_ENTRY`).
- * To jest NIE ZMIERZONE, nie „przeszło".
+ * PUSTA TABLICA ZMIENIA TO, CO POTRAFI BRAMKA, i mówimy to wprost:
+ * `TYPE_WEIGHT_UNUSED_ENTRY` nie ma dziś po czym iterować, więc ta asercja
+ * jest NIEODPALALNA aż do pierwszego nowego wpisu. Uzbrojone zostają trzy:
+ * `TYPE_WEIGHT_NO_DECLARED_SCALE`, `TYPE_WEIGHT_SWEEP_MEASURED_NOTHING`
+ * i `TYPE_WEIGHT_UNREGISTERED` — a ta ostatnia jest TOTALNA nad każdą wagą
+ * spoza skali, KTÓRĄ PRZELOT NARYSUJE. Nie nad każdą, jaka stoi w arkuszach:
+ * reguła na ekranie, którego fikstura nie dosięga, nie zapala niczego, i to
+ * jest ta sama granica, o której mówi akapit „czego ten lot nie zmierzył".
+ *
+ * CO ZNIKŁO RAZEM Z WPISAMI, I DLACZEGO COŚ MUSIAŁO WEJŚĆ NA TO MIEJSCE.
+ * 46 wpisów było nie tylko księgą długu — każdy był CZUJNIKIEM POKRYCIA.
+ * Dopóki stały, zapaść przelotu (mniej odwiedzonych ekranów, martwy marker
+ * przybycia) wypisywała 46 wierszy `TYPE_WEIGHT_UNUSED_ENTRY` i bramka robiła
+ * się czerwona. Po ich spłacie jedynym progiem został `readings.length === 0`,
+ * czyli próg, którego nie przekroczy nawet przelot zredukowany do jednego
+ * ekranu — sam pasek boczny zawsze coś narysuje. Dlatego lot naprawczy dołożył
+ * `TYPE_WEIGHT_SURFACE_MEASURED_NOTHING` w `verify-renderer-layout.mjs`: pyta
+ * PER PRZELOT, czy każdy cel, który ten przelot zamierzał odwiedzić, wniósł
+ * choć jeden odczyt. Nie jest to podłoga na LICZBĘ odczytów i celowo — ta
+ * liczba maleje zgodnie z prawem, kiedy klucze się zwijają: ten lot zszedł
+ * z 340 kluczy na 325, bo `h2|560`, `h2|590` i `h2|620` sklejają się w jeden
+ * `h2|600`. I MÓWIMY, CZEGO TA LICZBA NIE ZNACZY: wydruk podaje liczbę KLUCZY
+ * mapy `sygnatura|waga`, a nie liczbę osądzonych ELEMENTÓW. Przyrząd liczby
+ * elementów nie zna, więc „zwinęło się, a nie skurczyło" jest wnioskiem
+ * z kształtu klucza, nie odczytem z wydruku — i dlatego rozróżnia je dopiero
+ * asercja pokrycia niżej, a nie porównanie dwóch liczb odczytów.
+ *
+ * KSZTAŁT WPISU ZOSTAJE UDOKUMENTOWANY, bo tablica pusta nie uczy nikogo, co
+ * wpisać. Wpis niesie `signature` (znacznik + klasy po zdjęciu hasha modułu,
+ * czyli klucz, który widzi przeglądarka), `weight`, `sheet` (arkusz i linia —
+ * NAJLEPSZY DOWÓD, nie pewnik: `font-weight` dziedziczy, więc numer wskazuje
+ * regułę, z której waga PRZYSZŁA), `surfaces` (RAPORT z przebiegu, nie
+ * asercja), `owner` i `thread`. Klucz to `sygnatura|waga`, nie
+ * `powierzchnia|sygnatura`, bo waga jest własnością REGUŁY ARKUSZA, a nie
+ * geometrii ekranu — powody stoją w nagłówku pliku i się nie zmieniły.
+ *
+ * @type {Array<{signature: string, weight: number, sheet: string, surfaces: string, owner: string, thread: string}>}
  */
-export const KNOWN_OFF_SCALE_WEIGHTS = [
-  // ── 550 ───────────────────────────────────────────────────────────────────
-  {
-    signature: "button.ghost-button",
-    weight: 550,
-    sheet:
-      "packages/desktop-ui/src/styles.css:1060 (.quiet-button, .ghost-button)",
-    surfaces: "projects:project (+ jego pięć zakładek)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.ghost-button.compact",
-    weight: 550,
-    sheet:
-      "packages/desktop-ui/src/styles.css:1060 (.quiet-button, .ghost-button)",
-    surfaces: "calendar, inbox",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.quiet-button",
-    weight: 550,
-    sheet:
-      "packages/desktop-ui/src/styles.css:1060 (.quiet-button, .ghost-button)",
-    surfaces: "meetings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // WAGA ODZIEDZICZONA, nie własna: `<span>` w środku przycisku bez własnej
-    // reguły. Wpis zostaje, bo przelotka widzi WYLICZONĄ wagę i to jest
-    // dokładnie to, co ogląda czytelnik.
-    signature: "span",
-    weight: 550,
-    sheet:
-      "packages/desktop-ui/src/styles.css:1060 (dziedziczone z .ghost-button)",
-    surfaces: "projects, projects:client, projects:list, projects:timeline",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  // ── 560 ───────────────────────────────────────────────────────────────────
-  {
-    signature: "h2",
-    weight: 560,
-    sheet:
-      "packages/desktop-ui/src/calendar.module.css:389 i inbox.module.css:52 (.sectionHead h2)",
-    surfaces: "calendar, inbox",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "h3._columnLabel",
-    weight: 560,
-    sheet: "packages/desktop-ui/src/tasks/task-board.module.css:86",
-    surfaces: "tasks:board",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "h3._railTitle",
-    weight: 560,
-    sheet: "packages/desktop-ui/src/tasks/task-calendar.module.css:281",
-    surfaces: "tasks:calendar",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "span._dayName",
-    weight: 560,
-    sheet: "packages/desktop-ui/src/calendar.module.css:171",
-    surfaces: "calendar",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  // ── 580 — TEN JEDEN MA PARĘ ───────────────────────────────────────────────
-  {
-    // JEDYNY WPIS TEGO REJESTRU, KTÓRY MA NAD SOBĄ RÓWNIEŻ PARĘ (`P5-01a`)
-    // I OSOBNY WERDYKT PASMA TYTUŁU REKORDU. Nie jest to powtórzenie: para
-    // czyta JEDEN selektor na JEDNEJ trasie, pasmo grupuje tytuły rekordu na
-    // wszystkich geometriach, a ten wpis mówi tylko „ta reguła jest znanym
-    // długiem". Wszystkie trzy padają albo milkną na jednym przełączniku.
-    signature: "h1._title",
-    weight: 580,
-    sheet:
-      "packages/desktop-ui/src/record/task-record.module.css:48 i record/project-record.module.css:41",
-    surfaces: "tasks:task, projects:project (+ ich zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread:
-      "adopcja języka wizualnego v3 — skala wag (przyrząd P5, para P5-01a)",
-  },
-  // ── 590 — NAJLICZNIEJSZA OBCA WAGA APLIKACJI ──────────────────────────────
-  {
-    signature: "b._fitCount",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/record/project-record.module.css:297 (.fitCount, .fitStrong)",
-    surfaces: "projects:project, projects:project:overview",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "b._open",
-    weight: 590,
-    sheet: "packages/desktop-ui/src/projects/project-list.module.css:281",
-    surfaces: "projects, projects:list",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button._switch",
-    weight: 590,
-    sheet:
-      'packages/desktop-ui/src/tasks/tasks.module.css:95 i projects/project-collection.module.css:49 (.switch[aria-pressed="true"])',
-    surfaces: "projects i tasks wraz z soczewkami",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button._tab",
-    weight: 590,
-    sheet:
-      'packages/desktop-ui/src/record/record-tabs.module.css:113 (.tab[aria-selected="true"])',
-    surfaces: "wszystkie trzy ekrany rekordu wraz z zakładkami",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "h2",
-    weight: 590,
-    sheet: "packages/desktop-ui/src/styles.css:3367 (.inspector-body > h2)",
-    surfaces: "tasks:task (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "h2._docHeading",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/record/task-record.module.css:466, record/project-record.module.css:421, opportunity/opportunity-record.module.css:147 — TRZY arkusze, jedna sygnatura",
-    surfaces:
-      "tasks:task, projects:project, pipeline:opportunity (+ przeglądy)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "h2._fitHeading",
-    weight: 590,
-    sheet: "packages/desktop-ui/src/record/project-record.module.css:260",
-    surfaces: "projects:project, projects:project:overview",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "h2._railHeading",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/opportunity/opportunity-record.module.css:279",
-    surfaces: "pipeline:opportunity, pipeline:opportunity:overview",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // TA SAMA KLASA, INNY ZNACZNIK, WIĘC INNY WPIS — i to jest cecha klucza,
-    // nie jego wada: `h2._railHeading` (Szansa) i `h3._railHeading`
-    // (Zadanie, Projekt) to dwa różne elementy w dwóch arkuszach.
-    signature: "h3._railHeading",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/record/task-record.module.css:687 i record/project-record.module.css:541",
-    surfaces: "tasks:task, projects:project (+ przeglądy)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "p._emptyTitle",
-    weight: 590,
-    sheet: "packages/desktop-ui/src/record/record-panels.module.css:450",
-    surfaces: "projects:project:tasks",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "span._author",
-    weight: 590,
-    sheet: "packages/desktop-ui/src/record/record-comments.module.css:180",
-    surfaces: "zakładki Komentarzy trzech ekranów rekordu",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // ODZIEDZICZONE po zaznaczonej zakładce: `.count` nie deklaruje wagi,
-    // a `.tab[aria-selected="true"] .count` nie nadpisuje jej z powrotem.
-    signature: "span._count",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/record/record-tabs.module.css:113 (dziedziczone z zaznaczonej zakładki)",
-    surfaces: "zakładki z licznikiem na trzech ekranach rekordu",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "span._groupLabel",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/tasks/task-list.module.css:33, projects/project-list.module.css:44, projects/project-clients.module.css:36",
-    surfaces: "projects, projects:client, projects:list, tasks, tasks:list",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "strong",
-    weight: 590,
-    sheet:
-      "packages/desktop-ui/src/calendar.module.css:76, inbox.module.css:29, tasks/task-calendar.module.css:38, styles.css:6862",
-    surfaces: "calendar, inbox, library:captures, tasks:calendar",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  // ── 620 ───────────────────────────────────────────────────────────────────
-  {
-    signature: "button.strategic-create-toggle",
-    weight: 620,
-    sheet: "packages/desktop-ui/src/styles.css:305",
-    surfaces: "organizations",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // DRUGI WPIS Z PARĄ (`P5-01b`) — powód przy `h1._title|580` wyżej.
-    signature: "h1._title",
-    weight: 620,
-    sheet:
-      "packages/desktop-ui/src/opportunity/opportunity-record.module.css:49",
-    surfaces: "pipeline:opportunity (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread:
-      "adopcja języka wizualnego v3 — skala wag (przyrząd P5, para P5-01b)",
-  },
-  {
-    signature: "h2",
-    weight: 620,
-    sheet:
-      "packages/desktop-ui/src/styles.css:3088 (.empty-state h2, .empty-state h3) i styles.css:6227 (.section-heading h2)",
-    surfaces:
-      "organizations, projects:project, projects:project:overview, settings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // Arkusz sekcji Aktywności NIE deklaruje wagi dla `.stateTitle`
-    // (`activity-section.module.css:390`) — waga przychodzi ze wspólnej reguły
-    // stanu pustego w powłoce.
-    signature: "h3._stateTitle",
-    weight: 620,
-    sheet:
-      "packages/desktop-ui/src/styles.css:3088 (.empty-state h2, .empty-state h3)",
-    surfaces: "settings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "span",
-    weight: 620,
-    sheet: "packages/desktop-ui/src/styles.css:3252 (.inspector-header span)",
-    surfaces: "tasks:task (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // CHROM POWŁOKI — widoczny na KAŻDYM przystanku, i to jest dowód, że
-    // przelotka nie zatrzymuje się na `#main-content`.
-    signature: "strong",
-    weight: 620,
-    sheet:
-      "packages/desktop-ui/src/styles.css:1435 (.workspace-switcher strong)",
-    surfaces: "wszystkie 36 stanów ekranu poza settings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  // ── 630 ───────────────────────────────────────────────────────────────────
-  {
-    signature: "h3",
-    weight: 630,
-    sheet:
-      "packages/desktop-ui/src/styles.css:6807 (.history-ledger > header h3)",
-    surfaces: "library:captures",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  // ── 650 — CHROM POWŁOKI I KAŻDY PRZYCISK APLIKACJI ────────────────────────
-  {
-    signature: "button.inline-popover-trigger.primary-button",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "library, library:notes, library:sources",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.inline-popover-trigger.secondary-button.compact",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "projects:project (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature:
-      "button.inline-popover-trigger.secondary-button.document-rename-trigger",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "library, library:notes",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.primary-button",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces:
-      "meetings, organizations, people, pipeline, renewals, settings, tasks (+ soczewki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.primary-button.compact",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "projects:project (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.secondary-button",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "library:sources, meetings, settings, tasks:task (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.secondary-button._createTrigger",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "settings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.secondary-button.compact",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces:
-      "calendar, inbox, organizations, projects:project, tasks:task (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.secondary-button.document-markdown-toggle",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "library, library:notes",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "button.secondary-button.meeting-block-action",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:901 (.primary-button, .secondary-button)",
-    surfaces: "meetings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    // NAJCIĘŻSZY WPIS CAŁEGO REJESTRU dla tej fali: `.eyebrow, .nav-label,
-    // .section-label` to JEDNA reguła w chromie powłoki, licząca się do wpisu
-    // P-1 rejestru rozjazdów. Trzy sygnatury, jeden arkusz, jedna naprawa.
-    signature: "p.eyebrow",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:831-840 (.eyebrow, .nav-label, .section-label)",
-    surfaces:
-      "calendar, inbox, library (+ soczewki), meetings, projects (+ soczewki), settings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "p.nav-label",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:831-840 (.eyebrow, .nav-label, .section-label)",
-    surfaces: "dwadzieścia trzy stany ekranu — to jest chrom paska bocznego",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "p.section-label",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:831-840 (.eyebrow, .nav-label, .section-label)",
-    surfaces: "tasks:task (+ zakładki)",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "span",
-    weight: 650,
-    sheet:
-      "packages/desktop-ui/src/styles.css:2864 (.task-filter-control > span, .task-row-field > span, .task-column-head) oraz dziedziczone z przycisków (:901)",
-    surfaces: "wszystkie 37 stanów ekranu",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "span._avatar",
-    weight: 650,
-    sheet: "packages/desktop-ui/src/settings/access-section.module.css:212",
-    surfaces: "settings",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-  {
-    signature: "strong",
-    weight: 650,
-    sheet: "packages/desktop-ui/src/styles.css:1291 (.brand-row strong)",
-    surfaces: "wszystkie 37 stanów ekranu — chrom powłoki",
-    owner: "L5 (Faza II) — pozycja P5 #1",
-    thread: "adopcja języka wizualnego v3 — skala wag (przyrząd P5)",
-  },
-];
+export const KNOWN_OFF_SCALE_WEIGHTS = [];
 
 /** Klucz rejestru: reguła arkusza, nie miejsce, w którym ją zobaczono. */
 export const weightKey = ({ signature, weight }) => `${signature}|${weight}`;

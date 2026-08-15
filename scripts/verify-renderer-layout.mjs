@@ -953,7 +953,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
       // przeoczenie. `roots` to widoczne dzieci `#main-content`, czyli TREŚĆ
       // BEZ PASKA BOCZNEGO. Najcięższy wpis rejestru rozjazdów tej fali mówi
       // dokładnie o chromie paska bocznego, a `.eyebrow, .nav-label,
-      // .section-label` (`styles.css:831-840`) niosą wagę 650. Przelotka
+      // .section-label` niosły wagę 650 do lotu L5 Fazy II. Przelotka
       // zawężona do treści byłaby STRUKTURALNIE ślepa na najgorszy przypadek.
       //
       // Filtr kształtu jest przepisany z `sweepCollapsedText` co do warunku
@@ -1208,14 +1208,14 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
             count("[data-renewal-row]"),
           );
           // ZAWĘŻONY DO EKRANU DZIŚ, I TO JEST CAŁA TREŚĆ TEGO SELEKTORA.
-          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:420`
+          // `data-planned-row` rysują DWA komponenty — `TodaySurface.tsx:451`
           // i `CalendarSurface.tsx:217` — a te liczniki idą `Math.max` po
           // WSZYSTKICH powierzchniach przelotu. Selektor po samym atrybucie
           // byłby więc spełniony kopią z Kalendarza także wtedy, gdy sekcja
           // planu na Dziś opustoszeje do zera: próg spełniony przez NIE TEN
           // podmiot, czyli dokładnie ta porażka, o której ten plik pisze przy
           // `renewalRows` („próg musi umieć powiedzieć, KTÓRY podmiot
-          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:412`)
+          // policzył"). Kotwicą jest `aria-label` listy (`TodaySurface.tsx:443`)
           // — jedyne wystąpienie w `src`, sprawdzone grepem — a nie zahaszowana
           // nazwa klasy modułu, która zeruje licznik po cichu przy pierwszym
           // przebudowaniu arkusza.
@@ -2007,6 +2007,12 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
     // fałszywy `TYPE_WEIGHT_UNUSED_ENTRY` na każdej wąskiej geometrii.
     // Klasyfikacja jest jedna, po wszystkich przelotach.
     typeWeights: measured.typeWeights,
+    // CELE, KTÓRE TEN PRZELOT ZAMIERZAŁ ODWIEDZIĆ — druga strona odczytów
+    // wyżej i jedyny sposób, żeby odróżnić „nic tu nie było poza skalą" od
+    // „tego ekranu ten przelot w ogóle nie dotknął". Lista pochodzi z ŻYWEJ
+    // nawigacji tego przebiegu, nie z wypisanej listy nazw, więc przelot
+    // zawężony do Biblioteki deklaruje Bibliotekę i tylko ją.
+    typeWeightSurfaces: measured.ids,
     resolvedWeightScale: measured.resolvedWeightScale,
   };
 };
@@ -2618,7 +2624,8 @@ const judgeTitleBand = ({ entries, rootFontSizePx, where }) => {
 // zamiast ją cicho przeżyć.
 //
 // PRZEŁĄCZNIK JEST OSOBNY OD PRZEŁĄCZNIKA ROZMIARU — powód przy
-// `typeWeightBandDelivery()` niżej. Rozmiar jest dowieziony (lot 4), waga nie.
+// `typeWeightBandDelivery()` niżej. Rozmiar dowiózł lot 4, wagę dowiózł lot L5
+// Fazy II (2026-08-15) i od tej chwili OBA ramiona tego pasma rzucają.
 //
 // ── WHAT CHANGED AFTER THE FIRST RUN OF THIS BAND, AND WHY ───────────────────
 // EVERYTHING ABOVE DESCRIBES THE MEASUREMENT AND THE MEASUREMENT STAYS. The
@@ -2728,7 +2735,7 @@ const RECORD_TITLE_BAND_STATUS =
 // DOMYŚLNE. `RECORD_TITLE_BAND.armed` jest dziś `true` — lot 4 dowiózł ROZMIAR
 // i oba jego wpisy stoją na „enforced". Waga NIE JEST dowieziona. Wpuszczenie
 // werdyktu o wadze w istniejące `if (RECORD_TITLE_BAND.armed)` zaczerwieniłoby
-// bramkę na dzisiejszym kodzie, a `break-test.mjs:333-345` odmawia startu
+// bramkę na dzisiejszym kodzie, a `break-test.mjs:352-364` odmawia startu
 // pętli złamań od czerwonej bazy — czyli jeden werdykt o wadze zabiłby
 // WSZYSTKIE osiemdziesiąt kilka złamań w `break-visual-language.mjs`.
 // Pożyczenie cudzego wyłącznika jest tu więc nie skrótem, tylko awarią.
@@ -2802,6 +2809,34 @@ const TYPE_WEIGHT_ALLOWED = new Set(
   TYPE_WEIGHT_SCALE.map((step) => String(step.value)),
 );
 
+// ── PODŁOGA POKRYCIA PRZELOTKI WAG ───────────────────────────────────────────
+//
+// CZEGO TO JEST NAPRAWĄ. Do lotu L5 Fazy II rejestr `KNOWN_OFF_SCALE_WEIGHTS`
+// trzymał 46 wpisów, a `TYPE_WEIGHT_UNUSED_ENTRY` robiło z KAŻDEGO z nich
+// czujnik pokrycia: gdyby przelotka przestała zbierać, 46 wpisów zameldowałoby
+// „nigdy nie narysowany" i bramka byłaby czerwona. Spłata długu opróżniła
+// tablicę i zabrała wszystkie 46 czujników W JEDNEJ CHWILI. Został jedyny próg
+// `readings.length === 0` — a to jest próg, którego nie przekroczy nawet
+// przelotka zawężona do jednego ekranu, bo chodzi po `document.body` i sam
+// pasek boczny zawsze coś narysuje. Spadek z 325 kluczy do czterdziestu
+// przechodził w CISZY, i to jest dokładnie ten rodzaj kurczącego się pomiaru,
+// który w tym repozytorium ma własną nazwaną klasę defektu.
+//
+// DLACZEGO PODŁOGA, A NIE RÓWNOŚĆ. Klucz to `sygnatura|waga`, więc liczba
+// kluczy MA PRAWO spadać bez utraty pomiaru: sprowadzenie trzech wag do
+// jednego stopnia skleja `h2|560`, `h2|590` i `h2|620` w jedno `h2|600`.
+// Lot L5 zszedł tak z 340 na 325. Asercja na równości byłaby asercją, którą
+// każdy następny lot musi rozbroić; podłoga jest budżetem — rusza się ŚWIADOMIE
+// i raz, tak jak budżet ścieżki gorącej w tym repozytorium.
+//
+// SKĄD TA LICZBA. 325 zmierzył przelot dowożący lot L5 (`0 off the declared
+// scale` w obu motywach). Podłoga stoi na 260, czyli dwadzieścia procent niżej:
+// tyle miejsca zostawiamy na zwijanie kluczy przez przyszłe loty, a zapaść
+// pokrycia jest o rząd wielkości głębsza. Lot, który zejdzie pod 260 UCZCIWIE,
+// podnosi tę liczbę w tym samym przebiegu i pisze, czym ją zmierzył — nie
+// wycisza asercji.
+const TYPE_WEIGHT_EXPECTED = { readingsFloor: 260, measuredAtDelivery: 325 };
+
 // ── THE BAND'S CENSUS: WHAT THIS RUN ACTUALLY MEASURED ───────────────────────
 // A pending measurement that measures nothing is indistinguishable from a
 // pending measurement that holds, and it is the cheaper of the two to write by
@@ -2872,7 +2907,7 @@ const judgeRecordTitleBand = ({
     // adresu — pomiarem bez osądu, czyli regułą NIEZMIERZONĄ. Teraz ma adres
     // i cenę. Ramię stoi PRZED `continue` rozmiaru, bo tytuł o poprawnym
     // rozmiarze i obcej wadze jest dokładnie tym przypadkiem, o którym rozmiar
-    // milczy: Szansa siedzi na `--text-xl` od zawsze i niesie wagę 620.
+    // milczy: Szansa siedzi na `--text-xl` od zawsze i niosła wagę 620 do L5.
     if (
       TYPE_WEIGHT_ALLOWED.size > 0 &&
       !TYPE_WEIGHT_ALLOWED.has(String(fontWeight))
@@ -2882,7 +2917,9 @@ const judgeRecordTitleBand = ({
         `weight ${fontWeight}, which is not one of the ${TYPE_WEIGHT_ALLOWED.size} steps ` +
         `tokens.css declares (${[...TYPE_WEIGHT_ALLOWED].join("/")}); v3 gives .rec-title ` +
         `font-weight: 600 (v3/app.css:651-652) and uses no other weight anywhere in v3/. ` +
-        `${TYPE_WEIGHT_OWNER.label} — the record screens carry two different off-scale weights.`;
+        `${TYPE_WEIGHT_OWNER.label}, delivered by lot L5 of phase II — the record screens ` +
+        "carried 580 and 620 until then, and the registry of off-scale weights is now empty, " +
+        "so this line is a REGRESSION rather than an unpaid debt.";
       if (TYPE_WEIGHT_BAND.armed) problems.push(weightVerdict);
       else
         pending.push(
@@ -3001,17 +3038,17 @@ const outlineOf = (paint) => {
 //
 // TEN AKAPIT MÓWIŁ „SIEDEM" I WYMIENIAŁ DWA WYJĄTKI (`button.nav-item.active`,
 // `button.capture-dock`), i tak BYŁO, zanim lot FOK przeniósł lekarstwo na ROLĘ
-// CIENIA: `styles.css:608-633` zapamiętuje cień spoczynkowy pod drugą nazwą
+// CIENIA: `styles.css:634-659` zapamiętuje cień spoczynkowy pod drugą nazwą
 // i przy `:focus-visible` remapuje SAM TOKEN na „pierścień, potem to, co było"
 // (`--elevation-rest: var(--control-focus-ring), var(--elevation-rest-resting)`).
 // Kontrolka z własnym cieniem rysuje go więc dalej, a pierścień stoi PRZED nim,
 // czyli nie ma już czego nadpisywać. Zmierzone na przystanku 8
-// (`button.capture-dock`, `styles.css:1882`): przy fokusie
+// (`button.capture-dock`, `styles.css:1966`): przy fokusie
 // `oklch(0.55 0.21 295) 0px 0px 0px 1px` i trzy warstwy własnej elewacji za nim.
 // Wykluczenie zostaje w kodzie, bo jest poprawne dla kontrolki, która ten remap
 // ominie — ale DZIŚ nie odsiewa ani jednego przystanku.
 //
-// Aktywna pozycja nawigacji (`styles.css:1116`) jest trzecim przystankiem Tab na
+// Aktywna pozycja nawigacji (`styles.css:1181`) jest trzecim przystankiem Tab na
 // każdym ekranie (WCAG 2.4.7).
 //
 // PODŁOGA LICZBY PODMIOTÓW. Werdykt liczony na zbiorze, który fikstura albo
@@ -3146,7 +3183,7 @@ const measureTheme = async (
       applied: document.documentElement.dataset.theme ?? "",
       // ODCISK MALOWANIA POWŁOKI, nie nazwa motywu. `body` jedzie
       // `background: var(--surface-stage)` i `color: var(--text-primary)`
-      // (`styles.css:496-498`), a oba tokeny są remapowane przez blok jasny —
+      // (`styles.css:522-524`), a oba tokeny są remapowane przez blok jasny —
       // więc równy odcisk w obu przebiegach ZNACZY, że przełączenie nie zaszło.
       fingerprint: `${shell.backgroundColor} on ${shell.color}`,
     };
@@ -3279,7 +3316,7 @@ const measureTheme = async (
   // kontrolki dałoby czerwień, która nie mówi nic o `--focus-ring`.
   //
   // DZIŚ NIE ODSIEWA NIKOGO — zmierzone, nie założone: lot FOK remapuje przy
-  // `:focus-visible` same tokeny cienia (`styles.css:608-633`), więc pierścień
+  // `:focus-visible` same tokeny cienia (`styles.css:634-659`), więc pierścień
   // stoi PRZED cieniem własnym kontrolki i nadpisywać nie ma czego. Wszystkie
   // dziewięć przystanków wpada do `painting` w obu motywach. Filtr zostaje jako
   // zabezpieczenie na kontrolkę, która ten remap ominie własną deklaracją
@@ -3309,7 +3346,7 @@ const measureTheme = async (
   // pierścień fokusa — zmierzone przed lotem FOK: dwa przystanki
   // (`.nav-item.active`, `.capture-dock`) dostawały werdykt o „pierścieniu",
   // który był ich własną elewacją. Po remapie ról cienia
-  // (`styles.css:608-633`) oba niosą pierścień naprawdę i ten warunek ich już
+  // (`styles.css:634-659`) oba niosą pierścień naprawdę i ten warunek ich już
   // nie dotyczy.
   // Kontur liczy się więc dopiero, gdy jest WIDOCZNY (styl, grubość, alfa), czyli
   // dokładnie wtedy, gdy zapis prototypowy (`outline: 2px solid var(--accent)`)
@@ -3415,7 +3452,7 @@ const measureTheme = async (
   // chodzenie po celach KLIKA, a kliknięcie przestawia `activeElement` — więc
   // zbiór przystanków jest zbiorem afordancji LĄDOWANIA. Zmierzone: nie ma w nim
   // ani `.primary-button`, ani `.secondary-button`, a `.secondary-button` jedzie
-  // `box-shadow: var(--elevation-rest)` (`styles.css:747`), czyli ma dokładnie
+  // `box-shadow: var(--elevation-rest)` (`styles.css:773`), czyli ma dokładnie
   // ten kształt, który przed lotem FOK dawał odpowiedź „NIE".
   //
   // NIE PODNOSZĘ BUDŻETU TABÓW, żeby po niego sięgnąć, i to jest decyzja
@@ -3710,7 +3747,7 @@ const measureTheme = async (
       // z KSZTAŁTU, nie z nazwy klasy: pytanie brzmi „czy człowiek to widzi",
       // a nie „czy to się nazywa skip-link". Afordancja dostępnościowa siedzi
       // dziś nad początkiem układu (`transform: translate(-50%, -180%)`,
-      // `styles.css:4493-4503`) i zjeżdża w kadr dopiero z fokusem.
+      // `styles.css:4577-4587`) i zjeżdża w kadr dopiero z fokusem.
       //
       // CELOWO NIE liczymy „poniżej zgięcia" jako zaparkowania: kontrolka pod
       // spodem jest osiągalna przewinięciem, a ta nad początkiem kadru — tylko
@@ -4999,7 +5036,7 @@ const measureControlPaintInPage = async ({
   // „no rule of this stylesheet set it" zamiast „nie znam tej wartości".
   // SONDA SIEDZI W SHADOW ROOCIE, i to nie jest ostrożność, tylko poprawka
   // zmierzonej wady: sonda wstawiona wprost do dokumentu łapie REGUŁY TYPOWE
-  // tego arkusza — `styles.css:513-519` daje `select` tło z tokenu — więc
+  // tego arkusza — `styles.css:539-545` daje `select` tło z tokenu — więc
   // przyrząd drukował własny token aplikacji jako „farbę tej przeglądarki",
   // a strażnik przezroczystości sądził dla `select` token zamiast silnika.
   // Selektory dokumentu nie sięgają do shadow roota, a `color-scheme` sięga
@@ -5454,11 +5491,11 @@ const controlPaintCensus = async (browser) => {
 //
 // JEDNA SZEROKOŚĆ — 1440×900, jak pary i jak spis farby. Przy 320 px i przy
 // 200% tekstu akcja LEGALNIE stoi wiersz niżej: `.surface-header` ma
-// `flex-wrap: wrap` postawione świadomie (`styles.css:1841-1846`), więc
+// `flex-wrap: wrap` postawione świadomie (`styles.css:1925-1930`), więc
 // asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
 // przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
 // „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
-// przyklejenia (`:5022`).
+// przyklejenia (`:5106`).
 
 const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
 
@@ -5498,13 +5535,13 @@ const measureTitleBandActionInPage = async ({
   // WIDOCZNOŚĆ MIERZONA TAK SAMO JAK W RESZCIE TEGO PLIKU, i to jest poprawka,
   // nie ozdoba. „Szerokość i wysokość > 0" przepuszcza element 1×1 przycięty
   // `clip: rect(0,0,0,0)` — a dokładnie tak wygląda `#surface-title` w stanie
-  // ładowania Spotkań (`MeetingsSurface.tsx:484` + `.sr-only`,
-  // `styles.css:661-668`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
+  // ładowania Spotkań (`MeetingsSurface.tsx:493` + `.sr-only`,
+  // `styles.css:687-694`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
   // całego werdyktu: środek w rogu kadru, tolerancja pół piksela. Dziś ratuje
   // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
   // więc pada głośno jako `TITLE_BAND_NOT_MEASURED`) — czyli przypadek, nie
   // reguła. Kryterium jest teraz to samo co przy `parkedOutOfFrame`
-  // (`:3003-3013`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
+  // (`:3087-3097`): powierzchnia ≤ 4 px², `opacity: 0` i zaparkowanie poza
   // kadrem znaczą „niewidoczne", a „poniżej zgięcia" NIE — tamto jest zwykłym
   // układem, to jest ukryciem.
   const rendered = (element) => {
@@ -6587,7 +6624,7 @@ const ROUTED_ARRIVAL = {
   // Biblioteka: przełącznik soczewek (LibraryShell.tsx:126). Ten sam znacznik,
   // po którym przelot geometrii wylicza obiektywy.
   library: "#main-content [data-layout]",
-  // Spotkania: `MeetingsSurface.tsx:779` — korzeń ekranu, ta sama klasa, którą
+  // Spotkania: `MeetingsSurface.tsx:788` — korzeń ekranu, ta sama klasa, którą
   // arkusz obsługuje jako nośnik rynny. Dopisane przy naprawie po przeglądzie
   // lotu D1: pierwsza para tej mapy nad Spotkaniami potrzebowała przystanku,
   // a ekran jest osiągalny dla obu spisów (B1 i B2 mierzą go od lotu D1), więc
@@ -6606,7 +6643,7 @@ const ROUTED_ARRIVAL = {
   organizations: "#main-content [data-org-row]",
   people: "#main-content [data-person-row]",
   // Skrzynka, dopisana przez przyrząd P1 Fazy I. `data-inbox-row` istniał od
-  // fali D (`InboxSurface.tsx:140`) i nie był przez nikogo ZADEKLAROWANY jako
+  // fali D (`InboxSurface.tsx:141`) i nie był przez nikogo ZADEKLAROWANY jako
   // marker — to jedyna zmiana „bo przyrząd nie ma się o co zaczepić" w tym
   // locie. WIERSZ, a nie korzeń, i to ten sam wybór, co przy Organizacjach
   // i Ludziach: `[class*="_inbox_"]` niesie także stan bez skrzynki.
@@ -8390,10 +8427,60 @@ try {
       exercisedDoors,
       titleProblems,
       typeWeights,
+      typeWeightSurfaces,
       resolvedWeightScale,
     } = await sweep(browser, pass);
     for (const entry of matchedRegistryEntries) matchedRegistry.add(entry);
     for (const entry of matchedCollapsedEntries) matchedCollapsed.add(entry);
+    // ── POKRYCIE PRZELOTKI WAG, ROZLICZANE PER PRZELOT ────────────────────
+    //
+    // PO CO TO JEST. Do lotu L5 Fazy II rejestr `KNOWN_OFF_SCALE_WEIGHTS`
+    // trzymał 46 wpisów i każdy z nich był — poza księgą długu — CZUJNIKIEM
+    // POKRYCIA: gdyby przelot przestał odwiedzać ekrany, `UNUSED_ENTRY`
+    // wypisałoby 46 wierszy i bramka zrobiłaby się czerwona. Spłata długu
+    // opróżniła tablicę i zabrała ze sobą wszystkie 46 czujników naraz,
+    // zostawiając jako jedyny próg `readings.length === 0` — próg, którego
+    // NIE PRZEKROCZY nawet przebieg zredukowany do jednego ekranu, bo
+    // przelotka chodzi po `document.body` i sam pasek boczny zawsze coś
+    // narysuje. Zapaść z trzystu odczytów do czterdziestu przechodziła
+    // w ciszy.
+    //
+    // DLACZEGO NIE PODŁOGA NA LICZBĘ ODCZYTÓW. Ta liczba maleje ZGODNIE
+    // Z PRAWEM: klucz to `sygnatura|waga`, więc sprowadzenie trzech wag do
+    // jednego stopnia SKLEJA trzy klucze w jeden (ten lot: 340 → 325).
+    // Podłoga na liczbie, która ma prawo spaść, jest liczbą gnijącą.
+    // Pytanie, które nie gnije, brzmi: czy każdy cel, KTÓRY TEN PRZELOT
+    // ZAMIERZAŁ ODWIEDZIĆ, wniósł choć jeden odczyt.
+    //
+    // PER PRZELOT, NIE GLOBALNIE, i to jest różnica wobec rozliczenia
+    // rejestru niżej. Globalnie Biblioteka jest pokryta przez przelot
+    // pełnowymiarowy, więc śmierć obu wąskich przelotów Biblioteki byłaby
+    // niewidoczna. Zamiar bierze się z tego samego przebiegu co odczyt
+    // (`ids` z żywej nawigacji), więc przelot zawężony rozlicza się ze
+    // swojego zakresu, a nie z cudzego.
+    {
+      const reached = new Set();
+      for (const reading of typeWeights)
+        for (const surface of reading.surfaces)
+          reached.add(String(surface).split(":")[0]);
+      const unreached = (typeWeightSurfaces ?? []).filter(
+        (id) => !reached.has(id),
+      );
+      if (unreached.length > 0)
+        problems.push(
+          `TYPE_WEIGHT_SURFACE_MEASURED_NOTHING (${pass.label}) — ${unreached.join(", ")}: ` +
+            `this pass set out to visit ${typeWeightSurfaces.length} destination(s) and swept a ` +
+            `font weight on ${reached.size} of them. A destination that draws no weighted text ` +
+            "at all does not exist in this product — the sweep walks the whole document, so even " +
+            "the sidebar chrome answers. Either the pass stopped arriving there, or the screen " +
+            "stopped drawing. Both are a shrinking measurement wearing the face of a clean one, " +
+            "and the registry entries that used to catch it were paid off by lot L5 of phase II.",
+        );
+      console.log(
+        `type weight\tcoverage\t${pass.label}\t${reached.size} of ` +
+          `${(typeWeightSurfaces ?? []).length} intended destination(s) contributed a reading`,
+      );
+    }
     for (const reading of typeWeights) {
       const key = weightKey(reading);
       const previous = typeWeightReadings.get(key);
@@ -8791,6 +8878,19 @@ try {
           "swept for a font weight in any pass. A registry with no readings is indistinguishable " +
           "from a clean product, and it is the cheaper of the two to produce by accident.",
       );
+    else if (readings.length < TYPE_WEIGHT_EXPECTED.readingsFloor)
+      problems.push(
+        `TYPE_WEIGHT_SWEEP_SHRANK: ${readings.length} signature/weight key(s) were swept, below ` +
+          `the declared floor of ${TYPE_WEIGHT_EXPECTED.readingsFloor} (the run that paid off ` +
+          `the off-scale debt swept ${TYPE_WEIGHT_EXPECTED.measuredAtDelivery}). Zero readings is ` +
+          "not the only way this instrument goes quiet — until lot L5 of phase II the registry " +
+          "held 46 entries and every one of them doubled as a coverage sensor, so a sweep that " +
+          "stopped reaching screens lit up 46 UNUSED_ENTRY lines. Paying the debt removed all 46 " +
+          "at once and left zero as the only threshold, which no run reaches while the sidebar " +
+          "still draws. Either coverage collapsed, or keys collapsed honestly onto one another — " +
+          "and in the second case raise this floor deliberately, in the same pass, saying what " +
+          "measured the new number.",
+      );
     const seenKeys = new Set(typeWeightReadings.keys());
     let inScale = 0;
     const offScale = [];
@@ -8853,7 +8953,8 @@ try {
         `${TYPE_WEIGHT_BAND.armed ? "ENFORCED (a verdict fails this run)" : "PENDING (verdicts are reported, not thrown)"}\t` +
         `owners ${TYPE_WEIGHT_BAND_STATUS}\t` +
         `scale ${TYPE_WEIGHT_SCALE.length === 0 ? "NOT DECLARED" : scaleLine}\t` +
-        `${readings.length} signature/weight reading(s): ${inScale} in the declared scale, ` +
+        `${readings.length} signature/weight reading(s) (floor ${TYPE_WEIGHT_EXPECTED.readingsFloor}): ` +
+        `${inScale} in the declared scale, ` +
         `${offScale.length} off it (${
           offScale.filter((entry) => entry.decision.verdict === "violation")
             .length

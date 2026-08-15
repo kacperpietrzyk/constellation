@@ -1,14 +1,12 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 
 import type { TaskId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
-import {
-  ConceptHelpDialog,
-  type ConceptHelpTopicId,
-} from "./components/ConceptHelpDialog.js";
+import type { ConceptHelpTopicId } from "./components/ConceptHelpDialog.js";
 import { calendarReadRefusal } from "./client/calendar-reservation.js";
 import type { DesktopSnapshot } from "./client/workflow.js";
+import { TopicHelp } from "./help/TopicHelp.js";
 import {
   countLabel,
   dateKeyInZone,
@@ -28,6 +26,29 @@ import {
 } from "./today-plan.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import styles from "./today.module.css";
+
+/* OKNO POJĘCIOWE ŚCIĄGANE DOPIERO PO KLIKNIĘCIU, I TO JEST POPRAWKA BUDŻETU
+   ZE ZMIERZONYM POWODEM, NIE PORZĄDKI.
+ *
+ * Ten moduł to jedyny NIELENIWY importer `ConceptHelpDialog` w produkcie:
+ * Kalendarz, Spotkania i Ustawienia mają własne chunki, Dzisiaj siedzi
+ * w chunku wejściowym. Statyczny import stąd wciągał więc całe okno na
+ * ścieżkę gorącą — 1 792 B po gzipie preładowane przy każdym starcie okna,
+ * dla dialogu, którego nikt nie widzi, dopóki nie kliknie znaku „?".
+ *
+ * `Suspense` z pustym zapasem, bo pierwszy rysunek NIE ZAWIERA tego okna
+ * (`helpTopic` startuje nieustawiony) — czyli zapas nigdy nie jest widoczny
+ * przy starcie, a po kliknięciu zastępuje okno na czas jednego pobrania
+ * chunka, który i tak leży obok na dysku.
+ *
+ * `ConceptHelpTopicId` zostaje importem TYPU. Gdyby wjechał jako wartość —
+ * albo gdyby ktokolwiek sięgnął stąd po `conceptHelpTopics` — moduł wróciłby
+ * na ścieżkę gorącą w całości, a `React.lazy` niżej nie zapaliłoby się ani
+ * razu. Ta pułapka jest w tym repozytorium zmierzona i ma własny wpis. */
+const ConceptHelpDialog = lazy(async () => ({
+  default: (await import("./components/ConceptHelpDialog.js"))
+    .ConceptHelpDialog,
+}));
 
 // Today odpowiada na jedno pytanie: „od czego zacząć". Stoi na `startAt`
 // i na zarezerwowanych blokach, NIE na `dueAt` — ekran zbudowany na terminach
@@ -297,6 +318,15 @@ export const TodaySurface = ({
         ) : (
           <>
             <strong>{formatSpan(capacity.freeMinutes)} free</strong>
+            {/* WPIS 1-6, PIERWSZA POŁOWA. Prototyp stawia plakietkę pomocy
+                PRZY WOLNYM CZASIE (`v3/screens/today.js:98` —
+                `<b>${"${fmtSpan(free)}"} free</b>${"${helpBtn(\"capacity\")}"}`),
+                a ta apka miała ją WYŁĄCZNIE przy sekcji „In the calendar",
+                której prototyp nie ma. Czyli pomoc stała nie przy tej rzeczy.
+                Liczba wolnego czasu jest jedyną na tym ekranie, która jest
+                WYLICZONA, a nie przepisana — i jedyną, o którą czytelnik może
+                zapytać „z czego". Odstęp bierze `gap` z `.capacity`. */}
+            <TopicHelp topic="capacity" />
             <span className={styles.separator}>·</span>
             <span>
               {countLabel(capacity.meetingCount, "meeting")},{" "}
@@ -321,19 +351,40 @@ export const TodaySurface = ({
 
               WPIS #4 REJESTRU — KSZTAŁT TEJ AFORDANCJI, NIE JEJ ISTNIENIE.
               Prototyp rysuje pomoc jako okrągły znacznik „?" MNIEJSZY od
-              etykiety, przy której stoi (`v3/app.css:896-904`, `.helpb`
+              etykiety, przy której stoi (`v3/app.css:896-903`, `.helpb`
               — 1,125 rem, `--radius-full`, `--text-2xs`), a treść zostaje
               w oknie. Etykieta wchodzi do `aria-label`, bo znak „?" sam nie
-              mówi czytnikowi ekranu, o co pyta. */}
-          <button
-            type="button"
-            className="help-mark"
-            aria-haspopup="dialog"
-            aria-label="Why the calendar is read-only"
-            onClick={() => setHelpTopic("calendar-meetings")}
-          >
-            ?
-          </button>
+              mówi czytnikowi ekranu, o co pyta.
+
+              OWIJKA `data-help-topic` DOPISANA PRZEZ LOT L7 FAZY II, I JEST TO
+              NAPRAWA ZMIERZONEJ ŚLEPOTY, NIE OZDOBA. Kontrakt trasy
+              (`test/topic-help.interaction.test.tsx`) zbiera afordancje pomocy
+              WYŁĄCZNIE po tym atrybucie, więc znacznik, który się nim nie
+              przedstawił, był dla najostrzejszej bramki pomocy w repozytorium
+              niewidzialny — razem z jego nazwą, jego panelem i jego formą.
+              Panel jest tu inny niż przy `TopicHelp` (okno pojęciowe z
+              nawigatorem po sześciu tematach, nie dymek), i to jest świadome:
+              lot zbiega WYZWALACZ, nie panel. Deklaracja jest jednak ta sama
+              dla obu, bo inaczej bramka musiałaby mieć dwie gałęzie, a druga
+              gałąź to miejsce, w którym trzecia forma wejdzie niezauważona. */}
+          <span className="help-anchor" data-help-topic="calendar-meetings">
+            <button
+              type="button"
+              className="help-mark"
+              aria-haspopup="dialog"
+              /* NAZWA ZOSTAJE TA, KTÓRA TU BYŁA. Prototypowa formuła
+                 („What this means: <tytuł>") jest regułą dla wyzwalaczy,
+                 które nazwy nie miały, bo ich etykietą było całe pytanie.
+                 Ten znacznik miał ją od lotu D2 i mówi więcej niż formuła
+                 („Why the calendar is read-only" wobec „Meetings"). Lot,
+                 który zamienia lepszy napis na regularniejszy, oddaje
+                 czytelnikowi mniej — a mierzy to samo. */
+              aria-label="Why the calendar is read-only"
+              onClick={() => setHelpTopic("calendar-meetings")}
+            >
+              ?
+            </button>
+          </span>
         </div>
         {meetingsState.kind === "loading" ? (
           <p className={styles.quiet} aria-busy="true">
@@ -455,6 +506,12 @@ export const TodaySurface = ({
             Deadline approaching, nobody planned it{" "}
             <span className={styles.count}>{approaching.length}</span>
           </h2>
+          {/* WPIS 1-6, DRUGA POŁOWA. `v3/screens/today.js:149` stawia
+              `helpBtn("unplanned")` ZARAZ ZA tym nagłówkiem i przed akcją
+              dosuniętą do prawej — czyli plakietka należy do nagłówka, a nie
+              do prawego końca wiersza. Odstęp bierze `gap` z `.sectionHead`,
+              ten sam, z którego bierze go znacznik przy „In the calendar". */}
+          <TopicHelp topic="unplanned" />
           {/* WPIS #6, DRUGI KONIEC — I TEN JEST BEZWARUNKOWY. Prototyp:
               `v3/screens/today.js:150` — `<button class="more" data-go='
               {"kind":"calendar"}'>Open Calendar →</button>`, dosunięty regułą
@@ -523,10 +580,12 @@ export const TodaySurface = ({
       </section>
 
       {helpTopic !== undefined && (
-        <ConceptHelpDialog
-          initialTopic={helpTopic}
-          onClose={() => setHelpTopic(undefined)}
-        />
+        <Suspense fallback={null}>
+          <ConceptHelpDialog
+            initialTopic={helpTopic}
+            onClose={() => setHelpTopic(undefined)}
+          />
+        </Suspense>
       )}
     </div>
   );

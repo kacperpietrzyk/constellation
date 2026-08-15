@@ -23,7 +23,7 @@
 
 .lens b {
   color: var(--text-secondary);
-  font-weight: 560;
+  font-weight: var(--weight-medium);
 }
 
 .lens kbd {
@@ -83,7 +83,7 @@
   overflow: hidden;
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 560;
+  font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -302,7 +302,7 @@
 
 .dueLate {
   color: var(--status-error);
-  font-weight: 560;
+  font-weight: var(--weight-medium);
 }
 
 .owner {

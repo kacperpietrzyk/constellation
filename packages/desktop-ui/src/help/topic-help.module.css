@@ -9,31 +9,42 @@
   align-items: center;
 }
 
-/* A #35 TRIGGER IS A QUESTION, AND A QUESTION IS A SENTENCE.
-   `.inline-popover-trigger` says `white-space: nowrap`, which is right for the
-   one-to-three-word triggers everywhere else ("Move", "New content") and wrong
-   here: "What do these three states mean?" on one unbreakable line asked 181 px
-   more than the Sources reading had at 300% text. Measured, not guessed — by
-   the Library-scoped 364 px pass this wave's Notes lot added, which is the
-   first thing ever to look at that width. Overridden HERE rather than on the
-   shared rule, so the short triggers keep the treatment they want. */
-.trigger.trigger {
-  white-space: normal;
-  text-align: left;
-  border-color: transparent;
-  color: var(--text-tertiary);
-  padding: 0.2rem 0.35rem;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 0.2em;
-}
+/* CAŁA FORMA TEGO WYZWALACZA STOI W `styles.css` POD `.help-mark`, A NIE TU,
+   I JEST TO ROZSTRZYGNIĘCIE LOTU L7 FAZY II, NIE PRZEOCZENIE.
 
-.trigger.trigger::before {
+   Do tego lotu ten moduł deklarował WŁASNĄ formę pomocy — kropkowane
+   podkreślenie, `white-space: normal`, wyściółkę i kolor — obok globalnej
+   reguły `.help-mark`, która deklarowała drugą. Jedno zdanie prototypu
+   (`v3/app.css:896-903`, jedna klasa `.helpb`, jedenaście wywołań) było
+   w aplikacji zapisane w dwóch arkuszach na dwa sposoby, i dokładnie stąd
+   wzięło się dziesięć podkreślonych linków na siedmiu ekranach.
+
+   Reguła `white-space: normal` zniknęła stąd RAZEM ze swoim powodem, a nie
+   mimo niego: powstała z pomiaru („What do these three states mean?" na jednej
+   niełamliwej linii prosiło o 181 px więcej, niż czytelnia Źródeł miała przy
+   300% tekstu), a po tym locie etykietą jest JEDEN ZNAK. Zdanie zeszło do
+   `aria-label`, więc nie ma czego łamać, i `nowrap` z `.inline-popover-trigger`
+   jest odtąd prawdą także tutaj.
+
+   ZOSTAJE JEDNA DEKLARACJA — ta, której globalna reguła nie może za nas
+   podjąć: `.help-mark` nie wie nic o szewronie rozwinięcia, bo szewron niesie
+   `.inline-popover-trigger`, a tę klasę ten wyzwalacz bierze z komponentu
+   dymka.
+
+   OBIE WARSTWY, A NIE TA, KTÓRA AKURAT NIESIE ZNAK — poprawka po przeglądzie
+   odbiorczym L7. Wyciszenie stało wyłącznie na `::after`, bo lot L8 (Faza II)
+   przeniósł tam znak rozwinięcia z `::before`; oba loty jechały wtedy
+   niezacommitowane w jednym drzewie, więc to wyciszenie było ZAKŁADEM o cudzy
+   hunk. Gdyby L8 nie wjechał, wyciszenie wskazywałoby pustą warstwę,
+   plakietka odzyskałaby szewron, a ŻADNA para by się nie ruszyła:
+   `.help-mark` deklaruje `width: 1.125rem` wprost, więc pudełko zostaje
+   osiemnastopikselowe nad znakiem, który do niego doszedł. Wyciszenie obu
+   warstw jest prawdziwe niezależnie od tego, po której stronie etykiety stoi
+   szewron dzisiaj — reguła („ten wyzwalacz nie nosi znaku rozwinięcia"),
+   a nie piksel jednej warstwy. */
+.trigger.trigger::before,
+.trigger.trigger::after {
   content: none;
-}
-
-.trigger.trigger:hover {
-  color: var(--text-secondary);
 }
 
 .panel {

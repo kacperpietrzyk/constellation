@@ -29,16 +29,16 @@
 
    28px here, 28px on the task, 22px on the opportunity: three record screens
    carrying three title sizes, none of them the reference's. `--text-xl` is
-   22px and is what the reference gives every record title. The weight stays
-   580 — the reference says 600 and this lot may not touch the 580/590/620
-   convention, so that difference is recorded rather than paid. */
+   22px and is what the reference gives every record title. The weight was
+   580 until lot L5 of phase II paid it: `--weight-semibold` is the
+   reference's 600 and a step of the scale `tokens.css` declares. */
 .title {
   margin: 0;
   max-inline-size: var(--surface-read);
   min-inline-size: 0;
   color: var(--text-primary);
   font-size: var(--text-xl);
-  font-weight: 580;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-tight);
   text-wrap: balance;
@@ -257,7 +257,7 @@ button.chip:hover {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -294,7 +294,7 @@ button.chip:hover {
 .fitStrong {
   color: var(--text-primary);
   font-size: var(--text-lg);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
 }
 
 .fitQuiet {
@@ -418,7 +418,7 @@ button.chip:hover {
   margin: 0;
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -538,7 +538,7 @@ button.chip:hover {
   margin: 0 0 var(--space-1);
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 590;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -684,7 +684,7 @@ button.railRow:focus-visible .railArrow {
    i biegną długo, a `<select>` bierze szerokość najszerszej opcji; `flex-basis:
    8rem` chronił przed jednym, `max-inline-size` chroni przed drugim. Sufit
    16rem to idiom tego arkusza dla tej samej kontrolki w innym miejscu
-   (`styles.css:6738-6749`). `min-inline-size: 0` zostaje: rząd zawija, a bez
+   (`styles.css:6822-6833`). `min-inline-size: 0` zostaje: rząd zawija, a bez
    tego kontrolka nie umiałaby zejść poniżej swojej wewnętrznej szerokości
    i wystawałaby z wąskiego kadru. */
 .railSelect {

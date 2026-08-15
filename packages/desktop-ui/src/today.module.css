@@ -89,8 +89,23 @@
   margin-inline: auto;
 }
 
+/* `flex-wrap: wrap` DOŁOŻONE PO PRZELOCIE BRAMKI, I TO BRAMKA JE WYMUSIŁA —
+   ten sam kształt poprawki i ten sam powód co przy `.panelHead` w czytelni
+   Notatek. Lot L7 dostawił do tego rzędu plakietkę pomocy (1,125 rem plus
+   `gap`), a rząd niesie już nagłówek i akcję z `margin-left: auto`
+   i `white-space: nowrap`. Przy 320 px zamiatanie potomków zgłosiło:
+   „today: descendant div._sectionHead overflows its own box by 3 px". Nagłówek
+   kurczy się tylko do swojej najdłuższej sylaby, akcja nie kurczy się wcale,
+   więc trzeciego dziecka nie było już gdzie postawić.
+
+   PROTOTYP NIE ROZSTRZYGA TEJ: `v3/screens/today.css:38-41` (`.td-sec-head`)
+   też nie deklaruje zawijania, ale prototyp nigdy nie był mierzony przy 320 px
+   — to jest nasze ograniczenie okna, nie jego reguła. Przy 1440 i 760 px rząd
+   mieści się i wygląda identycznie; zawijanie widać wyłącznie tam, gdzie bez
+   niego treść wychodziła poza własne pudełko. */
 .sectionHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-3);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 
 import type {
   CalendarBlockDraft,
@@ -7,7 +7,6 @@ import type {
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
-import { CalendarConsentDialog } from "./CalendarConsentDialog.js";
 import {
   calendarDeletionDraft,
   nextReservationStart,
@@ -19,6 +18,20 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 import { dateKeyInZone, formatWeekdayTime } from "../i18n.js";
+
+/* OKNO ZGODY ŚCIĄGANE DOPIERO WTEDY, GDY JEST PODGLĄD DO ZATWIERDZENIA.
+ *
+ * Ta sekcja siedzi w chunku wejściowym, a `CalendarConsentDialog` jest oknem,
+ * które otwiera się WYŁĄCZNIE po przygotowaniu podglądu zapisu — czyli po
+ * dwóch kliknięciach i jednym obiegu do providera. Statyczny import stąd
+ * kładł jego 1 115 B po gzipie na ścieżce gorącej każdego startu okna.
+ * Drugi importer (`MeetingsSurface`) ma własny chunk i tej liczby nie dotyka.
+ *
+ * Zapas jest pusty, bo `preview` startuje nieustawiony: przy pierwszym
+ * rysunku nie ma czego zastępować. */
+const CalendarConsentDialog = lazy(async () => ({
+  default: (await import("./CalendarConsentDialog.js")).CalendarConsentDialog,
+}));
 
 type ReservedBlock = {
   readonly ownedBlockExternalId: string;
@@ -303,28 +316,30 @@ export const TaskReservationSection = ({
         )}
       </div>
       {preview && (
-        <CalendarConsentDialog
-          client={client}
-          preview={preview}
-          onClose={() => setPreview(undefined)}
-          onApplied={(revisions) => {
-            const draft = preview.blocks[0]!;
-            const deleting = preview.operation === "delete";
-            const revision = revisions[0];
-            setPreview(undefined);
-            if (deleting) {
-              clearReservation(pendingVersion, true);
-              return;
-            }
-            if (revision === undefined) {
-              setNotice(
-                "The calendar returned no revision, so the reservation was not recorded on the task.",
-              );
-              return;
-            }
-            void record(revision, draft);
-          }}
-        />
+        <Suspense fallback={null}>
+          <CalendarConsentDialog
+            client={client}
+            preview={preview}
+            onClose={() => setPreview(undefined)}
+            onApplied={(revisions) => {
+              const draft = preview.blocks[0]!;
+              const deleting = preview.operation === "delete";
+              const revision = revisions[0];
+              setPreview(undefined);
+              if (deleting) {
+                clearReservation(pendingVersion, true);
+                return;
+              }
+              if (revision === undefined) {
+                setNotice(
+                  "The calendar returned no revision, so the reservation was not recorded on the task.",
+                );
+                return;
+              }
+              void record(revision, draft);
+            }}
+          />
+        </Suspense>
       )}
     </section>
   );

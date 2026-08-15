@@ -14,6 +14,10 @@ import { createPortal } from "react-dom";
 import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
 import { SurfaceTitleBand } from "./SurfaceTitleBand.js";
 import { CalendarConsentDialog } from "./components/CalendarConsentDialog.js";
+import {
+  ConceptHelpDialog,
+  type ConceptHelpTopicId,
+} from "./components/ConceptHelpDialog.js";
 import { Icon } from "./components/Icon.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -224,6 +228,11 @@ export const MeetingsSurface = ({
   // longer holds it — it is the reversal of the action they just took, put
   // where their hands already are and where the focus goes.
   const [justDetached, setJustDetached] = useState<MeetingBacklink>();
+  /* Okno pojęciowe otwierane plakietką przy kłódce sekcji nadchodzących
+     (wpis 10-4, lot L7 Fazy II). Ten sam stan i ten sam komponent co na
+     Dzisiaj (`TodaySurface.tsx`) i na Kalendarzu (`CalendarSurface.tsx`). */
+  const [conceptHelpTopic, setConceptHelpTopic] =
+    useState<ConceptHelpTopicId>();
   // Where the focus must land once the list has been re-rendered without the
   // row the control lived on. Holding the intent rather than calling `focus()`
   // straight away is what makes it survive the refetch: the element the reader
@@ -867,6 +876,26 @@ export const MeetingsSurface = ({
           {surface.capability.provider === "eventkit"
             ? "Apple Calendar"
             : "Calendar"}
+        </span>
+        {/* WPIS 10-4: plakietka ZARAZ ZA kłódką, jak `v3/screens/meetings.js:439`.
+            Kłódka mówi CO, plakietka DLACZEGO. Temat jest ten sam, który niosą
+            znaczniki na Dzisiaj i Kalendarzu — jedenasty temat na to samo
+            pytanie byłby drugą listą obok zamkniętego słownika. Reszta powodu
+            stoi przy parze `L7-07a` w `scripts/visual-language-pairs.mjs`;
+            TU JEST KRÓTKO, bo `interaction-recovery-contract.test.ts` mierzy
+            ODLEGŁOŚĆ W ŹRÓDLE między tą sekcją a `{calendarCapability}`
+            (okno 3000 znaków) i pierwsza wersja tego komentarza ją przekroczyła.
+            Guard nie jest mój i jego liczby nie ruszam. */}
+        <span className="help-anchor" data-help-topic="calendar-meetings">
+          <button
+            type="button"
+            className="help-mark"
+            aria-haspopup="dialog"
+            aria-label="Why the calendar is read-only"
+            onClick={() => setConceptHelpTopic("calendar-meetings")}
+          >
+            ?
+          </button>
         </span>
       </div>
       {/* KONTROLKA UPRAWNIENIA WCHODZI DO TEJ SEKCJI, A NIE ZNIKA Z SZYNĄ, i to
@@ -1876,6 +1905,15 @@ export const MeetingsSurface = ({
             setNotice("Preparation block saved after your exact confirmation.");
             load();
           }}
+        />
+      )}
+      {/* TRZECI EKRAN NIOSĄCY TO OKNO, I NIC W NIM NIE JEST PRZEPISANE —
+          `ConceptHelpDialog` jest jednym komponentem z jednym słownikiem
+          tematów, a Dzisiaj i Kalendarz montują go dokładnie tak samo. */}
+      {conceptHelpTopic !== undefined && (
+        <ConceptHelpDialog
+          initialTopic={conceptHelpTopic}
+          onClose={() => setConceptHelpTopic(undefined)}
         />
       )}
     </section>

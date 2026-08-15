@@ -264,7 +264,7 @@
 
 .legend strong {
   color: var(--text-primary);
-  font-weight: 590;
+  font-weight: var(--weight-medium);
 }
 
 .legend kbd {

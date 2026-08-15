@@ -202,14 +202,33 @@ describe("enterprise settings navigation contract", () => {
 
   it("offers one global and three contextual routes into the concept help", () => {
     // One global entry point in the header, three contextual ones next to the
-    // sections they explain. The two class names are what distinguishes them,
-    // so they carry the "one global / three contextual" shape structurally.
+    // sections they explain. The two shapes are what distinguishes them, and
+    // after lot L7 of phase II the difference is no longer two hand-written
+    // class names but the FORM the reference prescribes: the three contextual
+    // ones are round `?` marks standing inside the heading they explain, the
+    // global one stays a button with words.
     assert.equal(
       countOccurrences(settings, /className="settings-help-entry"/g),
       1,
     );
+    // THE CONTEXTUAL THREE TOOK THE ONE SHARED RULE, and this counts the rule,
+    // not a name of their own. Before the lot they carried
+    // `className="settings-context-help"` — a fourth form of on-demand help
+    // in a product whose reference has exactly one (`v3/app.css:896-903`,
+    // eleven calls through one function). The class is gone from the sheet
+    // as well, so this count cannot pass over a leftover.
     assert.equal(
       countOccurrences(settings, /className="settings-context-help"/g),
+      0,
+    );
+    assert.equal(countOccurrences(settings, /className="help-mark"/g), 3);
+    // ...and each of the three DECLARES ITSELF AS HELP, which is what makes it
+    // reachable for the route contract in `topic-help.interaction.test.tsx`.
+    // A trigger that does not carry `data-help-topic` is not "different" to
+    // that file, it is invisible — measured, on the Projects screen, where a
+    // live dead question mark sat under a green "this screen carries no help".
+    assert.equal(
+      countOccurrences(settings, /className="help-anchor" data-help-topic="/g),
       3,
     );
     // All four announce themselves as opening a dialog...

@@ -82,7 +82,7 @@
 
 .ledgerHeading h2 {
   font-size: var(--text-md);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
 }
 
@@ -209,7 +209,7 @@
   color: var(--text-primary);
   background: var(--surface-raised);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
 }
 
@@ -227,7 +227,7 @@
 .composer legend {
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
-  font-weight: 550;
+  font-weight: var(--weight-medium);
 }
 
 .composer input[type="text"],
@@ -390,7 +390,7 @@
 
 .agentHeading h2 {
   font-size: var(--text-md);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
 }
 
 .agentHeading > div > p:last-child,
@@ -429,7 +429,7 @@
   align-items: center;
   gap: var(--space-3);
   color: var(--text-quaternary);
-  font: 550 var(--text-2xs) var(--font-mono);
+  font: var(--weight-semibold) var(--text-2xs) var(--font-mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -469,7 +469,7 @@
   margin-bottom: var(--space-1);
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
-  font-weight: 550;
+  font-weight: var(--weight-medium);
 }
 
 .nameField input {

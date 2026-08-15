@@ -119,81 +119,93 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".document-canvas h1",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:7835, inside the `.document-canvas` block that opens at :7801. The note canvas sets its own font-size as a clamp and then leaves prose headings on the UA scale, so an <h1> in a note draws at 2em of that clamp. Three subjects, one rule.",
+    note: "styles.css:7919, inside the `.document-canvas` block that opens at :7890. The note canvas sets its own font-size as a clamp and then leaves prose headings on the UA scale, so an <h1> in a note draws at 2em of that clamp. Three subjects, one rule.",
   },
   {
     sheet: "styles.css",
     selector: ".document-canvas h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:7835 — same rule, UA 1.5em.",
+    note: "styles.css:7919 — same rule, UA 1.5em.",
   },
   {
     sheet: "styles.css",
     selector: ".document-canvas h3",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:7835 — same rule, UA 1.17em.",
+    note: "styles.css:7919 — same rule, UA 1.17em.",
   },
   // ── Settings, lot 6 by file scope, NOT named by any of its eight items ────
-  // Everything here is inside `styles.css:7513-8463` or a `settings/*.module.css`
-  // that lot 6 owns, and NONE of its eight items is about a heading. The lot can
-  // take them for free while it is in the file; it is not obliged to.
+  // Everything here is either a `settings/*.module.css` that lot 6 owns or a
+  // dialog rule in `styles.css` that no lot names by item, and NONE of lot 6's
+  // eight items is about a heading. The lot can take them for free while it is
+  // in the file; it is not obliged to.
+  //
+  // THE LINE RANGE THAT USED TO STAND HERE IS GONE BECAUSE IT WAS FALSE IN BOTH
+  // DIRECTIONS, and that is a measurement, not tidying. It read „everything
+  // here is inside `styles.css:7513-8463`". Measured 2026-08-15 against the
+  // scan's own rule lines: the nine `styles.css` entries below it sit at :9450,
+  // :9685, :9764, :9934, :9857, :9967 and :10008 — every one of them OUTSIDE
+  // that range — while the range does contain `.hub-enrollment h4` (:7567),
+  // whose own note says it is „outside the Settings region lot 6 owns". A range
+  // that excludes what it introduces and includes what another entry excludes
+  // is not a stale number; re-pinning it would have kept the falsehood and
+  // bought a number that rots on the next insertion.
   {
     sheet: "styles.css",
     selector: ".onboarding-step h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9424.",
+    note: "styles.css:9508.",
   },
   {
     sheet: "styles.css",
     selector: ".settings-copy h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9659.",
+    note: "styles.css:9778.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9738.",
+    note: "styles.css:9853.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog > header h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9908. This rule is a REFINEMENT of `.concept-help-dialog h2` (:9710) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :9710 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
+    note: "styles.css:10023. This rule is a REFINEMENT of `.concept-help-dialog h2` (:9853) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :9853 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-layout article h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9831.",
+    note: "styles.css:9946.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-export-terms h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9941.",
+    note: "styles.css:10056.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-limitations h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9982.",
+    note: "styles.css:10097.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-preview h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9982 — same rule, second ancestor.",
+    note: "styles.css:10097 — same rule, second ancestor.",
   },
   {
     sheet: "settings/activity-section.module.css",
@@ -231,21 +243,21 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".surface-load-state h1",
     missing: ["font-size", "font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:4240. The loading and failure state of EVERY lazy surface, so it is seen on the way into most screens. `.center-state h1` (:4222) is the same shape done right (--text-xl / 590) and the two classes never co-occur.",
+    note: "styles.css:4324. The loading and failure state of EVERY lazy surface, so it is seen on the way into most screens. `.center-state h1` (:4303) is the same shape done right (--text-xl / --weight-semibold, which resolves to 600 in tokens.css:72) and the two classes never co-occur.",
   },
   {
     sheet: "styles.css",
     selector: ".workspace-context h2",
     missing: ["font-size", "font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:7315. Co-occurs with `inspector-empty`, which has no heading rule at all, so nothing covers it.",
+    note: "styles.css:7399. Co-occurs with `inspector-empty`, which has no heading rule at all, so nothing covers it.",
   },
   {
     sheet: "styles.css",
     selector: ".hub-enrollment h4",
     missing: ["font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:7541 — outside the Settings region lot 6 owns.",
+    note: "styles.css:7625 — outside the Settings region lot 6 owns.",
   },
   {
     sheet: "organizations/organizations.module.css",
@@ -694,10 +706,9 @@ const relative = (root, file) =>
  * mierzył. Cytat z numerem linii bez asercji nad tym numerem jest komentarzem,
  * nie odsyłaczem.
  *
- * Rozpoznaje `<basename arkusza>:N` — tylko własny arkusz wpisu, bo tylko dla
- * niego znamy prawdziwe linie reguły. Dalsze gołe `:N` w tej samej nocie
- * (idiom „wyżej w tym pliku") NIE są tu zwracane; zasięg asercji jest zapisany
- * w teście, żeby nikt nie wziął częściowego pokrycia za pełne.
+ * Rozpoznaje `<basename arkusza>:N` — tylko własny arkusz wpisu. Gołe `:N`
+ * w tej samej nocie (idiom „wyżej w tym pliku") oddaje `citedContinuations`
+ * niżej, i one też są dziś asertowane.
  */
 export const firstCitedLine = (note, sheet) => {
   if (typeof note !== "string" || typeof sheet !== "string") return null;
@@ -705,6 +716,50 @@ export const firstCitedLine = (note, sheet) => {
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const found = new RegExp(`${escaped}:(\\d+)`).exec(note);
   return found === null ? null : Number(found[1]);
+};
+
+/**
+ * GOŁE `:N` W NOCIE — cytaty bez przedrostka ścieżki, idiom „wyżej w tym
+ * pliku".
+ *
+ * PO CO OSOBNA FUNKCJA, SKORO TEST JE DOTĄD TYLKO LICZYŁ. Bo liczenie ich było
+ * dokładnie tą samą wadą, którą `firstCitedLine` zamknęło o jeden cytat
+ * wcześniej, i wróciła po jednym locie. Zmierzone 2026-08-15 przy naprawie po
+ * przeglądzie adwersarialnym lotu L8: rejestr miał CZTERY takie cytaty, DWA
+ * z nich mijały swoją regułę — `.concept-help-dialog h2` cytowane jako `:9710`
+ * przy regule w `:9764` (dług starszy niż ta fala) i `.center-state h1` jako
+ * `:4222` przy regule w `:4245` (zgniłe wstawką lotu L8, a `:4222` celuje dziś
+ * w `.capture-footer > span`, czyli w zdanie o czymś innym) — a test drukował
+ * „4 unchecked continuation(s)" i był ZIELONY. Raport lotu przepisał wtedy
+ * „22 wpisy, 0 błędnych" jako zdanie o rejestrze, którym ono nie było: było
+ * zdaniem o zasięgu asercji.
+ *
+ * `(?<![\w./-])` odsiewa `styles.css:9815` i `ActivitySection.tsx:66` — tam
+ * przed dwukropkiem stoi znak nazwy pliku — i zostawia samo `(:9764)`.
+ */
+export const citedContinuations = (note) =>
+  typeof note !== "string"
+    ? []
+    : [...note.matchAll(/(?<![\w./-]):(\d+)/gu)].map((found) =>
+        Number(found[1]),
+      );
+
+/**
+ * KTÓRE SELEKTORY ZACZYNAJĄ SIĘ W KTÓREJ LINII ARKUSZA — cały arkusz, nie same
+ * nagłówki.
+ *
+ * Kontynuacja wskazuje regułę, która NIE MUSI być podmiotem nagłówkowym:
+ * rejestr cytuje tak blok `.document-canvas`, czyli pojemnik, a nie nagłówek.
+ * `collectHeadingSubjects` takich reguł nie zna, więc asercja oparta wyłącznie
+ * na nim odrzucałaby cytat prawdziwy.
+ */
+export const ruleSelectorsByLine = (css) => {
+  const byLine = new Map();
+  for (const rule of parseCssRules(css)) {
+    const selectors = splitSelectorList(rule.selectorList);
+    byLine.set(rule.line, [...(byLine.get(rule.line) ?? []), ...selectors]);
+  }
+  return byLine;
 };
 
 /** Everything the scan needs, read off a renderer source directory. */

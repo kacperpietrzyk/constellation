@@ -41,7 +41,7 @@
 // Ten sam błąd raz już przepuścił złą liczbę i jest w repozytorium opisany:
 // „Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
 // `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero`"
-// (`styles.css:4005-4009`). Pasmo = `#surface-title`.closest("header") obejmuje
+// (`styles.css:4089-4093`). Pasmo = `#surface-title`.closest("header") obejmuje
 // jedną regułą wszystkie cztery.
 //
 // ── MIARA, I DLACZEGO NIE JEST PROSTOKĄTEM PASMA ────────────────────────────
@@ -86,7 +86,7 @@
 // potrzebny dalej.)
 //
 // `.ghost-button` do tego zbioru NIE NALEŻY, i to jest pomiar, nie gust. Jest
-// świadomie przezroczysty (`styles.css:787`) — to odpowiednik prototypowego
+// świadomie przezroczysty (`styles.css:813`) — to odpowiednik prototypowego
 // `.btn` bez modyfikatora — i siedzi na rzeczach, które akcją główną nie są:
 // trzy strzałki tygodnia na Kalendarzu i „Areas and initiatives" na Projektach.
 // (Trzeci przykład, „Why read-only?", stał tu do 2026-08-11 i wypadł, bo ta
@@ -96,7 +96,7 @@
 // (jego pasmo NIESIE trzy ghosty, a prototypowy Kalendarz nie ma w paśmie
 // żadnej akcji), czyli czerwień nad ekranem, o którym rejestr rozjazdów nie ma
 // nic do powiedzenia. Wypełnienie niosą `--action-primary-bg` i
-// `--action-secondary-bg` (`styles.css:726`, `:761`) — i to są dwie klasy niżej.
+// `--action-secondary-bg` (`styles.css:752`, `:787`) — i to są dwie klasy niżej.
 //
 // TEN SAM PREDYKAT MUSI STAĆ PO STRONIE PROTOTYPU, i to jest wada, która ten
 // przyrząd już raz miała: kolumna `today` liczyła wyłącznie przyciski
@@ -1033,7 +1033,7 @@ export const TITLE_BAND_ROWS = [
     // SKŁAD PASMA PRZELICZONY 2026-08-11: lot D2 wyprowadził akapit pojemności
     // do kolumny treści, a w paśmie została data. Plik też był zły — od czasu
     // przed tym lotem ekran mieszka w `TodaySurface.tsx`, nie w `Wave2Surfaces`.
-    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:226-237)",
+    app: "RealApp Today — .surface-header z <h1> i <span data-band-date> (TodaySurface.tsx:227-238)",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1101,7 +1101,7 @@ export const TITLE_BAND_ROWS = [
     // pamięta. Nikt tego nie złapał, bo jedyna asercja nad tym polem sprawdza
     // jego DŁUGOŚĆ. Adres, który nie prowadzi do pliku, jest przy odbiorze
     // nieodróżnialny od adresu, który prowadzi.
-    app: "InboxSurface.tsx:291-308 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
+    app: "InboxSurface.tsx:292-309 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1468,7 +1468,7 @@ export const TITLE_BAND_ROWS = [
       "to --text-xl (v3/app.css:651)",
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
     // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
-    // (`styles.css:6765`) jest jedynym żywym konsumentem `--text-2xl`
+    // (`styles.css:6849`) jest jedynym żywym konsumentem `--text-2xl`
     // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
     // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
     // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby

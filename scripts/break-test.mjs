@@ -262,6 +262,25 @@ const writeSourceNewerThanStamps = (file, text, stampFiles) => {
     );
 };
 
+/**
+ * Ostatnie niepuste wiersze wyjścia sprawdzenia — dowód dołączany do odmowy.
+ *
+ * Bramki tego repozytorium kończą listą problemów, więc ogon jest tą częścią,
+ * która mówi CO padło. Limit jest po to, żeby komunikat błędu dało się
+ * przeczytać, a nie żeby coś ukryć: pełne wyjście stoi w pliku, do którego
+ * wołający przekierował przebieg.
+ */
+const tailOf = (output, lines = 20) => {
+  const kept = output
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line !== "")
+    .slice(-lines);
+  return kept.length === 0
+    ? "  (sprawdzenie nie napisało ani jednego wiersza)"
+    : kept.map((line) => `  ${line}`).join("\n");
+};
+
 const readBack = (file) => readFileSync(file, "utf8");
 
 /**
@@ -434,7 +453,24 @@ export const runBreakTests = ({
         throw new Error(
           `${entry.name}: the assertions are RED after the restore. Either ` +
             "the restore did not reach dist, or an earlier break left it " +
-            "poisoned. Nothing after this point would mean anything.",
+            "poisoned. Nothing after this point would mean anything." +
+            // ── DIAGNOZA NIESIE POMIAR, NIE SAMĄ HIPOTEZĘ ────────────────────
+            // Dopisane przy naprawie lotu L8 (2026-08-15), po przebiegu,
+            // w którym ten `throw` padł nad plikiem `.css` — a więc nad
+            // przywróceniem, którego `dist` NIE MOŻE zatruć, bo bramka układu
+            // czyta arkusz z serwera dev, nie z paczki. Obie nazwane przyczyny
+            // były wtedy niemożliwe, dowodu nie było żadnego, a ponowny
+            // przelot tego samego drzewa wrócił zielony. Komunikat, który
+            // wymienia dwie hipotezy i nie pokazuje ANI JEDNEGO wiersza
+            // czerwieni, wysyła czytelnika w stronę `dist` także wtedy, gdy
+            // czerwień jest gdzie indziej — a wtedy „nic dalej nie znaczy nic"
+            // przerywa cały zestaw bez podania powodu.
+            //
+            // Dlatego ogon wyjścia przywrócenia idzie do komunikatu. Ogon,
+            // a nie całość: przelot bramki to setki tysięcy znaków, a lista
+            // problemów stoi zawsze na jego końcu.
+            `\n\nOstatnie wiersze przywrócenia (${restored.status === null ? "brak kodu wyjścia" : `kod wyjścia ${restored.status}`}):\n` +
+            tailOf(`${restored.stdout}${restored.stderr}`),
         );
 
       if (outcome.verdict === "aborted")

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FolderId } from "@constellation/contracts";
 
 import { Icon } from "../components/Icon.js";
+import { TopicHelp } from "../help/TopicHelp.js";
 import { countLabel } from "../i18n.js";
 import {
   ALL_NOTES,
@@ -173,6 +174,19 @@ export const FolderTree = ({
         <span className={`library-count ${styles.headCount}`}>
           {folders.length}
         </span>
+        {/* WPIS 11-8 DOKUMENTU PRZEJŚCIA, POŁOWA DOTYCZĄCA POMOCY. Prototyp:
+            `v3/screens/knowledge.js:807` —
+            `<div class="kn-side-head"><span>Folders</span><span class="kn-n">N
+            </span>${"${helpBtn(\"folders\")}"}</div>`. Plakietka stoi ZA
+            liczbą, na prawym końcu głowy, i tak samo wypada tutaj: `.panelHead`
+            jest flexem, a `.panelTitle` ma `flex: 1 1 auto`, więc licznik
+            i plakietka lądują obok siebie z `gap: var(--space-2)`.
+
+            WERSALIKÓW TEN LOT NIE DOTYKA, i to jest zapisane, nie przeoczone:
+            druga połowa wpisu 11-8 mówi o `text-transform`, a para D3-04a
+            ŚWIADOMIE go na tej głowie nie asertuje — ta głowa niesie ścieżkę
+            folderu czytelnika, a nie napis stały. Powód stoi przy parze. */}
+        <TopicHelp topic="folders" />
       </div>
       <div className={styles.treeScroll}>
         <div aria-label="Folders" className={styles.tree} role="tree">

@@ -365,7 +365,7 @@
    overflow: auto` inside a bounded column (`v3/app.css:303`, `:279`), so it has
    a height of its own and really does scroll vertically.
    This shell scrolls the WHOLE surface instead: `.work-surface`
-   (`styles.css:2109-2165`) is the vertical scroll port ON THIS SCREEN — lot D10 made that conditional (`.work-surface:has(> .surface-header)` turns the carrier into a non-scrolling flex column), and Pipeline is one of the screens it deliberately did NOT migrate, and `.scroller` below
+   (`styles.css:2193-2249`) is the vertical scroll port ON THIS SCREEN — lot D10 made that conditional (`.work-surface:has(> .surface-header)` turns the carrier into a non-scrolling flex column), and Pipeline is one of the screens it deliberately did NOT migrate, and `.scroller` below
    declares `overflow-x: auto` — which makes the used `overflow-y` `auto` too,
    so `.scroller` becomes this head's nearest scroll port and never scrolls
    vertically. A top-sticky element in a box whose scroll top is always zero
@@ -879,7 +879,7 @@
    The obvious contents were measured to CHANGE NOTHING THAT CAN BE SEEN, which
    is not the same as losing the cascade, and the difference is worth one
    sentence because the wrong story is how the next reader learns a wrong rule.
-   `styles.css:3665-3674` clamps `transition-duration: 0.01ms !important` on
+   `styles.css:3749-3758` clamps `transition-duration: 0.01ms !important` on
    `*`, `*::before` and `*::after` under this query. A local `transition: none`
    on `.card`, `.column`, `.meterFill` and `.stagesLink` does NOT lose to that:
    the clamp is `!important` on the DURATION longhand only, while the shorthand
