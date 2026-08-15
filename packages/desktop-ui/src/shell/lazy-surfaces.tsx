@@ -4,12 +4,18 @@ import { type LazyDesktopSurface } from "@constellation/desktop-preload/surface-
 
 import { type SurfaceId } from "../client/wave2-fixtures.js";
 
-// Biblioteka jest jednym celem o trzech odczytach, więc leniwy chunk zaczyna
-// się od jej powłoki, a nie od jednego ekranu dokumentów.
-const loadLibraryShell = () => import("../library/LibraryShell.js");
-export const LibraryShell = lazy(() =>
-  loadLibraryShell().then((module) => ({
-    default: module.LibraryShell,
+// TRZY CELE, JEDEN CHUNK, I TO JEST WYBÓR (lot D3). Notatki, Źródła i Historia
+// wrzutek są od tego lotu osobnymi pozycjami nawigacji, ale dalej dzielą jeden
+// komponent powłoki (`KnowledgeSurface`) i jeden arkusz modułowy, więc trzy
+// osobne wejścia rozcięłyby ten kod na trzy chunki z wydzielonym wspólnym
+// czwartym — dokładnie ta pułapka, którą `client/shell-navigation.ts` opisuje
+// pomiarem: ścieżka pocięta na więcej kawałków kompresuje się GORZEJ, nawet gdy
+// sumarycznie maleje. Trzy klucze mapy wołają więc TEN SAM loader, a co się
+// narysuje, rozstrzyga props `reading` w `RealApp`.
+const loadKnowledgeSurface = () => import("../library/LibraryShell.js");
+export const KnowledgeSurface = lazy(() =>
+  loadKnowledgeSurface().then((module) => ({
+    default: module.KnowledgeSurface,
   })),
 );
 export const TaskAttachmentsSection = lazy(() =>
@@ -86,7 +92,9 @@ export const WorkspaceRecovery = lazy(() =>
 // nie rozwiąże. Sprawdzaj obecność klucza, nie wynik wywołania.
 export const lazySurfaceLoaders = {
   calendar: loadCalendarSurface,
-  library: loadLibraryShell,
+  notes: loadKnowledgeSurface,
+  sources: loadKnowledgeSurface,
+  captures: loadKnowledgeSurface,
   meetings: loadMeetingsSurface,
   settings: loadSettingsSurface,
   organizations: loadStrategicDepthSurface,

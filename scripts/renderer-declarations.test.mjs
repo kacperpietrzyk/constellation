@@ -38,7 +38,13 @@ test("the height-bound registry is the same mechanism, read a second time", () =
     attribute: "data-height-bound",
   });
   assert.deepEqual(dynamic, []);
-  assert.deepEqual(values, ["library"]);
+  // TRZY OD LOTU D3, JEDNA PRZEDTEM. Nie doszły dwa nowe ekrany związane
+  // wysokością — jeden ekran o trzech odczytach rozwinął się na trzy pozycje
+  // nawigacji, a wartością tej deklaracji MUSI być identyfikator celu:
+  // przeloty zawężone filtrują zbiór deklaracji przez swoją listę powierzchni,
+  // więc wspólny napis „library" byłby po tym locie nazwą, której nie nosi
+  // żadna powierzchnia, i wąskie przeloty pomijałyby ten strażnik po cichu.
+  assert.deepEqual(values, ["captures", "notes", "sources"]);
 });
 
 test("AN ATTRIBUTE WRITTEN AS AN EXPRESSION IS A HOLE, and it is reported as one", () => {

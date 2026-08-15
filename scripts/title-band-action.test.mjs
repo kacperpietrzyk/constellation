@@ -383,8 +383,14 @@ test("every state a row declares is a state the rule can produce", () => {
 // przelot dochodzi do SIEDMIU i różnica rozkłada się na cztery udowodnione
 // ruchy —
 //
-//   −1  Notatki i Źródła to JEDEN wiersz `library`: rejestr porównywał dwa
-//       zrzuty, a pasmo jest jedno (`LibraryShell.tsx:95-105`);
+//   −1  Notatki i Źródła BYŁY JEDNYM wierszem `library`: rejestr porównywał dwa
+//       zrzuty, a pasmo było jedno. LOT D3 TO ODWRÓCIŁ — Biblioteka rozwinęła
+//       się na trzy pozycje nawigacji, więc wierszy jest dziś siedemnaście,
+//       a nie piętnaście, i ten „−1" jest HISTORIĄ tego pomiaru, nie stanem
+//       tablicy. Adres z numerami wierszy stał tu do D3 i wskazywał na region
+//       (`useState` odczytu plus efekt synchronizujący), który ten lot
+//       skasował; cytat do skasowanego kodu jest gorszy niż cytat przesunięty,
+//       więc jest skreślony, a nie przeliczony;
 //   −1  rekord projektu i jego zakładka komentarzy to JEDEN wiersz
 //       `projects/record:project`: `.crumbs` z `.actions` renderuje się POZA
 //       panelem zakładki (`ProjectRecordScreen.tsx:312-354` wobec `:368`);
@@ -409,8 +415,11 @@ test("every state a row declares is a state the rule can produce", () => {
 // przez tamten lot JAKO NIEZROBIONE — zamknął lot D1 Fazy D: `.meeting-hero`
 // nie istnieje, ekran rysuje `SurfaceTitleBand` z akcją „Import from Jamie"
 // u końca pasma. Asercja niżej pilnuje więc PUSTEJ listy, a nie jednego wiersza.
-test("the canonical screen list holds fifteen screens and no divergence is left", () => {
-  assert.equal(TITLE_BAND_ROWS.length, 15);
+// SIEDEMNAŚCIE OD LOTU D3, PIĘTNAŚCIE PRZEDTEM. Nie doszły dwa EKRANY do
+// zbudowania — jeden ekran rozwinął się na trzy pozycje nawigacji (Notatki,
+// Źródła, Historia wrzutek), a ta tablica chodzi po rejestrze powierzchni.
+test("the canonical screen list holds seventeen screens and no divergence is left", () => {
+  assert.equal(TITLE_BAND_ROWS.length, 17);
   // SIEDEM ZNALEZIONYCH, SZEŚĆ ZAMKNIĘTYCH W LOCIE C2, SIÓDME W LOCIE D1.
   // Lista jest tym, co ZOSTAJE, a nie tym, co przelot kiedyś naliczył —
   // wyliczenie siedmiu podmiotów stoi w komentarzu wyżej i jest historią tego
@@ -439,7 +448,13 @@ test("the six screens lot C2 delivered stand in their title band, at its end", (
     "renewals",
     "organizations",
     "people",
-    "library",
+    // „library" stało tu do lotu D3 jako JEDEN wiersz na całą Bibliotekę.
+    // Dostawa C2 dotyczyła pasma, a pasmo jest dalej to samo — po rozdziale
+    // niosą je dwa wiersze z akcją. Historia wrzutek NIE JEST tu trzecia
+    // i to jest treść, nie przeoczenie: jej wiersz jest `no-screen`, więc
+    // asercja o `prototype === "action"` byłaby na nim nieprawdą.
+    "notes",
+    "sources",
   ];
   for (const id of delivered) {
     const row = TITLE_BAND_ROWS.find((candidate) => candidate.id === id);
@@ -486,7 +501,8 @@ test("the record screen is judged against the prototype's own row, not a literal
       "organizations",
       "people",
       "meetings",
-      "library",
+      "notes",
+      "sources",
     ],
   );
 });
@@ -767,17 +783,23 @@ test("the band-height axis is delivered: one band at one declared height, and it
   assert.equal(TITLE_BAND_HEIGHT_ARMED, true);
 });
 
-// OŚ SZÓSTA JEST DZIŚ „pending" I MA DWA ROZJAZDY WYPISANE Z NAZWY — to jest
+// OŚ SZÓSTA JEST DZIŚ „pending" I MA TRZY ROZJAZDY WYPISANE Z NAZWY — to jest
 // ODWRÓCENIE deklaracji, z jaką wyszła z lotu L2, a nie zmiękczenie
 // oczekiwania. Powód stoi przy `TITLE_BAND_CARRIES_STATUS` i sprowadza się do
 // jednego zdania: zero rozjazdów było funkcją SŁABOŚCI pomiaru, bo jedno słowo
 // `TRAIL` opisywało dwie różne trasy. Warunek dwustronny zostaje ten sam co na
 // trzech pozostałych osiach, więc uzbrojenie bez zamknięcia listy (albo
 // zamknięcie listy bez uzbrojenia) zatrzyma się tutaj.
-test("the carries axis is pending on exactly the two screens whose band says something else", () => {
+//
+// TRZECI (`sources`) DOSZEDŁ PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D3 i jest
+// poprawką WIERSZA, nie regresją produktu: wiersz deklarował zgodność
+// z prototypem, a jego własny cytat wskazywał crumbbar Notatek. Ta lista jest
+// jedynym miejscem, w którym taka poprawka jest widoczna jako liczba — dlatego
+// stoi tu wypisana z nazwy, a nie jako `length`.
+test("the carries axis is pending on exactly the three screens whose band says something else", () => {
   assert.deepEqual(
     TITLE_BAND_CARRIES_DIVERGENCES.map((row) => row.id),
-    ["tasks", "tasks/record:task"],
+    ["tasks", "sources", "tasks/record:task"],
   );
   assert.equal(
     TITLE_BAND_CARRIES_ARMED,
@@ -831,12 +853,21 @@ test("the carries axis judges the shape of the trail, not only that there is one
 // a właśnie o odróżnienie tu chodzi: JEDEN ekran niesie w paśmie wyszukiwanie
 // (prototyp ma dokładnie jedno `act: "palette"`), TRZY niosą trasę rekordu,
 // a jedenaście samą nazwę. Ta asercja pilnuje rozkładu z nazwy, a nie liczby.
+// PO LOCIE D3: wyszukiwanie niosą TRZY (jedno pasmo nad trzema ekranami
+// wiedzy), trasę dalej trzy, samą nazwę dalej jedenaście — siedemnaście
+// wierszy, nie piętnaście.
 test("the carries axis says three different things, and says each on the screens that have it", () => {
   const byState = (state) =>
     TITLE_BAND_ROWS.filter((row) => row.todayCarries === state).map(
       (row) => row.id,
     );
-  assert.deepEqual(byState("SEARCH"), ["library"]);
+  // TRZY, NIE JEDEN, I TO NIE JEST ROZMYCIE OSI. Kontrolka wyszukiwania stoi
+  // w JEDNYM paśmie — tym samym komponencie nad trzema ekranami wiedzy — więc
+  // po rozdziale z lotu D3 mierzy się ją trzy razy, bo ekrany są trzy.
+  // Prototyp dalej ma dokładnie jedno `act: "palette"` i dalej jest ono na
+  // Notatkach; wiersze Źródeł i Historii wrzutek deklarują to w swoich
+  // cytatach, zamiast udawać drugie i trzecie trafienie.
+  assert.deepEqual(byState("SEARCH"), ["notes", "sources", "captures"]);
   assert.deepEqual(byState("TRAIL"), [
     "projects/record:project",
     "tasks/record:task",
@@ -1046,7 +1077,7 @@ test("the opening axis judges the 2xl question, not the three measured states", 
 // KANONICZNOŚĆ LISTY PRZYPIĘTA DO JEDYNEGO ŹRÓDŁA, bo bez tego `TITLE_BAND_ROWS`
 // jest CZWARTĄ ręcznie przepisaną kopią listy ekranów — a „ręczna lista obok
 // zamkniętego słownika" jest w tym repozytorium nazwaną klasą defektu i sam
-// rejestr powierzchni nosi o niej komentarz (`surface-registry.ts:225-229`).
+// rejestr powierzchni nosi o niej komentarz (`surface-registry.ts:275-279`).
 //
 // DZIURA, KTÓRĄ TO ZAMYKA, JEST WĄSKA I REALNA: powierzchnia nawigacyjna, która
 // przybędzie, wpada w `TITLE_BAND_ROW_UNDECLARED`, a znikająca w

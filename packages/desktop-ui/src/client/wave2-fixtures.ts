@@ -133,9 +133,11 @@ const baseSearch: readonly SearchFixture[] = [
     kind: "Capture",
     title: "Check the renewal terms",
     detail: "Original · iPhone · 09:18",
-    // Wrzutka otwiera się w Bibliotece, na odczycie Historii wrzutek: cel
-    // `history` wsiąkł w `library` w fali Knowledge.
-    surface: "library",
+    // Wrzutka otwiera się na Historii wrzutek — od lotu D3 znowu WŁASNEJ
+    // pozycji nawigacji. Przez dwie fale prowadziła na `library`, bo cel
+    // `history` był w nią wsiąknięty, a który z trzech odczytów się otworzy,
+    // rozstrzygała gałąź w routingu wyszukiwarki.
+    surface: "captures",
   },
 ] as const;
 
@@ -159,7 +161,7 @@ export const buildSearchFixtures = (
       capture.processingState === "routed_as_task"
         ? "Processed as a task"
         : "Awaiting a decision",
-    surface: "library" as const,
+    surface: "captures" as const,
   })),
   ...baseSearch,
 ];

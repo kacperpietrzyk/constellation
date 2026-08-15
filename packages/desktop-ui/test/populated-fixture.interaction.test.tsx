@@ -108,7 +108,7 @@ const openDestination = async (surface: string): Promise<HTMLElement> => {
   // stał na ekranie. Sprawdzone przez zepsucie: przypięcie nawigacji do
   // `today` zostawiało przypadek Projektów zielony, bo plan Dzisiaj też
   // wypisuje projekty razem z ich intencjami. Ta sama gwarancja i ten sam
-  // zaczep, co w `surface-lifecycle.interaction.test.tsx:149-155`.
+  // zaczep, co w `surface-lifecycle.interaction.test.tsx:159-165`.
   const main = container.querySelector<HTMLElement>("main[data-surface]");
   // Zawężenie typu W PRAKTYCE, ale nie ozdoba: `data-surface` nosi WYŁĄCZNIE
   // plan roboczy — trzy punkty orientacyjne `center-state` (RealApp.tsx

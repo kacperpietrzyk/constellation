@@ -29,7 +29,15 @@ import { z } from "zod";
 export type HumanRecordInspectorSurface =
   | "tasks"
   | "projects"
-  | "library"
+  // TRZY NAZWY ZAMIAST JEDNEJ OD LOTU D3 — Biblioteka rozwinęła się na trzy
+  // pozycje nawigacji, więc pięć rodzajów rekordu, które dotąd celowały w jeden
+  // napis „library", musi teraz powiedzieć, KTÓRY z trzech ekranów je pokazuje.
+  // Ta zmiana jest przez kompilator WYMUSZONA dla rodzajów wyszukiwalnych,
+  // z powodu opisanego w akapicie wyżej, i to jest ten sam mechanizm, który
+  // złapał `history` przy poprzednim wycofaniu.
+  | "notes"
+  | "sources"
+  | "captures"
   | "meetings"
   | "organizations"
   | "people"
@@ -85,40 +93,41 @@ export const humanRecordKindRegistry = [
     label: "Capture",
     searchable: true,
     searchSource: "capture",
-    // Wrzutka otwiera się w Bibliotece, na odczycie Historii wrzutek — cel
-    // `history` przestał istnieć, a jego treść przeniosła się w całości.
-    // Samo przepięcie tej linii nie wystarcza: gałąź routingu wyszukiwania
-    // w `RealApp.tsx` musi wysłać żądany odczyt razem z celem, inaczej
-    // wrzutka ląduje na Notatkach.
-    inspectorSurface: "library",
+    // Wrzutka otwiera się na Historii wrzutek — od lotu D3 znowu na WŁASNEJ
+    // powierzchni. Poprzednia wersja tej noty ostrzegała, że samo przepięcie
+    // linii nie wystarcza, bo gałąź routingu wyszukiwania w `RealApp.tsx` musi
+    // dosłać żądany odczyt razem z celem, inaczej wrzutka ląduje na Notatkach.
+    // TO OSTRZEŻENIE PRZESTAŁO OBOWIĄZYWAĆ i dlatego jest tu zapisane jako
+    // zamknięte: cel niesie dziś rodzaj sam, więc nie ma czego dosyłać.
+    inspectorSurface: "captures",
   },
   {
     id: "source",
     label: "Source",
     searchable: true,
     searchSource: "source",
-    inspectorSurface: "library",
+    inspectorSurface: "sources",
   },
   {
     id: "note",
     label: "Note",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "library",
+    inspectorSurface: "notes",
   },
   {
     id: "document",
     label: "Document",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "library",
+    inspectorSurface: "notes",
   },
   {
     id: "deliverable",
     label: "Deliverable",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "library",
+    inspectorSurface: "notes",
   },
   {
     id: "organization",

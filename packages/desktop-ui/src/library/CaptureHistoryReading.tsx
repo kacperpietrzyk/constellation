@@ -197,18 +197,42 @@ export const CaptureHistoryReading = ({
   );
   return (
     <div className="surface-scroll history-surface">
-      <header className="surface-header wave2-header">
-        <div>
-          <p className="eyebrow">Kept originals</p>
-          <h2>Capture history</h2>
-          <p>
-            What was processed stays checkable, and reversible when versions
-            match.
-          </p>
-        </div>
-      </header>
+      {/* DRUGIE PASMO TYTUŁU ZNIKŁO RAZEM ZE ZWINIĘCIEM (lot D3). Stał tu
+          `<header class="surface-header wave2-header">` z nadtytułem „Kept
+          originals", `<h2>Capture history</h2>` i zdaniem opisowym — bo do tego
+          lotu ten odczyt nie miał własnego pasma: nad nim stało pasmo
+          „Library", a nazwę tego, na co się patrzy, trzeba było powiedzieć
+          w treści. Teraz nazwę mówi `h1` powierzchni, więc `h2` o tym samym
+          brzmieniu byłby tytułem powiedzianym dwa razy pod rząd, a nadtytuł
+          „Kept originals" trzeci raz tym samym słowem, co nagłówek rejestru
+          niżej.
+
+          ZDANIE OPISOWE ZOSTAJE, bo nie jest tytułem: mówi, co ten ekran
+          OBIECUJE (sprawdzalność i odwracalność przy zgodnych wersjach),
+          a tego nie mówi ani pozycja nawigacji, ani nagłówek rejestru. */}
+      <p className="history-lede">
+        What was processed stays checkable, and reversible when versions match.
+      </p>
       {snapshot.captures.length === 0 ? (
+        /* SZCZEBEL PODANY JAWNIE, BO PUSTY STAN STOI NA MIEJSCU REJESTRU.
+           `InlineState` ma domyślnie `h3` — dobry szczebel wszędzie tam, gdzie
+           pustka jest pustką SEKCJI stojącej pod nagłówkiem `h2`. Tutaj jest
+           odwrotnie: ta gałąź ZASTĘPUJE całą sekcję `history-ledger` razem z jej
+           `<h2>Kept originals</h2>`, więc na pustym obszarze roboczym jest
+           JEDYNYM nagłówkiem treści i staje wprost pod `h1` pasma. `h3` robił
+           tam dziurę h1→h3.
+
+           I TO NIE JEST OSTROŻNOŚĆ, TYLKO NAPRAWA ZMIERZONEJ WADY: dokładnie ta
+           dziura położyła wszystkie trzy zadania `Packaged local Alpha`
+           (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [3]` —
+           cytat z ładunku TAMTEGO przebiegu, sprzed zmiany kształtu pola: dziś
+           niesie ono opis `h1->h3 h3 "..."`, a nie samą cyfrę) —
+           zamiatanie paczkowanej alfy wchodzi na `captures` PRZED wykonaniem
+           pierwszej wrzutki, czyli na tę właśnie gałąź. Bramka układu przeszła
+           nad tym na zielono, bo jej fikstura ma wrzutki; złamanie, które to
+           odtwarza, stoi w `scripts/break-empty-state-outline.mjs`. */
         <InlineState
+          headingLevel="h2"
           title="Capture history is empty"
           detail="The first Quick Capture will appear here with what it became."
         />
@@ -216,7 +240,14 @@ export const CaptureHistoryReading = ({
         <section className="history-ledger" aria-label="Kept captures">
           <header>
             <div>
-              <h3>Kept originals</h3>
+              {/* SZCZEBEL PODNIESIONY Z `h3` NA `h2` W TYM SAMYM LOCIE, CO
+                  ZDJĘCIE PASMA WYŻEJ, i to jest jedna zmiana, nie dwie: oś
+                  konspektu nagłówków („żaden szczebel nie jest pominięty") jest
+                  TOTALNA nad wszystkimi ekranami, a `h1` powierzchni nad `h3`
+                  rejestru to dokładnie pominięcie, które ta oś nazywa
+                  `HEADING_OUTLINE_SKIPPED_RUNG`. Do tego lotu szczebel `h2`
+                  wypełniał zdjęty nagłówek. */}
+              <h2>Kept originals</h2>
               <span>{countLabel(snapshot.captures.length, "capture")}</span>
             </div>
             <span>Select a row to see its steps</span>
@@ -226,6 +257,16 @@ export const CaptureHistoryReading = ({
               <button
                 type="button"
                 className={`history-row${selectedCaptureId === capture.id ? " selected" : ""}`}
+                // MARKER PRZYBYCIA NA POWIERZCHNIĘ `captures` (lot D3).
+                // WIERSZ, A NIE KORZEŃ EKRANU, i to ten sam wybór, który
+                // `ROUTED_ARRIVAL` zapisał już przy Organizacjach, Ludziach
+                // i Skrzynce: `.history-surface` rysuje się także wtedy, gdy
+                // rejestr jest PUSTY (gałąź `InlineState` wyżej), więc korzeń
+                // potwierdziłby przyjazd na ekran bez ani jednej rzeczy do
+                // zmierzenia, a każda para tej trasy wróciłaby
+                // `NOT_MEASURED` z przyczyną wyglądającą na zły selektor.
+                // Wiersza w tamtym stanie nie ma.
+                data-capture-row=""
                 key={capture.id}
                 aria-pressed={selectedCaptureId === capture.id}
                 {...captureNav(index)}

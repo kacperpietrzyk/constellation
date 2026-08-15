@@ -943,6 +943,9 @@ export const MeetingsSurface = ({
               zostawiał w spisie treści dziurę h2→h4 — i to jest dokładnie ta
               dziura, którą złapało zamiatanie paczkowanej alfy przy 320 px
               (`PACKAGED_ALPHA_NARROW_SURFACE_INVALID`, `headingJumps: [4]`).
+              TA CYFRA JEST CYTATEM Z ŁADUNKU TAMTEGO PRZEBIEGU i nigdy już się
+              nie pojawi: pole niesie dziś OPIS przeskoku (`h2->h4 h4 "..."`),
+              bo sama cyfra kazała odtwarzać z CI, o który nagłówek chodzi.
               Bliźniak po stronie odbytych (`meeting-completed`) stał na `h3` od
               początku i dlatego nie miał tego defektu. */}
           <h3>No events visible</h3>

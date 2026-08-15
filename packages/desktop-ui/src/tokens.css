@@ -724,7 +724,7 @@
      a v3 ma pięć, i przemianowanie rampy jest zapisem w `.ui-craft/tokens.md`,
      nie w tym pliku. Literał mówi prawdę: „nasza wartość, zmierzona, spoza v3".
      Sprawdzone, że pressed MUSI się różnić od hovera: pięć miejsc wywołania
-     (`styles.css:552`, `:717`, `:8151`, `:8334` oraz `.inline-popover`) używa
+     (`styles.css:552`, `:721`, `:8184`, `:8367` oraz `.inline-popover`) używa
      `:active` jako stanu osobnego, a `:active` przychodzi NA hoverze — trzy
      z nich nie mają przy tym żadnej innej różnicy niż kolor.
 

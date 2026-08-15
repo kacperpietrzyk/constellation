@@ -128,8 +128,8 @@ if (!fastOnly) {
             edit: (text) =>
               replaceOnce(
                 text,
-                'data-height-bound="library"',
-                'data-height-bound-that-nothing-reads="library"',
+                'data-height-bound="notes"',
+                'data-height-bound-that-nothing-reads="notes"',
                 "the declaration",
               ),
           },

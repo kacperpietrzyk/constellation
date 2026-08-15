@@ -40,13 +40,23 @@ import { settingsCategories } from "../src/settings-categories.js";
 // many of them there are: the counts below are derived from this list, because
 // a hardcoded `5` beside a growing registry is an assertion that goes red for
 // the wrong reason and gets edited rather than read.
+//
+// KOLEJNOŚĆ ODWRÓCONA PRZY WPISIE 13-2 (lot D2 Fazy III, 2026-08-15), i ten
+// test ZŁAPAŁ tamtą zmianę zanim zrobiła to jakakolwiek bramka wizualna —
+// dlatego lista zostaje wypisana z ręki, mimo że jest drugą kopią słownika.
+// Prototyp otwiera spis od człowieka (`v3/screens/settings.js:925-957`:
+// „You" → „What the app runs on" → „This workspace"), a ta aplikacja
+// otwierała go od maszyny. Ta lista pilnuje dziś DWÓCH rzeczy naraz: że
+// kategorii jest sześć i że idą w tej kolejności; osobnym świadkiem tej
+// drugiej, po stronie narysowanego spisu, są pary `FIII2-02a`/`FIII2-02b`
+// w `scripts/visual-language-pairs.mjs`.
 const settingsCategoryIds = [
-  "workspace",
-  "data",
-  "notes",
   "appearance",
   "access",
   "application",
+  "workspace",
+  "data",
+  "notes",
 ] as const;
 
 describe("enterprise settings navigation contract", () => {
@@ -248,5 +258,125 @@ describe("enterprise settings navigation contract", () => {
     ]);
     // The chosen topic is what the dialog opens on.
     assert.match(settings, /initialTopic=\{conceptHelpTopic\}/);
+  });
+
+  // ── ŚWIADEK WŁASNOŚCI NOŚNEJ WPISU 13-1 ──────────────────────────────────
+  //
+  // Decyzja D2 („najpierw powiedz, potem pozwól zmienić") ma DWIE połowy,
+  // a bramka układu umie zmierzyć tylko jedną. `verify-renderer-layout.mjs`
+  // czyta FARBĘ i KOLEJNOŚĆ: że wiersz stanu jest narysowany, że stoi w swoim
+  // paśmie i przed pierwszą kontrolką, że niesie co najmniej trzy słowa
+  // i plakietkę. Osiemnaście wpisanych z ręki zdań po trzy słowa przechodzi
+  // tam komplet asercji — a wiersz stanu, którego treść nie zależy od danych,
+  // skłamie przy pierwszej ich zmianie i będzie WYGLĄDAŁ prawdziwie.
+  //
+  // Ta asercja jest tą drugą połową i pyta dokładnie o tyle, ile umie
+  // sprawdzić: ŻADNE `says` NIE JEST NAPISEM. Nie umie odpowiedzieć, czy
+  // zdanie liczy z TEJ SAMEJ wartości, którą zmienia kontrolka pod nim —
+  // to jest własność, której nie widać w tekście źródła — i dlatego nie
+  // twierdzi tego ani w nazwie, ani w komunikacie.
+  //
+  // LICZBA WYWOŁAŃ NIE JEST WPISANA. Sprawdzane jest, że każde znalezione
+  // `<SectionState` oddało swoje `says` do rozbioru (inaczej asercja
+  // milczałaby nad kształtem, którego parser nie zna) i że wywołań jest
+  // niezero — harness, który nie zamontuje ekranu, ma tu upaść, a nie
+  // przejść nad pustym zbiorem.
+  it("computes every settings state sentence instead of writing it out", () => {
+    // Wyrażenie w klamrach czytane licznikiem klamer, bo `says` bywa
+    // wielolinijkowym trójargumentem z zagnieżdżonymi szablonami.
+    const readBraced = (source: string, open: number): string | null => {
+      let depth = 0;
+      for (let index = open; index < source.length; index += 1) {
+        if (source[index] === "{") depth += 1;
+        else if (source[index] === "}") {
+          depth -= 1;
+          if (depth === 0) return source.slice(open + 1, index);
+        }
+      }
+      return null;
+    };
+
+    // TREŚĆ NAPISU ZDEJMOWANA SKANEREM, nie regexem: `says` bywa
+    // trójargumentem z szablonami, a szablon niesie NARAZ tekst (który
+    // trzeba wyrzucić) i wstawki `${…}` (które są właśnie tym, czego
+    // szukamy). Zostaje sam kod.
+    const codeOnly = (expression: string): string => {
+      let out = "";
+      let index = 0;
+      const stack: string[] = [];
+      while (index < expression.length) {
+        const char = expression[index];
+        const mode = stack[stack.length - 1];
+        if (mode === '"' || mode === "'" || mode === "`") {
+          if (char === "\\") index += 2;
+          else if (char === mode) {
+            stack.pop();
+            index += 1;
+          } else if (
+            mode === "`" &&
+            char === "$" &&
+            expression[index + 1] === "{"
+          ) {
+            stack.push("{");
+            index += 2;
+          } else index += 1;
+          continue;
+        }
+        if (char === '"' || char === "'" || char === "`") {
+          stack.push(char);
+          index += 1;
+          continue;
+        }
+        if (char === "}" && mode === "{") {
+          stack.pop();
+          index += 1;
+          continue;
+        }
+        out += char;
+        index += 1;
+      }
+      return out;
+    };
+
+    const starts = [...settings.matchAll(/<SectionState[\s>]/g)].map(
+      (match) => match.index ?? 0,
+    );
+    assert.ok(
+      starts.length > 0,
+      "No <SectionState> call sites at all — this assertion measured nothing.",
+    );
+
+    // Forma bez klamer (`says="…"`) jest napisem z definicji i nie ma
+    // po co jej rozbierać.
+    assert.equal(countOccurrences(settings, /\bsays="/g), 0);
+
+    const sentences: string[] = [];
+    for (const [order, start] of starts.entries()) {
+      const end = starts[order + 1] ?? settings.length;
+      const saysAt = settings.indexOf("says={", start);
+      assert.ok(
+        saysAt !== -1 && saysAt < end,
+        "A <SectionState> call site carries no `says={…}` of its own.",
+      );
+      const expression = readBraced(settings, saysAt + "says=".length);
+      assert.notEqual(
+        expression,
+        null,
+        "Unbalanced braces in a `says={…}` expression.",
+      );
+      sentences.push(expression as string);
+    }
+    // Każde wywołanie oddało dokładnie jedno wyrażenie — asercja nie
+    // przemilcza kształtu, którego skaner nie umiał przeczytać.
+    assert.equal(sentences.length, starts.length);
+
+    for (const expression of sentences)
+      assert.match(
+        codeOnly(expression),
+        /[A-Za-z_$]/,
+        `A settings state sentence is a written-out constant: ${expression
+          .replace(/\s+/g, " ")
+          .slice(0, 120)}`,
+      );
   });
 });

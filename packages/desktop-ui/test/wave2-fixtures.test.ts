@@ -97,7 +97,7 @@ describe("Wave 2 deterministic UI fixtures", () => {
           kind: "Capture",
           group: "Capture",
           // Wrzutka otwiera się w Bibliotece: `history` przestał być celem.
-          surface: "library",
+          surface: "captures",
         },
       ],
     );

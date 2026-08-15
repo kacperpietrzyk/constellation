@@ -20,25 +20,54 @@ import type { IconName } from "./components/Icon.js";
 // wprost w JSX-ie, w tej samej kolejności, i to jest DRUGA lista — grupowanie,
 // które by ją przestawiło, rozjechałoby znacznik bieżącej sekcji z kierunkiem
 // przewijania (czytelnik jedzie w dół ekranu, a znacznik skacze po kolumnie).
-// Dlatego grupy powstają ze SKLEJENIA SĄSIADÓW, a nie z sortowania: nazwy
-// dobrane są tak, żeby dzisiejsza kolejność rozpadła się na trzy ciągłe
-// odcinki bez przestawiania czegokolwiek.
+// Dlatego grupy powstają ze SKLEJENIA SĄSIADÓW, a nie z sortowania: kolejność
+// tutaj rozpada się na trzy ciągłe odcinki i JEST kolejnością bloków
+// `.settings-category` w `SettingsSurface.tsx`.
+//
+// KOLEJNOŚĆ GRUP JEST ODWRÓCONA WZGLĘDEM TEJ, KTÓRĄ TEN PLIK MIAŁ DO WPISU 13-2
+// (2026-08-15). Było: „This workspace" → „You" → „What the app runs on", czyli
+// spis otwierał się od maszyny. Prototyp otwiera się od CZŁOWIEKA i używa
+// DOKŁADNIE tych samych trzech nazw, w tej samej roli, w odwrotnej kolejności:
+// `ST_SECTIONS` (`v3/screens/settings.js:925-957`) deklaruje po kolei „You",
+// „What the app runs on", „This workspace". Kontrakt (`.ui-craft/patterns.md`
+// — „Pattern: Settings mode column") opisywał dotąd wyłącznie WYGLĄD spisu
+// (grupy z nazwą, glif przy pozycji) i o kolejności milczał, więc rozstrzyga
+// prototyp — a `patterns.md` dostaje tę regułę w tym samym przebiegu.
+//
+// SAMA ZAMIANA MIEJSC NIE WYSTARCZA i to jest cała cena tego wpisu: bloki
+// kategorii w `SettingsSurface.tsx` musiały pojechać za nią, bo inaczej spis
+// prowadziłby po stronie przewijanej w starej kolejności — znacznik „tu
+// jesteś" skakałby po kolumnie w drugą stronę niż czytelnik jedzie po ekranie.
+// Para `FIII2-02a` czyta pierwszą nazwę grupy, `FIII2-02b` ostatnią.
 //
 // PODSTAWA NAZW — zawartość kategorii, nie analogia do prototypu (nasze sześć
 // kategorii nie odwzorowuje jego dwunastu sekcji):
-//   • „This workspace"      — tożsamość przestrzeni, jej statusy zadań,
-//                             pieniądze, dzień pracy, pola rekordów, szablony
-//                             i automatyzacje (`workspace`); granice danych,
-//                             kopie i raport (`data`); eksport i import
-//                             pisania (`notes`). Wszystkie trzy konfigurują
-//                             TĘ przestrzeń i jej treść.
 //   • „You"                 — motyw i gęstość (`appearance`), czyli jedyna
 //                             kategoria o tym, jak aplikacja wygląda
 //                             CZYTELNIKOWI, a nie o tym, co robi.
 //   • „What the app runs on" — dostępy, granty agentów i połączenia
 //                             z kalendarzem (`access`) oraz instalacja,
 //                             paczka wymiany i aktualizacja (`application`).
+//   • „This workspace"      — tożsamość przestrzeni, jej statusy zadań,
+//                             pieniądze, dzień pracy, pola rekordów, szablony
+//                             i automatyzacje (`workspace`); granice danych,
+//                             kopie i raport (`data`); eksport i import
+//                             pisania (`notes`). Wszystkie trzy konfigurują
+//                             TĘ przestrzeń i jej treść.
 export const settingsCategories = [
+  { id: "appearance", label: "Appearance", group: "You", icon: "panel" },
+  {
+    id: "access",
+    label: "Access and connections",
+    group: "What the app runs on",
+    icon: "access",
+  },
+  {
+    id: "application",
+    label: "Setup and app",
+    group: "What the app runs on",
+    icon: "settings",
+  },
   {
     id: "workspace",
     label: "Workspace",
@@ -71,19 +100,6 @@ export const settingsCategories = [
   // dodatkiem — format składowania to dokument ProseMirror w CRDT Yjs, więc
   // bez tej sekcji nie ma drzwi na zewnątrz.
   { id: "notes", label: "Notes", group: "This workspace", icon: "documents" },
-  { id: "appearance", label: "Appearance", group: "You", icon: "panel" },
-  {
-    id: "access",
-    label: "Access and connections",
-    group: "What the app runs on",
-    icon: "access",
-  },
-  {
-    id: "application",
-    label: "Setup and app",
-    group: "What the app runs on",
-    icon: "settings",
-  },
 ] as const satisfies readonly {
   readonly id: string;
   readonly label: string;

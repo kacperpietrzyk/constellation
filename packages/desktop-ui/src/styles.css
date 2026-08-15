@@ -679,11 +679,15 @@ select {
    ODCHODZI OD PLANU, niewybrane na nim leży. Po tej poprawce stan spoczynkowy
    jest planem (przezroczysty), a stan wybrany dalej bierze `--surface-hover`
    plus `--border-strong` i grubość 500 — reguła `.switch[aria-selected="true"]`
-   w `organizations.module.css:108-113`, `people.module.css:106-111`
-   i `library.module.css:254-259` (selektor wypisany, bo sam numer wiersza
-   gnije przy pierwszym przesunięciu pliku i zostaje cytatem, który KŁAMIE:
-   dwa z tych trzech adresów były przepisane z rejestru B1 i wskazywały już
-   na wyściółkę stanu spoczynkowego) — czyli jaśnieje w ciemnym
+   w `organizations.module.css:108-113` i `people.module.css:106-111`
+   (selektor wypisany, bo sam numer wiersza gnije przy pierwszym przesunięciu
+   pliku i zostaje cytatem, który KŁAMIE: dwa z tych adresów były przepisane
+   z rejestru B1 i wskazywały już na wyściółkę stanu spoczynkowego).
+   TRZECI ADRES — `library.module.css` — ZNIKŁ RAZEM ZE SWOIM PRZEŁĄCZNIKIEM
+   w locie D3: Biblioteka rozwinęła się na trzy pozycje nawigacji, więc wybór
+   ekranu wiedzy niesie dziś stan `active` pozycji lewej kolumny, a nie
+   zakładka. Cytat do skasowanej reguły jest gorszy niż cytat przesunięty,
+   więc jest tu SKREŚLONY, a nie przeliczony — czyli jaśnieje w ciemnym
    i ciemnieje w jasnym — w obu wypadkach oddala się od planu, na którym leży
    sąsiad. */
 button {
@@ -1056,8 +1060,8 @@ kbd {
    pierścienia, wyżej w tym pliku. */
 /* WYPEŁNIENIE JEST TU, NA KONTROLCE, A NIE W `--action-primary-bg`, i to jest
    ograniczenie zakresu, nie wygoda: ten token czytają jako tło jeszcze SZEŚĆ
-   innych reguł w TRZECH arkuszach (policzone: `styles.css:567`, `:6261`,
-   `:10539`, `:10723`, `tasks/saved-view-filters.module.css:124`,
+   innych reguł w TRZECH arkuszach (policzone: `styles.css:567`, `:6279`,
+   `:10618`, `:10802`, `tasks/saved-view-filters.module.css:124`,
    `record/record-comments.module.css:415`), a warunek właściciela mówi
    o JEDNEJ parze. Gradient w tokenie wciągnąłby je wszystkie pod jedno
    zwolnienie wydane na jedną kontrolkę. Skrót
@@ -1837,9 +1841,9 @@ kbd {
 
    TWO CARRIERS, BOTH NAMED, because excluding one would fix an instance and
    leave its twin asleep: `.active` is the paint carrier on the surface list
-   (`RealApp.tsx:1948`, `:2021`, `:3415`) and `[aria-current]` covers both the
+   (`RealApp.tsx:1963`, `:2036`, `:3449`) and `[aria-current]` covers both the
    `"page"` that always travels with it and the `"location"` of the settings
-   mode column (`:1446`), which until now won only by source order.
+   mode column (`:1457`), which until now won only by source order.
 
    `:active` (the next rule) is deliberately NOT narrowed: a press is a
    momentary answer to the reader's own finger, not a claim about where they
@@ -1885,7 +1889,7 @@ kbd {
    bycie NA „Projects": `v3/app.js:573` stawia `aria-current="page"` również na
    celu nadrzędnym, gdy trasa to `project`, więc pod jednym otwartym projektem
    świecą DWA wiersze — rodzic i dziecko. Ta aplikacja świadomie zerowała
-   rodzica (`RealApp.tsx:2022-2032`), żeby nie mieć dwóch `aria-current`
+   rodzica (`RealApp.tsx:2037-2047`), żeby nie mieć dwóch `aria-current`
    naraz; rozstrzygnięcie zostaje, bo dotyczy DEKLARACJI, a nie farby. Nośnikiem
    farby jest osobna deklaracja `data-nav-open`, dopisana w tym locie.
 
@@ -1997,7 +2001,7 @@ kbd {
 
    NO GATE SEES THIS AND THAT IS STRUCTURAL, not an oversight: the overflow
    sweep picks its subject as a descendant of `#main-content[role="tabpanel"]`
-   (`scripts/verify-renderer-layout.mjs:791`), and the sidebar does not lie
+   (`scripts/verify-renderer-layout.mjs:803`), and the sidebar does not lie
    inside it. This position is closed on a browser measurement recorded in the
    lot report, not on an instrument. */
 /* PASMO WYJŚCIA, NIE PIERWSZY WIERSZ SPISU (`v3/screens/settings.css:40-43` —
@@ -2307,11 +2311,25 @@ kbd {
 
    Co zostaje i dlaczego to NIE są ekrany — sprawdzone tym samym testem
    z markupu: chrom powłoki stojący bezpośrednio w tym pudełku (`.notice`,
-   `.condition-banner`, oba z `RealApp.tsx`), historia wrzutek
-   (`.history-surface`) — nagłówek bez `h1`, `<h2>Capture history</h2>`
-   (`library/CaptureHistoryReading.tsx:199-203`), więc czytelnia otwierana
-   WEWNĄTRZ ekranu, a nie ekran — i martwy `TasksSurface`
-   (`Wave2Surfaces.tsx:196`). Zdjęcie jej stąd NIE zrobiłoby z powłoki milczka —
+   `.condition-banner`, oba z `RealApp.tsx`) i martwy `TasksSurface`
+   (`Wave2Surfaces.tsx:196`).
+
+   HISTORIA WRZUTEK (`.history-surface`) BYŁA TU WYMIENIONA TRZECIA, z powodem
+   „nagłówek bez `h1`, `<h2>Capture history</h2>`, więc czytelnia otwierana
+   WEWNĄTRZ ekranu, a nie ekran". OD LOTU D3 TO JEST EKRAN — własna pozycja
+   nawigacji `captures`, własne `h1` w paśmie powłoki wiedzy — więc tamten powód
+   przestał obowiązywać i wpis stąd znika.
+
+   CO Z TEGO WYNIKA, POWIEDZIANE BEZ ŁADNIEJSZEJ WERSJI: `--surface-measure`
+   jest własnością NIESTANDARDOWĄ, czyli DZIEDZICZY, a `.history-ledger` czyta
+   ją przez `var(--surface-measure, 58rem)`. Ten ekran bierze więc dziś 72 rem
+   z `.work-surface` — nie dlatego, że tak rozstrzygnięto, tylko dlatego, że
+   nic po drodze nie deklaruje własnej wartości. Argument „nie jest
+   bezpośrednim dzieckiem" należy do reguły `:has(> .surface-header)` niżej
+   i do TEJ zmiennej się NIE STOSUJE; zdanie w tym miejscu tak brzmiało i było
+   mechanicznie fałszywe. Czy Historia wrzutek ma deklarować własny sufit, jest
+   NIE ZMIERZONE: żadna para tej mapy jej nie dotyka (zero z czterdziestu jeden
+   par Biblioteki celuje w ten ekran). Zdjęcie jej stąd NIE zrobiłoby z powłoki milczka —
    uruchomiłoby zapasowe `58rem` z klamry, czyli DRUGĄ liczbę powłoki, węższą
    od dzisiejszej, na czterech nośnikach, których nie mierzy ani jedna para.
    Ekran, który dostanie własną parę, zabiera tę wartość ze sobą. */
@@ -2756,7 +2774,7 @@ kbd {
    organizacji w `.surface-scroll.organization-context`
    (`StrategicDepthSurface.tsx:1774`), historia wrzutek w
    `.surface-scroll.history-surface` (`CaptureHistoryReading.tsx:199`),
-   Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:1047`)
+   Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:1104`)
    i martwy `TasksSurface` w `.surface-scroll` (`Wave2Surfaces.tsx:196`).
 
    SIŁA SELEKTORA JEST TU CELOWO WYŻSZA, nie przypadkiem. `:has()` wnosi siłę
@@ -2816,7 +2834,7 @@ kbd {
 
    ŻADNA BRAMKA TEGO NIE WIDZI: harness nie rysuje ani komunikatu, ani plakietki
    (`.condition-banner` wisi na `build.channel === "developer-preview"`,
-   `RealApp.tsx:1977`), więc przelot melduje o niej „no stop draws it". Zmierzone
+   `RealApp.tsx:1992`), więc przelot melduje o niej „no stop draws it". Zmierzone
    sondą lotu przez WSTRZYKNIĘCIE obu węzłów do nośnika, przy 1440 px, z obiema
    stronami — z tą deklaracją i po jej zdjęciu:
 
@@ -2869,7 +2887,7 @@ kbd {
 }
 /* `p:last-child` NIE WYSTARCZA i przez to opis bywał WIĘKSZY od tytułu.
    W Ustawieniach po akapicie stoi jeszcze przycisk pomocy
-   (`SettingsSurface.tsx:1035-1044`), więc akapit nie jest ostatnim dzieckiem
+   (`SettingsSurface.tsx:1092-1101`), więc akapit nie jest ostatnim dzieckiem
    i zostawał na 14 px w kolorze pisma podstawowego — obok tytułu 13 px.
    Dopóki tytuł miał 30-42 px, odwrócenie było niewidoczne; skrócenie tytułu
    w Fazie 2 je ujawniło. Reguła celuje więc w KAŻDY akapit nagłówka, a nie
@@ -3271,7 +3289,7 @@ kbd {
      prototyp nie deklaruje wysokości wcale, a stojące tu 3,15 rem było jedynym
      powodem, dla którego dok mierzył 50 px zamiast wysokości swojej treści.
      `box-shadow` ZOSTAJE na `--capture-shadow`, i to nie jest przeoczenie:
-     `styles.css:706-731` remapuje ten token przy `:focus-visible` na
+     `styles.css:710-735` remapuje ten token przy `:focus-visible` na
      „pierścień, potem cień spoczynkowy", więc podmiana go na `--shadow-lg`
      zabrałaby dokowi pierścień ogniska. */
   padding: 0.4375rem 0.75rem;
@@ -4699,7 +4717,7 @@ kbd {
    guessed wrong. The first version of this split scoped the nav rules to
    `.sidebar` on the reasoning that `.settings-mode-column` lives in the work
    column and must not collapse when a person collapses the shell's left column.
-   It does not live there: `RealApp.tsx:3470` renders it INSIDE the same
+   It does not live there: `RealApp.tsx:3504` renders it INSIDE the same
    `<aside class="sidebar">`, replacing the destination list while settings are
    open. So the scope bought nothing — and it cost: the extra `.sidebar` lifted
    these rules to (0,3,0), which then beat the (0,2,0) rule that stands the
@@ -4877,7 +4895,7 @@ kbd {
     max-width: 28rem;
     /* PRÓG DOTYKU WRACA — I TYLKO TUTAJ. Lot powłoki Fazy 3 zdjął z doku
        `min-height: 3.15rem`, bo prototyp nie deklaruje wysokości wcale
-       (`:2480-2484`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
+       (`:2498-2502`), i to jest dobra decyzja o WYGLĄDZIE: dok mierzy dziś
        wysokość swojej treści, 33 px. Ale w wąskim oknie ta sama liczba jest
        CELEM DOTYKU, a paczkowany smoke żąda tam 44 px na każdym z trzech
        podmiotów (`run-packaged-alpha-smoke.mjs:921-924`).
@@ -4947,7 +4965,7 @@ kbd {
    `--surface-window` jest tu nieprzezroczystym ZASTĘPSTWEM dla rozmycia:
    element bez rozmycia niczego nie zastępuje, tylko dostaje CUDZY kolor.
    Faza 3 zdjęła szkło z lewej kolumny i z pasma zakładek („prototyp nie stawia
-   szkła w powłoce", `:1028-1031`, `:1782`), ale nie zdjęła ich stąd — więc każdy,
+   szkła w powłoce", `:1032-1035`, `:1786`), ale nie zdjęła ich stąd — więc każdy,
    kto ma włączoną redukcję przezroczystości, dostawał pasek boczny w kolorze
    okna zamiast w planie paska.
 
@@ -6456,7 +6474,7 @@ kbd {
    `:focus-visible` jest DOŁOŻONE do pary z prototypu: pozycje nawigacji chodzą
    strzałkami, więc bez tego czytelnik klawiatury nigdy by tego skrótu nie
    zobaczył. Krycie, nie `display`, żeby wiersz nie zmieniał szerokości kolumn
-   pod kursorem; globalna reguła ruchu (`styles.css:3677-3686`) zeruje to
+   pod kursorem; globalna reguła ruchu (`styles.css:3695-3704`) zeruje to
    przejście przy `prefers-reduced-motion`, więc lokalny wyjątek byłby martwy. */
 .nav-item kbd {
   margin-left: auto;
@@ -6984,12 +7002,27 @@ kbd {
   align-items: baseline;
   gap: var(--space-2);
 }
-.history-ledger > header h3 {
+/* SZCZEBEL W SELEKTORZE PODNIESIONY RAZEM ZE SZCZEBLEM W ZNACZNIKU (lot D3 —
+   powód stoi przy samym nagłówku w `CaptureHistoryReading.tsx`). Rozmiar
+   ZOSTAJE `--text-sm`: to jest nagłówek panelu, a nie otwarcie ekranu, i oś
+   konspektu nagłówków mówi wprost, że pyta o RANGĘ, nigdy o rozmiar. Gdyby
+   podniesienie rangi pociągnęło rozmiar, ten rejestr dostałby drugie otwarcie
+   ekranu pod pierwszym. */
+.history-ledger > header h2 {
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
+}
+/* Zdanie o obietnicy ekranu, osierocone przez zdjęte drugie pasmo tytułu.
+   Trzyma tę samą kolumnę czytelną co rejestr pod nim, bo inaczej wisiałoby
+   nad nim niewyrównane. */
+.history-lede {
+  max-width: var(--surface-measure, 58rem);
+  margin: 0 auto var(--space-4);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
 }
 .history-ledger > header span {
   color: var(--text-quaternary);
@@ -8639,7 +8672,7 @@ kbd {
 
    Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
    znika. Samo `background: var(--panel-reading-bg)` stoi w regule bazowej
-   `.knowledge-writing-plane` (`:8149`), a nie tu — druga deklaracja tego samego
+   `.knowledge-writing-plane` (`:8182`), a nie tu — druga deklaracja tego samego
    selektora wygrywała kolejnością i czyniła wartość bazową martwą. */
 .knowledge-writing-plane .document-canvas {
   padding: var(--space-5) 0 var(--space-10);
@@ -9063,13 +9096,13 @@ kbd {
   }
   /* MARTWA DEKLARACJA, NIE ZMIANA ZDANIA. Do lotu D3 ten rząd był siatką
      i wąski krok mówił mu `justify-items: start`; lot przeniósł bazę na `flex`
-     (`:7376`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
+     (`:7409`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
      robi NIC — więc reguła prosiła o lewą, a kaskada dawała prawą z bazowego
      `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: od lotu L3
      baza rzędu to `flex: 1 1 100%`, więc wypełnia linię przy każdej szerokości.
 
      CZEMU AKURAT LEWA: pasek narzędzi jest OSTATNIM DZIECKIEM tego rzędu
-     (`KnowledgeEditor.tsx:1546` i `:1573`), a nie jego rodzeństwem, i reguła
+     (`KnowledgeEditor.tsx:1566` i `:1593`), a nie jego rodzeństwem, i reguła
      dwie niżej daje mu w tym kroku `width: 100%` — więc zajmuje całą linię
      i układa swoje przyciski od lewej. Pozostali członkowie rzędu, którzy
      zawinęli się nad niego, stają na tej samej krawędzi zamiast wisieć nad nim
@@ -9906,6 +9939,52 @@ kbd {
   margin: 0.1rem 0 0.35rem;
 }
 
+/* WIERSZ STANU SEKCJI (wpisy 13-1 i 13-6, decyzja D2 z 2026-08-15).
+   Prototypowy `stRows` (`v3/screens/settings.js:216-221`) rysuje go jako
+   `.signal.st-plain` z dwoma torami — `minmax(0,1fr) auto` — czyli zdanie
+   po lewej i plakietka dobita do prawej krawędzi. Tutaj to samo: zdanie
+   dostaje `min-width: 0`, żeby długi tekst zawijał ZAMIAST spychać plakietkę
+   poza kartę, a plakietka `flex-shrink: 0`, żeby nigdy nie zwęziła się do
+   nieczytelnego paska (przy 320 px wiersz musi się złamać, a nie zniknąć). */
+.settings-state {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: 0 0 0.4rem;
+  max-width: var(--surface-read);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.settings-state-says {
+  min-width: 0;
+}
+
+/* PLAKIETKA MÓWI STAN, NIE RANGĘ, więc nie bierze akcentu: akcent w tej
+   aplikacji należy do akcji, a to jest zdanie do przeczytania. Prototyp maluje
+   swoje `tag success` zielenią stanu (`v3/screens/settings.js:402-404`
+   — `Local`, `Verified`, `Ready`) i tak samo robi ta reguła; wariant
+   `blocked` schodzi na neutralny, bo „tego się tu nie da" nie jest sukcesem
+   i nie wolno mu wyglądać jak sukces. */
+.settings-state-tag {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  background: var(--status-success-bg);
+  color: var(--status-success);
+}
+
+.settings-state[data-settings-state="blocked"] .settings-state-tag {
+  background: var(--surface-sunken);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
 .settings-copy > p {
   color: var(--text-secondary);
   font-size: var(--text-xs);
@@ -10259,7 +10338,7 @@ kbd {
 /* ── KONTROLKA WYBORU BIERZE SZEROKOŚĆ SWOJEJ TREŚCI (Faza C, lot C5) ─────────
    `align-self: start`, A NIE SKREŚLENIE `stretch` — i to jest cała różnica
    między poprawką a jej pozorem. `.settings-control` jest kolumną
-   (`:9144-9150`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
+   (`:9177-9183`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
    dziecko na całą szerokość tafli; sam wpis `align-self: stretch` był tu
    powtórzeniem domyślnej wartości i skasowanie go NIE ZMIENIŁOBY NICZEGO.
    Kontrolka wraca do szerokości własnej treści dopiero wtedy, gdy powie
@@ -10268,8 +10347,8 @@ kbd {
    DLACZEGO SELEKTOR MA `>`, a reguła geometrii niżej go NIE MA. Te dwie
    deklaracje mówią o dwóch RÓŻNYCH osiach i sięgają dwóch różnych zbiorów.
    `.settings-control` bywa kolumną (dziecko wprost, np. `#voice-audio-retention`
-   — `SettingsSurface.tsx:1990-2003`), ale bywa też pojemnikiem RZĘDÓW
-   (`.settings-control > div` ustawia `display: flex`, `styles.css:10163-10167`),
+   — `SettingsSurface.tsx:2801-2814`), ale bywa też pojemnikiem RZĘDÓW
+   (`.settings-control > div` ustawia `display: flex`, `styles.css:10242-10246`),
    a w rzędzie osią poprzeczną jest PION: `align-self: start` przykleiłoby tam
    kontrolkę do górnej krawędzi rzędu obok rozciągniętych pól tekstowych. Oś
    pozioma w rzędzie to `flex`, i tym zajmuje się reguła niżej.
@@ -10283,7 +10362,7 @@ kbd {
 
    TRZECI KSZTAŁT, DOPISANY PO PRZEGLĄDZIE (2026-08-11): ZAPYTANIE KONTENEROWE.
    Wyliczanka wyżej wymieniała dwa kształty i milczała o `@container (max-width:
-   47.5rem)` (`:10849-10879`), który przewraca `.settings-control > div` w KOLUMNĘ
+   47.5rem)` (`:10928-10958`), który przewraca `.settings-control > div` w KOLUMNĘ
    z `align-items: stretch` i daje polom tekstowym `width: 100%`. Zarzut brzmiał:
    w tym trybie sufit `16rem` obowiązuje kontrolkę, a sąsiednie pole rozpycha się
    na całość, więc parzystość pole↔kontrolka się rozjeżdża.
@@ -10339,7 +10418,7 @@ kbd {
 
    `flex: 1` KAZAŁ KONTROLCE ZJEŚĆ CAŁE WOLNE MIEJSCE RZĘDU, więc pole wyboru
    z napisem „Task" stało tak samo szerokie jak sąsiadujące z nim pole tekstowe
-   na etykietę (`SettingsSurface.tsx:1639-1675`). Reguła nad tą zbiera pola
+   na etykietę (`SettingsSurface.tsx:3285-3322`). Reguła nad tą zbiera pola
    tekstowe I kontrolkę wyboru w jeden materiał — i to jest słuszne, prototyp
    trzyma `.st-input` i `.st-select` w jednej geometrii — ale `flex: 1` jest
    właściwością POLA TEKSTOWEGO: pole rośnie, bo rośnie jego treść. Kontrolka
@@ -10393,7 +10472,7 @@ kbd {
 }
 
 /* `:not(.primary-button)` NIE JEST OZDOBĄ SELEKTORA — jest całą pozycją #4.
-   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:822-825`) ma 0,1,0,
+   Ta reguła ma specyficzność 0,2,1, a `.primary-button` (`:826-829`) ma 0,1,0,
    więc bez zawężenia dopisanie klasy do przycisku zostawiłoby go dokładnie
    w tym samym drugoplanowym wypełnieniu, a znacznik i tak czytałby się
    poprawnie. To jest ta sama klasa awarii, którą lot 5 oddał na `:hover`
@@ -10412,7 +10491,7 @@ kbd {
    JEDEN `:not()` Z LISTĄ, A NIE DWA `:not()` PO SOBIE — I TO NIE JEST STYL.
    Łańcuch `:not(.primary-button):not(.settings-row)` waży 0,3,1, a to o stopień
    WIĘCEJ niż 0,2,1 sprzed dopisku — i o stopień więcej niż
-   `.settings-control.support-report-action > button` (`:8909`), które waży
+   `.settings-control.support-report-action > button` (`:8942`), które waży
    dokładnie 0,2,1 i wygrywało dotąd KOLEJNOŚCIĄ. Zmierzone, nie wydedukowane:
    z łańcuchem sonda wierności zameldowała przycisk raportu wsparcia jako
    `oklch(100% 0 0 / 0.76)` zamiast akcentu, w obu motywach. `:not(a, b)` bierze
@@ -10434,7 +10513,7 @@ kbd {
 }
 /* DRUGA POŁOWA WPISU #71 REJESTRU, ODDANA NA POMIARZE, NIE NA ODCZYCIE — i to
    jest istotne, bo dwa odczyty kodu stały tu naprzeciwko siebie. Komentarz przy
-   `.settings-control select` (`:9934-9953`, lot C5) mówił „wysokość NIE JEST
+   `.settings-control select` (`:10013-10032`, lot C5) mówił „wysokość NIE JEST
    wadą, bo `.settings-control button` ma tę samą podłogę 2,75 rem"; przeliczenie
    Fazy D mówiło „teza wpisu stoi, bo sąsiednie POLE TEKSTOWE nie deklaruje
    żadnej podłogi". Obie prozy były prawdziwe i żadna nie była zmierzona.
@@ -10486,7 +10565,7 @@ kbd {
 /* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,
    czyli dokładnie tam, gdzie stała, więc remis z
    `.settings-control.support-report-action > button:hover:not(:disabled)`
-   (`:8923`) dalej rozstrzyga kolejność, a nie ten dopisek. */
+   (`:8956`) dalej rozstrzyga kolejność, a nie ten dopisek. */
 .settings-control
   button:not(.primary-button, .settings-row):not(:disabled):hover {
   background: var(--action-secondary-hover);

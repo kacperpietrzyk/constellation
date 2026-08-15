@@ -45,8 +45,9 @@ const openLabels: {
   opportunity: openVerb("opportunity", "opportunity"),
   document: openVerb("document", "document"),
   // Wrzut nie prowadzi do rekordu, tylko do HISTORII wrzucania — tam widać, co
-  // się z nim stało. Rejestr zna ten rodzaj pod `inspectorSurface: "library"`
-  // — Historia wrzutek jest odczytem Biblioteki, nie własnym celem.
+  // się z nim stało. Rejestr zna ten rodzaj pod `inspectorSurface: "captures"`
+  // (`contracts/src/record-kind-registry.ts`) — od lotu D3 Historia wrzutek
+  // jest WŁASNYM celem nawigacji, a nie odczytem Biblioteki za zakładką.
   capture: `${openVerb("capture", "capture")} history`,
 };
 

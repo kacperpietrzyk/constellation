@@ -49,11 +49,11 @@
 //
 // REGUŁA: tło jest legalne, jeżeli (a) jest W PEŁNI PRZEZROCZYSTE — arkusz
 // mówi „background: transparent" 38 razy i mówi to świadomie (`.ghost-button`,
-// `styles.css:885`) — albo (b) rozwiązuje się do wartości Z PALETY TOKENÓW tej
+// `styles.css:889`) — albo (b) rozwiązuje się do wartości Z PALETY TOKENÓW tej
 // strony. Paleta NIE JEST WPISANA: bierze się ją z żywych własności `--*` na
 // korzeniu dokumentu i rozwiązuje SONDĄ W TEJ SAMEJ STRONIE, przez TĘ SAMĄ
 // właściwość, którą czyta podmiot (mechanika `expect.kind: "token"`,
-// `verify-renderer-layout.mjs:3732-3749`). Bez tego „oklch(…)" nigdy nie
+// `verify-renderer-layout.mjs:3779-3796`). Bez tego „oklch(…)" nigdy nie
 // zrównałoby się z „rgb(…)", a przyrząd meldowałby rozjazd na samej notacji.
 //
 // CZEGO TU CELOWO NIE MA I DLACZEGO — bo literał farby byłby dokładnie tą wadą,
@@ -71,7 +71,7 @@
 //   * NIE MA UZNAWANIA WARTOŚCI WYPROWADZONYCH Z TOKENU, i to jest ŚWIADOME.
 //     Legalne jest tło RÓWNE rozwiązanemu napisowi tokenu, więc
 //     `color-mix(in oklch, var(--surface-stage), transparent 22%)`
-//     (`styles.css:4941`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
+//     (`styles.css:4959`) NIE jest w palecie i wychodzi jako `OFF_PALETTE` —
 //     czyli werdykt SPOZA rejestru, czyli PADA. Rozpoznanie takiej wartości
 //     wymagałoby porównania „z dokładnością do alfy" po konwersji przestrzeni
 //     WEWNĄTRZ przyrządu, czyli arytmetyki, której poprawności ten przyrząd nie
@@ -180,7 +180,7 @@ export const CONTROL_PAINT_ARMED = CONTROL_PAINT_STATUS === "enforced";
  * kopii żywej zostawiłaby go zielonym („regex zielony, zachowanie zepsute").
  * Napis przechodzi do `page.evaluate` argumentem i tam odtwarza się przez
  * `new RegExp`, więc obie strony mają dosłownie ten sam wzorzec i rozjazd jest
- * niewykonalny. Kopia w `sweep` (`verify-renderer-layout.mjs:578-581`) NIE
+ * niewykonalny. Kopia w `sweep` (`verify-renderer-layout.mjs:584-587`) NIE
  * została tym objęta — pilnuje innego rejestru i to osobna robota.
  */
 export const CSS_MODULE_HASH_PATTERN = "^_(.+)_[a-z0-9]{5,7}_\\d+$";
@@ -316,7 +316,7 @@ export const KNOWN_CONTROL_PAINT = [];
  * dałaby „zero legalnych kontrolek" i wyglądałaby jak sukces. Trzy świadkowie,
  * trzy różne legalne kształty:
  *
- *   * `ghost-button`  — świadomie PRZEZROCZYSTA (`styles.css:885`). To jest ten
+ *   * `ghost-button`  — świadomie PRZEZROCZYSTA (`styles.css:889`). To jest ten
  *                       świadek, o którego pyta zadanie: kontrolka bez tła,
  *                       która NIE JEST wadą. Zgłoszenie jej byłoby fałszywym
  *                       trafieniem, czyli wadą przyrządu.
@@ -528,7 +528,20 @@ export const CONTROL_PAINT_SURFACE_FLOORS = {
   people: 3, // 5
   renewals: 6, // 11
   meetings: 2, // 4
-  library: 34, // 57
+  // TRZY WPISY ZAMIAST JEDNEGO `library: 34, // 57` (lot D3), i to jest
+  // PRZELICZENIE, nie rozdzielenie starej liczby. Biblioteka była jednym celem
+  // o trzech odczytach, więc spis widział na niej WYŁĄCZNIE Notatki plus trzy
+  // zakładki przełącznika: 57. Po rozdziale spis odwiedza trzy cele i liczy
+  // każdy osobno — zmierzone 2026-08-15, OBA MOTYWY oddały te same liczby co
+  // do jednej kontrolki: notes 41, sources 9, captures 8. Podłoga to 60%
+  // zmierzonego, minimum 1, tą samą regułą co cała tabela.
+  //
+  // SUMA SIĘ NIE ZGADZA I TO JEST SPODZIEWANE: 41 + 9 + 8 = 58 przy dawnych 57.
+  // Trzy zakładki przełącznika zniknęły (−3), a Źródła i Historia wrzutek są
+  // teraz LICZONE, zamiast stać za kliknięciem, którego spis nie robił (+4).
+  notes: 24, // 41
+  sources: 5, // 9
+  captures: 4, // 8
   settings: 44, // 74
 };
 

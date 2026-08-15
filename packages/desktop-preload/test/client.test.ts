@@ -14,13 +14,16 @@ import {
 } from "../src/surface-registry.js";
 
 test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
-  // Dwanaście: `history` wsiąkł w `library` w fali Knowledge, a `access`
-  // i `activity` w `settings` w fali Wycofań — za każdym razem SCALENIE
-  // TREŚCI, a nie skasowanie ekranu. Liczba jest tu wpisana ręcznie i to jest
-  // jej sens: cel nie może wyjść z rejestru ani do niego wejść po cichu, bo
-  // każde takie przejście wymaga wpisu w `retiredDesktopSurfaces` albo osieroca
-  // zapisane sesje.
-  assert.equal(desktopSurfaceRegistry.length, 12);
+  // CZTERNAŚCIE OD LOTU D3, dwanaście przedtem. Historia tej liczby jest
+  // historią scaleń i JEDNEGO rozdziału: `history` wsiąkł w `library` w fali
+  // Knowledge, `access` i `activity` w `settings` w fali Wycofań — za każdym
+  // razem SCALENIE TREŚCI, nie skasowanie ekranu — a lot D3 rozwinął `library`
+  // z powrotem na `notes`, `sources` i `captures`. Liczba jest tu wpisana
+  // ręcznie i to jest jej sens: cel nie może wyjść z rejestru ani do niego
+  // wejść po cichu, bo każde takie przejście wymaga wpisu
+  // w `retiredDesktopSurfaces` albo osieroca zapisane sesje. TEN LOT DOŁOŻYŁ
+  // WPIS `library` DO TAMTEJ MAPY i to jest dowód, że ta asercja zrobiła swoje.
+  assert.equal(desktopSurfaceRegistry.length, 14);
   assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
   assert.equal(
     new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,
@@ -53,7 +56,15 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
       ["people", null],
       ["renewals", null],
       ["meetings", 8],
-      ["library", 9],
+      // DZIEWIĄTKA NIE DRGNĘŁA PRZY ROZDZIALE — i to jest asercja, nie
+      // zapewnienie w prozie. `notes` bierze cyfrę po prototypowym `notes`
+      // (`v3/app.js:167`, `key: "9"`), a dwa nowe cele jej nie dostają, bo
+      // reguła rejestru mówi: cel bez odpowiednika w prototypie nie dostaje
+      // numeru. `sources` odpowiednik MA i on też nie ma `key`; `captures`
+      // nie ma odpowiednika w ogóle.
+      ["notes", 9],
+      ["sources", null],
+      ["captures", null],
       ["settings", null],
     ],
   );
@@ -72,7 +83,24 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
     desktopSurfaceRegistry.every((surface) => surface.icon.length > 0),
     true,
   );
-  assert.equal(isDesktopSurface("library"), true);
+  // DWA CELE NIE NOSZĄ TEGO SAMEGO GLIFU — wpis #31 rejestru przejścia, i do
+  // naprawy po locie D3 nie pilnowało go NIC poza „napis niepusty" wyżej.
+  // Reguła była wtedy spełniona przypadkiem, a spełniona przypadkiem jest
+  // nieodróżnialna od złamanej: kolizję rozstrzyga tu liczba, a nie oględziny.
+  // To jest dokładnie ta kolizja, przez którą Historia wrzutek NIE dostała
+  // prototypowego `clock` — ten glif nosi już Dzisiaj.
+  const icons = desktopSurfaceRegistry.map((surface) => surface.icon);
+  assert.equal(
+    new Set(icons).size,
+    icons.length,
+    "two destinations wear one glyph, so the rail says the same thing twice",
+  );
+  // `library` PRZESTAŁ BYĆ POWIERZCHNIĄ w locie D3 i ta asercja mierzy teraz
+  // dokładnie to: identyfikator, który stał w każdym buildzie 0.2.0, jest dziś
+  // dla rejestru obcy. Jego przeniesienie mieszka w `retiredDesktopSurfaces`
+  // i mierzą je testy powłoki, nie ten.
+  assert.equal(isDesktopSurface("notes"), true);
+  assert.equal(isDesktopSurface("library"), false);
   assert.equal(isDesktopSurface("chat"), false);
   // KAŻDY wpis mówi, którymi drzwiami się w niego wchodzi, i dokładnie JEDEN
   // mówi „trybem". To pole zastąpiło filtr `shortcut !== null`, który stał

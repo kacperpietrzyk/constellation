@@ -105,6 +105,26 @@ const DocumentToolbar = ({
   const command = (run: () => boolean) => {
     if (!disabled) run();
   };
+  // PASEK ZOSTAJE WIDOCZNY NA STAŁE, I TO JEST POZYCJA ZOSTAWIONA OTWARTA
+  // ŚWIADOMIE — wpis 11-5 rejestru przejścia, rozpatrzony w ramach lotu D3
+  // i przez niego NIEZAMKNIĘTY.
+  //
+  // POMIAR: prototyp pod tytułem notatki ma `Export to Markdown` i nic więcej;
+  // ośmiu etykiet tego paska (`B`, `I`, `H2`, `• List`, `1. List`, `Code`,
+  // `Link`, `Link record`) nie ma w nim NIGDZIE. `Export to Markdown` już się
+  // po obu stronach zgadza, więc rozjazdem jest wyłącznie ten pasek.
+  //
+  // DLACZEGO TO NIE JEST ROBOTA DO ZROBIENIA TERAZ: przyczyna jest strukturalna,
+  // nie stylistyczna. Notatka prototypu na tym ekranie jest DO CZYTANIA, nasza
+  // jest EDYTOREM. Skopiowanie tamtego paska znaczy odpowiedzieć na pytanie,
+  // GDZIE mieszka edycja — pasek kontekstowy (na zaznaczeniu albo na
+  // ognisku), tryb edycji, czy osobny ekran — a decyzja D3 tego pytania NIE
+  // ROZSTRZYGNĘŁA: rozstrzygnęła, ile Biblioteka ma pozycji nawigacji.
+  //
+  // ZAKRES KAŻDEJ Z TRZECH ODPOWIEDZI, POLICZONY, ŻEBY PYTANIE DAŁO SIĘ ZADAĆ
+  // RAZ: pasek kontekstowy to jeden komponent; tryb edycji to jeden komponent
+  // plus stan i droga wejścia; rozejście czytania i edycji na dwa ekrany to
+  // przebudowa tej samej klasy, co sam lot D3.
   return (
     <div
       className="document-toolbar"

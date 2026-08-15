@@ -41,14 +41,14 @@
 // Ten sam błąd raz już przepuścił złą liczbę i jest w repozytorium opisany:
 // „Sonda wierności go NIE MIERZYŁA, bo jej podmiotem był selektor
 // `.surface-header h1, h2`, a Spotkania rysują `.meeting-hero`"
-// (`styles.css:4161-4165`). Pasmo = `#surface-title`.closest("header") obejmuje
+// (`styles.css:4179-4183`). Pasmo = `#surface-title`.closest("header") obejmuje
 // jedną regułą wszystkie cztery.
 //
 // ── MIARA, I DLACZEGO NIE JEST PROSTOKĄTEM PASMA ────────────────────────────
 //
 // Kuszące „środek akcji leży wewnątrz prostokąta pasma" jest ZIELONE NA TEJ
 // WADZIE, której szukamy. `.surface-header` ma `flex-wrap: wrap` postawione
-// świadomie (`styles.css:2540-2545`, żeby przy 200% nie robić poziomego paska
+// świadomie (`styles.css:2558-2563`, żeby przy 200% nie robić poziomego paska
 // przewijania), więc pasmo, które ZAWINĘŁO, rośnie tak, żeby objąć OBA rzędy —
 // i akcja w drugim rzędzie leży wtedy „wewnątrz pasma". Prostokąt pasma nie
 // odróżnia więc rzędu tytułu od rzędu pod nim. Pasma rekordu są tu jeszcze
@@ -62,7 +62,7 @@
 // Obie wysokości są ODCZYTANE W TYM SAMYM PRZELOCIE, więc próg rośnie razem
 // z pismem i ta reguła znaczy to samo przy 100%, 200% i 300%. NIE MA TU ANI
 // JEDNEJ LICZBY PIKSELI i nie ma `--header-band-height`: ten token jest
-// `min-height`, czyli podłogą, a nie wysokością pasma (`styles.css:2528-2529`),
+// `min-height`, czyli podłogą, a nie wysokością pasma (`styles.css:2546-2547`),
 // więc wzorzec z niego zbudowany opisywałby pasmo, którego nie ma.
 //
 // ZAPAS JEST DUŻY I ZMIERZONY, żeby nikt nie musiał wierzyć w finezję progu:
@@ -86,7 +86,7 @@
 // potrzebny dalej.)
 //
 // `.ghost-button` do tego zbioru NIE NALEŻY, i to jest pomiar, nie gust. Jest
-// świadomie przezroczysty (`styles.css:885`) — to odpowiednik prototypowego
+// świadomie przezroczysty (`styles.css:889`) — to odpowiednik prototypowego
 // `.btn` bez modyfikatora — i siedzi na rzeczach, które akcją główną nie są:
 // trzy strzałki tygodnia na Kalendarzu i „Areas and initiatives" na Projektach.
 // (Trzeci przykład, „Why read-only?", stał tu do 2026-08-11 i wypadł, bo ta
@@ -96,7 +96,7 @@
 // (jego pasmo NIESIE trzy ghosty, a prototypowy Kalendarz nie ma w paśmie
 // żadnej akcji), czyli czerwień nad ekranem, o którym rejestr rozjazdów nie ma
 // nic do powiedzenia. Wypełnienie niosą `--action-primary-bg` i
-// `--action-secondary-bg` (`styles.css:824`, `:859`) — i to są dwie klasy niżej.
+// `--action-secondary-bg` (`styles.css:828`, `:863`) — i to są dwie klasy niżej.
 //
 // TEN SAM PREDYKAT MUSI STAĆ PO STRONIE PROTOTYPU, i to jest wada, która ten
 // przyrząd już raz miała: kolumna `today` liczyła wyłącznie przyciski
@@ -507,8 +507,8 @@ export const TITLE_BAND_PROTOTYPE_OPENING_STATES = [
 // przelot tej osi przy 200% nie chodzi, więc obietnica nie miała świadka. Po
 // drugie, gdyby chodził, ta oś byłaby tam CZERWONA z powodu, który ten sam
 // plik ma zapisany dwa razy wyżej: `--header-band-height` jest PODŁOGĄ
-// (`min-height`, `styles.css:2528-2529`), a przy 200% pisma pasmo świadomie się
-// zawija (`flex-wrap: wrap`, `styles.css:2540-2545`) i rośnie ponad nią —
+// (`min-height`, `styles.css:2546-2547`), a przy 200% pisma pasmo świadomie się
+// zawija (`flex-wrap: wrap`, `styles.css:2558-2563`) i rośnie ponad nią —
 // asercja RÓWNOŚCI (±0,5 px) mówiłaby wtedy „SHELL_BAND_OFF" o produkcie
 // zaprojektowanym tak, jak jest. Sufity kolumny przy 200%/300% mierzą INNE
 // przeloty tego pliku i to jest właściwe miejsce na tamto pytanie.
@@ -728,14 +728,44 @@ export const TITLE_BAND_HEIGHT_ARMED = TITLE_BAND_HEIGHT_STATUS === "enforced";
  * kształtu rozjazdy są DWA i oba są prawdziwe, więc oś nie może zostać
  * uzbrojona, nie kładąc bramki na dostawie, której ten lot nie planował.
  *
- * DLACZEGO NIE POPRAWKA PRODUKTU: trzeci człon (projekt) jest osiągalny, ale
- * człon bieżący prototypu to `t.id.toUpperCase()`, a nasze zadania nie mają
- * ŻADNEGO identyfikatora dla człowieka (`Task` nie niesie `externalId`).
+ * TRZECI ROZJAZD DOŁOŻYŁA NAPRAWA PO PRZEGLĄDZIE LOTU D3, i nie jest to nowa
+ * wada produktu — jest to wada TEGO WIERSZA, naprawiona. Wiersz `sources`
+ * wyszedł z lotu z `prototypeCarries: "SEARCH"` i z cytatem przepisanym
+ * z crumbbara NOTATEK, więc deklarował zgodność, którą jego własny cytat
+ * obalał. Prototyp daje Źródłom samą nazwę i akcję tworzenia
+ * (`v3/screens/knowledge.js:967-968`); my niesiemy tam wyszukiwanie, bo trzy
+ * ekrany wiedzy rysuje JEDEN komponent. Rozjazd jest żywy, więc lista tej osi
+ * ma dziś TRZY pozycje, nie dwie — i warunek uzbrojenia niżej odsuwa się
+ * o tę jedną, zamiast być spełniony przez cytat, który nikt nie sprawdził.
+ * Jego droga do zera jest INNA niż dwóch pozostałych i stoi nazwana niżej.
+ *
+ * DLACZEGO NIE POPRAWKA PRODUKTU — DWA POWODY, BO ROZJAZDY SĄ DWÓCH RODZAJÓW
+ * i mylenie ich zamyka oś fałszywie.
+ *
+ * DWA ROZJAZDY TRASY (`tasks`, `tasks/record:task`): trzeci człon (projekt) jest
+ * osiągalny, ale człon bieżący prototypu to `t.id.toUpperCase()`, a nasze zadania
+ * nie mają ŻADNEGO identyfikatora dla człowieka (`Task` nie niesie `externalId`).
  * Kształt `TRAIL_3_OTHER` jest więc dziś nieosiągalny w całości — to jest
  * „prototyp przed domeną", czyli robota do zapisania, nie defekt do ukrycia.
  *
+ * TRZECI ROZJAZD (`sources`) NIE MA Z TYM NIC WSPÓLNEGO i jego drogi wyjścia nie
+ * wolno czytać z akapitu wyżej. Jest to rozjazd na kolumnie ZAWARTOŚCI, nie na
+ * kształcie trasy, i nie blokuje go żadna nieosiągalna dana: pasmo Źródeł niesie
+ * u nas wyszukiwanie, bo trzy ekrany wiedzy rysuje JEDEN komponent, a prototyp
+ * daje wyszukiwanie tylko Notatkom. Wyjście jest ROZSTRZYGNIĘCIEM, którego nikt
+ * jeszcze nie podjął, i ma dokładnie dwa kształty: (a) zawartość pasma przestaje
+ * być wspólna dla trzech ekranów wiedzy i Źródła tracą kontrolkę wyszukiwania —
+ * wtedy wiersz zamyka się przez produkt; (b) uznajemy, że to prototyp jest tu
+ * gorszy (wyszukiwanie osiągalne z Notatek, a niedostępne z Źródeł, przy tej samej
+ * palecie pod `⌘K`) — wtedy wiersz zamyka się przez przepisanie kolumny prototypu
+ * z NAZWANIEM tej decyzji, tak jak ta fala zrobiła to dwa razy przy innych
+ * wadach wzorca. WŁAŚCICIELEM JEST KACPER, bo to jest pytanie o produkt, nie
+ * o przyrząd, i do czasu odpowiedzi rozjazd ma stać ŻYWY i drukowany.
+ *
  * WARUNEK PRZEŁĄCZENIA, rozstrzygalny tak samo jak przy trzech osiach wyżej:
- * `TITLE_BAND_CARRIES_DIVERGENCES` jest PUSTE.
+ * `TITLE_BAND_CARRIES_DIVERGENCES` jest PUSTE. Dziś ma trzy pozycje i każda
+ * z nich ma wyżej nazwaną SWOJĄ drogę do zera — warunek bez tego byłby
+ * spełnialny wyłącznie przez skreślenie wiersza.
  */
 export const TITLE_BAND_CARRIES_STATUS = "pending";
 export const TITLE_BAND_CARRIES_ARMED =
@@ -1132,7 +1162,7 @@ export const TITLE_BAND_ROWS = [
     // pamięta. Nikt tego nie złapał, bo jedyna asercja nad tym polem sprawdza
     // jego DŁUGOŚĆ. Adres, który nie prowadzi do pliku, jest przy odbiorze
     // nieodróżnialny od adresu, który prowadzi.
-    app: "InboxSurface.tsx:292-309 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
+    app: "InboxSurface.tsx:293-310 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1166,7 +1196,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/settings.js:1003-1006 — `.st-panel-head` to `<h2 id="st-title">` i `.st-panel-sub`, bez slotu akcji; tryb nie woła crumbbara w ogóle',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "SettingsSurface.tsx:1085-1098 — po locie L2 pasmo to <h1>, .settings-band-sub na wspólnej linii bazowej i `settings-help-entry` (klasa spoza zbioru akcji); nadtytuł „Workspace” i opakowanie zeszły",
+    app: "SettingsSurface.tsx:1142-1155 — po locie L2 pasmo to <h1>, .settings-band-sub na wspólnej linii bazowej i `settings-help-entry` (klasa spoza zbioru akcji); nadtytuł „Workspace” i opakowanie zeszły",
     prototypeStack: "ONE_ROW",
     // JEDYNY EKRAN PROTOTYPU BEZ CRUMBBARA, więc jedyny z własnym cytatem na
     // tej osi — i tym mocniejszy, bo prototyp trzyma tu głowę jako RZĄD.
@@ -1435,14 +1465,16 @@ export const TITLE_BAND_ROWS = [
     todayTrail: "NO_TRAIL",
   },
   {
-    id: "library",
+    id: "notes",
     prototype: "action",
     prototypeRow: "IN_BAND",
     prototypeInline: "FLUSH_END",
-    cite: "v3/screens/knowledge.js:802-804 („New note”, primary) i :967-968 („Add a source”, primary)",
+    cite: 'v3/screens/knowledge.js:802-804 — crumbbar(„Notes”, … + btn("New note", { cls: "primary", icon: "plus" }))',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "library/LibraryShell.tsx:158-175 — po locie L2 pasmo nosi też klasę `surface-header` (jedna wysokość z pozostałymi), a jego prawa strona to cicha kontrolka „Search notes and records” z glifem skrótu plus slot akcji, do którego NotesReading i SourcesReading wstrzykują swoją akcję portalem; nadtytuł „Sources and deliverables” zszedł",
+    app:
+      "library/LibraryShell.tsx — `KnowledgeSurface` rysuje JEDNO pasmo nad wszystkimi trzema ekranami wiedzy: `<h1>` z nazwą TEGO ekranu (lot D3 — do niego stało tam słowo „Library”), cicha kontrolka „Search notes and records” z glifem skrótu i slot akcji, do którego odczyt wstrzykuje swoją akcję portalem" +
+      " — na Notatkach jest to „New note” (NotesReading.tsx)",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1460,11 +1492,105 @@ export const TITLE_BAND_ROWS = [
     prototypeTrail: "NO_TRAIL",
     citeTrail: NO_TRAIL_CITE,
     todayTrail: "NO_TRAIL",
-    // JEDEN WIERSZ NA DWA WPISY REJESTRU, i to jest świadome. Rejestr filuje
-    // Notatki i Źródła osobno, bo porównywał ZRZUTY dwóch ekranów. Pasmo jest
-    // JEDNO — ten sam `LibraryShell` nad każdym z trzech odczytów, z tym samym
-    // tytułem i tym samym brakiem slotu akcji — więc policzenie go dwa razy
-    // byłoby dopisaniem podmiotu, którego nie ma. Poprawka też jest jedna.
+    // TRZY WIERSZE ZAMIAST JEDNEGO, I TO JEST ODWRÓCENIE POPRZEDNIEJ NOTY.
+    // Stało tu: „JEDEN WIERSZ NA DWA WPISY REJESTRU … pasmo jest JEDNO … więc
+    // policzenie go dwa razy byłoby dopisaniem podmiotu, którego nie ma".
+    // Pasmo dalej jest jedno (ten sam komponent), ale EKRANY są od lotu D3 trzy
+    // i każdy ma własny wpis w rejestrze powierzchni — a ten przyrząd chodzi
+    // po REJESTRZE, nie po komponentach: jego własny test żąda wiersza dla
+    // każdej powierzchni i powierzchni dla każdego wiersza. Kolumny `today`
+    // NIE SĄ przez to przepisane trzy razy na wiarę: różnią się na osi akcji,
+    // bo Historia wrzutek nie wstrzykuje w slot niczego.
+  },
+  {
+    id: "sources",
+    prototype: "action",
+    prototypeRow: "IN_BAND",
+    prototypeInline: "FLUSH_END",
+    cite: 'v3/screens/knowledge.js:967-968 — crumbbar(„Sources”, … + btn("Add a source", { cls: "primary", icon: "plus" }))',
+    today: "IN_BAND",
+    todayInline: "FLUSH_END",
+    app:
+      "library/LibraryShell.tsx — `KnowledgeSurface` rysuje JEDNO pasmo nad wszystkimi trzema ekranami wiedzy: `<h1>` z nazwą TEGO ekranu (lot D3 — do niego stało tam słowo „Library”), cicha kontrolka „Search notes and records” z glifem skrótu i slot akcji, do którego odczyt wstrzykuje swoją akcję portalem" +
+      " — na Źródłach jest to „Add a source” (SourcesReading.tsx)",
+    prototypeStack: "ONE_ROW",
+    citeStack: CRUMBBAR_ONE_ROW_CITE,
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NOT_2XL",
+    citeOpening: NOT_2XL_CITE,
+    todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "SHELL_BAND",
+    citeHeight:
+      "v3/app.css:282-283 — `.crumbbar { min-height: var(--header-band-height) }`, ta sama deklaracja co `.viewbar` (`:295-297`): prototyp ma JEDNĄ wysokość pasma na wszystkie ekrany",
+    todayHeight: "SHELL_BAND",
+    // ROZJAZD, NIE ZGODA — i pierwsza wersja tego wiersza mówiła odwrotnie, bo
+    // przepisała wartość i cytat z wiersza Notatek. Zmierzone u źródła:
+    // `grep -rn 'act: "palette"' v3/` daje JEDNO trafienie (`knowledge.js:803`,
+    // crumbbar NOTATEK), a crumbbar Źródeł (`:967-968`) nie niesie żadnej
+    // kontrolki wyszukiwania. Nasze pasmo niesie ją na wszystkich trzech
+    // ekranach wiedzy, bo rysuje je JEDEN komponent — i to jest właśnie ta
+    // cena rozdziału, którą wiersz ma pokazywać, a nie chować.
+    prototypeCarries: "NAME_ONLY",
+    citeCarries:
+      'v3/screens/knowledge.js:967-968 — `crumbbar(„Sources”, btn("Add a source", { cls: "primary", icon: "plus" }))`: w paśmie Źródeł stoi NAZWA i akcja tworzenia, i nic poza tym. `icon: "search"` pada w całym tym pliku RAZ, w linii 803, czyli w paśmie Notatek',
+    todayCarries: "SEARCH",
+    prototypeTrail: "NO_TRAIL",
+    citeTrail: NO_TRAIL_CITE,
+    todayTrail: "NO_TRAIL",
+  },
+  {
+    id: "captures",
+    // JEDYNY WIERSZ TEJ TABLICY OPRÓCZ REKORDU SZANSY, KTÓRY DEKLARUJE BRAK
+    // PROTOTYPU — i to jest pomiar, nie wygoda. `DESTINATIONS` prototypu
+    // (`v3/app.js:156-169`) mają trzynaście pozycji i historii wrzutek nie ma
+    // wśród nich; przechwyty leżą u niego w Skrzynce (`v3/screens/inbox.js:139`,
+    // `.ib-row-capture`). Ekran istnieje u nas, bo Kacper tak rozstrzygnął
+    // 2026-08-15, a nie dlatego, że prototyp go pokazuje.
+    //
+    // ZADEKLAROWANA ŚLEPA PLAMA, dokładnie jak przy rekordzie szansy niżej:
+    // wiersz jest MIERZONY i DRUKOWANY, ale nie może być rozjazdem, bo nie ma
+    // od czego się rozjechać. Cisza o nim byłaby nieodróżnialna od ekranu
+    // zdrowego — a to jest dokładnie ten wynik, dla którego ta tablica żąda
+    // wiersza na każdą powierzchnię rejestru.
+    prototype: "no-screen",
+    prototypeRow: "NO_ACTION",
+    prototypeInline: "NO_ACTION",
+    cite:
+      "v3: `grep -n capture app.js` daje TRZY trafienia i wszystkie trzy to dok " +
+      "szybkiej wrzutki w powłoce (v3/app.js:565, :2484, :2581) — ani jednego " +
+      "w DESTINATIONS (v3/app.js:156-169, trzynaście pozycji). Napis „Capture " +
+      'history" pada w prototypie RAZ, w nieosiągalnym z nawigacji ' +
+      "viewLibrary (v3/app.js:1373)",
+    today: "NO_ACTION",
+    todayInline: "NO_ACTION",
+    app: "library/LibraryShell.tsx — to samo pasmo, co nad Notatkami i Źródłami, ale ze slotem akcji PUSTYM: Historia wrzutek nie ma akcji tworzenia i „ten ekran nie ma akcji” jest tu odpowiedzią, nie luką (nota w tym samym pliku)",
+    prototypeStack: "NO_SCREEN",
+    citeStack:
+      "v3/app.js:156-169 — prototyp nie ma tego ekranu, więc nie ma czego " +
+      "przyłożyć do stosu pasma",
+    todayStack: "ONE_ROW",
+    prototypeOpening: "NO_SCREEN",
+    citeOpening:
+      "v3/app.js:156-169 — ten sam brak ekranu: nie ma treści, której " +
+      "otwarcie dałoby się porównać",
+    todayOpening: "OPENING_SMALLER",
+    prototypeHeight: "NO_SCREEN",
+    citeHeight:
+      "v3/app.js:156-169 — prototyp nie ma tego ekranu, więc obie kolumny tej " +
+      "osi mówią NO_SCREEN i predykat wyłącza ten wiersz, tak samo jak na " +
+      "osiach 1, 3 i 4",
+    todayHeight: "SHELL_BAND",
+    prototypeCarries: "NO_SCREEN",
+    citeCarries:
+      "v3/app.js:156-169 — prototyp nie ma tego ekranu; kontrolka " +
+      "wyszukiwania, którą pasmo niesie, jest cytatem z Notatek " +
+      "(v3/screens/knowledge.js:803) i mierzy ją tamten wiersz",
+    todayCarries: "SEARCH",
+    prototypeTrail: "NO_SCREEN",
+    citeTrail:
+      "v3/app.js:156-169 — prototyp nie ma tego ekranu, więc nie ma trasy do " +
+      "porównania",
+    todayTrail: "NO_TRAIL",
   },
   {
     id: "projects/record:project",
@@ -1499,7 +1625,7 @@ export const TITLE_BAND_ROWS = [
       "to --text-xl (v3/app.css:651)",
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
     // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
-    // (`styles.css:6950`) jest jedynym żywym konsumentem `--text-2xl`
+    // (`styles.css:6968`) jest jedynym żywym konsumentem `--text-2xl`
     // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
     // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
     // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby
@@ -1947,7 +2073,7 @@ export const classifyTitleBandCensus = ({
     );
   // STRAŻNIK OSI SZÓSTEJ MÓWI „UMIE WRÓCIĆ SAMĄ NAZWĄ", a nie „znalazła trasę".
   // Ten kierunek jest wybrany świadomie: `NAME_ONLY` jest odpowiedzią, której
-  // ta oś ma udzielać na JEDENASTU ekranach z piętnastu, więc detektor
+  // ta oś ma udzielać na JEDENASTU ekranach z siedemnastu, więc detektor
   // zapalający flagę wszędzie jest zepsuty w sposób NIEWIDOCZNY dla porównania
   // z prototypem tylko wtedy, gdy zapala ją na wszystkich naraz. Odwrotny
   // strażnik („ani jednej trasy") byłby czerwony na każdym drzewie, na którym
@@ -1955,7 +2081,7 @@ export const classifyTitleBandCensus = ({
   if (!measured.some((entry) => entry.carries?.state === "NAME_ONLY"))
     failures.push(
       "TITLE_BAND_CARRIES_NEVER_NAME_ONLY: every band in this pass came back carrying something " +
-        "beside the screen's name. Eleven of the fifteen declared screens are MEASURED carrying " +
+        "beside the screen's name. Eleven of the seventeen declared screens are MEASURED carrying " +
         "nothing else (the „todayCarries” column), so " +
         "a pass that finds a search control or a trail on all of them is reading its own " +
         "detectors wrong, not describing the product.",

@@ -211,13 +211,22 @@ test("every destination in the registry renders a surface in the shell work plan
   // ze sobą, a bramka rozmiaru renderera dostałaby całą aplikację na ścieżkę
   // gorącą. Liczba jest tu po to, żeby taka zmiana była widoczna.
   // OSIEM, POTWIERDZONE ŚWIADOMIE: `access` i `activity` wsiąkły w Ustawienia
-  // w fali Wycofań i przestały być celami, więc leniwych celów jest o dwa mniej
-  // niż przed nią. Ścieżka gorąca na tym ZYSKUJE, nie traci — treść lądowała
-  // już w leniwym chunku, a z wejściowego wychodzi jej okablowanie w powłoce;
-  // zmierzona para gzip przed/po stoi w opisie PR-a.
+  // w fali Wycofań i przestały być celami, więc leniwych celów było wtedy o dwa
+  // mniej niż przed nią. Ścieżka gorąca na tym ZYSKAŁA, nie straciła — treść
+  // lądowała już w leniwym chunku, a z wejściowego wyszło jej okablowanie
+  // w powłoce; zmierzona para gzip przed/po stoi w opisie tamtego PR-a.
+  //
+  // DZIESIĘĆ OD LOTU D3, POTWIERDZONE TAK SAMO ŚWIADOMIE. Biblioteka rozwinęła
+  // się na trzy cele nawigacji, wszystkie trzy leniwe. CHUNKÓW NIE PRZYBYŁO
+  // i to jest ta połowa, o którą temu strażnikowi chodzi: trzy klucze mapy
+  // loaderów wołają JEDEN loader (`shell/lazy-surfaces.tsx`), więc kod jedzie
+  // dalej w jednym kawałku, a ścieżka gorąca dostaje tylko trzy wpisy mapy
+  // zamiast jednego. Rozcięcie tego na trzy wejścia byłoby zmianą, którą ten
+  // strażnik ma nazwać — i nazwałby ją, bo `lazySurfaceLoaders` przestałoby
+  // wskazywać na jeden moduł, co asertuje pętla niżej.
   assert.equal(
     lazyDestinations.size,
-    8,
+    10,
     "Zmienił się podział na powierzchnie leniwe i ładowane od razu — potwierdź to świadomie i zaktualizuj też budżet ścieżki gorącej.",
   );
 });
@@ -245,7 +254,17 @@ test("every lazy destination has a loader, and the ones that can be resolved her
   // nie ma znaczyć więcej, niż zmierzono. Dwa pozostałe wyjątki (`activity`,
   // `access`) zniknęły razem ze swoimi celami — obie treści są dziś sekcjami
   // leniwych Ustawień i jadą tym samym loaderem co one.
-  const resolvableHere = ["library", "meetings", "settings"] as const;
+  // Trzy ekrany wiedzy wołają JEDEN loader (lot D3 — powód zapisany
+  // w `shell/lazy-surfaces.tsx`), więc wszystkie trzy są tu wymienione: gdyby
+  // któryś klucz mapy przestał wskazywać na ten sam moduł, ta pętla by to
+  // powiedziała, a asercja kompletności wyżej nie.
+  const resolvableHere = [
+    "notes",
+    "sources",
+    "captures",
+    "meetings",
+    "settings",
+  ] as const;
   for (const id of resolvableHere) {
     assert.ok(
       lazyDestinations.has(id),
