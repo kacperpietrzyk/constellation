@@ -134,7 +134,7 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
  * a jego zapisany powód — „`available` wygasiłoby gałąź «Grant access»" —
  * BYŁ NIEPRAWDĄ, i to sprawdzalną w dwóch linijkach. Napis na tym przycisku
  * bierze się z `platform === "macos" && availability === "permission_required"`
- * (`MeetingsSurface.tsx:613-618`); ta fikstura deklarowała `platform: "other"`,
+ * (`MeetingsSurface.tsx:732-737`); ta fikstura deklarowała `platform: "other"`,
  * więc rysowała „Check again", a „Grant access" NIE POJAWIŁO SIĘ tu ani razu.
  * Koszt, którym uzasadniono odmowę pomiaru, nigdy nie był płacony.
  *
@@ -154,7 +154,7 @@ const result = (projection: QueryProjection): RendererQueryResponse =>
  *
  * CO TA ZAMIANA KOSZTUJE, POWIEDZIANE WPROST. Nadchodzące rysują ALBO stan
  * pusty, ALBO kartę z wierszami — to dwa ramiona jednego wyrażenia
- * (`MeetingsSurface.tsx:819`), a bramka chodzi po JEDNYM adresie
+ * (`MeetingsSurface.tsx:936`), a bramka chodzi po JEDNYM adresie
  * (`verify-renderer-layout.mjs:124`), więc jedna fikstura rysuje jedno ramię.
  * Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (farba karty, farba
  * wpuszczonego wiersza, jego trzy ścieżki, szerokość akcji) przeciwko JEDNEMU

@@ -142,7 +142,7 @@ export type DataSlice<T> =
  * view's data is unavailable right now".
  *
  * `message` stays in the type on purpose, so dropping it is awkward. RENDER IT.
- * `StrategicDepthSurface.tsx:697-716` is the pattern to copy — a `role="status"`
+ * `StrategicDepthSurface.tsx:693-712` is the pattern to copy — a `role="status"`
  * section holding a heading, the slice's own message under a
  * `data-organizations-unavailable` hook, and a "Try again" button wired to
  * `onReload`. Each surface keeps its own heading and its own hook, because five

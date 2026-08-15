@@ -5575,7 +5575,7 @@ const measureTitleBandActionInPage = async ({
   // WIDOCZNOŚĆ MIERZONA TAK SAMO JAK W RESZCIE TEGO PLIKU, i to jest poprawka,
   // nie ozdoba. „Szerokość i wysokość > 0" przepuszcza element 1×1 przycięty
   // `clip: rect(0,0,0,0)` — a dokładnie tak wygląda `#surface-title` w stanie
-  // ładowania Spotkań (`MeetingsSurface.tsx:494` + `.sr-only`,
+  // ładowania Spotkań (`MeetingsSurface.tsx:617` + `.sr-only`,
   // `styles.css:759-766`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
   // całego werdyktu: środek w rogu kadru, tolerancja pół piksela. Dziś ratuje
   // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
@@ -6767,7 +6767,7 @@ const titleBandActionCensus = async (browser) => {
 // zamiast ekranu, zmierzy pary Pipeline'u na powierzchni lądowania i wpisze
 // je wszystkie jako awarię przyrządu.
 const ROUTED_ARRIVAL = {
-  // PipelineSurface.tsx:737 / RenewalsSurface.tsx:785 — deklaracja korzenia
+  // PipelineSurface.tsx:733 / RenewalsSurface.tsx:781 — deklaracja korzenia
   // ekranu, ta sama, z której pary tej mapy biorą przedrostek podmiotu.
   pipeline: "[data-pipeline-surface]",
   renewals: "[data-renewals-surface]",
@@ -6780,7 +6780,7 @@ const ROUTED_ARRIVAL = {
   // Biblioteka: przełącznik soczewek (LibraryShell.tsx:126). Ten sam znacznik,
   // po którym przelot geometrii wylicza obiektywy.
   library: "#main-content [data-layout]",
-  // Spotkania: `MeetingsSurface.tsx:1780` — korzeń ekranu, ta sama klasa, którą
+  // Spotkania: `MeetingsSurface.tsx:2022` — korzeń ekranu, ta sama klasa, którą
   // arkusz obsługuje jako nośnik rynny. Dopisane przy naprawie po przeglądzie
   // lotu D1: pierwsza para tej mapy nad Spotkaniami potrzebowała przystanku,
   // a ekran jest osiągalny dla obu spisów (B1 i B2 mierzą go od lotu D1), więc
@@ -6793,7 +6793,7 @@ const ROUTED_ARRIVAL = {
   // ekranami CRM-owej listy. MARKEREM JEST WIERSZ, A NIE KORZEŃ EKRANU, i to
   // jest wybór, nie skrót: `[data-organizations-surface]` /
   // `[data-people-surface]` niesie także gałąź ODMOWY (`StrategicDepthSurface
-  // .tsx:739`, `PeopleSurface.tsx:530`), więc ekran, który nie umiał zapytać
+  // .tsx:739`, `PeopleSurface.tsx:526`), więc ekran, który nie umiał zapytać
   // o dane, potwierdziłby przyjazd i wpuściłby cały lot w `NOT_MEASURED`
   // z przyczyną wyglądającą jak zły selektor. Wiersza w tym stanie nie ma.
   organizations: "#main-content [data-org-row]",
@@ -6859,7 +6859,7 @@ const ROUTED_RECORD_KIND = {
   // first card in board order, which is stage order, which puts the deal that
   // has nothing priced yet first — so a pair about offers opened a record with
   // none. A door scoped by `[data-pipeline-column]` is still declaration-based
-  // (`PipelineSurface.tsx:406` stamps the stage id from the closed dictionary
+  // (`PipelineSurface.tsx:402` stamps the stage id from the closed dictionary
   // in `commercial-defaults.ts:140`), and it opens the same KIND.
   '[data-pipeline-column="negotiation"] [data-pipeline-card]': "opportunity",
 };

@@ -1056,8 +1056,8 @@ kbd {
    pierścienia, wyżej w tym pliku. */
 /* WYPEŁNIENIE JEST TU, NA KONTROLCE, A NIE W `--action-primary-bg`, i to jest
    ograniczenie zakresu, nie wygoda: ten token czytają jako tło jeszcze SZEŚĆ
-   innych reguł w TRZECH arkuszach (policzone: `styles.css:567`, `:6122`,
-   `:10400`, `:10584`, `tasks/saved-view-filters.module.css:124`,
+   innych reguł w TRZECH arkuszach (policzone: `styles.css:567`, `:6261`,
+   `:10539`, `:10723`, `tasks/saved-view-filters.module.css:124`,
    `record/record-comments.module.css:415`), a warunek właściciela mówi
    o JEDNEJ parze. Gradient w tokenie wciągnąłby je wszystkie pod jedno
    zwolnienie wydane na jedną kontrolkę. Skrót
@@ -2299,7 +2299,7 @@ kbd {
    POPRAWIONE PO PRZEGLĄDZIE: zdanie „czyta ją wyłącznie to, co NIE jest
    ekranem" stało tu w pierwszej wersji tej noty i BYŁO NIEPRAWDĄ. Pełny
    kontekst organizacji (`.organization-context`) niesie `surface-header`,
-   eyebrow i `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1778-1783`),
+   eyebrow i `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1774-1779`),
    czyli komplet trzech znaków ekranu — a brał stąd 72rem. Od naprawy L1
    deklaruje własne 92rem w `organization-context.css`, z powodem zapisanym
    tam, nie tutaj. Nie widzi tego żadna para, bo żadna trasa bramki układu tam
@@ -2751,10 +2751,10 @@ kbd {
    SPRAWDZONE, ŻE NIE ŁAPIE NIKOGO PRZYPADKIEM. Wszystkie sześć pozostałych
    miejsc rysujących `.surface-header` trzyma je o poziom GŁĘBIEJ, więc żadne nie
    jest bezpośrednim dzieckiem `.work-surface`: Spotkania w `<section
-   class="meeting-surface">` (`MeetingsSurface.tsx:1767`), ekran rekordu projektu
+   class="meeting-surface">` (`MeetingsSurface.tsx:2009`), ekran rekordu projektu
    w `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`), pełny kontekst
    organizacji w `.surface-scroll.organization-context`
-   (`StrategicDepthSurface.tsx:1778`), historia wrzutek w
+   (`StrategicDepthSurface.tsx:1774`), historia wrzutek w
    `.surface-scroll.history-surface` (`CaptureHistoryReading.tsx:199`),
    Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:1047`)
    i martwy `TasksSurface` w `.surface-scroll` (`Wave2Surfaces.tsx:196`).
@@ -5298,10 +5298,75 @@ kbd {
   font-weight: 500;
   letter-spacing: -0.015em;
 }
-.meeting-event-body > p {
+/* TYTUŁ I MIEJSCE NA JEDNEJ LINII BAZOWEJ — prototypowe `.mt-up-head`
+   (`v3/screens/meetings.css:76`). `flex-wrap`, bo drugi element jest `nowrap`
+   i przy wąskim wierszu musi mieć gdzie zejść. */
+.meeting-event-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.meeting-event-where {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+/* ── KTO BĘDZIE (wpis 10-3, oś pierwsza) ─────────────────────────────────
+   `.mt-room` / `.mt-person` / `.mt-person-name` prototypu
+   (`v3/screens/meetings.css:86-91`). Szczeliny na ROLĘ tu nie ma — powód
+   stoi przy renderze w `MeetingsSurface.tsx` i jest to fakt o kontrakcie
+   (`CalendarAttendeeSchema` nie niesie stanowiska), nie o tym arkuszu.
+   Deklaracja pustego miejsca „na przyszłość" obiecywałaby coś, czego nikt
+   nie ma czym zająć. */
+.meeting-room {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.meeting-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+/* TEN SAM KSZTAŁT, CO AWATAR NA ORGANIZACJACH / LUDZIACH / LEJKU /
+   ODNOWIENIACH — i to zdanie jest tu dopiero po przeglądzie adwersarialnym,
+   bo wpis 10-3 napisał je nad kółkiem, które było o wszystko INNE: 1,25 rem
+   zamiast 1,5 rem, `--border-default` zamiast `--border-subtle`, wypełnienie
+   `--surface-raised` zamiast żadnego i BEZ `flex: none`. Ostatnia różnica
+   była wadą, a nie odcieniem: imię obok jest `nowrap`, więc w wąskim wierszu
+   zgniatało kółko. Wartości są wyrównane do bliźniaka
+   (`organizations/organizations.module.css:373-384`).
+   DWIE DEKLARACJE ZOSTAJĄ I JEST TO POWIEDZIANE WPROST: bliźniak mieszka
+   w module CSS pojedynczego ekranu, a ta reguła w arkuszu globalnym, więc
+   jednej nie da się złożyć z drugiej bez przeniesienia jednej z nich do
+   cudzej warstwy. Nie rozjeżdża się za to ALGORYTM: inicjały liczy jedna
+   funkcja `initialsOf` (`src/initials.ts`) dla wszystkich sześciu miejsc. */
+.meeting-person-avatar {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  line-height: 1;
+}
+.meeting-person-name {
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+.meeting-room-none {
   margin: 0;
   color: var(--text-quaternary);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
 }
 /* Provenance rail — the canonical chain motif (meeting lifecycle, onboarding
    Capture → Praca → Wynik). Reuse for any ordered provenance sequence. */
@@ -5330,75 +5395,135 @@ kbd {
   color: var(--text-quaternary);
   border-style: dashed;
 }
-/* ŁĄCZNIK O STAŁEJ DŁUGOŚCI — TYLKO W TYM WIERSZU, i to jest naprawa regresji,
-   którą ten lot sam wprowadził. Reguła bazowa wyżej daje łącznikowi `flex:
-   1 1 1.5rem`, czyli udział w CAŁEJ wolnej szerokości; do tej pory nigdy tego
-   nie robiła w wierszu spotkania, bo szyna nadpisywała cały motyw na pionowy
-   — własną, skasowaną razem z nią regułą nad `.evidence-thread`, w której
-   kreska miała 1×8 px. Po skasowaniu szyny dwie kreski zaczęły wchłaniać całą
-   nadwyżkę wiersza — zmierzone w oknie 1675 px: ~700 px na kreskę, czyli
-   łańcuch pochodzenia czytany jako dwie długie linie z trzema plakietkami na
-   końcach. Reguła bazowa ZOSTAJE NIETKNIĘTA, bo dzieli ją onboarding
-   (`OnboardingFlow.tsx:126-133`), gdzie rozciąganie jest zamierzone; ten
-   nadpis jest wąski jak wiersz, którego dotyczy. */
-.meeting-event .evidence-thread i {
-  flex: 0 0 1.5rem;
+/* NADPIS `.meeting-event .evidence-thread i` ZSZEDŁ RAZEM ZE SWOIM PODMIOTEM
+   (wpis 10-3, oś druga). Trzymał kreskę łańcucha prowenancji na stałej
+   długości, bo reguła bazowa daje jej `flex: 1 1 1.5rem` i po przeniesieniu
+   wiersza na pełną szerokość dwie kreski wchłaniały całą nadwyżkę (~700 px
+   każda, zmierzone w oknie 1675 px przy locie D7). Łańcuch
+   `Event → Fact brief → Jamie result after` jest NASZ — prototypowy tor
+   środkowy niesie zamiast niego `.mt-room` i `.mt-prep` — więc wpis 10-3
+   zdejmuje go z tego wiersza, a nadpis bez podmiotu byłby martwą deklaracją
+   udającą regułę. REGUŁA BAZOWA ZOSTAJE NIETKNIĘTA: dzieli ją onboarding
+   (`OnboardingFlow.tsx:126-133`), gdzie rozciąganie jest zamierzone.
+   Nieobecność łańcucha w tym wierszu jest ZMIERZONA, nie założona — para
+   `D7-01f` w `scripts/visual-language-pairs.mjs` liczy go na zero, w miejsce
+   skasowanej `D7-01e`, która czytała `flexGrow` tej kreski. */
+/* ── CO WNOSISZ DO ROZMOWY (wpis 10-3, oś druga) ─────────────────────────
+   Prototypowe `.mt-prep` (`v3/screens/meetings.css:107`) jest kolumną pozycji,
+   a każda POZYCJA jest siatką `13rem minmax(0, 1fr) auto`
+   (`meetings.css:108-112`): klucz, wartość i CEL.
+   ŚCIEŻKI SĄ TRZY I TRZECIA STOI DZIŚ PUSTA — to jest zapisane, a nie
+   przemilczane. Wpis 10-3 postawił w niej pigułkę celu; przegląd
+   adwersarialny zmierzył, że prowadziła pod adres, którego nie ma
+   (`recordId` dowodu jest identyfikatorem work-itemu, nie nazwanego rekordu —
+   pełny powód przy renderze), więc pigułka zeszła z wiersza.
+   ŚCIEŻKA ZOSTAJE, bo deklaruje ją prototyp i deklaruje ją BEZWARUNKOWO
+   (`meetings.css:108-112` — `13rem minmax(0, 1fr) auto`), a `auto` nad pustą
+   komórką liczy się jako 0 px: nie ma tu martwego pasa przy żadnej
+   z mierzonych szerokości. Zwężenie do dwóch ścieżek byłoby zapisaniem
+   naszego braku jako kształtu docelowego. Warunek wyjścia stoi przy wpisie
+   `ROUTED_NOT_COVERED` (lot D7, pozycja 1). */
+.meeting-prep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
-/* PARY „ETYKIETA — WARTOŚĆ” STOJĄ W DWÓCH ŚCIEŻKACH, nie jedna pod drugą.
-   Prototypowe `.mt-prep` jest kolumną pozycji (`v3/screens/meetings.css:107`),
-   ale każda POZYCJA jest siatką z osobną ścieżką klucza
-   (`meetings.css:108-112`, `13rem minmax(0, 1fr) auto`). Stos etykieta-nad-
-   wartością był drugą połową geometrii szyny: w wierszu na 1136 px zostawiał
-   „Orientation” samotnie w linii szerokiej na całą treść. Pojemnik zostaje
-   jedną kolumną, bo to jest `.mt-prep`.
-   ŚCIEŻKI SĄ DWIE, NIE TRZY, I TO JEST ADAPTACJA, NIE PRZEOCZENIE: trzecia
-   ścieżka prototypu (`auto`) niesie u niego znacznik na końcu pozycji, a nasza
-   para ma dokładnie dwoje dzieci — `<strong>` i `<span>`. Pusta ścieżka
-   zajmowałaby zero pikseli i nie zmieniała nic poza tym, że reguła obiecywałaby
-   miejsce, którego nikt nie zajmuje. Jedyne miejsce renderu: `MeetingsSurface
-   .tsx:934`, czyli wnętrze wiersza nadchodzących. */
-.meeting-brief {
+.meeting-prep-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-.meeting-brief > div {
-  display: grid;
-  grid-template-columns: 13rem minmax(0, 1fr);
-  gap: var(--space-1) var(--space-2);
+  grid-template-columns: 13rem minmax(0, 1fr) auto;
+  gap: var(--space-2);
   align-items: baseline;
+  border-left: 2px solid var(--border-default);
+  padding-left: var(--space-2);
 }
-.meeting-brief strong {
-  color: var(--text-tertiary);
+/* PEŁNA NAZWA MODYFIKATORA, NIE NAGIE `.warn` — prototyp ostrzega przed nagim
+   modyfikatorem własnym komentarzem w pierwszych linijkach `meetings.css`
+   („`.mt-mark-kept`, nigdy `.mt-mark.kept`"), bo nagi łapie globalne `.warn`
+   z arkusza powłoki i psuje geometrię wiersza. Ten defekt trafił v2 dwa razy
+   i był wykrywalny wyłącznie pomiarem. */
+.meeting-prep-item--warn {
+  border-left-color: color-mix(
+    in oklab,
+    var(--status-warning) 52%,
+    transparent
+  );
+}
+.meeting-prep-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  color: var(--text-quaternary);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  white-space: nowrap;
 }
-.meeting-brief span {
+.meeting-prep-item--warn .meeting-prep-k {
+  color: var(--status-warning);
+}
+.meeting-prep-k svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.meeting-prep-v {
+  min-width: 0;
   color: var(--text-secondary);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-/* ZMIERZONE W PRZEGLĄDARCE, NIE WYWNIOSKOWANE Z DIFFA. Szyna nadpisywała tę
-   kontrolkę `justify-self: stretch`, a plan lotu D7 mówił, że skasowanie
-   nadpisu wystarczy, bo reguła bazowa jest poprawna na pełnej szerokości. NIE
-   BYŁA: `.meeting-event` jest siatką, a domyślne `justify-items: stretch`
-   rozciąga element siatki tak samo jak skasowany nadpis. Zmierzone po
-   rekompozycji w oknie 1675 px: przycisk 1470 px szerokości. Reguła bazowa
-   nigdy nie była wystawiona na próbę, bo ten wiersz istniał WYŁĄCZNIE w szynie.
-   POWÓD PRZEPISANY PRZY ODBIORZE, BO POPRZEDNI PRZESTAŁ BYĆ PRAWDĄ, I DRUGI
-   RAZ PO POMIARZE. Powoływał się na „jednokolumnowy wiersz, w którym akcja
-   stoi POD treścią”, a wiersz ma odtąd trzy ścieżki i akcja stoi OBOK niej,
-   w trzeciej. Powoływał się też na zapytanie 47,5 rem jako na miejsce, gdzie
-   ta deklaracja pracuje — nie pracuje tam: przycisk dostaje w nim własne
-   `width: 100%` niżej i jest to zamierzone, bo tam wiersz jest węższy od
-   napisu. Zmierzone po rekompozycji w oknie 1440 px: ścieżka trzecia
-   123,047 px przy przycisku 123 px, czyli tę wadę naprawia LICZBA ŚCIEŻEK,
-   a nie ta linijka. Zostaje jako pas bezpieczeństwa nad `justify-items:
-   stretch`, które jest wartością POCZĄTKOWĄ siatki i wraca samo, gdyby wiersz
-   kiedykolwiek stracił trzecią ścieżkę — czyli dokładnie w tej postaci, w
-   której zmierzono 1470 px. */
+.meeting-prep-dot {
+  color: var(--text-disabled);
+}
+.meeting-prep-none {
+  margin: 0;
+  color: var(--text-disabled);
+  font-size: var(--text-2xs);
+}
+/* TRZECIA ŚCIEŻKA WIERSZA JEST OGONEM — prototypowe `.mt-up-tail`
+   (`v3/screens/meetings.css:126`). Do wpisu 10-3 trzecim dzieckiem siatki był
+   SAM przycisk; odtąd stoi w nim plakietka dostawcy i przycisk, bo dostawca
+   należy do wiersza, a nie tylko do sekcji (oś czwarta wpisu). Liczba ścieżek
+   się nie zmienia — para `D7-01d` (`tracks equals 3`) pilnuje tego dalej. */
+.meeting-event-tail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: 0.0625rem;
+}
+/* PLAKIETKA DOSTAWCY PRZY WIERSZU. Ten sam kształt, co `.meeting-sec-lock`
+   przy nagłówku sekcji, i to jest zamierzone: prototyp ma OBIE
+   (`v3/screens/meetings.js:437-438` przy sekcji, `:246-248` przy wierszu),
+   a kontrakt żąda, żeby wpuszczenie wiersza (`--surface-sunken`) nigdy nie
+   niosło znaczenia samo. `.mt-locked` (`v3/screens/meetings.css:130-136`). */
+.meeting-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.125rem 0.5rem;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+.meeting-locked svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+/* PRZYCISK NIE JEST JUŻ ELEMENTEM SIATKI, więc `justify-self` z niego znika —
+   deklaracja, która nic nie robi, czyta się przy następnym czytaniu jak
+   działający zabezpieczacz. Powód, dla którego tam stała, jest zmierzony
+   i przenosi się na ogon: `.meeting-event` jest siatką, a jej POCZĄTKOWE
+   `justify-items: stretch` rozciągało trzecie dziecko na całą ścieżkę —
+   zmierzone po rekompozycji lotu D7 w oknie 1675 px: przycisk 123 px
+   narysowany na 1470 px. Ogon jest `display: flex` i `align-items: center`,
+   więc jego dzieci biorą szerokość z treści niezależnie od tego, co robi
+   siatka wokół; rozciągnięcie samego OGONA na ścieżkę `auto` jest bez skutku,
+   bo `auto` mierzy się jego zawartością. */
 .meeting-block-action {
-  justify-self: start;
   min-height: 2.75rem;
   white-space: nowrap;
 }
@@ -6043,9 +6168,23 @@ kbd {
   .meeting-event > .meeting-block-unavailable {
     grid-column: 1 / -1;
   }
-  .meeting-brief > div,
-  .meeting-brief {
+  /* POZYCJA PRZYGOTOWANIA SKŁADA SIĘ W JEDNĄ KOLUMNĘ, tak jak składała się para
+     etykieta/wartość przed wpisem 10-3. Ścieżka klucza ma 13 rem, czyli ponad
+     połowę wiersza przy 760 px — obok siebie zostawiłaby wartość obciętą do
+     kilku znaków. */
+  .meeting-prep-item {
     grid-template-columns: 1fr;
+  }
+  /* WĄSKO WARTOŚĆ SIĘ ŁAMIE, SZEROKO NIE, i to jest wybór prototypu, nie
+     przeoczenie: `.mt-prep-v` (`v3/screens/meetings.css:120-124`) jest
+     w wierszu listy JEDNĄ linią z wielokropkiem. Powód, dla którego pełna
+     treść nie mieszka w wierszu, stoi przy `evidenceKeyLabel`. */
+  .meeting-prep-v {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .meeting-event-tail {
+    width: 100%;
   }
   .meeting-result-detail {
     padding: var(--space-5);
@@ -8500,7 +8639,7 @@ kbd {
 
    Tło przenosi się na PŁASZCZYZNĘ: powierzchnia czytania zostaje jedna, a nie
    znika. Samo `background: var(--panel-reading-bg)` stoi w regule bazowej
-   `.knowledge-writing-plane` (`:8010`), a nie tu — druga deklaracja tego samego
+   `.knowledge-writing-plane` (`:8149`), a nie tu — druga deklaracja tego samego
    selektora wygrywała kolejnością i czyniła wartość bazową martwą. */
 .knowledge-writing-plane .document-canvas {
   padding: var(--space-5) 0 var(--space-10);
@@ -8924,7 +9063,7 @@ kbd {
   }
   /* MARTWA DEKLARACJA, NIE ZMIANA ZDANIA. Do lotu D3 ten rząd był siatką
      i wąski krok mówił mu `justify-items: start`; lot przeniósł bazę na `flex`
-     (`:7237`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
+     (`:7376`) i nie przejrzał kroków, a `justify-items` w kontenerze flex nie
      robi NIC — więc reguła prosiła o lewą, a kaskada dawała prawą z bazowego
      `justify-content: flex-end`. `width: 100%` zdjęte razem z nią: od lotu L3
      baza rzędu to `flex: 1 1 100%`, więc wypełnia linię przy każdej szerokości.
@@ -10120,7 +10259,7 @@ kbd {
 /* ── KONTROLKA WYBORU BIERZE SZEROKOŚĆ SWOJEJ TREŚCI (Faza C, lot C5) ─────────
    `align-self: start`, A NIE SKREŚLENIE `stretch` — i to jest cała różnica
    między poprawką a jej pozorem. `.settings-control` jest kolumną
-   (`:9005-9011`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
+   (`:9144-9150`), więc jej `align-items` ma domyślne `stretch` i to ONO rozpina
    dziecko na całą szerokość tafli; sam wpis `align-self: stretch` był tu
    powtórzeniem domyślnej wartości i skasowanie go NIE ZMIENIŁOBY NICZEGO.
    Kontrolka wraca do szerokości własnej treści dopiero wtedy, gdy powie
@@ -10130,7 +10269,7 @@ kbd {
    deklaracje mówią o dwóch RÓŻNYCH osiach i sięgają dwóch różnych zbiorów.
    `.settings-control` bywa kolumną (dziecko wprost, np. `#voice-audio-retention`
    — `SettingsSurface.tsx:1990-2003`), ale bywa też pojemnikiem RZĘDÓW
-   (`.settings-control > div` ustawia `display: flex`, `styles.css:10024-10028`),
+   (`.settings-control > div` ustawia `display: flex`, `styles.css:10163-10167`),
    a w rzędzie osią poprzeczną jest PION: `align-self: start` przykleiłoby tam
    kontrolkę do górnej krawędzi rzędu obok rozciągniętych pól tekstowych. Oś
    pozioma w rzędzie to `flex`, i tym zajmuje się reguła niżej.
@@ -10144,7 +10283,7 @@ kbd {
 
    TRZECI KSZTAŁT, DOPISANY PO PRZEGLĄDZIE (2026-08-11): ZAPYTANIE KONTENEROWE.
    Wyliczanka wyżej wymieniała dwa kształty i milczała o `@container (max-width:
-   47.5rem)` (`:10710-10740`), który przewraca `.settings-control > div` w KOLUMNĘ
+   47.5rem)` (`:10849-10879`), który przewraca `.settings-control > div` w KOLUMNĘ
    z `align-items: stretch` i daje polom tekstowym `width: 100%`. Zarzut brzmiał:
    w tym trybie sufit `16rem` obowiązuje kontrolkę, a sąsiednie pole rozpycha się
    na całość, więc parzystość pole↔kontrolka się rozjeżdża.
@@ -10273,7 +10412,7 @@ kbd {
    JEDEN `:not()` Z LISTĄ, A NIE DWA `:not()` PO SOBIE — I TO NIE JEST STYL.
    Łańcuch `:not(.primary-button):not(.settings-row)` waży 0,3,1, a to o stopień
    WIĘCEJ niż 0,2,1 sprzed dopisku — i o stopień więcej niż
-   `.settings-control.support-report-action > button` (`:8770`), które waży
+   `.settings-control.support-report-action > button` (`:8909`), które waży
    dokładnie 0,2,1 i wygrywało dotąd KOLEJNOŚCIĄ. Zmierzone, nie wydedukowane:
    z łańcuchem sonda wierności zameldowała przycisk raportu wsparcia jako
    `oklch(100% 0 0 / 0.76)` zamiast akcentu, w obu motywach. `:not(a, b)` bierze
@@ -10295,7 +10434,7 @@ kbd {
 }
 /* DRUGA POŁOWA WPISU #71 REJESTRU, ODDANA NA POMIARZE, NIE NA ODCZYCIE — i to
    jest istotne, bo dwa odczyty kodu stały tu naprzeciwko siebie. Komentarz przy
-   `.settings-control select` (`:9795-9814`, lot C5) mówił „wysokość NIE JEST
+   `.settings-control select` (`:9934-9953`, lot C5) mówił „wysokość NIE JEST
    wadą, bo `.settings-control button` ma tę samą podłogę 2,75 rem"; przeliczenie
    Fazy D mówiło „teza wpisu stoi, bo sąsiednie POLE TEKSTOWE nie deklaruje
    żadnej podłogi". Obie prozy były prawdziwe i żadna nie była zmierzona.
@@ -10347,7 +10486,7 @@ kbd {
 /* Ta sama lista, ta sama przyczyna: `:not(a, b)` zostawia regułę przy 0,3,1,
    czyli dokładnie tam, gdzie stała, więc remis z
    `.settings-control.support-report-action > button:hover:not(:disabled)`
-   (`:8784`) dalej rozstrzyga kolejność, a nie ten dopisek. */
+   (`:8923`) dalej rozstrzyga kolejność, a nie ten dopisek. */
 .settings-control
   button:not(.primary-button, .settings-row):not(:disabled):hover {
   background: var(--action-secondary-hover);

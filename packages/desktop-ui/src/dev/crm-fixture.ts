@@ -292,7 +292,7 @@ export const crmRecords = (
       // (`:71`) — so EVERY card on this board is stale, permanently, and no
       // value written here changes that. `stageEnteredAt` is read by exactly
       // one place, the "in this stage since …" line on the open deal
-      // (`PipelineSurface.tsx:905-907`).
+      // (`PipelineSurface.tsx:901-903`).
       //
       // The value STAYS and the sentence goes. Two pairs of the visual-language
       // map read the stale badge (L2-05a, L2-05b), so a fixture with no stale

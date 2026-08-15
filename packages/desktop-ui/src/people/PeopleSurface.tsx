@@ -18,6 +18,7 @@ import {
   type MutationFailure,
 } from "../client/workflow.js";
 import { Icon, type IconName } from "../components/Icon.js";
+import { initialsOf } from "../initials.js";
 import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
@@ -97,12 +98,7 @@ const RelationshipSignalChip = ({
 
 const Initials = ({ name }: { readonly name: string }) => (
   <span aria-hidden="true" className={styles.avatar}>
-    {name
-      .split(/\s+/u)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.slice(0, 1).toUpperCase())
-      .join("")}
+    {initialsOf(name)}
   </span>
 );
 

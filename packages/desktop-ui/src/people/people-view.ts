@@ -73,7 +73,7 @@ export interface PersonReading {
    * fact from an empty list and has to stay different all the way to the row.
    * Flattened to `[]` it read as "you are waiting on nobody" — a green
    * all-clear produced by a failure, the one thing a screen may never do with
-   * an unavailable slice (`StrategicDepthSurface.tsx:541-544` is the same
+   * an unavailable slice (`StrategicDepthSurface.tsx:537-540` is the same
    * repair, written down when `readTasks` did this).
    */
   readonly waiting: readonly WaitingOnPerson[] | undefined;

@@ -18,10 +18,11 @@ import {
   ConceptHelpDialog,
   type ConceptHelpTopicId,
 } from "./components/ConceptHelpDialog.js";
-import { Icon } from "./components/Icon.js";
+import { Icon, type IconName } from "./components/Icon.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDate, formatWeekdayTime } from "./i18n.js";
+import { initialsOf } from "./initials.js";
 import {
   attachedNoteAuthorship,
   attachedNotesFor,
@@ -78,6 +79,128 @@ const workItemKindLabel = (item: MeetingWorkItem) => {
       return "Follow-up";
   }
 };
+
+/* ── WIERSZ NADCHODZĄCEGO SPOTKANIA, WPIS 10-3 ────────────────────────────
+   Prototypowy wiersz mówi trzy rzeczy, których nasz nie mówił: KTO będzie
+   (`.mt-room`, `v3/screens/meetings.js:239-242`), CO wnosisz do rozmowy jako
+   nazwane pozycje z wyjściem (`.mt-prep`, `:180-218`) i CZYJ jest ten wpis
+   (`.mt-locked` w trzeciej ścieżce, `:246-248`). Nasz mówił jedną liczbę
+   uczestników, ścieżkę plakietek pochodzenia i dwie pary klucz/wartość,
+   w których wszystkie rekordy jednej grupy były sklejone kropkami w JEDEN
+   napis bez drogi do żadnego z nich. */
+
+/* NAZWA DOSTAWCY POWSTAJE W JEDNYM MIEJSCU, ale ŹRÓDŁO podaje wołający — i to
+   rozróżnienie jest treścią naprawy po przeglądzie adwersarialnym.
+   Ta funkcja stała wcześniej w pliku TRZY RAZY jako dosłownie ten sam ternary
+   (numerów linii nie ma, bo tamtych trzech kopii już nie ma), czyli lista obok
+   `CalendarEventProjectionSchema.provider` / `CalendarCapabilitySchema`.
+   Jedna funkcja usuwa przepisanie, ale NIE WOLNO jej przypiąć do jednego
+   źródła: plakietka przy zdolności i przy nagłówku sekcji mówi o CAŁYM
+   połączeniu (`surface.capability.provider`), a plakietka przy wierszu mówi
+   o TYM wydarzeniu (`event.provider`). Wpis 10-3 wziął dla wiersza dane
+   sekcji i w fiksturze bramki drukował pod wydarzeniem `provider: "fixture"`
+   napis „Apple Calendar” — plakietka mówiła nieprawdę dokładnie w tym
+   przelocie, którym para `D7-02g` dowodziła, że wiersz nazywa dostawcę. */
+const providerLabel = (
+  /* DWA ZAMKNIĘTE SŁOWNIKI, NIE JEDEN, i typ mówi to zamiast komentarza:
+     zdolność zna `"eventkit" | "unconfigured"`, a wydarzenie
+     `"eventkit" | "fixture"`. Wypisanie tych czterech wartości ręką byłoby
+     trzecią listą obok obu słowników; wyprowadzenie z `MeetingLoopSurface`
+     sprawia, że dopisanie dostawcy w kontrakcie zapala tu kompilator. */
+  provider:
+    | MeetingLoopSurface["capability"]["provider"]
+    | MeetingLoopSurface["upcoming"][number]["event"]["provider"],
+) => (provider === "eventkit" ? "Apple Calendar" : "Calendar");
+
+type MeetingBriefEvidence =
+  MeetingLoopSurface["upcoming"][number]["brief"]["orientation"][number];
+
+/* NAZWA POZYCJI JEST RODZAJEM DOWODU, A NIE JEGO TREŚCIĄ, i to jest adaptacja
+   z podanym powodem. Prototyp pisze w kluczu całe zdanie („Waiting 11 days on
+   Piotr Zieliński”), bo jego dane są ręcznie ułożone pod ten wiersz; nasz
+   `MeetingEvidence` niesie `kind`, `label` i `fact`
+   (`packages/contracts/src/meeting-loop.ts:77-93`), a `fact` ma do 2000 znaków.
+   Klucz stoi w ścieżce 13 rem z `white-space: nowrap`, więc zdanie w nim
+   ucięłoby się w połowie na KAŻDYM realnym rekordzie. Rodzaj jest krótki
+   i prawdziwy.
+   ZDANIE ODPOWIADAJĄCE NA „A GDZIE ZMIEŚCI SIĘ TREŚĆ" STAŁO TU I BYŁO
+   NIEPRAWDĄ. Mówiło, że zdanie idzie do wartości, „gdzie ma się gdzie
+   zmieścić". Wartość NIE MA gdzie się zmieścić i jest to ZAMIERZONE po obu
+   stronach: `.meeting-prep-v` jest jednym wierszem z wielokropkiem, dokładnie
+   jak prototypowe `.mt-prep-v` (`v3/screens/meetings.css:120-124` —
+   `overflow: hidden; text-overflow: ellipsis; white-space: nowrap`). Bramka
+   zmierzyła tę ścieżkę na 395,359 px przy `--text-2xs` = 11 px, czyli około
+   siedemdziesięciu znaków. Realny `prior_meeting.fact` to
+   `summaryMarkdown.slice(0, 2000)` — całe podsumowanie spotkania, z którego
+   widać pierwszą linijkę. To jest ograniczenie WIERSZA LISTY, a nie wada tej
+   funkcji: pełna treść należy do ekranu rekordu. Zapisane jako
+   `ROUTED_NOT_COVERED` (lot D7, pozycja 2) z warunkiem wyjścia. */
+export const evidenceKeyLabel = (kind: MeetingBriefEvidence["kind"]) => {
+  switch (kind) {
+    case "project":
+      return "Project";
+    case "task":
+      return "Open task";
+    case "waiting":
+      return "Waiting on";
+    case "decision":
+      return "Open decision";
+    case "note":
+      return "Note";
+    case "prior_meeting":
+      return "Last time";
+  }
+};
+
+const evidenceKeyIcon = (kind: MeetingBriefEvidence["kind"]): IconName => {
+  switch (kind) {
+    case "project":
+      return "project";
+    case "task":
+      return "tasks";
+    case "waiting":
+      return "clock";
+    case "decision":
+      return "flag";
+    case "note":
+      return "documents";
+    case "prior_meeting":
+      return "meetings";
+  }
+};
+
+/* DRZWI NIE MA ŻADNYCH, I TO JEST NAPRAWA PO PRZEGLĄDZIE ADWERSARIALNYM.
+   Stała tu funkcja `evidenceDoor`, która dla rodzajów `task`, `project`
+   i `note` rysowała w trzeciej ścieżce pozycji pigułkę celu, a powłoka
+   otwierała pod jej identyfikatorem ekran rekordu.
+
+   ZMIERZONE W ŹRÓDLE, NIE ZAŁOŻONE: `recordId` dowodu NIE ADRESUJE rekordu,
+   który pozycja nazywa. Jedyny produkcyjny czytnik dowodów
+   (`packages/desktop-main/src/calendar-meeting-loop.ts:290-326`) wpisuje tam
+   `meeting.id` (identyfikator `ImportedMeeting`) albo `item.id`
+   (identyfikator `MeetingWorkItem`) — NIGDY `item.taskId`, mimo że
+   `MeetingWorkItemSchema` (`packages/contracts/src/meeting-loop.ts:308-309`)
+   niesie `taskId` i `projectId` obok. Pigułka `Task →` prowadziła więc pod
+   adres, pod którym nie ma zadania.
+
+   STRAŻNIK, KTÓRY MIAŁ TO ŁAPAĆ, NIE MOŻE ZADZIAŁAĆ. `TaskIdSchema` to
+   `opaqueId<"TaskId">()`, czyli `z.uuid().brand<"TaskId">()`
+   (`packages/contracts/src/ids.ts:3` i `:44`); marka
+   jest WYŁĄCZNIE typowa, a w runtime zostaje gołe `z.uuid()`. Identyfikator
+   work-itemu jest poprawnym uuidem, więc `safeParse` przechodzi zawsze. Obie
+   strony są uuidami i nic ich nie odróżni.
+
+   DLACZEGO USUNIĘCIE, A NIE POPRAWKA. Poprawka jest jedną linią w czytniku
+   (`recordId` ma nieść identyfikator NAZWANEGO rekordu), czyli w pakiecie
+   spoza `desktop-ui` — a ograniczenie tego drzewa roboczego zabrania go
+   ruszać. Wybór jest więc między drzwiami pod zły adres a brakiem drzwi, i ten
+   sam lot rozstrzygnął już raz tę samą sytuację w drugą stronę: ROLI
+   uczestnika nie narysował, bo kontrakt jej nie niesie. Tożsamość celu tak
+   samo nie jest niesiona. Twierdzenie bez odczytu jest gorsze niż milczenie —
+   również wtedy, gdy twierdzeniem jest przycisk.
+
+   Zapisane jako `ROUTED_NOT_COVERED` (lot D7, pozycja 1) z warunkiem wyjścia
+   i jego ceną, więc nie zniknie po cichu. */
 
 const workItemStateLabel = (item: MeetingWorkItem) => {
   switch (item.state) {
@@ -573,11 +696,7 @@ export const MeetingsSurface = ({
     <div
       className={`calendar-capability calendar-capability--${surface.capability.availability}`}
     >
-      <strong>
-        {surface.capability.provider === "eventkit"
-          ? "Apple Calendar"
-          : "Calendar"}
-      </strong>
+      <strong>{providerLabel(surface.capability.provider)}</strong>
       <span>{capabilityCopy(surface)}</span>
       {surface.capability.availability !== "available" && (
         <button
@@ -679,7 +798,7 @@ export const MeetingsSurface = ({
      jest pisana pod akcję Z IKONĄ: chowa etykietę i zostawia glif. Przycisk bez
      `svg` zostawał w tym trybie PUSTYM prostokątem — jedyny taki z sześciu
      ekranów, które oddały akcję pasma, bo pięć pozostałych podaje `<Icon />`
-     (np. `people/PeopleSurface.tsx:519-523`). Bramka układu chodzi przy 320 px
+     (np. `people/PeopleSurface.tsx:515-519`). Bramka układu chodzi przy 320 px
      i wróciła zielona, bo mierzy PRZEPEŁNIENIE, a nie pustkę. */
   const bandAction = (
     <button
@@ -783,9 +902,7 @@ export const MeetingsSurface = ({
             przygotowania, ale nie umie zmienić cudzego wpisu w kalendarzu. */}
         <span className="meeting-sec-lock">
           <Icon name="lock" />
-          {surface.capability.provider === "eventkit"
-            ? "Apple Calendar"
-            : "Calendar"}
+          {providerLabel(surface.capability.provider)}
         </span>
         {/* WPIS 10-4: plakietka ZARAZ ZA kłódką, jak `v3/screens/meetings.js:439`.
             Kłódka mówi CO, plakietka DLACZEGO. Temat jest ten sam, który niosą
@@ -869,74 +986,199 @@ export const MeetingsSurface = ({
                     fikstura bramki układu, a ramię puste — zamiatanie alfy;
                     poprawka jednego bez drugiego zostawiłaby defekt w tym
                     ramieniu, którego akurat NIE mierzy ten przyrząd. */}
-                <h3>{event.title}</h3>
-                <p>
-                  {countLabel(event.attendees.length, "participant")}
-                  {event.location ? ` · ${event.location}` : ""}
-                </p>
-                <div className="evidence-thread">
-                  <span className="evidence-node">Event</span>
-                  <i aria-hidden="true" />
-                  <span className="evidence-node">Fact brief</span>
-                  <i aria-hidden="true" />
-                  <span className="evidence-node evidence-node--muted">
-                    Jamie result after
-                  </span>
-                </div>
-                <div className="meeting-brief">
-                  <div>
-                    <strong>Orientation</strong>
-                    <span>
-                      {brief.orientation.length
-                        ? brief.orientation
-                            .map((item) => item.label)
-                            .join(" · ")
-                        : "No exactly linked records."}
+                {/* TYTUŁ I MIEJSCE W JEDNEJ LINII BAZOWEJ — prototypowe
+                    `.mt-up-head` (`v3/screens/meetings.css:76`) trzyma obok
+                    tytułu ciche `.mt-org`. U prototypu jest tam nazwa
+                    organizacji; nasza projekcja wydarzenia jej NIE NIESIE
+                    (`CalendarEventProjectionSchema`,
+                    `packages/contracts/src/meeting-loop.ts:54-66`, `.strict()`),
+                    a niesie `location`. Miejsce spotkania jest tym, co ta
+                    projekcja o nim wie poza czasem, więc stoi w tej ścieżce.
+                    Nazwa klasy mówi `where`, a nie `org`, właśnie po to, żeby
+                    następny czytający nie wziął jej za organizację. */}
+                <div className="meeting-event-head">
+                  <h3>{event.title}</h3>
+                  {event.location === undefined ? null : (
+                    <span className="meeting-event-where">
+                      {event.location}
                     </span>
-                  </div>
-                  <div>
-                    <strong>Open loops</strong>
-                    <span>
-                      {brief.openLoops.length
-                        ? brief.openLoops.map((item) => item.label).join(" · ")
-                        : "No safely matched commitments."}
-                    </span>
-                  </div>
+                  )}
                 </div>
+                {/* KTO BĘDZIE — IMIONA, NIE LICZNIK. Prototyp pisze powód
+                    własnym komentarzem (`v3/screens/meetings.css:85`): „z rolą,
+                    bo »MN · PZ« nie przygotowuje nikogo do rozmowy". Tu stoi
+                    połowa, którą projekcja UNOSI: awatar i imię.
+                    ROLI TU NIE MA I NIE JEST TO PRZEOCZENIE.
+                    `CalendarAttendeeSchema`
+                    (`packages/contracts/src/meeting-loop.ts:43-53`) jest
+                    `.strict()` i niesie `externalId`, `name`, `email`,
+                    `organizer`, `response` — ŻADNEGO stanowiska i żadnego
+                    `personId`. Roli nie da się narysować, bo nie ma jej skąd
+                    wziąć, a `.strict()` nie pozwoli jej nawet przemycić obok.
+                    `organizer` NIE JEST rolą: to rola w spotkaniu, nie
+                    stanowisko człowieka, i wstawiona w tę szczelinę czytałaby
+                    się jak stanowisko.
+                    Prototypowy kształt `.mt-person.unlinked` (przerywana
+                    ramka, „ten uczestnik nie jest jeszcze osobą w grafie")
+                    TEŻ TU NIE WCHODZI: on twierdzi coś o grafie, a my w graf
+                    nie zaglądamy. Twierdzenie bez odczytu jest gorsze niż
+                    milczenie. */}
+                {event.attendees.length === 0 ? (
+                  <p className="meeting-room-none">
+                    The calendar lists nobody for this meeting.
+                  </p>
+                ) : (
+                  <div className="meeting-room">
+                    {event.attendees.map((attendee, index) => (
+                      <span
+                        className="meeting-person"
+                        key={`${attendee.email ?? attendee.externalId ?? attendee.name}:${index}`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="meeting-person-avatar"
+                        >
+                          {initialsOf(attendee.name)}
+                        </span>
+                        <span className="meeting-person-name">
+                          {attendee.name}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* CO WNOSISZ DO ROZMOWY — JEDNA NAZWANA POZYCJA NA JEDEN
+                    REKORD. Prototypowe `.mt-prep` (`v3/screens/
+                    meetings.css:107-112`) jest kolumną pozycji, a każda pozycja
+                    to siatka `13rem minmax(0, 1fr) auto`: klucz, wartość, cel.
+                    CEL STOI DZIŚ PUSTY — powód i warunek wyjścia w bloku
+                    „DRZWI NIE MA ŻADNYCH" wyżej w tym pliku; ścieżka zostaje,
+                    bo deklaruje ją prototyp bezwarunkowo.
+                    Dotąd stały tu DWIE pary klucz/wartość, w których wszystkie
+                    rekordy jednej grupy były sklejone kropkami w jeden napis —
+                    czyli nazwa grupy zamiast nazwy rzeczy i zero drogi do
+                    którejkolwiek z nich. Grupa zostaje, ale jako TON: otwarte
+                    pętle są ostrzeżeniem, tak jak `.mt-prep-item.warn`
+                    u prototypu. Modyfikator jest pełną nazwą
+                    (`meeting-prep-item--warn`), nie nagim `.warn` — prototyp
+                    ostrzega przed nagim modyfikatorem własnym komentarzem
+                    w pierwszych linijkach `meetings.css`, bo łapie globalne
+                    `.warn` z arkusza powłoki. */}
+                {(() => {
+                  const prep = [
+                    ...brief.orientation.map((item) => ({
+                      item,
+                      warn: false,
+                    })),
+                    ...brief.openLoops.map((item) => ({ item, warn: true })),
+                    ...brief.relevantSources.map((item) => ({
+                      item,
+                      warn: false,
+                    })),
+                  ];
+                  if (prep.length === 0)
+                    return (
+                      <p className="meeting-prep-none">
+                        Nothing exactly linked to bring into this room.
+                      </p>
+                    );
+                  return (
+                    <div className="meeting-prep">
+                      {prep.map(({ item, warn }) => (
+                        <div
+                          className={
+                            warn
+                              ? "meeting-prep-item meeting-prep-item--warn"
+                              : "meeting-prep-item"
+                          }
+                          key={`${item.kind}:${item.recordId}`}
+                        >
+                          <span className="meeting-prep-k">
+                            <Icon name={evidenceKeyIcon(item.kind)} />
+                            {evidenceKeyLabel(item.kind)}
+                          </span>
+                          {/* NAZWA REKORDU, A FAKT TYLKO WTEDY, GDY MÓWI COŚ
+                              PONAD NIĄ. Kropka rozdzielająca stała tu
+                              bezwarunkowo i w produkcji drukowała ten sam
+                              napis dwa razy: czytnik dowodów wpisuje
+                              niekonfliktowemu work-itemowi `fact: item.title`
+                              obok `label: item.title`
+                              (`calendar-meeting-loop.ts:314-321`), więc każda
+                              pozycja z Jamie brzmiała „Tytuł · Tytuł”.
+                              Fikstura bramki ma te pola RÓŻNE, więc żaden
+                              przyrząd tego nie dosięgał — pusta różnica
+                              w fiksturze nie tylko nie mierzy, ona CHOWA. */}
+                          <span className="meeting-prep-v">
+                            {item.label}
+                            {item.fact === item.label ? null : (
+                              <>
+                                <span className="meeting-prep-dot"> · </span>
+                                {item.fact}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
-              <button
-                className="secondary-button meeting-block-action"
-                disabled={
-                  !surface.capability.canWriteOwnedBlocks || event.isAllDay
-                }
-                onClick={() => {
-                  const startsAt = new Date(
-                    Date.parse(event.startsAt) - 30 * 60_000,
-                  ).toISOString();
-                  const block: CalendarBlockDraft = {
-                    calendarExternalId: event.calendarExternalId,
-                    ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
-                    title: `Preparation: ${event.title}`,
-                    startsAt,
-                    endsAt: event.startsAt,
-                    expectedRevision: null,
-                    sourceRecordIds: [
-                      `calendar-event:${event.eventExternalId}`,
-                    ],
-                  };
-                  void client
-                    .previewCalendarBlocks({ blocks: [block] })
-                    .then((result) => {
-                      if (result === undefined)
-                        setNotice(
-                          "Could not build a safe preview. Nothing was written.",
-                        );
-                      else setPreview(result);
-                    });
-                }}
-              >
-                Preview block
-              </button>
+              {/* TRZECIA ŚCIEŻKA WIERSZA JEST OGONEM, NIE SAMYM PRZYCISKIEM —
+                  prototypowe `.mt-up-tail` (`v3/screens/meetings.css:126`).
+                  DOSTAWCA STOI PRZY KAŻDYM SPOTKANIU, a nie tylko przy sekcji,
+                  i to jest wpis 10-3, oś czwarta. Kontrakt mówi to jako regułę,
+                  nie jako powtórzenie ozdoby: głębia jest niewidzialna dla
+                  kogoś, kto jej nie widzi, więc WPUSZCZENIE WIERSZA
+                  (`--surface-sunken`, para D7-02f) ma iść razem z glifem
+                  i słowem. Wpuszczony jest WIERSZ, więc plakietka należy do
+                  wiersza; ta przy nagłówku sekcji mówi to o sekcji i zostaje,
+                  dokładnie tak jak u prototypu, który ma OBIE
+                  (`meetings.js:437-438` i `:246-248`).
+                  `Preview block` ZOSTAJE, choć prototyp go nie ma: to nie jest
+                  ozdoba, tylko jedyna droga do zarezerwowania czasu na
+                  przygotowanie (`previewCalendarBlocks`). Prototyp tej
+                  zdolności nie modeluje, a skasowanie jej „bo prototyp wygrywa"
+                  skasowałoby funkcję — ten sam precedens co `Close` na
+                  Odnowieniach. */}
+              <div className="meeting-event-tail">
+                <span className="meeting-locked">
+                  <Icon name="lock" />
+                  {providerLabel(event.provider)}
+                </span>
+                <button
+                  className="secondary-button meeting-block-action"
+                  disabled={
+                    !surface.capability.canWriteOwnedBlocks || event.isAllDay
+                  }
+                  onClick={() => {
+                    const startsAt = new Date(
+                      Date.parse(event.startsAt) - 30 * 60_000,
+                    ).toISOString();
+                    const block: CalendarBlockDraft = {
+                      calendarExternalId: event.calendarExternalId,
+                      ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
+                      title: `Preparation: ${event.title}`,
+                      startsAt,
+                      endsAt: event.startsAt,
+                      expectedRevision: null,
+                      sourceRecordIds: [
+                        `calendar-event:${event.eventExternalId}`,
+                      ],
+                    };
+                    void client
+                      .previewCalendarBlocks({ blocks: [block] })
+                      .then((result) => {
+                        if (result === undefined)
+                          setNotice(
+                            "Could not build a safe preview. Nothing was written.",
+                          );
+                        else setPreview(result);
+                      });
+                  }}
+                >
+                  Preview block
+                </button>
+              </div>
               {/* #35 forbids a `title=` as the only carrier of an
                       explanation: it does not exist for a keyboard, for touch,
                       or for anybody not hovering, and the reason a control is

@@ -35,7 +35,7 @@
 //            `.nav-item[data-surface]`; tryb Ustawień wchodzony kołem zębatym;
 //            KAŻDY stan soczewki `[data-layout]` na celu, który je deklaruje.
 //   NIEOBJĘTE — wszystko, co rysuje się dopiero PO WYBORZE albo PO OTWARCIU:
-//            panel deala na Lejku (`pipeline/PipelineSurface.tsx:1020-1037` →
+//            panel deala na Lejku (`pipeline/PipelineSurface.tsx:1016-1033` →
 //            `.moveButton`, `pipeline.module.css:233`, i `.dealPanelLink`,
 //            `:214` — obie bez tła w spoczynku, obie tej samej klasy co dług
 //            niżej), otwarty ekran rekordu, dialogi i menu. Spis ich NIE WIDZI,

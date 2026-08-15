@@ -35,6 +35,7 @@ import {
 } from "./crm/organization-reading.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { Icon, type IconName } from "./components/Icon.js";
+import { initialsOf } from "./initials.js";
 import {
   countSentence,
   filterOrganizations,
@@ -188,12 +189,7 @@ const StatePill = ({ state }: { readonly state: string }) => (
 
 const Initials = ({ name }: { readonly name: string }) => (
   <span aria-hidden="true" className={organizationStyles.avatar}>
-    {name
-      .split(/\s+/u)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.slice(0, 1).toUpperCase())
-      .join("")}
+    {initialsOf(name)}
   </span>
 );
 

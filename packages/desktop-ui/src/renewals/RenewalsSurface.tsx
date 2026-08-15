@@ -21,6 +21,7 @@ import { TopicHelp } from "../help/TopicHelp.js";
 import { indexRelationships } from "../crm/organization-reading.js";
 import { fmtApprox, fmtMoney, fmtUplift } from "../crm/money.js";
 import { Icon } from "../components/Icon.js";
+import { initialsOf } from "../initials.js";
 import { SurfaceTitleBand } from "../SurfaceTitleBand.js";
 import {
   useListNavigation,
@@ -91,12 +92,7 @@ type SectionKind = keyof typeof SECTION_MARKS;
 
 const Initials = ({ name }: { readonly name: string }) => (
   <span aria-hidden="true" className={styles.avatar}>
-    {name
-      .split(/\s+/u)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.slice(0, 1).toUpperCase())
-      .join("")}
+    {initialsOf(name)}
   </span>
 );
 

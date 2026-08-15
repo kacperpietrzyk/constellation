@@ -91,7 +91,7 @@
 //   repair, and it belongs to whoever needs it.
 //
 //   WHAT IT COSTS TODAY: nothing hidden, and that is measured, not assumed. Two
-//   `.sr-only` headings exist in the product — `MeetingsSurface.tsx:513`
+//   `.sr-only` headings exist in the product — `MeetingsSurface.tsx:636`
 //   (`h1#surface-title`, loading state) and `Wave2Surfaces.tsx:1084`
 //   (`h2#search-title`). Neither lies on any of the fifteen walked
 //   destinations, so no screen's verdict changes either way. The Meetings one
@@ -176,7 +176,7 @@ export const HEADING_OUTLINE_LEVELS_ARMED =
 // ma nagłówków" byłoby NIEPRAWDĄ, a asercja, której fikstura nie dosięga, jest
 // nieodróżnialna od poprawnej. `grep -rn "<h[1-6][ >]"` po warstwach tych
 // czterech ekranów zwraca stany, w które ten przelot nie wchodzi:
-//   • `pipeline/PipelineSurface.tsx:810,844` i `people/PeopleSurface.tsx:582,723`
+//   • `pipeline/PipelineSurface.tsx:806,844` i `people/PeopleSurface.tsx:578,723`
 //     — `h2` stanów odmowy i pustki (zasiana fikstura ma dane, więc nie padają);
 //   • `projects/ProjectContextPanel.tsx:268` — `h2` panelu kontekstu, którego
 //     przystanek Projektów nie otwiera;
