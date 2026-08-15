@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 
 import type {
   CommandEnvelope,
@@ -28,6 +28,37 @@ let container: HTMLDivElement;
 let root: Root;
 let mounted = false;
 const commands: CommandEnvelope[] = [];
+
+/* CZTERY LENIWE CHUNKI ŚCIĄGNIĘTE, ZANIM PADNIE PIERWSZY `render`, I JEST TO
+   DOMKNIĘCIE ZMIERZONEGO WYŚCIGU, NIE ROZGRZEWKA „NA WSZELKI WYPADEK".
+ *
+ * Ostatni przypadek w tym pliku otwiera rekord zadania. Powłoka montuje wtedy
+ * cztery granice `lazy()` naraz, ich chunki jadą z dysku przez runner Vite'a
+ * (prawdziwe I/O, nie mikrozadanie), a rozwiązanie promise'a przychodzi PO
+ * ostatnim teście. React woła wtedy `console.error` o „suspended resource …
+ * not wrapped in act", vitest przesyła ten log do procesu głównego przez RPC,
+ * a zamykane środowisko workera przerywa transport w locie:
+ * `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending`.
+ *
+ * Zmierzone znacznikami czasu: dziewięć takich logów padało PO `afterAll`
+ * w KAŻDYM przebiegu, także w zielonym — zieleń znaczyła tylko tyle, że RPC
+ * zdążyło się opróżnić. Pod obciążeniem nie zdążyło i to jest ta flaka.
+ *
+ * Ściągnięcie modułów tutaj niczego nie wycisza: sprawia, że logu NIE MA.
+ * `lazy()` dostaje moduł z rejestru pliku, promise rozwiązuje się w
+ * mikrozadaniu tego samego `act()`, które go wyrenderowało, więc React nie ma
+ * o czym ostrzegać. Lista jest wyprowadzona z pomiaru (ładowania po starcie
+ * ostatniego przypadku, stabilne w trzech świeżych przebiegach), a nie
+ * z lektury drzewa — jeśli pod Dzisiaj przyjdzie kolejna granica `lazy()`,
+ * ta sama czerwień wróci i to jest miejsce, w którym się ją dopisuje. */
+beforeAll(async () => {
+  await Promise.all([
+    import("../src/TaskAttachmentsSection.js"),
+    import("../src/record/RecordCommentsPanel.js"),
+    import("../src/tasks/SavedViewManager.js"),
+    import("../src/tasks/TaskViewControls.js"),
+  ]);
+});
 
 beforeEach(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

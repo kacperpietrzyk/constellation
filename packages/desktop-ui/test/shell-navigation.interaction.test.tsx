@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { createElement } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, test } from "vitest";
 
 import { desktopSurfaceRegistry } from "@constellation/desktop-preload/surface-registry";
 
@@ -18,6 +18,25 @@ import { shellQueries } from "./shell-fixture.js";
 
 let container: HTMLDivElement;
 let root: Root;
+
+/* CHUNK USTAWIEŃ ŚCIĄGNIĘTY PRZED PIERWSZYM `render`, Z TEGO SAMEGO
+   ZMIERZONEGO POWODU CO CZTERY IMPORTY W `today.interaction.test.tsx`.
+ *
+ * Cztery ostatnie przypadki tego pliku wchodzą w Ustawienia. `SettingsSurface`
+ * jest granicą `lazy()` o dużym grafie (dialog grantu, ciągłość wydania,
+ * sekcja dostępu), więc jego moduły dojeżdżają z dysku jeszcze przez kilka
+ * przypadków, a ostatni ping Suspense potrafi wypaść PO `afterAll`. Wtedy
+ * React woła `console.error` o „…not wrapped in act", vitest wysyła ten log
+ * RPC-em, a zamykane środowisko przerywa go w locie
+ * (`Closing rpc while "onUserConsoleLog" was pending`).
+ *
+ * Zmierzone: solo ten plik milczy, ale w pełnym przebiegu pakietu — gdzie
+ * o dysk i CPU bije się kilkanaście workerów — dwa takie logi padały PO
+ * `afterAll`. To ten sam ładunek, co położył plik Dzisiaj, tylko z dłuższym
+ * lontem, więc zamykam go tak samo, zanim wybuchnie. */
+beforeAll(async () => {
+  await import("../src/SettingsSurface.js");
+});
 
 beforeEach(() => {
   // Bez tego React ostrzega, że `act(...)` nie jest wspierane, i część
