@@ -641,6 +641,35 @@ export const NotesReading = ({
                             </time>
                           </small>
                         </button>
+                        {/* `Move` ZOSTAJE, I TO JEST ROZSTRZYGNIĘCIE WPISU
+                            11-3, PODJĘTE W RAMACH LOTU D3 — nie przeoczenie
+                            i nie odłożenie.
+
+                            Rejestr przejścia mówi o tym wierszu prawdę:
+                            prototyp nie ma w wierszu listy ŻADNEJ akcji
+                            (`v3/screens/knowledge.js` — jedyne przyciski
+                            w `.kn-row` to pigułki referencji, które NAWIGUJĄ),
+                            a my mamy ich dziewięć, po jednej na wiersz.
+                            Zbieżność byłaby jednym skasowanym komponentem.
+
+                            POWÓD, DLA KTÓREGO JEJ NIE ROBIMY, JEST ZMIERZONY,
+                            a nie stylistyczny: OBIE strony przenoszą notatkę
+                            PRZECIĄGANIEM (tu `draggable` na wierszu, tam
+                            `draggable="true"` plus `data-dropzone` na drzewie
+                            folderów), a przeciąganie nie jest obsługiwane
+                            klawiaturą. Zdjęcie `Move` nie zabiera więc
+                            ZDOLNOŚCI — zabiera jedyną KLAWIATUROWĄ drogę do
+                            niej. To jest regresja dostępności przebrana za
+                            zbieżność wizualną, a prototyp, który tej drogi nie
+                            ma, jest w tym miejscu WADĄ wzorca, nie projektem.
+
+                            CO BY TO ODBLOKOWAŁO, gdyby ktoś chciał wrócić:
+                            druga droga klawiaturowa do przeniesienia — menu
+                            kontekstowe wiersza albo cel w palecie. Dopóki jej
+                            nie ma, ten popover jest jedynym nośnikiem
+                            zdolności i zostaje. Decyzja D3 rozstrzygnęła
+                            NAWIGACJĘ; ta pozycja jest jej konsekwencją i tu
+                            się zamyka. */}
                         <InlinePopover
                           disabled={!client}
                           label="Move"

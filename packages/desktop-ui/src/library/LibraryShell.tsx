@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { DocumentId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -13,22 +13,33 @@ import {
   type CaptureHistoryWiring,
 } from "./CaptureHistoryReading.js";
 import styles from "./library.module.css";
-import {
-  libraryReadingLabel,
-  libraryReadingOrder,
-} from "./library-readings.js";
+import { libraryReadingLabel } from "./library-readings.js";
 import { NotesReading } from "./NotesReading.js";
 import { SourcesReading } from "./SourcesReading.js";
 
-// JEDEN cel nawigacji, trzy odczyty. Powłoka trzyma nagłówek celu, przełącznik
-// i pole odczytu; sam odczyt nie wie o pozostałych dwóch. Dzięki temu ekrany
-// Notatek i Źródeł z dalszych lotów dopisują się każdy do SWOJEGO pliku, a nie
-// do wspólnego, tysiąclinijkowego ekranu — trzy loty edytujące jeden plik to
-// przeciwieństwo rozłącznych plików.
+// TRZY CELE NAWIGACJI, JEDNA POWŁOKA — i to jest odwrócenie kształtu, który ten
+// plik nosił od fali Knowledge. Stało tu: „JEDEN cel nawigacji, trzy odczyty.
+// Powłoka trzyma nagłówek celu, PRZEŁĄCZNIK i pole odczytu". Przełącznika już
+// nie ma: decyzja Kacpra z 2026-08-15 („Rozwinąć na trzy pozycje nawigacji",
+// wpisy 11-1 i C-1 rejestru przejścia) wyprowadziła Notatki, Źródła i Historię
+// wrzutek na trzy osobne pozycje lewej kolumny, więc wybór odczytu należy do
+// NAWIGACJI, a nie do zakładki wewnątrz ekranu.
 //
-// Przełącznik mapuje po `libraryReadings`, a nie po ręcznie wypisanych trzech
-// przyciskach: dopisanie odczytu do słownika bez przycisku (albo odwrotnie)
-// jest wtedy niemożliwe, a nie ciche.
+// CO ZOSTAJE WSPÓLNE, I DLACZEGO TO JEST JEDEN KOMPONENT, A NIE TRZY PLIKI:
+// pasmo tytułu ze slotem akcji, cicha kontrolka wyszukiwania i pasek widoku
+// z licznikiem są dla tych trzech ekranów IDENTYCZNE, a `title-band-action.mjs`
+// mierzy je jako jedno pasmo. Trzy kopie tego pasma byłyby przepisanym
+// kształtem w trzech miejscach — nazwana klasa defektu w tym repozytorium.
+// Rozłączność, po którą tamta nota sięgała, dalej stoi: sam ODCZYT mieszka
+// w swoim pliku (`NotesReading`, `SourcesReading`, `CaptureHistoryReading`)
+// i nie wie o pozostałych dwóch.
+//
+// `reading` JEST TERAZ PROPSEM WYMAGANYM, A NIE STANEM. Poprzednia wersja
+// trzymała go w `useState` z `activeReading` jako podpowiedzią i efektem
+// synchronizującym. Stan zniknął razem z przełącznikiem: powierzchnia mówi,
+// czym jest, w chwili montażu, a routing powłoki jest jedynym miejscem, które
+// to rozstrzyga. Rekord jest TOTALNY nad `LibraryReading`, więc czwarty ekran
+// wiedzy bez etykiety i bez wpisu w routingu się nie skompiluje.
 
 export type LibraryInspectorKind = LibraryReading;
 
@@ -39,11 +50,11 @@ export type LibraryInspectorKind = LibraryReading;
    jeszcze stoi. */
 const LIBRARY_SEARCH_LABEL = "Search notes and records";
 
-export const LibraryShell = ({
+export const KnowledgeSurface = ({
   client,
   snapshot,
   activeDocumentId,
-  activeReading,
+  reading,
   inspectorHost,
   onInspectorOpen,
   onEntityActivate,
@@ -55,7 +66,12 @@ export const LibraryShell = ({
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly activeDocumentId?: DocumentId | undefined;
-  readonly activeReading?: LibraryReading | undefined;
+  /** KTÓRY z trzech ekranów wiedzy to jest. Bez wartości domyślnej i bez
+   *  `undefined` w typie: powierzchnia, która nie wie, czym jest, to dokładnie
+   *  ta cicha awaria, którą zwinięcie w zakładki produkowało — kontekst bez
+   *  `libraryReading` otwierał Notatki, także wtedy, gdy wołający miał na myśli
+   *  Historię wrzutek. */
+  readonly reading: LibraryReading;
   readonly inspectorHost: HTMLElement | null;
   readonly onInspectorOpen: (kind: LibraryInspectorKind) => void;
   readonly onEntityActivate: (target: {
@@ -71,9 +87,6 @@ export const LibraryShell = ({
   readonly onOpenSearch: () => void;
   readonly captureHistory: CaptureHistoryWiring;
 }) => {
-  const [reading, setReading] = useState<LibraryReading>(
-    activeReading ?? "notes",
-  );
   // WĘZEŁ W STANIE, NIE W `useRef`, i to jest wymóg, a nie gust: portal
   // wstrzykuje do CELU, więc odczyt musi się przerysować w chwili, w której cel
   // pojawia się w drzewie. `useRef` nie powoduje przerysowania, a pierwszy
@@ -81,22 +94,29 @@ export const LibraryShell = ({
   // pierwszej zmiany stanu z innego powodu. Ten sam kształt co `inspectorHost`,
   // który powłoka podaje temu komponentowi z zewnątrz.
   const [actionHost, setActionHost] = useState<HTMLElement | null>(null);
-  // Kontekst powłoki niesie żądany odczyt, więc wrzutka głosowa i wrzutka
-  // otwarta z Inboxa lądują na rejestrze, a nie na Notatkach. Bez tego efektu
-  // przepięcie tamtych dwóch wywołań z wycofanego `history` na `library`
-  // kompiluje się, przechodzi testy i po cichu wysyła człowieka nie tam.
-  useEffect(() => {
-    if (activeReading !== undefined) setReading(activeReading);
-  }, [activeReading]);
 
-  const documentCount =
-    snapshot.documents.kind === "ready"
-      ? snapshot.documents.data.items.length
-      : 0;
-  const sourceCount =
-    snapshot.knowledge.kind === "ready"
-      ? snapshot.knowledge.data.sources.length
-      : 0;
+  // LICZNIK LICZY TO, CO STOI POD NIM, i to jest zmiana, którą wymusił rozdział
+  // ekranu. Do lotu D3 stała tu suma `documentCount + sourceCount` — jedna
+  // liczba nad przełącznikiem, prawdziwa dla żadnego z trzech odczytów
+  // z osobna. Prototyp liczy per ekran (`v3/screens/knowledge.js:971` —
+  // `<span class="kn-n">${SOURCES.length}</span>` na Źródłach), i po rozdziale
+  // to jest jedyny odczyt, który się broni: pasek widoku Notatek nie ma prawa
+  // mówić o źródłach, których na nim nie ma.
+  //
+  // ODMOWA LICZY SIĘ JAKO ZERO, tak samo jak przed tym lotem — i tak samo jak
+  // wtedy jest to UBYTEK, nie decyzja: projekcja, której nie dało się
+  // przeczytać, jest tu nieodróżnialna od pustej listy. Ekran mówi o tym
+  // własnym panelem stanu; licznik nie ma jak.
+  const count =
+    reading === "notes"
+      ? snapshot.documents.kind === "ready"
+        ? snapshot.documents.data.items.length
+        : 0
+      : reading === "sources"
+        ? snapshot.knowledge.kind === "ready"
+          ? snapshot.knowledge.data.sources.length
+          : 0
+        : snapshot.captures.length;
 
   return (
     <div className={styles.shell}>
@@ -127,7 +147,7 @@ export const LibraryShell = ({
           co na nim znaczy „utwórz" (Notatki otwierają dymek z formularzem,
           Źródła mają własny), a powłoka wie, GDZIE ta akcja stoi. Ten sam
           wzorzec, co `inspectorHost` w tym samym pliku i w
-          `KnowledgeEditor.tsx:1603`; przeniesienie formularzy do powłoki
+          `KnowledgeEditor.tsx:1623`; przeniesienie formularzy do powłoki
           znaczyłoby przeniesienie ich stanu, czyli przebudowę dwóch odczytów
           w locie o POŁOŻENIU akcji. Historia przechwyceń akcji tworzenia nie ma
           i slot zostaje wtedy pusty — „ten odczyt nie ma akcji" jest
@@ -155,9 +175,33 @@ export const LibraryShell = ({
              „New note" i dalej widzi je na końcu pasma). Otwiera tę samą
              paletę, co `⌘K` i kontrolka w szynie powłoki; skrót jest
              wypisany tym samym glifem co tam. */}
+      {/* TYTUŁ JEST NAZWĄ EKRANU, NIE NAZWĄ MODUŁU (lot D3). Stało tu
+          „Library" — jedno słowo nad trzema różnymi ekranami, których nazwy
+          czytało się dopiero z zaznaczonej zakładki niżej. Po rozdziale pasmo
+          mówi to samo, co pozycja nawigacji, którą czytelnik przed chwilą
+          kliknął, i to samo, co etykieta zakładki: „Notes", „Sources",
+          „Capture history".
+
+          NAPIS IDZIE Z DRUGIEGO SŁOWNIKA NIŻ ETYKIETA NAWIGACJI, i to jest
+          zapisane tutaj jako DŁUG, nie jako gwarancja. `libraryReadingLabel`
+          (`library-readings.ts`) niesie ten `h1`; etykietę pozycji nawigacji,
+          granicy leniwego chunka i stanu ładowania niesie rejestr
+          (`desktop-preload/src/surface-registry.ts`). Scalenia ich w jeden
+          słownik NIE DA SIĘ zrobić w tę stronę i powód jest zmierzony
+          w bajtach: ten katalog jest leniwy, a import WARTOŚCI z rejestru
+          wciągnąłby go na ścieżkę gorącą (nota nad `libraryReadings`
+          w `client/shell-navigation.ts`).
+
+          Skoro słowniki zostają dwa, pilnuje ich ASERCJA, a nie to zdanie:
+          `desktop-ui/test/shell-navigation.test.ts` — „the knowledge h1 and
+          the navigation label are one sentence" — chodzi po CAŁEJ unii
+          odczytów i żąda równości napisów. Bez niej podmiana wszystkich trzech
+          `h1` przechodziła przez cały `npm run check` (zmierzone przy
+          przeglądzie tego lotu). Oś konspektu nagłówków pyta o `h1` na każdym
+          ekranie — trzy ekrany, trzy `h1`, każdy inny. */}
       <header className={`surface-header ${styles.header}`}>
         <h1 id="surface-title" tabIndex={-1}>
-          Library
+          {libraryReadingLabel[reading]}
         </h1>
         <div className={styles.headerAction}>
           <button
@@ -174,41 +218,30 @@ export const LibraryShell = ({
         </div>
       </header>
 
+      {/* PRZEŁĄCZNIK ODCZYTÓW ZNIKNĄŁ RAZEM Z JEDNYM CELEM (lot D3), i to jest
+          jedyne miejsce w tym pliku, w którym coś UBYŁO, a nie zmieniło się.
+          Stały tu trzy przyciski `role="tab"` z `data-layout={id}`, mapowane po
+          kolejności odczytów. Sam eksport tej kolejności zszedł razem z nimi:
+          po rozdziale kolejność trzech ekranów wiedzy ustala rejestr
+          powierzchni, bo to on rysuje pozycje nawigacji.
+
+          BRAMKA UKŁADU CZYTAŁA `data-layout` JAKO SPIS OBIEKTYWÓW DO
+          ZMIERZENIA i to jest dług, który ten lot musi oddać, a nie skutek
+          uboczny do przemilczenia: dopóki przełącznik stał, przelot dojeżdżał
+          na Bibliotekę i klikał w zakładki, żeby zobaczyć trzy odczyty. Po
+          rozdziale te trzy odczyty są trzema PRZYSTANKAMI trasy, każdy ze
+          swoim markerem przybycia w `ROUTED_ARRIVAL`, a nie trzema kliknięciami
+          w jednym. Marker `data-layout` zostaje wyłącznie tam, gdzie dalej
+          znaczy obiektyw nad JEDNĄ kolekcją — na Zadaniach i Projektach.
+
+          Pasek widoku ZOSTAJE, bo licznik w nim jest cytatem
+          (`v3/app.css:295-301`, `.viewbar .count`) i nie zależał od zakładek. */}
       <div className={styles.viewbar}>
-        <div
-          aria-label="Library reading"
-          className={styles.switcher}
-          role="tablist"
-        >
-          {libraryReadingOrder.map((id) => (
-            <button
-              aria-selected={reading === id}
-              className={styles.switch}
-              // Ten sam znacznik, co przełącznik układów Zadań
-              // (`TasksSurface.tsx`) i Projektów (`ProjectCollection.tsx`), i on
-              // jest tym, po czym bramka układu wylicza obiektywy do zmierzenia.
-              // Bez niego przelot mierzył WYŁĄCZNIE odczyt Notatek, a Źródła
-              // i Historia przechwyceń były raportowane jako „0 wierszy" —
-              // przy pełnych listach po drugiej stronie kliknięcia. Deklaracja
-              // stoi tutaj, a nie w selektorze bramki rozszerzonym o
-              // `[role="tab"]`, bo tamten łapie też pasek zakładek rekordu.
-              data-layout={id}
-              key={id}
-              onClick={() => setReading(id)}
-              role="tab"
-              type="button"
-            >
-              {libraryReadingLabel[id]}
-            </button>
-          ))}
-        </div>
         {/* LICZNIK CZYTA LISTĘ, WIĘC STOI NAD LISTĄ, a nie w rzędzie akcji —
             `v3/app.css:295-301` daje `.viewbar` własne `.count`. Klasa
             `library-count` zostaje, bo dzieli ją reguła globalna w `styles.css`
             z dwiema powierzchniami spoza Biblioteki. */}
-        <span className={`library-count ${styles.count}`}>
-          {documentCount + sourceCount}
-        </span>
+        <span className={`library-count ${styles.count}`}>{count}</span>
       </div>
 
       {/* `data-height-bound` JEST DEKLARACJĄ, nie hakiem testowym, i mówi
@@ -219,9 +252,27 @@ export const LibraryShell = ({
           jest tu obietnicą; korzeń ekranu i panel bramka bierze strukturalnie,
           jako rodzica i dziadka. Bramka układu wylicza z niego swoje podmioty
           (`scripts/renderer-declarations.mjs`), więc drugi ekran związany
-          wysokością jest objęty w dniu, w którym się deklaruje. */}
-      <div className={styles.reading} data-height-bound="library">
-        {reading === "notes" ? (
+          wysokością jest objęty w dniu, w którym się deklaruje.
+
+          TRZY LITERAŁY, A NIE JEDEN ATRYBUT Z WYRAŻENIEM W KLAMRACH, I TO NIE
+          JEST NIEZGRABNOŚĆ — jest to jedyny zapis, który ta deklaracja UNOSI.
+          `declaredAttributeValues` (`renderer-declarations.mjs`) czyta
+          WYŁĄCZNIE literał i mówi to o sobie wprost; wartość w klamrach jest
+          przez nią wykrywana i zamienia CAŁE wyprowadzenie w awarię
+          (`not-derivable`), a atrybut rozłożony spreadem byłby przed nią po
+          prostu ukryty — czyli zieleń kupiona za wyłączenie przyrządu.
+          WYKRYWACZ JEST REGEXPEM PO CAŁYM PLIKU I NIE ODRÓŻNIA KOMENTARZA OD
+          KODU: pierwsza wersja tej noty CYTOWAŁA zakazany zapis, żeby go
+          nazwać, i tym samym wywróciła bramkę. Zapisane tu, bo następny, kto
+          zechce nazwać ten zapis dosłownie, wywróci ją znowu.
+          WARTOŚCIĄ MUSI BYĆ IDENTYFIKATOR CELU, bo przeloty zawężone filtrują
+          zbiór deklaracji przez swoją listę powierzchni (`heightBoundExpected`);
+          jeden wspólny napis „library" byłby po locie D3 nazwą, której nie nosi
+          żadna powierzchnia, a wtedy dwa wąskie przeloty Biblioteki
+          POMIJAŁYBY ten strażnik po cichu. Do lotu D3 stał tu jeden literał,
+          bo ekran był jeden. */}
+      {reading === "notes" ? (
+        <div className={styles.reading} data-height-bound="notes">
           <NotesReading
             actionHost={actionHost}
             client={client}
@@ -233,12 +284,14 @@ export const LibraryShell = ({
             onReload={onReload}
             onFailure={onFailure}
           />
-        ) : reading === "sources" ? (
-          // Sources reads in its SECOND PANEL, not in the shell inspector: the
-          // accepted screen is a list beside the source being read, and a
-          // reader that opened in the rail would put the two dates, the
-          // availability control and what rests on the source outside the
-          // screen they belong to. So this reading takes no inspector host.
+        </div>
+      ) : reading === "sources" ? (
+        <div className={styles.reading} data-height-bound="sources">
+          {/* Sources reads in its SECOND PANEL, not in the shell inspector: the
+              accepted screen is a list beside the source being read, and a
+              reader that opened in the rail would put the two dates, the
+              availability control and what rests on the source outside the
+              screen they belong to. So this reading takes no inspector host. */}
           <SourcesReading
             actionHost={actionHost}
             client={client}
@@ -246,15 +299,17 @@ export const LibraryShell = ({
             onReload={onReload}
             onFailure={onFailure}
           />
-        ) : (
+        </div>
+      ) : (
+        <div className={styles.reading} data-height-bound="captures">
           <CaptureHistoryReading
             snapshot={snapshot}
             inspectorHost={inspectorHost}
             onInspectorOpen={() => onInspectorOpen("captures")}
             wiring={captureHistory}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

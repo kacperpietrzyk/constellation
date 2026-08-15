@@ -18,8 +18,12 @@ import {
 } from "@constellation/contracts";
 import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
 
-import { LibraryShell } from "../library/LibraryShell.js";
-import type { LibraryReading } from "../client/shell-navigation.js";
+import { KnowledgeSurface } from "../library/LibraryShell.js";
+import {
+  libraryReadings,
+  type LibraryReading,
+} from "../client/shell-navigation.js";
+import { libraryReadingLabel } from "../library/library-readings.js";
 import { createScenarioClient } from "../client/scenario-client.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 
@@ -271,12 +275,33 @@ export const KnowledgeHarness = () => {
   const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorKind, setInspectorKind] = useState<LibraryReading>("notes");
+  // PRZEŁĄCZNIK JEST TERAZ WŁASNOŚCIĄ HARNESSU, A NIE EKRANU (lot D3). Trzy
+  // ekrany wiedzy wybiera się w aplikacji lewą kolumną, a ten harness nie ma
+  // lewej kolumny — bez tych trzech przycisków dałoby się tu obejrzeć wyłącznie
+  // Notatki, czyli harness zwężyłby się do jednej trzeciej tego, co pokazywał.
+  // Znacznika `data-layout` tu NIE MA celowo: to nie są obiektywy nad jedną
+  // kolekcją, tylko trzy powierzchnie, a bramka układu chodzi po aplikacji,
+  // nie po tym harnessie.
+  const [reading, setReading] = useState<LibraryReading>("notes");
   return (
     <main className="meetings-harness-shell">
       <div className="meetings-harness-work">
-        <LibraryShell
+        <div role="group" aria-label="Knowledge surface">
+          {libraryReadings.map((id) => (
+            <button
+              aria-pressed={reading === id}
+              key={id}
+              onClick={() => setReading(id)}
+              type="button"
+            >
+              {libraryReadingLabel[id]}
+            </button>
+          ))}
+        </div>
+        <KnowledgeSurface
           client={client}
           snapshot={snapshot}
+          reading={reading}
           inspectorHost={inspectorHost}
           onInspectorOpen={(kind) => {
             setInspectorKind(kind);

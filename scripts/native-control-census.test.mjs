@@ -75,7 +75,7 @@ test("a control survives the shapes that used to swallow it", () => {
     [
       '<p>Saves this workspace\'s Areas and Projects.</p>\n<input id="after" />',
       1,
-      "an apostrophe in JSX text with nothing closing it before EOF (SettingsSurface.tsx:2947)",
+      "an apostrophe in JSX text with nothing closing it before EOF (SettingsSurface.tsx:1761)",
     ],
     [
       'const mention = /^@[\\w\']+/;\n<input id="after-regex" />',

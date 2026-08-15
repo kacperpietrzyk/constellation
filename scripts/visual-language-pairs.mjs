@@ -152,7 +152,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".sidebar",
       why: "global class in styles.css (not a CSS Module) and the aside also carries aria-label='Workspace and navigation'",
-      app: "packages/desktop-ui/src/styles.css:967-970",
+      app: "packages/desktop-ui/src/styles.css:971-974",
     },
     read: { property: "backdropFilter" },
     expect: { kind: "literal", value: "none" },
@@ -202,7 +202,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
       // co skanuje, bez jednej czerwonej asercji.
       selector: '.sidebar [data-nav-level="child"]',
       why: "prescribed declaration — the nested rows must NOT carry data-surface (the fidelity probe clicks every .nav-item[data-surface])",
-      app: "packages/desktop-ui/src/RealApp.tsx:3472, styles.css:1163-1176",
+      app: "packages/desktop-ui/src/RealApp.tsx:3506, styles.css:1167-1180",
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
@@ -226,7 +226,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: '.shell-tab:has([role="tab"][aria-selected="true"])',
       why: "declaration, not class name: the tab button owns aria-selected, the painted wrapper is reached through :has() so the .active class name is not load-bearing",
-      app: "packages/desktop-ui/src/styles.css:1517-1521, RealApp.tsx:3589-3600",
+      app: "packages/desktop-ui/src/styles.css:1521-1525, RealApp.tsx:3623-3634",
     },
     read: { pseudo: "::after", property: "backgroundColor" },
     expect: { kind: "accent" },
@@ -247,7 +247,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: '.shell-tab:has([role="tab"][aria-selected="true"])',
       why: "same subject as L1-03a",
-      app: "packages/desktop-ui/src/styles.css:1517-1521, tokens.css:280, :769",
+      app: "packages/desktop-ui/src/styles.css:1521-1525, tokens.css:280, :769",
     },
     read: { property: "boxShadow" },
     expect: { kind: "contains", value: "inset" },
@@ -270,7 +270,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".workspace-avatar",
       why: "global class in styles.css; the app paints it var(--surface-sunken)",
-      app: "packages/desktop-ui/src/styles.css:1030-1041, RealApp.tsx:3279",
+      app: "packages/desktop-ui/src/styles.css:1034-1045, RealApp.tsx:3313",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -290,8 +290,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".workspace-avatar",
-      why: "same subject as L1-04a — RealApp.tsx:3279 hardcodes the glyph",
-      app: "packages/desktop-ui/src/RealApp.tsx:3279",
+      why: "same subject as L1-04a — RealApp.tsx:3313 hardcodes the glyph",
+      app: "packages/desktop-ui/src/RealApp.tsx:3313",
     },
     read: { property: "text" },
     expect: { kind: "text", notValue: "I" },
@@ -315,7 +315,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
       // narzucałby lotowi kształt znaczników zamiast mierzyć farbę.
       selector: ".brand-row, .brand-row *",
       why: "counts accent-painted elements inside the brand row — measures the paint without prescribing which node carries it",
-      app: "packages/desktop-ui/src/styles.css:1007-1011, components/BrandMark.tsx",
+      app: "packages/desktop-ui/src/styles.css:1011-1015, components/BrandMark.tsx",
     },
     read: { property: "paint" },
     expect: { kind: "accentCount", atLeast: 1 },
@@ -338,8 +338,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: '.nav-item[aria-current="page"] svg',
-      why: "declaration: RealApp.tsx:1936 stamps aria-current='page' on the active row; styles.css has NO rule for the icon's colour, so it inherits --nav-active-text",
-      app: "packages/desktop-ui/src/styles.css:1249-1254",
+      why: "declaration: RealApp.tsx:1947 stamps aria-current='page' on the active row; styles.css has NO rule for the icon's colour, so it inherits --nav-active-text",
+      app: "packages/desktop-ui/src/styles.css:1253-1258",
     },
     read: { property: "color" },
     expect: { kind: "accent" },
@@ -362,8 +362,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: '.nav-item:not([aria-current="page"]) kbd',
-      why: "declaration-scoped to the rows that are NOT current; styles.css:4787-4791 gives kbd no opacity at all, so every row shows it",
-      app: "packages/desktop-ui/src/styles.css:4787-4791, RealApp.tsx:1960-1967",
+      why: "declaration-scoped to the rows that are NOT current; styles.css:4805-4809 gives kbd no opacity at all, so every row shows it",
+      app: "packages/desktop-ui/src/styles.css:4805-4809, RealApp.tsx:1975-1982",
     },
     read: { property: "opacity" },
     expect: { kind: "literal", value: "0" },
@@ -385,7 +385,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".nav-item[data-surface]",
       why: "declaration: only destination rows carry data-surface, so the pair is not confused by .nav-favorite / .nav-recent variants",
-      app: "packages/desktop-ui/src/styles.css:1163-1176, tokens.css:665",
+      app: "packages/desktop-ui/src/styles.css:1167-1180, tokens.css:665",
     },
     read: { property: "height" },
     expect: { kind: "rem", value: 1.75 },
@@ -404,8 +404,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".nav-group-toggle",
-      why: "the app hangs the gap on the toggle itself (there is no section wrapper), styles.css:1111-1133 uses var(--space-4)",
-      app: "packages/desktop-ui/src/styles.css:1111-1133",
+      why: "the app hangs the gap on the toggle itself (there is no section wrapper), styles.css:1115-1137 uses var(--space-4)",
+      app: "packages/desktop-ui/src/styles.css:1115-1137",
     },
     read: { property: "marginTop" },
     expect: { kind: "rem", value: 0.75 },
@@ -427,8 +427,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".desktop-shell",
-      why: "global class in styles.css:918-928; the token --grain already exists (tokens.css:511) with no consumer",
-      app: "packages/desktop-ui/src/styles.css:918-928, tokens.css:511-512",
+      why: "global class in styles.css:922-932; the token --grain already exists (tokens.css:511) with no consumer",
+      app: "packages/desktop-ui/src/styles.css:922-932, tokens.css:511-512",
     },
     read: { pseudo: "::after", property: "backgroundImage" },
     expect: { kind: "not", value: "none" },
@@ -448,7 +448,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".desktop-shell",
       why: "same subject as L1-08a — this is the half of position 8 that turns a decoration into an outage",
-      app: "packages/desktop-ui/src/styles.css:918-928",
+      app: "packages/desktop-ui/src/styles.css:922-932",
     },
     read: { pseudo: "::after", property: "pointerEvents" },
     expect: { kind: "literal", value: "none" },
@@ -470,8 +470,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".search-control",
-      why: "global class in styles.css:1076-1100, which sets opacity: 0.78 on the whole control",
-      app: "packages/desktop-ui/src/styles.css:1076-1100",
+      why: "global class in styles.css:1080-1104, which sets opacity: 0.78 on the whole control",
+      app: "packages/desktop-ui/src/styles.css:1080-1104",
     },
     read: { property: "opacity" },
     expect: { kind: "literal", value: "1" },
@@ -491,7 +491,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".search-control kbd",
       why: "counted, not read: the prototype's difference here is the ABSENCE of an element",
-      app: "packages/desktop-ui/src/styles.css:1095-1100",
+      app: "packages/desktop-ui/src/styles.css:1099-1104",
     },
     read: { property: null },
     expect: { kind: "count", equals: 0 },
@@ -512,8 +512,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".capture-dock",
-      why: "global class in styles.css:2033-2055; it takes --radius-xl (1rem)",
-      app: "packages/desktop-ui/src/styles.css:2033-2055, tokens.css:301",
+      why: "global class in styles.css:2037-2059; it takes --radius-xl (1rem)",
+      app: "packages/desktop-ui/src/styles.css:2037-2059, tokens.css:301",
     },
     read: { property: "borderRadius" },
     expect: { kind: "token", token: "--radius-full" },
@@ -533,7 +533,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".capture-dock",
       why: "same subject as L1-10a; the app pads 0.55rem top and bottom",
-      app: "packages/desktop-ui/src/styles.css:2033-2055",
+      app: "packages/desktop-ui/src/styles.css:2037-2059",
     },
     read: { property: "paddingTop" },
     expect: { kind: "rem", value: 0.4375 },
@@ -557,7 +557,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".capture-dock",
       why: "same subject as L1-10a; the app pins min-height: 3.15rem, which is what makes it 50px",
-      app: "packages/desktop-ui/src/styles.css:2033-2055",
+      app: "packages/desktop-ui/src/styles.css:2037-2059",
     },
     read: { property: "minHeight" },
     expect: { kind: "literal", value: "auto" },
@@ -580,7 +580,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".shell-tabbar",
       why: "geometry, not paint: the band used to live inside <main>, so its left edge sat at the sidebar's width",
-      app: "packages/desktop-ui/src/styles.css:1742-1779, RealApp.tsx:3339",
+      app: "packages/desktop-ui/src/styles.css:1746-1783, RealApp.tsx:3373",
     },
     read: { property: "rect.left" },
     expect: { kind: "literal", value: "0px" },
@@ -609,8 +609,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
       // afordancji dziś nie ma, a `count` mierzy zero bez udawania, że czegoś
       // nie odczytał.
       selector: "[data-sidebar-collapse]",
-      why: "prescribed declaration — rail mode is today a pure consequence of window width (RealApp.tsx:486, :541-554), with no control",
-      app: "packages/desktop-ui/src/RealApp.tsx:486, :541-554, styles.css:3400-3505",
+      why: "prescribed declaration — rail mode is today a pure consequence of window width (RealApp.tsx:489, :544-557), with no control",
+      app: "packages/desktop-ui/src/RealApp.tsx:489, :544-557, styles.css:3418-3523",
     },
     read: { property: null },
     expect: { kind: "count", equals: 1 },
@@ -653,7 +653,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector: ".shell-detach",
       why: "global class in styles.css, kept through the change and also read by the packaged smoke",
-      app: "packages/desktop-ui/src/styles.css:1760-1766, RealApp.tsx:3812-3872",
+      app: "packages/desktop-ui/src/styles.css:1764-1770, RealApp.tsx:3846-3906",
     },
     read: { property: "width" },
     expect: { kind: "rem", value: 1.75 },
@@ -676,7 +676,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
       // wymiarów mówi „kwadrat".
       selector: ".shell-detach",
       why: "same subject as L1-14a",
-      app: "packages/desktop-ui/src/styles.css:1760-1766",
+      app: "packages/desktop-ui/src/styles.css:1764-1770",
     },
     read: { property: "height" },
     expect: { kind: "rem", value: 1.75 },
@@ -755,7 +755,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       // TOKEN, NIE ELEMENT: pasmo tytułu jest dziś złożone z dwóch tokenów
-      // w jednej wysokości (`styles.css:1382`), więc pomiar elementu mieszałby
+      // w jednej wysokości (`styles.css:1386`), więc pomiar elementu mieszałby
       // dwie różne pozycje. Sonda rozwiązuje token na ukrytym elemencie w tej
       // samej stronie.
       token: "--titlebar-height",
@@ -817,8 +817,8 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: ".nav-count--attention",
-      why: "global class in styles.css:1305-1314; it paints from --surface-selected, whose comment says the pill may differ by shape and background but never by a new hue",
-      app: "packages/desktop-ui/src/styles.css:1305-1314, RealApp.tsx:1963-1966",
+      why: "global class in styles.css:1309-1318; it paints from --surface-selected, whose comment says the pill may differ by shape and background but never by a new hue",
+      app: "packages/desktop-ui/src/styles.css:1309-1318, RealApp.tsx:1978-1981",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -1527,14 +1527,14 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector:
         '#main-content [class*="_today_"] > *:not(.surface-header):not(.view-band)',
-      why: "the clamp carrier the contract names by selector: `.surface-scroll > *:where(:not(.surface-header, .view-band))` (styles.css:6381-6385). Measured 2026-08-13 at 1440×900 in both themes: FOUR rendered children (p._capacity, section._section ×3), ONE distinct maxWidth — 1152px — so this selector says exactly one thing",
+      why: "the clamp carrier the contract names by selector: `.surface-scroll > *:where(:not(.surface-header, .view-band))` (styles.css:6399-6403). Measured 2026-08-13 at 1440×900 in both themes: FOUR rendered children (p._capacity, section._section ×3), ONE distinct maxWidth — 1152px — so this selector says exactly one thing",
       app: "packages/desktop-ui/src/TodaySurface.tsx:235 (nośnik), styles.css (klamra `.surface-scroll > *`), today.module.css (`.today { --surface-measure: 68rem }` — wartość TEGO ekranu, od lotu L1)",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 68 },
     // `rem`, A NIE PIKSEL, i to nie jest ostrożność: `judgeVisualPair` dzieli
     // przez `getComputedStyle(document.documentElement).fontSize`
-    // (`verify-renderer-layout.mjs:4530-4532`), więc ta para pyta o REGUŁĘ
+    // (`verify-renderer-layout.mjs:4577-4579`), więc ta para pyta o REGUŁĘ
     // („ekran deklaruje 68 rem"), a nie o szerokość okna. Wszystkie liczby
     // dokumentu przejścia są z 1662 px, a ta mapa chodzi przy 1440 px.
     //
@@ -1707,7 +1707,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
   // rodziny: na Dzisiaj `data-planned-row` siedzi na `<div>` WEWNĄTRZ gołego
   // `<li>` (`TodaySurface.tsx:502-509`), więc `*:has(>[data-planned-row])`
   // trafiłby w `<li>`, a chrom ma dostać LISTA; na Skrzynce `data-inbox-row`
-  // siedzi wprost na `<li>` (`InboxSurface.tsx:137-147`). Nazwa klasy modułu
+  // siedzi wprost na `<li>` (`InboxSurface.tsx:138-148`). Nazwa klasy modułu
   // odpada osobno — `_rows_` zeruje selektor po cichu przy pierwszym
   // przebudowaniu arkusza. Zostaje „element o roli listy, który zawiera
   // ZADEKLAROWANE wiersze", i to samo zdanie działa na obu ekranach.
@@ -1719,7 +1719,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
   // (`scripts/break-visual-language.mjs`, „the Today plan list's role").
   //
   // `:has()` BEZ SPACJI W ŚRODKU NAWIASU. Diagnostyka `NOT_MEASURED` dzieli
-  // selektor po `\s+` (`verify-renderer-layout.mjs:4451-4462`); spacja wewnątrz
+  // selektor po `\s+` (`verify-renderer-layout.mjs:4498-4509`); spacja wewnątrz
   // `:has()` rozbija go na dwa nieparsowalne kawałki i spis „każda część
   // osobno" przestaje cokolwiek mówić, choć czerwień dalej pada.
   //
@@ -2152,7 +2152,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     },
     subject: {
       selector: "#main-content [data-planned-row]",
-      why: "the declared row attribute, the same one the layout gate's todayPlannedRows floor is anchored to (verify-renderer-layout.mjs:1134-1137); the app puts --radius-md on the ROW",
+      why: "the declared row attribute, the same one the layout gate's todayPlannedRows floor is anchored to (verify-renderer-layout.mjs:1146-1149); the app puts --radius-md on the ROW",
       app: "packages/desktop-ui/src/today.module.css (.row, .meeting — the card radius is gone and a border-bottom took its place)",
     },
     // „TEN ELEMENT NIE MA TEJ WŁASNOŚCI" ZAPISUJE SIĘ LITERAŁEM — ustalony
@@ -2629,7 +2629,7 @@ export const VISUAL_LANGUAGE_NOT_COVERED = [
     title: "the capture dock's hover state takes the accent edge",
     prototype:
       "v3/app.css:815-816 (`.capture:hover { border-color: var(--accent-edge) }`)",
-    app: "packages/desktop-ui/src/styles.css:2052-2055",
+    app: "packages/desktop-ui/src/styles.css:2056-2059",
     probe: ".capture-dock",
     why:
       "Stanu `:hover` nie da się wymusić z `page.evaluate`, a `page.hover()` przechodzi przez " +
@@ -3155,7 +3155,7 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 //    PRZELOT ─────────────────────────────────────────────────────────────────
 //
 // USTALENIE, KTÓRE ZDECYDOWAŁO O KSZTAŁCIE TEGO BLOKU, PRZECZYTANE W KODZIE:
-// `visualLanguagePairs` (`scripts/verify-renderer-layout.mjs:3358-3674`) robi
+// `visualLanguagePairs` (`scripts/verify-renderer-layout.mjs:3405-3721`) robi
 // `page.goto(HARNESS)`, czeka 1500 ms i mierzy. NIC nie klika. `HARNESS` to
 // `?surface=collaboration` (`:81`), czyli powłoka na powierzchni lądowania,
 // przy 1440×900, w dwóch motywach. Pipeline, Renewals, ekrany rekordu, Library
@@ -3163,7 +3163,7 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 //
 // Gdyby te pary trafiły do `VISUAL_LANGUAGE_PAIRS`, przelot zwróciłby dla
 // każdej z nich `VISUAL_LANGUAGE_NOT_MEASURED` — bo „selektor nie trafił w nic"
-// jest tam AWARIĄ PRZYRZĄDU w OBU statusach (`:3499-3507`, `:3616-3622`), a
+// jest tam AWARIĄ PRZYRZĄDU w OBU statusach (`:3546-3554`, `:3663-3669`), a
 // awaria idzie do `failures`, czyli do czerwieni bramki. Pięćdziesiąt siedem
 // czerwonych wierszy o zepsutym przyrządzie dostałby każdy lot, który pobiegnie
 // PRZED przyrządem P7 — czyli wszystkie loty 2-6. Wpisanie ich osobno jest
@@ -3184,16 +3184,16 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 //    fałszywych `NOT_MEASURED` i będzie nie do odczytania.
 // 2. AFORDANCJE, KTÓRYMI SIĘ CHODZI, SĄ JUŻ ZMIERZONE I UŻYWANE PRZEZ SĄSIEDNIE
 //    PRZELOTY TEGO SAMEGO PLIKU:
-//      • cel nawigacji  — `.nav-item[data-surface="<id>"]`.click()  (`:2719-2729`)
-//      • soczewka       — `[data-layout="<label>"]`.click()         (`:906-916`)
+//      • cel nawigacji  — `.nav-item[data-surface="<id>"]`.click()  (`:2766-2776`)
+//      • soczewka       — `[data-layout="<label>"]`.click()         (`:918-928`)
 //      • rekord         — dblclick na `[data-project-row]`, `[data-task-row]`
-//                         albo `[data-pipeline-card]`               (`:984-1001`)
+//                         albo `[data-pipeline-card]`               (`:996-1013`)
 //      • zakładka rekordu — `[role="tab"][data-record-tab="<label>"]`.click()
-//                                                                   (`:1005-1016`)
+//                                                                   (`:1017-1028`)
 //      • Ustawienia     — `[data-settings-entry]`.click(), a wyjście
 //                         `[data-settings-back]`; wejście PODMIENIA lewą
 //                         kolumnę, więc Ustawienia idą OSTATNIE albo z powrotem
-//                         (`:748-771`, `:2731-2749`)
+//                         (`:760-783`, `:2778-2796`)
 // 3. KOSZT, POLICZONY Z TYCH SAMYCH LINII: sąsiednie przeloty czekają 500-900 ms
 //    po każdym kliknięciu, a ten przelot chodzi DWA RAZY (motyw ciemny i jasny).
 //    Trasy tej mapy to 4 cele nawigacji, 1 soczewka, 3 otwarcia rekordu,
@@ -3214,7 +3214,7 @@ export const VISUAL_LANGUAGE_EXPECTED = {
 //                  i `L1-13`.
 //
 // ── PODMIOT Z CSS MODUŁU ─────────────────────────────────────────────────────
-// Normalizacja `_title_1kitm_195` → `_title` w `signature()` (`:3410-3420`)
+// Normalizacja `_title_1kitm_195` → `_title` w `signature()` (`:3457-3467`)
 // obsługuje WYPISYWANIE, nie `querySelectorAll` — selektor `._money` nie trafi
 // w nic. Gdzie aplikacja nie niesie deklaracji, ten blok bierze podmiot formą
 // `[class*="_nazwa_"]`, ZAWSZE z podkreślnikiem po nazwie: `[class*="_row_"]`
@@ -4511,10 +4511,13 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   },
 
   // ══ LOT 5 — LIBRARY ═══════════════════════════════════════════════════════
-  // Trasa bazowa: klik `.nav-item[data-surface="library"]` (ląduje na odczycie
-  // „notes"). Pary źródeł dokładają klik `[data-layout="sources"]`
-  // (`library/library-readings.ts:15-19` — słownik odczytów jest zamknięty
-  // i przełącznik czyta z niego kolejność).
+  // Trasa bazowa PO LOCIE D3: klik `.nav-item[data-surface="notes"]` albo
+  // `…="sources"` — dwa CELE, dwa przystanki, zero kliknięć wewnątrz ekranu.
+  // Stało tu: „klik `.nav-item[data-surface="library"]` (ląduje na odczycie
+  // «notes»). Pary źródeł dokładają klik `[data-layout="sources"]`". Tamtego
+  // przełącznika nie ma — trzy odczyty są trzema pozycjami nawigacji, więc
+  // krok `layout` znikł z tych czterdziestu jeden tras, a nie został
+  // przeadresowany.
   //
   // ── ODBIÓR 2026-08-07: DZIESIĘĆ PAR PRZECHODZI NA „enforced" ──────────────
   // Przelot zwrócił DOKŁADNIE dwadzieścia `ROUTED_PENDING_ALREADY_MATCHES`
@@ -4591,11 +4594,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`.kn-row[aria-selected="true"] { background: var(--accent-quieter) }` — zaznaczenie niesie TŁO i KRAWĘDŹ, żadnego cienia',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-document-list li button.active",
       why: "global class in styles.css (NOT a CSS Module), named by Faza 2 as an open debt: the literal `inset 2px 0` shadow outranks and erases the focus ring",
-      app: "packages/desktop-ui/src/styles.css:6844-6847, :695-699",
+      app: "packages/desktop-ui/src/styles.css:6862-6865, :699-703",
     },
     read: { property: "boxShadow" },
     expect: { kind: "literal", value: "none" },
@@ -4634,7 +4637,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`.kn-row[aria-selected="true"] { background: var(--accent-quieter) }`',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-document-list li button.active",
       why: "the same subject as L5-01a read on the other channel: the paint the position delivers, not the literal it removed. `--surface-selected` here would be the pre-lot state and would fail",
@@ -4662,11 +4665,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "138-143",
       value: "`.kn-row { display: grid }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-document-list li button",
       why: "global class; the app lays the row out as a flex row with space-between, which is why the date is the thing that ellipses",
-      app: "packages/desktop-ui/src/styles.css:6994-7006",
+      app: "packages/desktop-ui/src/styles.css:7027-7039",
     },
     read: { property: "display" },
     expect: { kind: "literal", value: "grid" },
@@ -4699,11 +4702,11 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-row-when { margin-left: auto; flex: none; font-variant-numeric: tabular-nums }` — osobny element, osobny pas",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-document-list li button time.knowledge-row-when",
       why: "counted; `<time>` because the date is now the only content of its element, which is also the first point at which the machine-readable value has anywhere to live (NotesReading.tsx). Merging the date back into the context string — the defect this position names — removes this element and nothing else in the map would notice",
-      app: "packages/desktop-ui/src/styles.css:6916-6923, NotesReading.tsx",
+      app: "packages/desktop-ui/src/styles.css:6934-6941, NotesReading.tsx",
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
@@ -4732,14 +4735,13 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // dalej mierzy swój własny stan — dwa stany jednego ekranu, każdy pod
     // swoim adresem, zamiast jednej fikstury, która nie utrzyma obu naraz.
     route: {
-      surface: "library",
-      layout: "notes",
+      surface: "notes",
       treeKey: "00000000-0000-4000-8000-000000000507",
     },
     subject: {
       selector: ".knowledge-welcome h2",
       why: "global class; the rule declares margin and colour and NO size, so the heading falls back to the user-agent 1.5em",
-      app: "packages/desktop-ui/src/styles.css:7229-7232",
+      app: "packages/desktop-ui/src/styles.css:7262-7265",
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-xl" },
@@ -4783,7 +4785,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "242-245",
       value: "`.kn-reader-title { font-size: var(--text-xl) }`",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_welcome_"] h3',
       why: "CSS Module class; same defect as L5-03a on the other reading",
@@ -4821,7 +4823,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "92-97",
       value: "`.kn-side-head { font-weight: 600 }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_panelHead_"] h2',
       why: "the sheet declares size and colour but no weight, and this package has no heading reset (styles.css:1 is only box-sizing), so the heading computes the user-agent 700",
@@ -4848,7 +4850,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-tnode--on { background: var(--accent-quieter); border-left-color: var(--accent) }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_treeNodeSelected_"]',
       why: "CSS Module class; the app paints var(--surface-selected), which Faza 1 fixed as the NEUTRAL selection — the ruling moves this one node out of that rule and nothing else",
@@ -4877,7 +4879,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "409-414",
       value: "`.kn-ref-ico` — kwadrat 1.5rem z glifem rodzaju rekordu",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_restsList_"] svg',
       why: "counted; the app renders bare titles. The count does NOT prescribe the arrow — the brief calls an exit with nowhere to go a lying affordance",
@@ -4909,7 +4911,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "336-339",
       value: "`.segmented { background: var(--surface-sunken); padding: 2px }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_arrangement_"]',
       why: "CSS Module class; the app draws a pill outline with a transparent inside",
@@ -4943,7 +4945,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "52-53",
       value: "`.kn-tglyph svg { width: 0.8125rem; height: 0.8125rem }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_treeNode_"] svg',
       why: "counted; the app types ▾/▸ as text (FolderTree.tsx:242-246). The trailing underscore keeps _treeNodeSelected_ and _treeNodeLoose_ out of the selector's own name, and the base class is on every node anyway",
@@ -4972,7 +4974,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "145-150",
       value: "to samo, co L5-01a — zaznaczenie bez cienia",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[role="option"][class*="_rowSelected_"]',
       why: "CSS Module twin of L5-01a, narrowed by role=option (SourcesReading.tsx:99) because EIGHT distinct _rowSelected_ classes exist across the built chunks; it is a Tab stop (hooks/useListNavigation.ts:54), so the erased focus ring is reachable",
@@ -5012,7 +5014,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`.kn-row[aria-selected="true"] { background: var(--accent-quieter) }`',
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[role="option"][class*="_rowSelected_"]',
       why: "the same subject as L5-09a on the other channel; `--surface-selected` here would be the pre-lot state and would fail",
@@ -5037,7 +5039,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "444",
       value: "`.kn-avail--ok { color: var(--status-success); … }`",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_badge_available_"]',
       why: "CSS Module class; the rule declares border-color and background and NO colour, so the text inherits whatever the row gives it",
@@ -5082,7 +5084,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: ".settings-navigator",
       why: "counted at zero: the brief's hard condition is that aria-current moves ONTO .settings-mode-column and the in-content navigator goes away, in the same commit as five test files",
-      app: "packages/desktop-ui/src/SettingsSurface.tsx:1065-1092, styles.css:7964-8018",
+      app: "packages/desktop-ui/src/SettingsSurface.tsx:1122-1149, styles.css:7997-8051",
     },
     read: { property: null },
     expect: { kind: "count", equals: 0 },
@@ -5116,7 +5118,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '.settings-mode-column .nav-item[aria-current="location"]',
       why: "the shell's own carrier: zero matches here means either nothing is marked as current (the fact never crossed from the surface to the shell) or it is marked somewhere the reader's column is not",
-      app: "packages/desktop-ui/src/RealApp.tsx:3496-3498, styles.css:1571-1576",
+      app: "packages/desktop-ui/src/RealApp.tsx:3530-3532, styles.css:1575-1580",
     },
     read: { property: "backgroundColor" },
     expect: { kind: "token", token: "--nav-active-bg" },
@@ -5142,8 +5144,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { settingsMode: true },
     subject: {
       selector: ".settings-mode-section",
-      why: "global class in RealApp.tsx:3465; styles.css has NO rule naming .settings-mode-column or .settings-mode-section at all",
-      app: "packages/desktop-ui/src/RealApp.tsx:3376-3393, styles.css:1278-1282",
+      why: "global class in RealApp.tsx:3499; styles.css has NO rule naming .settings-mode-column or .settings-mode-section at all",
+      app: "packages/desktop-ui/src/RealApp.tsx:3410-3427, styles.css:1282-1286",
     },
     read: { property: "whiteSpace" },
     expect: { kind: "literal", value: "nowrap" },
@@ -5228,7 +5230,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // Poprzednia wersja pytała `.settings-control button` o „przynajmniej
       // jeden akcent na ekranie" i PRZECHODZIŁA JUŻ DZIŚ — nie dlatego, że lot 6
       // cokolwiek oddał, tylko dlatego, że akcent na tym ekranie jest od dawna:
-      // `styles.css:8519-8525` maluje `.settings-control.support-report-action >
+      // `styles.css:8552-8558` maluje `.settings-control.support-report-action >
       // button` farbą `--action-primary-bg`. Czyli oczekiwanie było napisane
       // tak, że NIGDY NIC BY NIE ZMIERZYŁO.
       //
@@ -5264,8 +5266,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         ".settings-control button[data-notes-export], " +
         ".settings-control button[data-notes-import-scan]",
-      why: "the two buttons Settings #4 names (SettingsSurface.tsx:2345-2354 export to Markdown, :2429-2438 choose a vault folder); both now carry .primary-button, which styles.css:8839 excludes by name from the generic secondary paint — before lot 6 that rule painted them --action-secondary-bg and 0 of 2 carried the accent",
-      app: "packages/desktop-ui/src/styles.css:8839-8851 (the secondary paint and its two named exceptions), :8909-8915 (the accent that already existed on this screen and made the loose version pass), :822-825 (.primary-button), SettingsSurface.tsx:2345-2354, :2429-2438",
+      why: "the two buttons Settings #4 names (SettingsSurface.tsx:3208-3217 export to Markdown, :3310-3319 choose a vault folder); both now carry .primary-button, which styles.css:8872 excludes by name from the generic secondary paint — before lot 6 that rule painted them --action-secondary-bg and 0 of 2 carried the accent",
+      app: "packages/desktop-ui/src/styles.css:8872-8884 (the secondary paint and its two named exceptions), :8942-8948 (the accent that already existed on this screen and made the loose version pass), :826-829 (.primary-button), SettingsSurface.tsx:3208-3217, :3310-3319",
     },
     read: { property: "paint" },
     expect: { kind: "accentCount", atLeast: 2 },
@@ -5296,8 +5298,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { settingsMode: true },
     subject: {
       selector: ".settings-copy > p",
-      why: "global class; today the prose sits in a 1fr track beside a 21rem control track (styles.css:8036-8042) and declares no measure of its own",
-      app: "packages/desktop-ui/src/styles.css:8054-8059",
+      why: "global class; today the prose sits in a 1fr track beside a 21rem control track (styles.css:8069-8075) and declares no measure of its own",
+      app: "packages/desktop-ui/src/styles.css:8087-8092",
     },
     read: { property: "maxWidth" },
     expect: { kind: "token", token: "--surface-read" },
@@ -5307,7 +5309,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // ZASZŁO — lot zostawił klasę i zapisał, że zostawił ją świadomie, więc
     // para mierzy element, a nie swoją własną nieobecność. Różnica wobec v3
     // (notka stoi NAD kontrolką, nie POD) jest zapisana przy regule
-    // w `styles.css:8396-8401` i ta para jej nie dotyczy: mierzy MIARĘ, a nie
+    // w `styles.css:8429-8434` i ta para jej nie dotyczy: mierzy MIARĘ, a nie
     // kolejność.
     status: "enforced",
   },
@@ -5394,7 +5396,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // DLACZEGO DWIE, A NIE JEDNA. Rozmiar pisma i promień to dwie różne reguły
   // w dwóch różnych miejscach kaskady: stopień pisma schodził z `body` przez
   // `font: inherit` grupowego resetu (`styles.css:624-630`), a promień
-  // deklarowała goła reguła `select` (`:697-704`). Jedna para pilnowałaby
+  // deklarowała goła reguła `select` (`:701-708`). Jedna para pilnowałaby
   // jednej z nich i milczała o drugiej — a lot oddaje obie.
   //
   // CO Z SZEROKOŚCI JEST WYRAŻALNE, A CO NIE — i to jest SPROSTOWANIE, bo do
@@ -5415,14 +5417,14 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // DWA POWODY, KTÓRE TU DAWNIEJ STAŁY, BYŁY SPRZECZNE Z KODEM RUNNERA:
   //   * „ponad pół tuzina dopasowań, czyli NOT_MEASURED" — runner wraca
   //     `not-measured` przy wielu dopasowaniach WYŁĄCZNIE wtedy, gdy liczą one
-  //     RÓŻNE wartości (`verify-renderer-layout.mjs:4079-4090`, `distinct
+  //     RÓŻNE wartości (`verify-renderer-layout.mjs:4126-4137`, `distinct
   //     .length > 1`). Zmierzone w Ustawieniach na 1440 px: sześć narysowanych
   //     kontrolek, `flex-grow` = „0" we WSZYSTKICH sześciu i `max-width`
   //     = „256px" we wszystkich sześciu, czyli jedna wartość i pomiar.
   //   * „podmioty nie są DOSIĘGALNE tym spacerem" — Ustawienia są pełnoprawnym
   //     przystankiem przez `route: { settingsMode: true }`
-  //     (`verify-renderer-layout.mjs:6185-6210`, wyjęte spod `ROUTED_ARRIVAL`
-  //     w `:5986`), i sześć par L6-* mierzy tam od Fazy 3. `.railSelect` też
+  //     (`verify-renderer-layout.mjs:6232-6257`, wyjęte spod `ROUTED_ARRIVAL`
+  //     w `:6033`), i sześć par L6-* mierzy tam od Fazy 3. `.railSelect` też
   //     się rysuje: zmierzone na otwartym rekordzie projektu w tym harnessie —
   //     jedna narysowana kontrolka, `flex-grow` „0", `max-width` „256px”,
   //     szerokość 251 px. Warunek „niepusta lista kandydatów" jest w tej
@@ -5555,7 +5557,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // `.settings-control` jest kolumną o `align-items: stretch`, więc
       // rozpina dziecko na całą taflę i tylko `align-self: start` to cofa.
       // Zmierzone: jeden narysowany podmiot (`#voice-audio-retention`,
-      // `SettingsSurface.tsx:1990-2003`), 124,8 px przy tafli 1098 px.
+      // `SettingsSurface.tsx:2801-2814`), 124,8 px przy tafli 1098 px.
       selector: ".settings-control > select",
       why: "the only <select> that is a DIRECT child of the column, so it is the only one the column's `align-items: stretch` could reach",
       app: "packages/desktop-ui/src/styles.css (.settings-control > select)",
@@ -5583,7 +5585,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // rodzicem jest `form.status-create` albo `label`, a nie
       // `.settings-control > div`. Zmierzone na 1440 px: sześć narysowanych
       // dopasowań, `flex-grow` = „0" we wszystkich sześciu, więc runner ma
-      // JEDNĄ wartość i pomiar (`verify-renderer-layout.mjs:4079-4090`).
+      // JEDNĄ wartość i pomiar (`verify-renderer-layout.mjs:4126-4137`).
       selector: ".settings-control select",
       why: "every rendered select of the settings surface at once — the rule this pair judges is written for all of them and they compute one value",
       app: "packages/desktop-ui/src/styles.css (.settings-control select)",
@@ -5884,7 +5886,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-side-head { padding: 0.5rem var(--space-4); font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.04em }` — głowa kolumny jest mikroetykietą, nie tytułem ekranu",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_panelHead_"] h2',
       why: "the same subject L5-04 reads for weight; this pair reads the step, which is what made the head two lines tall",
@@ -5912,7 +5914,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`<div class="kn-side-head">…${helpBtn("folders")}</div>` — wyzwalacz pomocy jest DZIECKIEM głowy kolumny, a nie osobnym piętrem pod przełącznikiem',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_panelHead_"] [data-help-topic="note-arrangement"]',
       why: "`data-help-topic` is TopicHelp's own declaration and is what the route assertion already counts; the class around it is a module name",
@@ -5940,7 +5942,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "cała głowa to JEDEN rząd — `.kn-side-head` z `.kn-n` odepchniętym `margin-left: auto`; prototyp nie ma nad nim żadnej drugiej etykiety",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_panelEyebrow_"]',
       why: "the micro-label tier this lot deleted; a module class that no longer exists in the sheet resolves to no element",
@@ -5963,7 +5965,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-group-head` deklaruje wyłącznie `padding`, siada wprost na wierszach i wprost pod przełącznikiem — między grupami nie ma ani odstępu, ani marginesu",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_groupHead_"]',
       why: "an <h3> in a package with no heading reset; it took the user-agent 1em block margin on both sides",
@@ -5986,7 +5988,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-row-in { border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 0.0625rem 0.4375rem 0.0625rem 0.3125rem }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-row-ref",
       why: "hand-written class in styles.css; three of the harness's notes carry references, so the subject is drawn on this stop",
@@ -6018,7 +6020,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "188",
       value: "`.kn-row-in .kn-glyph { color: var(--accent); opacity: 0.85 }`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-row-ref svg",
       why: "the glyph inside the pill; the app drew no glyph at all before this lot",
@@ -6041,7 +6043,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "ta sama reguła, co przy D3-01a — obie kolumny list Biblioteki są w prototypie tym samym obiektem (`v3/screens/knowledge.js:812` i `:971`)",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_listTitle_"] h2',
       why: "CSS Module class; the app drew a --text-md sentence title that pushed the help trigger onto a second line",
@@ -6063,7 +6065,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "95",
       value: "`.kn-side-head { text-transform: uppercase }`",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_listTitle_"] h2',
       why: "same subject as D3-04a; this is the half of the reference rule the twin head on Notes deliberately does not take",
@@ -6086,7 +6088,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-group-head { padding: 0.4375rem var(--space-4) 0.25rem }` przeciw `.kn-row { padding: 0.5625rem var(--space-4) }` (`:139`) — jedna para reguł, JEDNA wyściółka pozioma dla obu",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_groupHead_"]',
       // Selektor jest ogólny, ale przystanek NIE jest: na tej trasie rysuje się
@@ -6112,7 +6114,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-row { padding: 0.5625rem var(--space-4); border-bottom: 1px solid var(--border-subtle); border-left: 2px solid transparent }` — ŻADNEGO promienia",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[role="option"][class*="_row_"]',
       why: "declaration-based (`role=option`) plus the module class; the app drew a --radius-md card inset from both column edges",
@@ -6134,7 +6136,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "140",
       value: "`.kn-row { border-bottom: 1px solid var(--border-subtle) }`",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       // SELEKTOR ZAWĘŻONY PRZY PIERWSZYM PRZELOCIE, I ZAWĘZIŁ GO PRZYRZĄD,
       // NIE GUST. Napisany jako `[role="option"][class*="_row_"]` — czyli tak
@@ -6166,7 +6168,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-row-when { margin-left: auto; flex: none; font-variant-numeric: tabular-nums }` — zmierzone na prototypie: prawe krawędzie czterech kolejnych dat na jednej linii (559 px)",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[role="option"] time[class*="_rowWhen_"]',
       why: "the element did not exist before this lot — the date was a bare text node sharing a lane with the dependants count, so no probe could reach it",
@@ -6203,7 +6205,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-sec-head { font-size: var(--text-sm); font-weight: 600; letter-spacing: -0.005em }` — zmierzone na prototypie: 13 px, 600, `text-transform: none`",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_sectionHead_"]',
       why: "the class this lot split off `.sectionLabel`; the field label of the rename form KEEPS the micro-label treatment and is deliberately not this subject",
@@ -6226,7 +6228,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-refs { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden }` + `.kn-ref-row { border-bottom: 1px solid var(--border-subtle) }`",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_restsList_"]',
       why: "the same subject L5-06 counts glyphs inside; this pair reads the plate the register says the block lost",
@@ -6251,7 +6253,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
         " i „added …" +
         " w JEDNYM rzędzie `--text-xs`, rozdzielone `.kn-dot` (`v3/screens/knowledge.js:912-916`)",
     },
-    route: { surface: "library", layout: "sources" },
+    route: { surface: "sources" },
     subject: {
       selector: '[class*="_dates_"]',
       why: "the `dl` block this lot replaced; a class no rule declares any more resolves to no element",
@@ -6274,7 +6276,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-body { padding-top: var(--space-5) }` i nic więcej — zmierzone na prototypie: `border-top-width: 0px`, tło `rgba(0,0,0,0)`, `box-shadow: none`",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-writing-plane .document-canvas",
       why: "hand-written classes in styles.css; the selector is scoped because the SAME canvas class carries the project record's document card, which belongs to another lot",
@@ -6299,7 +6301,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       lines: "282",
       value: "`.kn-body` nie deklaruje ani `border-radius`, ani obwódki",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-writing-plane .document-canvas",
       why: "same subject as D3-10a on the other channel",
@@ -6322,7 +6324,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-h2 { font-size: var(--text-lg) }` pod `.kn-reader-title { font-size: var(--text-xl) }` (`:242-245`) — największy śródtytuł jest MNIEJSZY od tytułu",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".knowledge-writing-plane .document-canvas h1",
       why: "the body's own top heading, which computed 37.76 px against a 22 px title before this lot — the inversion the register names",
@@ -6345,7 +6347,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3) }` — zmierzone na prototypie: 28 px wysokości",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".document-editor-actions",
       why: "hand-written class in styles.css; it declared `display: grid; justify-items: end`, i.e. one action per row, and measured 187 px tall",
@@ -6368,7 +6370,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "`.kn-reader-meta` — jeden przygaszony wiersz pod tytułem czytanej notatki (`v3/screens/knowledge.js:747-753`)",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: ".document-editor-meta time",
       why: "the timestamp inside the metadata line; counting the line alone would be green over a line that draws only the folder",
@@ -6773,6 +6775,36 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // inny podział (np. scali „Devices" z „Data"), to on przepisuje tę liczbę
     // i pisze, dlaczego prototypowa dwunastka go nie obowiązuje. Para stoi tu
     // po to, żeby ta rozmowa musiała się odbyć — nie po to, żeby ją wyprzedzić.
+    //
+    // ── ODPOWIEDŹ LOTU D2 FAZY III, 2026-08-15: ROZMOWA SIĘ ODBYŁA, LICZBA
+    //    ZOSTAJE DWUNASTKĄ, PARA ZOSTAJE OCZEKUJĄCA. ────────────────────────
+    //
+    // Ten lot dowiózł z wpisu 13-2 KOLEJNOŚĆ grup (pary `FIII2-02a/02b`)
+    // i ŚWIADOMIE nie dotknął liczby pozycji. Powód jest zmierzony, nie
+    // estetyczny, i ma dwie połowy:
+    //
+    //   1. NASZE SZEŚĆ POZYCJI TO NIE JEST SKRÓCONE DWANAŚCIE PROTOTYPU.
+    //      Policzone w źródle na tym drzewie: nasze sześć kategorii mieści
+    //      DZIEWIĘTNAŚCIE sekcji (`.settings-copy` w `SettingsSurface.tsx`),
+    //      a dwunastka prototypu to dwanaście OSOBNYCH STRON, po jednej sekcji
+    //      każda. Przyjęcie dwunastu pozycji jest więc PONOWNYM POCIĘCIEM
+    //      dziewiętnastu sekcji, a nie rozwinięciem sześciu — plus przy trzech
+    //      z nich (`Renewals`, `Devices`, `Danger zone`) nie mamy dziś
+    //      zawartości, którą prototyp tam kładzie.
+    //   2. TO JEST PYTANIE O MODEL NAWIGACJI, NIE O SPIS. Nasze sześć pozycji
+    //      to KOTWICE w jednej przewijanej stronie (`aria-current="location"`,
+    //      obserwator przecięć, `settingsCategoryElementId`); dwanaście
+    //      prototypu to TRASY (`aria-current="page"`,
+    //      `data-go={"kind":"settings","section":…}`). Przełączenie liczby bez
+    //      przełączenia modelu dałoby dwanaście kotwic w jednej stronie, czyli
+    //      trzecią rzecz, której nie ma ani u nas, ani w prototypie.
+    //
+    // WŁAŚCICIEL JEST NAZWANY, ŻEBY TA PARA NIE STAŁA SIĘ ZALEGŁOŚCIĄ BEZ
+    // ADRESU: pozostaje nim wpis 13-2, ale jego NIEDOWIEZIONA połowa —
+    // „6 kotwic w jednej stronie wobec 12 stron" — jest w rachunku Fazy III
+    // pozycją o rozmiarze osobnego lotu, a nie ogonem. Dopóki tak jest, para
+    // ma DIFFERS (6 ≠ 12) i milczy; w chwili, gdy ktoś dowiezie tamten model,
+    // zacznie pasować i przelot sam każe przewrócić jej status.
     expect: { kind: "count", equals: 12 },
     status: "pending: WPIS 13-2 (nawigacja Ustawień)",
   },
@@ -7819,7 +7851,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "meetings" },
     subject: {
       selector: ".meeting-event .meeting-person-name",
-      why: 'IMIĘ JEST PODMIOTEM, A NIE POJEMNIK PO NIM — i to jest naprawa po przeglądzie adwersarialnym, zmierzona, nie przewidziana. Para stała na `.meeting-person`, czyli na OPAKOWANIU awatara i imienia; adwersarz skasował `<span className="meeting-person-name">{attendee.name}</span>`, wiersz został z samymi inicjałami — dosłownie „MN · PZ”, czyli stan, który ta para w swoim tytule ODRZUCA — a bramka wróciła ZIELONA w obu motywach (`observed: 2 rendered element(s) match „.meeting-event .meeting-person” — MATCH`). Przyrząd mierzył OBECNOŚĆ POJEMNIKA i nie mógł zobaczyć słów, o które pyta jego tytuł. Na `.meeting-person-name` to samo złamanie daje ZERO. PARA WIDZI TAKŻE IMIĘ WYZEROWANE, nie tylko skasowany element, i to jest sprawdzone w kodzie przyrządu, a nie założone: `judgeVisualPair` dla oczekiwania `atLeast` liczy `visible`, czyli dopasowania przefiltrowane przez `rendered()` (`verify-renderer-layout.mjs:4612-4617` — `display !== none` ORAZ `width > 0 && height > 0`), a `<span>` bez tekstu ma zerową szerokość. Awatar zostaje policzony przez nic — i tak ma być: awatar bez imienia jest właśnie tym, co prototyp odrzuca własnym komentarzem. PODŁOGA, NIE RÓWNOŚĆ, i to jest wybór wymuszony fiksturą: harness rysuje JEDEN wiersz nadchodzących z DWOMA uczestnikami (`CollaborationHarness.tsx`), więc `equals 2` przypinałoby parę do liczby, która jest własnością fikstury, a nie regułą produktu — klasa `fixture-artifact-is-not-a-design-defect`. CZEGO TA PARA NIE MÓWI: nie mówi, że narysowanym słowem jest IMIĘ TEGO uczestnika. Bramka chodzi po jednej fiksturze, więc równość z nazwiskiem byłaby fiksturą przepisaną do przyrządu — ten sam powód i ten sam podział co przy `L11-03a`/`L11-03b`. Równość `.meeting-person-name` z `event.attendees[].name` stoi w `packages/desktop-ui/test/meetings-room.interaction.test.tsx`. ROLI TA PARA NIE ŻĄDA I NIE MOŻE — `CalendarAttendeeSchema` (`packages/contracts/src/meeting-loop.ts:43-53`, `.strict()`) nie niesie stanowiska; to jest ustalenie o kontrakcie i stoi wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`',
+      why: 'IMIĘ JEST PODMIOTEM, A NIE POJEMNIK PO NIM — i to jest naprawa po przeglądzie adwersarialnym, zmierzona, nie przewidziana. Para stała na `.meeting-person`, czyli na OPAKOWANIU awatara i imienia; adwersarz skasował `<span className="meeting-person-name">{attendee.name}</span>`, wiersz został z samymi inicjałami — dosłownie „MN · PZ”, czyli stan, który ta para w swoim tytule ODRZUCA — a bramka wróciła ZIELONA w obu motywach (`observed: 2 rendered element(s) match „.meeting-event .meeting-person” — MATCH`). Przyrząd mierzył OBECNOŚĆ POJEMNIKA i nie mógł zobaczyć słów, o które pyta jego tytuł. Na `.meeting-person-name` to samo złamanie daje ZERO. PARA WIDZI TAKŻE IMIĘ WYZEROWANE, nie tylko skasowany element, i to jest sprawdzone w kodzie przyrządu, a nie założone: `judgeVisualPair` dla oczekiwania `atLeast` liczy `visible`, czyli dopasowania przefiltrowane przez `rendered()` (`verify-renderer-layout.mjs:4659-4664` — `display !== none` ORAZ `width > 0 && height > 0`), a `<span>` bez tekstu ma zerową szerokość. Awatar zostaje policzony przez nic — i tak ma być: awatar bez imienia jest właśnie tym, co prototyp odrzuca własnym komentarzem. PODŁOGA, NIE RÓWNOŚĆ, i to jest wybór wymuszony fiksturą: harness rysuje JEDEN wiersz nadchodzących z DWOMA uczestnikami (`CollaborationHarness.tsx`), więc `equals 2` przypinałoby parę do liczby, która jest własnością fikstury, a nie regułą produktu — klasa `fixture-artifact-is-not-a-design-defect`. CZEGO TA PARA NIE MÓWI: nie mówi, że narysowanym słowem jest IMIĘ TEGO uczestnika. Bramka chodzi po jednej fiksturze, więc równość z nazwiskiem byłaby fiksturą przepisaną do przyrządu — ten sam powód i ten sam podział co przy `L11-03a`/`L11-03b`. Równość `.meeting-person-name` z `event.attendees[].name` stoi w `packages/desktop-ui/test/meetings-room.interaction.test.tsx`. ROLI TA PARA NIE ŻĄDA I NIE MOŻE — `CalendarAttendeeSchema` (`packages/contracts/src/meeting-loop.ts:43-53`, `.strict()`) nie niesie stanowiska; to jest ustalenie o kontrakcie i stoi wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`',
       app: "packages/desktop-ui/src/styles.css (.meeting-person-name) + MeetingsSurface.tsx",
     },
     read: { property: null },
@@ -8235,7 +8267,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // `> .mt`, `> .cal-screen`, `> .record`, `.st`), a ta aplikacja klamruje
   // KAŻDE dziecko nośnika przewijania z osobna — i kontrakt nazywa ten zbiór
   // wprost: `.surface-scroll > *:where(:not(.surface-header, .view-band))`
-  // (`styles.css:6381-6385`). Odczyt na KORZENIU został zmierzony 2026-08-13
+  // (`styles.css:6399-6403`). Odczyt na KORZENIU został zmierzony 2026-08-13
   // i odrzucony, bo daje CZTERY fałszywe werdykty z trzynastu: Projekty,
   // Pipeline, Organizacje i Ludzie wyliczają na korzeniu „none" i byłyby
   // zielone przy treści zaklamrowanej do 72 rem, a Ustawienia — jedyny ekran
@@ -8307,7 +8339,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         '#main-content [class*="_inbox_"] > *:not(.surface-header):not(.view-band)',
       why: "measured 2026-08-13, both themes — THREE rendered children (section._section ×2, p._note), ONE distinct maxWidth (1152px)",
-      app: "packages/desktop-ui/src/InboxSurface.tsx:283",
+      app: "packages/desktop-ui/src/InboxSurface.tsx:284",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 68 },
@@ -8483,15 +8515,15 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       // KORZEŃ, A NIE DZIECKO, I TO JEST JEDYNY TAKI PODMIOT W P1 —
       // ZMIERZONY, NIE WYBRANY DLA WYGODY. Spotkania są jedynym ekranem tej
-      // aplikacji, który klamruje NA SOBIE (`styles.css:5058`, dziś
+      // aplikacji, który klamruje NA SOBIE (`styles.css:5076`, dziś
       // `max-width: 74rem`, przed lotem L1 `94rem` — literał, który ten lot
       // zmienił W MIEJSCU), a jego dziecko `.meeting-body` wylicza „none".
       // Para na dziecko porównywałaby „none" z `rem 74`, a to zwraca
-      // NOT_MEASURED (`verify-renderer-layout.mjs:4083-4092`) — czyli awarię
+      // NOT_MEASURED (`verify-renderer-layout.mjs:4130-4139`) — czyli awarię
       // przyrządu w miejscu, w którym należy się werdykt.
       selector: "#main-content .meeting-surface",
       why: "the one screen that clamps on its own root: measured 2026-08-13, both themes — ONE rendered element, maxWidth 1504px = 94rem. The same class is worn by `.meeting-skeleton` (MeetingsSurface.tsx:635) and by the error panel (:653); the arrival marker already in ROUTED_ARRIVAL keeps this stop on the delivered screen",
-      app: "packages/desktop-ui/src/MeetingsSurface.tsx:2022, deklaracja w styles.css:5043-5058 (`max-width: 74rem` od lotu L1, wcześniej 94rem)",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx:2022, deklaracja w styles.css:5061-5076 (`max-width: 74rem` od lotu L1, wcześniej 94rem)",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 74 },
@@ -8499,7 +8531,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // się ZMIANĄ LICZBY W MIEJSCU — `94rem` → `74rem` — a NIE przeniesieniem
     // Spotkań na wzorzec Ustawień. Powód jest mechaniczny, nie estetyczny:
     // skasowanie literału zostawiłoby na tym podmiocie „none", a `rem` na
-    // „none" wraca NOT_MEASURED (`verify-renderer-layout.mjs:4083-4092`), czyli
+    // „none" wraca NOT_MEASURED (`verify-renderer-layout.mjs:4130-4139`), czyli
     // AWARIĘ PRZYRZĄDU w środku Fazy II, na bramce bez flagi zwężającej
     // przelot. Edycja jednoliniowa jest też dokładnie tym, co robi prototyp:
     // `.mt { max-width: 74rem }` to literał na korzeniu, nie zmienna.
@@ -8522,19 +8554,91 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "brak reguły korzenia z `max-width`: korzeniem jest `.kn-main.scroller` (`screens/knowledge.js:835`, `:974`), a jedyny sufit w tym pliku to `.kn-reader { max-width: var(--surface-read) }` (`:234`) — sufit AKAPITU (`v3/tokens.css:102`, 46rem), NIE ekranu",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
-      selector: '#main-content [data-height-bound="library"]',
-      why: 'Library reaches the band arrangement by its own road — `.shell` is a grid whose third row is the scroll box (library.module.css:16-23, LibraryShell.tsx:102) — so it has no `.surface-scroll` and never consumes `--surface-measure` at all. `data-height-bound` is written in the source as A DECLARATION, not a test hook (LibraryShell.tsx:214-223). Measured 2026-08-13, both themes — ONE rendered element, maxWidth "none"',
-      app: "packages/desktop-ui/src/library/LibraryShell.tsx:223, library.module.css:16-23",
+      selector: '#main-content [data-height-bound="notes"]',
+      why: 'Knowledge reaches the band arrangement by its own road — `.shell` is a grid whose third row is the scroll box (library.module.css) — so it has no `.surface-scroll` and never consumes `--surface-measure` at all. `data-height-bound` is written in the source as A DECLARATION, not a test hook. Measured 2026-08-13, both themes — ONE rendered element, maxWidth "none". Lot D3 SPLIT the declaration into three literals, one per knowledge screen; this pair keeps the Notes one, which is the screen it was written on, and its two twins (`P1-11b`, `P1-11c`) carry the other two — because a pair left alone here would measure a third of what it measured before the split',
+      app: "packages/desktop-ui/src/library/LibraryShell.tsx, library.module.css",
     },
     read: { property: "maxWidth" },
     expect: { kind: "literal", value: "none" },
     // ENFORCED, BO PASUJE DZIŚ — i to jest jedna z dwóch par tego przyrządu,
     // które są zielone od pierwszego przelotu. Para oczekująca, która PASUJE,
     // kładzie bramkę jako ROUTED_PENDING_ALREADY_MATCHES
-    // (`verify-renderer-layout.mjs:7509-7518`), a osłabianie oczekiwania po to,
+    // (`verify-renderer-layout.mjs:7572-7581`), a osłabianie oczekiwania po to,
     // żeby ją utrzymać w „pending", jest w tym pliku zakazane wprost.
+    status: "enforced",
+  },
+  {
+    // DRUGI Z TRZECH EKRANÓW WIEDZY, DOPISANY PRZY NAPRAWIE PO PRZEGLĄDZIE
+    // LOTU D3. Do niego pozycja 11 miała JEDNĄ parę, bo Biblioteka była jednym
+    // celem; po rozdziale ta jedna para mierzy sufit jednej trzeciej ekranu,
+    // który wcześniej mierzyła w całości. Dwie deklaracje `data-height-bound`,
+    // które lot dołożył, były więc poza pomiarem tej mapy — a przyrząd, który
+    // po rozdziale mierzy MNIEJ niż przed nim, jest przyrządem, który
+    // rozdziału nie zauważył.
+    id: "P1-11b",
+    lot: "P1",
+    position: 11,
+    kind: "restyle",
+    title: "Sources stands under no reading measure — and already does",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "107",
+      value:
+        "`.kn-main { padding: var(--space-6) var(--space-6) var(--space-10) }` — korzeniem ekranu Źródeł jest ten sam `.kn-main.scroller` co na Notatkach (`screens/knowledge.js:974` wobec `:835`) i tak samo NIE deklaruje `max-width`. Sufity w tym arkuszu są trzy i żaden nie jest sufitem ekranu: dwie pigułki metadanych (`:183`, `:192`) i czytelnia notatki (`:234`, `--surface-read` = 46rem, sufit AKAPITU)",
+    },
+    route: { surface: "sources" },
+    subject: {
+      selector: '#main-content [data-height-bound="sources"]',
+      why: 'BLIŹNIAK `P1-11`, i to jest jego jedyny powód istnienia: lot D3 rozbił JEDNĄ deklarację `data-height-bound="library"` na TRZY literały, po jednym na ekran wiedzy, a para została przy Notatkach. Zieleń na Notatkach nie mówi nic o Źródłach — deklaracje są osobnymi literałami w osobnych gałęziach `LibraryShell.tsx` i psują się osobno. Selektor trafia w JEDEN element (deklaracja rysuje się tylko na swoim ekranie), więc pułapka `distinct.length > 1` nie ma tu zastosowania',
+      app: "packages/desktop-ui/src/library/LibraryShell.tsx, library.module.css",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
+    status: "enforced",
+  },
+  {
+    // TRZECI EKRAN WIEDZY — I JEDYNA PARA W OBU MAPACH, KTÓREJ PROTOTYP NIE MA
+    // CZEGO PRZYŁOŻYĆ NA POZIOMIE EKRANU. To jest powiedziane wprost, bo
+    // przemilczane czytałoby się jak cytat: `DESTINATIONS` prototypu
+    // (`v3/app.js:156-169`) nie mają Historii wrzutek, więc nie ma tam ekranu,
+    // z którego dałoby się odczytać sufit tego ekranu.
+    //
+    // PARA STOI NA REGULE POWŁOKI, NIE NA EKRANIE, i regułę tę prototyp
+    // wypowiada JEDNYM pomiarem: `--surface-measure` pada w całym prototypie
+    // RAZ (`v3/app.css:650`, `.record`), więc „ekran nie deklaruje własnego
+    // sufitu" jest tam regułą domyślną, a nie brakiem. Ekran, którego prototyp
+    // nie zna, dalej podlega regule, którą prototyp zna.
+    //
+    // I TO JEST DRUGA POŁOWA POWODU: powierzchnia `captures` weszła do produktu
+    // z ZEREM par, więc `ROUTED_ARRIVAL.captures` był ZADEKLAROWANY i przez
+    // żaden przystanek NIEĆWICZONY — zły selektor przybycia nie miał jak się
+    // odezwać, bo audyt zna tylko odwrotność (`ROUTED_UNKNOWN_SURFACE`). Ta
+    // para dokłada ten przystanek i tym samym ćwiczy marker.
+    id: "P1-11c",
+    lot: "P1",
+    position: 11,
+    kind: "restyle",
+    title: "Capture history stands under no reading measure — and already does",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „Content stays in the reading column"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "650",
+      value:
+        "`.record { … max-width: var(--surface-measure) }` — JEDYNE użycie tego tokenu w całym prototypie (to samo, które cytuje `P1-12`). Historia wrzutek nie ma u prototypu ekranu, więc porównanie idzie po REGULE, którą to jedyne użycie ustanawia: sufit deklaruje rekord, a nie powierzchnia listy",
+    },
+    route: { surface: "captures" },
+    subject: {
+      selector: '#main-content [data-height-bound="captures"]',
+      why: 'TRZECI literał z rozbicia `data-height-bound="library"` (lot D3) i jedyny, którego ekran nie ma odpowiednika w prototypie. Podmiot jest nasz, reguła jest prototypu — dlatego ta para NIE cytuje ekranu, którego tam nie ma. Selektor trafia w JEDEN element; to także pierwszy i jedyny przystanek trasowany na tej powierzchni, więc jego marker przybycia (`ROUTED_ARRIVAL.captures`) przestaje być deklaracją, której nikt nie ćwiczy',
+      app: "packages/desktop-ui/src/library/LibraryShell.tsx, library.module.css",
+    },
+    read: { property: "maxWidth" },
+    expect: { kind: "literal", value: "none" },
     status: "enforced",
   },
   {
@@ -8555,7 +8659,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '#main-content [data-record-kind="task"]',
       why: "the record screen is the sole child of the tasks scroll box once a row is opened, so it wears the same `.surface-scroll > *` clamp as every list body. Measured 2026-08-13, both themes — ONE rendered element, maxWidth 1152px, i.e. the record reads NARROWER than the reference by 20 rem",
-      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:481, klamra styles.css:6381-6385",
+      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:481, klamra styles.css:6399-6403",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 92 },
@@ -8579,8 +8683,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector:
         "#main-content .settings-surface > *:not(.surface-header):not(.view-band)",
-      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9713-9715) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
-      app: "packages/desktop-ui/src/SettingsSurface.tsx:1047, styles.css:9713-9715",
+      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9746-9748) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
+      app: "packages/desktop-ui/src/SettingsSurface.tsx:1104, styles.css:9746-9748",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 74 },
@@ -8791,7 +8895,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "inbox" },
     subject: {
       selector: '#main-content [role="list"]:has([data-inbox-row])',
-      why: "role plus the declared row attribute, the same definition as P2-01a; the capture mailbox is empty in this fixture and renders a <p> instead of a <ul> (InboxSurface.tsx:378-382), and both mailboxes would carry the identical `.rows` rule anyway, so this subject cannot go ambiguous by growing",
+      why: "role plus the declared row attribute, the same definition as P2-01a; the capture mailbox is empty in this fixture and renders a <p> instead of a <ul> (InboxSurface.tsx:379-383), and both mailboxes would carry the identical `.rows` rule anyway, so this subject cannot go ambiguous by growing",
       app: 'packages/desktop-ui/src/InboxSurface.tsx (the <ul role="list"> of the work mailbox), inbox.module.css (.rows — the card rule since lot L4; before it the rule declared gap, margin, padding and list-style, and no border at all)',
     },
     read: { property: "borderTopWidth" },
@@ -8861,7 +8965,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "inbox" },
     subject: {
       selector: "#main-content [data-inbox-row]",
-      why: "the declared row attribute, written on the <li> itself (InboxSurface.tsx:137-147); the radius the app puts here is the SAME --radius-md the container is missing, which is the whole sentence of this instrument in one screen",
+      why: "the declared row attribute, written on the <li> itself (InboxSurface.tsx:138-148); the radius the app puts here is the SAME --radius-md the container is missing, which is the whole sentence of this instrument in one screen",
       app: "packages/desktop-ui/src/inbox.module.css (.row — the card radius is gone and a border-bottom took its place)",
     },
     read: { property: "borderRadius" },
@@ -8966,9 +9070,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   //
   // DLACZEGO WSZYSTKIE OSIEM CZYTA `count`, A NIE WŁASNOŚĆ. Gałąź `count`
   // w runnerze odkłada `{ state: "measured", matches: found.length }` i robi
-  // `continue` (`verify-renderer-layout.mjs:4427-4434`) ZANIM dojdzie do
-  // strażnika „selektor nie trafił w nic" (`:4437-4465`) i do strażnika
-  // `distinct.length > 1` (`:4496-4505`). Zero dopasowań jest więc dla tych
+  // `continue` (`verify-renderer-layout.mjs:4474-4481`) ZANIM dojdzie do
+  // strażnika „selektor nie trafił w nic" (`:4484-4512`) i do strażnika
+  // `distinct.length > 1` (`:4543-4552`). Zero dopasowań jest więc dla tych
   // par POMIAREM, nie awarią przyrządu, a pułapka wielu różnych wartości ich
   // nie dotyczy. Wzorcowy zapis stoi przy `L1-09b`: „counted, not read".
   //
@@ -9475,7 +9579,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "tasks" },
     subject: {
       selector: '#main-content [aria-label="Row height"]',
-      why: 'ŚWIADEK DLA `II6-02a`, i to jest jej JEDYNY powód istnienia. Bez niej zero fieldsetów na tym ekranie jest zdaniem, którego nie da się odróżnić od „chunk `SavedViewManager` nie dojechał" — a on jedzie osobnym `lazy()` niż pigułki pasa, więc zieleń `II6-01b` o nim NIC nie mówi. Ta para pyta o element, który zastąpił `<fieldset>` w tym samym poddrzewie: `div[role="group"][aria-label="Row height"]`. Selektor trafia w JEDEN element (jedyny `aria-label="Row height"` w renderze), więc pułapka `distinct.length > 1` nie ma zastosowania; `equals: 1` liczy wyłącznie NARYSOWANE, więc grupa schowana albo niezamontowana daje `DIFFERS` z liczbą 0, nie cichą zieleń. SPRZĘŻENIE, POWIEDZIANE WPROST: `SavedViewManager` montuje się tylko wtedy, gdy powłoka poda `onReload` i `onFailure` (`TasksSurface.tsx:702`), a `RealApp` podaje oba (`RealApp.tsx:3015-3016`) — gdyby kiedyś przestał, ta para spadnie na `DIFFERS` i będzie to zdanie o powłoce, a nie o gęstości',
+      why: 'ŚWIADEK DLA `II6-02a`, i to jest jej JEDYNY powód istnienia. Bez niej zero fieldsetów na tym ekranie jest zdaniem, którego nie da się odróżnić od „chunk `SavedViewManager` nie dojechał" — a on jedzie osobnym `lazy()` niż pigułki pasa, więc zieleń `II6-01b` o nim NIC nie mówi. Ta para pyta o element, który zastąpił `<fieldset>` w tym samym poddrzewie: `div[role="group"][aria-label="Row height"]`. Selektor trafia w JEDEN element (jedyny `aria-label="Row height"` w renderze), więc pułapka `distinct.length > 1` nie ma zastosowania; `equals: 1` liczy wyłącznie NARYSOWANE, więc grupa schowana albo niezamontowana daje `DIFFERS` z liczbą 0, nie cichą zieleń. SPRZĘŻENIE, POWIEDZIANE WPROST: `SavedViewManager` montuje się tylko wtedy, gdy powłoka poda `onReload` i `onFailure` (`TasksSurface.tsx:702`), a `RealApp` podaje oba (`RealApp.tsx:3166-3167`) — gdyby kiedyś przestał, ta para spadnie na `DIFFERS` i będzie to zdanie o powłoce, a nie o gęstości',
       app: 'packages/desktop-ui/src/tasks/SavedViewManager.tsx (`div[role="group"][aria-label="Row height"]`)',
     },
     read: { property: null },
@@ -9670,7 +9774,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`updated ${esc(fmtDay(n.updated))}` — dzień sąsiedni jest SŁOWEM: „updated Yesterday", nie „updated Jul 31, 2026"',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '.document-editor-meta [data-day-form="relative"]',
       why: "the reader opens the freshest note in view and the fixture's freshest note is stamped one day back from the clock, so this stop draws the relative branch every day of the year",
@@ -9693,7 +9797,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`if (diff === -1) return "Yesterday"` — gałąź względna prototypu oddaje SŁOWO, a nie datę; to jest ta połowa reguły, której atrybut nie widzi',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       // TEN SAM PODMIOT CO L10-03, INNY ODCZYT — i to jest cała teza tej pary.
       // L10-03 pyta „czy element deklaruje gałąź względną", ta pyta „czy stoi
@@ -9722,7 +9826,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`${MONTHS[d.getMonth()]} ${d.getDate()}${d.getFullYear() !== 2026 ? " " + d.getFullYear() : ""}` — rok bieżący pominięty, przecinka nie ma w żadnej gałęzi',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector:
         '[data-note-id="00000000-0000-4000-8000-000000000905"] [data-day-form="thisYear"]',
@@ -9746,7 +9850,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '„Mar 31 2027" — rok wypisany, i przecinka nadal nie ma; `dateStyle: "medium"` stawia oba zawsze',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector:
         '[data-note-id="00000000-0000-4000-8000-000000000909"] [data-day-form="otherYear"]',
@@ -9834,9 +9938,9 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     // `count` robi `continue` PRZED strażnikiem „zero dopasowań"
-    // (`verify-renderer-layout.mjs:4679-4696`), więc zero jest tu WERDYKTEM.
+    // (`verify-renderer-layout.mjs:4726-4743`), więc zero jest tu WERDYKTEM.
     // Oczekiwanie nieobecności liczy WSZYSTKIE dopasowania, także schowane
-    // (`:4258-4262`) — rozpychacz przeniesiony pod `display: none` nie
+    // (`:4305-4309`) — rozpychacz przeniesiony pod `display: none` nie
     // przeszedłby jako skasowany.
     expect: { kind: "count", equals: 0 },
     status: "enforced",
@@ -9893,7 +9997,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "tasks", openRecord: "[data-task-row]" },
     subject: {
       selector: '[data-record-kind="task"] [class*="_chipDashed_"] svg',
-      why: 'gałąź pustego stanu jest JEDYNĄ, którą ta fikstura rysuje, i jest to ta sama gałąź, na której `L9-01c` odczytała promień — czyli podmiot jest dowiedziony żywy przez sąsiednią parę, a nie założony. `atLeast: 1`, a nie `equals 1`: zdaniem jest „plakietka nosi glif", a nie spis ludności rzędu — drugi glif dołożony kiedyś obok nie jest złamaniem tej reguły. `atLeast` czyta liczbę NARYSOWANYCH (`verify-renderer-layout.mjs:4261-4263`), więc `<svg>` schowany albo o zerowej powierzchni nie zaliczy się jako obecny',
+      why: 'gałąź pustego stanu jest JEDYNĄ, którą ta fikstura rysuje, i jest to ta sama gałąź, na której `L9-01c` odczytała promień — czyli podmiot jest dowiedziony żywy przez sąsiednią parę, a nie założony. `atLeast: 1`, a nie `equals 1`: zdaniem jest „plakietka nosi glif", a nie spis ludności rzędu — drugi glif dołożony kiedyś obok nie jest złamaniem tej reguły. `atLeast` czyta liczbę NARYSOWANYCH (`verify-renderer-layout.mjs:4308-4310`), więc `<svg>` schowany albo o zerowej powierzchni nie zaliczy się jako obecny',
       app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx (gałąź `taskProjects.length === 0`)",
     },
     read: { property: null },
@@ -9942,7 +10046,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // pozycji w tym locie. Wpis 12-1 czyta się jak usterka i nią jest, ale jego
   // lekarstwo — zamknięcie panelu podglądu przy otwartym rekordzie — odbiera
   // rekordowi zadania pięć zdolności, których on nie ma u siebie: edytor
-  // tytułu/kontekstu/następnego kroku (`RealApp.tsx:4337-4367`), załączniki,
+  // tytułu/kontekstu/następnego kroku (`RealApp.tsx:4371-4401`), załączniki,
   // przypisanie, rezerwację w kalendarzu i usunięcie. Nagłówek
   // `record/TaskRecordScreen.tsx:59-64` deklaruje to wprost, a sam ekran
   // odsyła tam zdaniem w treści („The inspector beside this record is where it
@@ -9950,7 +10054,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   //
   // ŻE TO JEST DO ZROBIENIA, WIDAĆ Z TEGO SAMEGO WYRAŻENIA. Trzecie ramię
   // rekordowe `inspectorDetailOpen` jest już ubezpieczone: `projectFullView`
-  // (`RealApp.tsx:1438-1440`) wyłącza podgląd nad rekordem projektu — i tamten
+  // (`RealApp.tsx:1449-1451`) wyłącza podgląd nad rekordem projektu — i tamten
   // ekran przyjął operacje inspektora slotami (`ProjectRecordScreenProps
   // .actions`, `.outcomeEditor`, „passed in rather than rebuilt so the
   // operations move with the screen instead of disappearing with it"). Czyli
@@ -9978,8 +10082,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "tasks", openRecord: "[data-task-row]" },
     subject: {
       selector: "aside.inspector.open",
-      why: 'klasa `open` jest dokładana WYŁĄCZNIE przy `inspectorDetailOpen` (RealApp.tsx:4233), więc podmiot jest dosłownie zdaniem „panel podglądu jest otwarty". Mierzony NA PRZYSTANKU z otwartym rekordem zadania — poza nim to samo zdanie jest o czymś innym i nie jest wadą. Efekt `RealApp.tsx:773-775` zapala `selectedTaskId` bezwarunkowo z kontekstu, więc otwarcie rekordu ZAWSZE zapala podgląd tego samego zadania',
-      app: "packages/desktop-ui/src/RealApp.tsx:1441-1449 (inspectorDetailOpen — ramię `selectedTask` bez strażnika)",
+      why: 'klasa `open` jest dokładana WYŁĄCZNIE przy `inspectorDetailOpen` (RealApp.tsx:4267), więc podmiot jest dosłownie zdaniem „panel podglądu jest otwarty". Mierzony NA PRZYSTANKU z otwartym rekordem zadania — poza nim to samo zdanie jest o czymś innym i nie jest wadą. Efekt `RealApp.tsx:776-778` zapala `selectedTaskId` bezwarunkowo z kontekstu, więc otwarcie rekordu ZAWSZE zapala podgląd tego samego zadania',
+      app: "packages/desktop-ui/src/RealApp.tsx:1452-1460 (inspectorDetailOpen — ramię `selectedTask` bez strażnika)",
     },
     read: { property: null },
     expect: { kind: "count", equals: 0 },
@@ -10018,7 +10122,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // „Ten pseudoelement NIE MA istnieć" jest w tej mapie NIEWYRAŻALNE:
   // `readValue` oddaje `PSEUDO_ABSENT` dla `content: none`, a `judgeVisualPair`
   // zamienia to na `DIFFERS` ZANIM przeczyta `expect`
-  // (`verify-renderer-layout.mjs:4233-4238`). Para `enforced` asertująca
+  // (`verify-renderer-layout.mjs:4280-4285`). Para `enforced` asertująca
   // NIEOBECNOŚĆ `::before` byłaby więc czerwona na zawsze. Dlatego obie pary
   // niżej czytają `::after`, czyli warstwę, która po tym locie ISTNIEJE —
   // a zdanie „nic nie stoi przed etykietą" jest niesione przez L8-01 wprost:
@@ -10389,7 +10493,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         '`<div class="kn-side-head"><span>Folders</span><span class="kn-n">${FOLDERS.length}</span>${helpBtn("folders")}</div>` — plakietka stoi ZA liczbą, na prawym końcu głowy',
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[class*="_treePanel_"] [data-help-topic="folders"]',
       why: 'wpis 11-8 ma dwie połowy i ta para bierze TĘ, którą lot dowozi: plakietkę. Wersalików ta para nie asertuje i nie jest to przeoczenie — D3-04a świadomie ich na tej głowie nie mierzy, bo niesie ona ścieżkę folderu czytelnika, a nie napis stały. Zakres `_treePanel_` jest nośny: `[class*="_panelHead_"]` niosą OBIE kolumny czytelni, a plakietka folderów należy do lewej',
@@ -10412,7 +10516,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       value:
         "wyzwalacz pomocy jest DZIECKIEM głowy kolumny i ma kształt `.helpb`, ten sam co wszystkie pozostałe dziesięć wywołań",
     },
-    route: { surface: "library", layout: "notes" },
+    route: { surface: "notes" },
     subject: {
       selector: '[data-help-topic="note-arrangement"] button',
       why: "wpis 11-9 („What does this reorder?”) to ta sama forma słowna co P-14, tylko na innym ekranie. Para D3-01b stoi na TYM SAMYM tematcie i mierzy POŁOŻENIE (liczba kotwicy w głowie kolumny) — była i zostaje zielona nad plakietką ORAZ nad podkreślonym linkiem jednakowo, bo o kształcie nie ma zdania. Dlatego atrybut `data-help-topic` NIE schodzi z owijki: tamta para na nim stoi",
@@ -10420,6 +10524,73 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "width" },
     expect: { kind: "rem", value: 1.125 },
+    status: "enforced",
+  },
+  // ── LOT D2 FAZY III — USTAWIENIA MÓWIĄ, CO JEST (wpisy 13-1, 13-2, 13-6) ──
+  //
+  // IDENTYFIKATOR TO `FIII2`, NIE `D2`, I TO NIE JEST OZDOBA. Prefiks `D2-`
+  // należy w tym pliku do lotu D2 FALI DOMKNIĘCIA WIZUALNEGO (`D2-01a`,
+  // `D2-02a/c`, `D2-07a` — nagłówki i pasmo Dzisiaj) i `auditRoutedMap` liczy
+  // pary po polu `lot`. Drugi lot o tej samej nazwie zlałby dwa briefy w jeden
+  // rachunek i pierwszy `ROUTED_LOT_DRIFT` czytałby się jak regresja tamtego.
+  //
+  // DWIE PARY NA JEDNĄ POZYCJĘ BRIEFU (13-2), i obie czytają TEKST, bo cały
+  // rozjazd jest o KOLEJNOŚCI, nie o pikselach: spis miał trzy grupy w tej
+  // samej liczbie i tych samych nazwach, co prototyp, ustawione w odwrotnym
+  // porządku. Pierwsza i ostatnia nazwa wystarczają, żeby przypiąć obrót —
+  // przy trzech grupach o unikalnych nazwach nie istnieje inna permutacja
+  // z tymi samymi końcami (para środkowa byłaby trzecim zapisem tej samej
+  // informacji, a nie trzecim świadkiem).
+  {
+    id: "FIII2-02a",
+    lot: "FIII2",
+    position: 2,
+    kind: "restructure",
+    title: "the settings list opens with the human, not with the machine",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.js",
+      lines: "925-931",
+      value:
+        '`ST_SECTIONS` deklaruje po kolei `{ group: "You" … }`, `{ group: "What the app runs on" … }`, `{ group: "This workspace" … }` — PIERWSZA grupa spisu nazywa się „You"',
+    },
+    route: { settingsMode: true },
+    subject: {
+      // PIERWSZA GRUPA WSKAZANA PRZEZ SĄSIADA, NIE PRZEZ `:first-child`.
+      // Pierwszym dzieckiem `nav.settings-mode-column` jest pasmo wyjścia
+      // (`.settings-mode-head`), więc `:first-child` nie trafiłby w nic,
+      // a `:nth-of-type` liczyłby `<div>`-y razem z tym pasmem. Sąsiedztwo
+      // z pasmem jest tym, co „pierwsza grupa spisu" naprawdę znaczy.
+      selector:
+        ".settings-mode-head + .settings-mode-group .settings-mode-group-label",
+      why: "dokładnie jeden narysowany element — spis ma trzy grupy, a ta jest jedyną stojącą zaraz za pasmem wyjścia; `distinct.length > 1` jest tu niemożliwe z budowy selektora",
+      app: "packages/desktop-ui/src/settings-categories.ts (kolejność `settingsCategories`), RealApp.tsx (`settingsCategoryGroups.map`)",
+    },
+    read: { property: "text" },
+    expect: { kind: "literal", value: "You" },
+    status: "enforced",
+  },
+  {
+    id: "FIII2-02b",
+    lot: "FIII2",
+    position: 2,
+    kind: "restructure",
+    title: "and closes with the workspace it is configuring",
+    contract: '.ui-craft/patterns.md — „Pattern: Settings mode column"',
+    prototype: {
+      file: "v3/screens/settings.js",
+      lines: "951-956",
+      value:
+        '`{ group: "This workspace", items: [ data, devices, danger ] }` jest OSTATNIĄ grupą `ST_SECTIONS`',
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector: ".settings-mode-group:last-child .settings-mode-group-label",
+      why: "ostatnia grupa jest ostatnim dzieckiem kolumny, więc jeden narysowany element; para stoi obok FIII2-02a, bo sam pierwszy człon przeszedłby także nad spisem, który zgubił trzecią grupę",
+      app: "packages/desktop-ui/src/settings-categories.ts (kolejność `settingsCategories`)",
+    },
+    read: { property: "text" },
+    expect: { kind: "literal", value: "This workspace" },
     status: "enforced",
   },
 ];
@@ -10570,18 +10741,18 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     // Recon tego lotu przeczytał w kodzie, że rekord SZANSY zostawia panel
     // podglądu otwarty tak samo jak rekord zadania: `onClick` karty woła
     // `onSelectRecord` → `setSelectedStrategicId` (`pipeline/PipelineSurface
-    // .tsx:326`, `RealApp.tsx:2636`), a efekt czyszczący tę wartość
-    // (`RealApp.tsx:776-784`) jest warunkowany `taskId || projectId ||
+    // .tsx:326`, `RealApp.tsx:2758`), a efekt czyszczący tę wartość
+    // (`RealApp.tsx:779-787`) jest warunkowany `taskId || projectId ||
     // organizationId`, których kontekst szansy nie niesie
-    // (`client/shell-navigation.ts:588-596`). Para `L9-03b` została napisana
+    // (`client/shell-navigation.ts:666-674`). Para `L9-03b` została napisana
     // dokładnie na to.
     //
     // WRÓCIŁA `MATCH` NA OBU MOTYWACH — `aside.inspector.open` liczy tam ZERO.
     // Przyczyna nie jest w produkcie: krok trasy otwierający rekord wysyła
-    // WYŁĄCZNIE `new MouseEvent("dblclick")` (`verify-renderer-layout.mjs:7460`),
+    // WYŁĄCZNIE `new MouseEvent("dblclick")` (`verify-renderer-layout.mjs:7523`),
     // bez ani jednego `click`, więc `onClick` karty nigdy nie biegnie i nic nie
     // zaznacza. Rekord ZADANIA zapala podgląd inną drogą — efektem z
-    // `activeContext.taskId` (`RealApp.tsx:773-775`) — i dlatego TAM ta sama
+    // `activeContext.taskId` (`RealApp.tsx:776-778`) — i dlatego TAM ta sama
     // para jest czerwona.
     //
     // Para została ZDJĘTA, a nie zostawiona zieloną: `enforced` nad zerem,
@@ -10599,7 +10770,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     title: "the deal record's preview state is unreachable by this walk",
     prototype:
       "v3/screens/record.js:222-226 (`rcShell` — jedna kolumna, zero paneli obok, na każdym rodzaju rekordu)",
-    app: "packages/desktop-ui/src/RealApp.tsx:1441-1449 (ramię `selectedStrategicRecord` bez strażnika)",
+    app: "packages/desktop-ui/src/RealApp.tsx:1452-1460 (ramię `selectedStrategicRecord` bez strażnika)",
     why:
       "Krok `openRecord` wysyła sam `dblclick`, więc `onClick` karty lejka nigdy nie biegnie i nic nie zaznacza; " +
       "panel podglądu jest przy tym przystanku zamknięty Z POWODU PRZELOTU, nie z powodu strażnika w kodzie. " +
@@ -10859,7 +11030,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     scope: "cała pozycja",
     title: "counters are outlined pills instead of a flat tabular number",
     prototype: "v3/screens/knowledge.css:65-68, :98-102 (`.kn-tn`, `.kn-n`)",
-    app: "packages/desktop-ui/src/styles.css:6628-6640 (`.library-count`)",
+    app: "packages/desktop-ui/src/styles.css:6646-6658 (`.library-count`)",
     why:
       "Reguła jest GLOBALNA i dzielona z `.section-heading-row > span` oraz " +
       "`.library-section-heading > span`, a brief zabrania jej ruszać: lekarstwem ma być zawężenie NOWĄ " +
@@ -10875,7 +11046,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     scope: "cała pozycja",
     title: "the note row has no slot for a two-line excerpt",
     prototype: "v3/screens/knowledge.css:158-161 (`.kn-row-excerpt`)",
-    app: "packages/desktop-ui/src/styles.css:6755-6770, NotesReading.tsx:474-498",
+    app: "packages/desktop-ui/src/styles.css:6773-6788, NotesReading.tsx:474-498",
     why:
       "Brief wyjmuje tę pozycję z zakresu lotu WPROST: „nie buduje slotu urywka pod puste dane (poz. 12 " +
       "czeka na dane)”. Projekcja nie niesie urywka (załącznik A). Para asertowałaby robotę, której lot " +
@@ -10889,13 +11060,13 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     scope: "cała pozycja",
     title: "the settings header is a four-fold column, not a band",
     prototype: "v3/screens/settings.css:84-94, :196-198, :325-330",
-    app: "packages/desktop-ui/src/SettingsSurface.tsx:1029-1045, styles.css:7725, :7734-7736",
+    app: "packages/desktop-ui/src/SettingsSurface.tsx:1086-1102, styles.css:7758, :7767-7769",
     why:
       "Pozycja jest PRZEBUDOWĄ nagłówka w pasmo z policzonym podtytułem. Nie ma jednej rozwiązanej " +
       "właściwości, która odróżnia „pasmo” od „kolumny”: każda, którą umiem napisać (wysokość, liczba " +
       "torów siatki), byłaby wpisaną liczbą narzucającą lotowi znaczniki. Policzony podtytuł jest poza " +
       "tym DANĄ, nie farbą. Pozycja jest natomiast przypięta cudzą asercją " +
-      '(`settings-navigation-contract.test.ts:136` liczy wystąpienia `className="settings-help-entry"`), ' +
+      '(`settings-navigation-contract.test.ts:221` liczy wystąpienia `className="settings-help-entry"`), ' +
       "więc złamanie jest do zaplanowania, nie do zmierzenia tutaj.",
     greenWrong: "Nagłówek może zostać kolumną i dostać wyłącznie inne odstępy.",
   },
@@ -10939,7 +11110,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     // czytający wziąłby ją za dowód, że token dalej stoi pusty.
     title: "--row-height has two consumers in Settings, and neither is paired",
     prototype: "v3/screens/settings.css:113-118, :343-347, :435-439",
-    app: "packages/desktop-ui/src/styles.css:2893-2900 (`.status-list li`), settings/commercial-defaults-section.module.css:76-87 (wiersz etapu)",
+    app: "packages/desktop-ui/src/styles.css:2911-2918 (`.status-list li`), settings/commercial-defaults-section.module.css:76-87 (wiersz etapu)",
     why:
       "Brief nazywa TOKEN, ale nie nazywa KONSUMENTA. Dwaj oczywiści kandydaci nieśli próg " +
       "dostępności 2,75 rem, którego lot 6 miał NIE zjeżdżać (`.settings-help-entry`, picker) — " +
@@ -11099,15 +11270,19 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "Ta mapa zna kroki `surface`, `layout`, `treeKey`, `openRecord`, `recordTab`, `settingsMode` " +
       "i `openPopover` — nie ma kroku „otwórz panel deala”, „otwórz dialog” ani „rozwiń wiersz”. " +
       "Poza zasięgiem zostają: panel deala na Lejku, dialogi i menu, `SavedViewFilterForm` (rysuje " +
-      "się dopiero przy otwartym zapisanym widoku, a fikstura harnessu ma ZERO zapisanych widoków) " +
-      "oraz stan soczewki `library/sources`. Cisza tego przyrządu o nich NIE jest zdaniem o nich — " +
+      "się dopiero przy otwartym zapisanym widoku, a fikstura harnessu ma ZERO zapisanych widoków). " +
+      "STAN SOCZEWKI `library/sources` STAŁ TU DO NAPRAWY PO PRZEGLĄDZIE LOTU D3 i zszedł, bo ta " +
+      "dziura się SKURCZYŁA, a nie dlatego, że ktoś ją przemilczał: soczewki `library/sources` nie " +
+      "ma, Źródła są od tamtego lotu własnym celem i własnym PRZYSTANKIEM tej mapy, więc kontrolki, " +
+      "które ten przyrząd widział tam tylko po kliknięciu w zakładkę, widzi dziś po dojechaniu. " +
+      "Cisza tego przyrządu o pozostałych NIE jest zdaniem o nich — " +
       "i to jest cały powód, dla którego ten wpis istnieje zamiast pary napisanej „na wyrost”, " +
       "która wróciłaby `ROUTED_NOT_MEASURED`, czyli awarią przyrządu.",
     exit:
       "DWUCZĘŚCIOWY, i obie części to robota przelotu albo fikstury, nie ekranu. PIERWSZA: krok " +
       "trasy, który otwiera coś INNEGO niż dymek tej aplikacji. Istniejący `openPopover` się do " +
       "tego nie nadaje i to jest sprawdzone w kodzie, nie założone — po kliknięciu wyzwalacza " +
-      'wymaga on narysowanego `[role="dialog"].inline-popover` (`verify-renderer-layout.mjs:7235-7277`) ' +
+      'wymaga on narysowanego `[role="dialog"].inline-popover` (`verify-renderer-layout.mjs:7298-7340`) ' +
       "i inaczej pada jako awaria trasy, więc panel deala, dialog, rozwinięty wiersz ani menu " +
       "natywnego `<select>` nie przejdą przez ten krok. DRUGA: fikstura z co najmniej jednym " +
       "zapisanym widokiem. Do tego czasu czwarty `<select>` Zadań — `ready` w `SavedViewFilterForm` " +
@@ -11600,12 +11775,67 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // bramce. `D7-01g` i `D7-01h` zostały PRZECELOWANE, a nie dołożone
   // (`.meeting-person` → `.meeting-person-name`, `:has(.meeting-prep-go)` →
   // `.meeting-prep-item`), więc suma po nich nie rośnie.
-  pairs: 222,
+  //
+  // ── DRUGI TOR, ROZŁĄCZNY, TA SAMA BAZA 218 ──────────────────────────────────
+  //
+  // 218 → 220 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D3 FAZY III, 2026-08-15, I NIE
+  // JEST TO ANI nowa pozycja, ani rozpad istniejącej: to POŁOWA POZYCJI 11,
+  // która po rozdziale Biblioteki przestała być mierzona, a nikt tego nie
+  // policzył. Lot rozbił JEDNĄ deklarację `data-height-bound="library"` na TRZY
+  // literały i zostawił przy pozycji 11 tę jedną parę, która stała tam przed
+  // rozdziałem — czyli przyrząd po rozdziale mierzył JEDNĄ TRZECIĄ tego, co
+  // mierzył przed nim, przy niezmienionej liczbie. `P1-11b` (Źródła)
+  // i `P1-11c` (Historia wrzutek) domykają pozycję do trzech ekranów.
+  //
+  // `positionsWithPairs` SIĘ NIE RUSZA i `positionsInBrief` TEŻ NIE: brief P1
+  // ma trzynaście pozycji, po jednej na EKRAN BRIEFU, a jedenasta z nich to
+  // Biblioteka. Podniesienie tej liczby do piętnastu kazałoby mapie mówić
+  // o dokumencie, który mówi co innego — czyli dokładnie ta klasa wady, którą
+  // ta naprawa zamyka gdzie indziej. Rośnie WYŁĄCZNIE `pairs` tutaj
+  // i `lots.P1.pairs` niżej, i muszą rosnąć razem.
+  //
+  // `P1B` NIE DOSTAJE NICZEGO, i to jest pomiar, nie pominięcie: brief P1B ma
+  // pozycję tylko dla ekranu, który sufit DEKLARUJE, a Biblioteka jest wśród
+  // sześciu, od których P1 żąda `none` po obu stronach. Trzy ekrany wiedzy bez
+  // sufitu to dalej zero pozycji P1B.
+  //
+  // `notCovered` SIĘ NIE RUSZA, i to jest różnica wobec drogi, którą lot
+  // zostawił otwartą. Powierzchnia `captures` miała iść do
+  // `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` jako ekran bez pary; wpis
+  // `NOT_COVERED` zamknąłby jednak tylko połowę dziury — powiedziałby, że ekran
+  // istnieje, i zostawił `ROUTED_ARRIVAL.captures` zadeklarowany oraz przez nic
+  // niećwiczony. Para dokłada przystanek i ćwiczy marker, więc jest ODPOWIEDZIĄ
+  // na oba, a nie zapisem, że odpowiedzi nie ma.
+  // 220 → 222 PRZY LOCIE D2 FAZY III, 2026-08-15, i jest to NOWA POZYCJA
+  // (wpis 13-2 — kolejność grup spisu Ustawień), nie rozpad istniejącej.
+  // Kolejności grup nie mierzyło NIC: `D5-02a` liczy, ILE ich jest (trzy po
+  // obu stronach, więc zielona przed i po tym locie), a żadna z 23 par trybu
+  // Ustawień nie czyta tekstu spisu. Obie nowe pary czytają `text`.
+  //
+  // POZOSTAŁE DWIE POZYCJE TEGO LOTU NIE DOSTAJĄ PAR I POWÓD JEST
+  // O PRZYRZĄDZIE, NIE O ROBOCIE: 13-1 (wiersz stanu w każdej sekcji) jest
+  // regułą o KOLEJNOŚCI i RÓWNOŚCI WYPROWADZONEJ, której `expect` tej mapy nie
+  // umie wyrazić — mierzy ją `measureSettingsStateInPage`
+  // w `verify-renderer-layout.mjs`; 13-6 jest oddane CZĘŚCIOWO i stoi
+  // w `lots.FIII2.positionsWithoutPairs` razem z pomiarem, który to mówi.
+  //
+  // LICZBA PONIŻEJ PO SCALENIU TORU 10-3 Z TOREM D3/D2, 2026-08-15, I NIE JEST
+  // TO SUMA Z KONFLIKTU — jest POLICZONA Z ZAWARTOŚCI MAPY po scaleniu, tym
+  // samym rachunkiem, którym klasyfikuje strażnik. Powtórzyło się dokładnie to,
+  // co zapisano piętro wyżej przy scaleniu dwóch torów Fazy II: OBIE strony
+  // konfliktu deklarowały tu `222`, i ANI JEDNA z tych deklaracji nie opisywała
+  // mapy, która stoi niżej. Obie były prawdziwe o SWOIM torze — 10-3 doszedł
+  // z 218 do 222, D3/D2 doszły z 218 do 222 — a ponieważ oba tory dokładały
+  // ROZŁĄCZNE pary, mapa po scaleniu ma o cztery więcej, niż mówiła którakolwiek
+  // z dwóch identycznych liczb. Zgodność dwóch deklaracji NIE JEST tu dowodem
+  // niczego: jest zbiegiem okoliczności, który zabrałby bramce cztery pary bez
+  // ani jednego czerwonego wiersza.
+  pairs: 226,
   // ── SPIS STATUSÓW, DOŁOŻONY PRZY NAPRAWIE LOTU NASADY FAZY III, 2026-08-15 ─
   //
   // TEJ MAPY NIE PILNOWAŁ ŻADEN RACHUNEK OCZEKUJĄCYCH, a mapa powłoki miała go
   // od zawsze (`VISUAL_LANGUAGE_EXPECTED.enforced` / `.pending`,
-  // `verify-renderer-layout.mjs:4478-4481`). Znalazł to przegląd adwersarialny
+  // `verify-renderer-layout.mjs:4525-4528`). Znalazł to przegląd adwersarialny
   // tego lotu i znalazł na WŁASNYM przykładzie: sam lot nasady przerzucił tutaj
   // `D5-02b` z `enforced` na `pending` i dołożył PIĘĆ nowych par `pending`
   // (P1B-02…05, P1B-07), czyli 2 → 8 — CZTEROKROTNY przyrost populacji, której
@@ -11629,7 +11859,29 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   //
   // 213 → 214 PRZY NAPRAWIE WPISU 10-3: `D7-02h` jest `enforced`, a naprawa
   // nie przestawia statusu żadnej pary.
-  enforced: 214,
+  //
+  // ── DRUGI TOR, ROZŁĄCZNY, TA SAMA BAZA 210 ──────────────────────────────────
+  //
+  // 210 → 212 PRZY NAPRAWIE PO PRZEGLĄDZIE LOTU D3, i ten spis ZADZIAŁAŁ przy
+  // pierwszym przelocie po dopisaniu `P1-11b`/`P1-11c`: podniesiona była
+  // wyłącznie suma `pairs`, więc bramka padła na `ROUTED_COUNT_DRIFT` („holds
+  // 212 enforced pairs, declared 210") i nie oceniła ani jednej pary. Dokładnie
+  // po to tu stoi — dwa tygodnie wcześniej ta sama zmiana przeszłaby cicho.
+  // 212 → 214 PRZY LOCIE D2 FAZY III: `FIII2-02a` i `FIII2-02b`, obie
+  // `enforced`, bo lot ODDAJE tę pozycję w tym samym commicie — para
+  // oczekująca, która pasuje, kładzie przelot jako `PENDING_ALREADY_MATCHES`.
+  //
+  // 214 PO SCALENIU DWÓCH TORÓW, 2026-08-15 — TA SAMA PUŁAPKA, CO PRZY `pairs`
+  // WYŻEJ, I TA SAMA ODPOWIEDŹ. Oba tory wyszły z 210 i oba zadeklarowały tu
+  // `214`; osiem par dopisanych przez oba tory razem jest `enforced`, więc
+  // policzone z zawartości wychodzi 218, a nie 214. `pending` NIE RUSZA SIĘ
+  // z ośmiu, i to jest osobny pomiar, a nie założenie: żaden z dwóch torów nie
+  // rozbroił ani nie uzbroił istniejącej pary — 10-3 skonsumował swoje pary
+  // `pending: WPIS 10-3` jeszcze przed scaleniem (są w bazie 218 jako
+  // `enforced`), a lot D2 dopisał `FIII2-02a`/`FIII2-02b` od razu uzbrojone,
+  // NIE zdejmując `D5-02a`/`D5-02b`: `D5-02b` zostaje oczekująca nad lotem,
+  // którego wpisy 13-1/13-6 ten tor oddaje tylko częściowo.
+  enforced: 218,
   pending: 8,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
@@ -11853,14 +12105,14 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       //     jest zależność, nie zaległość.
       //   • 12-8: ZOSTAJE ODMÓWIONE, ALE NA JEDNYM POWODZIE Z DWÓCH — drugi
       //     był NIEPRAWDĄ i został tu skasowany przy naprawie po przeglądzie.
-      //     Stało: „`title-band-action.mjs:1047-1051` asertuje rekord jako
+      //     Stało: „`title-band-action.mjs:1077-1081` asertuje rekord jako
       //     `NO_ACTION/NO_ACTION`, więc dołożenie przycisku daje czerwień na
       //     cudzej osi". Adres wskazywał wiersz DZISIAJ, nie rekordu (wiersz
-      //     rekordu to `:1535-1541`), a samo zdanie o czerwieni nie broni się
+      //     rekordu to `:1661-1667`), a samo zdanie o czerwieni nie broni się
       //     po zmierzeniu OBU predykatów: strona prototypu liczy wyłącznie
       //     `.btn` z `PROTOTYPE_FILLED_MODIFIERS` (`:276` — `primary`,
       //     `bordered`), a strona aplikacji ma `.ghost-button` ŚWIADOMIE POZA
-      //     zbiorem akcji (`:88-99`, „to jest pomiar, nie gust"). Wierny
+      //     zbiorem akcji (`:84-99`, „to jest pomiar, nie gust"). Wierny
       //     `Subscribe` — przezroczysty, tak jak `cls: "quiet"` prototypu
       //     (`v3/screens/record.js:560`) — zostawiłby ten wiersz na
       //     `NO_ACTION/NO_ACTION` po obu stronach. Czerwień dałoby dopiero
@@ -11999,9 +12251,17 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // Trzynaście pozycji briefu, dwanaście z parą TUTAJ, pozycja 1 (Dzisiaj)
       // w mapie powłoki. Ta sama arytmetyka co przy C1, tylko w drugą stronę:
       // pozycja bez pary w TEJ mapie nie jest pozycją bez dowodu.
+      //
+      // CZTERNAŚCIE PAR NA DWANAŚCIE POZYCJI OD NAPRAWY PO PRZEGLĄDZIE LOTU D3:
+      // pozycja 11 (Biblioteka) niesie TRZY pary, bo po rozdziale są tam trzy
+      // ekrany i trzy osobne deklaracje sufitu. Liczba pozycji briefu się nie
+      // zmienia — brief mówi „Biblioteka", a nie „Notatki, Źródła i Historia
+      // wrzutek".
       positionsInBrief: 13,
-      pairs: 12,
-      positionsWithPairs: 12, // 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+      pairs: 14,
+      // Pozycje: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 — dwanaście, i to jest
+      // liczba POZYCJI, nie par. Pozycja 11 niesie ich trzy.
+      positionsWithPairs: 12,
       positionsWithoutPairs: [1], // Dzisiaj — mapa powłoki
     },
     P1B: {
@@ -12315,6 +12575,38 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       pairs: 6,
       positionsWithPairs: 4, // 2, 3, 4, 5
       positionsWithoutPairs: [1, 6, 7, 8],
+    },
+    // LOT D2 FAZY III — TRZY POZYCJE BRIEFU, JEDNA Z PARĄ, I OBIE POZOSTAŁE
+    // MAJĄ PRZY SOBIE POWÓD, A NIE PUSTE MIEJSCE:
+    //   1 → wpis 13-1 (każda sekcja otwiera się wierszem stanu) — BEZ PARY.
+    //       Reguła brzmi „tyle wierszy stanu, ile pasm nagłówka, każdy w swoim
+    //       paśmie i PRZED pierwszą kontrolką sekcji". `expect` tej mapy zna
+    //       `count/literal/token/rem/accent/not/tracks/contains/text` i nie zna
+    //       ani „poprzedza", ani równości wyprowadzonej między dwoma zbiorami.
+    //       Pozycja jest zmierzona i ŁAMLIWA — `measureSettingsStateInPage`
+    //       w `verify-renderer-layout.mjs` rzuca `SETTINGS_STATE_COUNT`,
+    //       `SETTINGS_STATE_MISSING`, `SETTINGS_STATE_BEHIND_CONTROL`,
+    //       `SETTINGS_STATE_SILENT`, `SETTINGS_STATE_NO_BADGE`,
+    //       `SETTINGS_STATE_ORPHANED` i `SETTINGS_STATE_SCAN_EMPTY`.
+    //   2 → wpis 13-2 (nawigacja Ustawień)                      — FIII2-02a/b.
+    //   3 → wpis 13-6 (wyłączone kontrolki z pełnym chromem)     — BEZ PARY,
+    //       bo oddana jest POŁOWA i para nad połową byłaby zieleniejsza od
+    //       produktu. Zmierzone w tym locie, nie oszacowane: tryb Ustawień
+    //       rysuje 20 wyłączonych kontrolek i po tym locie rysuje ich DALEJ 20.
+    //       Cztery z nich są wyłączone brakiem ZDOLNOŚCI w tym oknie
+    //       (`!client?.previewStarterWorkspace`, `!client?.exportExchangePackage`,
+    //       `!client?.exportNotesMarkdown`, `!client?.scanObsidianVault`) i ICH
+    //       sekcje mówią teraz, dlaczego — to jest dostawa. Szesnaście
+    //       pozostałych jest wyłączonych tym, że nie ma czego zapisać (puste
+    //       pole, wartość niezmieniona, koniec listy); prototyp takich kontrolek
+    //       nie wygasza wcale, więc domknięcie tej połowy jest zmianą
+    //       ZACHOWANIA w pięciu plikach, nie zdaniem — i należy do osobnego
+    //       lotu. Rachunek stoi w raporcie lotu.
+    FIII2: {
+      positionsInBrief: 3,
+      pairs: 2,
+      positionsWithPairs: 1, // 2
+      positionsWithoutPairs: [1, 3],
     },
   },
 };

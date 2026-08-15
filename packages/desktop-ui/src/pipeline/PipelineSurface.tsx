@@ -782,7 +782,7 @@ export const PipelineSurface = ({
   // z maina, a przepięcie pasm dostaje ją niżej, tam gdzie teraz stoi.
   // THE AVAILABILITY GUARD RUNS FIRST, AHEAD OF THE RECORD SLOT, and the order
   // is the whole point. A deal opened as a record is drawn from the SAME slice
-  // as the board: `RealApp.tsx:2259-2271` only looks the opportunity up when
+  // as the board: `RealApp.tsx:2274-2286` only looks the opportunity up when
   // `relationships.kind === "ready"`, so an unreadable slice arrives here as
   // `renderRecordScreen === undefined` — indistinguishable, from inside this
   // branch, from a deal that genuinely is not there. Checking the record slot
@@ -841,7 +841,7 @@ export const PipelineSurface = ({
               {/* Past the guard above, the slice READ FINE and this deal is
                     not in it — a context restored from device state naming a
                     record removed since, or one belonging to a Space this
-                    session cannot see (`RealApp.tsx:2263-2266` anticipates
+                    session cannot see (`RealApp.tsx:2278-2281` anticipates
                     exactly that). Saying "no record screen yet" here described
                     a gap in the product that was closed releases ago, and said
                     it about data. */}

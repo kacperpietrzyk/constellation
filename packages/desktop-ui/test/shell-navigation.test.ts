@@ -7,7 +7,9 @@ import {
   StrategicRecordIdSchema,
   TaskIdSchema,
 } from "@constellation/contracts";
+import { desktopSurfaceLabel } from "@constellation/desktop-preload/surface-registry";
 
+import { libraryReadingLabel } from "../src/library/library-readings.js";
 import {
   activateShellContext,
   activeShellContext,
@@ -16,7 +18,7 @@ import {
   destinationShortcutIndex,
   destinationContext,
   documentContext,
-  libraryReadingContext,
+  libraryReadings,
   moveShellHistory,
   navigateShellContext,
   openShellContext,
@@ -285,9 +287,8 @@ describe("shell navigation across a version upgrade", () => {
             surface: "work",
           },
           // `history` STAŁ W WYDANYM 0.1.9 pod tą samą nazwą, więc zapis
-          // z tamtej wersji niesie go dosłownie tak. Historia wrzutek jest od
-          // fali Knowledge odczytem Biblioteki — treść się przeniosła, cel
-          // zniknął.
+          // z tamtej wersji niesie go dosłownie tak. Od lotu D3 rozwiązuje się
+          // na `captures` — cel wrócił pod nową nazwą, a nie pod starą.
           {
             key: "destination:history",
             label: "Capture history",
@@ -305,19 +306,17 @@ describe("shell navigation across a version upgrade", () => {
       legacy,
       destinationContext("today", "Today"),
     );
-    // PIĘĆ ZAKŁADEK Z SZEŚCIU ZAPISANYCH, i ta jedna różnica jest defektem
-    // naprawionym w fali E, a nie regresją tego testu. `documents` i `history`
-    // schodzą się OBA na `library`, więc ten zapis odtwarzał DWIE zakładki
-    // o identycznym kluczu `destination:library` — dwa identyczne `key` Reacta
-    // w pasku, `activeKey` pasujący do obu i zamykanie, które nie umie ich
-    // rozróżnić. Ten test asertował ten dubel jako zachowanie.
-    //
-    // ZNALEZIONE PRZY LOCIE `activity`, ALE STARSZE OD NIEGO: dubel jest żywy
-    // od wycofania `history` w fali Knowledge, czyli od 0.2.0 — a nie, jak
-    // zakładał rekonesans, dopiero od drugiego celu schodzącego na `settings`.
+    // SZEŚĆ ZAKŁADEK Z SZEŚCIU, i to jest zmiana wobec fali E, w której było
+    // ich pięć. Powód nie jest w tym pliku: `documents` i `history` schodziły
+    // się OBA na `library`, więc jedna z nich była DUBLEM i scalenie ich w
+    // jedną było poprawką. Lot D3 rozwinął Bibliotekę na trzy cele, więc te
+    // dwa wycofane identyfikatory mają znowu dwa RÓŻNE następstwa — `notes`
+    // i `captures` — i scalać nie ma czego. Scalenie dubli dalej działa, tyle
+    // że na tym zapisie nie ma na czym: dowodzi go test `access`/`activity`
+    // niżej.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.surface),
-      ["today", "inbox", "library", "organizations", "tasks"],
+      ["today", "inbox", "notes", "organizations", "tasks", "captures"],
     );
     // Etykieta i klucz idą razem z celem. Zapis niesie WŁASNĄ kopię napisu,
     // więc bez tego pierwsze uruchomienie po przebudowie pokazuje angielską
@@ -326,16 +325,17 @@ describe("shell navigation across a version upgrade", () => {
     // raz.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.label),
-      ["Today", "Inbox", "Library", "Organizations", "Tasks"],
+      ["Today", "Inbox", "Notes", "Organizations", "Tasks", "Capture history"],
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.key),
       [
         "destination:today",
         "destination:inbox",
-        "destination:library",
+        "destination:notes",
         "destination:organizations",
         "destination:tasks",
+        "destination:captures",
       ],
     );
     assert.equal(
@@ -392,17 +392,102 @@ describe("shell navigation across a version upgrade", () => {
     // (`tabs.length !== state.tabs.length`) i powłoka startuje od zera.
     assert.deepEqual(
       restored.tabs.map((tab) => tab.surface),
-      ["today", "library"],
+      ["today", "captures"],
     );
     assert.deepEqual(
       restored.tabs.map((tab) => tab.key),
-      ["destination:today", "destination:library"],
+      ["destination:today", "destination:captures"],
     );
-    assert.equal(restored.activeKey, "destination:library");
+    assert.equal(restored.activeKey, "destination:captures");
     assert.deepEqual(
       restored.history.map((entry) => entry.surface),
-      ["library"],
+      ["captures"],
     );
+  });
+
+  // ROZDZIAŁ JEDNEGO CELU NA TRZY — sesja zapisana przez build 0.2.0 SPRZED
+  // lotu D3, czyli w kształcie „jeden cel `library` plus pole `libraryReading`".
+  //
+  // TEN TEST MIERZY DWIE RZECZY NARAZ I OBIE ZAWIODŁY BY OSOBNO. Zakładka
+  // Historii wrzutek musi wylądować na `captures`, a nie na `notes`, bo mapa
+  // `retiredDesktopSurfaces` widzi wyłącznie identyfikator powierzchni i na
+  // sam napis `library` umie odpowiedzieć tylko jedno. A `activeKey` musi
+  // pójść ZA nią: napis `destination:library` rozwiązuje się przez tę samą
+  // mapę na `destination:notes`, więc drugie, niezależne przeliczenie klucza
+  // dałoby `activeKey`, który nie wskazuje ŻADNEJ z odtworzonych zakładek —
+  // a to odrzuca CAŁĄ sesję, cicho, jak każda awaria z tej rodziny.
+  it("splits one saved Library tab onto the reading it was left on", () => {
+    const saved = JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          { key: "destination:today", label: "Today", surface: "today" },
+          {
+            key: "destination:library",
+            label: "Library",
+            surface: "library",
+            libraryReading: "captures",
+          },
+        ],
+        activeKey: "destination:library",
+        history: [
+          { key: "destination:today", label: "Today", surface: "today" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      saved,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today", "captures"],
+      "a saved Capture history tab landed on Notes, which is where the retired-id map alone would have sent it",
+    );
+    assert.equal(
+      restored.activeKey,
+      "destination:captures",
+      "the active key was recomputed from the saved string instead of following the tab, which drops the whole session",
+    );
+    assert.equal(
+      restored.tabs[1]?.label,
+      "Capture history",
+      "the tab kept a label from before the split instead of taking the registry's",
+    );
+  });
+
+  // TA SAMA SESJA BEZ POLA `libraryReading` — zapis zrobiony na Notatkach,
+  // gdzie pole nigdy nie było ustawiane, bo Notatki były odczytem DOMYŚLNYM.
+  // Bez tej pary poprzedni test przechodziłby też na implementacji, która
+  // czyta wyłącznie pole i odrzuca zakładkę, gdy go nie ma.
+  it("sends a saved Library tab with no reading to Notes", () => {
+    const saved = JSON.stringify({
+      version: 3,
+      state: {
+        tabs: [
+          {
+            key: "destination:library",
+            label: "Library",
+            surface: "library",
+          },
+        ],
+        activeKey: "destination:library",
+        history: [
+          { key: "destination:today", label: "Today", surface: "today" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      saved,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["notes"],
+    );
+    assert.equal(restored.activeKey, "destination:notes");
   });
 
   // TA SAMA GWARANCJA DLA `access`, i to nie jest kopia dla symetrii. Mapa
@@ -563,24 +648,30 @@ describe("shell navigation across a version upgrade", () => {
     assert.equal(stranger.tabs.length, 1);
   });
 
-  // Odczyt jest częścią kontekstu, więc przeżywa zapis: wrzutka głosowa
-  // otwiera Bibliotekę NA Historii wrzutek, a zakładka ma się odtworzyć jako
-  // to, czym była, nie jako Notatki.
-  it("reopens a Library tab on the reading it was opened at", () => {
+  // TEN TEST ZMIENIŁ PODMIOT, A NIE TYLKO LITERY. Nazywał się „reopens
+  // a Library tab on the reading it was opened at" i asertował, że pole
+  // `libraryReading` przeżywa zapis — bo wrzutka głosowa musiała poprosić
+  // o odczyt Historii wrzutek WEWNĄTRZ jednego celu. Od lotu D3 prosi o cel,
+  // więc pytanie „czy odczyt przeżył" nie ma już podmiotu; pytaniem jest, czy
+  // przeżyła POWIERZCHNIA, i to jest ta sama gwarancja o klasę wyżej.
+  //
+  // Migrację starych zapisów NIOSĄCYCH to pole mierzą dwa testy wyżej.
+  it("reopens a Capture history tab as Capture history, not as Notes", () => {
     const fallback = destinationContext("today", "Today");
     let state = createShellNavigation(fallback);
     state = openShellContext(
       state,
-      libraryReadingContext("captures", "Capture history"),
+      destinationContext("captures", "Capture history"),
     );
     const restored = restoreShellNavigation(
       serializeShellNavigation(state),
       fallback,
     );
     assert.deepEqual(
-      restored.tabs.map((tab) => tab.libraryReading),
-      [undefined, "captures"],
+      restored.tabs.map((tab) => tab.surface),
+      ["today", "captures"],
     );
+    assert.equal(restored.activeKey, "destination:captures");
   });
 
   // ZAPISANY WIDOK ZADAŃ — trzecie pole tej samej rodziny co kategoria
@@ -654,8 +745,12 @@ describe("shell navigation across a version upgrade", () => {
   });
 
   it("refuses a saved reading that is not one of the three", () => {
-    // Napis spoza słownika odrzuca CAŁY zapis, tak samo jak nieznany cel:
-    // przełącznik nie wyrenderowałby wtedy żadnego z trzech odczytów.
+    // Napis spoza słownika odrzuca CAŁY zapis, tak samo jak nieznany cel.
+    // POWÓD SIĘ ZMIENIŁ, A ZACHOWANIE NIE, i to jest warte jednego zdania:
+    // do lotu D3 nierozpoznany odczyt trafiał do przełącznika, który nie
+    // wyrenderowałby wtedy żadnego z trzech. Dziś jest to zapis, o którym
+    // migracja nie umie powiedzieć, NA KTÓRY z trzech celów ma pójść —
+    // a zgadywanie „Notatki" jest tu tym samym, czym zgadywanie celu.
     const saved = JSON.stringify({
       version: 3,
       state: {
@@ -790,11 +885,11 @@ describe("favourites restored from a device that saved them earlier", () => {
     // Zapis człowieka, który przypiął Ustawienia ZANIM przestały być pozycją
     // nawigacji, i który ma jeszcze przypięcia z 0.1.9. Trzy cele, trzy różne
     // rozstrzygnięcia — dlatego stoją w jednej fikstury: `settings` znika, bo
-    // jego chrome to tryb; `history` PRZEŻYWA jako `library`, bo wycofanie
+    // jego chrome to tryb; `history` PRZEŻYWA jako `captures`, bo wycofanie
     // rozwiązuje się przed regułą chrome; `tasks` przechodzi nietknięte.
     assert.deepEqual(
       restoreFavoriteSurfaces(JSON.stringify(["settings", "history", "tasks"])),
-      ["library", "tasks"],
+      ["captures", "tasks"],
       "a favourite pinned to a surface that is no longer a navigation target survived the restore, and nothing on screen can un-star it",
     );
   });
@@ -811,11 +906,18 @@ describe("favourites restored from a device that saved them earlier", () => {
   });
 
   it("keeps two retired ids that land on one successor as ONE favourite", () => {
-    // `documents` i `history` schodzą się na `library`. Szyna z tą samą
-    // pozycją dwa razy to nie jest to, co ktoś przypiął.
+    // PARA SIĘ ZMIENIŁA, REGUŁA NIE. Stały tu `documents` i `history`, bo
+    // schodziły się OBA na `library`; lot D3 rozdzielił Bibliotekę na trzy
+    // cele, więc rozchodzą się teraz na `notes` i `captures` i nie mierzyłyby
+    // już scalenia w ogóle. `access` i `activity` dalej schodzą się na
+    // `settings` — ale Ustawień przypiąć się nie da (chrome to tryb), więc
+    // parą, która mierzy SAMO SCALENIE, jest `library` razem z `documents`:
+    // wycofany identyfikator i identyfikator wycofany PÓŹNIEJ, oba na
+    // `notes`. Szyna z tą samą pozycją dwa razy to nie jest to, co ktoś
+    // przypiął.
     assert.deepEqual(
-      restoreFavoriteSurfaces(JSON.stringify(["documents", "history", "work"])),
-      ["library", "tasks"],
+      restoreFavoriteSurfaces(JSON.stringify(["documents", "library", "work"])),
+      ["notes", "tasks"],
       "two retired ids resolving onto one target were pinned twice",
     );
   });
@@ -838,5 +940,38 @@ describe("favourites restored from a device that saved them earlier", () => {
       "tasks",
     ]);
     assert.deepEqual(restoreFavoriteSurfaces("{not json"), ["today", "tasks"]);
+  });
+});
+
+// DWA SŁOWNIKI TYCH SAMYCH TRZECH NAPISÓW — i to jest jedyne miejsce, które
+// trzyma je razem. `libraryReadingLabel` niesie `h1` trzech ekranów wiedzy,
+// rejestr powierzchni niesie etykietę pozycji nawigacji, granicy leniwego
+// chunka i stanu ładowania. Duplikat NIE JEST do usunięcia i to jest pomiar,
+// nie gust: `library-readings.ts` mieszka w leniwym katalogu Biblioteki,
+// a import WARTOŚCI z rejestru w drugą stronę wciąga ten katalog na ścieżkę
+// gorącą (powód i bajty stoją w nocie nad `libraryReadings` w
+// `client/shell-navigation.ts`, a skutek — w `RealApp.tsx` przy
+// `knowledgeSurfacePanel`). Skoro duplikatu nie da się skasować, musi go
+// pilnować asercja: bez niej „Loading Sources…" nad ekranem, który po
+// załadowaniu nazywa się inaczej, przechodzi cicho przez CAŁY `npm run check`
+// (zmierzone przy przeglądzie lotu D3 podmianą wszystkich trzech napisów —
+// 374/374 interakcji i 358 testów skryptów dalej zielone).
+describe("the knowledge h1 and the navigation label are one sentence", () => {
+  it("says the same word for every reading, and cannot miss a new one", () => {
+    // TOTALNA NAD UNIĄ, nie nad trzema wpisanymi kluczami: czwarty odczyt
+    // dopisany bez etykiety w rejestrze zatrzyma się tutaj, a nie u czytelnika.
+    // Liczba stoi tu WYŁĄCZNIE przeciwko pętli po pustym zbiorze — pętla nad
+    // zerem elementów jest nieodróżnialna od pętli, która wszystko sprawdziła.
+    assert.equal(
+      libraryReadings.length,
+      3,
+      "a knowledge reading was added or removed; the loop below must be seen to run",
+    );
+    for (const reading of libraryReadings)
+      assert.equal(
+        libraryReadingLabel[reading],
+        desktopSurfaceLabel(reading),
+        `the h1 of „${reading}" and its navigation label are two different words`,
+      );
   });
 });

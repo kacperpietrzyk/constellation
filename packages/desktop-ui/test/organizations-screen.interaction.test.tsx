@@ -1170,7 +1170,7 @@ test("every kind the collection stopped drawing is still reachable through the i
     await import("@constellation/contracts");
   // All five still point at this destination, which is the branch that ends in
   // `selectStrategicInInspector` for anything that is not an organization
-  // (`RealApp.tsx:5126-5141`). Repointing one without a routing branch beside it
+  // (`RealApp.tsx:5160-5175`). Repointing one without a routing branch beside it
   // compiles, passes every test, and silently downgrades "open this record" to
   // "open that screen".
   for (const kind of [

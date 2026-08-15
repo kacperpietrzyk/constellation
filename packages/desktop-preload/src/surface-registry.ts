@@ -13,33 +13,46 @@
 // trzymała, zostaje — cel w nawigacji, który prowadzi donikąd, jest gablotą,
 // a nie zapowiedzią.
 //
-// CYFRY SĄ WYCZERPANE i to jest decyzja, nie awaria. Docelowy zbiór ma
-// jedenaście celów, a klawiatura daje dziewięć skrótów, więc numeracja jest
-// przypisana raz i żadna fala nie przenumerowuje skrótów pod ręką — cyfra raz
-// zapamiętana zostaje przy swoim celu.
+// CYFRY SĄ WYCZERPANE i to jest decyzja, nie awaria. Zbiór ma czternaście
+// wpisów — trzynaście celów nawigacji i Ustawienia — a klawiatura daje dziewięć
+// skrótów, więc numeracja jest przypisana raz i żadna fala nie przenumerowuje
+// skrótów pod ręką: cyfra raz zapamiętana zostaje przy swoim celu. LOT D3
+// DOŁOŻYŁ DWA CELE I NIE RUSZYŁ ANI JEDNEJ CYFRY — dowodem jest reguła dwa
+// akapity niżej, a nie zapewnienie w tym zdaniu.
 //
 // CZYJA JEST CYFRA — ROZSTRZYGA PROTOTYP, I TO JEST ZMIANA WOBEC POPRZEDNIEJ
 // WERSJI TEJ NOTY. Stało tu „…Organizations 7 · People 8 · Meetings 9",
 // przypisane do wyobrażonego kształtu docelowego. Prototyp v3 przypisuje
 // inaczej (`v3/app.js:156-169`, pole `key`): Today 1 · Calendar 2 · Inbox 3 ·
 // Tasks 4 · Projects 5 · Pipeline 6 · Organizations 7 · Meetings 8 · Notes 9,
-// a People, Renewals i Sources NIE MAJĄ cyfry w ogóle. Nasza Library jest
-// odpowiednikiem prototypowych Notes (Notatki + Źródła + historia wrzutek
-// scalone w fali Knowledge — nota niżej), więc bierze jego dziewiątkę.
+// a People, Renewals i Sources NIE MAJĄ cyfry w ogóle. Nasze `notes` JEST
+// prototypowym `notes`, jeden do jednego, więc bierze jego dziewiątkę.
 //
 // REGUŁA, KTÓRA TO TRZYMA: numer przy celu jest ten sam, co przy jego
 // odpowiedniku w prototypie, a cel bez odpowiednika nie dostaje numeru. Zbiór
 // jest asertowany W CAŁOŚCI (`desktop-preload/test/client.test.ts`), a nie po
 // jednym wpisie — pojedyncze asercje przepuściły w tym repozytorium dokładnie
-// tę klasę rozjazdu. Cele bez cyfry (People, Renewals) osiąga się paletą,
-// i mówi to ich `aria-label`, nie tylko dymek.
+// tę klasę rozjazdu. Cele bez cyfry (People, Renewals, Sources, Capture
+// history) osiąga się paletą, i mówi to ich `aria-label`, nie tylko dymek.
 //
-// `history` WSIĄKŁ w `library` w fali Knowledge i to było SCALENIE TREŚCI,
-// a nie przemianowanie: rejestr wrzutek przyjechał w całości jako trzeci
-// odczyt Biblioteki (Notatki │ Źródła │ Historia wrzutek). Grupa Knowledge ma
-// od tej pory dwa nawigowalne wpisy zamiast trzech, a `history` stoi niżej
-// w `retiredDesktopSurfaces`, bo niesie go KAŻDY zapisany stan powłoki
-// z 0.1.9 i z każdego builda 0.2.0.
+// `library` ROZWINĄŁ SIĘ Z POWROTEM NA TRZY CELE (lot D3, decyzja Kacpra
+// z 2026-08-15: „Rozwinąć na trzy pozycje nawigacji"), i to jest ODWRÓCENIE
+// scalenia z fali Knowledge, a nie nowa architektura. Poprzednia wersja tej
+// noty mówiła: „`history` WSIĄKŁ w `library` … Grupa Knowledge ma od tej pory
+// dwa nawigowalne wpisy zamiast trzech". Od tego lotu Grupa Knowledge ma
+// CZTERY: Meetings, Notes, Sources, Capture history.
+//
+// GRANICA CYTATU, ZMIERZONA I ZAPISANA, BO JEST ROZJAZDEM WOBEC PROTOTYPU:
+// `DESTINATIONS` prototypu (`v3/app.js:156-169`) ma TRZYNAŚCIE wpisów i NIE MA
+// wśród nich historii wrzutek — prototypowy `notes` i `sources` są celami,
+// a przechwyty leżą u niego w Skrzynce (`v3/screens/inbox.js:139`,
+// `.ib-row-capture`). Jedyne miejsce, w którym prototyp nazywa te trzy odczyty
+// razem, to MARTWY ekran `viewLibrary()` (`v3/app.js:1368-1373`) — segmentowany
+// przełącznik `Documents │ Sources │ Capture history`, czyli dokładnie to, co ten
+// lot rozbija, i nieosiągalny z nawigacji. Zdanie wpisu 11-1 rejestru przejścia
+// („przechwyty to osobne pozycje nawigacji") jest więc PRAWDZIWE dla dwóch
+// z trzech. Trzecia pozycja jest decyzją produktu, nie cytatem, i dlatego nie
+// dostaje cyfry: nie ma odpowiednika, któremu mogłaby ją zabrać.
 //
 // `access` WSIĄKŁ w `settings` w fali Wycofań i to było — tak samo jak przy
 // `history` — SCALENIE TREŚCI, nie przemianowanie: kategoria „Access and
@@ -179,15 +192,52 @@ export const desktopSurfaceRegistry = [
     loading: "lazy",
   },
   {
-    // DZIEWIĄTKA PO PROTOTYPOWYCH `notes`. Library JEST tym celem: Notatki,
-    // Źródła i historia wrzutek zostały w fali Knowledge scalone w jeden
-    // odczyt (nota o `history` niżej), a prototyp trzyma `notes` na `key: 9`.
-    // Cel czytany codziennie, który dotąd chodził wyłącznie przez paletę.
-    id: "library",
-    label: "Library",
+    // DZIEWIĄTKA PO PROTOTYPOWYCH `notes`, I OD LOTU D3 TEN CEL NAZYWA SIĘ TAK
+    // SAMO JAK TAM. Do D3 stała tu `library` — jeden cel niosący trzy odczyty —
+    // i brała dziewiątkę „jako odpowiednik". Teraz odpowiedniość jest dosłowna:
+    // `v3/app.js:167` to `{ id: "notes", label: "Notes", icon: "doc", key: "9",
+    // section: "know" }`. Cyfra się NIE PRZESUNĘŁA, zmieniło się tylko to, co
+    // za nią stoi.
+    id: "notes",
+    label: "Notes",
     icon: "documents",
     group: "Knowledge",
     shortcut: 9,
+    chrome: "navigation",
+    loading: "lazy",
+  },
+  {
+    // WRACA JAKO CEL (wpisy 11-1 i C-1 rejestru przejścia). C-1 spisał
+    // `Sources` jako „powierzchnię, której backend nie ma" — to było prawdą
+    // o NAWIGACJI, nie o danych: `knowledge.list` niesie `sources` od fali
+    // Knowledge i ekran czyta je dziś, tyle że zza zakładki. Bez cyfry, bo
+    // prototypowy `sources` (`v3/app.js:169`) nie ma pola `key`.
+    id: "sources",
+    label: "Sources",
+    icon: "source",
+    group: "Knowledge",
+    shortcut: null,
+    chrome: "navigation",
+    loading: "lazy",
+  },
+  {
+    // TRZECI CEL WIEDZY — I JEDYNY W CAŁYM REJESTRZE BEZ ODPOWIEDNIKA
+    // W `DESTINATIONS` PROTOTYPU. Powód stoi w nocie na górze pliku i jest
+    // pomiarem, nie domysłem. Cel jest decyzją Kacpra z 2026-08-15, więc jego
+    // nazwa idzie za tym, co prototyp NAZYWA na martwym ekranie
+    // (`v3/app.js:1373` — „Capture history"), a nie za tym, gdzie prototyp to
+    // trzyma.
+    //
+    // `history` PRZESTAJE BYĆ NAZWĄ TEGO CELU I NIE WRACA. Identyfikator
+    // z 0.1.9 zostaje w `retiredDesktopSurfaces` i wskazuje TUTAJ: cel wrócił
+    // pod inną nazwą, więc zapisana zakładka musi zostać przeniesiona, a nie
+    // ożywiona pod starym kluczem — dwie zakładki o tym samym ekranie i dwóch
+    // różnych kluczach to ta sama awaria, którą opisuje nota przy `access`.
+    id: "captures",
+    label: "Capture history",
+    icon: "capture-history",
+    group: "Knowledge",
+    shortcut: null,
     chrome: "navigation",
     loading: "lazy",
   },
@@ -255,13 +305,33 @@ export const retiredDesktopSurfaces: Readonly<Record<string, DesktopSurface>> =
   {
     cockpit: "today",
     attention: "inbox",
-    documents: "library",
-    // Historia wrzutek jest teraz odczytem Biblioteki. Wpis jest tu, bo
+    // `documents` był ekranem notatek przed przebudową 0.2.0 i celuje teraz
+    // prosto w `notes` — do lotu D3 przechodził przez `library`, czyli przez
+    // cel, który sam był scaleniem trzech.
+    documents: "notes",
+    // Historia wrzutek jest znowu CELEM, pod nazwą `captures`. Wpis jest tu, bo
     // `history` STAŁ W WYDANYM 0.1.9: niesie go zapisana sesja, ulubiona
     // pozycja i `?destination=` odczepionego okna. Bez niego pierwsza zakładka
     // z tym identyfikatorem odrzuca CAŁĄ zapisaną sesję — bez awarii, więc bez
-    // śladu.
-    history: "library",
+    // śladu. Między falą Knowledge a lotem D3 wskazywał na `library`; teraz
+    // wraca na ekran, który znaczył od początku.
+    history: "captures",
+    // `library` PRZESTAŁ BYĆ CELEM W LOCIE D3 i to jest wpis, którego brak
+    // przechodzi `tsc` BEZ SŁOWA — mapa jest kluczowana `string`iem. `library`
+    // stał w KAŻDYM buildzie 0.2.0 i w każdym zapisanym stanie powłoki z tych
+    // buildów: bez tej linii pierwsze uruchomienie po aktualizacji odrzuca CAŁĄ
+    // sesję (każdą zakładkę, ulubioną pozycję i historię), bez awarii, więc bez
+    // śladu. Dokładnie ta sama pułapka, którą opisują noty przy `access`
+    // i `activity` wyżej — trzeci raz w tym pliku.
+    //
+    // CEL JEST `notes`, A NIE „ten odczyt, który był na wierzchu": sam
+    // identyfikator powierzchni tego nie niesie. Niesie to POLE
+    // `libraryReading` na kontekście, którego ta mapa nie widzi, więc rozdział
+    // zapisanej zakładki na trzy cele mieszka w `migrateRestoredContext`
+    // (`desktop-ui/src/client/shell-navigation.ts`) — tam, gdzie widać cały
+    // kontekst. Ta mapa odpowiada na uboższe pytanie i ma prawo dać uboższą
+    // odpowiedź.
+    library: "notes",
     // „Relacje" były jedną zakładką na cztery różne pytania; ekran klienta jest
     // z nich najbliższy temu, po co ludzie tam wchodzili.
     relationships: "organizations",

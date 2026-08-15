@@ -46,16 +46,26 @@ const lazyImports = vi.hoisted(() => {
   const rejecters = new Map<string, (reason: unknown) => void>();
   return {
     rejecters,
-    hold: (surface: string) =>
+    // WIĘCEJ NIŻ JEDNA NAZWA NA ZAŚLEPKĘ, bo od lotu D3 jeden moduł obsługuje
+    // TRZY cele nawigacji: Notatki, Źródła i Historia wrzutek wołają ten sam
+    // loader (`shell/lazy-surfaces.tsx`, z zapisanym tam powodem — trzy wejścia
+    // rozcięłyby jeden chunk na cztery). Fabryka `vi.mock` odpala się RAZ na
+    // moduł, więc rejestracja pod jedną nazwą zostawiłaby dwa cele bez
+    // odrzucacza — a pętla niżej czyta to jako „ten cel ładuje się zachłannie
+    // albo ścieżka zaślepki się rozjechała", czyli myli własne ograniczenie
+    // z wadą produktu.
+    hold: (...surfaces: readonly string[]) =>
       new Promise<never>((_resolve, reject) => {
-        rejecters.set(surface, reject);
+        for (const surface of surfaces) rejecters.set(surface, reject);
       }),
   };
 });
 
 vi.mock("../src/CalendarSurface.js", () => lazyImports.hold("calendar"));
 vi.mock("../src/WorkSurface.js", () => lazyImports.hold("work"));
-vi.mock("../src/library/LibraryShell.js", () => lazyImports.hold("library"));
+vi.mock("../src/library/LibraryShell.js", () =>
+  lazyImports.hold("notes", "sources", "captures"),
+);
 vi.mock("../src/MeetingsSurface.js", () => lazyImports.hold("meetings"));
 vi.mock("../src/SettingsSurface.js", () => lazyImports.hold("settings"));
 vi.mock("../src/StrategicDepthSurface.js", () =>

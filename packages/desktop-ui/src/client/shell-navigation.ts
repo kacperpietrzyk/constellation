@@ -27,10 +27,21 @@ const settingsCategoryIds: readonly string[] = settingsCategories.map(
 const isSettingsCategory = (value: unknown): value is SettingsCategoryId =>
   typeof value === "string" && settingsCategoryIds.includes(value);
 
-// Trzy odczyty jednego celu nawigacji. Biblioteka jest JEDNYM celem — decyzja
-// D-1 fali Knowledge — a Notatki, Źródła i Historia wrzutek są sposobami jej
-// czytania, nie osobnymi zakładkami. Zamrożony prototyp niósł dokładnie ten
-// kształt (`v3/app.js:1371-1374`, segmentowany przełącznik).
+// TRZY EKRANY WIEDZY. Nazwa `LibraryReading` jest starsza niż to, czym te trzy
+// rzeczy są dzisiaj, i zostaje ŚWIADOMIE — od lotu D3 nie są to „odczyty
+// jednego celu", tylko trzy pozycje nawigacji (decyzja Kacpra z 2026-08-15,
+// wpisy 11-1 i C-1 rejestru przejścia). Poprzednia wersja tej noty powoływała
+// się na decyzję D-1 fali Knowledge i na segmentowany przełącznik prototypu
+// (`v3/app.js:1371-1374`) — tamten przełącznik siedzi na ekranie, do którego
+// w prototypie NIE PROWADZI żadna pozycja nawigacji, i to jest pomiar, który
+// odwrócił tamtą decyzję.
+//
+// SŁOWNIK ZOSTAJE PRZY ŻYCIU Z DWÓCH POWODÓW, oba bieżące: niesie etykiety
+// trzech ekranów (`library-readings.ts`, a przez nie `h1` w paśmie) i jest
+// jedynym walidatorem pola `libraryReading` w ZAPISANYM STANIE sprzed tego
+// lotu. Identyfikatory odczytów są dokładnie identyfikatorami trzech nowych
+// powierzchni, i to nie jest zbieg okoliczności — na tej równości stoi migracja
+// zakładek w `migrateRestoredContext`.
 //
 // Słownik stoi TUTAJ, a nie w `src/library/`, i to jest decyzja ZMIERZONA:
 // powłoka nawigacji leży na ścieżce gorącej, więc import z leniwego katalogu
@@ -68,19 +79,26 @@ export interface ShellContext {
   /** Set when the context was opened AS A RECORD rather than merely navigated
    *  to. See `taskContext` for why the promotion has to be asked for. */
   readonly record?: boolean;
-  /** Który odczyt Biblioteki ma się otworzyć. Biblioteka jest JEDNYM celem
-   *  o trzech odczytach, a dwa wywołania — wrzutka głosowa i wrzutka otwarta
-   *  z Inboxa — mają trafić na Historię wrzutek, nie na domyślne Notatki.
-   *  Przed wycofaniem celu `history` niosły to identyfikatorem powierzchni;
-   *  po wycofaniu samo `surface: "library"` kompiluje się i wysyła człowieka
-   *  nie tam, bez ani jednego błędu.
+  /** POLE TYLKO DO ODCZYTU ZAPISANEGO STANU — od lotu D3 nic go już nie pisze.
    *
-   *  Pole siedzi na KONTEKŚCIE, a nie w stanie powłoki, z tego samego powodu
-   *  co `record` przy zadaniu: zakładka ma się otworzyć jako to, czym była,
-   *  więc przeżywa serializację. Nie wymaga podbicia
-   *  `NAVIGATION_STATE_VERSION` — zapis bez tego pola czyta się dalej, a to
-   *  z nim czyta starsza wersja, bo walidacja nie odrzuca nadmiarowych
-   *  kluczy. */
+   *  Znaczyło „który odczyt Biblioteki ma się otworzyć", kiedy Biblioteka była
+   *  jednym celem o trzech odczytach: wrzutka głosowa i wrzutka otwarta
+   *  z Inboxa musiały poprosić o Historię wrzutek, bo samo
+   *  `surface: "library"` kompilowało się i wysyłało człowieka na Notatki.
+   *  Dziś proszą o powierzchnię `captures` wprost, więc pytanie nie ma jak
+   *  zostać niezadane.
+   *
+   *  ZOSTAJE, BO ZAPIS ZOSTAJE. Każdy build 0.2.0 zapisywał to pole do
+   *  `localStorage`, a `migrateRestoredContext` jest jedynym miejscem, które
+   *  potrafi z niego odtworzyć, KTÓRY z trzech nowych ekranów był otwarty —
+   *  mapa wycofań widzi sam identyfikator powierzchni i umie odpowiedzieć
+   *  tylko „Notatki". Skasowanie pola razem z funkcją, która je pisała,
+   *  przeniosłoby po cichu każdą zapisaną zakładkę Źródeł i Historii wrzutek
+   *  na Notatki.
+   *
+   *  Nie wymagało podbicia `NAVIGATION_STATE_VERSION`, gdy wchodziło, i nie
+   *  wymaga go teraz, gdy przestaje być pisane: walidacja nie odrzuca
+   *  nadmiarowych kluczy, a jego brak był legalny od pierwszego dnia. */
   readonly libraryReading?: LibraryReading;
   /** Która KATEGORIA Ustawień ma być na wierzchu po otwarciu.
    *
@@ -233,13 +251,34 @@ export const serializeShellNavigation = (state: ShellNavigationState): string =>
 // uruchomienie po przebudowie pokazywałoby angielską nawigację i polskie
 // zakładki naraz. Zakładki rekordów (`task:`, `project:`, …) zachowują swój
 // tytuł — tam napis to nazwa cudzej pracy, nie etykieta interfejsu.
+// ROZDZIAŁ JEDNEJ ZAPISANEJ ZAKŁADKI NA TRZY CELE (lot D3) — i to jest jedyne
+// miejsce, w którym da się go zrobić.
+//
+// `resolveDesktopSurface` widzi WYŁĄCZNIE identyfikator powierzchni, więc na
+// pytanie „czym jest zapisany `library`" umie odpowiedzieć tylko `notes`. Ale
+// zakładka zapisana przez build 0.2.0 niesie obok niego pole `libraryReading`
+// z odczytem, który był na wierzchu — i dla `sources` oraz `captures` wynik
+// z samej mapy byłby CICHYM przeniesieniem czytelnika na inny ekran niż ten,
+// który zamknął. Kontekst w całości widać dopiero tutaj, więc tutaj mieszka
+// pierwszeństwo: odczyt bije mapę wycofań, a mapa odpowiada, gdy pola nie ma
+// albo jest nierozpoznawalne.
+//
+// KIERUNEK NIE JEST SYMETRYCZNY i to nie jest przeoczenie: pole czyta się
+// wyłącznie wtedy, gdy zapisana powierzchnia to `library`. Zapis z
+// `surface: "sources"` i `libraryReading: "notes"` nie powstaje w tej wersji
+// i nie powstawał w żadnej poprzedniej — czytanie go dawałoby regułę
+// pilnującą stanu, którego nikt nie zapisuje.
 const migrateRestoredContext = (value: unknown): unknown => {
   if (typeof value !== "object" || value === null) return value;
   const context = value as {
     readonly surface?: unknown;
     readonly key?: unknown;
+    readonly libraryReading?: unknown;
   };
-  const resolved = resolveDesktopSurface(context.surface);
+  const resolved =
+    context.surface === "library" && isLibraryReading(context.libraryReading)
+      ? context.libraryReading
+      : resolveDesktopSurface(context.surface);
   if (resolved === undefined) return value;
   const isDestination =
     typeof context.key === "string" && context.key.startsWith("destination:");
@@ -248,9 +287,17 @@ const migrateRestoredContext = (value: unknown): unknown => {
       ? value
       : { ...context, surface: resolved };
   }
+  // KLUCZ IDZIE Z `resolved`, A NIE Z `migrateContextKey` NA STARYM KLUCZU,
+  // i to jest cała różnica po locie D3. Tamta funkcja rozwiązuje SAM NAPIS
+  // klucza, więc dla zapisanej zakładki Historii wrzutek dałaby
+  // `destination:notes` (bo `library → notes`) przy powierzchni `captures`:
+  // zakładka pokazywałaby jeden ekran pod kluczem drugiego, a otwarcie Notatek
+  // podmieniłoby ją zamiast otworzyć nową. Zgodność klucza z powierzchnią jest
+  // tu niezmiennikiem, nie zbieżnością — `openShellContext` porównuje właśnie
+  // klucze.
   return {
     ...context,
-    key: migrateContextKey(context.key as string),
+    key: `destination:${resolved}`,
     surface: resolved,
     label: desktopSurfaceLabel(resolved),
   };
@@ -321,7 +368,30 @@ export const restoreShellNavigation = (
       (tab, index) =>
         migrated.findIndex((other) => other.key === tab.key) === index,
     );
-    const activeKey = migrateContextKey(state.activeKey);
+    // AKTYWNY KLUCZ BIERZE SIĘ Z ZAKŁADKI, KTÓRA GO NIOSŁA, a nie z drugiego
+    // przeliczenia samego napisu — i to jest różnica, którą wymusił rozdział
+    // Biblioteki na trzy cele (lot D3). Napis `destination:library` rozwiązuje
+    // się do `destination:notes`, więc sesja, w której na wierzchu stały
+    // Źródła albo Historia wrzutek, miała po aktualizacji `activeKey`
+    // niepasujący do ŻADNEJ odtworzonej zakładki — a wtedy warunek niżej
+    // odrzuca CAŁĄ sesję: każdą zakładkę i całą historię, bez błędu i bez
+    // śladu. Ta sama rodzina awarii, co brak wpisu w `retiredDesktopSurfaces`,
+    // i wcześniej nie mogła wystąpić, bo żadne wycofanie nie rozdzielało
+    // jednego identyfikatora na kilka.
+    //
+    // `migrated` jest INDEKSOWO ZGODNE z `state.tabs` — bramka długości wyżej
+    // zwraca wcześniej, gdy którakolwiek zakładka odpadła — więc indeks
+    // zapisanej zakładki jest legalnym adresem w zmigrowanej tablicy.
+    // `migrateContextKey` zostaje jako gałąź awaryjna: `activeKey` wskazujący
+    // na nic nie jest tu nowym przypadkiem i dalej odrzuca sesję niżej.
+    const savedActiveIndex = state.tabs.findIndex(
+      (tab) => (tab as { readonly key?: unknown }).key === state.activeKey,
+    );
+    const activeKey =
+      savedActiveIndex >= 0
+        ? (tabs.find((tab) => tab.key === migrated[savedActiveIndex]?.key)
+            ?.key ?? migrateContextKey(state.activeKey))
+        : migrateContextKey(state.activeKey);
     if (!tabs.some((tab) => tab.key === activeKey))
       return createShellNavigation(fallback);
     const history = state.history
@@ -488,15 +558,18 @@ export const settingsCategoryContext = (
   settingsCategory: category,
 });
 
-export const libraryReadingContext = (
-  reading: LibraryReading,
-  label: string,
-): ShellContext => ({
-  key: "destination:library",
-  label,
-  surface: "library",
-  libraryReading: reading,
-});
+/**
+ * `libraryReadingContext` STAŁ TU DO LOTU D3 i został skasowany, a nie
+ * przepisany. Budował `destination:library` z polem `libraryReading`, bo
+ * Biblioteka była jednym celem o trzech odczytach: dwa wywołania — wrzutka
+ * głosowa i wrzutka otwarta z Inboxa — musiały poprosić o Historię wrzutek,
+ * inaczej lądowały na Notatkach.
+ *
+ * Po rozdziale na trzy cele proszenie o odczyt jest zwykłym
+ * `destinationContext("captures", …)`, a warunek, którego tamta funkcja
+ * pilnowała, pilnuje teraz TYP: nie da się już zbudować kontekstu, który
+ * mówi „wiedza" i nie mówi którą.
+ */
 
 /**
  * Zadania otwarte NA KONKRETNYM ZAPISANYM WIDOKU.
@@ -563,7 +636,12 @@ export const documentContext = (
 ): ShellContext => ({
   key: `document:${documentId}`,
   label,
-  surface: "library",
+  // NOTATKA OTWIERA SIĘ NA `notes`, a nie na jednym z trzech ekranów wiedzy
+  // „jakimkolwiek": czytelnia dokumentu jest trzecim panelem TEGO ekranu
+  // (`NotesReading.tsx`), a Źródła i Historia wrzutek nie mają gdzie jej
+  // narysować. Do lotu D3 stało tu `library` i było to prawdą przez zwinięcie,
+  // nie przez wybór.
+  surface: "notes",
   documentId,
 });
 

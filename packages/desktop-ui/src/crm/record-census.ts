@@ -3,7 +3,7 @@
 // Powstało dla wpisów #50 i #66 rejestru (liczniki przy pozycjach nawigacji),
 // i powstało jako OSOBNY plik, a nie jako dwie linijki w powłoce, z jednego
 // powodu: liczba przy celu i ekran pod tym celem MUSZĄ mówić to samo.
-// `RealApp.tsx:1905-1913` nosi zapisany dowód, co się dzieje, kiedy nie mówią —
+// `RealApp.tsx:1916-1924` nosi zapisany dowód, co się dzieje, kiedy nie mówią —
 // pasek boczny pokazywał „100" obok ekranu mówiącego „157 tasks", bo brał inne
 // zapytanie. `projectNavChildren` w tym samym pliku nosi bliźniaczy dowód
 // z drugiej strony: pierwsza wersja czytała `work.overview.projects`, w fiksturze

@@ -9,7 +9,7 @@
 // tokenie tła przechodzi bez pomiaru, o ile ta konkretna para nie jest rodziną.
 //
 // To nie jest teoria. Na drzewie z 2026-08-07 ta bramka znalazła
-// `.nav-count--attention` (dziś `styles.css:2144`): `color: var(--on-accent)` na
+// `.nav-count--attention` (dziś `styles.css:2148`): `color: var(--on-accent)` na
 // `background: var(--accent)`, czyli w motywie CIEMNYM 3,54:1 przy progu 4,5.
 // Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:570` wymienia ją w tabeli
 // stopni akcentu pod nagłówkiem „PONIŻEJ" — a mimo to plakietka została tak
@@ -201,7 +201,7 @@ if (!tokensEntry) {
 // komentarzy nad nią. Zapisany jest tu ODSTĘP, a nie dwa numery wierszy,
 // i to jest poprawka po przeglądzie: dwa numery bezwzględne obok siebie gniją
 // osobno, więc jedno zdanie zaczęło podawać dwa różne wiersze tej samej
-// reguły (dziś stoi ona w `styles.css:2144`). Bramka wskazująca nie ten wiersz każe człowiekowi
+// reguły (dziś stoi ona w `styles.css:2148`). Bramka wskazująca nie ten wiersz każe człowiekowi
 // szukać defektu ręcznie i podważa własny raport.
 const withoutComments = (css) =>
   css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
@@ -677,7 +677,7 @@ const INACTIVE_COMPONENT = {
 // marki NIE NIESIE ŻADNEGO TEKSTU (to `<svg>` z kółkami i kreskami malowanymi
 // `currentColor`, `components/BrandMark.tsx`), a do tego jest wycięty
 // z drzewa dostępności i stoi obok wypisanej nazwy produktu
-// (`RealApp.tsx:1822-1823`, `.brand-row strong` = „Constellation").
+// (`RealApp.tsx:1833-1834`, `.brand-row strong` = „Constellation").
 // SPRAWDZANE JEST TO, CO DA SIĘ SPRAWDZIĆ: obecność atrybutu przy tej klasie.
 // „Nazwa stoi obok" jest twierdzeniem o drzewie DOM i zostaje prozą.
 const DECORATIVE_EXEMPTIONS = [

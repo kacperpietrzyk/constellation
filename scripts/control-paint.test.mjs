@@ -66,7 +66,7 @@ test("THE DEFECT THIS EXISTS FOR: a control painted by the engine, not by this s
 });
 
 test("A DELIBERATELY TRANSPARENT CONTROL IS NOT A FINDING — the false positive that would kill this instrument", () => {
-  // `.ghost-button` (`styles.css:885`) mówi `background: transparent` i mówi to
+  // `.ghost-button` (`styles.css:889`) mówi `background: transparent` i mówi to
   // świadomie; arkusz powtarza to 38 razy. Przyrząd zgłaszający te kontrolki
   // zostałby skasowany przy pierwszym czerwonym przebiegu — i słusznie, bo
   // fałszywe trafienie jest wadą PRZYRZĄDU.
@@ -588,7 +588,7 @@ test("THE WITNESSES ARE JUDGED PER THEME, because a union hides the theme that d
 });
 
 test("A COLOR-MIX OVER A TOKEN IS DELIBERATELY A FINDING, and the interpolation space decides WHICH kind", () => {
-  // Idiom tego arkusza (`styles.css:4941`) i prototypu (`v3/app.css:466`).
+  // Idiom tego arkusza (`styles.css:4959`) i prototypu (`v3/app.css:466`).
   // Wartość wyliczona nie jest napisem tokenu, więc mieszanka zapisana
   // `in oklch` wychodzi jako OFF_PALETTE — werdykt SPOZA rejestru, czyli PADA.
   // Zapisane, bo Faza C na to wejdzie: albo wpis w rejestrze, albo uzbrojenie

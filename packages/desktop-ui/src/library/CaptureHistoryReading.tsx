@@ -197,16 +197,22 @@ export const CaptureHistoryReading = ({
   );
   return (
     <div className="surface-scroll history-surface">
-      <header className="surface-header wave2-header">
-        <div>
-          <p className="eyebrow">Kept originals</p>
-          <h2>Capture history</h2>
-          <p>
-            What was processed stays checkable, and reversible when versions
-            match.
-          </p>
-        </div>
-      </header>
+      {/* DRUGIE PASMO TYTUŁU ZNIKŁO RAZEM ZE ZWINIĘCIEM (lot D3). Stał tu
+          `<header class="surface-header wave2-header">` z nadtytułem „Kept
+          originals", `<h2>Capture history</h2>` i zdaniem opisowym — bo do tego
+          lotu ten odczyt nie miał własnego pasma: nad nim stało pasmo
+          „Library", a nazwę tego, na co się patrzy, trzeba było powiedzieć
+          w treści. Teraz nazwę mówi `h1` powierzchni, więc `h2` o tym samym
+          brzmieniu byłby tytułem powiedzianym dwa razy pod rząd, a nadtytuł
+          „Kept originals" trzeci raz tym samym słowem, co nagłówek rejestru
+          niżej.
+
+          ZDANIE OPISOWE ZOSTAJE, bo nie jest tytułem: mówi, co ten ekran
+          OBIECUJE (sprawdzalność i odwracalność przy zgodnych wersjach),
+          a tego nie mówi ani pozycja nawigacji, ani nagłówek rejestru. */}
+      <p className="history-lede">
+        What was processed stays checkable, and reversible when versions match.
+      </p>
       {snapshot.captures.length === 0 ? (
         <InlineState
           title="Capture history is empty"
@@ -216,7 +222,14 @@ export const CaptureHistoryReading = ({
         <section className="history-ledger" aria-label="Kept captures">
           <header>
             <div>
-              <h3>Kept originals</h3>
+              {/* SZCZEBEL PODNIESIONY Z `h3` NA `h2` W TYM SAMYM LOCIE, CO
+                  ZDJĘCIE PASMA WYŻEJ, i to jest jedna zmiana, nie dwie: oś
+                  konspektu nagłówków („żaden szczebel nie jest pominięty") jest
+                  TOTALNA nad wszystkimi ekranami, a `h1` powierzchni nad `h3`
+                  rejestru to dokładnie pominięcie, które ta oś nazywa
+                  `HEADING_OUTLINE_SKIPPED_RUNG`. Do tego lotu szczebel `h2`
+                  wypełniał zdjęty nagłówek. */}
+              <h2>Kept originals</h2>
               <span>{countLabel(snapshot.captures.length, "capture")}</span>
             </div>
             <span>Select a row to see its steps</span>
@@ -226,6 +239,16 @@ export const CaptureHistoryReading = ({
               <button
                 type="button"
                 className={`history-row${selectedCaptureId === capture.id ? " selected" : ""}`}
+                // MARKER PRZYBYCIA NA POWIERZCHNIĘ `captures` (lot D3).
+                // WIERSZ, A NIE KORZEŃ EKRANU, i to ten sam wybór, który
+                // `ROUTED_ARRIVAL` zapisał już przy Organizacjach, Ludziach
+                // i Skrzynce: `.history-surface` rysuje się także wtedy, gdy
+                // rejestr jest PUSTY (gałąź `InlineState` wyżej), więc korzeń
+                // potwierdziłby przyjazd na ekran bez ani jednej rzeczy do
+                // zmierzenia, a każda para tej trasy wróciłaby
+                // `NOT_MEASURED` z przyczyną wyglądającą na zły selektor.
+                // Wiersza w tamtym stanie nie ma.
+                data-capture-row=""
                 key={capture.id}
                 aria-pressed={selectedCaptureId === capture.id}
                 {...captureNav(index)}

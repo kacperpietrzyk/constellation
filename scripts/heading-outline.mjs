@@ -76,7 +76,7 @@
 //   MECHANISM, MEASURED NOT GUESSED. Collection filters every heading through
 //   `rendered()` (`verify-renderer-layout.mjs`, the same predicate axes 3-6
 //   use), which returns false for a box of `width × height <= 4`. `.sr-only`
-//   (`packages/desktop-ui/src/styles.css:918-928`) is `width: 1px; height: 1px;
+//   (`packages/desktop-ui/src/styles.css:922-932`) is `width: 1px; height: 1px;
 //   clip: rect(0,0,0,0)` — an area of 1 px². So a heading that exists ONLY for
 //   a screen reader never reaches the outline, on an axis whose entire subject
 //   is the table of contents a screen reader hears.

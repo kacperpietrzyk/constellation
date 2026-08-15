@@ -2,7 +2,7 @@
    close glyph and metrics; sizing comes from the global `svg` rule and the
    consuming control (e.g. `.icon-button`).
 
-   THIS FILE IS ON THE HOT PATH. `RealApp.tsx:58` imports it statically, so its
+   THIS FILE IS ON THE HOT PATH. `RealApp.tsx:61` imports it statically, so its
    chunk sits behind a `modulepreload` and every glyph here is paid for at
    window open, whether or not anything renders it. The map below is a plain
    object literal inside the component — nothing tree-shakes an unused entry.
@@ -74,7 +74,9 @@ export type IconName =
   | "fields"
   | "folder"
   | "folder-loose"
-  | "lock";
+  | "lock"
+  | "source"
+  | "capture-history";
 
 export const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
@@ -265,6 +267,51 @@ export const Icon = ({ name }: { readonly name: IconName }) => {
        order; a lot needing the glyph alone must build the glyph alone. */
     lock: (
       <path d="M6.75 10.8V8.1a5.25 5.25 0 0 1 10.5 0v2.7M5.55 10.8h12.9a1.5 1.5 0 0 1 1.5 1.5v6.15a1.5 1.5 0 0 1-1.5 1.5H5.55a1.5 1.5 0 0 1-1.5-1.5V12.3a1.5 1.5 0 0 1 1.5-1.5Z" />
+    ),
+
+    /* ── Lot D3: dwa cele nawigacji wyszły zza zakładek i potrzebują znaków ──
+       Rozjazd, który ten blok zapisuje, jest zmierzony: JEDEN z tych dwóch
+       glifów jest cytatem, drugi nie ma czego cytować. */
+
+    /* CYTAT. `v3/app.js:52` (`source`), przeskalowany ×1,5 jak cały ten zestaw:
+       walec bazy danych — to, co prototyp rysuje przy pozycji `Sources`
+       (`v3/app.js:169`, `icon: "source"`) i przy każdym wierszu źródła.
+       Żadna inna pozycja nawigacji nie nosi walca, więc reguła WPISU #31
+       („dwa sąsiednie wiersze nawigacji nie noszą tego samego glifu") trzyma
+       się bez sprawdzania na powiększeniu. */
+    source: (
+      <path d="M3.75 6.9c0-1.575 3.69-2.85 8.25-2.85s8.25 1.275 8.25 2.85-3.69 2.85-8.25 2.85-8.25-1.275-8.25-2.85ZM20.25 6.9v10.2c0 1.575-3.69 2.85-8.25 2.85s-8.25-1.275-8.25-2.85V6.9M3.75 12c0 1.575 3.69 2.85 8.25 2.85s8.25-1.275 8.25-2.85" />
+    ),
+
+    /* NIE JEST CYTATEM I TO JEST ZAPISANE, A NIE PRZEMILCZANE. Prototypowe
+       `DESTINATIONS` (`v3/app.js:156-169`) NIE MAJĄ pozycji dla historii
+       wrzutek — przechwyty leżą u niego w Skrzynce — więc nie istnieje glif
+       prototypu przypisany do tego celu. Jedyne miejsce, w którym prototyp
+       nazywa tę rzecz, to martwy `viewLibrary()` (`v3/app.js:1373`), a tam
+       niesie ją `clock` — czyli glif, który W TYM ZESTAWIE nosi już „Today"
+       (rejestr, wpis `today`). Wzięcie go wprost postawiłoby dwa cele
+       nawigacji pod jednym rysunkiem: dokładnie awaria WPISU #31, przez którą
+       „Today" i „Calendar" chodziły przez dwie fale.
+
+       ZNAK JEST WIĘC ZŁOŻONY Z DWÓCH PRYMITYWÓW PROTOTYPU, nie wymyślony od
+       zera: tarcza i wskazówki są `clock` (`v3/app.js:47`) z łukiem urwanym
+       w lewym górnym rogu, a grot w tej wyrwie ma budowę grotu z `undo`
+       (`v3/app.js:56` — wierzchołek plus dwa zadziory, bez wypełnienia).
+       Złożenie znaczy „zegar, który cofa się" — czyli rejestr tego, co już
+       przyszło, a nie kontrolkę cofania. Kontrolka cofania w tej aplikacji
+       istnieje i mieszka w Ustawieniach; ten cel jest lekturą.
+
+       CZEGO TU NIE MA I CO TRZEBA POWIEDZIEĆ WPROST: żaden przyrząd w tym
+       repozytorium nie czyta kształtu glifu, więc zdanie „te dwa znaki da się
+       przy 16 px odróżnić" jest OCENĄ, nie pomiarem, i stało tu wcześniej
+       napisane tak, jakby ktoś je zmierzył. Zmierzone jest co innego, i to
+       jedyne, co się tu da zmierzyć: żadne dwa cele rejestru nie noszą tej
+       samej NAZWY glifu (`desktop-preload/test/client.test.ts`, asercja
+       o unikalności ikon — dopisana przy naprawie po przeglądzie tego lotu,
+       bo do niej pilnowane było wyłącznie „nazwa niepusta"). Czytelność
+       samego rysunku rozstrzyga Kacper przy odbiorze obok prototypu. */
+    "capture-history": (
+      <path d="M12 7.5V12l3.3 2M4.05 9.6A8.25 8.25 0 1 1 3.75 12M4.05 9.6l3.6.6M4.05 9.6l.6-3.6" />
     ),
   } as const;
   return (

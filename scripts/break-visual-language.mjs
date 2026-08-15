@@ -149,6 +149,22 @@ const select = (breaks) => {
   return chosen;
 };
 
+// FRAGMENT WSPÓLNY DLA DWÓCH ZŁAMAŃ LOTU D2 FAZY III — wiersz stanu sekcji
+// „Identity", bajt w bajt z `SettingsSurface.tsx`. Stoi tu RAZ, bo złamanie #2
+// go kasuje, a #3 przenosi: dwie kopie tego samego literału rozjechałyby się
+// przy pierwszej poprawce copy i jedno z dwóch złamań wróciłoby „nie znalazłem
+// czego szukam" pod nazwą wady produktu.
+const IDENTITY_STATE_ROW = `                <SectionState
+                  says={\`This workspace is called \${snapshot.bootstrap.workspace.name}, and every screen in this window is looking at it.\`}
+                  state={
+                    name.trim() === snapshot.bootstrap.workspace.name
+                      ? "Saved"
+                      : "Edited, not saved"
+                  }
+                  settled={name.trim() === snapshot.bootstrap.workspace.name}
+                />
+`;
+
 const outcome = runBreakTests({
   root,
   build: { command: "npm", args: ["run", "build"] },
@@ -1097,8 +1113,8 @@ const outcome = runBreakTests({
       // naprawy (`scratchpad/base-layout.txt`, wyjście 0): „D2-01a" pada tam
       // 2 razy (dwa wiersze `MATCH`, po jednym na motyw), a „— D2-01a „" ZERO
       // razy. Forma werdyktu pary powłoki to `— ${id} „${title}"`
-      // (`verify-renderer-layout.mjs:4929-4932`) i tę samą formę ma
-      // `VISUAL_LANGUAGE_NOT_MEASURED` (`:4893`, `:4913`), więc igła w tym
+      // (`verify-renderer-layout.mjs:4976-4979`) i tę samą formę ma
+      // `VISUAL_LANGUAGE_NOT_MEASURED` (`:4940`, `:4960`), więc igła w tym
       // kształcie pokrywa OBA kanały czerwieni i nie da się jej spełnić
       // zielenią.
       expectRedContains: ["— D2-01a „"],
@@ -2483,7 +2499,7 @@ const outcome = runBreakTests({
       // dokładnie ten stan, którego nie widzi ani liczenie pojemnika, ani
       // liczenie „ile jest elementów w DOM". Para jest czerwona, bo `atLeast`
       // liczy dopasowania NARYSOWANE, a `<span>` bez tekstu ma zerową
-      // szerokość (`verify-renderer-layout.mjs:4612-4617`). Bez tego złamania
+      // szerokość (`verify-renderer-layout.mjs:4659-4664`). Bez tego złamania
       // ta droga byłaby przeczytana w kodzie i niesprawdzona.
       name: "empty the attendee name without touching the element that holds it",
       expectRedContains: ["D7-01g"],
@@ -2875,7 +2891,7 @@ const outcome = runBreakTests({
       // P1 jest dziś MATCH — czyli jedynym, który da się przewrócić z zieleni
       // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
       // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
-      // (`styles.css:2319`), wylicza 1152 px zamiast 1184 i para `enforced`
+      // (`styles.css:2337`), wylicza 1152 px zamiast 1184 i para `enforced`
       // wrzuca WERDYKT (`verify-renderer-layout.mjs:8034-8040`), który idzie do
       // `problems`.
       //
@@ -2958,13 +2974,13 @@ const outcome = runBreakTests({
       //
       // ZABIJANA JEST ROLA, A NIE ATRYBUT WIERSZA, i to jest wybór o
       // najmniejszym koszcie ubocznym. `[data-planned-row]` jest kotwicą progu
-      // `rowCounts.todayPlannedRows` (`verify-renderer-layout.mjs:1134-1137`)
+      // `rowCounts.todayPlannedRows` (`verify-renderer-layout.mjs:1146-1149`)
       // ORAZ podmiotem czwartej pary tego przyrządu (P2-02), więc skasowanie
       // atrybutu zapaliłoby trzy czerwienie naraz i żadnej nie dałoby się
       // przypisać. `role="listbox"` nie jest czytane przez ŻADNĄ bramkę tego
       // repozytorium — sprawdzone grepem po `scripts/`: jedyne wystąpienie
       // poza parami P2 to komentarz o liście Źródeł
-      // (`verify-renderer-layout.mjs:1095`). Wiersze zachowują własne
+      // (`verify-renderer-layout.mjs:1107`). Wiersze zachowują własne
       // `role="option"`, więc pary innych ekranów czytające `[role="option"]`
       // (D3, D7) też stoją nietknięte.
       //
@@ -2996,8 +3012,8 @@ const outcome = runBreakTests({
       //
       // NIE JEST TO KOPIA POPRZEDNIEGO I RÓŻNICA NIE JEST KOSMETYCZNA: tamto
       // pada w `visualLanguagePairs` jako `VISUAL_LANGUAGE_NOT_MEASURED`
-      // (`:4600`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
-      // (`:7491`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
+      // (`:4647`), to pada w `routedVisualLanguage` jako `ROUTED_NOT_MEASURED`
+      // (`:7554`) — dwa różne przeloty i dwie różne gałęzie kodu. Tylko to
       // drugie dowodzi, że pary P2 naprawdę są mierzone PO DOJŚCIU na miejsce.
       //
       // DOWODZI TEŻ ROZŁĄCZNOŚCI PODMIOTU I MARKERA PRZYBYCIA. Marker
@@ -4236,7 +4252,12 @@ const outcome = runBreakTests({
       // piksela w żadnym arkuszu, tylko zabiera deklarację przynależności.
       // Dokładnie o to ta oś pyta.
       name: "the Library band stops being the shell's band: the height axis loses its delivery",
-      expectRedContains: ["TITLE_BAND_HEIGHT_DRIFT — library"],
+      // NAZWA WIERSZA ZMIENIŁA SIĘ W LOCIE D3 — `library` rozwinął się na
+      // trzy cele, a pasmo dalej jest JEDNO, więc to złamanie zapala oś
+      // wysokości na wszystkich trzech naraz. Oczekiwanie nazywa Notatki,
+      // bo jeden ekran wystarczy, żeby złamanie było czerwone, a trzy
+      // nazwy w tym polu wiązałyby je z liczbą ekranów wiedzy.
+      expectRedContains: ["TITLE_BAND_HEIGHT_DRIFT — notes"],
       file: "packages/desktop-ui/src/library/LibraryShell.tsx",
       edit: (text) =>
         replaceOnce(
@@ -4265,7 +4286,7 @@ const outcome = runBreakTests({
       // produktu: `aria-label` ma tam stać (jest jedynym nośnikiem obietnicy
       // w stanie zwiniętym), tylko nie jest ODPOWIEDZIĄ na pytanie tej osi.
       name: "the Library search control drops its shortcut: the carries axis stops reading words",
-      expectRedContains: ["TITLE_BAND_CARRIES_DRIFT — library"],
+      expectRedContains: ["TITLE_BAND_CARRIES_DRIFT — notes"],
       file: "packages/desktop-ui/src/library/LibraryShell.tsx",
       edit: (text) =>
         replaceOnce(
@@ -4718,7 +4739,7 @@ const outcome = runBreakTests({
       name: "a call site pushes the help mark away from the label it stands beside",
       // Igła w kształcie werdyktu z tego samego powodu i z tym samym pomiarem
       // co przy złamaniu pierwszym; tu jest to werdykt TRASOWANY
-      // (`— ${id} „${title}"`, `verify-renderer-layout.mjs:8035-8040`), a więc
+      // (`— ${id} „${title}"`, `verify-renderer-layout.mjs:8453-8459`), a więc
       // ta sama forma. W zielonym przelocie „L7-04a" pada 2×, „— L7-04a „"
       // ZERO razy (`scratchpad/L7-gate-po3.txt`).
       expectRedContains: ["— L7-04a „"],
@@ -5009,6 +5030,251 @@ const outcome = runBreakTests({
           "the approaching section head",
         );
       },
+    },
+    {
+      // ── LOT D2 FAZY III · ZŁAMANIE 1 — SPIS USTAWIEŃ WRACA DO OTWIERANIA
+      //    SIĘ OD MASZYNY ────────────────────────────────────────────────────
+      //
+      // CO JEST ŁAMANE: kategoria `appearance` wraca z początku listy na jej
+      // koniec, czyli dokładnie tam, gdzie stała do wpisu 13-2. Nic więcej —
+      // ani jednej nazwy grupy, ani jednego glifu, ani jednej sekcji. Grup dalej
+      // jest TRZY i dalej nazywają się tak samo, więc `D5-02a` (`count equals
+      // 3`) zostaje zielona: to jest właśnie ta para, która przez całą Fazę II
+      // stała nad odwróconym spisem i nie miała o nim nic do powiedzenia.
+      //
+      // DLACZEGO OBIE NOWE PARY MUSZĄ ZAPALIĆ, a nie jedna. Przy trzech grupach
+      // o unikalnych nazwach przeniesienie skrajnej pozycji zmienia OBA końce
+      // („You" → „What the app runs on" na przodzie, „This workspace" → „You"
+      // na końcu). Gdyby czerwień przyszła tylko z jednego końca, znaczyłoby to,
+      // że drugi świadek stoi nad czymś innym, niż deklaruje.
+      name: "the settings list opens with the machine again: Appearance goes back to the end of the dictionary",
+      expectRedContains: [
+        "FIII2-02a „the settings list opens with the human",
+        "FIII2-02b „and closes with the workspace it is configuring",
+      ],
+      file: "packages/desktop-ui/src/settings-categories.ts",
+      edit: (text) => {
+        const lifted = replaceOnce(
+          text,
+          `  { id: "appearance", label: "Appearance", group: "You", icon: "panel" },
+  {
+    id: "access",`,
+          `  {
+    id: "access",`,
+          "the Appearance entry at the head of the dictionary",
+        );
+        return replaceOnce(
+          lifted,
+          `  { id: "notes", label: "Notes", group: "This workspace", icon: "documents" },
+] as const satisfies readonly {`,
+          `  { id: "notes", label: "Notes", group: "This workspace", icon: "documents" },
+  { id: "appearance", label: "Appearance", group: "You", icon: "panel" },
+] as const satisfies readonly {`,
+          "the tail of the dictionary",
+        );
+      },
+    },
+    {
+      // ── LOT D2 FAZY III · ZŁAMANIE 2 — JEDNA SEKCJA ZNOWU OTWIERA SIĘ POLEM ─
+      //
+      // CO JEST ŁAMANE: z sekcji „Identity" znika wiersz stanu. Sekcja wraca do
+      // kształtu sprzed decyzji D2 — nagłówek, akapit o regule, pole „Workspace
+      // name" — czyli pyta „na co to zmienić" kogoś, komu nie powiedziała, co
+      // jest. Reszta osiemnastu sekcji zostaje nietknięta.
+      //
+      // DWIE ASERCJE MUSZĄ PAŚĆ NARAZ i to jest sedno tego złamania. Sama
+      // `SETTINGS_STATE_MISSING` przeszłaby też wtedy, gdyby ktoś skasował całe
+      // pasmo nagłówka (wtedy nie ma czego pytać); sama `SETTINGS_STATE_COUNT`
+      // nie powiedziałaby KTÓREJ sekcji brakuje. Razem mówią: pasm jest dalej
+      // osiemnaście, wierszy siedemnaście, i brakuje tego jednego, z nazwy.
+      //
+      // TO JEST DOWÓD NA RÓWNOŚĆ WYPROWADZONĄ, nie na wpisaną liczbę: nigdzie
+      // w bramce nie stoi „18", więc czerwień bierze się z ROZJECHANIA dwóch
+      // policzonych zbiorów, a nie z niezgodności z zapisanym oczekiwaniem.
+      name: "the Identity section opens with its field again: one settings section loses the sentence about what is already true",
+      expectRedContains: [
+        // FRAGMENT BEZ LICZBY, i to jest poprawka do pierwszej wersji tego
+        // złamania. Stało tu „18 section head(s) drawn and 17" — czyli ta sama
+        // wpisana liczba, której BRAK jest tezą tej bramki. Dwudziesta sekcja
+        // dopisana kiedykolwiek później wywróciłaby to złamanie na „fragment
+        // absent" pod nazwą wady produktu.
+        "SETTINGS_STATE_COUNT:",
+        'SETTINGS_STATE_MISSING — the settings section „Identity"',
+      ],
+      file: "packages/desktop-ui/src/SettingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          IDENTITY_STATE_ROW,
+          "",
+          "the state row of the Identity section",
+        ),
+    },
+    {
+      // ── LOT D2 FAZY III · ZŁAMANIE 3 — ZDANIE ZJEŻDŻA POD POLE ─────────────
+      //
+      // CO JEST ŁAMANE: wiersz stanu „Identity" nie znika — PRZEPROWADZA SIĘ
+      // pod formularz. Wszystkie osiemnaście wierszy dalej istnieje, więc
+      // `SETTINGS_STATE_COUNT` MILCZY, i to jest cały powód, dla którego to
+      // złamanie jest osobne od drugiego: gdyby bramka pytała wyłącznie „ile
+      // ich jest", ta wersja przeszłaby na zielono, a jest dokładnie tą wadą,
+      // którą decyzja D2 nazywa po imieniu. Zdanie o stanie przeczytane PO polu
+      // jest zdaniem przeczytanym po decyzji, którą miało poinformować.
+      //
+      // DWIE NAZWANE ASERCJE, DWIE RÓŻNE RZECZY: `ORPHANED` mówi, że wiersz
+      // wypadł ze swojego pasma nagłówka (czyli liczba wierszy przestała być
+      // zdaniem o sekcjach), a `BEHIND_CONTROL` — że stoi za kontrolką. Ta
+      // druga jest jedynym powodem, dla którego filtr kontrolek w
+      // `measureSettingsStateInPage` odrzuca WYŁĄCZNIE `.help-anchor`, a nie
+      // całe pasmo: przy szerszym filtrze ten ruch byłby dla bramki
+      // niewidzialny.
+      name: "the Identity sentence moves under the field it was supposed to inform: every row still exists and the order is gone",
+      expectRedContains: [
+        'SETTINGS_STATE_ORPHANED: 1 „[data-settings-state]" row(s) stand outside',
+        'SETTINGS_STATE_BEHIND_CONTROL — the state row of „Identity"',
+      ],
+      file: "packages/desktop-ui/src/SettingsSurface.tsx",
+      edit: (text) => {
+        const lifted = replaceOnce(
+          text,
+          IDENTITY_STATE_ROW,
+          "",
+          "the state row of the Identity section",
+        );
+        return replaceOnce(
+          lifted,
+          `                </div>
+              </form>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Task statuses</h2>`,
+          `                </div>
+              </form>
+${IDENTITY_STATE_ROW}            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Task statuses</h2>`,
+          "the closing of the Identity form",
+        );
+      },
+    },
+    {
+      // ── LOT D2 FAZY III · ZŁAMANIE 4 — SONDA ZAZNACZENIA PRZESTAJE
+      //    WCIĄGAĆ PODMIOT W KADR ────────────────────────────────────────────
+      //
+      // CZEGO TO DOWODZI, I DLACZEGO NIE JEST TO PORZĄDEK W CUDZYM PLIKU.
+      // Ten lot przestawił kolejność kategorii Ustawień, przez co
+      // `[data-commercial-defaults]` zjechało z pierwszej kategorii na czwartą
+      // i przy 1440 × 900 stoi POD krawędzią okna. `boundingBox()` oddaje
+      // współrzędne względem OKNA, a `mouse.move` ich używa — więc kursor
+      // lądował poza kadrem, a sonda meldowała `SELECTION_HOVER_NOT_REACHED`
+      // ze zdaniem „coś zasłania podmiot" nad ekranem, na którym nic nikogo nie
+      // zasłania. Zmierzone: przelot z 2026-08-15 padł dokładnie tak, w OBU
+      // motywach, i pociągnął za sobą podłogę pokrycia (6 z 8).
+      //
+      // Poprawką jest jedna linia (`scrollIntoViewIfNeeded`) i to złamanie
+      // istnieje po to, żeby ta linia miała świadka: bez niej diagnoza
+      // „zasłonięty" jest funkcją POŁOŻENIA sekcji na stronie, a nie tego, co
+      // sonda deklaruje, że mierzy.
+      //
+      // DWA FRAGMENTY, DWA RÓŻNE ZDANIA: pierwszy nazywa podmiot, który
+      // przestał być dosięgnięty, drugi — podłogę pokrycia, która istnieje
+      // właśnie po to, żeby lista sond po cichu opróżniona nie przeszła jako
+      // lista sond, którą każda przetrwała.
+      name: "the selection probe stops pulling its subject into frame: a section pushed below the fold reads as a covered one",
+      expectRedContains: [
+        "SELECTION_HOVER_NOT_REACHED (dark) — P8-01",
+        "SELECTION_HOVER_COVERAGE_FELL:",
+      ],
+      file: "scripts/verify-renderer-layout.mjs",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `        await page
+          .locator(subject.selector)
+          .first()
+          .scrollIntoViewIfNeeded()
+          .catch(() => {});
+        const box = await page`,
+          `        const box = await page`,
+          "the scroll that puts the selection subject in frame",
+        ),
+    },
+    {
+      // ── NAPRAWA LOTU D2 · ZŁAMANIE 5 — WIERSZ STANU PRZESTAJE BYĆ WIDOCZNY,
+      //    A DALEJ STOI W DRZEWIE ────────────────────────────────────────────
+      //
+      // TO ZŁAMANIE ISTNIEJE, BO RAZ JUŻ PRZESZŁO. Pierwsza wersja przyrządu
+      // 13-1 nakładała filtr narysowania na pasma nagłówka i NIE nakładała go
+      // na wiersze stanu: `document.querySelectorAll("[data-settings-state]")`
+      // brało wszystko, co jest w drzewie. `display: none` dopisane do reguły
+      // `.settings-state` dawało wtedy bramkę z kodem wyjścia 0, spis
+      // „18 section head(s) drawn / 18 state row(s) / 17 proven ahead of
+      // a control" i osiemnaście zacytowanych zdań, których czytelnik nie
+      // widzi. Zmierzone przy odbiorze lotu, nie wywnioskowane.
+      //
+      // DLACZEGO TO NIE JEST TO SAMO CO ZŁAMANIE 2. Tamto KASUJE wiersz
+      // z kodu — zbiór maleje po stronie źródła. To ukrywa go farbą, przez
+      // którą żadna asercja o `textContent` ani o `compareDocumentPosition`
+      // nie przechodzi. Reguła D2 mówi, co sekcja MÓWI CZYTELNIKOWI, więc
+      // wiersz obecny i niewidoczny jest dokładnie tą samą wadą co jego brak,
+      // a przyrząd musi to nazwać tak samo.
+      //
+      // JEDNA REGUŁA ARKUSZA, ŻADNEJ ZMIANY W TSX: dowód dotyczy filtru
+      // narysowania, a nie znaczników.
+      name: "the state row is painted out of the page while every one of them stays in the tree",
+      expectRedContains: [
+        "SETTINGS_STATE_COUNT:",
+        'SETTINGS_STATE_MISSING — the settings section „Identity"',
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.settings-state {
+  display: flex;`,
+          `.settings-state {
+  display: none;`,
+          "the display of the settings state row",
+        ),
+    },
+    {
+      // ── NAPRAWA LOTU D2 · ZŁAMANIE 6 — ZDANIE O STANIE ZOSTAJE WPISANE ────
+      //
+      // WŁASNOŚĆ NOŚNA WPISU 13-1 NIE MIAŁA ŚWIADKA. Bramka układu czyta farbę
+      // i kolejność; osiemnaście wpisanych z ręki zdań po trzy słowa przechodzi
+      // tam komplet asercji, a wiersz stanu, którego treść nie zależy od
+      // danych, skłamie przy pierwszej ich zmianie i będzie WYGLĄDAŁ
+      // prawdziwie. Świadkiem jest od tej naprawy asercja „computes every
+      // settings state sentence instead of writing it out"
+      // (`packages/desktop-ui/test/settings-navigation-contract.test.ts`).
+      //
+      // WŁASNY `verify`, bo to jest asercja o ŹRÓDLE, nie o narysowanej
+      // stronie: przelot bramki nad tym złamaniem zostaje ZIELONY i to jest
+      // poprawne — zdanie dalej ma trzy słowa, plakietkę i swoje miejsce.
+      // Precedens własnego `verify` w tym pliku: `CONTRAST_VERIFY`.
+      //
+      // ŁAMANE JEST DOKŁADNIE JEDNO Z DZIEWIĘTNASTU WYWOŁAŃ, żeby czerwień
+      // mówiła „jedno zdanie jest stałą", a nie „ten plik się nie kompiluje".
+      // Podmieniany szablon jest zastąpiony napisem o TEJ SAMEJ treści dla
+      // dzisiejszej fikstury — czyli złamaniem, którego nie widać na ekranie
+      // i którego żaden pomiar farby nie może zobaczyć.
+      name: "one state sentence stops being computed and becomes a written-out string",
+      expectRedContains: [
+        "A settings state sentence is a written-out constant",
+      ],
+      verify: { command: "npm", args: ["run", "test:core"] },
+      file: "packages/desktop-ui/src/SettingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "says={`This workspace is called ${snapshot.bootstrap.workspace.name}, and every screen in this window is looking at it.`}",
+          'says={"This workspace is called Praca, and every screen in this window is looking at it."}',
+          "the computed sentence of the Identity section",
+        ),
     },
   ]),
 });

@@ -231,32 +231,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.switcher {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.125rem;
-  padding: 0.125rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-}
-
-/* Wybrany odczyt niesie WYPEŁNIENIE i mocniejszą ramkę, nie tylko cieplejszy
-   kolor tekstu: który odczyt jest włączony, musi przeżyć ekran bez koloru. */
-.switch {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  padding: 0.125rem 0.625rem;
-  border-radius: var(--radius-full);
-  border: 1px solid transparent;
-}
-
-.switch[aria-selected="true"] {
-  color: var(--text-primary);
-  font-weight: 500;
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-}
+/* `.switcher`, `.switch` i `.switch[aria-selected="true"]` STAŁY TU DO LOTU D3
+   i zniknęły razem z przełącznikiem odczytów, nie zostały „posprzątane": wybór
+   ekranu wiedzy należy od tego lotu do lewej kolumny. Nota o tym, że wybrany
+   odczyt niósł WYPEŁNIENIE, a nie sam cieplejszy kolor tekstu — „który odczyt
+   jest włączony, musi przeżyć ekran bez koloru" — nie ginie: dokładnie tę samą
+   robotę wykonuje teraz stan `active` pozycji nawigacji w `styles.css`, i to
+   jest jeden nośnik tej reguły zamiast dwóch. */
 
 /* Pole odczytu jest własnym kontenerem przewijania. Bez `min-height: 0`
    trzykolumnowy odczyt rozpycha całą powłokę zamiast przewijać się w środku. */

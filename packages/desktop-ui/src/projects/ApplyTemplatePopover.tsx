@@ -14,9 +14,9 @@ import { InlinePopover } from "../components/InlinePopover.js";
 
    KROK POTWIERDZENIA ODCHODZI, I TO JEST DECYZJA NA POMIARZE, nie skrót.
    Wybór szablonu wysyła JEDNĄ komendę `project.applyTemplate`
-   (`client/workflow.ts:3885-3908`), a `refreshAfter` (`RealApp.tsx:1535+`)
+   (`client/workflow.ts:3885-3908`), a `refreshAfter` (`RealApp.tsx:1546+`)
    wyprowadza `undoCommandId` z głowy strumienia aktywności, więc toast niesie
-   działające Cofnij przez 8 s (`RealApp.tsx:1321`) i cofa CAŁOŚĆ jednym
+   działające Cofnij przez 8 s (`RealApp.tsx:1332`) i cofa CAŁOŚĆ jednym
    kliknięciem — bo to jest jedna komenda. Pomyłka kosztuje jedno kliknięcie
    wstecz, a nie odbudowę projektu.
 

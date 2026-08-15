@@ -34,12 +34,15 @@ import {
   SurfaceLoadingState,
 } from "./SurfaceLifecycleStates.js";
 import type { LoadState } from "./shell/load-state.js";
-import { resolveDesktopSurface } from "@constellation/desktop-preload/surface-registry";
+import {
+  desktopSurfaceLabel,
+  resolveDesktopSurface,
+} from "@constellation/desktop-preload/surface-registry";
 import { navItems, sidebarNavItems } from "./shell/nav-items.js";
 import { taskPriorityLabels } from "./task-priority-labels.js";
 import {
   CalendarSurface,
-  LibraryShell,
+  KnowledgeSurface,
   MeetingsSurface,
   OnboardingFlow,
   OrganizationContextLoader,
@@ -191,7 +194,7 @@ import {
   destinationShortcutIndex,
   destinationContext,
   documentContext,
-  libraryReadingContext,
+  isLibraryReading,
   type LibraryReading,
   moveShellHistory,
   navigateShellContext,
@@ -871,7 +874,12 @@ export const RealApp = ({
 
   useEffect(() => {
     if (surface !== "meetings") setMeetingInspectorOpen(false);
-    if (surface !== "library") {
+    // TRZY EKRANY WIEDZY DZIELĄ JEDNĄ SZUFLADĘ, więc wyjście liczy się dopiero
+    // poza CAŁĄ trójką (lot D3). `isLibraryReading` jest predykatem po tym samym
+    // zamkniętym słowniku, z którego biorą się etykiety i migracja zakładek —
+    // ręcznie przepisane „notes || sources || captures" byłoby czwartą kopią
+    // tej listy.
+    if (!isLibraryReading(surface)) {
       setDocumentInspectorOpen(false);
       setDocumentInspectorKind("notes");
     }
@@ -888,9 +896,12 @@ export const RealApp = ({
       surface !== "renewals"
     )
       setSelectedStrategicId(undefined);
-    // Wrzutka jest zaznaczana na odczycie Historii wrzutek, czyli wewnątrz
-    // Biblioteki — cel `history` nie istnieje od fali Knowledge.
-    if (surface !== "library") setSelectedCaptureId(undefined);
+    // Wrzutka jest zaznaczana na ekranie Historii wrzutek — od lotu D3 znowu
+    // WŁASNYM celu, `captures`. Warunek zostaje jednak na całej trójce, a nie
+    // na samym `captures`, i to jest różnica warta zapisania: szuflada jest
+    // wspólna, więc przejście Historia → Źródła nie ma czyścić zaznaczenia,
+    // które ta szuflada właśnie pokazuje.
+    if (!isLibraryReading(surface)) setSelectedCaptureId(undefined);
     if (surface !== "inbox") setSelectedAttentionId(undefined);
   }, [surface]);
 
@@ -995,7 +1006,7 @@ export const RealApp = ({
       } else if (destination.kind === "project") {
         openContext(projectContext(destination.projectId, "Project"));
       } else {
-        openContext(destinationContext("library", "Library"));
+        openContext(destinationContext("notes", "Notes"));
       }
     });
   }, [client, openContext]);
@@ -1457,14 +1468,14 @@ export const RealApp = ({
     selectedStrategicRecord ||
     selectedAttention ||
     (surface === "meetings" && meetingInspectorOpen) ||
-    (surface === "library" && documentInspectorOpen),
+    (isLibraryReading(surface) && documentInspectorOpen),
   );
   const dismissInspector = useCallback(() => {
     if (surface === "meetings") {
       setMeetingInspectorOpen(false);
       return;
     }
-    if (surface === "library") {
+    if (isLibraryReading(surface)) {
       setDocumentInspectorOpen(false);
       // Bez tego wrzutka zostaje zaznaczona po Escape i wraca sama przy
       // następnym otwarciu szuflady, choć człowiek ją właśnie zamknął.
@@ -1662,9 +1673,9 @@ export const RealApp = ({
       setSelectedStrategicId(destination.organizationId);
       openContext(destinationContext("organizations", "Organizations"));
     } else if (destination.kind === "document") {
-      openContext(destinationContext("library", "Library"));
+      openContext(destinationContext("notes", "Notes"));
     } else {
-      openContext(libraryReadingContext("captures", "Capture history"));
+      openContext(destinationContext("captures", "Capture history"));
     }
     if (client && snapshot && item.state === "unread") {
       setAttentionBusy(true);
@@ -1940,8 +1951,12 @@ export const RealApp = ({
   //    `snapshot.projects` — ten sam odczyt, z którego rysuje się kolekcja
   //    i drugi poziom nawigacji. Cztery cele CRM biorą `snapshot.relationships`
   //    przez `countLiveRecords`, dzielący predykat z `indexRelationships`,
-  //    czyli z indeksem, na którym stoją wszystkie cztery ekrany. Biblioteka
-  //    bierze te same dwie długości, co `LibraryShell.tsx:92-99`.
+  //    czyli z indeksem, na którym stoją wszystkie cztery ekrany. Ekrany
+  //    wiedzy biorą te same długości, co licznik paska widoku
+  //    (`library/LibraryShell.tsx`, stała `count`) — od lotu D3 jest to
+  //    JEDNA długość na ekran, a nie suma dokumentów i źródeł: cel jest
+  //    trzema celami, więc adres z numerami wierszy wskazywałby dziś na kod,
+  //    którego tam nie ma.
   // 2. NIEDOSTĘPNY ODCZYT NIE JEST ZEREM. Brak klucza znaczy „nie wiem" i wiersz
   //    nie rysuje wtedy NICZEGO. Zero w tym miejscu byłoby odpowiedzią „nie ma
   //    ani jednego" na pytanie, którego nie dało się zadać — to jest defekt,
@@ -2413,6 +2428,113 @@ export const RealApp = ({
         )?.displayName
       : undefined;
 
+  // TRZY WPISY MAPY POWIERZCHNI, JEDEN BLOK JSX (lot D3). Notatki, Źródła
+  // i Historia wrzutek dostały własne pozycje nawigacji, ale wiszą na tym samym
+  // komponencie i na tym samym okablowaniu (szuflada, paleta, aktywacja
+  // encji), więc trzy kopie tego bloku byłyby przepisanym kształtem w trzech
+  // miejscach — nazwana klasa defektu w tym repozytorium. Różni je JEDEN
+  // argument, i to jest dokładnie ta różnica, którą rozdział wprowadził.
+  //
+  // ETYKIETY GRANICY I STANU ŁADOWANIA IDĄ Z REJESTRU POWIERZCHNI, czyli
+  // z tego samego napisu, co pozycja nawigacji i (przez `library-readings.ts`)
+  // `h1` ekranu: „Loading Library…" nad ekranem, który po załadowaniu nazywa
+  // się „Sources", byłby trzecią nazwą tej samej rzeczy w jednej sekundzie.
+  // Z REJESTRU, A NIE Z `libraryReadingLabel`, i to jest wymóg budowy, nie gust:
+  // tamten słownik mieszka w `src/library/`, czyli w leniwym chunku, a import
+  // WARTOŚCI stamtąd wciągnąłby go na ścieżkę gorącą (pułapka zapisana
+  // w `client/shell-navigation.ts` pomiarem na bajtach).
+  const knowledgeSurfacePanel = (reading: LibraryReading) => (
+    <LazySurfaceBoundary label={desktopSurfaceLabel(reading)}>
+      <Suspense
+        fallback={<SurfaceLoadingState label={desktopSurfaceLabel(reading)} />}
+      >
+        <KnowledgeSurface
+          client={client}
+          snapshot={state.snapshot}
+          activeDocumentId={activeContext.documentId}
+          reading={reading}
+          inspectorHost={documentInspectorHost}
+          onInspectorOpen={(kind) => {
+            setDocumentInspectorKind(kind);
+            setDocumentInspectorOpen(true);
+          }}
+          // TA SAMA PALETA, CO POD `⌘K` I POD KONTROLKĄ W SZYNIE — jedno
+          // wywołanie, trzy afordancje. Własne pole wyszukiwania w paśmie
+          // Biblioteki byłoby DRUGĄ wyszukiwarką o innym zasięgu niż ta
+          // z powłoki; prototyp stawia tam przycisk otwierający paletę
+          // (`act: "palette"`, `v3/screens/knowledge.js:803`).
+          onOpenSearch={() => setSearchOpen(true)}
+          captureHistory={{
+            selectedCaptureId,
+            ...(selectedCaptureRouteActivity?.targetCommandId === undefined
+              ? {}
+              : {
+                  undoCommandId: selectedCaptureRouteActivity.targetCommandId,
+                }),
+            busy:
+              selectedCapture !== undefined &&
+              historyBusyCaptureId === selectedCapture.id,
+            onSelectCapture: selectCaptureInInspector,
+            onUndo: (id) => void openUndo(id),
+            onDeleteVoiceAudio: (captureId, version) => {
+              if (!client) return;
+              setHistoryBusyCaptureId(captureId);
+              void requestVoiceAudioDeletion(
+                client,
+                state.snapshot,
+                captureId,
+                version,
+              ).then(async (result) => {
+                setHistoryBusyCaptureId(undefined);
+                if (result.kind === "success")
+                  await refreshAfter("The kept audio was deleted.");
+                else showFailure(result);
+              });
+            },
+          }}
+          onEntityActivate={(target) => {
+            if (target.targetKind === "task") {
+              const task = state.snapshot.tasks.find(
+                (item) => item.id === target.targetId,
+              );
+              openContext(
+                taskContext(target.targetId as TaskId, task?.title ?? "Task"),
+              );
+              return;
+            }
+            if (target.targetKind === "project") {
+              const project =
+                state.snapshot.projects.kind === "ready"
+                  ? state.snapshot.projects.data.items.find(
+                      (item) => item.id === target.targetId,
+                    )
+                  : undefined;
+              openContext(
+                projectContext(
+                  target.targetId as ProjectId,
+                  project?.title ?? "Project",
+                ),
+              );
+              return;
+            }
+            if (
+              target.targetKind === "person" ||
+              target.targetKind === "organization"
+            ) {
+              setSelectedStrategicId(target.targetId as StrategicRecordId);
+              openContext(destinationContext("organizations", "Organizations"));
+              return;
+            }
+            setSelectedMeetingId(target.targetId);
+            openContext(destinationContext("meetings", "Meetings"));
+          }}
+          onReload={reload}
+          onFailure={showFailure}
+        />
+      </Suspense>
+    </LazySurfaceBoundary>
+  );
+
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
       <TodaySurface
@@ -2511,16 +2633,16 @@ export const RealApp = ({
                  zamiast przewijać do tafli, której na tym ekranie już nie ma.
                  `openSettingsCategory`, a nie gołe przejście na powierzchnię:
                  Ustawienia są trybem powłoki i mają jedną drogę wejścia
-                 (`RealApp.tsx:5533-5538` mówi to wprost). */
+                 (`RealApp.tsx:5565-5570` mówi to wprost). */
               onOpenConnections={() => openSettingsCategory("access")}
               /* „Open Sources →" na prawym końcu nagłówka „Jamie results"
-                 (wpis #65). Ta sama droga, którą powłoka otwiera każdy inny
-                 odczyt Biblioteki, więc etykieta jest UCZCIWA: `library/
-                 LibraryShell.tsx` bramkuje czytelnię na `reading === "sources"`
-                 i to jest dokładnie ten odczyt. Precedens: `onOpenCalendar`
-                 na Dzisiaj (wpis #6). */
+                 (wpis #65). Od lotu D3 to jest zwykłe przejście na cel
+                 `sources`, a etykieta zgadza się z pozycją nawigacji, na którą
+                 prowadzi — do tego lotu prowadziła na cel „Library" i mówiła
+                 „Sources", bo Źródła były zakładką wewnątrz. Precedens:
+                 `onOpenCalendar` na Dzisiaj (wpis #6). */
               onOpenSources={() =>
-                openContext(libraryReadingContext("sources", "Library"))
+                openContext(destinationContext("sources", "Sources"))
               }
             />
           </Suspense>
@@ -3011,97 +3133,9 @@ export const RealApp = ({
         onFailure={showFailure}
       />
     ),
-    library: () => (
-      <LazySurfaceBoundary label="Library">
-        <Suspense fallback={<SurfaceLoadingState label="Library" />}>
-          <LibraryShell
-            client={client}
-            snapshot={state.snapshot}
-            activeDocumentId={activeContext.documentId}
-            activeReading={activeContext.libraryReading}
-            inspectorHost={documentInspectorHost}
-            onInspectorOpen={(kind) => {
-              setDocumentInspectorKind(kind);
-              setDocumentInspectorOpen(true);
-            }}
-            // TA SAMA PALETA, CO POD `⌘K` I POD KONTROLKĄ W SZYNIE — jedno
-            // wywołanie, trzy afordancje. Własne pole wyszukiwania w paśmie
-            // Biblioteki byłoby DRUGĄ wyszukiwarką o innym zasięgu niż ta
-            // z powłoki; prototyp stawia tam przycisk otwierający paletę
-            // (`act: "palette"`, `v3/screens/knowledge.js:803`).
-            onOpenSearch={() => setSearchOpen(true)}
-            captureHistory={{
-              selectedCaptureId,
-              ...(selectedCaptureRouteActivity?.targetCommandId === undefined
-                ? {}
-                : {
-                    undoCommandId: selectedCaptureRouteActivity.targetCommandId,
-                  }),
-              busy:
-                selectedCapture !== undefined &&
-                historyBusyCaptureId === selectedCapture.id,
-              onSelectCapture: selectCaptureInInspector,
-              onUndo: (id) => void openUndo(id),
-              onDeleteVoiceAudio: (captureId, version) => {
-                if (!client) return;
-                setHistoryBusyCaptureId(captureId);
-                void requestVoiceAudioDeletion(
-                  client,
-                  state.snapshot,
-                  captureId,
-                  version,
-                ).then(async (result) => {
-                  setHistoryBusyCaptureId(undefined);
-                  if (result.kind === "success")
-                    await refreshAfter("The kept audio was deleted.");
-                  else showFailure(result);
-                });
-              },
-            }}
-            onEntityActivate={(target) => {
-              if (target.targetKind === "task") {
-                const task = state.snapshot.tasks.find(
-                  (item) => item.id === target.targetId,
-                );
-                openContext(
-                  taskContext(target.targetId as TaskId, task?.title ?? "Task"),
-                );
-                return;
-              }
-              if (target.targetKind === "project") {
-                const project =
-                  state.snapshot.projects.kind === "ready"
-                    ? state.snapshot.projects.data.items.find(
-                        (item) => item.id === target.targetId,
-                      )
-                    : undefined;
-                openContext(
-                  projectContext(
-                    target.targetId as ProjectId,
-                    project?.title ?? "Project",
-                  ),
-                );
-                return;
-              }
-              if (
-                target.targetKind === "person" ||
-                target.targetKind === "organization"
-              ) {
-                setSelectedStrategicId(target.targetId as StrategicRecordId);
-                openContext(
-                  destinationContext("organizations", "Organizations"),
-                );
-                return;
-              }
-              setSelectedMeetingId(target.targetId);
-              openContext(destinationContext("meetings", "Meetings"));
-            }}
-            onReload={reload}
-            onFailure={showFailure}
-          />
-        </Suspense>
-      </LazySurfaceBoundary>
-    ),
+    notes: () => knowledgeSurfacePanel("notes"),
+    sources: () => knowledgeSurfacePanel("sources"),
+    captures: () => knowledgeSurfacePanel("captures"),
     projects: () => (
       <ProjectsSurface
         client={client}
@@ -3839,8 +3873,8 @@ export const RealApp = ({
                   data-settings-back="true"
                   // NAZWA DLA CZYTNIKA, NIE OZDOBA. At rail width the shared
                   // rule `.desktop-shell.rail .nav-item > span { display: none }`
-                  // (styles.css:4730, inside the rail block that begins at
-                  // :4726) takes BOTH children out of the accessibility tree,
+                  // (styles.css:4748, inside the rail block that begins at
+                  // :4744) takes BOTH children out of the accessibility tree,
                   // and the
                   // only way out of settings mode was left announcing itself as
                   // „‹". The label is now on the button, so it survives the
@@ -4298,7 +4332,7 @@ export const RealApp = ({
                         ? "Signal"
                         : surface === "meetings"
                           ? "Jamie result"
-                          : surface === "library"
+                          : isLibraryReading(surface)
                             ? libraryInspectorLabel[documentInspectorKind]
                             : "Workspace"}
             </small>
@@ -4316,7 +4350,7 @@ export const RealApp = ({
             className="surface-inspector-host"
             ref={setMeetingInspectorHost}
           />
-        ) : surface === "library" ? (
+        ) : isLibraryReading(surface) ? (
           <div
             className="surface-inspector-host"
             ref={setDocumentInspectorHost}
@@ -5412,7 +5446,7 @@ export const RealApp = ({
             </dl>
           </div>
         )}
-        {surface !== "library" && (
+        {!isLibraryReading(surface) && (
           <DocumentBacklinks
             client={client}
             snapshot={state.snapshot}
@@ -5481,11 +5515,9 @@ export const RealApp = ({
               } else if (captureResult.kind === "review") {
                 openContext(destinationContext("inbox", "Inbox"));
               } else if (captureResult.kind === "voice_note") {
-                openContext(
-                  libraryReadingContext("captures", "Capture history"),
-                );
+                openContext(destinationContext("captures", "Capture history"));
               } else {
-                openContext(destinationContext("library", "Library"));
+                openContext(destinationContext("notes", "Notes"));
               }
               setCaptureOpen(false);
               pushToast({
@@ -5554,12 +5586,17 @@ export const RealApp = ({
                     )
                   : undefined;
               openContext(projectContext(id, project?.title ?? "Project"));
-            } else if (nextSurface === "library") {
-              // Trzy rodzaje rekordów otwierają się dziś w Bibliotece i tylko
-              // jeden z nich jest dokumentem. Wrzutka ma trafić na SWÓJ odczyt
-              // — bez tej gałęzi przepięcie `capture` z wycofanego `history`
-              // na `library` kompiluje się, przechodzi testy i wysyła człowieka
-              // na Notatki, czyli dokładnie tam, gdzie nie ma tego, co znalazł.
+            } else if (nextSurface === "captures") {
+              // ROZGAŁĘZIENIE PO RODZAJU ZNIKŁO RAZEM ZE ZWINIĘCIEM (lot D3),
+              // i to jest jedyne miejsce, w którym rozdział na trzy cele
+              // UPROŚCIŁ kod zamiast go rozmnożyć. Stała tu jedna gałąź
+              // `nextSurface === "library"`, która musiała sama zgadnąć, czy
+              // trafiony rekord jest wrzutką, czy dokumentem — bo cel niósł
+              // trzy rodzaje naraz, a jego nota ostrzegała, że bez tego
+              // zgadywania wrzutka ląduje na Notatkach „bez ani jednego błędu
+              // kompilacji". Teraz rodzaj JEST w celu: fikstura wyszukiwarki
+              // mówi `captures` przy wrzutce i `notes` przy dokumencie, więc
+              // pytanie zadaje się raz, po stronie danych.
               const capture = state.snapshot.captures.find(
                 (item) => item.id === recordId,
               );
@@ -5567,11 +5604,9 @@ export const RealApp = ({
                 selectCaptureInInspector(capture.id);
                 setDocumentInspectorKind("captures");
                 setDocumentInspectorOpen(true);
-                openContext(
-                  libraryReadingContext("captures", "Capture history"),
-                );
-                return;
               }
+              openContext(destinationContext("captures", "Capture history"));
+            } else if (nextSurface === "notes") {
               const id = recordId as DocumentId;
               const document =
                 state.snapshot.knowledge.kind === "ready"
@@ -5584,7 +5619,7 @@ export const RealApp = ({
               } else {
                 const item = navItems.find((entry) => entry.id === nextSurface);
                 openContext(
-                  destinationContext(nextSurface, item?.label ?? "Library"),
+                  destinationContext(nextSurface, item?.label ?? "Notes"),
                 );
               }
             } else if (nextSurface === "organizations") {

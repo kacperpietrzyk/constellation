@@ -265,7 +265,7 @@ describe("interaction recovery contracts", () => {
     assert.match(captureHistoryReading, /export const CaptureHistoryDetail/);
     assert.doesNotMatch(captureHistoryReading, /className="history-card"/);
     assert.match(realApp, /const \[selectedCaptureId, setSelectedCaptureId\]/);
-    assert.match(realApp, /<LibraryShell/);
+    assert.match(realApp, /<KnowledgeSurface/);
     assert.match(captureHistoryReading, /<CaptureHistoryDetail/);
     assert.match(
       styles,
@@ -928,7 +928,7 @@ describe("interaction recovery contracts", () => {
     // dziś jej podmiot jest prawdą o JEDNYM z dwóch, a nie o obu.
     //
     // `.document-canvas` ma dwóch konsumentów: notatkę w Bibliotece
-    // (`KnowledgeEditor.tsx:505`) i dokument na rekordzie projektu
+    // (`KnowledgeEditor.tsx:525`) i dokument na rekordzie projektu
     // (`ProjectRichBody.tsx:129`, przez `.project-editor-shell >
     // .project-document-canvas`). Wpis #38 rejestru Fazy 4 mówi o PIERWSZYM
     // z nich, że treść notatki leży w zagnieżdżonej, uniesionej karcie tam,

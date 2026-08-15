@@ -41,7 +41,7 @@ import {
   type MutationFailure,
 } from "./client/workflow.js";
 
-import { countLabel } from "./i18n.js";
+import { countLabel, plural } from "./i18n.js";
 import {
   AgentGrantDetailsDialog,
   type AgentGrantDetails,
@@ -170,6 +170,56 @@ const availabilityLabels = {
   recovery_required: "Needs recovery",
   degraded: "Partly working",
 } as const;
+
+/**
+ * WIERSZ STANU SEKCJI — „najpierw powiedz, potem pozwól zmienić" (decyzja D2,
+ * 2026-08-15; wpisy 13-1 i 13-6 dokumentu przejścia).
+ *
+ * CZYM TO NIE JEST: zamianą formularza na raport. Każda kontrolka Ustawień
+ * zostaje tam, gdzie stała, i robi to, co robiła. Ten wiersz DOKŁADA przed nią
+ * jedno zdanie o tym, co jest TERAZ — bo do tego wpisu sekcja otwierała się
+ * polem edycyjnym, czyli pytaniem „na co to zmienić" zadanym komuś, kto nie
+ * wie, co jest.
+ *
+ * PROTOTYP MA DOKŁADNIE TEN KSZTAŁT i nazywa go `stRows`
+ * (`v3/screens/settings.js:216-221`): wiersz z nazwą, zdaniem o stanie i
+ * plakietką po prawej — `["Data Home", "Encrypted SQLite on this Mac — no
+ * server in the path", "Verified", "success"]`. Nazwę niesie u nas `<h2>`
+ * sekcji, więc zostają dwa nośniki: zdanie i plakietka.
+ *
+ * ZDANIE MA BYĆ WYLICZONE, NIGDY WPISANE, i to nie jest styl — to warunek
+ * prawdziwości. Wiersz stanu, którego treść nie zależy od `snapshot` ani od
+ * `client`, jest ozdobą, która skłamie przy pierwszej zmianie danych.
+ * Dlatego każde wywołanie stoi PRZY swojej kontrolce i liczy z tej samej
+ * wartości, którą ta kontrolka zmienia — zamiast z drugiej listy `Record<…>`
+ * obok zamkniętego słownika kategorii (ta rodzina defektów kosztowała to
+ * repozytorium kilka fal, a `settings-categories.ts` mieszka NA ŚCIEŻCE
+ * GORĄCEJ i nie ma prawa nieść dziewiętnastu napisów).
+ *
+ * `settled` NIESIE WPIS 13-6, i to jest cały jego powód. Prototyp rysuje
+ * w całych Ustawieniach JEDNĄ wyłączoną kontrolkę (`Delete the workspace`,
+ * `v3/screens/settings.js:915`) i stawia przy niej etykietę mówiącą, co ją
+ * odblokuje: „Type <b>Softinet</b> to enable the button". Nasza aplikacja
+ * wygasza kontrolki i milczy o powodzie. Sekcja, której nie da się dziś użyć,
+ * mówi więc to zdaniem stanu, zamiast zostawiać samo przygaszone pudełko.
+ */
+const SectionState = ({
+  says,
+  state,
+  settled = true,
+}: {
+  readonly says: string;
+  readonly state: string;
+  readonly settled?: boolean;
+}) => (
+  <p
+    className="settings-state"
+    data-settings-state={settled ? "settled" : "blocked"}
+  >
+    <span className="settings-state-says">{says}</span>
+    <span className="settings-state-tag">{state}</span>
+  </p>
+);
 
 export const SettingsSurface = ({
   client,
@@ -358,8 +408,15 @@ export const SettingsSurface = ({
   const [busyImport, setBusyImport] = useState(false);
   const [busySupport, setBusySupport] = useState(false);
   const [busyNotesExport, setBusyNotesExport] = useState(false);
-  const [activeCategory, setActiveCategory] =
-    useState<SettingsCategoryId>("workspace");
+  // PIERWSZA KATEGORIA SPISU, NIE NAZWANA Z RĘKI. Do wpisu 13-2 stało tu
+  // `"workspace"` i było to prawdą, bo `workspace` był pierwszy. Po odwróceniu
+  // kolejności grup pierwsza jest `appearance`, a wpisany literał kazałby
+  // paskowi nagłówka mówić o sekcji, której czytelnik jeszcze nie widzi.
+  // Literał wzięty z krotki `as const` jest tym samym typem, więc pomyłka nie
+  // jest tu możliwa — a nie ma DRUGIEJ listy, która by się rozjechała.
+  const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(
+    settingsCategories[0].id,
+  );
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = globalThis.localStorage?.getItem("constellation.theme");
     return saved === "dark" || saved === "light" ? saved : "system";
@@ -1131,12 +1188,653 @@ export const SettingsSurface = ({
         <div className="settings-sections">
           <div
             className="settings-category"
+            id={settingsCategoryElementId("appearance")}
+            data-settings-category="appearance"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Appearance</h2>
+                <SectionState
+                  says={
+                    theme === "system"
+                      ? "This window follows the system theme; nothing about it is stored in the workspace."
+                      : `This window is pinned to the ${themeLabel.toLocaleLowerCase()} theme on this device only.`
+                  }
+                  state={themeLabel}
+                />
+                <p>
+                  Theme is a local device preference. Contrast, transparency and
+                  motion follow system settings.
+                </p>
+              </div>
+              <fieldset className="settings-control settings-choice">
+                <legend>Theme</legend>
+                {(["system", "dark", "light"] as const).map((item) => (
+                  <label key={item}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      checked={theme === item}
+                      onChange={() => applyTheme(item)}
+                    />
+                    <span>
+                      {item === "system"
+                        ? "System"
+                        : item === "dark"
+                          ? "Dark"
+                          : "Light"}
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            </section>
+          </div>
+
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("access")}
+            data-settings-category="access"
+          >
+            <section>
+              <div className="settings-copy">
+                {/* WPIS 13-5 DOKUMENTU PRZEJŚCIA, CZĘŚĆ KONTEKSTOWA. Trzy wejścia
+                    pomocy w kategoriach Ustawień były podkreślonymi zdaniami
+                    stojącymi POD akapitem sekcji — czyli nie „przy rzeczy", tylko
+                    pod nią, w rozmiarze kontrolki. Prototyp nie ma pomocy
+                    w Ustawieniach w ogóle, więc regułą jest tu wzorzec, a nie
+                    kopia: `patterns.md` — „Pattern: On-demand help mark",
+                    plakietka MNIEJSZA od etykiety i STOJĄCA PRZY NIEJ
+                    (`v3/app.css:893-903`). Znak wchodzi więc do nagłówka sekcji,
+                    a nie zostaje osobnym piętrem pod akapitem: plakietka pod
+                    zdaniem nie stoi przy niczym.
+
+                    NAZWA ZOSTAJE TA, KTÓRA TU BYŁA — te trzy kontrolki miały
+                    własne, dobre napisy, a prototypowa formuła („What this means:
+                    <termin>") jest regułą dla wyzwalaczy, które nazwy nie miały,
+                    bo ich etykietą było całe pytanie. */}
+                <h2>
+                  Access and agents{" "}
+                  <span className="help-anchor" data-help-topic="agent-access">
+                    <button
+                      type="button"
+                      className="help-mark"
+                      aria-haspopup="dialog"
+                      aria-label="Explain agent access"
+                      onClick={() => setConceptHelpTopic("agent-access")}
+                    >
+                      ?
+                    </button>
+                  </span>
+                </h2>
+                {/* DWA ODCZYTY, JEDNO ZDANIE — i gałąź odmowy jest tu
+                    PIERWSZA, bo ta sekcja rysuje się także wtedy, gdy żadnej
+                    z dwóch projekcji nie dało się przeczytać. Liczba wzięta
+                    z `?? []` powiedziałaby wtedy „zero osób i zero grantów",
+                    czyli fakt o awarii podany jako fakt o workspace. */}
+                <SectionState
+                  says={
+                    snapshot.access.kind !== "ready" ||
+                    snapshot.agentAccess.kind !== "ready"
+                      ? "Access could not be read in this window, so what stands below is not the current state."
+                      : `${countLabel(
+                          snapshot.access.data.members.filter(
+                            (member) => member.status === "active",
+                          ).length,
+                          "person",
+                          "people",
+                        )} and ${countLabel(
+                          snapshot.agentAccess.data.grants.filter(
+                            (grant) => grant.status === "active",
+                          ).length,
+                          "agent grant",
+                        )} can reach this workspace right now.`
+                  }
+                  state={
+                    snapshot.access.kind !== "ready" ||
+                    snapshot.agentAccess.kind !== "ready"
+                      ? "Unreadable"
+                      : snapshot.access.data.canManage
+                        ? "Yours to change"
+                        : "Read-only for you"
+                  }
+                  settled={
+                    snapshot.access.kind === "ready" &&
+                    snapshot.agentAccess.kind === "ready"
+                  }
+                />
+                <p>
+                  Role, Space scope and agent capabilities stay separate
+                  settings.
+                </p>
+              </div>
+            </section>
+
+            {/* THE CONTENT THAT BUTTON USED TO NAVIGATE TO. `access` was a
+                destination whose only door out of Settings was one button in
+                this category — a category that had declared its id since the
+                day Settings shipped. Wave E deletes the button and fills the
+                shell behind it. */}
+            <AccessSection
+              access={snapshot.access}
+              agentAccess={snapshot.agentAccess}
+              agentTransport={
+                snapshot.dataHome?.descriptor.providerKind === "coordinated"
+                  ? "remote_hub"
+                  : "local"
+              }
+              spaces={snapshot.bootstrap.spaces}
+              busy={accessBusy}
+              onAdd={(input) => {
+                if (!client) return;
+                setAccessBusy(true);
+                void addWorkspaceMember(client, snapshot, input).then(
+                  async (result) => {
+                    setAccessBusy(false);
+                    if (result.kind === "success")
+                      await onWrote("Access created.");
+                    else onFailure(result);
+                  },
+                );
+              }}
+              onSetAccess={(member, access) => {
+                if (!client) return;
+                setAccessBusy(true);
+                void setWorkspaceMemberAccess(
+                  client,
+                  snapshot,
+                  member,
+                  access,
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await onWrote("Access scope updated.");
+                  else onFailure(result);
+                });
+              }}
+              onRevoke={(member) => {
+                if (!client) return;
+                setAccessBusy(true);
+                void revokeWorkspaceMember(client, snapshot, member).then(
+                  async (result) => {
+                    setAccessBusy(false);
+                    if (result.kind === "success")
+                      await onWrote(
+                        "Access revoked. Devices drop the projection at the next sync.",
+                      );
+                    else onFailure(result);
+                  },
+                );
+              }}
+              onAgentAdd={(input) => {
+                if (!client) return;
+                setAccessBusy(true);
+                const remote =
+                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
+                void (
+                  remote
+                    ? createRemoteAgentGrant(client, input)
+                    : createAgentGrant(client, snapshot, input)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success") {
+                    await onReload();
+                    setAgentGrantDetails(
+                      "endpoint" in result.data
+                        ? {
+                            title: "Remote MCP access created",
+                            descriptorLabel: "Protected configuration file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Endpoint",
+                            connectionValue: result.data.endpoint,
+                          }
+                        : {
+                            title: "MCP access created",
+                            descriptorLabel: "Access file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Host adapter",
+                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                          },
+                    );
+                  } else onFailure(result);
+                });
+              }}
+              onAgentRotate={(grant) => {
+                if (!client) return;
+                setAccessBusy(true);
+                const remote =
+                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
+                void (
+                  remote
+                    ? rotateRemoteAgentCredential(client, grant)
+                    : rotateAgentCredential(client, snapshot, grant)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success") {
+                    await onReload();
+                    setAgentGrantDetails(
+                      "endpoint" in result.data
+                        ? {
+                            title: "Remote credential rotated",
+                            descriptorLabel: "Protected configuration file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Endpoint",
+                            connectionValue: result.data.endpoint,
+                          }
+                        : {
+                            title: "Credential rotated",
+                            descriptorLabel: "Access file",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Host adapter",
+                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                          },
+                    );
+                  } else onFailure(result);
+                });
+              }}
+              onAgentRescope={async (grant, target) => {
+                if (!client) return "No connection to the kernel. Try again.";
+                setAccessBusy(true);
+                const result = await updateAgentGrantScope(
+                  client,
+                  snapshot,
+                  grant,
+                  target,
+                );
+                setAccessBusy(false);
+                if (result.kind === "conflict") {
+                  // The versions the dialog read are the ones that just lost
+                  // the race, so every retry from it would re-send them.
+                  // Reload instead, and say that plainly — the workflow's own
+                  // "refresh and try again" would be asking for something this
+                  // line has already done.
+                  onFailure({
+                    kind: "conflict",
+                    message:
+                      "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
+                  });
+                  await onReload();
+                  return undefined;
+                }
+                if (result.kind !== "success") {
+                  onFailure(result);
+                  // Returned as well as noticed: the notice sits on a surface
+                  // the open dialog covers, and the person who has to act on
+                  // the refusal is inside the dialog.
+                  return result.message;
+                }
+                await onWrote("Agent permissions updated.");
+                return undefined;
+              }}
+              onAgentRevoke={(grant) => {
+                if (!client) return;
+                setAccessBusy(true);
+                const remote =
+                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
+                void (
+                  remote
+                    ? revokeRemoteAgentGrant(client, grant)
+                    : revokeAgentGrant(client, snapshot, grant)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await onWrote(
+                      remote
+                        ? "Remote agent access revoked and its configuration file deleted."
+                        : "Agent access revoked and the local credential deleted.",
+                    );
+                  else onFailure(result);
+                });
+              }}
+            />
+
+            {/* KONFIGURACJA INTEGRACJI MIESZKA TUTAJ — WPIS 10-1, DECYZJA
+                KACPRA Z FAZY 0, ODDANA W LOCIE L6.
+
+                Do tej chwili karta `RESULT SOURCE / Jamie` — `Key scope` jako
+                natywny `<select>`, `API key` jako natywne pole i przycisk
+                `Connect Jamie` — stała W ŚRODKU LISTY TREŚCI ekranu Spotkań
+                (`MeetingsSurface.tsx`, sekcja `.meeting-integration`), a TA
+                sekcja Ustawień miała jeden przycisk, który prowadził NA TAMTEN
+                EKRAN. Kierunek był odwrócony: ekran, na którym się pracuje,
+                trzymał formularz administracyjny, a ekran ustawień odsyłał do
+                niego. Prototyp nie ma na liście spotkań ani jednej kontrolki
+                formularza (`v3/screens/meetings.js:1-452`, zmierzone: zero
+                `<select>`, zero `<input>`, zero `<textarea>`), a jedyny
+                `<select>` całego prototypu stoi w WIERSZU USTAWIEŃ
+                (`v3/screens/settings.js:331`, `.st-select`). Kontrakt mówi to
+                samo z drugiej strony: `.ui-craft/patterns.md`, „Pattern:
+                Control size" — na powierzchni treści wybór nie jest natywną
+                kontrolką, a jedynym wyjątkiem jest wiersz Ustawień.
+
+                DLATEGO TA KARTA ZOSTAJE FORMULARZEM, i to nie jest niekonsekwencja
+                wobec pasa Zadań obok. Ustawienia są jedynym miejscem, w którym
+                prototyp natywną kontrolkę STAWIA, a przyrząd P4 wyłącza je
+                z pomiaru wprost — bo `count: 0` tutaj zaprzeczyłoby trzem parom
+                `enforced` (`C5-02a`, `C5-02b`, `C5-03`), które mierzą geometrię
+                `.settings-control > select`. Dwa niezależne źródła, jedna linia
+                podziału.
+
+                CO ZOSTAJE NA SPOTKANIACH: sama lista i akcja pasma „Import from
+                Jamie". Bez klucza ta akcja nie odmawia — prowadzi tutaj. */}
+            <section>
+              <div className="settings-copy">
+                <h2>Calendar and Jamie</h2>
+                {/* CZTERY GAŁĘZIE, DOKŁADNIE TE SAME, KTÓRE ROZGAŁĘZIAJĄ
+                    KONTROLKĘ NIŻEJ — to jest cały warunek prawdziwości tego
+                    wiersza. Zdanie „nie połączono" wypisane obok formularza,
+                    który akurat pokazuje „Disconnect", byłoby drugą wersją
+                    tego samego stanu, a druga wersja jest tą, która gnije. */}
+                <SectionState
+                  says={
+                    jamie.kind === "loading"
+                      ? "Checking whether a Jamie key is stored for this workspace."
+                      : jamie.kind === "error"
+                        ? "The Jamie key could not be checked, so meetings may or may not be able to import."
+                        : jamie.configured
+                          ? `Jamie is connected with a ${jamie.scope === "workspace" ? "workspace" : "personal"} key; meeting results can be imported.`
+                          : "No Jamie key is stored, so Meetings has nothing to import from."
+                  }
+                  state={
+                    jamie.kind === "loading"
+                      ? "Checking…"
+                      : jamie.kind === "error"
+                        ? "Unknown"
+                        : jamie.configured
+                          ? "Connected"
+                          : "Not connected"
+                  }
+                  settled={jamie.kind === "ready" && jamie.configured}
+                />
+                <p>
+                  Constellation reads Calendar and imports Jamie results; it
+                  does not record or transcribe. The key is kept in the
+                  operating system credential store, never in the workspace
+                  file.
+                </p>
+                {jamieMessage && (
+                  <p role={jamieMessage.tone}>{jamieMessage.text}</p>
+                )}
+              </div>
+              {jamie.kind === "loading" ? (
+                <div className="settings-control settings-actions">
+                  <span>Checking…</span>
+                </div>
+              ) : jamie.kind === "error" ? (
+                <div className="settings-control settings-actions">
+                  <button onClick={loadJamieStatus} type="button">
+                    Check again
+                  </button>
+                </div>
+              ) : jamie.configured ? (
+                <div className="settings-control settings-actions">
+                  <span>
+                    Connected with a{" "}
+                    {jamie.scope === "workspace" ? "workspace" : "personal"} key
+                  </span>
+                  <button
+                    disabled={jamieBusy || !client}
+                    onClick={() => void disconnectJamie()}
+                    type="button"
+                  >
+                    {jamieBusy ? "Disconnecting…" : "Disconnect"}
+                  </button>
+                </div>
+              ) : (
+                <form
+                  className="settings-control settings-actions"
+                  onSubmit={(event) => void connectJamie(event)}
+                >
+                  <label htmlFor="jamie-scope">Key scope</label>
+                  <select
+                    id="jamie-scope"
+                    onChange={(event) =>
+                      setJamieScope(
+                        event.target.value as "personal" | "workspace",
+                      )
+                    }
+                    value={jamieScope}
+                  >
+                    <option value="personal">Personal</option>
+                    <option value="workspace">Workspace</option>
+                  </select>
+                  <label htmlFor="jamie-key">API key</label>
+                  <input
+                    autoComplete="off"
+                    id="jamie-key"
+                    onChange={(event) => setJamieApiKey(event.target.value)}
+                    placeholder="jk_…"
+                    required
+                    type="password"
+                    value={jamieApiKey}
+                  />
+                  <button
+                    disabled={
+                      jamieBusy || !client || jamieApiKey.trim().length < 19
+                    }
+                    type="submit"
+                  >
+                    {jamieBusy ? "Securing…" : "Connect Jamie"}
+                  </button>
+                </form>
+              )}
+            </section>
+          </div>
+
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("application")}
+            data-settings-category="application"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Import with no hidden writes</h2>
+                <SectionState
+                  says={
+                    client?.previewStarterWorkspace === undefined
+                      ? "This window cannot open a package; import runs in the installed desktop app."
+                      : importCandidate === undefined
+                        ? "No package is staged, so nothing here has been written to the workspace."
+                        : `${importCandidate.fileName} is staged and previewed; nothing is written until you confirm.`
+                  }
+                  state={
+                    client?.previewStarterWorkspace === undefined
+                      ? "Not here"
+                      : importCandidate === undefined
+                        ? "Nothing staged"
+                        : "Previewed"
+                  }
+                  settled={client?.previewStarterWorkspace !== undefined}
+                />
+                <p>
+                  A versioned JSON package creates Areas, Initiatives, Projects
+                  and Tasks; a task CSV (columns: title, project, status,
+                  priority, due, start, description, state, waitingOn) maps onto
+                  the same engine. You see a preview before anything is written,
+                  and running the same file again finishes an interrupted
+                  import.
+                </p>
+              </div>
+              <div className="settings-control settings-actions">
+                <label
+                  className={`file-action ${busyImport || !client?.importStarterWorkspace ? "disabled" : ""}`}
+                >
+                  <input
+                    type="file"
+                    accept="application/json,.json,text/csv,.csv"
+                    disabled={busyImport || !client?.previewStarterWorkspace}
+                    onChange={(event) => void importStarter(event)}
+                  />
+                  <span>Choose an import file (JSON or task CSV)</span>
+                </label>
+                {importCandidate && (
+                  <div
+                    className="import-preview"
+                    role="group"
+                    aria-labelledby="import-preview-title"
+                  >
+                    <strong id="import-preview-title">
+                      Scope before import
+                    </strong>
+                    <span>{importCandidate.fileName}</span>
+                    <dl>
+                      <div>
+                        <dt>Task statuses</dt>
+                        <dd>{importCandidate.counts.taskStatuses}</dd>
+                      </div>
+                      <div>
+                        <dt>Documents</dt>
+                        <dd>{importCandidate.counts.documents}</dd>
+                      </div>
+                      <div>
+                        <dt>Areas</dt>
+                        <dd>{importCandidate.counts.areas}</dd>
+                      </div>
+                      <div>
+                        <dt>Initiatives</dt>
+                        <dd>{importCandidate.counts.initiatives}</dd>
+                      </div>
+                      <div>
+                        <dt>Projects</dt>
+                        <dd>{importCandidate.counts.projects}</dd>
+                      </div>
+                      <div>
+                        <dt>Tasks</dt>
+                        <dd>{importCandidate.counts.tasks}</dd>
+                      </div>
+                      <div>
+                        <dt>Links</dt>
+                        <dd>{importCandidate.counts.links}</dd>
+                      </div>
+                    </dl>
+                    <div className="import-preview-actions">
+                      <button
+                        type="button"
+                        className="import-preview-confirm"
+                        disabled={busyImport}
+                        onClick={() => void confirmStarterImport()}
+                      >
+                        Import this scope
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyImport}
+                        onClick={() => {
+                          setImportCandidate(undefined);
+                          setImportMessage({
+                            tone: "status",
+                            text: "Import cancelled. Nothing was saved.",
+                          });
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {importMessage && (
+                  <p role={importMessage.tone}>{importMessage.text}</p>
+                )}
+                <small>
+                  Recurrences and saved views stay ordinary Work records; import
+                  runs no code and skips no audit.
+                </small>
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Exchange package export</h2>
+                <SectionState
+                  says={
+                    client?.exportExchangePackage === undefined
+                      ? "This window cannot write a package; export runs in the installed desktop app."
+                      : `Ready to write ${snapshot.projects.kind === "ready" ? countLabel(snapshot.projects.data.items.length, "project") : "the projects of this workspace"} and their work into one file.`
+                  }
+                  state={
+                    client?.exportExchangePackage === undefined
+                      ? "Not here"
+                      : "Ready"
+                  }
+                  settled={client?.exportExchangePackage !== undefined}
+                />
+                <p>
+                  Saves this workspace's Areas, Initiatives, Projects and Tasks
+                  in the format import accepts, so another device can read it
+                  and re-reading the same file duplicates nothing. Document
+                  content and attachments stay out of the package.
+                </p>
+              </div>
+              <div className="settings-control settings-actions">
+                <button
+                  type="button"
+                  disabled={busyExport || !client?.exportExchangePackage}
+                  onClick={() => void exportExchange()}
+                >
+                  Export exchange package
+                </button>
+                {exportMessage && (
+                  <p role={exportMessage.tone}>{exportMessage.text}</p>
+                )}
+              </div>
+            </section>
+
+            {/* SEKCJA BEZ WŁASNEGO PASMA, WYMIENIONA Z NAZWY W BRAMCE.
+                Z klientem cała treść należy do `ReleaseContinuity`, więc ta
+                sekcja nie rysuje ani `.settings-copy`, ani
+                `[data-settings-state]` — wypada z obu zbiorów, które bramka
+                porównuje, i wyprowadzona równość zgadza się nad nią bez
+                słowa. Milczenia nie ma: `SETTINGS_STATE_OUTSIDE`
+                w `scripts/verify-renderer-layout.mjs` wymienia ją z nazwy
+                i z powodem, a asercja jest dwustronna — gdyby ta sekcja
+                dostała własne pasmo, bramka zażąda skasowania wpisu. */}
+            <section>
+              {client ? (
+                <ReleaseContinuity client={client} headingLevel={2} />
+              ) : (
+                <>
+                  <div className="settings-copy">
+                    <h2>App update</h2>
+                    {/* GAŁĄŹ BEZ KLIENTA. Druga gałąź tej sekcji oddaje CAŁĄ
+                        sekcję komponentowi `ReleaseContinuity`, który sam
+                        otwiera się wyliczonym zdaniem o stanie wydania
+                        (`ReleaseContinuity.tsx:95` — `<p role="status">
+                        {detail}</p>` NAD przyciskiem) i dlatego nie dostaje
+                        drugiego wiersza. Ta gałąź własnego zdania o stanie nie
+                        miała — miała zdanie o TYM, GDZIE ONO JEST. */}
+                    <SectionState
+                      says={`This window runs version ${snapshot.build.version}; whether a newer one exists can only be checked from the installed desktop app.`}
+                      state="Not here"
+                      settled={false}
+                    />
+                    <p role="status">
+                      Release state is available in the desktop app.
+                    </p>
+                  </div>
+                  <div className="settings-control">
+                    <strong>{snapshot.build.version}</strong>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+
+          <div
+            className="settings-category"
             id={settingsCategoryElementId("workspace")}
             data-settings-category="workspace"
           >
             <section>
               <div className="settings-copy">
                 <h2>Identity</h2>
+                <SectionState
+                  says={`This workspace is called ${snapshot.bootstrap.workspace.name}, and every screen in this window is looking at it.`}
+                  state={
+                    name.trim() === snapshot.bootstrap.workspace.name
+                      ? "Saved"
+                      : "Edited, not saved"
+                  }
+                  settled={name.trim() === snapshot.bootstrap.workspace.name}
+                />
                 <p>
                   Renaming is a versioned change, visible to the same operators
                   as any other work.
@@ -1168,6 +1866,25 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Task statuses</h2>
+                <SectionState
+                  says={`${countLabel(
+                    snapshot.bootstrap.taskStatuses.filter(
+                      (status) => status.state !== "archived",
+                    ).length,
+                    "status",
+                  )} can be given to a task today, and a new task starts on ${
+                    snapshot.bootstrap.taskStatuses.find(
+                      (status) =>
+                        status.id ===
+                        snapshot.bootstrap.workspace.defaultTaskStatusId,
+                    )?.label ?? "no status this workspace still declares"
+                  }.`}
+                  state={`${
+                    snapshot.bootstrap.taskStatuses.filter(
+                      (status) => status.state === "archived",
+                    ).length
+                  } archived`}
+                />
                 <p>
                   Labels and order belong to this workspace; the operational
                   meaning stays explicit so views and agents stay predictable.
@@ -1482,6 +2199,19 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Pipeline and money</h2>
+                <SectionState
+                  says={`${countLabel(
+                    snapshot.bootstrap.workspace.commercialDefaults.stages
+                      .length,
+                    "stage",
+                  )}, totals summed into ${snapshot.bootstrap.workspace.commercialDefaults.homeCurrency}, ${snapshot.bootstrap.workspace.commercialDefaults.markupPct}% markup and ${snapshot.bootstrap.workspace.commercialDefaults.upliftPct}% uplift.`}
+                  state={countLabel(
+                    snapshot.bootstrap.workspace.commercialDefaults.currencies
+                      .length,
+                    "currency",
+                    "currencies",
+                  )}
+                />
                 <p>
                   Stages name the conversation a deal is in, and the two
                   percentages say what a number on it means. Removing a stage
@@ -1503,6 +2233,29 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Working day</h2>
+                {/* GODZINY, NIE ZEGAR — i to jest wybór, nie skrót.
+                    `toClock` i `weekdayLabel` są prywatne w
+                    `WorkingDaySection.tsx`; przepisanie ich tutaj byłoby drugą
+                    kopią tego samego kształtu obok pierwszej, czyli rodziną
+                    defektów, którą to repozytorium przegrywa od kilku fal.
+                    Długość dnia i liczba dni liczą się z tych samych dwóch
+                    pól, bez formatowania. */}
+                <SectionState
+                  says={`A working day here is ${
+                    Math.round(
+                      (snapshot.bootstrap.workspace.workingDay.endMinute -
+                        snapshot.bootstrap.workspace.workingDay.startMinute) /
+                        6,
+                    ) / 10
+                  } hours long, on ${countLabel(snapshot.bootstrap.workspace.workingDay.weekdays.length, "day")} of the week — Today reads its remaining hours from here.`}
+                  state={`${
+                    Math.round(
+                      (snapshot.bootstrap.workspace.workingDay.endMinute -
+                        snapshot.bootstrap.workspace.workingDay.startMinute) /
+                        6,
+                    ) / 10
+                  }h day`}
+                />
                 <p>
                   How much of a day there is to plan into, and on which days.
                   Today reads the remaining hours from here, never from a number
@@ -1521,6 +2274,19 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Record fields</h2>
+                <SectionState
+                  says={`${countLabel(
+                    (snapshot.bootstrap.fieldDefinitions ?? []).filter(
+                      (definition) => definition.state !== "retired",
+                    ).length,
+                    "field",
+                  )} can be put on a task or a project beyond what the app ships with.`}
+                  state={`${
+                    (snapshot.bootstrap.fieldDefinitions ?? []).filter(
+                      (definition) => definition.state === "retired",
+                    ).length
+                  } retired`}
+                />
                 <p>
                   Typed workspace fields extend tasks and projects without an
                   app release. Values inherit the record's permissions, and
@@ -1703,6 +2469,19 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Project templates</h2>
+                <SectionState
+                  says={`${countLabel(
+                    (snapshot.bootstrap.projectTemplates ?? []).filter(
+                      (template) => template.state !== "retired",
+                    ).length,
+                    "template",
+                  )} can be applied to a project; applying one is always explicit.`}
+                  state={`${
+                    (snapshot.bootstrap.projectTemplates ?? []).filter(
+                      (template) => template.state === "retired",
+                    ).length
+                  } retired`}
+                />
                 <p>
                   A template starts a project with ready tasks. Applying one is
                   always explicit and overwrites nothing; editing a template
@@ -1821,6 +2600,24 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Automations</h2>
+                <SectionState
+                  says={`${
+                    (snapshot.bootstrap.automationRules ?? []).filter(
+                      (rule) => rule.state !== "disabled",
+                    ).length
+                  } ${plural(
+                    (snapshot.bootstrap.automationRules ?? []).filter(
+                      (rule) => rule.state !== "disabled",
+                    ).length,
+                    "rule runs",
+                    "rules run",
+                  )} against this workspace without anyone pressing anything.`}
+                  state={`${
+                    (snapshot.bootstrap.automationRules ?? []).filter(
+                      (rule) => rule.state === "disabled",
+                    ).length
+                  } disabled`}
+                />
                 <p>
                   Narrow, deterministic rules: no scripts, no effects outside
                   the workspace. Disabling a rule undoes nothing; its past
@@ -1982,6 +2779,20 @@ export const SettingsSurface = ({
             <section>
               <div className="settings-copy">
                 <h2>Default audio retention</h2>
+                <SectionState
+                  says={
+                    snapshot.bootstrap.workspace.voiceAudioRetentionPolicy ===
+                    "retain"
+                      ? "Recordings are kept after they are transcribed, so the audio stays in this workspace."
+                      : "Recordings are deleted once they are transcribed; only the text stays."
+                  }
+                  state={
+                    snapshot.bootstrap.workspace.voiceAudioRetentionPolicy ===
+                    "retain"
+                      ? "Audio kept"
+                      : "Audio deleted"
+                  }
+                />
                 <p>
                   New voice notes inherit this choice. Quick Capture can change
                   it for a single recording.
@@ -2040,6 +2851,19 @@ export const SettingsSurface = ({
                     </button>
                   </span>
                 </h2>
+                <SectionState
+                  says={
+                    workspaces.length === 0
+                      ? "This window cannot list the workspaces on this Mac; the registry is read by the installed desktop app."
+                      : `${countLabel(workspaces.length, "workspace")} on this Mac, and this window is looking at ${workspaces.find((entry) => entry.active)?.name ?? snapshot.bootstrap.workspace.name}.`
+                  }
+                  state={
+                    workspaces.length === 0
+                      ? "Not here"
+                      : `${workspaces.length} on this Mac`
+                  }
+                  settled={workspaces.length > 0}
+                />
                 <p>
                   Every workspace has its own encrypted database, Data Home, Hub
                   credentials and local MCP endpoint. Switching restarts the app
@@ -2169,6 +2993,19 @@ export const SettingsSurface = ({
                     </button>
                   </span>
                 </h2>
+                <SectionState
+                  says={
+                    snapshot.dataHome === undefined
+                      ? "This window cannot see where the workspace is stored, so it cannot say whether a restore would work."
+                      : `The workspace is stored in ${snapshot.dataHome.descriptor.displayName}, and that store reads ${availabilityLabels[snapshot.dataHome.availability].toLocaleLowerCase()} right now.`
+                  }
+                  state={
+                    snapshot.dataHome === undefined
+                      ? "Unknown"
+                      : availabilityLabels[snapshot.dataHome.availability]
+                  }
+                  settled={snapshot.dataHome?.availability === "available"}
+                />
                 <p>
                   {snapshot.dataHome?.descriptor.displayName ??
                     "Data Home state is unavailable right now."}
@@ -2192,6 +3029,19 @@ export const SettingsSurface = ({
             <section className="support-report-section">
               <div className="settings-copy">
                 <h2>Support report</h2>
+                <SectionState
+                  says={
+                    client?.exportSupportReport === undefined
+                      ? "This window cannot write a report; the file is produced by the installed desktop app."
+                      : "Nothing has been written yet — a report is only produced when you ask for one, and it carries no content of yours."
+                  }
+                  state={
+                    client?.exportSupportReport === undefined
+                      ? "Not here"
+                      : "On request only"
+                  }
+                  settled={client?.exportSupportReport !== undefined}
+                />
                 <p>
                   Save a diagnostic file when you ask for help. It shows app
                   state, not your work or anything identifying.
@@ -2265,6 +3115,19 @@ export const SettingsSurface = ({
             <section className="notes-export-section">
               <div className="settings-copy">
                 <h2>Export to Markdown</h2>
+                <SectionState
+                  says={
+                    client?.exportNotesMarkdown === undefined
+                      ? "This window cannot write files, so nothing can leave through here; export runs in the installed desktop app."
+                      : `${snapshot.documents.kind === "ready" ? countLabel(snapshot.documents.data.items.length, "note") : "Every note"} can leave this workspace as Markdown, and exporting changes nothing inside it.`
+                  }
+                  state={
+                    client?.exportNotesMarkdown === undefined
+                      ? "Not here"
+                      : "Ready"
+                  }
+                  settled={client?.exportNotesMarkdown !== undefined}
+                />
                 <p>
                   The notes are stored in a collaborative format no other
                   application can open. This writes them back out as ordinary
@@ -2367,6 +3230,23 @@ export const SettingsSurface = ({
             <section className="notes-import-section" data-notes-import="true">
               <div className="settings-copy">
                 <h2>Import from Obsidian</h2>
+                <SectionState
+                  says={
+                    client?.scanObsidianVault === undefined
+                      ? "This window cannot read a folder on disk; the scan runs in the installed desktop app."
+                      : vaultScan === undefined
+                        ? "No vault folder has been read, so nothing is waiting to be imported."
+                        : `${vaultScan.directoryLabel} has been read and nothing from it has been written yet.`
+                  }
+                  state={
+                    client?.scanObsidianVault === undefined
+                      ? "Not here"
+                      : vaultScan === undefined
+                        ? "Nothing scanned"
+                        : "Scanned, not imported"
+                  }
+                  settled={client?.scanObsidianVault !== undefined}
+                />
                 <p>
                   Choose a vault folder. It is read where it stands: nothing in
                   it is moved, renamed or deleted, and the scan writes nothing —
@@ -2419,8 +3299,9 @@ export const SettingsSurface = ({
                     POPRAWIONE PRZY ODBIORZE — poprzednia wersja tego zdania
                     mówiła „i JEDYNY, który prototyp maluje imiennie", i było to
                     nieprawdą policzalną w źródle: `.btn.primary` stoi na tym
-                    ekranie prototypu trzy razy (`:863` „Import N notes",
-                    `:896` tutaj, `:914` „Export to Markdown…"), z czego dwa
+                    ekranie prototypu trzy razy
+                    (`v3/screens/settings.js:779` „Import N notes", `:812`
+                    tutaj, `:830` „Export to Markdown…"), z czego dwa
                     pierwsze są dwoma stanami tej samej tafli. Zdanie uczyłoby
                     następnego czytelnika, że akcent na przycisku eksportu jest
                     wymysłem tego lotu, podczas gdy prototyp maluje go imiennie
@@ -2529,517 +3410,6 @@ export const SettingsSurface = ({
                   <p role={vaultMessage.tone}>{vaultMessage.text}</p>
                 )}
               </div>
-            </section>
-          </div>
-
-          <div
-            className="settings-category"
-            id={settingsCategoryElementId("appearance")}
-            data-settings-category="appearance"
-          >
-            <section>
-              <div className="settings-copy">
-                <h2>Appearance</h2>
-                <p>
-                  Theme is a local device preference. Contrast, transparency and
-                  motion follow system settings.
-                </p>
-              </div>
-              <fieldset className="settings-control settings-choice">
-                <legend>Theme</legend>
-                {(["system", "dark", "light"] as const).map((item) => (
-                  <label key={item}>
-                    <input
-                      type="radio"
-                      name="theme"
-                      checked={theme === item}
-                      onChange={() => applyTheme(item)}
-                    />
-                    <span>
-                      {item === "system"
-                        ? "System"
-                        : item === "dark"
-                          ? "Dark"
-                          : "Light"}
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
-            </section>
-          </div>
-
-          <div
-            className="settings-category"
-            id={settingsCategoryElementId("access")}
-            data-settings-category="access"
-          >
-            <section>
-              <div className="settings-copy">
-                {/* WPIS 13-5 DOKUMENTU PRZEJŚCIA, CZĘŚĆ KONTEKSTOWA. Trzy wejścia
-                    pomocy w kategoriach Ustawień były podkreślonymi zdaniami
-                    stojącymi POD akapitem sekcji — czyli nie „przy rzeczy", tylko
-                    pod nią, w rozmiarze kontrolki. Prototyp nie ma pomocy
-                    w Ustawieniach w ogóle, więc regułą jest tu wzorzec, a nie
-                    kopia: `patterns.md` — „Pattern: On-demand help mark",
-                    plakietka MNIEJSZA od etykiety i STOJĄCA PRZY NIEJ
-                    (`v3/app.css:893-903`). Znak wchodzi więc do nagłówka sekcji,
-                    a nie zostaje osobnym piętrem pod akapitem: plakietka pod
-                    zdaniem nie stoi przy niczym.
-
-                    NAZWA ZOSTAJE TA, KTÓRA TU BYŁA — te trzy kontrolki miały
-                    własne, dobre napisy, a prototypowa formuła („What this means:
-                    <termin>") jest regułą dla wyzwalaczy, które nazwy nie miały,
-                    bo ich etykietą było całe pytanie. */}
-                <h2>
-                  Access and agents{" "}
-                  <span className="help-anchor" data-help-topic="agent-access">
-                    <button
-                      type="button"
-                      className="help-mark"
-                      aria-haspopup="dialog"
-                      aria-label="Explain agent access"
-                      onClick={() => setConceptHelpTopic("agent-access")}
-                    >
-                      ?
-                    </button>
-                  </span>
-                </h2>
-                <p>
-                  Role, Space scope and agent capabilities stay separate
-                  settings.
-                </p>
-              </div>
-            </section>
-
-            {/* THE CONTENT THAT BUTTON USED TO NAVIGATE TO. `access` was a
-                destination whose only door out of Settings was one button in
-                this category — a category that had declared its id since the
-                day Settings shipped. Wave E deletes the button and fills the
-                shell behind it. */}
-            <AccessSection
-              access={snapshot.access}
-              agentAccess={snapshot.agentAccess}
-              agentTransport={
-                snapshot.dataHome?.descriptor.providerKind === "coordinated"
-                  ? "remote_hub"
-                  : "local"
-              }
-              spaces={snapshot.bootstrap.spaces}
-              busy={accessBusy}
-              onAdd={(input) => {
-                if (!client) return;
-                setAccessBusy(true);
-                void addWorkspaceMember(client, snapshot, input).then(
-                  async (result) => {
-                    setAccessBusy(false);
-                    if (result.kind === "success")
-                      await onWrote("Access created.");
-                    else onFailure(result);
-                  },
-                );
-              }}
-              onSetAccess={(member, access) => {
-                if (!client) return;
-                setAccessBusy(true);
-                void setWorkspaceMemberAccess(
-                  client,
-                  snapshot,
-                  member,
-                  access,
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await onWrote("Access scope updated.");
-                  else onFailure(result);
-                });
-              }}
-              onRevoke={(member) => {
-                if (!client) return;
-                setAccessBusy(true);
-                void revokeWorkspaceMember(client, snapshot, member).then(
-                  async (result) => {
-                    setAccessBusy(false);
-                    if (result.kind === "success")
-                      await onWrote(
-                        "Access revoked. Devices drop the projection at the next sync.",
-                      );
-                    else onFailure(result);
-                  },
-                );
-              }}
-              onAgentAdd={(input) => {
-                if (!client) return;
-                setAccessBusy(true);
-                const remote =
-                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
-                void (
-                  remote
-                    ? createRemoteAgentGrant(client, input)
-                    : createAgentGrant(client, snapshot, input)
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success") {
-                    await onReload();
-                    setAgentGrantDetails(
-                      "endpoint" in result.data
-                        ? {
-                            title: "Remote MCP access created",
-                            descriptorLabel: "Protected configuration file",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Endpoint",
-                            connectionValue: result.data.endpoint,
-                          }
-                        : {
-                            title: "MCP access created",
-                            descriptorLabel: "Access file",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Host adapter",
-                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                          },
-                    );
-                  } else onFailure(result);
-                });
-              }}
-              onAgentRotate={(grant) => {
-                if (!client) return;
-                setAccessBusy(true);
-                const remote =
-                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
-                void (
-                  remote
-                    ? rotateRemoteAgentCredential(client, grant)
-                    : rotateAgentCredential(client, snapshot, grant)
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success") {
-                    await onReload();
-                    setAgentGrantDetails(
-                      "endpoint" in result.data
-                        ? {
-                            title: "Remote credential rotated",
-                            descriptorLabel: "Protected configuration file",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Endpoint",
-                            connectionValue: result.data.endpoint,
-                          }
-                        : {
-                            title: "Credential rotated",
-                            descriptorLabel: "Access file",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Host adapter",
-                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                          },
-                    );
-                  } else onFailure(result);
-                });
-              }}
-              onAgentRescope={async (grant, target) => {
-                if (!client) return "No connection to the kernel. Try again.";
-                setAccessBusy(true);
-                const result = await updateAgentGrantScope(
-                  client,
-                  snapshot,
-                  grant,
-                  target,
-                );
-                setAccessBusy(false);
-                if (result.kind === "conflict") {
-                  // The versions the dialog read are the ones that just lost
-                  // the race, so every retry from it would re-send them.
-                  // Reload instead, and say that plainly — the workflow's own
-                  // "refresh and try again" would be asking for something this
-                  // line has already done.
-                  onFailure({
-                    kind: "conflict",
-                    message:
-                      "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
-                  });
-                  await onReload();
-                  return undefined;
-                }
-                if (result.kind !== "success") {
-                  onFailure(result);
-                  // Returned as well as noticed: the notice sits on a surface
-                  // the open dialog covers, and the person who has to act on
-                  // the refusal is inside the dialog.
-                  return result.message;
-                }
-                await onWrote("Agent permissions updated.");
-                return undefined;
-              }}
-              onAgentRevoke={(grant) => {
-                if (!client) return;
-                setAccessBusy(true);
-                const remote =
-                  snapshot.dataHome?.descriptor.providerKind === "coordinated";
-                void (
-                  remote
-                    ? revokeRemoteAgentGrant(client, grant)
-                    : revokeAgentGrant(client, snapshot, grant)
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await onWrote(
-                      remote
-                        ? "Remote agent access revoked and its configuration file deleted."
-                        : "Agent access revoked and the local credential deleted.",
-                    );
-                  else onFailure(result);
-                });
-              }}
-            />
-
-            {/* KONFIGURACJA INTEGRACJI MIESZKA TUTAJ — WPIS 10-1, DECYZJA
-                KACPRA Z FAZY 0, ODDANA W LOCIE L6.
-
-                Do tej chwili karta `RESULT SOURCE / Jamie` — `Key scope` jako
-                natywny `<select>`, `API key` jako natywne pole i przycisk
-                `Connect Jamie` — stała W ŚRODKU LISTY TREŚCI ekranu Spotkań
-                (`MeetingsSurface.tsx`, sekcja `.meeting-integration`), a TA
-                sekcja Ustawień miała jeden przycisk, który prowadził NA TAMTEN
-                EKRAN. Kierunek był odwrócony: ekran, na którym się pracuje,
-                trzymał formularz administracyjny, a ekran ustawień odsyłał do
-                niego. Prototyp nie ma na liście spotkań ani jednej kontrolki
-                formularza (`v3/screens/meetings.js:1-452`, zmierzone: zero
-                `<select>`, zero `<input>`, zero `<textarea>`), a jedyny
-                `<select>` całego prototypu stoi w WIERSZU USTAWIEŃ
-                (`v3/screens/settings.js:331`, `.st-select`). Kontrakt mówi to
-                samo z drugiej strony: `.ui-craft/patterns.md`, „Pattern:
-                Control size" — na powierzchni treści wybór nie jest natywną
-                kontrolką, a jedynym wyjątkiem jest wiersz Ustawień.
-
-                DLATEGO TA KARTA ZOSTAJE FORMULARZEM, i to nie jest niekonsekwencja
-                wobec pasa Zadań obok. Ustawienia są jedynym miejscem, w którym
-                prototyp natywną kontrolkę STAWIA, a przyrząd P4 wyłącza je
-                z pomiaru wprost — bo `count: 0` tutaj zaprzeczyłoby trzem parom
-                `enforced` (`C5-02a`, `C5-02b`, `C5-03`), które mierzą geometrię
-                `.settings-control > select`. Dwa niezależne źródła, jedna linia
-                podziału.
-
-                CO ZOSTAJE NA SPOTKANIACH: sama lista i akcja pasma „Import from
-                Jamie". Bez klucza ta akcja nie odmawia — prowadzi tutaj. */}
-            <section>
-              <div className="settings-copy">
-                <h2>Calendar and Jamie</h2>
-                <p>
-                  Constellation reads Calendar and imports Jamie results; it
-                  does not record or transcribe. The key is kept in the
-                  operating system credential store, never in the workspace
-                  file.
-                </p>
-                {jamieMessage && (
-                  <p role={jamieMessage.tone}>{jamieMessage.text}</p>
-                )}
-              </div>
-              {jamie.kind === "loading" ? (
-                <div className="settings-control settings-actions">
-                  <span>Checking…</span>
-                </div>
-              ) : jamie.kind === "error" ? (
-                <div className="settings-control settings-actions">
-                  <button onClick={loadJamieStatus} type="button">
-                    Check again
-                  </button>
-                </div>
-              ) : jamie.configured ? (
-                <div className="settings-control settings-actions">
-                  <span>
-                    Connected with a{" "}
-                    {jamie.scope === "workspace" ? "workspace" : "personal"} key
-                  </span>
-                  <button
-                    disabled={jamieBusy || !client}
-                    onClick={() => void disconnectJamie()}
-                    type="button"
-                  >
-                    {jamieBusy ? "Disconnecting…" : "Disconnect"}
-                  </button>
-                </div>
-              ) : (
-                <form
-                  className="settings-control settings-actions"
-                  onSubmit={(event) => void connectJamie(event)}
-                >
-                  <label htmlFor="jamie-scope">Key scope</label>
-                  <select
-                    id="jamie-scope"
-                    onChange={(event) =>
-                      setJamieScope(
-                        event.target.value as "personal" | "workspace",
-                      )
-                    }
-                    value={jamieScope}
-                  >
-                    <option value="personal">Personal</option>
-                    <option value="workspace">Workspace</option>
-                  </select>
-                  <label htmlFor="jamie-key">API key</label>
-                  <input
-                    autoComplete="off"
-                    id="jamie-key"
-                    onChange={(event) => setJamieApiKey(event.target.value)}
-                    placeholder="jk_…"
-                    required
-                    type="password"
-                    value={jamieApiKey}
-                  />
-                  <button
-                    disabled={
-                      jamieBusy || !client || jamieApiKey.trim().length < 19
-                    }
-                    type="submit"
-                  >
-                    {jamieBusy ? "Securing…" : "Connect Jamie"}
-                  </button>
-                </form>
-              )}
-            </section>
-          </div>
-
-          <div
-            className="settings-category"
-            id={settingsCategoryElementId("application")}
-            data-settings-category="application"
-          >
-            <section>
-              <div className="settings-copy">
-                <h2>Import with no hidden writes</h2>
-                <p>
-                  A versioned JSON package creates Areas, Initiatives, Projects
-                  and Tasks; a task CSV (columns: title, project, status,
-                  priority, due, start, description, state, waitingOn) maps onto
-                  the same engine. You see a preview before anything is written,
-                  and running the same file again finishes an interrupted
-                  import.
-                </p>
-              </div>
-              <div className="settings-control settings-actions">
-                <label
-                  className={`file-action ${busyImport || !client?.importStarterWorkspace ? "disabled" : ""}`}
-                >
-                  <input
-                    type="file"
-                    accept="application/json,.json,text/csv,.csv"
-                    disabled={busyImport || !client?.previewStarterWorkspace}
-                    onChange={(event) => void importStarter(event)}
-                  />
-                  <span>Choose an import file (JSON or task CSV)</span>
-                </label>
-                {importCandidate && (
-                  <div
-                    className="import-preview"
-                    role="group"
-                    aria-labelledby="import-preview-title"
-                  >
-                    <strong id="import-preview-title">
-                      Scope before import
-                    </strong>
-                    <span>{importCandidate.fileName}</span>
-                    <dl>
-                      <div>
-                        <dt>Task statuses</dt>
-                        <dd>{importCandidate.counts.taskStatuses}</dd>
-                      </div>
-                      <div>
-                        <dt>Documents</dt>
-                        <dd>{importCandidate.counts.documents}</dd>
-                      </div>
-                      <div>
-                        <dt>Areas</dt>
-                        <dd>{importCandidate.counts.areas}</dd>
-                      </div>
-                      <div>
-                        <dt>Initiatives</dt>
-                        <dd>{importCandidate.counts.initiatives}</dd>
-                      </div>
-                      <div>
-                        <dt>Projects</dt>
-                        <dd>{importCandidate.counts.projects}</dd>
-                      </div>
-                      <div>
-                        <dt>Tasks</dt>
-                        <dd>{importCandidate.counts.tasks}</dd>
-                      </div>
-                      <div>
-                        <dt>Links</dt>
-                        <dd>{importCandidate.counts.links}</dd>
-                      </div>
-                    </dl>
-                    <div className="import-preview-actions">
-                      <button
-                        type="button"
-                        className="import-preview-confirm"
-                        disabled={busyImport}
-                        onClick={() => void confirmStarterImport()}
-                      >
-                        Import this scope
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyImport}
-                        onClick={() => {
-                          setImportCandidate(undefined);
-                          setImportMessage({
-                            tone: "status",
-                            text: "Import cancelled. Nothing was saved.",
-                          });
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {importMessage && (
-                  <p role={importMessage.tone}>{importMessage.text}</p>
-                )}
-                <small>
-                  Recurrences and saved views stay ordinary Work records; import
-                  runs no code and skips no audit.
-                </small>
-              </div>
-            </section>
-
-            <section>
-              <div className="settings-copy">
-                <h2>Exchange package export</h2>
-                <p>
-                  Saves this workspace's Areas, Initiatives, Projects and Tasks
-                  in the format import accepts, so another device can read it
-                  and re-reading the same file duplicates nothing. Document
-                  content and attachments stay out of the package.
-                </p>
-              </div>
-              <div className="settings-control settings-actions">
-                <button
-                  type="button"
-                  disabled={busyExport || !client?.exportExchangePackage}
-                  onClick={() => void exportExchange()}
-                >
-                  Export exchange package
-                </button>
-                {exportMessage && (
-                  <p role={exportMessage.tone}>{exportMessage.text}</p>
-                )}
-              </div>
-            </section>
-
-            <section>
-              {client ? (
-                <ReleaseContinuity client={client} headingLevel={2} />
-              ) : (
-                <>
-                  <div className="settings-copy">
-                    <h2>App update</h2>
-                    <p role="status">
-                      Release state is available in the desktop app.
-                    </p>
-                  </div>
-                  <div className="settings-control">
-                    <strong>{snapshot.build.version}</strong>
-                  </div>
-                </>
-              )}
             </section>
           </div>
         </div>
