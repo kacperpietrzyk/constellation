@@ -402,7 +402,13 @@ export const TodaySurface = ({
 
       <section className={styles.section} aria-labelledby="today-meetings">
         <div className={styles.sectionHead}>
-          <h2 id="today-meetings">In the calendar</h2>
+          {/* `h3`, NIE `h2`, I `id` ZOSTAJE TEN SAM — sekcja wskazuje na niego
+              przez `aria-labelledby="today-meetings"` o wiersz wyżej, a to
+              powiązanie jest po IDENTYFIKATORZE, nie po znaczniku. Powód
+              szczebla stoi przy regule w `today.module.css`: powitanie
+              (`h2._greeting`) jest RODZICEM tych trzech nagłówków, tak jak
+              w prototypie (`v3/screens/today.js:133` nad `:140,149`). */}
+          <h3 id="today-meetings">In the calendar</h3>
           {/* Powód, dla którego spotkania są nieruchome, jest pomocą NA ŻĄDANIE
               (#35): prawdziwy przycisk otwierający okno, nigdy `title=`
               i nigdy akapit pod nagłówkiem (#21).
@@ -487,10 +493,10 @@ export const TodaySurface = ({
 
       <section className={styles.section} aria-labelledby="today-planned">
         <div className={styles.sectionHead}>
-          <h2 id="today-planned">
+          <h3 id="today-planned">
             Planned for today{" "}
             <span className={styles.count}>{planned.length}</span>
-          </h2>
+          </h3>
           {/* WPIS #6, PIERWSZY Z DWÓCH KOŃCÓW. Prototyp dosuwa tu plakietkę
               autorstwa planu (`v3/screens/today.js:141-142` — `laid out by
               Hermes`, gdy którykolwiek wiersz położył agent; „148-150"
@@ -560,10 +566,10 @@ export const TodaySurface = ({
 
       <section className={styles.section} aria-labelledby="today-approaching">
         <div className={styles.sectionHead}>
-          <h2 id="today-approaching">
+          <h3 id="today-approaching">
             Deadline approaching, nobody planned it{" "}
             <span className={styles.count}>{approaching.length}</span>
-          </h2>
+          </h3>
           {/* WPIS 1-6, DRUGA POŁOWA. `v3/screens/today.js:149` stawia
               `helpBtn("unplanned")` ZARAZ ZA tym nagłówkiem i przed akcją
               dosuniętą do prawej — czyli plakietka należy do nagłówka, a nie

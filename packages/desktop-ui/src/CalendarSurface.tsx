@@ -873,14 +873,21 @@ export const CalendarSurface = ({
 
       <section className={styles.section} aria-labelledby="calendar-tray">
         <div className={styles.sectionHead}>
-          <h2 id="calendar-tray" data-tray-heading>
+          {/* `h3`, NIE `h2`, przy nietkniętym `id` i nietkniętym
+              `data-tray-heading`: sekcja nazywa się przez
+              `aria-labelledby="calendar-tray"`, a test interakcyjny szuka
+              `[data-tray-heading]` — oba są powiązaniami po ATRYBUCIE, więc
+              szczebel przechodzi obok nich. Tytuł tygodnia (`h2._weekTitle`)
+              jest rodzicem tej tacy, tak jak `h2.cal-title` nad `h3`
+              w `v3/screens/calendar.js:205,224`. */}
+          <h3 id="calendar-tray" data-tray-heading>
             {/* Nagłówek mówi dokładnie to, co filtr robi. Wersja bieżącego
                 tygodnia przyznaje się do spóźnionych, bo tylko tam wchodzą. */}
             {showingThisWeek
               ? "Deadline this week or already late, nobody planned it"
               : "Deadline inside this week, nobody planned it"}{" "}
             <span className={styles.count}>{tray.length}</span>
-          </h2>
+          </h3>
         </div>
         {tray.length === 0 ? (
           <p className={styles.quiet}>Nothing with a deadline is unplanned.</p>

@@ -1088,7 +1088,20 @@ const outcome = runBreakTests({
       // reguła DEKLARUJE stopień i wagę, i była zielona na obu wartościach,
       // bo obie są zadeklarowane.
       name: "make the Today section heading bigger than the screen title again",
-      expectRedContains: ["D2-01a"],
+      // IGŁA JEST WERDYKTEM, NIE IDENTYFIKATOREM — poprawione przy naprawie
+      // lotu nasady Fazy III, tą samą drogą i z tego samego powodu, co przy
+      // rodzinie L8 (`:4284-4291`). Stało tu gołe „D2-01a", a przelot drukuje
+      // ten napis dla KAŻDEJ pary niezależnie od werdyktu, więc złamanie
+      // przechodziło na DOWOLNEJ czerwieni bramki — także takiej, która nie ma
+      // z tym nagłówkiem nic wspólnego. Zmierzone na zielonym przebiegu tej
+      // naprawy (`scratchpad/base-layout.txt`, wyjście 0): „D2-01a" pada tam
+      // 2 razy (dwa wiersze `MATCH`, po jednym na motyw), a „— D2-01a „" ZERO
+      // razy. Forma werdyktu pary powłoki to `— ${id} „${title}"`
+      // (`verify-renderer-layout.mjs:4929-4932`) i tę samą formę ma
+      // `VISUAL_LANGUAGE_NOT_MEASURED` (`:4893`, `:4913`), więc igła w tym
+      // kształcie pokrywa OBA kanały czerwieni i nie da się jej spełnić
+      // zielenią.
+      expectRedContains: ["— D2-01a „"],
       file: "packages/desktop-ui/src/today.module.css",
       edit: (text) =>
         replaceOnce(
@@ -3151,9 +3164,9 @@ const outcome = runBreakTests({
       // i `.section-label`, czyli dla CHROMU POWŁOKI — a chrom powłoki leży
       // poza `#main-content`, więc dowodzi przy okazji, że przelotka nie
       // zatrzymuje się na treści. NIE CZYTA JEJ ŻADNA PARA: trzy pary tej mapy
-      // czytające `fontWeight` celują w `_sectionHead_ h2`, `_sectionHead_
-      // _count_` i `_panelHead_ h2`. Czerwień nie jest więc nadokreślona cudzą
-      // asercją.
+      // czytające `fontWeight` celują w `_sectionHead_ :is(h2,h3)`,
+      // `_sectionHead_ _count_` i `_panelHead_ h2`. Czerwień nie jest więc
+      // nadokreślona cudzą asercją.
       //
       // 650 → 655, A NIE 650 → 400, I TO JEST CAŁA RÓŻNICA: łamana jest
       // PRZYNALEŻNOŚĆ DO REJESTRU, nie przynależność do skali. Wartość 400
@@ -4668,10 +4681,18 @@ const outcome = runBreakTests({
       // które czytnik ekranu wymieni w spisie, a napisem, który dla niego nie
       // istnieje.
       //
-      // Po złamaniu pierwszym nagłówkiem poza pasmem zostaje `h2#today-meetings`
+      // Po złamaniu pierwszym nagłówkiem poza pasmem zostaje `h3#today-meetings`
       // („In the calendar", 13 px), czyli dokładnie ten stan, w jakim ten ekran
       // był przed tym lotem — a tabela mówi już `OPENING_2XL`, więc werdykt
       // przychodzi ramieniem DRYFU, nie ramieniem uzbrojenia.
+      //
+      // TO ZŁAMANIE MA OD LOTU NASADY FAZY III DRUGĄ CZERWIEŃ, PRZEWIDZIANĄ
+      // I NIEURUCHOMIONĄ: bez powitania treść zaczyna się od `h3`, a pierwszym
+      // szczeblem jest `h1` pasma, więc oś konspektu dopisze
+      // `HEADING_OUTLINE_SKIPPED_RUNG — today`. `expectRedContains` jest listą
+      // ZAWIERANIA (`break-test.mjs` odrzuca wyłącznie BRAKI), więc dodatkowy
+      // wiersz niczego tu nie unieważnia. Zapisane bez przelotu harnessu —
+      // wynika z reguły, nie z pomiaru, i tak trzeba to czytać.
       name: "Today's greeting stops being a heading: the same 28px words, no longer an opening",
       expectRedContains: ["TITLE_BAND_OPENING_DRIFT — today"],
       file: "packages/desktop-ui/src/TodaySurface.tsx",
@@ -4766,6 +4787,78 @@ const outcome = runBreakTests({
     prototypeOpening: "OPENING_2XL",`,
           "the prototype's opening column on Tasks",
         ),
+    },
+    {
+      // ── LOT NASADY FAZY III — OŚ KONSPEKTU MUSI PAŚĆ NAD ZEREM PIKSELI ────
+      //
+      // CO DOKŁADNIE JEST TU ŁAMANE: trzy nagłówki sekcji Dzisiaj wracają na
+      // szczebel powitania. Nic więcej. Ani jednej deklaracji, ani jednego
+      // tokena, ani jednego `id`, ani jednej klasy — sam znacznik.
+      //
+      // DLACZEGO TO JEST JEDYNE UCZCIWE ZŁAMANIE TEJ OSI. Wada, którą oś
+      // nazywa, była wadą RANGI PRZY POPRAWNEJ FARBIE: nagłówek stał 13 px
+      // wagą 600 dokładnie tak, jak chce prototyp, i był przy tym rodzeństwem
+      // swojego rodzica. Złamanie, które przy okazji rusza piksele,
+      // odtwarzałoby INNĄ wadę i dowodziło INNEJ osi. Dlatego reguła farby
+      // w `today.module.css` wymienia oba szczeble (`.sectionHead h2,
+      // .sectionHead h3`), a pary D2-01a/b czytają `:is(h2,h3)` — powód
+      // stoi przy obu, a tutaj stoi jego skutek: po tej edycji ekran wygląda
+      // PIKSEL W PIKSEL tak samo.
+      //
+      // I TO JEST ASERTOWANE, NIE OBIECANE. `expectRedContains` żąda obok
+      // czerwieni konspektu DWÓCH wierszy `MATCH` z par czytających stopień
+      // i wagę tego samego nagłówka. Gdyby złamanie ruszyło farbę, te dwie
+      // pary wróciłyby `DIFFERS` albo `NOT_MEASURED` i harness by je odrzucił
+      // jako BRAK żądanego fragmentu — czyli „bez zmiany piksela" jest tu
+      // warunkiem przejścia złamania, a nie zdaniem w komentarzu.
+      //
+      // ŻADEN INNY PRZYRZĄD NIE MA PRAWA TU ZAPALIĆ, i to jest teza całego
+      // pliku `heading-outline.mjs`: oś 4 dalej mierzy `OPENING_2XL` (powitanie
+      // jest nietknięte, wciąż pierwsze, wciąż 28 px), `heading-typography`
+      // czyta arkusz, którego ta edycja nie dotyka, a 281 par nie czyta ani
+      // jednej nazwy znacznika. Przyrząd, którego złamanie widzi ktoś inny,
+      // nie udowodnił, że jest potrzebny.
+      name: "Today's section heads climb back to the greeting's rung: three h3 become h2 and not one pixel moves",
+      expectRedContains: [
+        "HEADING_OUTLINE_FLAT — today",
+        // OBIE PARY FARBY ZOSTAJĄ ZIELONE POD CZERWIENIĄ RANGI — dowód
+        // pikselowej obojętności tej edycji, czytany z wyjścia bramki.
+        "D2-01a\tMATCH",
+        "D2-01b\tMATCH",
+      ],
+      file: "packages/desktop-ui/src/TodaySurface.tsx",
+      edit: (text) => {
+        const meetings = replaceOnce(
+          text,
+          `          <h3 id="today-meetings">In the calendar</h3>`,
+          `          <h2 id="today-meetings">In the calendar</h2>`,
+          "the meetings section head",
+        );
+        const planned = replaceOnce(
+          meetings,
+          `          <h3 id="today-planned">
+            Planned for today{" "}
+            <span className={styles.count}>{planned.length}</span>
+          </h3>`,
+          `          <h2 id="today-planned">
+            Planned for today{" "}
+            <span className={styles.count}>{planned.length}</span>
+          </h2>`,
+          "the planned section head",
+        );
+        return replaceOnce(
+          planned,
+          `          <h3 id="today-approaching">
+            Deadline approaching, nobody planned it{" "}
+            <span className={styles.count}>{approaching.length}</span>
+          </h3>`,
+          `          <h2 id="today-approaching">
+            Deadline approaching, nobody planned it{" "}
+            <span className={styles.count}>{approaching.length}</span>
+          </h2>`,
+          "the approaching section head",
+        );
+      },
     },
   ]),
 });

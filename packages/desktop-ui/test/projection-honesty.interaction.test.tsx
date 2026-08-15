@@ -7,6 +7,11 @@ import { afterEach, beforeEach, test } from "vitest";
 import type { ScenarioFixtures } from "../src/client/scenario-client.js";
 import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
 
+import { projectionRefusedMessage } from "../src/client/workflow.js";
+import {
+  assertRefusalIsRecoverable,
+  assertRefusalReadsAsASentence,
+} from "./refusal-assert.js";
 import {
   populatedRelationshipWorkspace,
   populatedShellQueries,
@@ -14,6 +19,14 @@ import {
   queryId,
   referencedOrganizationId,
 } from "./shell-fixture.js";
+
+// FIKSTURY ODMOWY BUDUJE PRODUKT, NIE TEN PLIK. Pięć migawek niżej niosło to
+// zdanie PRZEPISANE RĘCZNIE — sześć kopii jednego napisu, z których tylko
+// jedna była produktem. Przeliczenie ogona (wpis 7-2) policzyło je jako „pięć
+// asercji cytujących zdanie dosłownie"; to były fikstury, więc poprawka copy
+// w `workflow.ts` zostawiłaby je ZIELONE i skamieniałe, a testy dalej
+// opisywałyby zdanie, którego nikt nie produkuje. Odtąd wołają ten sam
+// builder co produkt.
 
 // TRZY SPOSOBY, NA JAKIE EKRAN ZAMIENIA „NIE DAŁO SIĘ ZAPYTAĆ" NA „NIC NIE MA",
 // zmierzone razem, bo wszystkie trzy widać wyłącznie wtedy, gdy odczyt PADNIE
@@ -168,7 +181,7 @@ test("a record the product actually writes — with no recordState at all — dr
 // DRUGI CEL LOTU: kiedy odczyt naprawdę PADNIE, komunikat ma nieść PRZYCZYNĘ.
 // Trzy stałe zdania, które stały tu wcześniej, wyrzucały i nazwę zapytania, i
 // kod odmowy — czytelnik dowiadywał się, że ekran jest pusty, co widział sam.
-test("a refused read prints which query was refused and why, not a fixed sentence", async () => {
+test("a refused read leaves the cause recoverable — which read, and the code — not a fixed sentence", async () => {
   await openSurface("organizations", "[data-organizations-surface]", {
     ...populatedShellQueries,
     "relationship.workspace": refusedResponse("authorization.denied"),
@@ -181,16 +194,19 @@ test("a refused read prints which query was refused and why, not a fixed sentenc
     message,
     "a refused read drew something other than the unavailable panel",
   );
-  const stated = message.textContent ?? "";
-  assert.match(
-    stated,
-    /relationship\.workspace/u,
-    "the message does not say WHICH read failed, so a reader with no DevTools cannot tell this failure from any other",
-  );
-  assert.match(
-    stated,
-    /authorization\.denied/u,
-    "the message does not carry the kernel's own refusal code, which is the whole difference between 'unavailable' and a repair",
+  // PYTANIE O WŁASNOŚĆ, NIE O NAPIS — i to jest jedyne miejsce w tym pliku,
+  // które przechodzi przez PRAWDZIWEGO klienta, więc jedyne, które naprawdę
+  // wymuszało kształt zdania z `workflow.ts`. Przyczyna ma być ODZYSKIWALNA
+  // z panelu; czy jedzie prozą (dziś), czy atrybutem (po poprawce copy 7-2),
+  // jest sprawą tamtego lotu, nie tego testu.
+  assertRefusalIsRecoverable(message, {
+    queryName: "relationship.workspace",
+    diagnosticCode: "authorization.denied",
+    what: "the Organizations screen on a refused read",
+  });
+  assertRefusalReadsAsASentence(
+    message,
+    "the Organizations screen on a refused read",
   );
   assert.equal(
     container.querySelectorAll("[data-org-row]").length,
@@ -266,11 +282,11 @@ test("a deal opened as a record reports an unreadable slice, not a missing scree
     message,
     "the record slot drew neither the deal nor the reason the slice could not be read",
   );
-  assert.match(
-    message.textContent ?? "",
-    /relationship\.workspace/u,
-    "the record slot's message does not name the read that failed",
-  );
+  assertRefusalIsRecoverable(message, {
+    queryName: "relationship.workspace",
+    diagnosticCode: "query.not_available",
+    what: "the deal record slot on an unreadable slice",
+  });
   const retry = [
     ...(container
       .querySelector("[data-pipeline-surface]")
@@ -305,8 +321,10 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
           ...workHarnessSnapshot,
           documents: {
             kind: "unavailable",
-            message:
-              "document.list was refused: authorization.denied. This view's data is unavailable right now. Try again.",
+            message: projectionRefusedMessage(
+              "document.list",
+              "authorization.denied",
+            ),
             diagnosticCode: "authorization.denied",
           },
           // BOTH of the screen's reads, because the Library has TWO panels that
@@ -315,8 +333,10 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
           // single element's `textContent` cannot see its neighbour.
           knowledge: {
             kind: "unavailable",
-            message:
-              "knowledge.list was refused: query.not_available. This view's data is unavailable right now. Try again.",
+            message: projectionRefusedMessage(
+              "knowledge.list",
+              "query.not_available",
+            ),
             diagnosticCode: "query.not_available",
           },
         },
@@ -333,16 +353,14 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
     "[data-notes-unavailable]",
   );
   assert.ok(message, "the Library drew no reason at all for an unread slice");
-  const stated = message.textContent ?? "";
-  assert.match(
-    stated,
-    /document\.list/u,
-    "the Library does not say which read failed",
-  );
-  assert.match(
-    stated,
-    /authorization\.denied/u,
-    "the Library does not carry the refusal it was handed",
+  assertRefusalIsRecoverable(message, {
+    queryName: "document.list",
+    diagnosticCode: "authorization.denied",
+    what: "the Library's note list on an unread slice",
+  });
+  assertRefusalReadsAsASentence(
+    message,
+    "the Library's note list on an unread slice",
   );
   // THE WHOLE SCREEN, not this one element. Scoped to `[data-notes-unavailable]`
   // this assertion was green while the Folders panel eight lines up printed
@@ -362,16 +380,11 @@ test("the Library prints the reason it was given, not a cause it invented", asyn
     folders,
     "the Folders panel drew no reason at all for an unreadable knowledge read",
   );
-  assert.match(
-    folders.textContent ?? "",
-    /knowledge\.list/u,
-    "the Folders panel does not say which read failed",
-  );
-  assert.match(
-    folders.textContent ?? "",
-    /query\.not_available/u,
-    "the Folders panel does not carry the refusal it was handed",
-  );
+  assertRefusalIsRecoverable(folders, {
+    queryName: "knowledge.list",
+    diagnosticCode: "query.not_available",
+    what: "the Library's Folders panel on an unread knowledge read",
+  });
   // A WAY BACK IN EACH PANEL, asserted panel by panel. Counting buttons over
   // the whole container would be a claim about a total, and a total is exactly
   // what a third panel appearing elsewhere on the screen would satisfy without
@@ -418,8 +431,10 @@ test("with the note list unread, the Library withdraws its counts instead of pri
           ...workHarnessSnapshot,
           documents: {
             kind: "unavailable",
-            message:
-              "document.list was refused: authorization.denied. This view's data is unavailable right now. Try again.",
+            message: projectionRefusedMessage(
+              "document.list",
+              "authorization.denied",
+            ),
             diagnosticCode: "authorization.denied",
           },
           knowledge: {
@@ -489,8 +504,10 @@ test("Tasks prints the reason the work plane could not be read, and a way back",
           ...workHarnessSnapshot,
           work: {
             kind: "unavailable",
-            message:
-              "work.overview was refused: authorization.denied. This view's data is unavailable right now. Try again.",
+            message: projectionRefusedMessage(
+              "work.overview",
+              "authorization.denied",
+            ),
             diagnosticCode: "authorization.denied",
           },
         },
@@ -511,11 +528,11 @@ test("Tasks prints the reason the work plane could not be read, and a way back",
     "[data-tasks-unavailable]",
   );
   assert.ok(message, "Tasks drew no reason at all for an unread work plane");
-  assert.match(
-    message.textContent ?? "",
-    /work\.overview/u,
-    "Tasks does not say which read failed",
-  );
+  assertRefusalIsRecoverable(message, {
+    queryName: "work.overview",
+    diagnosticCode: "authorization.denied",
+    what: "Tasks on an unread work plane",
+  });
   const retry = [
     ...container.querySelectorAll<HTMLButtonElement>("button"),
   ].find((button) => /try again/iu.test(button.textContent ?? ""));
@@ -543,8 +560,10 @@ test("Sources prints the reason its metadata could not be read", async () => {
           ...workHarnessSnapshot,
           knowledge: {
             kind: "unavailable",
-            message:
-              "knowledge.list was refused: query.not_available. This view's data is unavailable right now. Try again.",
+            message: projectionRefusedMessage(
+              "knowledge.list",
+              "query.not_available",
+            ),
             diagnosticCode: "query.not_available",
           },
         },
@@ -558,11 +577,11 @@ test("Sources prints the reason its metadata could not be read", async () => {
     "[data-sources-unavailable]",
   );
   assert.ok(message, "Sources drew no reason at all for unread metadata");
-  assert.match(
-    message.textContent ?? "",
-    /knowledge\.list/u,
-    "Sources does not say which read failed",
-  );
+  assertRefusalIsRecoverable(message, {
+    queryName: "knowledge.list",
+    diagnosticCode: "query.not_available",
+    what: "Sources on unread metadata",
+  });
   // THE COUNTER ABOVE THE MESSAGE, which the first version of this test never
   // looked at: the panel said "we could not ask" while the pill over it printed
   // `0` from the same unread projection. The Organizations assertion above has
@@ -600,11 +619,11 @@ test("People says the work plane could not be read instead of implying nobody is
     message,
     "People drew every row and said nothing about the plane it could not read",
   );
-  assert.match(
-    message.textContent ?? "",
-    /work\.overview/u,
-    "the message does not say which read failed",
-  );
+  assertRefusalIsRecoverable(message, {
+    queryName: "work.overview",
+    diagnosticCode: "authorization.denied",
+    what: "the People screen on an unread work plane",
+  });
 
   const unknown = container.querySelectorAll("[data-person-waiting-unknown]");
   assert.equal(

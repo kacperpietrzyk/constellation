@@ -948,9 +948,29 @@ export const VISUAL_LANGUAGE_PAIRS = [
       // przelotu. Trzy nagłówki sekcji Dzisiaj rysują się naraz i wszystkie
       // biorą tę samą regułę — przelot wymaga JEDNEJ wartości na wszystkich
       // dopasowaniach, więc rozjazd między sekcjami byłby tu czerwony.
-      selector: '[class*="_sectionHead_"] h2',
+      // `h3`, A NIE `h2`, OD LOTU NASADY FAZY III: szczebel nagłówka sekcji
+      // zszedł o jeden, żeby powitanie (`h2`) było jego RODZICEM, tak jak
+      // w prototypie (`v3/screens/today.js:133` nad `:140,149`). Selektor
+      // przepisany W TYM SAMYM commicie co znacznik — para czytająca sam `h2`
+      // trafiłaby po tej zmianie w ZERO narysowanych elementów, czyli
+      // wróciłaby jako `VISUAL_LANGUAGE_NOT_MEASURED`, a to jest awaria
+      // przyrządu czytana jak defekt produktu. STOPIEŃ I WAGA, o które ta para
+      // pyta, nie ruszyły się ani o krok.
+      //
+      // I DLATEGO SELEKTOR WYMIENIA OBA SZCZEBLE, ZAMIAST PRZESIĄŚĆ SIĘ NA
+      // `h3`. Ta para pyta o STOPIEŃ PISMA — ranga nie jest jej podmiotem
+      // i nazwanie jednego znacznika czyni ją na rangę czułą przez pomyłkę
+      // kategorii. Skutek jest mierzalny: złamanie „Today's section heads climb
+      // back to the greeting's rung…" (`scripts/break-visual-language.mjs`)
+      // cofa trzy `h3` na `h2` bez ruszania jednej deklaracji, a para przypięta
+      // do `h3` wróciłaby wtedy jako NOT_MEASURED i NADOKREŚLIŁA czerwień, która
+      // ma należeć wyłącznie do osi konspektu. `:is(h2,h3)` bez spacji, bo
+      // diagnostyka zerowego trafienia (`verify-renderer-layout.mjs`) tnie
+      // selektor po BIAŁYCH ZNAKACH i liczy każdą część osobno — przecinek ze
+      // spacją dałby tam część „h2," która nie jest selektorem.
+      selector: '[class*="_sectionHead_"] :is(h2,h3)',
       why: "the landing surface is Today; its three section heads share one rule and one value",
-      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2)",
+      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2, .sectionHead h3 — markup ships h3)",
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-sm" },
@@ -968,9 +988,9 @@ export const VISUAL_LANGUAGE_PAIRS = [
       value: "`font-weight: 600`",
     },
     subject: {
-      selector: '[class*="_sectionHead_"] h2',
+      selector: '[class*="_sectionHead_"] :is(h2,h3)',
       why: "same subject as D2-01a",
-      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2)",
+      app: "packages/desktop-ui/src/today.module.css (.sectionHead h2, .sectionHead h3 — markup ships h3)",
     },
     // WAGA OSOBNO OD STOPNIA, BO PSUJE SIĘ OSOBNO: wpis rejestru mówi „większe
     // I LŻEJSZE", czyli o dwóch liczbach naraz (16 px wagą 560). Para czytająca
@@ -1525,6 +1545,147 @@ export const VISUAL_LANGUAGE_PAIRS = [
     // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`, a osłabianie oczekiwania po
     // to, żeby utrzymać ją w „pending", jest w tym pliku zakazane wprost.
     status: "enforced",
+  },
+
+  // ══ P1B — DRUGA OŚ PRZYRZĄDU P1: PO KTÓREJ STRONIE SUFITU SIEDZI RYNNA ════
+  //
+  // TEZA, JEDNYM ZDANIEM: sufit zadeklarowany po obu stronach tak samo NIE
+  // znaczy kolumny narysowanej tak samo, bo prototyp trzyma wyściółkę
+  // WEWNĄTRZ ograniczonego pudła, a ta aplikacja — na zewnątrz.
+  //
+  // SKĄD SIĘ WZIĘŁA. Przeliczenie ogona po Fazie II (wpis 2-6a, 2026-08-15)
+  // zmierzyło na Kalendarzu: `._week_` 1344 px wobec `.cal-week` 1296 px, przy
+  // ZGODNEJ deklaracji 84 rem po obu stronach. Różnica to dokładnie 2 × 24 px
+  // wyściółki `.cal-screen`, a para `P1-02` jest nad nią ZIELONA — wiernie
+  // wobec swojego kontraktu, bo P1 z założenia porównuje DEKLARACJĘ
+  // z DEKLARACJĄ. To nie jest usterka P1, to LUKA W JEGO ZAKRESIE: trzynaście
+  // par pyta o sufit i ani jedna o rynnę, która z tego sufitu wychodzi.
+  //
+  // REGUŁA, NIE PIKSEL — i dlatego oś czyta `paddingLeft` nośnika sufitu,
+  // a nie szerokość narysowanej kolumny. Szerokość zależy od okna (bramka
+  // chodzi przy 320/760/1440 px, liczby dokumentu przejścia są z 1662 px);
+  // strona, po której leży wyściółka, nie zależy od niczego. Prototyp
+  // deklaruje OBIE rzeczy w JEDNEJ regule na korzeniu ekranu, zawsze
+  // `var(--space-6)` = 1,5 rem (`v3/tokens.css:77`): `.td` (today.css:5),
+  // `.cal-screen` (calendar.css:17), `.ib` (inbox.css:8), `.rn`
+  // (renewals.css:9), `.mt` (meetings.css:11), `.st` (settings.css:96),
+  // `.record` (app.css:650). Siedem ekranów, siedem reguł, jedna liczba.
+  //
+  // ZAKRES TO SIEDEM EKRANÓW, NIE TRZYNAŚCIE, i to jest wynik pomiaru, nie
+  // oszczędność: pozostałe sześć par P1 żąda `max-width: none` po obu
+  // stronach (Zadania, Projekty, Lejek, Organizacje, Ludzie, Biblioteka —
+  // prototyp też nie daje im sufitu). Bez sufitu nie ma „wewnątrz" ani „na
+  // zewnątrz" niego, więc pytanie nie ma tam sensu i para byłaby zdaniem
+  // o niczym.
+  //
+  // ZMIERZONE 2026-08-15 SONDĄ PRZY 1440 × 900, motyw ciemny, po jednym
+  // przelocie na ekran — `paddingLeft` nośnika sufitu / wyściółka przewijaka
+  // NAD nim:
+  //
+  //   today      0 px / 40 px      calendar   0 px / 40 px
+  //   inbox      0 px / 40 px      renewals  16 px / 40 px
+  //   meetings  40 px /  0 px      settings   0 px / 40 px
+  //   record    24 px / 40 px  ← JEDYNY ZGODNY
+  //
+  // Rozjazd jest więc SZERSZY niż wpis 2-6a: sześć z siedmiu ekranów, w TRZECH
+  // różnych postaciach (rynna w całości na zewnątrz; 16 px w środku zamiast
+  // 24; 40 px w środku zamiast 24). Ekran rekordu robi to dziś DOKŁADNIE tak,
+  // jak prototyp — i dlatego jego para jest `enforced`, a nie oczekująca:
+  // przyrząd, którego wszystkie pary są czerwone, jest nieodróżnialny od
+  // selektora, który nigdy nie trafia.
+  //
+  // KAŻDY PODMIOT ROZWIĄZUJE SIĘ DO JEDNEJ WARTOŚCI — sprawdzone tą samą
+  // sondą, bo `distinct.length > 1` jest w tym przelocie awarią przyrządu
+  // (NOT_MEASURED w OBU statusach), a nie werdyktem: today 5 narysowanych
+  // dzieci / jedna wartość, calendar 4 / jedna, inbox 3 / jedna, renewals
+  // 3 / jedna, meetings 1, settings 1, record 1.
+  //
+  // ── WZORZEC PO STRONIE WYKONAWCY WPISU 2-6a — ROZSTRZYGNIĘTY POMIAREM,
+  //    ZANIM KTOKOLWIEK ZOBACZY CZERWIEŃ ──────────────────────────────────────
+  //
+  // ZAPISANE TUTAJ Z DOKŁADNIE TEGO POWODU, CO BLIŹNIACZA NOTA PRZY P2 („wzorzec,
+  // który te sześć par zakładało po stronie lotu L4"): koszt wyboru struktury
+  // jest znany z góry i ma stać w mapie, a nie zostać odkryty z czerwonego
+  // przelotu.
+  //
+  // CZEGO NIE WOLNO ZROBIĆ, CHOĆ CYTAT PROTOTYPU CZYTA SIĘ DOKŁADNIE TAK.
+  // Każda z siedmiu par cytuje JEDNĄ regułę prototypu, która niesie sufit
+  // I wyściółkę razem (`.ib { max-width: 68rem; padding: var(--space-6) … }`).
+  // Przepisanie tego wprost znaczy u nas przeniesienie SUFITU z dzieci na
+  // korzeń ekranu — i to KŁADZIE PARY P1, które są `enforced`. Zmierzone przy
+  // naprawie lotu nasady, 2026-08-15, sondą na Skrzynce
+  // (`#main-content [class*="_inbox_"] { --surface-measure: none;
+  // max-width: 68rem; padding-left: 24px }`), oba motywy:
+  //
+  //   routed dark|light  P1-03   NOT_MEASURED  „maxWidth" computed to „none",
+  //                              which is not a length. A rem pair cannot
+  //                              compare it against anything — this probe
+  //                              measured nothing.
+  //   routed dark|light  P1B-03  DIFFERS       observed 0px, expected 1.5rem
+  //   ROUTED_NOT_MEASURED (dark|light) — P1-03 „Inbox declares its own reading
+  //                              measure" [enforced] at inbox
+  //
+  // Czyli dostawa WEDŁUG CYTATU daje wykonawcy czerwień o sygnaturze ZEPSUTEGO
+  // PRZYRZĄDU na cudzej uzbrojonej parze, a jego własna para i tak zostaje
+  // czerwona. Podmiotem P1 są DZIECI korzenia (`.inbox` deklaruje tylko
+  // `--surface-measure`, a `max-width` biorą `> *` przez klamrę
+  // `.surface-scroll > *`), więc zdjęcie sufitu z dzieci zabiera P1 to, co
+  // mierzy.
+  //
+  // CO ZROBIĆ ZAMIAST TEGO: sufit ZOSTAJE tam, gdzie jest — na dzieciach, przez
+  // `--surface-measure` — a 24 px wyściółki poziomej wchodzi na TE SAME dzieci
+  // (schodząc z `.surface-scroll`, który niesie ją dziś NAD nimi). ZAKRES TEGO
+  // ZDANIA TO SIEDEM EKRANÓW P1B, NIE GLOBALNA REGUŁA: `.surface-scroll` obsługuje
+  // także sześć ekranów BEZ sufitu (Zadania, Projekty, Lejek, Organizacje,
+  // Ludzie, Biblioteka), które nie mają tu ani pary, ani rozjazdu — skasowanie
+  // jego wyściółki hurtem przesunęłoby je wszystkie i byłoby zmianą, której
+  // żadna para tej osi nie prosiła. Zejście ma być POEKRANOWE. Wizualnie
+  // wychodzi to samo, co jedna reguła prototypu; różnica jest wyłącznie w tym,
+  // który element w NASZYM drzewie jest nośnikiem. Że ten kształt przechodzi:
+  // sonda `> * { padding-left: 24px }` na Dzisiaj i na Ustawieniach zapala
+  // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES — P1B-01` oraz
+  // `ROUTED_PENDING_ALREADY_MATCHES — P1B-07` w obu motywach, przy nietkniętych
+  // parach P1 (zmierzone przeglądem adwersarialnym tego lotu, 2026-08-15).
+  //
+  // I TO JEST WARUNEK DOSTAWY, NIE PORADA: para oczekująca, która zaczyna
+  // pasować, KŁADZIE przelot. Status wszystkich siedmiu par P1B ma się
+  // przewrócić na `enforced` w tym samym commicie, co arkusze.
+  //
+  // CZEGO TA OŚ NIE MÓWI, POWIEDZIANE WPROST: czyta LEWĄ wyściółkę, więc
+  // reguła asymetryczna (24 px z lewej, 0 z prawej) przeszłaby ją zielona.
+  // Prototyp nie ma ani jednej takiej reguły na korzeniu ekranu — wszystkie
+  // siedem deklaruje wyściółkę skrótem, symetrycznie — więc druga para na
+  // `paddingRight` byłaby dziś dwiema parami nad jedną deklaracją, czyli tym,
+  // co ten plik nazywa wprost powielonym kształtem.
+  {
+    id: "P1B-01",
+    lot: "P1B",
+    position: 1,
+    kind: "restyle",
+    title: "Today keeps its reading gutter INSIDE the measure it declares",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/screens/today.css",
+      lines: "5",
+      value:
+        "`.td { max-width: 68rem; padding: var(--space-6) }` — JEDNA reguła niesie sufit I wyściółkę, więc kolumna czytelna to 68 rem MINUS 2 × 1,5 rem; u nas wyściółkę 40 px niesie przewijak NAD nośnikiem sufitu, więc kolumna to pełne 68 rem",
+    },
+    subject: {
+      selector:
+        '#main-content [class*="_today_"] > *:not(.surface-header):not(.view-band)',
+      why: "TEN SAM podmiot co P1-01 i to jest wymóg, nie wygoda: oś ma powiedzieć, czy wyściółkę niesie DOKŁADNIE ten element, który niesie sufit. Para na innym elemencie odpowiadałaby na inne pytanie. Zmierzone 2026-08-15 przy 1440×900: PIĘĆ narysowanych dzieci, JEDNA wartość `paddingLeft` — 0px",
+      app: "packages/desktop-ui/src/today.module.css (.today — sufit), styles.css (.surface-scroll — wyściółka 24px 40px 40px NAD nim)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    // `pending`, BO TO JEST DŁUG PRODUKTU, NIE DOSTAWA TEGO LOTU. Lot nasady
+    // Fazy III dokłada PRZYRZĄD i farby nie rusza (jedyny wyjątek: ranga
+    // nagłówków, bo to regresja tej fali). Para oczekująca, która zaczyna
+    // pasować, kładzie przelot jako `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES`
+    // — i to jest dokładnie przełącznik dostawy: lot, który przeniesie rynnę
+    // do środka sufitu, przewróci ten status w tym samym commicie.
+    status: "pending: WPIS 2-6a (rynna wewnątrz sufitu)",
   },
   // ══ FAZA I, PRZYRZĄD P2 — CHROM KARTY NA POJEMNIKU LISTY ══════════════════
   // TEZA, JEDNYM ZDANIEM: lista wierszy stoi w POJEMNIKU, który ma ramkę,
@@ -2825,9 +2986,17 @@ export const VISUAL_LANGUAGE_EXPECTED = {
   // — podmiot rysuje się tylko w dzień roboczy, a przelot szedł w sobotę.
   // `positionsWithPairs` się NIE rusza: pozycja 2 dalej ma parę (L7-02b, druga
   // plakietka Dzisiaj), a pozycja 1 dostała kotwicę bezwarunkową.
-  pairs: 69,
+  // 69 → 70 I `pending` 1 → 2 PRZY LOCIE NASADY FAZY III, 2026-08-15, I NIE
+  // JEST TO POZYCJA EKRANOWA — to DRUGA OŚ PRZYRZĄDU P1 (`P1B`), która pyta
+  // o rzecz rządzącą siedmioma ekranami naraz: po której stronie
+  // zadeklarowanego sufitu leży rynna. Powód, pomiar i zakres stoją przy
+  // `P1B-01`. `enforced` się NIE rusza: jedyna para tej osi w TEJ mapie
+  // (Dzisiaj) jest długiem produktu, a jedyna zgodna dziś (rekord) stoi w mapie
+  // trasowanej. Pozostałe sześć pozycji briefu P1B jest tam samo — nie „bez
+  // pary", tylko „nie w tej mapie", i tak są zapisane w `lots.P1B` obu map.
+  pairs: 70,
   enforced: 68,
-  pending: 1,
+  pending: 2,
   notCovered: 7,
   lots: {
     // LOT L7 FAZY II — DZIESIĘĆ POZYCJI BRIEFU, DWIE Z PARĄ TUTAJ.
@@ -2932,6 +3101,21 @@ export const VISUAL_LANGUAGE_EXPECTED = {
       positionsInBrief: 13,
       positionsWithPairs: 1,
       positionsWithoutPairs: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    },
+    P1B: {
+      // SIEDEM POZYCJI, NIE TRZYNAŚCIE, i to jest wynik pomiaru: pytanie „po
+      // której stronie sufitu leży rynna" ma sens wyłącznie na ekranie, który
+      // sufit deklaruje. Sześć par P1 żąda `max-width: none` po obu stronach
+      // (Zadania, Projekty, Lejek, Organizacje, Ludzie, Biblioteka), więc te
+      // ekrany nie są tu „pominięte" — one nie mają tej pozycji w briefie.
+      // Pełne uzasadnienie stoi przy `P1B-01`.
+      //
+      // Tutaj z parą stoi WYŁĄCZNIE pozycja 1 (Dzisiaj), z tego samego powodu
+      // co przy P1: przelot powłoki nie klika. Sześć pozostałych jest
+      // w `VISUAL_LANGUAGE_ROUTED_EXPECTED.lots.P1B`.
+      positionsInBrief: 7,
+      positionsWithPairs: 1,
+      positionsWithoutPairs: [2, 3, 4, 5, 6, 7],
     },
     D2: {
       // Dziewięć pozycji, wszystkie z parą. Rachunek pozycji jest rachunkiem
@@ -6531,6 +6715,19 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     expect: { kind: "count", equals: 3 },
+    // TRZY JEST TEŻ LICZBĄ PROTOTYPU — sprawdzone w źródle 2026-08-15, przy
+    // locie nasady Fazy III, i zapisane tutaj, żeby nikt nie zgłosił tego po
+    // raz drugi. Przeliczenie ogona wskazało tę parę jako „zaświadczającą
+    // rozjazd", bo wpis 13-2 mówi o 6 pozycjach wobec 12. Ale pozycje to nie
+    // grupy: `ST_SECTIONS` (`v3/screens/settings.js:925-957`) ma DOKŁADNIE
+    // TRZY grupy — „You", „What the app runs on", „This workspace" — czyli
+    // te same trzy, co `settingsCategoryGroups`. Rozjazdem 13-2 jest LICZBA
+    // POZYCJI (pilnuje jej D5-02b) i KOLEJNOŚĆ grup (u prototypu „You" jest
+    // pierwsza, u nas trzecia — tego nie mierzy dziś nic; pozycja robocza
+    // zapisana w raporcie lotu). Sama liczba grup przetrwa lot 13-2 bez
+    // zmiany, więc przerzucenie tej pary na `pending` położyłoby przelot jako
+    // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES` — para oczekująca, która
+    // pasuje, jest w tym pliku czerwienią, nie ostrożnością.
     status: "enforced",
   },
   {
@@ -6549,12 +6746,35 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { settingsMode: true },
     subject: {
       selector: ".settings-mode-section svg",
-      why: "one per section and six sections; `equals`, not `atLeast`, because a floor would pass a list where a single category kept its glyph",
+      why: "one per section, one glyph each — `equals`, not `atLeast`, because a floor would pass a list where a single category kept its glyph. Liczba jest funkcją LICZBY SEKCJI, więc para mówi dwie rzeczy naraz: każda sekcja ma glif ORAZ sekcji jest tyle, ile deklaruje prototyp",
       app: "packages/desktop-ui/src/settings-categories.ts (pole `icon`), RealApp.tsx (`<Icon name={category.icon} />`)",
     },
     read: { property: null },
-    expect: { kind: "count", equals: 6 },
-    status: "enforced",
+    // 6 → 12 I `enforced` → `pending` PRZY LOCIE NASADY FAZY III, 2026-08-15.
+    // TO JEST PRZEADRESOWANIE, NIE POLUZOWANIE, i powód jest mechaniczny.
+    //
+    // Do tej zmiany para asertowała SZEŚĆ — czyli dzisiejszy kształt naszych
+    // Ustawień. Prototyp ma DWANAŚCIE pozycji, po jednym glifie każda:
+    // `ST_SECTIONS` (`v3/screens/settings.js:925-957`) daje `ST_ALL` o długości
+    // 12, a `item()` (`:975-983`) renderuje `${icon(s.icon, "ico")}` dla
+    // KAŻDEJ. Policzone w źródle, nie oszacowane ze zrzutu.
+    //
+    // Kacper rozstrzygnął (2026-08-15), że wpis 13-2 wchodzi do tej fali —
+    // czyli lot przyjmie prototypową nawigację. Gdyby ta para została na
+    // szóstce, TAMTEN lot dostałby czerwień o brzmieniu „przyrząd P5 wykrył
+    // regresję" nad poprawnie dowiezionym ekranem, i pierwszą rzeczą, którą
+    // by zrobił, byłby spór z własną bramką. Przeadresowana z góry, para robi
+    // odwrotną robotę: dziś DIFFERS (6 ≠ 12) i jako oczekująca milczy,
+    // a w chwili dostawy zaczyna pasować i przelot rzuca
+    // `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES` — czyli sama każe przewrócić
+    // status w tym samym commicie. To jest przełącznik dostawy, nie zaległość.
+    //
+    // LICZBA NALEŻY DO LOTU 13-2, NIE DO TEJ NOTY: jeśli tamten lot dowiezie
+    // inny podział (np. scali „Devices" z „Data"), to on przepisuje tę liczbę
+    // i pisze, dlaczego prototypowa dwunastka go nie obowiązuje. Para stoi tu
+    // po to, żeby ta rozmowa musiała się odbyć — nie po to, żeby ją wyprzedzić.
+    expect: { kind: "count", equals: 12 },
+    status: "pending: WPIS 13-2 (nawigacja Ustawień)",
   },
   {
     id: "D5-03a",
@@ -7516,6 +7736,17 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "gridTemplateColumns" },
     expect: { kind: "tracks", equals: 3 },
+    // TRZY JEST LICZBĄ PROTOTYPU, NIE NASZĄ — sprawdzone w źródle 2026-08-15,
+    // przy locie nasady Fazy III, i zapisane tutaj, żeby ta para nie została
+    // zgłoszona po raz drugi jako „zaświadczająca dzisiejszy wiersz".
+    // Przeliczenie ogona (wpis 10-3) przewidywało, że przebudowa wiersza
+    // spotkania na prototypowy „prawie na pewno zapali D7-01d". Pomiar mówi co
+    // innego: `.mt-up` (`v3/screens/meetings.css:54-55`) to
+    // `grid-template-columns: 7.5rem minmax(0, 1fr) auto`, czyli DOKŁADNIE
+    // trzy tory. Wierna przebudowa 10-3 (awatary z rolami i cztery nazwane
+    // wiersze wchodzą do TORU ŚRODKOWEGO, `.mt-up-main`) tę parę ZOSTAWIA
+    // zieloną — a para, która trzyma trzy tory, pilnuje przy okazji, żeby
+    // tamten lot nie zwinął wiersza z powrotem do jednej kolumny.
     status: "enforced",
   },
   {
@@ -7540,6 +7771,34 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "flexGrow" },
     expect: { kind: "literal", value: "0" },
+    // ZOSTAJE `enforced` — I TO JEST DECYZJA Z POMIAREM, NIE PRZEOCZENIE.
+    // JEJ PODMIOT UMRZE WRAZ Z LOTEM 10-3, WŁAŚCICIEL DOSTAJE INSTRUKCJĘ:
+    //
+    // Ta para jest jedyną z trzech stojących na wierszu spotkania, której
+    // podmiot NIE MA odpowiednika w prototypie. Łańcuch prowenancji
+    // (`Event → Fact brief → Jamie result after`) jest nasz; prototypowy tor
+    // środkowy niesie `.mt-room` (awatary z rolami) i `.mt-prep` (cztery
+    // nazwane wiersze). Wpis 10-3 przyjmuje prototyp, więc `.evidence-thread`
+    // w tym wierszu przestanie istnieć.
+    //
+    // DLACZEGO NIE `pending`: `pending` NIE POMOŻE. `NOT_MEASURED` jest ŚLEPE
+    // NA STATUS (`verify-renderer-layout.mjs`, gałąź „zero dopasowań"), więc
+    // skasowanie podmiotu daje czerwień w OBU statusach — i to czerwień
+    // o brzmieniu „selektor nie trafił w nic", czyli nieodróżnialną od
+    // zepsutego przyrządu. Przerzucenie na `pending` kupiłoby wyłącznie
+    // złudzenie, że sprawa jest załatwiona.
+    //
+    // CO MA ZROBIĆ LOT 10-3, W TYM SAMYM COMMICIE, W KTÓRYM ZDEJMIE ŁAŃCUCH:
+    //   1. skasować ten wpis z mapy trasowanej;
+    //   2. dopisać go do `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` (lot D7,
+    //      pozycja 1) z powodem: podmiot zniknął razem z przebudową wiersza
+    //      #10-3, a prototyp nie ma łańcucha prowenancji w wierszu spotkania —
+    //      plus warunek wyjścia, jeśli łańcuch wróci gdzie indziej;
+    //   3. przestawić w `VISUAL_LANGUAGE_ROUTED_EXPECTED`: `pairs` −1,
+    //      `notCovered` +1 oraz `lots.D7.pairs` −1 (pozycje briefu bez zmian —
+    //      pozycja 1 zachowuje pary D7-01a…D7-01d).
+    // Bez punktu 3 bramka wraca `ROUTED_COUNT_DRIFT`, czyli czerwień, która
+    // czyta się jak defekt produktu.
     status: "enforced",
   },
   {
@@ -7666,6 +7925,14 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: "backgroundColor" },
     expect: { kind: "token", token: "--surface-sunken" },
+    // WPUSZCZENIE JEST TEŻ DEKLARACJĄ PROTOTYPU — sprawdzone w źródle
+    // 2026-08-15, tak samo jak przy D7-01d i z tego samego powodu:
+    // `.mt-up { … background: var(--surface-sunken) }`
+    // (`v3/screens/meetings.css:54-62`). Przebudowa wiersza z wpisu 10-3
+    // dotyczy TREŚCI toru środkowego, nie planu, na którym wiersz leży, więc
+    // ta para przez tamten lot przechodzi bez zmiany. Odnotowane, bo
+    // przeliczenie ogona wymieniło ją obok D7-01d jako certyfikującą
+    // dzisiejszy wiersz.
     status: "enforced",
   },
   {
@@ -8211,6 +8478,167 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // nieodróżnialne od selektora, który nigdy nie trafia. Jest też jedynym
     // podmiotem, na którym da się napisać złamanie WARTOŚCIOWE.
     status: "enforced",
+  },
+
+  // ── P1B, POZYCJE 2-7 — TA SAMA OŚ ZA NAWIGACJĄ ────────────────────────────
+  // Teza, uzasadnienie zakresu (siedem ekranów, nie trzynaście), tabela
+  // pomiaru z 2026-08-15 i zadeklarowana ślepa plama (czytana jest LEWA
+  // wyściółka) stoją RAZ, przy `P1B-01` w mapie powłoki. Ten sam kształt
+  // przepisany w dwóch miejscach jest w tym repozytorium nazwaną klasą
+  // defektu — tutaj jest wyłącznie to, co na każdym ekranie INNE.
+  {
+    id: "P1B-02",
+    lot: "P1B",
+    position: 2,
+    kind: "restyle",
+    title: "Calendar keeps its reading gutter INSIDE the measure it declares",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/screens/calendar.css",
+      lines: "17",
+      value:
+        "`.cal-screen { max-width: 84rem; padding: var(--space-6) }` — TO JEST WPIS 2-6a CO DO ZNAKU: zmierzone 1344 px rysowanej siatki tygodnia u nas wobec 1296 px u prototypu, przy zgodnej deklaracji 84 rem po obu stronach. 48 px = dokładnie 2 × 24 px tej wyściółki",
+    },
+    route: { surface: "calendar" },
+    subject: {
+      selector:
+        '#main-content [class*="_calendar_"] > *:not(.surface-header):not(.view-band)',
+      why: "ten sam podmiot co P1-02. Zmierzone 2026-08-15 przy 1440×900: CZTERY narysowane dzieci, JEDNA wartość `paddingLeft` — 0px, przy wyściółce przewijaka 40px",
+      app: "packages/desktop-ui/src/calendar.module.css (.calendar — sufit 84rem), styles.css (.surface-scroll — wyściółka NAD nim)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    status: "pending: WPIS 2-6a (rynna wewnątrz sufitu)",
+  },
+  {
+    id: "P1B-03",
+    lot: "P1B",
+    position: 3,
+    kind: "restyle",
+    title: "the Inbox keeps its reading gutter INSIDE the measure it declares",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/screens/inbox.css",
+      lines: "8",
+      value:
+        "`.ib { max-width: 68rem; padding: var(--space-6) var(--space-6) 5.5rem }` — poziomo znowu `var(--space-6)`; dolna wartość jest inna, bo pod treścią stoi dok przechwytywania, i dlatego ta oś czyta wyściółkę POZIOMĄ, nie skrót",
+    },
+    route: { surface: "inbox" },
+    subject: {
+      selector:
+        '#main-content [class*="_inbox_"] > *:not(.surface-header):not(.view-band)',
+      why: "ten sam podmiot co P1-03. Zmierzone 2026-08-15: TRZY narysowane dzieci, JEDNA wartość — 0px",
+      app: "packages/desktop-ui/src/inbox.module.css (.inbox — sufit 68rem), styles.css (.surface-scroll)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    status: "pending: WPIS 2-6a (rynna wewnątrz sufitu)",
+  },
+  {
+    id: "P1B-04",
+    lot: "P1B",
+    position: 4,
+    kind: "restyle",
+    title: "Renewals stops splitting its gutter across the ceiling",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/screens/renewals.css",
+      lines: "9",
+      value: "`.rn { max-width: 68rem; padding: var(--space-6) }`",
+    },
+    route: { surface: "renewals" },
+    subject: {
+      selector:
+        "#main-content [data-renewals-surface] > *:not(.surface-header):not(.view-band)",
+      why: "ten sam podmiot co P1-09, i JEDYNY ekran, który dziś dzieli rynnę na pół: 16px WEWNĄTRZ sufitu plus 40px przewijaka na zewnątrz. Zmierzone 2026-08-15: TRZY narysowane dzieci, JEDNA wartość — 16px. Ani zgodność, ani czysty brak — czyli dokładnie stan, którego para pytająca „czy w ogóle jest wyściółka” by nie zobaczyła",
+      app: "packages/desktop-ui/src/renewals.module.css, styles.css (.surface-scroll)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    status: "pending: WPIS 2-6a (rynna wewnątrz sufitu)",
+  },
+  {
+    id: "P1B-05",
+    lot: "P1B",
+    position: 5,
+    kind: "restyle",
+    title: "Meetings brings its gutter down to the reference's step",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "11",
+      value: "`.mt { max-width: 74rem; padding: var(--space-6) }`",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: "#main-content .meeting-surface",
+      why: "ten sam podmiot co P1-10, i drugi z trzech różnych sposobów, na jakie ta aplikacja rozjeżdża się na tej osi: wyściółka jest tu PO WŁAŚCIWEJ STRONIE sufitu (przewijak nad nią ma 0px), ale wynosi 40px zamiast 24. Zmierzone 2026-08-15: JEDEN narysowany element",
+      app: "packages/desktop-ui/src/styles.css (.meeting-surface — sufit 74rem i wyściółka 40px w jednej regule)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    status: "pending: WPIS 2-6a (rynna wewnątrz sufitu)",
+  },
+  {
+    id: "P1B-06",
+    lot: "P1B",
+    position: 6,
+    kind: "restyle",
+    title:
+      "and the record screen already does it, which is what makes this axis a measurement",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/app.css",
+      lines: "650",
+      value:
+        "`.record { padding: var(--space-5) var(--space-6) 5rem; max-width: var(--surface-measure) }` — jedyne użycie tego tokenu w całym prototypie, i znowu sufit z wyściółką w JEDNEJ regule",
+    },
+    route: { surface: "tasks", openRecord: "[data-task-row]" },
+    subject: {
+      selector: '#main-content [data-record-kind="task"]',
+      why: "ten sam podmiot co P1-12. Zmierzone 2026-08-15: JEDEN narysowany element, `paddingLeft` 24px przy suficie 1472px — czyli ta aplikacja UMIE zbudować kolumnę tak, jak robi to prototyp, i robi to dokładnie w jednym miejscu",
+      app: "packages/desktop-ui/src/record/record.module.css (.screen — sufit 92rem i wyściółka var(--space-6) w jednej regule)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    // `enforced`, A NIE `pending`, I JEST TO NAJWAŻNIEJSZA PARA TEJ OSI —
+    // dokładnie z tego powodu, dla którego `P1-13` jest nią w P1: sześć
+    // czerwieni bez ani jednej zieleni jest nieodróżnialne od selektora,
+    // który nigdy nie trafia, a `rem` policzone nad wartością „0px" wygląda
+    // tak samo jak `rem` policzone nad niczym. Ta para jest jedynym
+    // podmiotem, na którym da się napisać złamanie WARTOŚCIOWE tej osi.
+    status: "enforced",
+  },
+  {
+    id: "P1B-07",
+    lot: "P1B",
+    position: 7,
+    kind: "restyle",
+    title:
+      "and Settings, which already declares the measure, still pads outside it",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Surface title band", akapit „The gutter sits INSIDE the measure"',
+    prototype: {
+      file: "v3/screens/settings.css",
+      lines: "96",
+      value:
+        "`.st { max-width: 74rem; padding: var(--space-6) var(--space-6) 5rem }`",
+    },
+    route: { settingsMode: true },
+    subject: {
+      selector:
+        "#main-content .settings-surface > *:not(.surface-header):not(.view-band)",
+      why: "ten sam podmiot co P1-13 — i to jest tu nośne: Ustawienia są JEDYNYM ekranem, którego sufit zgadzał się z prototypem jeszcze przed lotem L1, a rynnę mimo to trzymają na zewnątrz. Deklaracja sufitu i deklaracja rynny to dwie różne rzeczy i psują się osobno. Zmierzone 2026-08-15: JEDEN narysowany element, 0px",
+      app: "packages/desktop-ui/src/styles.css (.settings-surface — sufit 74rem; wyściółka na .surface-scroll NAD nim)",
+    },
+    read: { property: "paddingLeft" },
+    expect: { kind: "rem", value: 1.5 },
+    status: "pending: WPIS 2-6a (rynna wewnątrz sufitu)",
   },
 
   // ══ FAZA I, PRZYRZĄD P2 — SKRZYNKA, POZYCJE 3 I 4 ═════════════════════════
@@ -10892,7 +11320,37 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `enforced`, arytmetyka sumy dalej dawałaby liczbę, tylko nieprawdziwą —
   // dlatego liczba pod spodem pochodzi z przeliczenia `VISUAL_LANGUAGE_ROUTED_PAIRS.length`
   // na scalonym drzewie, a nie z dodawania dwóch deklaracji.
-  pairs: 212,
+  // 212 → 218 PRZY LOCIE NASADY FAZY III, 2026-08-15, i jest to NOWA OŚ nad
+  // istniejącymi podmiotami, nie rozpad istniejących par: `P1B` czyta
+  // `paddingLeft` dokładnie tych elementów, których `maxWidth` czyta P1.
+  // Sześć par tutaj (Kalendarz, Skrzynka, Odnowienia, Spotkania, rekord,
+  // Ustawienia), siódma (Dzisiaj) w mapie powłoki. Powód, tabela pomiaru
+  // i zadeklarowana ślepa plama stoją przy `P1B-01`.
+  pairs: 218,
+  // ── SPIS STATUSÓW, DOŁOŻONY PRZY NAPRAWIE LOTU NASADY FAZY III, 2026-08-15 ─
+  //
+  // TEJ MAPY NIE PILNOWAŁ ŻADEN RACHUNEK OCZEKUJĄCYCH, a mapa powłoki miała go
+  // od zawsze (`VISUAL_LANGUAGE_EXPECTED.enforced` / `.pending`,
+  // `verify-renderer-layout.mjs:4478-4481`). Znalazł to przegląd adwersarialny
+  // tego lotu i znalazł na WŁASNYM przykładzie: sam lot nasady przerzucił tutaj
+  // `D5-02b` z `enforced` na `pending` i dołożył PIĘĆ nowych par `pending`
+  // (P1B-02…05, P1B-07), czyli 2 → 8 — CZTEROKROTNY przyrost populacji, której
+  // nikt nie asertuje — i ani jedna zadeklarowana liczba w repozytorium się nie
+  // ruszyła. Bramka była zielona przed i po.
+  //
+  // TO JEST DOKŁADNIE TA WADA, KTÓRĄ TEN LOT NAPRAWIA, PIĘTRO WYŻEJ. Lekarstwem
+  // na „rejestr zaświadczał rozjazdy jako stan docelowy" jest `pending`
+  // z właścicielem, a `pending` bez rachunku znaczy, że następny lot może cofnąć
+  // dowolną liczbę par na oczekujące i nie usłyszy ani słowa. Uzbrojone są więc
+  // trzy rzeczy naraz: `PENDING_ALREADY_MATCHES` (para oczekująca, która zaczyna
+  // pasować, kładzie przelot), `ROUTED_UNKNOWN_STATUS` (właściciel musi być
+  // nazwany) i ten spis (ILE ich w ogóle jest).
+  //
+  // LICZONE TAK, JAK KLASYFIKUJE STRAŻNIK, i to nie jest szczegół: `enforced` to
+  // `status === "enforced"`, `pending` to cała reszta. Trzeci sposób liczenia
+  // byłby trzecim słownikiem statusu w pliku, który już ma dwa.
+  enforced: 210,
+  pending: 8,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
   //
@@ -11252,6 +11710,15 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       positionsInBrief: 13,
       pairs: 12,
       positionsWithPairs: 12, // 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+      positionsWithoutPairs: [1], // Dzisiaj — mapa powłoki
+    },
+    P1B: {
+      // Siedem pozycji briefu (siedem ekranów deklarujących sufit), sześć
+      // z parą TUTAJ, pozycja 1 (Dzisiaj) w mapie powłoki. Ta sama arytmetyka
+      // co przy P1.
+      positionsInBrief: 7,
+      pairs: 6,
+      positionsWithPairs: 6, // 2, 3, 4, 5, 6, 7
       positionsWithoutPairs: [1], // Dzisiaj — mapa powłoki
     },
     C1: {

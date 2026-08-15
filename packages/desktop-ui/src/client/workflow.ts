@@ -271,6 +271,30 @@ class ProjectionUnavailable extends Error {
 }
 
 /**
+ * THE SENTENCE A REFUSED READ PUTS ON THE SCREEN — one builder, one place.
+ *
+ * It was a template literal inline at the single call site until 2026-08-15,
+ * and the tail's measurement found what that costs: FIVE interaction fixtures
+ * had hand-copied the sentence into their snapshots, so the copy existed in six
+ * places and only one of them was the product. A copy fix would have left five
+ * fossils behind, each still asserting the old wording of a message nobody
+ * produces any more.
+ *
+ * WHAT THE TAIL IS EXPECTED TO CHANGE HERE, and why this is not it: today the
+ * sentence carries `queryName` and `diagnosticCode` — contract identifiers — in
+ * prose meant for a person (entry 7-2). Rewriting it belongs to the tail, and
+ * the tests around it no longer pin the WORDS: they ask that the cause stay
+ * RECOVERABLE (see `test/refusal-assert.ts`). Whoever rewrites this sentence
+ * moves the identifiers into a `data-` attribute or an expandable detail on the
+ * panel, and the assertions follow the identifiers rather than the prose.
+ */
+export const projectionRefusedMessage = (
+  queryName: string,
+  diagnosticCode: string,
+): string =>
+  `${queryName} was refused: ${diagnosticCode}. This view's data is unavailable right now. Try again.`;
+
+/**
  * The reason, in the order a reader needs it: the cause first, the advice last.
  * Long messages are clipped by the panels that print them, and the half worth
  * keeping is the half that names the query.
@@ -307,7 +331,7 @@ const queryProjection = async <Kind extends QueryProjection["kind"]>(
   if (response.result.outcome !== "success")
     throw new ProjectionUnavailable(
       response.result.diagnosticCode,
-      `${query.queryName} was refused: ${response.result.diagnosticCode}. This view's data is unavailable right now. Try again.`,
+      projectionRefusedMessage(query.queryName, response.result.diagnosticCode),
     );
   if (response.result.projection.kind !== kind)
     throw new ProjectionUnavailable(
