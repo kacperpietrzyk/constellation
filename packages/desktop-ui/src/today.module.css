@@ -165,7 +165,36 @@
    nagłówkowego, a prototyp na tym stopniu daje −0,005em, czyli o rząd mniej.
    Zostawienie ciasnego światła pod mniejszym stopniem złożyłoby napis gęściej
    niż jego własny tytuł ekranu — ta sama wada w drugą stronę. */
-.sectionHead h2 {
+/* `h3`, A NIE `h2`, I TO JEST RANGA, NIE ROZMIAR. Przeliczenie ogona
+   (wpis 1-4) zmierzyło, że lot L3 wstawił powitanie jako `h2` — czyli
+   RÓWNORZĘDNIE z nagłówkami sekcji, które też były `h2`. Prototyp trzyma
+   `h2.td-greeting` (`v3/screens/today.js:133`) NAD `h3` sekcji
+   (`v3/screens/today.js:140,149`), czyli powitanie jest RODZICEM sekcji.
+   Stopień i waga zostają bez zmian — zmienia się wyłącznie szczebel, którym
+   ten napis melduje się w spisie treści czytnika ekranu. Pilnuje tego oś
+   konspektu (`scripts/heading-outline.mjs`), bo P3 czyta ROZMIAR otwarcia
+   i nad tą wadą mówiła MATCH.
+
+   REGUŁA WYMIENIA OBA SZCZEBLE, A DOSTARCZONY ZNACZNIK JEST JEDEN (`h3`,
+   `TodaySurface.tsx`) — I TO NIE JEST NIEZDECYDOWANIE. Nota wyżej zapowiadała
+   `.sectionHead h3`, czyli farbę PRZYPIĘTĄ DO SZCZEBLA; lot dokończenia to
+   nadpisał i winien jest za to zdanie. Farba przypięta do szczebla znaczy, że
+   szczebel nie może się zepsuć BEZ zepsucia farby: cofnięcie `h3` na `h2`
+   wypadałoby wtedy spod tej reguły, nagłówek brałby domyślne 1,5 em wagą 700
+   i regresja RANGI byłaby widoczna jako regresja ROZMIARU. Wtedy zobaczyłby ją
+   pierwszy lepszy przyrząd czytający piksele — a oś konspektu istnieje
+   dokładnie dlatego, że RANGA PIKSELI NIE MA (`scripts/heading-outline.mjs`,
+   nagłówek pliku). Przyrząd, którego złamanie da się zobaczyć cudzym okiem,
+   nie ma dowodu na własną potrzebę.
+
+   Dlatego podział jest taki: ARKUSZ MÓWI, JAK TO WYGLĄDA, a oś konspektu mówi,
+   KTÓRY TO SZCZEBEL. Złamanie w `scripts/break-visual-language.mjs`
+   („Today's section heads climb back to the greeting's rung…") zamienia trzy
+   `h3` na `h2` i NIE RUSZA ANI JEDNEJ DEKLARACJI — bramka ma paść wyłącznie
+   na `HEADING_OUTLINE_FLAT`. Selektor `h2` NIE jest więc martwy: jest
+   powierzchnią, na której to złamanie da się przeprowadzić bez pikseli. */
+.sectionHead h2,
+.sectionHead h3 {
   display: flex;
   align-items: center;
   gap: var(--space-2);

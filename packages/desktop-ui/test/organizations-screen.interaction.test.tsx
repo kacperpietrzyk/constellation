@@ -22,6 +22,10 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 >;
 
 import {
+  assertRefusalIsRecoverable,
+  assertRefusalReadsAsASentence,
+} from "./refusal-assert.js";
+import {
   populatedProjectList,
   populatedRelationshipWorkspace,
   populatedShellQueries,
@@ -1323,9 +1327,21 @@ test("an unavailable review list says so; it never reports the review complete",
   );
   const message = rail.querySelector<HTMLElement>("[data-radar-unavailable]");
   assert.ok(message, "the rail turned an unavailable slice into a clean list");
-  assert.ok(
-    (message.textContent ?? "").trim().length > 20,
-    "the unavailable branch printed no reason",
+  // BYŁO TU `length > 20`, CZYLI „POWÓD JEST DŁUGI" — asercja spełniana przez
+  // DOWOLNE długie zdanie, także takie, które nie mówi, co się nie udało.
+  // Przeliczenie ogona (wpis 7-2) nazwało to pomiarem obok deklaracji, i tak
+  // było: przepisanie zdania na cokolwiek innego zostawiało ją zieloną.
+  // Pytanie jest odtąd o WŁASNOŚĆ — przyczyna odzyskiwalna z panelu (dziś
+  // prozą, po poprawce copy atrybutem) i zdanie złożone ze słów, nie
+  // z identyfikatorów.
+  assertRefusalIsRecoverable(message, {
+    queryName: "radar.review",
+    diagnosticCode: "query.not_available",
+    what: "the Organizations review rail on a refused radar read",
+  });
+  assertRefusalReadsAsASentence(
+    message,
+    "the Organizations review rail on a refused radar read",
   );
 });
 

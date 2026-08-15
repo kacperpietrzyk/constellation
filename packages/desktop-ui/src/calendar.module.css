@@ -413,7 +413,13 @@
   gap: var(--space-3);
 }
 
-.sectionHead h2 {
+/* `h3`, A NIE `h2` — patrz nota przy `.sectionHead h2, .sectionHead h3`
+   w `today.module.css`, RAZEM z akapitem o tym, dlaczego reguła wymienia oba
+   szczeble, a znacznik jest jeden. Prototyp: `h2.cal-title` („This week",
+   `v3/screens/calendar.js:205`) NAD `h3` tacy (`v3/screens/calendar.js:224`).
+   Rozmiar (`--text-md`) i waga zostają; schodzi sam szczebel. */
+.sectionHead h2,
+.sectionHead h3 {
   display: flex;
   align-items: center;
   gap: var(--space-2);

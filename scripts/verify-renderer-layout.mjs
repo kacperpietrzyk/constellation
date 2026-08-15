@@ -63,6 +63,12 @@ import {
   unusedRegistryEntries,
 } from "./descendant-overflow.mjs";
 import {
+  HEADING_OUTLINE_LEVELS_STATUS,
+  HEADING_OUTLINE_NESTING_STATUS,
+  describeHeading,
+  judgeHeadingOutline,
+} from "./heading-outline.mjs";
+import {
   classifyRecordScreenGeometry,
   classifyRecordScreenSweep,
 } from "./record-screen-geometry.mjs";
@@ -4447,6 +4453,32 @@ const judgeVisualPair = (pair, measured, rootFontSizePx, theme) => {
 
 // Księgowość mapy, sprawdzana BEZ przeglądarki: wpis nie może zniknąć po cichu,
 // a pozycja briefu nie może wypaść z OBU list naraz.
+// ── SŁOWNIK STATUSU PARY — JEDEN NAD OBIEMA MAPAMI ──────────────────────────
+//
+// DLACZEGO WSPÓLNY, A NIE DWA. Do naprawy lotu nasady Fazy III strażnik formatu
+// stał WYŁĄCZNIE nad mapą trasowaną (`auditRoutedMap`), a mapa powłoki
+// klasyfikowała przez `status.startsWith("pending")` — czyli nie sprawdzała
+// formatu w ogóle, choć jej komunikat błędu cytował wzorzec „pending: LOT N".
+// Komunikat mówił o regule, której nie testował: `pending: cokolwiek`
+// przechodziło tam bez słowa. Ten sam kształt przepisany w dwóch miejscach jest
+// w tym repozytorium nazwaną klasą defektu, więc zamiast dopisać drugą kopię
+// regexów, obie mapy pytają teraz jedną funkcję.
+//
+// CO WOLNO NAPISAĆ W STATUSIE. Albo „enforced", albo `pending` z JAWNYM
+// właścicielem — lotem numerowanym (Faza II) albo wpisem dokumentu przejścia
+// z tematem w nawiasie (Faza III nie ma lotów numerowanych). Właściciel jest
+// całą treścią tego statusu: para oczekująca bez adresu to rozjazd
+// zaświadczony jako stan docelowy, czyli dokładnie wada, którą lot nasady
+// naprawiał w rejestrze.
+const PAIR_STATUS_OWNER_SHAPES = [
+  /^pending: LOT [A-Z]*\d+$/u,
+  /^pending: WPIS \d+-\d+[a-z]? \(.+\)$/u,
+];
+const PAIR_STATUS_OWNER_WORDING =
+  'neither „enforced" nor „pending: LOT <nazwa>" nor „pending: WPIS <n-m> (<temat>)"';
+const pairStatusNamesAnOwner = (status) =>
+  PAIR_STATUS_OWNER_SHAPES.some((shape) => shape.test(status ?? ""));
+
 const auditVisualLanguageMap = () => {
   const failures = [];
   const seen = new Set();
@@ -4461,15 +4493,23 @@ const auditVisualLanguageMap = () => {
   const enforced = VISUAL_LANGUAGE_PAIRS.filter(
     (pair) => pair.status === "enforced",
   );
-  const pending = VISUAL_LANGUAGE_PAIRS.filter((pair) =>
-    pair.status.startsWith("pending"),
+  // OCZEKUJĄCA JEST KAŻDA, KTÓRA NIE JEST UZBROJONA — dopełnienie totalne, nie
+  // drugi wzorzec. Klasyfikacja przez `startsWith("pending")` (tak było do
+  // naprawy lotu nasady Fazy III) ma kierunek awarii w złą stronę: status
+  // z literówką wypadał z OBU worków, a `enforced + pending === total` łapało to
+  // jedną liczbą bez nazwiska. Teraz format jest osobnym strażnikiem, a rachunek
+  // nie ma jak niczego zgubić.
+  const pending = VISUAL_LANGUAGE_PAIRS.filter(
+    (pair) => pair.status !== "enforced",
   );
-  if (enforced.length + pending.length !== VISUAL_LANGUAGE_PAIRS.length)
-    failures.push(
-      `VISUAL_LANGUAGE_UNKNOWN_STATUS: ${VISUAL_LANGUAGE_PAIRS.length - enforced.length - pending.length} ` +
-        'pair(s) carry a status that is neither „enforced" nor „pending: LOT N". Such a pair is ' +
-        "asserted in neither direction and is indistinguishable from an entry nobody measures.",
-    );
+  for (const pair of pending)
+    if (!pairStatusNamesAnOwner(pair.status))
+      failures.push(
+        `VISUAL_LANGUAGE_UNKNOWN_STATUS: ${pair.id} „${pair.title}" carries the status ` +
+          `„${pair.status}", which is ${PAIR_STATUS_OWNER_WORDING}. A pending pair without a ` +
+          "NAMED owner is asserted in neither direction and is indistinguishable from an entry " +
+          "nobody measures.",
+      );
   for (const [label, seenCount, wanted] of [
     ["pairs", VISUAL_LANGUAGE_PAIRS.length, VISUAL_LANGUAGE_EXPECTED.pairs],
     ["enforced pairs", enforced.length, VISUAL_LANGUAGE_EXPECTED.enforced],
@@ -4890,7 +4930,7 @@ const visualLanguagePairs = async (browser) => {
             `${pair.read.property} = ${judged.observed}, and ${pair.prototype.file}:` +
             `${pair.prototype.lines} says ${judged.expected}. Contract: ${pair.contract}.`,
         );
-      if (pair.status.startsWith("pending") && judged.state === "MATCH")
+      if (pair.status !== "enforced" && judged.state === "MATCH")
         failures.push(
           `VISUAL_LANGUAGE_PENDING_ALREADY_MATCHES (${theme}) — ${pair.id} „${pair.title}" is ` +
             `filed as „${pair.status}", and it MATCHES today: ${subject} computes ` +
@@ -5599,6 +5639,11 @@ const measureTitleBandActionInPage = async ({
         // nietknięte.
         stack: null,
         opening: null,
+        // `null`, NIE PUSTY KONSPEKT: ekran bez rozstrzygniętego pasma nie ma
+        // pierwszego szczebla, więc oś konspektu nie ma nad czym stanąć i musi
+        // to POWIEDZIEĆ (`HEADING_OUTLINE_NOT_MEASURED`), a nie policzyć jako
+        // ekran o zerowej liczbie nagłówków.
+        outline: null,
         height: null,
         carries: null,
       };
@@ -5676,8 +5721,20 @@ const measureTitleBandActionInPage = async ({
     const wanted2xl = window.getComputedStyle(probe).fontSize;
     probe.remove();
 
+    // JEDEN SELEKTOR NAGŁÓWKA NA CAŁY PRZELOT, i to jest poprawka, nie
+    // porządki. Oś 4 szukała otwarcia w „h1, h2, h3", a oś konspektu chodzi po
+    // „h1 … h6" — więc ekran, którego pierwszym narysowanym nagłówkiem treści
+    // byłby `h4`, dostawał `content[0] !== openingNode`, czyli `opening: false`,
+    // czyli `NO_OPENING`, czyli CICHE ROZBROJENIE reguły zagnieżdżenia — bez
+    // ani jednego wiersza raportu, mimo stojącego na ekranie otwarcia
+    // `--text-2xl`. Znalezione przeglądem adwersarialnym lotu nasady Fazy III;
+    // dziś jest to zmiana bez skutku (jedenaście `h4`/`h5` w kodzie, żaden
+    // z nich na którymkolwiek z piętnastu przystanków — i to jest dokładnie
+    // moment, w którym takie rozjechanie się naprawia), a od teraz obie osie
+    // pytają tę samą stałą i nie mają jak rozejść się drugi raz.
+    const headingSelector = "h1, h2, h3, h4, h5, h6";
     const openingNode =
-      [...(work()?.querySelectorAll("h1, h2, h3") ?? [])].find(
+      [...(work()?.querySelectorAll(headingSelector) ?? [])].find(
         (node) =>
           node instanceof HTMLElement &&
           !band.contains(node) &&
@@ -5703,6 +5760,54 @@ const measureTitleBandActionInPage = async ({
         openingNode === null
           ? ""
           : (openingNode.textContent ?? "").trim().slice(0, 32),
+    };
+
+    // ── OŚ KONSPEKTU: RANGA NAGŁÓWKÓW, NIE ICH ROZMIAR ──────────────────────
+    // ZBIERANIE, NIE OSĄD — reguła stoi w `scripts/heading-outline.mjs` i jest
+    // czystą funkcją nad tym, co ta pętla zbierze. Powód rozdziału jest ten
+    // sam, co przy P3: „który nagłówek jest czyim dzieckiem" to zdanie
+    // o narysowanym dokumencie (nagłówki są w czterech komponentach,
+    // warunkowe, jeden `.sr-only`), a reguła nad nim jest funkcją nad
+    // tablicą — i ma chodzić w `npm run check` na trzech systemach.
+    //
+    // FLAGA `opening` JEST TĄ SAMĄ, KTÓRĄ WŁAŚNIE POLICZYŁA OŚ 4, a nie drugim
+    // pomiarem rozmiaru. Dwa niezależne pojęcia „otwarcia" w jednym przelocie
+    // rozjechałyby się przy pierwszej poprawce i dwa wiersze raportu mówiłyby
+    // o tym samym nagłówku dwie różne rzeczy.
+    const outlineOf = (nodes) =>
+      nodes
+        .filter(
+          (node) =>
+            node instanceof HTMLElement &&
+            rendered(node) &&
+            (node.textContent ?? "").trim() !== "",
+        )
+        .map((node) => ({
+          level: Number(node.tagName.slice(1)),
+          signature: signature(node),
+          sample: (node.textContent ?? "").trim().slice(0, 32),
+          // OTWARCIEM JEST WYŁĄCZNIE PIERWSZY NAGŁÓWEK O ROZMIARZE `--text-2xl`
+          // — dokładnie ten, który oś 4 nazywa `OPENING_2XL`, i to jest cała
+          // treść tej koniunkcji. Bez drugiego członu flagę dostawał PIERWSZY
+          // nagłówek treści na każdym ekranie, więc reguła zagnieżdżenia
+          // czytała nagłówek sekcji jako rodzica jego własnego rodzeństwa
+          // i zapalała dziewięć ekranów, na których prototyp też nie ma
+          // otwarcia. Zmierzone w pierwszym przelocie tej osi (2026-08-15),
+          // zanim została uzbrojona.
+          opening: node === openingNode && opening.state === "OPENING_2XL",
+        }));
+    // `headingSelector` STOI WYŻEJ, przy `openingNode` — obie osie czytają tę
+    // samą stałą, powód przy jej definicji.
+    const outline = {
+      // PASMO OSOBNO OD TREŚCI: tytuł ekranu jest pierwszym szczeblem
+      // konspektu, a nie jego częścią. Bez tego rozdziału każdy ekran, którego
+      // tytuł siedzi w paśmie, czytałby się jako „zaczyna od h2, pomija h1".
+      band: outlineOf([...band.querySelectorAll(headingSelector)]),
+      content: outlineOf(
+        [...(work()?.querySelectorAll(headingSelector) ?? [])].filter(
+          (node) => !band.contains(node),
+        ),
+      ),
     };
 
     // ── OŚ 5 (L2): CZY TO JEST PASMO POWŁOKI I CZY MA JEGO WYSOKOŚĆ ────────
@@ -5985,6 +6090,7 @@ const measureTitleBandActionInPage = async ({
       actions,
       stack,
       opening,
+      outline,
       height,
       carries,
     };
@@ -6544,6 +6650,56 @@ const titleBandActionCensus = async (browser) => {
       );
   }
 
+  // ── OŚ KONSPEKTU DOKUMENTU ────────────────────────────────────────────────
+  // Osądzana TĄ SAMĄ przelotką, bo pyta o ten sam zbiór ekranów i o tę samą
+  // flagę otwarcia; drugi przelot znaczyłby drugie wejście na piętnaście
+  // przystanków i drugą definicję „otwarcia".
+  const outlineReport = (line) => console.log(`heading outline\t${line}`);
+  const outlineScreens = [];
+  for (const entry of collected.measured) {
+    if (entry.outline === null || entry.outline === undefined) {
+      // NIE MILCZY. Ekran, którego pasma nie dało się rozstrzygnąć, nie ma
+      // pierwszego szczebla — i to jest POWIEDZIANE tutaj, a nie policzone
+      // jako ekran bez nagłówków. Sam brak pasma zgłasza `TITLE_BAND_*`, więc
+      // ta linia jest wierszem raportu, nie drugą czerwienią o tym samym.
+      outlineReport(
+        `${entry.id}\tNOT_MEASURED\tno resolved title band, so this screen has no first rung`,
+      );
+      continue;
+    }
+    outlineScreens.push({
+      id: entry.id,
+      band: entry.outline.band,
+      content: entry.outline.content,
+    });
+  }
+  const outline = judgeHeadingOutline(outlineScreens);
+  for (const screen of outline.judged)
+    outlineReport(
+      `${screen.id}\t${screen.state}\tband ${
+        screen.band.length === 0
+          ? "—"
+          : screen.band.map((head) => `h${head.level}`).join(" ")
+      }\tcontent ${
+        screen.content.length === 0
+          ? "—"
+          : screen.content.map((head) => `h${head.level}`).join(" ")
+      }\topening ${
+        screen.opening === null ? "—" : describeHeading(screen.opening)
+      }`,
+    );
+  outlineReport(
+    `nesting ${HEADING_OUTLINE_NESTING_STATUS}, levels ${HEADING_OUTLINE_LEVELS_STATUS}\t` +
+      `${outline.counts.screens} screen(s) walked\t` +
+      `${outline.counts.headings} heading(s) below the band\t` +
+      `${outline.counts.judged} with an opening to nest under\t` +
+      `${outline.counts.withoutOpening} without one\t` +
+      `${outline.counts.withoutHeadings} with NO heading at all (NOT judged)\t` +
+      `${outline.counts.flatScreens} flat\t${outline.counts.skipScreens} skipping a rung`,
+  );
+  for (const line of outline.reported) outlineReport(`reported\t${line}`);
+  failures.push(...outline.failures);
+
   failures.push(
     ...classifyTitleBandCensus({
       walk: {
@@ -7087,13 +7243,23 @@ const auditRoutedMap = () => {
     // w mocy — dalej wymaga „enforced" albo „pending: LOT <nazwa>" — tylko
     // nazwa może być tą, którą lot naprawdę nosi. Poszerzone przez przyrząd P1
     // Fazy I, 2026-08-13, dla par P1-02 … P1-10 i P1-12.
-    if (
-      pair.status !== "enforced" &&
-      !/^pending: LOT [A-Z]*\d+$/u.test(pair.status ?? "")
-    )
+    //
+    // WŁAŚCICIELEM MOŻE BYĆ TEŻ WPIS DOKUMENTU PRZEJŚCIA, i to jest druga
+    // poprawka słownika tą samą drogą, co pierwsza. Faza III nie ma lotów
+    // numerowanych — jej robota jest rozpisana na WPISY dokumentu przejścia
+    // („13-2 nawigacja Ustawień", „2-6a rynna wewnątrz sufitu"), więc para
+    // czekająca na taki wpis nie miała napisu, którym mogłaby powiedzieć
+    // prawdę: musiałaby wymyślić numer lotu, którego nikt nie nadał. Strażnik
+    // zostaje w mocy — dalej żąda „enforced" albo JAWNEGO właściciela — tylko
+    // właściciel może być wpisem. Poszerzone przy locie nasady Fazy III,
+    // 2026-08-15, dla D5-02b i par P1B.
+    // WZORCE STOJĄ RAZ, W `PAIR_STATUS_OWNER_SHAPES` — obie mapy pytają tę samą
+    // funkcję od naprawy lotu nasady Fazy III. Powód rozdziału był tylko taki,
+    // że mapa powłoki nigdy formatu nie sprawdzała.
+    if (pair.status !== "enforced" && !pairStatusNamesAnOwner(pair.status))
       failures.push(
         `ROUTED_UNKNOWN_STATUS: ${pair.id} „${pair.title}" carries the status „${pair.status}", ` +
-          'which is neither „enforced" nor „pending: LOT N". This pass decides what a measurement ' +
+          `which is ${PAIR_STATUS_OWNER_WORDING}. This pass decides what a measurement ` +
           "COSTS from that string — a delivered pair that broke throws, an undelivered one " +
           "reports — so a status it cannot read makes the pair cost nothing in either direction.",
       );
@@ -7131,6 +7297,30 @@ const auditRoutedMap = () => {
       "routed pairs",
       VISUAL_LANGUAGE_ROUTED_PAIRS.length,
       VISUAL_LANGUAGE_ROUTED_EXPECTED.pairs,
+    ],
+    // PARY UZBROJONE I OCZEKUJĄCE POLICZONE OSOBNO, i to jest poprawka z tego
+    // samego przeglądu, co reszta tej naprawy. Sam rachunek `pairs` przepuszcza
+    // ruch, który nic nie dodaje i nic nie zabiera, a tylko ROZBRAJA:
+    // przestawienie pary z „enforced" na „pending: …" zostawia sumę bez zmiany.
+    // Lot nasady zrobił dokładnie to osiem razy (2 → 8) przy nieruchomej
+    // deklaracji. Mapa powłoki liczyła te dwie rzeczy od zawsze (`:4478-4481`);
+    // większa z dwóch map nie liczyła ich wcale.
+    //
+    // KLASYFIKACJA TA SAMA, CO W STRAŻNIKU STATUSU WYŻEJ: wszystko, co nie jest
+    // dosłownie „enforced", jest oczekujące — a że tamten strażnik osobno żąda
+    // dla takiej pary NAZWANEGO właściciela, para nie może wpaść w ten worek
+    // przez literówkę.
+    [
+      "enforced pairs",
+      VISUAL_LANGUAGE_ROUTED_PAIRS.filter((pair) => pair.status === "enforced")
+        .length,
+      VISUAL_LANGUAGE_ROUTED_EXPECTED.enforced,
+    ],
+    [
+      "pending pairs",
+      VISUAL_LANGUAGE_ROUTED_PAIRS.filter((pair) => pair.status !== "enforced")
+        .length,
+      VISUAL_LANGUAGE_ROUTED_EXPECTED.pending,
     ],
     [
       "not-covered entries",
@@ -8038,7 +8228,7 @@ const routedVisualLanguage = async (browser) => {
               `${pair.prototype.file}:${pair.prototype.lines} says ${judged.expected}. ` +
               `Contract: ${pair.contract}.`,
           );
-        if (pair.status.startsWith("pending") && judged.state === "MATCH")
+        if (pair.status !== "enforced" && judged.state === "MATCH")
           failures.push(
             `ROUTED_PENDING_ALREADY_MATCHES (${theme}) — ${pair.id} „${pair.title}" is filed as ` +
               `„${pair.status}", and it MATCHES today: ${subject} computes ` +
