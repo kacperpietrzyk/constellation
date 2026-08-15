@@ -684,7 +684,7 @@ button.railRow:focus-visible .railArrow {
    i biegną długo, a `<select>` bierze szerokość najszerszej opcji; `flex-basis:
    8rem` chronił przed jednym, `max-inline-size` chroni przed drugim. Sufit
    16rem to idiom tego arkusza dla tej samej kontrolki w innym miejscu
-   (`styles.css:6784-6795`). `min-inline-size: 0` zostaje: rząd zawija, a bez
+   (`styles.css:6923-6934`). `min-inline-size: 0` zostaje: rząd zawija, a bez
    tego kontrolka nie umiałaby zejść poniżej swojej wewnętrznej szerokości
    i wystawałaby z wąskiego kadru. */
 .railSelect {

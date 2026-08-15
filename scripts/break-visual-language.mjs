@@ -2326,28 +2326,178 @@ const outcome = runBreakTests({
         ),
     },
     {
-      // ZŁAMANIE SZEŚĆDZIESIĄTE CZWARTE — KRESKA ŁAŃCUCHA ZNOWU WCHŁANIA CAŁĄ
-      // NADWYŻKĘ WIERSZA (D7-01e, regresja wprowadzona przez sam lot D7).
+      // ── WPIS 10-3, ZŁAMANIE PIERWSZE — ŁAŃCUCH PROWENANCJI WRACA DO WIERSZA
+      // (D7-01f, w miejsce skasowanego złamania nad D7-01e).
       //
-      // COFNIĘCIE DO REGUŁY BAZOWEJ, NIE SKASOWANIE NADPISU DO ZERA: wartość,
-      // którą tu wpisujemy, jest DOKŁADNIE tą, którą element odziedziczyłby po
-      // `.evidence-thread i`, gdyby nadpisu nie było — czyli złamanie odtwarza
-      // stan, w którym ekran naprawdę stał po rekompozycji, a nie stan
-      // wymyślony. Nic nie znika: łańcuch dalej się rysuje, dalej ma trzy
-      // plakietki i dwie kreski, tylko kreski znowu rosną z wierszem.
-      name: "let the provenance connectors absorb the row's free width again",
-      expectRedContains: ["D7-01e"],
+      // TO ZŁAMANIE ZASTĄPIŁO SWOJEGO POPRZEDNIKA, A NIE STANĘŁO OBOK NIEGO.
+      // Poprzednie cofało `flex` kreski łańcucha do reguły bazowej i dowodziło
+      // pary `D7-01e`; wpis 10-3 zdjął łańcuch z tego wiersza w całości, więc
+      // tamto złamanie nie miałoby czego edytować, a `replaceOnce` rzuciłby na
+      // nietrafionej kotwicy. Nowe dowodzi pary, która zajęła jej miejsce.
+      //
+      // WSTAWIA MOTYW Z POWROTEM, ZAMIAST KASOWAĆ PODMIOT — i to jest jedyny
+      // kierunek, jaki tu działa. Para liczy łańcuch w wierszu na ZERO, więc
+      // złamaniem jest jego OBECNOŚĆ. Wstawiany kształt jest DOKŁADNIE tym,
+      // który stał w wierszu do wpisu 10-3 (trzy plakietki, dwie kreski), więc
+      // złamanie odtwarza stan, w którym ekran naprawdę stał, a nie stan
+      // wymyślony.
+      name: "put the provenance chain back into the upcoming meeting row",
+      expectRedContains: ["D7-01f"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                {event.attendees.length === 0 ? (`,
+          `                <div className="evidence-thread">
+                  <span className="evidence-node">Event</span>
+                  <i aria-hidden="true" />
+                  <span className="evidence-node">Fact brief</span>
+                  <i aria-hidden="true" />
+                  <span className="evidence-node evidence-node--muted">
+                    Jamie result after
+                  </span>
+                </div>
+                {event.attendees.length === 0 ? (`,
+          "the head of the room branch in the upcoming row",
+        ),
+    },
+    {
+      // ── WPIS 10-3, ZŁAMANIE DRUGIE — WIERSZ ZNOWU LICZY UCZESTNIKÓW,
+      // ZAMIAST ICH WYMIENIAĆ (D7-01g).
+      //
+      // PRZESTAWIONY JEST WARUNEK, A NIE SKASOWANA GAŁĄŹ, i to jest wybór:
+      // wiersz po złamaniu rysuje DOSŁOWNIE ten napis, który stał w nim do
+      // wpisu 10-3 (`countLabel(event.attendees.length, "participant")`). To
+      // nie jest „wiersz bez niczego", tylko wiersz, który mówi „2
+      // participants" i wygląda na kompletny — dokładnie ten stan para ma
+      // odrzucać. Złamanie kasujące gałąź dowodziłoby tylko tego, że pusty
+      // ekran jest pusty.
+      //
+      // PARA CELUJE PO NAPRAWIE W `.meeting-person-name`, nie w opakowanie,
+      // więc to złamanie dowodzi jej nadal — po przestawieniu warunku żaden
+      // element imienia się nie rysuje. Złamanie szóste niżej dokłada drugą,
+      // ostrzejszą drogę: element zostaje, znika samo słowo.
+      name: "count the participants again instead of naming them",
+      expectRedContains: ["D7-01g"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                {event.attendees.length === 0 ? (
+                  <p className="meeting-room-none">
+                    The calendar lists nobody for this meeting.
+                  </p>
+                ) : (`,
+          `                {event.attendees.length >= 0 ? (
+                  <p className="meeting-room-none">
+                    {countLabel(event.attendees.length, "participant")}
+                  </p>
+                ) : (`,
+          "the branch that decides whether the row names the room",
+        ),
+    },
+    {
+      // ── WPIS 10-3, ZŁAMANIE TRZECIE — POZYCJA PRZYGOTOWANIA TRACI ŚCIEŻKĘ
+      // CELU (D7-01h).
+      //
+      // ZDEJMOWANA JEST SAMA ŚCIEŻKA — i po naprawie wpisu 10-3 jest to
+      // JEDYNE złamanie, które ta para umie zobaczyć, bo pigułki celu na
+      // wierszu już nie ma (`recordId` dowodu nie adresuje nazwanego rekordu;
+      // wpis `ROUTED_NOT_COVERED` lot D7 pozycja 1). Para mówi dziś „pozycja
+      // leży na trzech torach prototypu", a nie „ma wyjście", i to złamanie
+      // dowodzi dokładnie tego zdania: wracamy do dwóch ścieżek, czyli do
+      // geometrii, którą pozycja miała do wpisu 10-3.
+      name: "take the target track off the preparation item",
+      expectRedContains: ["D7-01h"],
       file: "packages/desktop-ui/src/styles.css",
       edit: (text) =>
         replaceOnce(
           text,
-          `.meeting-event .evidence-thread i {
-  flex: 0 0 1.5rem;
-}`,
-          `.meeting-event .evidence-thread i {
-  flex: 1 1 1.5rem;
-}`,
-          "the scoped connector width in the upcoming row",
+          `.meeting-prep-item {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr) auto;`,
+          `.meeting-prep-item {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);`,
+          "the track list of the preparation item",
+        ),
+    },
+    {
+      // ── WPIS 10-3, ZŁAMANIE CZWARTE — DOSTAWCA WRACA WYŁĄCZNIE DO NAGŁÓWKA
+      // SEKCJI (D7-02g).
+      //
+      // TO ZŁAMANIE MA BLIŹNIAKA, KTÓRY MUSI ZOSTAĆ ZIELONY. Plakietka przy
+      // nagłówku sekcji ma własną parę (`D7-03g`) i własne złamanie wyżej;
+      // tutaj kasowana jest plakietka WIERSZA, a tamta zostaje nietknięta.
+      // Jeśli oba wpisy zapaliłyby się razem, znaczyłoby to, że któraś z par
+      // mierzy nie ten podmiot, o którym mówi.
+      name: "take the provider badge off the upcoming row and leave it only on the section head",
+      expectRedContains: ["D7-02g"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                <span className="meeting-locked">
+                  <Icon name="lock" />
+                  {providerLabel(event.provider)}
+                </span>
+`,
+          ``,
+          "the provider badge inside the upcoming row",
+        ),
+    },
+    {
+      // ── WPIS 10-3, ZŁAMANIE PIĄTE — PLAKIETKA ZOSTAJE, ZNIKA JEJ SŁOWO
+      // (D7-02h).
+      //
+      // TO JEST ZŁAMANIE, KTÓRE PRZEGLĄD ADWERSARIALNY WYKONAŁ RĘKĄ I NAD
+      // KTÓRYM BRAMKA BYŁA ZIELONA. Kasowany jest sam napis dostawcy; nośnik,
+      // obwódka i kłódka zostają, więc wiersz WYGLĄDA na kompletny i mówi
+      // czytelnikowi zero słów o tym, czyj jest ten wpis. `D7-02g` liczy
+      // plakietkę i przechodzi zielona nad tym stanem — i tak ma być, bo ona
+      // pyta o nośnik. Czerwień ma zapalić WYŁĄCZNIE `D7-02h`, czyli para,
+      // która czyta `textContent`. Gdyby zapaliły się obie, znaczyłoby to, że
+      // podział na dwie pary niczego nie rozdzielił.
+      name: "silence the provider word and leave the padlock standing",
+      expectRedContains: ["D7-02h"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                  <Icon name="lock" />
+                  {providerLabel(event.provider)}
+`,
+          `                  <Icon name="lock" />
+`,
+          "the provider word inside the row badge",
+        ),
+    },
+    {
+      // ── WPIS 10-3, ZŁAMANIE SZÓSTE — IMIĘ ZNIKA, A JEGO ELEMENT ZOSTAJE
+      // (D7-01g).
+      //
+      // DRUGIE ZŁAMANIE Z PRZEGLĄDU ADWERSARIALNEGO, I OSTRZEJSZE OD JEGO
+      // WŁASNEGO. Adwersarz skasował cały `<span className="meeting-person-name">`
+      // i bramka wróciła zielona, bo para stała wtedy na `.meeting-person`,
+      // czyli na opakowaniu. Tutaj element ZOSTAJE, a znika sam napis — czyli
+      // dokładnie ten stan, którego nie widzi ani liczenie pojemnika, ani
+      // liczenie „ile jest elementów w DOM". Para jest czerwona, bo `atLeast`
+      // liczy dopasowania NARYSOWANE, a `<span>` bez tekstu ma zerową
+      // szerokość (`verify-renderer-layout.mjs:4612-4617`). Bez tego złamania
+      // ta droga byłaby przeczytana w kodzie i niesprawdzona.
+      name: "empty the attendee name without touching the element that holds it",
+      expectRedContains: ["D7-01g"],
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                        <span className="meeting-person-name">
+                          {attendee.name}
+                        </span>`,
+          `                        <span className="meeting-person-name">
+                          {""}
+                        </span>`,
+          "the attendee name inside its own element",
         ),
     },
     {

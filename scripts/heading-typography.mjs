@@ -119,21 +119,21 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".document-canvas h1",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:7906, inside the `.document-canvas` block that opens at :7877. The note canvas sets its own font-size as a clamp and then leaves prose headings on the UA scale, so an <h1> in a note draws at 2em of that clamp. Three subjects, one rule.",
+    note: "styles.css:8045, inside the `.document-canvas` block that opens at :8016. The note canvas sets its own font-size as a clamp and then leaves prose headings on the UA scale, so an <h1> in a note draws at 2em of that clamp. Three subjects, one rule.",
   },
   {
     sheet: "styles.css",
     selector: ".document-canvas h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:7906 — same rule, UA 1.5em.",
+    note: "styles.css:8045 — same rule, UA 1.5em.",
   },
   {
     sheet: "styles.css",
     selector: ".document-canvas h3",
     missing: ["font-size", "font-weight"],
     owner: "lot 5 — file scope",
-    note: "styles.css:7906 — same rule, UA 1.17em.",
+    note: "styles.css:8045 — same rule, UA 1.17em.",
   },
   // ── Settings, lot 6 by file scope, NOT named by any of its eight items ────
   // Everything here is either a `settings/*.module.css` that lot 6 owns or a
@@ -143,10 +143,18 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
   //
   // THE LINE RANGE THAT USED TO STAND HERE IS GONE BECAUSE IT WAS FALSE IN BOTH
   // DIRECTIONS, and that is a measurement, not tidying. It read „everything
-  // here is inside `styles.css:7513-8463`". Measured 2026-08-15 against the
-  // scan's own rule lines: the nine `styles.css` entries below it sit at :9437,
-  // :9672, :9751, :9921, :9844, :9954 and :9995 — every one of them OUTSIDE
-  // that range — while the range does contain `.hub-enrollment h4` (:7529),
+  // here is inside `styles.css:7513-8463`" — QUOTED VERBATIM FROM THE COMMIT
+  // THAT CARRIED IT, and deliberately not re-pinned. The first pass through
+  // this file moved the quotation's START with the live citations and left its
+  // END where it was, which made it a quotation of a sentence nobody ever
+  // wrote; and nothing here would have caught that, because the test beside
+  // this file resolves the first `:N` of a `note`, never a number inside
+  // a comment. A quotation of a claim that has been WITHDRAWN does not move
+  // when the sheet moves — moving it is what turns evidence into decoration.
+  // Measured 2026-08-15 against the
+  // scan's own rule lines: the nine `styles.css` entries below it sit at :9576,
+  // :9811, :9890, :10060, :9983, :10093 and :10134 — every one of them OUTSIDE
+  // that range — while the range does contain `.hub-enrollment h4` (:7668),
   // whose own note says it is „outside the Settings region lot 6 owns". A range
   // that excludes what it introduces and includes what another entry excludes
   // is not a stale number; re-pinning it would have kept the falsehood and
@@ -156,56 +164,56 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".onboarding-step h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9495.",
+    note: "styles.css:9634.",
   },
   {
     sheet: "styles.css",
     selector: ".settings-copy h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9765.",
+    note: "styles.css:9904.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9840.",
+    note: "styles.css:9979.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog > header h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10010. This rule is a REFINEMENT of `.concept-help-dialog h2` (:9840) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :9840 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
+    note: "styles.css:10149. This rule is a REFINEMENT of `.concept-help-dialog h2` (:9979) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :9979 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-layout article h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9933.",
+    note: "styles.css:10072.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-export-terms h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10043.",
+    note: "styles.css:10182.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-limitations h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10084.",
+    note: "styles.css:10223.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-preview h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10084 — same rule, second ancestor.",
+    note: "styles.css:10223 — same rule, second ancestor.",
   },
   {
     sheet: "settings/activity-section.module.css",
@@ -250,14 +258,14 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".workspace-context h2",
     missing: ["font-size", "font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:7361. Co-occurs with `inspector-empty`, which has no heading rule at all, so nothing covers it.",
+    note: "styles.css:7500. Co-occurs with `inspector-empty`, which has no heading rule at all, so nothing covers it.",
   },
   {
     sheet: "styles.css",
     selector: ".hub-enrollment h4",
     missing: ["font-weight"],
     owner: "outside Phase 3",
-    note: "styles.css:7587 — outside the Settings region lot 6 owns.",
+    note: "styles.css:7726 — outside the Settings region lot 6 owns.",
   },
   {
     sheet: "organizations/organizations.module.css",
@@ -726,16 +734,16 @@ export const firstCitedLine = (note, sheet) => {
  * dokładnie tą samą wadą, którą `firstCitedLine` zamknęło o jeden cytat
  * wcześniej, i wróciła po jednym locie. Zmierzone 2026-08-15 przy naprawie po
  * przeglądzie adwersarialnym lotu L8: rejestr miał CZTERY takie cytaty, DWA
- * z nich mijały swoją regułę — `.concept-help-dialog h2` cytowane jako `:9710`
- * przy regule w `:9764` (dług starszy niż ta fala) i `.center-state h1` jako
+ * z nich mijały swoją regułę — `.concept-help-dialog h2` cytowane jako `:9849`
+ * przy regule w `:9903` (dług starszy niż ta fala) i `.center-state h1` jako
  * `:4222` przy regule w `:4245` (zgniłe wstawką lotu L8, a `:4222` celuje dziś
  * w `.capture-footer > span`, czyli w zdanie o czymś innym) — a test drukował
  * „4 unchecked continuation(s)" i był ZIELONY. Raport lotu przepisał wtedy
  * „22 wpisy, 0 błędnych" jako zdanie o rejestrze, którym ono nie było: było
  * zdaniem o zasięgu asercji.
  *
- * `(?<![\w./-])` odsiewa `styles.css:9802` i `ActivitySection.tsx:66` — tam
- * przed dwukropkiem stoi znak nazwy pliku — i zostawia samo `(:9764)`.
+ * `(?<![\w./-])` odsiewa `styles.css:9941` i `ActivitySection.tsx:66` — tam
+ * przed dwukropkiem stoi znak nazwy pliku — i zostawia samo `(:9903)`.
  */
 export const citedContinuations = (note) =>
   typeof note !== "string"

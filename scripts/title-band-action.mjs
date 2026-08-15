@@ -1282,7 +1282,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/pipeline.js:409-410 — btn("New opportunity", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "pipeline/PipelineSurface.tsx:840-872 — akcja w paśmie; .crumbbar skasowany razem ze swoją regułą w pipeline.module.css",
+    app: "pipeline/PipelineSurface.tsx:836-868 — akcja w paśmie; .crumbbar skasowany razem ze swoją regułą w pipeline.module.css",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1314,7 +1314,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/renewals.js:217 — btn("New renewal", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "renewals/RenewalsSurface.tsx:817-846 — akcja w paśmie; licznik zostaje w swoim viewbarze z lotu 3",
+    app: "renewals/RenewalsSurface.tsx:813-842 — akcja w paśmie; licznik zostaje w swoim viewbarze z lotu 3",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1341,7 +1341,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/crm.js:371 — btn("New organization", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "StrategicDepthSurface.tsx:687-720 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
+    app: "StrategicDepthSurface.tsx:683-716 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1368,7 +1368,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/crm.js:540 — btn("New person", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "people/PeopleSurface.tsx:484-517 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
+    app: "people/PeopleSurface.tsx:480-513 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1499,7 +1499,7 @@ export const TITLE_BAND_ROWS = [
       "to --text-xl (v3/app.css:651)",
     // PRZELOT #1 POPRAWIŁ TĘ KOLUMNĘ, i to jest najważniejsza z pięciu
     // poprawek: lektura przewidywała `OPENING_2XL`, bo `.overview-intent h2`
-    // (`styles.css:6811`) jest jedynym żywym konsumentem `--text-2xl`
+    // (`styles.css:6950`) jest jedynym żywym konsumentem `--text-2xl`
     // w kolumnie pracy. Pierwszym NARYSOWANYM nagłówkiem tego rekordu jest
     // jednak `h2._fitHeading „Does it still fit”` o 11 px — sekcja 2xl leży
     // dalej. Gdyby ta kolumna została przewidywaniem, przyrząd zgłaszałby

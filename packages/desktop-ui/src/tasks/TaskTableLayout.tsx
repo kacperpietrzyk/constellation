@@ -2,6 +2,7 @@ import type { TaskId } from "@constellation/contracts";
 
 import type { ListNavigationItemProps } from "../hooks/useListNavigation.js";
 import { formatDate, formatDateTime, formatTime } from "../i18n.js";
+import { initialsOf } from "../initials.js";
 import {
   availableTaskColumns,
   taskColumnsFor,
@@ -58,17 +59,6 @@ const Absent = () => (
 const statusShape = (row: TaskRow): string => {
   if (row.task.completionState === "completed") return "done";
   return row.status?.operationalSemantics ?? "actionable";
-};
-
-/** Two letters, so a name that is not resolvable still occupies its column. */
-const initialsOf = (name: string): string => {
-  const letters = name
-    .split(/\s+/u)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.slice(0, 1))
-    .join("");
-  return letters === "" ? "?" : letters.toUpperCase();
 };
 
 /** The owner as a screen reader hears them. An assignee who left the workspace

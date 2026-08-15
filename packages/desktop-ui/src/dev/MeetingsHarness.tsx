@@ -183,6 +183,9 @@ export const MeetingsHarness = () => {
           onInspectorOpen={() => setInspectorOpen(true)}
           onMeetingSelected={() => undefined}
           onOpenConnections={() => undefined}
+          /* Ten harness nie ma powłoki, więc nie ma dokąd otworzyć rekordu —
+             pigułka celu jest tu bezczynna, i to jest prawda o harnessie,
+             a nie o produkcie. */
           onOpenSources={() => undefined}
         />
       </div>

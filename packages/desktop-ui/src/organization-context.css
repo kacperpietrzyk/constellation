@@ -4,7 +4,7 @@
   /* TEN NOŚNIK JEST EKRANEM, WIĘC DEKLARUJE SWÓJ SUFIT (Faza II, lot L1 —
      naprawa po przeglądzie). Test na „ekran" jest w tym repozytorium
      rozstrzygalny z markupu, a nie z nazwy: `surface-header` + eyebrow +
-     `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1778-1783`). Pełny
+     `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1774-1779`). Pełny
      kontekst organizacji ma wszystkie trzy, więc nota przy `.work-surface`
      w `styles.css` liczyła go do chromu powłoki BŁĘDNIE, a on brał 72rem
      powłoki — wartość, której referencja nie zna w ogóle.

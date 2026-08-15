@@ -374,7 +374,7 @@ export const RecordCommentsPanel = ({
    *
    *  OSOBNY PROP, A NIE ODCZYT Z `mentionCandidates`, I JEST KU TEMU POWÓD:
    *  wywołujący WYCINA czytelnika z listy kandydatów, zanim ją tu poda
-   *  (`RealApp.tsx:2383`, `StrategicDepthSurface.tsx:1929`) — nie wzmiankuje
+   *  (`RealApp.tsx:2383`, `StrategicDepthSurface.tsx:1925`) — nie wzmiankuje
    *  się samego siebie — więc w tym komponencie nazwiska czytelnika po prostu
    *  nie ma. `mentionNameOf` też go nie zna: dla własnego principala zwraca
    *  słowo „You" (`record-actors.ts:143`), z którego inicjały byłyby literą

@@ -1527,7 +1527,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     subject: {
       selector:
         '#main-content [class*="_today_"] > *:not(.surface-header):not(.view-band)',
-      why: "the clamp carrier the contract names by selector: `.surface-scroll > *:where(:not(.surface-header, .view-band))` (styles.css:6242-6246). Measured 2026-08-13 at 1440×900 in both themes: FOUR rendered children (p._capacity, section._section ×3), ONE distinct maxWidth — 1152px — so this selector says exactly one thing",
+      why: "the clamp carrier the contract names by selector: `.surface-scroll > *:where(:not(.surface-header, .view-band))` (styles.css:6381-6385). Measured 2026-08-13 at 1440×900 in both themes: FOUR rendered children (p._capacity, section._section ×3), ONE distinct maxWidth — 1152px — so this selector says exactly one thing",
       app: "packages/desktop-ui/src/TodaySurface.tsx:235 (nośnik), styles.css (klamra `.surface-scroll > *`), today.module.css (`.today { --surface-measure: 68rem }` — wartość TEGO ekranu, od lotu L1)",
     },
     read: { property: "maxWidth" },
@@ -3311,7 +3311,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "pipeline" },
     subject: {
       selector: "[data-pipeline-meter] > span",
-      why: "the wrapper carries the declaration data-pipeline-meter (PipelineSurface.tsx:413); the fill is its only child",
+      why: "the wrapper carries the declaration data-pipeline-meter (PipelineSurface.tsx:409); the fill is its only child",
       app: "packages/desktop-ui/src/pipeline/pipeline.module.css:294-299",
     },
     read: { property: "backgroundImage" },
@@ -3325,7 +3325,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // chodzi o „dwie waluty na tablicy", tylko o dwie waluty w OTWARTYM lejku.
     // Wśród otwartych kart fikstury jest PLN (`crm-fixture.ts:246`, `:307`)
     // i EUR (`:267`), więc `sumByCurrency(...).length === 2` i `meterMax` wraca
-    // 0, a `PipelineSurface.tsx:412` nie montuje `[data-pipeline-meter]` ani
+    // 0, a `PipelineSurface.tsx:408` nie montuje `[data-pipeline-meter]` ani
     // razu. Demonstracja przewalutowania, o którą fikstura zabiega świadomie
     // (`crm-fixture.ts:17`), siedzi na KOSZCIE oferty (`:386` — `edrOffer.cost`
     // w EUR plus `rate`), czyli na INNYM POLU niż wartość karty; zdjęcie EUR
@@ -3408,7 +3408,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "pipeline" },
     subject: {
       selector: "[data-pipeline-card]",
-      why: "declaration on the card itself (PipelineSurface.tsx:297); the sheet declares no box-shadow at all",
+      why: "declaration on the card itself (PipelineSurface.tsx:293); the sheet declares no box-shadow at all",
       app: "packages/desktop-ui/src/pipeline/pipeline.module.css:335-348",
     },
     read: { property: "boxShadow" },
@@ -3457,7 +3457,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '[data-pipeline-card] [class*="_ageStale_"] svg',
       why: "counted, not read: the difference is the PRESENCE of a glyph the app does not draw",
-      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:358-361",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:354-357",
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
@@ -3579,7 +3579,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // pozycja nawigacji.
       selector: 'main[data-surface="pipeline"] .surface-header button',
       why: "R2 — one ruling for five surfaces; the title band holds exactly one button, which at rest is `primary-button`",
-      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:840-872",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:836-868",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -3601,7 +3601,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '[data-pipeline-card] [class*="_next_"] svg',
       why: "counted; the app renders the sentence with no room for a glyph",
-      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:356",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:352",
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
@@ -3622,7 +3622,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "pipeline" },
     subject: {
       selector: "[data-offer-waiting] svg",
-      why: "declaration: the paragraph carries data-offer-waiting (PipelineSurface.tsx:170)",
+      why: "declaration: the paragraph carries data-offer-waiting (PipelineSurface.tsx:166)",
       app: "packages/desktop-ui/src/pipeline/pipeline.module.css:523-545",
     },
     read: { property: null },
@@ -3720,7 +3720,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "renewals" },
     subject: {
       selector: '[data-renewals-surface] [class*="_basisLink_"]',
-      why: "CSS Module class on the button that leads to the deal (RenewalsSurface.tsx:159-169)",
+      why: "CSS Module class on the button that leads to the deal (RenewalsSurface.tsx:155-165)",
       app: "packages/desktop-ui/src/renewals/renewals.module.css:440-447",
     },
     read: { property: "color" },
@@ -3764,7 +3764,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "renewals" },
     subject: {
       selector: '[data-renewals-surface] [class*="_mark_"] svg',
-      why: "counted; the app types ▲ ◷ ■ as text (RenewalsSurface.tsx:76-80). The trailing underscore keeps _leadMark_ out — class matching is case sensitive",
+      why: "counted; the app types ▲ ◷ ■ as text (RenewalsSurface.tsx:77-81). The trailing underscore keeps _leadMark_ out — class matching is case sensitive",
       app: "packages/desktop-ui/src/renewals/renewals.module.css:201-208",
     },
     read: { property: null },
@@ -3786,7 +3786,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "renewals" },
     subject: {
       selector: '[data-renewals-surface] [class*="_action_"] svg',
-      why: "counted; the row's own buttons (RenewalsSurface.tsx:319-326, :406-413) render text only",
+      why: "counted; the row's own buttons (RenewalsSurface.tsx:315-322, :402-409) render text only",
       app: "packages/desktop-ui/src/renewals/renewals.module.css:583-602",
     },
     read: { property: null },
@@ -3845,7 +3845,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // ten sam atrybut.
       selector: 'main[data-surface="renewals"] .surface-header button',
       why: "R2, the same ruling as L2-08; on this screen the title band holds exactly one button",
-      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:817-846",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:813-842",
     },
     read: { property: "paint" },
     expect: { kind: "accent" },
@@ -3883,7 +3883,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         'main[data-surface="renewals"] .surface-header [class*="_count_"]',
       why: "counted at zero: the position is that the counter must leave the row the screen's action stands in, and any selector for the NEW band would prescribe markup the lot chooses",
-      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:797-799",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:793-795",
     },
     read: { property: null },
     // LICZBA ZERO SAMA NIE ODRÓŻNIA „licznik wyszedł" OD „cały rząd zniknął",
@@ -3931,7 +3931,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "renewals" },
     subject: {
       selector: '[data-renewals-surface] [class*="_more_"] svg',
-      why: "counted; aria-expanded is stamped and paints nothing (RenewalsSurface.tsx:1070-1077)",
+      why: "counted; aria-expanded is stamped and paints nothing (RenewalsSurface.tsx:1066-1073)",
       app: "packages/desktop-ui/src/renewals/renewals.module.css:128-140",
     },
     read: { property: null },
@@ -3953,7 +3953,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "renewals" },
     subject: {
       selector: "[data-renewal-row]",
-      why: 'declaration, not class name: RenewalsSurface.tsx:233 stamps data-renewal-row on every row. A [class*="_row_"] subject was MEASURED as unsafe — twenty distinct _row_ classes exist across the built chunks — and the declaration costs nothing. The app pads var(--space-3) block-wise',
+      why: 'declaration, not class name: RenewalsSurface.tsx:229 stamps data-renewal-row on every row. A [class*="_row_"] subject was MEASURED as unsafe — twenty distinct _row_ classes exist across the built chunks — and the declaration costs nothing. The app pads var(--space-3) block-wise',
       app: "packages/desktop-ui/src/renewals/renewals.module.css:156-168",
     },
     read: { property: "paddingTop" },
@@ -4595,7 +4595,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: ".knowledge-document-list li button.active",
       why: "global class in styles.css (NOT a CSS Module), named by Faza 2 as an open debt: the literal `inset 2px 0` shadow outranks and erases the focus ring",
-      app: "packages/desktop-ui/src/styles.css:6705-6708, :695-699",
+      app: "packages/desktop-ui/src/styles.css:6844-6847, :695-699",
     },
     read: { property: "boxShadow" },
     expect: { kind: "literal", value: "none" },
@@ -4666,7 +4666,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: ".knowledge-document-list li button",
       why: "global class; the app lays the row out as a flex row with space-between, which is why the date is the thing that ellipses",
-      app: "packages/desktop-ui/src/styles.css:6855-6867",
+      app: "packages/desktop-ui/src/styles.css:6994-7006",
     },
     read: { property: "display" },
     expect: { kind: "literal", value: "grid" },
@@ -4703,7 +4703,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: ".knowledge-document-list li button time.knowledge-row-when",
       why: "counted; `<time>` because the date is now the only content of its element, which is also the first point at which the machine-readable value has anywhere to live (NotesReading.tsx). Merging the date back into the context string — the defect this position names — removes this element and nothing else in the map would notice",
-      app: "packages/desktop-ui/src/styles.css:6777-6784, NotesReading.tsx",
+      app: "packages/desktop-ui/src/styles.css:6916-6923, NotesReading.tsx",
     },
     read: { property: null },
     expect: { kind: "count", atLeast: 1 },
@@ -4739,7 +4739,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: ".knowledge-welcome h2",
       why: "global class; the rule declares margin and colour and NO size, so the heading falls back to the user-agent 1.5em",
-      app: "packages/desktop-ui/src/styles.css:7090-7093",
+      app: "packages/desktop-ui/src/styles.css:7229-7232",
     },
     read: { property: "fontSize" },
     expect: { kind: "token", token: "--text-xl" },
@@ -5082,7 +5082,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: ".settings-navigator",
       why: "counted at zero: the brief's hard condition is that aria-current moves ONTO .settings-mode-column and the in-content navigator goes away, in the same commit as five test files",
-      app: "packages/desktop-ui/src/SettingsSurface.tsx:1065-1092, styles.css:7825-7879",
+      app: "packages/desktop-ui/src/SettingsSurface.tsx:1065-1092, styles.css:7964-8018",
     },
     read: { property: null },
     expect: { kind: "count", equals: 0 },
@@ -5228,7 +5228,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // Poprzednia wersja pytała `.settings-control button` o „przynajmniej
       // jeden akcent na ekranie" i PRZECHODZIŁA JUŻ DZIŚ — nie dlatego, że lot 6
       // cokolwiek oddał, tylko dlatego, że akcent na tym ekranie jest od dawna:
-      // `styles.css:8380-8386` maluje `.settings-control.support-report-action >
+      // `styles.css:8519-8525` maluje `.settings-control.support-report-action >
       // button` farbą `--action-primary-bg`. Czyli oczekiwanie było napisane
       // tak, że NIGDY NIC BY NIE ZMIERZYŁO.
       //
@@ -5264,8 +5264,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         ".settings-control button[data-notes-export], " +
         ".settings-control button[data-notes-import-scan]",
-      why: "the two buttons Settings #4 names (SettingsSurface.tsx:2345-2354 export to Markdown, :2429-2438 choose a vault folder); both now carry .primary-button, which styles.css:8700 excludes by name from the generic secondary paint — before lot 6 that rule painted them --action-secondary-bg and 0 of 2 carried the accent",
-      app: "packages/desktop-ui/src/styles.css:8700-8712 (the secondary paint and its two named exceptions), :8770-8776 (the accent that already existed on this screen and made the loose version pass), :822-825 (.primary-button), SettingsSurface.tsx:2345-2354, :2429-2438",
+      why: "the two buttons Settings #4 names (SettingsSurface.tsx:2345-2354 export to Markdown, :2429-2438 choose a vault folder); both now carry .primary-button, which styles.css:8839 excludes by name from the generic secondary paint — before lot 6 that rule painted them --action-secondary-bg and 0 of 2 carried the accent",
+      app: "packages/desktop-ui/src/styles.css:8839-8851 (the secondary paint and its two named exceptions), :8909-8915 (the accent that already existed on this screen and made the loose version pass), :822-825 (.primary-button), SettingsSurface.tsx:2345-2354, :2429-2438",
     },
     read: { property: "paint" },
     expect: { kind: "accentCount", atLeast: 2 },
@@ -5296,8 +5296,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { settingsMode: true },
     subject: {
       selector: ".settings-copy > p",
-      why: "global class; today the prose sits in a 1fr track beside a 21rem control track (styles.css:7897-7903) and declares no measure of its own",
-      app: "packages/desktop-ui/src/styles.css:7915-7920",
+      why: "global class; today the prose sits in a 1fr track beside a 21rem control track (styles.css:8036-8042) and declares no measure of its own",
+      app: "packages/desktop-ui/src/styles.css:8054-8059",
     },
     read: { property: "maxWidth" },
     expect: { kind: "token", token: "--surface-read" },
@@ -5307,7 +5307,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // ZASZŁO — lot zostawił klasę i zapisał, że zostawił ją świadomie, więc
     // para mierzy element, a nie swoją własną nieobecność. Różnica wobec v3
     // (notka stoi NAD kontrolką, nie POD) jest zapisana przy regule
-    // w `styles.css:8257-8262` i ta para jej nie dotyczy: mierzy MIARĘ, a nie
+    // w `styles.css:8396-8401` i ta para jej nie dotyczy: mierzy MIARĘ, a nie
     // kolejność.
     status: "enforced",
   },
@@ -7749,56 +7749,106 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // tamten lot nie zwinął wiersza z powrotem do jednej kolumny.
     status: "enforced",
   },
+  // ── D7-01e ZDJĘTE PRZEZ WPIS 10-3, I ZASTĄPIONE POMIAREM, A NIE DZIURĄ ────
+  //
+  // Para czytała `flexGrow` na `.meeting-event .evidence-thread i` — kresce
+  // łańcucha prowenancji `Event → Fact brief → Jamie result after`. Łańcuch
+  // był NASZ: prototypowy tor środkowy wiersza niesie zamiast niego `.mt-room`
+  // (kto będzie) i `.mt-prep` (nazwane pozycje przygotowania). Wpis 10-3
+  // przyjmuje prototyp, więc podmiot tej pary przestał istnieć.
+  //
+  // INSTRUKCJA WŁAŚCICIELA BYŁA INNA I ZOSTAŁA ROZSTRZYGNIĘTA POMIAREM.
+  // Stała tu instrukcja w trzech krokach: skasować wpis, dopisać go do
+  // `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`, zmniejszyć `pairs` i `lots.D7.pairs`
+  // o jeden. Jej podstawą było zdanie, że skasowanie podmiotu daje
+  // `NOT_MEASURED`, które jest ŚLEPE NA STATUS — czyli czerwień nieodróżnialną
+  // od zepsutego przyrządu. To zdanie jest prawdziwe o KAŻDYM rodzaju
+  // oczekiwania OPRÓCZ `count`, a `count` jest dokładnie tym rodzajem, którym
+  // trzeba tu zapytać. Sprawdzone w kodzie, nie założone:
+  // `verify-renderer-layout.mjs` (gałąź `pair.expect.kind === "count"`
+  // w `measureVisualPairsInPage`) robi `continue` PRZED strażnikiem „zero
+  // dopasowań", z komentarzem, który to wprost gwarantuje — a wcześniej
+  // `judgeVisualPair` rozstrzyga `count` jako pierwszy. Precedens w tej samej
+  // mapie: `D7-01c` (`.meeting-context-rail`, `count equals 0`).
+  //
+  // WPIS `NOT_COVERED` BYŁBY WIĘC DZIURĄ TAM, GDZIE DA SIĘ POSTAWIĆ POMIAR.
+  // Zamiast niego stoi niżej `D7-01f`, która liczy łańcuch w wierszu na ZERO.
+  // Zdanie, które ta para mówi, jest MOCNIEJSZE od zdania skasowanej: tamta
+  // pilnowała, żeby kreska nie rosła, ta pilnuje, żeby wiersz nie odzyskał
+  // motywu, którego prototyp w nim nie ma. Rachunek `notCovered` zostaje więc
+  // NIERUSZONY, a `pairs` rośnie zamiast maleć — arytmetyka stoi przy sumie.
   {
-    id: "D7-01e",
+    id: "D7-01f",
     lot: "D7",
     position: 1,
     kind: "prescribed",
-    title: "and the provenance chain inside it stops absorbing the free width",
+    title: "and the provenance chain has left the row entirely",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "234-245",
+      value:
+        "tor środkowy prototypowego wiersza (`.mt-up-main`) niesie `.mt-up-head`, `.mt-room` i `.mt-prep` — i ANI JEDNEGO elementu łańcucha pochodzenia",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event .evidence-thread",
+      why: "PARA NA ZERZE JEST TU POMIAREM, NIE CISZĄ — mechanizm i miejsce w kodzie stoją w komentarzu nad tym wpisem, a precedens w tej samej mapie to `D7-01c`. Liczony jest POJEMNIK łańcucha, nie jego kreska: kreska była podmiotem skasowanej `D7-01e` i mogłaby zniknąć sama, zostawiając plakietki `Event → Fact brief → Jamie result after` w wierszu. Selektor jest ZAWĘŻONY do wiersza spotkania, bo ten sam motyw rysuje onboarding (`OnboardingFlow.tsx:126`), gdzie jest zamierzony — para bez zawężenia żądałaby skasowania go tam",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (motyw zdjęty z wiersza nadchodzących)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01g",
+    lot: "D7",
+    position: 1,
+    kind: "restructure",
+    title: "and the row NAMES who will be in the room instead of counting them",
     contract:
       '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
     prototype: {
       file: "v3/screens/meetings.css",
-      lines: "54-55, 77",
+      lines: "84-91",
       value:
-        "łańcuch prowenancji siedzi u prototypu w ŚRODKOWEJ ścieżce wiersza (`.mt-up-main { min-width: 0; display: block }`), a nie na nadwyżce całego wiersza",
+        "„Kto będzie — z rolą, bo »MN · PZ« nie przygotowuje nikogo do rozmowy" +
+        "”; `.mt-room` niesie `.mt-person` z awatarem, `.mt-person-name` i `.mt-person-role`",
     },
     route: { surface: "meetings" },
     subject: {
-      selector: ".meeting-event .evidence-thread i",
-      why: "`flexGrow`, NIE szerokość, i to jest wybór z powodu: szerokość kreski jest funkcją okna, więc literał pinowałby liczbę zależną od widoku, a to, co ten lot zepsuł, jest DEKLARACJĄ — reguła bazowa `.evidence-thread i` daje `flex: 1 1 1.5rem`, czyli udział w całej nadwyżce. W szynie nie było czego wchłaniać; po przeniesieniu wiersza na 1136 px dwie kreski urosły do ~700 px każda, czyli łańcuch pochodzenia czytał się jak dwie długie linie z plakietkami na końcach. Selektor jest ZAWĘŻONY do wiersza spotkania, bo regułę bazową dzieli onboarding, gdzie rozciąganie jest zamierzone — para bez tego zawężenia żądałaby zmiany tam",
-      app: "packages/desktop-ui/src/styles.css (.meeting-event .evidence-thread i)",
+      selector: ".meeting-event .meeting-person-name",
+      why: 'IMIĘ JEST PODMIOTEM, A NIE POJEMNIK PO NIM — i to jest naprawa po przeglądzie adwersarialnym, zmierzona, nie przewidziana. Para stała na `.meeting-person`, czyli na OPAKOWANIU awatara i imienia; adwersarz skasował `<span className="meeting-person-name">{attendee.name}</span>`, wiersz został z samymi inicjałami — dosłownie „MN · PZ”, czyli stan, który ta para w swoim tytule ODRZUCA — a bramka wróciła ZIELONA w obu motywach (`observed: 2 rendered element(s) match „.meeting-event .meeting-person” — MATCH`). Przyrząd mierzył OBECNOŚĆ POJEMNIKA i nie mógł zobaczyć słów, o które pyta jego tytuł. Na `.meeting-person-name` to samo złamanie daje ZERO. PARA WIDZI TAKŻE IMIĘ WYZEROWANE, nie tylko skasowany element, i to jest sprawdzone w kodzie przyrządu, a nie założone: `judgeVisualPair` dla oczekiwania `atLeast` liczy `visible`, czyli dopasowania przefiltrowane przez `rendered()` (`verify-renderer-layout.mjs:4612-4617` — `display !== none` ORAZ `width > 0 && height > 0`), a `<span>` bez tekstu ma zerową szerokość. Awatar zostaje policzony przez nic — i tak ma być: awatar bez imienia jest właśnie tym, co prototyp odrzuca własnym komentarzem. PODŁOGA, NIE RÓWNOŚĆ, i to jest wybór wymuszony fiksturą: harness rysuje JEDEN wiersz nadchodzących z DWOMA uczestnikami (`CollaborationHarness.tsx`), więc `equals 2` przypinałoby parę do liczby, która jest własnością fikstury, a nie regułą produktu — klasa `fixture-artifact-is-not-a-design-defect`. CZEGO TA PARA NIE MÓWI: nie mówi, że narysowanym słowem jest IMIĘ TEGO uczestnika. Bramka chodzi po jednej fiksturze, więc równość z nazwiskiem byłaby fiksturą przepisaną do przyrządu — ten sam powód i ten sam podział co przy `L11-03a`/`L11-03b`. Równość `.meeting-person-name` z `event.attendees[].name` stoi w `packages/desktop-ui/test/meetings-room.interaction.test.tsx`. ROLI TA PARA NIE ŻĄDA I NIE MOŻE — `CalendarAttendeeSchema` (`packages/contracts/src/meeting-loop.ts:43-53`, `.strict()`) nie niesie stanowiska; to jest ustalenie o kontrakcie i stoi wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`',
+      app: "packages/desktop-ui/src/styles.css (.meeting-person-name) + MeetingsSurface.tsx",
     },
-    read: { property: "flexGrow" },
-    expect: { kind: "literal", value: "0" },
-    // ZOSTAJE `enforced` — I TO JEST DECYZJA Z POMIAREM, NIE PRZEOCZENIE.
-    // JEJ PODMIOT UMRZE WRAZ Z LOTEM 10-3, WŁAŚCICIEL DOSTAJE INSTRUKCJĘ:
-    //
-    // Ta para jest jedyną z trzech stojących na wierszu spotkania, której
-    // podmiot NIE MA odpowiednika w prototypie. Łańcuch prowenancji
-    // (`Event → Fact brief → Jamie result after`) jest nasz; prototypowy tor
-    // środkowy niesie `.mt-room` (awatary z rolami) i `.mt-prep` (cztery
-    // nazwane wiersze). Wpis 10-3 przyjmuje prototyp, więc `.evidence-thread`
-    // w tym wierszu przestanie istnieć.
-    //
-    // DLACZEGO NIE `pending`: `pending` NIE POMOŻE. `NOT_MEASURED` jest ŚLEPE
-    // NA STATUS (`verify-renderer-layout.mjs`, gałąź „zero dopasowań"), więc
-    // skasowanie podmiotu daje czerwień w OBU statusach — i to czerwień
-    // o brzmieniu „selektor nie trafił w nic", czyli nieodróżnialną od
-    // zepsutego przyrządu. Przerzucenie na `pending` kupiłoby wyłącznie
-    // złudzenie, że sprawa jest załatwiona.
-    //
-    // CO MA ZROBIĆ LOT 10-3, W TYM SAMYM COMMICIE, W KTÓRYM ZDEJMIE ŁAŃCUCH:
-    //   1. skasować ten wpis z mapy trasowanej;
-    //   2. dopisać go do `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` (lot D7,
-    //      pozycja 1) z powodem: podmiot zniknął razem z przebudową wiersza
-    //      #10-3, a prototyp nie ma łańcucha prowenancji w wierszu spotkania —
-    //      plus warunek wyjścia, jeśli łańcuch wróci gdzie indziej;
-    //   3. przestawić w `VISUAL_LANGUAGE_ROUTED_EXPECTED`: `pairs` −1,
-    //      `notCovered` +1 oraz `lots.D7.pairs` −1 (pozycje briefu bez zmian —
-    //      pozycja 1 zachowuje pary D7-01a…D7-01d).
-    // Bez punktu 3 bramka wraca `ROUTED_COUNT_DRIFT`, czyli czerwień, która
-    // czyta się jak defekt produktu.
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+  {
+    id: "D7-01h",
+    lot: "D7",
+    position: 1,
+    kind: "restructure",
+    title:
+      "and each preparation item lies on the prototype's three tracks, not on two",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.css",
+      lines: "107-112",
+      value:
+        "`.mt-prep-item { display: grid; grid-template-columns: 13rem minmax(0, 1fr) auto }` — klucz, wartość i CEL (`Northstar Industries →`, `Task →`, `Client →`, `Show →`)",
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-prep-item",
+      why: "LICZBA ŚCIEŻEK POZYCJI, A NIE OBIETNICA WYJŚCIA — i tytuł tej pary jest już drugi, bo pierwszy obiecywał więcej, niż para umiała powiedzieć. Kontrakt mówi wprost, że para liczby ścieżek na WIERSZU jest osobnym pomiarem od pary liczby ścieżek na CIELE („a track-count pair on the ROW is a separate measurement from a track-count pair on the body”): `D7-01d` trzyma wiersz na trzech torach i przechodzi zielona nad pozycją zbudowaną z samego klucza i wartości. Liczba ścieżek, nie ich szerokość, z tego samego powodu co przy `D7-01d`: piksele zależą od okna. TRZECIA ŚCIEŻKA STOI DZIŚ PUSTA I PARA NIE UDAJE, ŻE JEST INACZEJ. Wpis 10-3 postawił w niej pigułkę celu; przegląd adwersarialny zmierzył, że `recordId` dowodu jest identyfikatorem `MeetingWorkItem`, a nie nazwanego rekordu (`packages/desktop-main/src/calendar-meeting-loop.ts:290-326`), więc pigułka prowadziła pod adres, którego nie ma, i zeszła z wiersza. Ścieżka ZOSTAJE, bo prototyp deklaruje ją BEZWARUNKOWO (`meetings.css:108-112`), a zwężenie do dwóch byłoby zapisaniem naszego braku jako kształtu docelowego; warunek wyjścia stoi w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED` (lot D7, pozycja 1). ZAWĘŻENIE `:has(.meeting-prep-go)` ZNIKŁO RAZEM Z PIGUŁKĄ, i historia tego selektora jest tu warta zapisania, bo dwa razy z rzędu rozstrzygnął ją POMIAR, a nie przewidywanie. Pierwsza wersja pary stała na gołym `.meeting-prep-item` z uzasadnieniem, że pułapka „więcej niż jedna RÓŻNA wartość wśród narysowanych” tu nie bije. BIŁA: przelot 2026-08-15 dał `208px 395.359px 53.2344px` i `208px 448.594px 0px`, bo `auto` liczy się jako zero tam, gdzie pozycja nie miała pigułki, i przyrząd zgłosił `NOT_MEASURED`. Po zdjęciu pigułek ŻADNA pozycja nie ma trzeciego dziecka, więc wszystkie liczą tę samą wartość i pułapka znów nie bije — tym razem z powodu, który jest zmierzony przelotem tej naprawy, a nie przewidziany",
+      app: "packages/desktop-ui/src/styles.css (.meeting-prep-item)",
+    },
+    read: { property: "gridTemplateColumns" },
+    expect: { kind: "tracks", equals: 3 },
     status: "enforced",
   },
   {
@@ -7852,7 +7902,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // PARY NAD `.meeting-empty` TU NIE MA, I JEST TO ZAMIANA RAMIENIA, NIE
   // ROZLUŹNIENIE. Stała tu D7-02c, czytająca przezroczystość stanu pustego
   // nadchodzących; fikstura bramki rysuje odtąd DRUGIE ramię tego samego
-  // wyrażenia (`MeetingsSurface.tsx:819`) — kartę z wierszem — bo tamto ramię
+  // wyrażenia (`MeetingsSurface.tsx:936`) — kartę z wierszem — bo tamto ramię
   // niosło jeden podmiot, a to niesie cztery (D7-01d, D7-02e, D7-02f oraz
   // szerokość akcji wiersza). Suma `notCovered` idzie przy tym W DÓŁ, 15 → 14:
   // dwa wpisy o wierszach nadchodzących zostały zamknięte, jeden o stanie
@@ -7933,6 +7983,68 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // ta para przez tamten lot przechodzi bez zmiany. Odnotowane, bo
     // przeliczenie ogona wymieniło ją obok D7-01d jako certyfikującą
     // dzisiejszy wiersz.
+    status: "enforced",
+  },
+  {
+    id: "D7-02g",
+    lot: "D7",
+    position: 2,
+    kind: "restructure",
+    title: "and the sunken row names its provider where the row is",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "246-248",
+      value:
+        '`<span class="mt-up-tail"><span class="mt-locked">…Outlook</span></span>` — plakietka dostawcy stoi w TRZECIEJ ścieżce KAŻDEGO wiersza, obok tej przy nagłówku sekcji (`:437-438`), a nie zamiast niej',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event .meeting-locked",
+      why: "TA PARA JEST DRUGĄ POŁOWĄ `D7-02f`, A NIE JEJ POWTÓRZENIEM. `D7-02f` żąda, żeby wiersz był WPUSZCZONY; kontrakt w tym samym wzorcu żąda, żeby głębia nigdy nie niosła znaczenia sama („Depth is invisible to a reader who cannot see it, so it always ships with a glyph and a worded label — the reference pairs it with a lock pill naming the provider”). Wpuszczony jest WIERSZ, więc słowo należy do wiersza; plakietka przy nagłówku sekcji (`D7-03g`) mówi to o SEKCJI i nie dosięga wiersza — zdjęcie jej stąd zostawia obie tamte pary zielone. PODŁOGA, NIE RÓWNOŚĆ, z tego samego powodu co przy `D7-01g`: fikstura rysuje jeden wiersz, a reguła mówi „przy każdym”, czego przy jednym egzemplarzu żadna liczba nie odróżni",
+      app: "packages/desktop-ui/src/styles.css (.meeting-locked) + MeetingsSurface.tsx",
+    },
+    read: { property: null },
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+  // ── DRUGA POŁOWA PLAKIETKI DOSTAWCY: JEJ SŁOWO ────────────────────────────
+  //
+  // `D7-02g` tuż wyżej liczy plakietkę i nic więcej. Przegląd adwersarialny
+  // skasował z niej NAPIS, zostawiając sam `<Icon name="lock" />`, i bramka
+  // wróciła ZIELONA w obu motywach — nad wierszem, o którym `D7-02g` mówi
+  // w tytule, że „NAZYWA” swojego dostawcę, i którego uzasadnienie cytuje
+  // kontrakt żądający glifu ORAZ SŁOWA („always ships with a glyph and
+  // a worded label”). Zostawał sam glif, czyli dokładnie ta połowa, przed którą
+  // cytat ostrzega.
+  //
+  // PODZIAŁ NA DWIE PARY, A NIE PRZEROBIENIE JEDNEJ — ten sam kształt, co
+  // `L11-03a` (element istnieje) i `L11-03b` (co w nim stoi). Jedna para nie
+  // umie powiedzieć obu rzeczy naraz: czytanie `text` na nieistniejącym
+  // elemencie jest awarią przyrządu, a nie werdyktem o słowie.
+  {
+    id: "D7-02h",
+    lot: "D7",
+    position: 2,
+    kind: "restructure",
+    title: "and that badge says the provider's name, not just a padlock",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Section head over a list card"',
+    prototype: {
+      file: "v3/screens/meetings.js",
+      lines: "246-248",
+      value:
+        '`<span class="mt-locked">${icon("lock")}Outlook</span>` — glif ORAZ nazwa dostawcy, nigdy sam glif',
+    },
+    route: { surface: "meetings" },
+    subject: {
+      selector: ".meeting-event .meeting-locked",
+      why: "CZYTANE JEST SŁOWO, A NIE OBECNOŚĆ NOŚNIKA — powód i pomiar stoją w komentarzu nad tym wpisem. Szukane „Calendar” jest napisem PRODUKTU, a nie fikstury: `providerLabel` (`MeetingsSurface.tsx`) ma dwa ramiona i OBA na nie kończą („Apple Calendar” dla `eventkit`, „Calendar” dla `unconfigured` i `fixture`), więc para mówi to samo zdanie o każdym dostawcy, jakiego zna kontrakt, i nie przypina się do tego, co akurat deklaruje harness. Wybrane jest `contains`, a nie równość, właśnie po to. JEDEN NARYSOWANY PODMIOT PRZEZ KONSTRUKCJĘ: selektor jest zawężony do wiersza (`.meeting-event`), a harness rysuje jeden wiersz nadchodzących — więc pułapka „więcej niż jedna RÓŻNA wartość” nie bije. Gdyby wierszy było kilka i deklarowały różnych dostawców, ta para wróciłaby GŁOŚNYM `NOT_MEASURED`, nigdy cichą zielenią. Ikona nie wchodzi do `textContent`, więc skasowanie napisu daje pusty odczyt, a nie odczyt z glifem",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx (providerLabel w `.meeting-locked` wiersza)",
+    },
+    read: { property: "text" },
+    expect: { kind: "contains", value: "Calendar" },
     status: "enforced",
   },
   {
@@ -8123,7 +8235,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // `> .mt`, `> .cal-screen`, `> .record`, `.st`), a ta aplikacja klamruje
   // KAŻDE dziecko nośnika przewijania z osobna — i kontrakt nazywa ten zbiór
   // wprost: `.surface-scroll > *:where(:not(.surface-header, .view-band))`
-  // (`styles.css:6242-6246`). Odczyt na KORZENIU został zmierzony 2026-08-13
+  // (`styles.css:6381-6385`). Odczyt na KORZENIU został zmierzony 2026-08-13
   // i odrzucony, bo daje CZTERY fałszywe werdykty z trzynastu: Projekty,
   // Pipeline, Organizacje i Ludzie wyliczają na korzeniu „none" i byłyby
   // zielone przy treści zaklamrowanej do 72 rem, a Ustawienia — jedyny ekran
@@ -8274,7 +8386,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         "#main-content [data-pipeline-surface] > *:not(.surface-header):not(.view-band)",
       why: "measured 2026-08-13, both themes — ONE rendered child (div._scroller[data-scrolls-horizontally]), maxWidth 1152px. This is the pair that says the reading clamp is what makes the horizontal board scroll at 1440 px in the first place",
-      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:804 (gałąź dostawy), :840, :864 i :964 to pozostałe gałęzie",
+      app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:800 (gałąź dostawy), :836, :860 i :960 to pozostałe gałęzie",
     },
     read: { property: "maxWidth" },
     expect: { kind: "literal", value: "none" },
@@ -8299,7 +8411,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         "#main-content [data-organizations-surface] > *:not(.surface-header):not(.view-band)",
       why: "measured 2026-08-13, both themes — THREE rendered children (div._list, section.strategic-create-panel, div.strategic-layout), ONE distinct maxWidth (1152px)",
-      app: "packages/desktop-ui/src/StrategicDepthSurface.tsx:749 i :876",
+      app: "packages/desktop-ui/src/StrategicDepthSurface.tsx:745 i :872",
     },
     read: { property: "maxWidth" },
     expect: { kind: "literal", value: "none" },
@@ -8324,7 +8436,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         "#main-content [data-people-surface] > *:not(.surface-header):not(.view-band)",
       why: "measured 2026-08-13, both themes — ONE rendered child (div._list), maxWidth 1152px",
-      app: "packages/desktop-ui/src/people/PeopleSurface.tsx:579 i :636",
+      app: "packages/desktop-ui/src/people/PeopleSurface.tsx:575 i :632",
     },
     read: { property: "maxWidth" },
     expect: { kind: "literal", value: "none" },
@@ -8348,7 +8460,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       selector:
         "#main-content [data-renewals-surface] > *:not(.surface-header):not(.view-band)",
       why: "measured 2026-08-13, both themes — THREE rendered children (section._section ×3: due, watching, closed), ONE distinct maxWidth (1152px)",
-      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:760 i :885",
+      app: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx:756 i :881",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 68 },
@@ -8378,8 +8490,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
       // NOT_MEASURED (`verify-renderer-layout.mjs:4083-4092`) — czyli awarię
       // przyrządu w miejscu, w którym należy się werdykt.
       selector: "#main-content .meeting-surface",
-      why: "the one screen that clamps on its own root: measured 2026-08-13, both themes — ONE rendered element, maxWidth 1504px = 94rem. The same class is worn by `.meeting-skeleton` (MeetingsSurface.tsx:512) and by the error panel (:530); the arrival marker already in ROUTED_ARRIVAL keeps this stop on the delivered screen",
-      app: "packages/desktop-ui/src/MeetingsSurface.tsx:1780, deklaracja w styles.css:5043-5058 (`max-width: 74rem` od lotu L1, wcześniej 94rem)",
+      why: "the one screen that clamps on its own root: measured 2026-08-13, both themes — ONE rendered element, maxWidth 1504px = 94rem. The same class is worn by `.meeting-skeleton` (MeetingsSurface.tsx:635) and by the error panel (:653); the arrival marker already in ROUTED_ARRIVAL keeps this stop on the delivered screen",
+      app: "packages/desktop-ui/src/MeetingsSurface.tsx:2022, deklaracja w styles.css:5043-5058 (`max-width: 74rem` od lotu L1, wcześniej 94rem)",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 74 },
@@ -8443,7 +8555,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector: '#main-content [data-record-kind="task"]',
       why: "the record screen is the sole child of the tasks scroll box once a row is opened, so it wears the same `.surface-scroll > *` clamp as every list body. Measured 2026-08-13, both themes — ONE rendered element, maxWidth 1152px, i.e. the record reads NARROWER than the reference by 20 rem",
-      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:481, klamra styles.css:6242-6246",
+      app: "packages/desktop-ui/src/record/TaskRecordScreen.tsx:481, klamra styles.css:6381-6385",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 92 },
@@ -8467,8 +8579,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector:
         "#main-content .settings-surface > *:not(.surface-header):not(.view-band)",
-      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9574-9576) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
-      app: "packages/desktop-ui/src/SettingsSurface.tsx:1047, styles.css:9574-9576",
+      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9713-9715) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
+      app: "packages/desktop-ui/src/SettingsSurface.tsx:1047, styles.css:9713-9715",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 74 },
@@ -9244,7 +9356,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // included) and CSS selectors. Against a hand-written text scanner, which is what
   // the census used on the day it was written: an apostrophe in JSX text opened a
   // string it never closed, and one such zone hid a live
-  // `<select id="organization-delivery-link">` in `StrategicDepthSurface.tsx:1239`
+  // `<select id="organization-delivery-link">` in `StrategicDepthSurface.tsx:1235`
   // from the very ledger that was supposed to pin it. Measured 2026-08-15 with the
   // parser: 190 native controls in 31 files, down from 193 before the lot. The census
   // does NOT know where a control stands, only how many there are; the pairs know
@@ -10318,6 +10430,140 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
  */
 export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
   {
+    // ROLA UCZESTNIKA SPOTKANIA — USTALENIE O KONTRAKCIE, NIE O FARBIE,
+    // I JEST TO PYTANIE, KTÓRE PRZELICZENIE OGONA ZOSTAWIŁO OTWARTE.
+    //
+    // Przeliczenie postawiło je wprost jako niezmierzone: „czy projekcja
+    // spotkania w ogóle niesie osoby z rolami — do sprawdzenia PRZED wyceną
+    // lotu 10-3". Sprawdzone w kontrakcie 2026-08-15, nie na zrzucie DOM:
+    // `CalendarAttendeeSchema` (`packages/contracts/src/meeting-loop.ts:43-53`)
+    // jest `.strict()` i niesie DOKŁADNIE `externalId?`, `name`, `email?`,
+    // `organizer`, `response`. Nazwisko WCHODZI — i dlatego awatary z imionami
+    // są w tym wpisie oddane i zmierzone parą `D7-01g`. Stanowiska NIE MA,
+    // i `.strict()` nie pozwoli go nawet przemycić obok.
+    //
+    // DWIE DROGI, KTÓRYCH TEN WPIS ŚWIADOMIE NIE POSZEDŁ, obie odrzucone
+    // z powodu, nie z braku czasu:
+    //   • `organizer: boolean` w szczelinie roli — to jest rola W SPOTKANIU,
+    //     nie stanowisko człowieka, a postawiona tam, gdzie prototyp stawia
+    //     „Dyrektor bezpieczeństwa", czytałaby się jak stanowisko;
+    //   • prototypowy kształt `.mt-person.unlinked` (przerywana ramka, ikona
+    //     ogniwa) — on TWIERDZI, że uczestnik nie jest jeszcze osobą w grafie,
+    //     a ten wiersz w graf nie zagląda. Twierdzenie bez odczytu jest gorsze
+    //     niż milczenie.
+    //
+    // WARUNEK WYJŚCIA I JEGO CENA. Rola musi wejść do projekcji, zanim wejdzie
+    // do arkusza: albo `CalendarAttendeeSchema` dostaje pole stanowiska, albo
+    // uczestnik dostaje rozwiązany `personId`, a powierzchnia dokłada odczyt
+    // osoby. Obie drogi ruszają `packages/contracts` i kernel, czyli są POZA
+    // `desktop-ui` — a drzewo, w którym ten wpis powstał, dzieli `dist`
+    // z drugim torem i miało zakaz ruszania pakietów spoza `desktop-ui`.
+    // Dopóki tego nie ma, żadna para nie ma prawa żądać roli: żądałaby roboty,
+    // której nie da się wykonać bez skłamania o danych.
+    lot: "D7",
+    position: 1,
+    scope: "wiersz nadchodzącego spotkania — rola uczestnika",
+    title: "the room names people but cannot name what they do",
+    prototype:
+      "v3/screens/meetings.css:84-91 + v3/screens/meetings.js:239-242 (`.mt-person-role`, „z rolą, bo »MN · PZ« nie przygotowuje nikogo do rozmowy”)",
+    app: "packages/contracts/src/meeting-loop.ts:43-53 (`CalendarAttendeeSchema`, `.strict()`, bez stanowiska)",
+    why:
+      "Projekcja nie niesie roli, więc pary nie da się napisać bez wymyślenia danych. " +
+      "Awatar i imię są oddane i zmierzone (`D7-01g`); rola nie jest oddana i NIE JEST udawana.",
+    greenWrong:
+      "Nic — brak roli jest tu zapisany jako ustalenie o kontrakcie, nie pominięty.",
+  },
+  {
+    // PIGUŁKA CELU W POZYCJI PRZYGOTOWANIA — USTALENIE O DANYCH, NIE O FARBIE,
+    // I JEST TO DRUGA STRONA TEJ SAMEJ MONETY, CO ROLA UCZESTNIKA WYŻEJ.
+    //
+    // Wpis 10-3 tę pigułkę ZBUDOWAŁ: trzecia ścieżka pozycji, przycisk
+    // `Task →` / `Project →` / `Note →`, powłoka otwierała pod nim ekran
+    // rekordu. Przegląd adwersarialny zmierzył, że prowadzi ona pod adres,
+    // pod którym nie ma rekordu, i że strażnik, którym lot to uzasadnił, nie
+    // może zadziałać. Oba fakty są z kodu, nie z uruchomionej aplikacji:
+    //   • jedyny produkcyjny czytnik dowodów
+    //     (`packages/desktop-main/src/calendar-meeting-loop.ts:290-326`)
+    //     wpisuje w `recordId` `meeting.id` albo `item.id` — NIGDY
+    //     `item.taskId`, mimo że `MeetingWorkItemSchema`
+    //     (`packages/contracts/src/meeting-loop.ts:308-309`) niesie `taskId`
+    //     i `projectId` obok;
+    //   • `TaskIdSchema` to `opaqueId<"TaskId">()`, czyli
+    //     `z.uuid().brand<"TaskId">()` (`packages/contracts/src/ids.ts:3`
+    //     i `:44`); marka jest WYŁĄCZNIE typowa,
+    //     więc w runtime zostaje gołe `z.uuid()`. Identyfikator work-itemu jest
+    //     poprawnym uuidem i `safeParse` przechodzi ZAWSZE. Obie strony są
+    //     uuidami — nic ich nie odróżni.
+    // Dodatkowo rodzaj `project`, jedyny, który rysował pigułkę w fiksturze
+    // bramki, w produkcji NIE POWSTAJE: czytnik emituje wyłącznie
+    // `prior_meeting`, `task`, `waiting`, `decision` i `note`.
+    //
+    // WARUNEK WYJŚCIA I JEGO CENA. `recordId` musi adresować rekord, który
+    // pozycja NAZYWA — czyli czytnik ma podawać `item.taskId` (a dla rodzaju
+    // `note` odpowiadający identyfikator dokumentu) i milczeć, gdy work-item
+    // nie został jeszcze promowany. To jest poprawka w `desktop-main`, czyli
+    // POZA `desktop-ui`, a drzewo, w którym ten wpis powstał, dzieli `dist`
+    // z drugim torem i ma zakaz ruszania pakietów spoza `desktop-ui`. Dopóki
+    // tego nie ma, ŻADNA para nie ma prawa żądać pigułki: żądałaby drzwi pod
+    // adres, którego nie ma. Ten sam powód i to samo rozstrzygnięcie, co przy
+    // roli uczestnika — i to jest właśnie konsekwencja, której brak zgłosił
+    // przegląd adwersarialny („w tym samym commicie stoją dwa przeciwne
+    // rozstrzygnięcia tej samej sytuacji").
+    lot: "D7",
+    position: 1,
+    scope: "wiersz nadchodzącego spotkania — cel pozycji przygotowania",
+    title: "the preparation item names a record it cannot open",
+    prototype:
+      "v3/screens/meetings.js:183-215 (`mtGo(...)` — `Northstar Industries →`, `Task →`, `Client →`, `Show →` w trzeciej ścieżce KAŻDEJ pozycji)",
+    app: "packages/desktop-main/src/calendar-meeting-loop.ts:290-326 (`recordId: item.id`, nie `item.taskId`)",
+    why:
+      "Identyfikator dowodu nie adresuje nazwanego rekordu, więc każda pigułka otwierałaby ekran " +
+      "pod adresem, którego nie ma. Trzecia ścieżka siatki ZOSTAJE, bo deklaruje ją prototyp " +
+      "bezwarunkowo i mierzy ją `D7-01h`; stoi pusta, dopóki czytnik nie poda adresu.",
+    greenWrong:
+      "Wszystko, co pyta o WYGLĄD pozycji — `D7-01h` liczy trzy ścieżki i jest zielona nad " +
+      "ścieżką pustą. Brak wyjścia jest tu zapisany, a nie pominięty.",
+  },
+  {
+    // CAŁA TREŚĆ `fact` W WIERSZU LISTY — OGRANICZENIE, KTÓRE ZOSTAJE, I JEST
+    // NAZWANE ZAMIAST ZAKLEPANE ZDANIEM W KOMENTARZU.
+    //
+    // Wpis 10-3 uzasadnił adaptację klucza zdaniem, że treść „idzie do
+    // wartości, gdzie ma się gdzie zmieścić". Zdanie było nieprawdą o arkuszu,
+    // który ten sam wpis napisał, i zostało poprawione przy `evidenceKeyLabel`.
+    // Pomiar: `.meeting-prep-v` dostaje `white-space: nowrap; overflow: hidden;
+    // text-overflow: ellipsis`, bramka zmierzyła tę ścieżkę na 395,359 px przy
+    // `--text-2xs` = 11 px, czyli około siedemdziesięciu znaków — a
+    // `prior_meeting.fact` w produkcji to `summaryMarkdown.slice(0, 2000)`.
+    //
+    // TO NIE JEST ROZJAZD Z PROTOTYPEM I DLATEGO NIE JEST PARĄ. Prototypowe
+    // `.mt-prep-v` (`v3/screens/meetings.css:120-124`) jest tak samo jedną
+    // linią z wielokropkiem; różnią się DANE, nie arkusz — prototyp niesie
+    // w wartości jedno krótkie zdanie ułożone pod ten wiersz, a nasz `fact` ma
+    // do 2000 znaków z kontraktu. Para żądająca zawijania asertowałaby
+    // ODEJŚCIE od prototypu; para żądająca wielokropka byłaby zielona nad
+    // wierszem, który nie mówi nic.
+    //
+    // WARUNEK WYJŚCIA. Albo projekcja podaje osobne, krótkie pole „fakt jednym
+    // zdaniem" obok pełnej treści, albo wiersz przestaje być jedynym miejscem,
+    // w którym ta treść jest osiągalna (droga do rekordu — patrz wpis wyżej).
+    // Pierwsza droga rusza `packages/contracts`, druga `desktop-main`; obie są
+    // poza `desktop-ui`.
+    lot: "D7",
+    position: 2,
+    scope: "wiersz nadchodzącego spotkania — treść pozycji przygotowania",
+    title: "the preparation value shows the head of a fact, never the fact",
+    prototype:
+      "v3/screens/meetings.css:120-124 (`.mt-prep-v` — `overflow: hidden; text-overflow: ellipsis; white-space: nowrap`)",
+    app: "packages/desktop-ui/src/styles.css (`.meeting-prep-v`) + packages/contracts/src/meeting-loop.ts:77-93 (`fact` do 2000 znaków)",
+    why:
+      "Obie strony ucinają wartość do jednej linii, więc nie ma czego zbliżać do prototypu — " +
+      "różnica jest w DANYCH. Fikstura bramki niesie jednozdaniowe `fact`, więc żaden przyrząd " +
+      "nie dosięga tego stanu: `recomposition-for-real-data` w miniaturze.",
+    greenWrong:
+      "Wszystko, co pyta o UKŁAD pozycji. `D7-01h` liczy ścieżki, a nie to, ile z wartości widać.",
+  },
+  {
     // DRUGIE ŻYWE WYSTĄPIENIE WPISU 12-1, ZMIERZONE I ZDJĘTE W TYM SAMYM
     // PRZELOCIE — i to jest wpis o PRZELOCIE, nie o produkcie.
     //
@@ -10525,7 +10771,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     // wymagają `availability: "available"`, a to wygasza gałąź „Grant access".
     // Obie połowy tego zdania były fałszywe: napis „Grant access" wymaga
     // `platform === "macos"` RAZEM z `permission_required`
-    // (`MeetingsSurface.tsx:613-618`), a tamta fikstura deklarowała
+    // (`MeetingsSurface.tsx:732-737`), a tamta fikstura deklarowała
     // `platform: "other"`, więc rysowała „Check again" i tej gałęzi nie miała
     // ani przez chwilę; wiersze zaś rysują się przy KAŻDYM `canRead`, nie tylko
     // przy `available`. Fikstura stoi odtąd na `offline` z jednym wierszem, oba
@@ -10533,7 +10779,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     // PODMIOT PO DRUGIEJ STRONIE TEGO SAMEGO WYRAŻENIA.
     //
     // MECHANIZM, NIE NASTRÓJ: `.meeting-empty` i `.meeting-upcoming-list` to
-    // dwa ramiona jednego wyrażenia warunkowego (`MeetingsSurface.tsx:819`),
+    // dwa ramiona jednego wyrażenia warunkowego (`MeetingsSurface.tsx:936`),
     // więc żadna pojedyncza fikstura nie narysuje obu; bramka chodzi po JEDNYM
     // adresie (`verify-renderer-layout.mjs:124`), więc fikstura jest jedna.
     // Wybrane jest ramię z wierszami, bo daje CZTERY podmioty (D7-01d, D7-02e,
@@ -10549,7 +10795,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     app: "packages/desktop-ui/src/styles.css (.meeting-empty)",
     why:
       "`.meeting-empty` rysuje się WYŁĄCZNIE przy `upcoming.length === 0`, a `.meeting-upcoming-list` " +
-      "wyłącznie przy niezerowym — to są dwa ramiona jednego wyrażenia w `MeetingsSurface.tsx:819`, " +
+      "wyłącznie przy niezerowym — to są dwa ramiona jednego wyrażenia w `MeetingsSurface.tsx:936`, " +
       "więc jedna fikstura rysuje dokładnie jedno z nich, a bramka ma jedną fiksturę, bo chodzi po " +
       "jednym adresie. Ramię z wierszami wybrano, bo niesie cztery mierzalne podmioty przeciwko " +
       "jednemu; przy poprzedniej fiksturze ta para (D7-02c) była zmierzona i to ona ustąpiła. " +
@@ -10567,7 +10813,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     title: "dragging a card changes nothing on the screen",
     prototype:
       "v3/screens/pipeline.css:55-56, :110 (`.pp-col:has(.drop-target)`, `.pp-card.dragging`)",
-    app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:433-445, :1003-1005",
+    app: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx:429-441, :999-1001",
     why:
       "Obie połowy tej pozycji istnieją WYŁĄCZNIE w trakcie gestu: cel upuszczenia zapala się na " +
       "`dragover`, a przygaszenie karty na `dragstart`. Przelot par czyta STATYCZNY stan strony i nie " +
@@ -10613,7 +10859,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     scope: "cała pozycja",
     title: "counters are outlined pills instead of a flat tabular number",
     prototype: "v3/screens/knowledge.css:65-68, :98-102 (`.kn-tn`, `.kn-n`)",
-    app: "packages/desktop-ui/src/styles.css:6489-6501 (`.library-count`)",
+    app: "packages/desktop-ui/src/styles.css:6628-6640 (`.library-count`)",
     why:
       "Reguła jest GLOBALNA i dzielona z `.section-heading-row > span` oraz " +
       "`.library-section-heading > span`, a brief zabrania jej ruszać: lekarstwem ma być zawężenie NOWĄ " +
@@ -10629,7 +10875,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     scope: "cała pozycja",
     title: "the note row has no slot for a two-line excerpt",
     prototype: "v3/screens/knowledge.css:158-161 (`.kn-row-excerpt`)",
-    app: "packages/desktop-ui/src/styles.css:6616-6631, NotesReading.tsx:474-498",
+    app: "packages/desktop-ui/src/styles.css:6755-6770, NotesReading.tsx:474-498",
     why:
       "Brief wyjmuje tę pozycję z zakresu lotu WPROST: „nie buduje slotu urywka pod puste dane (poz. 12 " +
       "czeka na dane)”. Projekcja nie niesie urywka (załącznik A). Para asertowałaby robotę, której lot " +
@@ -10643,7 +10889,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     scope: "cała pozycja",
     title: "the settings header is a four-fold column, not a band",
     prototype: "v3/screens/settings.css:84-94, :196-198, :325-330",
-    app: "packages/desktop-ui/src/SettingsSurface.tsx:1029-1045, styles.css:7586, :7595-7597",
+    app: "packages/desktop-ui/src/SettingsSurface.tsx:1029-1045, styles.css:7725, :7734-7736",
     why:
       "Pozycja jest PRZEBUDOWĄ nagłówka w pasmo z policzonym podtytułem. Nie ma jednej rozwiązanej " +
       "właściwości, która odróżnia „pasmo” od „kolumny”: każda, którą umiem napisać (wysokość, liczba " +
@@ -10898,7 +11144,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "one hundred and ninety native controls in the renderer source, four of which this lot took off a content surface",
     prototype:
       "v3/ — POLICZONE W CAŁYM PROTOTYPIE, nie oszacowane, bo pierwsza wersja tego zdania („JEDEN `<select>` i JEDEN `<input>`, oba poza powierzchnią treści”) była prawdziwa w połowie: `<select>` jest DOKŁADNIE JEDEN (`v3/screens/settings.js:331`, w wierszu Ustawień), ale `<input>` jest DZIEWIĘĆ — `v3/app.js:1831` (`#palette-input` w palecie) plus osiem w `v3/screens/settings.js` (`:230`, `:533`, `:536`, `:603`, `:615`, `:686`, `:692`, `:914`) — a do tego stoi JEDEN `<textarea>` i ten stoi NA POWIERZCHNI TREŚCI: `v3/screens/record.js:207`, pole pisania komentarza na ekranie rekordu. Niezmiennikiem prototypu jest więc KONTROLKA WYBORU, a nie kontrolka formularza w ogóle: wybór robi przyciskiem na każdym ze swoich czternastu ekranów poza wierszem Ustawień, a wpisywanie tekstu zostawia polu — i to jest ta sama granica, którą ten lot postawił, zostawiając filtrowanie Zadań polem za pigułką `Filter`. Zdanie prototypu jest jedno i to samo dla wszystkich 187 wystąpień, których ten lot nie rusza — nie ma tu 187 różnych pytań",
-    app: "packages/desktop-ui/src — ZMIERZONE 2026-08-15 PARSEREM, NIE GREPEM I NIE SKANEREM TEKSTOWYM (`scripts/native-control-census.mjs`, `ts.createSourceFile`): 190 elementów w 31 plikach (`select` 57, `input` 119, `textarea` 14). Liczba „76 `<select>` w ~25 plikach”, którą niesie plan lotów i wpis `LP4-03`, jest liczbą GREPA — większość różnicy to wzmianki w komentarzach i napisach oraz selektory w arkuszach CSS. Stan PRZED lotem L6: 193 elementy (`select` 60). Lot zdjął z powierzchni treści CZTERY — trzy `<select>` pasa Zadań i `<input type=search>` obok nich — a ŹRÓDŁO straciło TRZY, i ta różnica nie jest błędem, tylko zapisem przeprowadzki: pole wyszukiwania nie zniknęło, tylko zeszło za pigułkę (`components/ChoicePopover.tsx: 1`), a `<select>` Spotkań przeniósł się do Ustawień. Stąd `input` i `textarea` stoją w miejscu, a maleje wyłącznie `select` (60 → 57). Zeszły też `<fieldset>` przełącznika gęstości i cztery `<label>` pasa, których ten spis nie liczy. LICZBY 189 / `select` 56, KTÓRE ODDAŁ LOT, BYŁY ZANIŻONE O JEDEN i jest to zmierzone: tekstowa wersja skanera nie widziała `<select id=organization-delivery-link>` w `StrategicDepthSurface.tsx:1239`, bo apostrof w treści JSX nad nim otwierał jej napis",
+    app: "packages/desktop-ui/src — ZMIERZONE 2026-08-15 PARSEREM, NIE GREPEM I NIE SKANEREM TEKSTOWYM (`scripts/native-control-census.mjs`, `ts.createSourceFile`): 190 elementów w 31 plikach (`select` 57, `input` 119, `textarea` 14). Liczba „76 `<select>` w ~25 plikach”, którą niesie plan lotów i wpis `LP4-03`, jest liczbą GREPA — większość różnicy to wzmianki w komentarzach i napisach oraz selektory w arkuszach CSS. Stan PRZED lotem L6: 193 elementy (`select` 60). Lot zdjął z powierzchni treści CZTERY — trzy `<select>` pasa Zadań i `<input type=search>` obok nich — a ŹRÓDŁO straciło TRZY, i ta różnica nie jest błędem, tylko zapisem przeprowadzki: pole wyszukiwania nie zniknęło, tylko zeszło za pigułkę (`components/ChoicePopover.tsx: 1`), a `<select>` Spotkań przeniósł się do Ustawień. Stąd `input` i `textarea` stoją w miejscu, a maleje wyłącznie `select` (60 → 57). Zeszły też `<fieldset>` przełącznika gęstości i cztery `<label>` pasa, których ten spis nie liczy. LICZBY 189 / `select` 56, KTÓRE ODDAŁ LOT, BYŁY ZANIŻONE O JEDEN i jest to zmierzone: tekstowa wersja skanera nie widziała `<select id=organization-delivery-link>` w `StrategicDepthSurface.tsx:1235`, bo apostrof w treści JSX nad nim otwierał jej napis",
     why:
       "Cztery wpisy planu (4-1, 4-2, 4-3, 10-1) to liczba OBJAWÓW WIDOCZNYCH PRZY TEJ FIKSTURZE, " +
       "nie liczba roboty; plan sam to zapisał („L5 i L6 są większe, niż plan mówi”). Reszta dzieli " +
@@ -11326,7 +11572,35 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // Sześć par tutaj (Kalendarz, Skrzynka, Odnowienia, Spotkania, rekord,
   // Ustawienia), siódma (Dzisiaj) w mapie powłoki. Powód, tabela pomiaru
   // i zadeklarowana ślepa plama stoją przy `P1B-01`.
-  pairs: 218,
+  //
+  // 218 → 221 PRZY WPISIE 10-3 (wiersz spotkania zbudowany od nowa),
+  // 2026-08-15. NETTO TRZY, BRUTTO CZTERY DOPISANE I JEDNA ZDJĘTA — plus
+  // JEDNA ZAMIANA, którą trzeba przeczytać razem, bo inaczej arytmetyka nie
+  // domyka się bez `notCovered`:
+  //   • ZDJĘTA `D7-01e` (`flexGrow` kreski łańcucha prowenancji) — jej podmiot
+  //     zszedł z wiersza razem z całym motywem, którego prototyp w tym wierszu
+  //     nie ma;
+  //   • DOPISANA `D7-01f` — ten sam łańcuch liczony na ZERO. To jest zamiana
+  //     1:1, nie przyrost: instrukcja właściciela kazała zamienić parę na wpis
+  //     `NOT_COVERED`, a pomiar pokazał, że `count` rozstrzyga się PRZED
+  //     strażnikiem „zero dopasowań", więc nieobecność da się zmierzyć.
+  //     Powód w komplecie stoi w miejscu, z którego `D7-01e` została wyjęta;
+  //   • DOPISANE `D7-01g` (wiersz WYMIENIA uczestników zamiast ich liczyć),
+  //     `D7-01h` (pozycja przygotowania ma trzecią ścieżkę — CEL) i `D7-02g`
+  //     (plakietka dostawcy stoi przy WIERSZU, nie tylko przy sekcji). Trzy
+  //     osie wpisu 10-3, z których żadnej nie mierzyło NIC — przeliczenie ogona
+  //     zapisało to wprost („czego nadal nie mierzy nic: uczestników, paska
+  //     rozwinięcia i miejsca dostawcy").
+  // `notCovered` rośnie osobno o JEDEN i nie jest to ta zamiana — powód stoi
+  // przy nowym wpisie o roli uczestnika.
+  //
+  // 221 → 222 PRZY NAPRAWIE WPISU 10-3, 2026-08-15. JEDNA para dopisana,
+  // ŻADNA zdjęta: `D7-02h` czyta SŁOWO plakietki dostawcy, bo `D7-02g` liczyła
+  // sam nośnik i przegląd adwersarialny skasował z niej napis przy zielonej
+  // bramce. `D7-01g` i `D7-01h` zostały PRZECELOWANE, a nie dołożone
+  // (`.meeting-person` → `.meeting-person-name`, `:has(.meeting-prep-go)` →
+  // `.meeting-prep-item`), więc suma po nich nie rośnie.
+  pairs: 222,
   // ── SPIS STATUSÓW, DOŁOŻONY PRZY NAPRAWIE LOTU NASADY FAZY III, 2026-08-15 ─
   //
   // TEJ MAPY NIE PILNOWAŁ ŻADEN RACHUNEK OCZEKUJĄCYCH, a mapa powłoki miała go
@@ -11349,7 +11623,13 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // LICZONE TAK, JAK KLASYFIKUJE STRAŻNIK, i to nie jest szczegół: `enforced` to
   // `status === "enforced"`, `pending` to cała reszta. Trzeci sposób liczenia
   // byłby trzecim słownikiem statusu w pliku, który już ma dwa.
-  enforced: 210,
+  // 210 → 213 PRZY WPISIE 10-3: cztery dopisane pary są `enforced`, jedna
+  // zdjęta była `enforced`, a zamiana `D7-01e` → `D7-01f` nie rusza statusu.
+  // Liczba `pending` się NIE ZMIENIA — ten wpis nie rozbraja niczego.
+  //
+  // 213 → 214 PRZY NAPRAWIE WPISU 10-3: `D7-02h` jest `enforced`, a naprawa
+  // nie przestawia statusu żadnej pary.
+  enforced: 214,
   pending: 8,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
@@ -11454,7 +11734,19 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `VISUAL_LANGUAGE_ROUTED_NOT_COVERED.length` na scalonym drzewie, bo
   // deklaracja, która zgadza się przez przypadek, jest nieodróżnialna od
   // deklaracji, która zgadza się z powodu.
-  notCovered: 21,
+  //
+  // 21 → 22 PRZY WPISIE 10-3, 2026-08-15, I JEST TO USTALENIE O KONTRAKCIE,
+  // NIE O FARBIE: prototypowy wiersz podaje przy każdym uczestniku ROLĘ
+  // („z rolą, bo »MN · PZ« nie przygotowuje nikogo do rozmowy",
+  // `v3/screens/meetings.css:84`), a nasza projekcja jej nie niesie. Treść,
+  // dowód i warunek wyjścia stoją przy wpisie.
+  //
+  // 22 → 24 PRZY NAPRAWIE WPISU 10-3, 2026-08-15, I OBA PRZYROSTY SĄ TEGO
+  // SAMEGO RODZAJU CO POPRZEDNI: ustalenie o danych, nie o farbie. Pigułka celu
+  // w pozycji przygotowania (`recordId` dowodu nie adresuje nazwanego rekordu)
+  // i cała treść `fact` w wierszu listy (jedna linia z wielokropkiem po obu
+  // stronach). Treść, dowód i warunek wyjścia stoją przy wpisach.
+  notCovered: 24,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -11868,7 +12160,18 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // Jamie (wpis 10-1). Powód i to, co zostaje zmierzone po niej, stoją przy
       // miejscu, z którego wpis został wyjęty. Pozycja 2 ma dalej pary, więc
       // `positionsWithPairs` się nie rusza.
-      pairs: 16,
+      //
+      // 16 → 19 PRZY WPISIE 10-3 FAZY III, 2026-08-15. Pozycje briefu się NIE
+      // ruszają: wszystkie cztery zmiany siedzą w pozycjach 1 i 2, które pary
+      // już mają. Rozpis, arytmetyka i powód każdej stoją przy sumie `pairs`
+      // tej mapy; tutaj krótko — `D7-01e` zdjęta (podmiot zszedł z wiersza),
+      // `D7-01f` / `D7-01g` / `D7-01h` dopisane na pozycji 1, `D7-02g`
+      // dopisana na pozycji 2.
+      //
+      // 19 → 20 PRZY NAPRAWIE WPISU 10-3: dopisana `D7-02h` (słowo plakietki
+      // dostawcy) na pozycji 2, która pary już ma. `D7-01g` i `D7-01h` zostały
+      // przecelowane w miejscu, więc nic nie wnoszą do tej sumy.
+      pairs: 20,
       positionsWithPairs: 3, // 1, 2, 3
       positionsWithoutPairs: [],
     },
