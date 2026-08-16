@@ -325,6 +325,65 @@ export const workspaceStorageLine = (
   return `${place} · ${state}`;
 };
 
+const ProjectOutcomePreview = ({
+  projectId,
+  outcome,
+}: {
+  readonly projectId: ProjectId;
+  readonly outcome: string;
+}) => {
+  const outcomeRef = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const collapsed = overflows && !expanded;
+  const outcomeId = `project-outcome-preview-${projectId}`;
+
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const element = outcomeRef.current;
+    if (element === null) return;
+    const measure = () => {
+      setOverflows(element.scrollHeight > element.clientHeight + 1);
+    };
+    measure();
+    if (globalThis.ResizeObserver === undefined) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [expanded, outcome]);
+
+  return (
+    <>
+      <blockquote
+        className="inspector-outcome-preview"
+        data-collapsed={collapsed ? "true" : "false"}
+        id={outcomeId}
+      >
+        <span
+          className="inspector-outcome-text"
+          data-measure-bounds={expanded ? "false" : "true"}
+          ref={outcomeRef}
+        >
+          {outcome}
+        </span>
+      </blockquote>
+      {overflows && (
+        <button
+          type="button"
+          className="project-outcome-toggle"
+          aria-controls={outcomeId}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded
+            ? "Show less intended outcome"
+            : "Show full intended outcome"}
+        </button>
+      )}
+    </>
+  );
+};
+
 export const RealApp = ({
   client,
   initialSnapshot,
@@ -2036,6 +2095,20 @@ export const RealApp = ({
   // jest wyłącznie ta aktywna. Potomek nie dokłada więc ani jednego przystanku
   // — a sonda ogniska robi 14 Tabów od świeżej strony i liczy na kolejność.
   const openProjectId = activeContext.projectId;
+  const projectItems =
+    state.snapshot.projects.kind === "ready"
+      ? state.snapshot.projects.data.items
+      : [];
+  const firstProjectShortcuts = projectItems.slice(0, 5);
+  const openProject =
+    openProjectId === undefined
+      ? undefined
+      : projectItems.find((project) => project.id === openProjectId);
+  const projectNavShortcuts =
+    openProject !== undefined &&
+    !firstProjectShortcuts.some((project) => project.id === openProject.id)
+      ? [...firstProjectShortcuts.slice(0, 4), openProject]
+      : firstProjectShortcuts;
   //
   // ŹRÓDŁEM JEST `snapshot.projects`, czyli `project.list` — ten sam odczyt,
   // który rysuje kolekcja po kliknięciu w cel (`ProjectsSurface`), a nie
@@ -2045,18 +2118,18 @@ export const RealApp = ({
   // tablicą, a `project.list` niesie jeden projekt. Drugi poziom, który
   // wymienia inne projekty niż ekran pod nim, byłby wadą, nie oszczędnością.
   const projectNavChildren =
-    state.snapshot.projects.kind === "ready" &&
-    state.snapshot.projects.data.items.length > 0 ? (
+    projectItems.length > 0 ? (
       <div
         className="nav-children"
         data-nav-children="projects"
         key="projects-children"
       >
-        {state.snapshot.projects.data.items.map((project) => (
+        {projectNavShortcuts.map((project) => (
           <button
             key={project.id}
             type="button"
             data-nav-level="child"
+            data-project-shortcut
             className={`nav-item nav-child ${openProjectId === project.id ? "active" : ""}`}
             tabIndex={-1}
             aria-current={openProjectId === project.id ? "page" : undefined}
@@ -2066,6 +2139,18 @@ export const RealApp = ({
             <span>{project.title}</span>
           </button>
         ))}
+        {projectItems.length > projectNavShortcuts.length && (
+          <button
+            type="button"
+            data-nav-level="child"
+            className="nav-item nav-child nav-child-more"
+            tabIndex={-1}
+            {...navHandlers(destinationContext("projects", "Projects"))}
+          >
+            <span className="nav-child-dot" aria-hidden="true" />
+            <span>View all {projectItems.length} projects</span>
+          </button>
+        )}
       </div>
     ) : null;
   // DRUGI POZIOM MA DWIE GAŁĘZIE, NIE JEDNĄ (`v3/app.js:637-641`: prototyp
@@ -5223,7 +5308,11 @@ export const RealApp = ({
                   }
                 />
               ) : (
-                <blockquote>{selectedProject.intendedOutcome}</blockquote>
+                <ProjectOutcomePreview
+                  key={selectedProject.id}
+                  projectId={selectedProject.id}
+                  outcome={selectedProject.intendedOutcome}
+                />
               )}
               <p>The outcome stays part of the versioned project record.</p>
             </section>

@@ -587,6 +587,42 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         return true;
       },
     );
+    // Trzecia droga do tej samej scalonej odmowy, i ta jedna dochodziła
+    // wcześniej jako -32603. Nazwa idzie przez `decodeURIComponent`, a ten
+    // rzuca `URIError` na zepsutym escape'ie; SDK zamienia każdy rzut nie
+    // będący `McpError` na `InternalError`, czyli na kod znaczący „wada tego
+    // builda, w twoim żądaniu nie ma czego poprawiać". Nazwa, której nie da się
+    // zdekodować, jest wołająco-naprawialna dokładnie tak samo jak nazwa spoza
+    // grantu, więc ma wracać tak samo.
+    //
+    // Kod jest tu asercją, a nie sam fakt odrzucenia: samo `assert.rejects`
+    // przechodziło i PRZED poprawką, bo odrzucenie było — tyle że pod złym
+    // kodem. Bez `assert.equal` na -32600 ten test nie mierzyłby niczego.
+    for (const uri of [
+      "constellation://v1/operations/%",
+      "constellation://v1/operations/%zz",
+      "constellation://v1/operations/task.create%",
+    ]) {
+      await assert.rejects(client.readResource({ uri }), (error: unknown) => {
+        assert.equal(
+          (error as { readonly code?: number }).code,
+          -32600,
+          `${uri} jest odmową, nie awarią builda`,
+        );
+        assert.equal(
+          (
+            (
+              error as {
+                readonly data?: { readonly diagnosticCode?: string };
+              }
+            ).data ?? {}
+          ).diagnosticCode,
+          "mcp.operation_unavailable",
+          `${uri} niesie kod diagnostyczny scalonej odmowy`,
+        );
+        return true;
+      });
+    }
     const taskList = catalog.operations.find(
       (operation) => operation.name === "task.list",
     );
