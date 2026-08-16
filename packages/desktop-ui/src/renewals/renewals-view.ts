@@ -150,6 +150,12 @@ export const spanLabel = (months: number): string => {
 export interface TermReading {
   /** "1 yr 10 mo of 2 yrs". The numerator is CLIPPED to the denominator. */
   readonly label: string;
+  /**
+   * The SAME fraction the label prints, as a percentage — not a second opinion
+   * about it. The row draws this as a bar directly under the label and the
+   * accessible name joins the two into one sentence, so they have to be one
+   * measurement; see the note on `termReading`.
+   */
   readonly percent: number;
   /** The "term 3" the row prints, when the cycle was recorded. */
   readonly cycleOrdinal: number | undefined;
@@ -162,9 +168,32 @@ export interface TermReading {
  * whole reason both numbers exist: a contract renewed two months after it
  * expired has 14 months elapsed against a 12-month term, and "1 yr 2 mo of
  * 1 yr" reads as arithmetic nobody checked.
+ *
+ * `percent` is that same fraction and is computed from the same pair. It used
+ * to be `clock.progress`, which is `elapsedDays / totalDays` — the DATES — and
+ * that is a different basis from the one the label prints. The two agree only
+ * while `termMonths` happens to match the span the dates imply, and nothing
+ * makes it: `termStartsAt`, `expiresAt` and `termMonths` are three independent
+ * fields on `relationship.renewalUpdate`. Measured on the built module before
+ * this changed: a 24-month term six months in by its dates printed "6 mo of
+ * 2 yrs" beside a bar at 50%, and a 6-month term whose dates span two years
+ * printed "6 mo of 6 mo" — a label saying the term is over — beside the same
+ * 50%. The row draws the bar directly under the label and the accessible name
+ * joins them ("6 mo of 6 mo, 50% of the term elapsed"), so this was the same
+ * "arithmetic nobody checked" the clip above exists to prevent, restated one
+ * field lower.
+ *
+ * The clip carries into the percentage with it, so an overrun reads 100% and
+ * never 117%.
  */
 export const termReading = (
-  renewal: RenewalRecord,
+  // The two fields this actually reads, stated instead of taking the whole
+  // record. Widening, so every existing caller still fits — and it is what
+  // lets the pair above be asserted without fabricating twenty unrelated
+  // fields, which is the fabrication that would have had to be cast, and a
+  // cast literal is exactly how this repository has lost the compiler as a
+  // guard over required fields before.
+  renewal: Pick<RenewalRecord, "termMonths" | "cycleOrdinal">,
   clock: ContractClock,
 ): TermReading | undefined => {
   if (clock.progress === undefined || clock.elapsedDays === undefined)
@@ -178,7 +207,11 @@ export const termReading = (
   const done = Math.min(monthsFromDays(clock.elapsedDays), months);
   return {
     label: `${spanLabel(done)} of ${spanLabel(months)}`,
-    percent: Math.round(clock.progress * 100),
+    // A term recorded as zero months has no fraction to state; it reads as
+    // complete rather than as a division nobody guarded.
+    // A term recorded as zero months has no fraction to state; it reads as
+    // complete rather than as a division nobody guarded.
+    percent: months === 0 ? 100 : Math.round((done / months) * 100),
     cycleOrdinal: renewal.cycleOrdinal,
   };
 };
