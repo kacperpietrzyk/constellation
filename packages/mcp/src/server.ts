@@ -881,9 +881,21 @@ export const createConstellationMcpServer = (
       };
     }
     if (request.params.uri.startsWith(`${MCP_OPERATIONS_RESOURCE_URI}/`)) {
-      const name = decodeURIComponent(
-        request.params.uri.slice(MCP_OPERATIONS_RESOURCE_URI.length + 1),
-      );
+      // `decodeURIComponent` rzuca `URIError` na zepsutym escape'ie (`%` samo
+      // w sobie), a SDK zamienia każdy rzut nie będący `McpError` na
+      // `InternalError` — czyli na kod, który wołający ma czytać jako „wada
+      // tego builda, w twoim żądaniu nie ma czego poprawiać". Nazwa, której nie
+      // da się zdekodować, jest wołająco-naprawialna dokładnie tak samo jak
+      // nazwa spoza grantu, więc idzie w tę samą scaloną odmowę — patrz
+      // komentarz przy MCP_OPERATION_UNAVAILABLE.
+      let name: string;
+      try {
+        name = decodeURIComponent(
+          request.params.uri.slice(MCP_OPERATIONS_RESOURCE_URI.length + 1),
+        );
+      } catch {
+        return unavailableOperation();
+      }
       const response = await port.invoke({
         contractVersion: MCP_CONTRACT_VERSION,
         requestId: randomUUID(),

@@ -952,14 +952,35 @@ const startProductionDesktop = async (): Promise<void> => {
       return { outcome: "failure", code: "workspace_missing" } as const;
     }
   });
+  // `cockpit.week` czyta `weekStart` jako klucz dnia i dolicza sześć dni w UTC
+  // (wave2.ts), więc dostać ma poniedziałek CZYTELNIKA zapisany jako klucz.
+  //
+  // Wersja sprzed tej poprawki cofała się metodami LOKALNYMI (`getDay`,
+  // `setDate`), a wynik serializowała przez `toISOString()`, czyli w UTC — dwie
+  // podstawy w czterech linijkach. Zmierzone: Europe/Warsaw o 00:30 w
+  // poniedziałek dawało niedzielę przed nim, America/New_York od 20:00 czasu
+  // lokalnego KAŻDEGO dnia — wtorek po nim.
+  //
+  // Przejście na metody UTC byłoby GORSZE: 00:30 w poniedziałek w Warszawie to
+  // niedziela w UTC, więc cofanie po UTC trafia w POPRZEDNI poniedziałek i
+  // przesuwa cały tydzień zamiast jednego dnia. Więc kalendarz czytelnika
+  // zamienia się najpierw w klucz dnia (`Date.UTC` z jego własnych pól), a
+  // dopiero potem cofa się po tym kluczu — strefa wchodzi dokładnie raz.
+  //
+  // Renderer ma to samo w `calendar-week.ts`; tu jest osobno, bo to inny
+  // proces i inny pakiet, a nie dlatego, że reguła jest inna.
+  const localWeekStartKey = (now: Date): string => {
+    const key = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
+    );
+    key.setUTCDate(key.getUTCDate() - ((key.getUTCDay() || 7) - 1));
+    return key.toISOString().slice(0, 10);
+  };
   ipcMain.handle(DESKTOP_CHANNELS.getCrossWorkspaceCockpit, async (event) => {
     assertTrustedSender(event);
     const registry = loadWorkspaceRegistry(baseRoot);
     if (registry === undefined) return [];
-    const now = new Date();
-    const day = now.getDay() || 7;
-    now.setDate(now.getDate() - day + 1);
-    const weekStart = now.toISOString().slice(0, 10);
+    const weekStart = localWeekStartKey(new Date());
     const result: DesktopWorkspaceCockpitEntry[] = [];
     for (const entry of registry.workspaces) {
       const active = entry.workspaceId === registry.activeWorkspaceId;

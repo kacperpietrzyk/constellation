@@ -51,6 +51,11 @@ import type {
 // ekran musi wiedzieć, o jaką granicę projekcja się obcięła, żeby nie podać
 // obciętej liczby jako całości.
 import { ATTENTION_INBOX_LIMIT } from "../inbox-triage.js";
+// Tydzień liczy się kluczem dnia, nigdy zegarem maszyny — `calendar-week.ts`
+// mówi w swoim nagłówku dokładnie dlaczego, a `dateKeyInZone` jest tym samym
+// odczytem „dzisiaj", którego używają Calendar, Today i saved-view.
+import { weekStartKey } from "../calendar-week.js";
+import { dateKeyInZone } from "../i18n.js";
 
 type Projection<Kind extends QueryProjection["kind"]> = Extract<
   QueryProjection,
@@ -397,12 +402,35 @@ export const firstSpace = (
   return spaceId;
 };
 
-const currentWeekStart = (): string => {
-  const now = new Date();
-  const day = now.getDay() || 7;
-  now.setDate(now.getDate() - day + 1);
-  return now.toISOString().slice(0, 10);
-};
+/**
+ * Poniedziałek tygodnia, w którym stoi CZYTELNIK.
+ *
+ * Wersja sprzed tej poprawki cofała się do poniedziałku metodami LOKALNYMI
+ * (`getDay`, `setDate`), a wynik serializowała przez `toISOString()`, czyli w
+ * UTC — dwie różne podstawy w pięciu linijkach. Zmierzone: w Europe/Warsaw o
+ * 00:30 w poniedziałek wychodziła niedziela przed nim, a w America/New_York od
+ * 20:00 czasu lokalnego każdego dnia — wtorek po nim. Doba maszyny i doba
+ * czytelnika to nie to samo pytanie.
+ *
+ * Przejście na metody UTC byłoby GORSZE, nie lepsze: 00:30 w poniedziałek w
+ * Warszawie to niedziela w UTC, więc cofanie po UTC trafiłoby w POPRZEDNI
+ * poniedziałek i przesunęło cały tydzień zamiast jednego dnia.
+ *
+ * Więc jedno i drugie idzie przez klucz dnia: `dateKeyInZone` czyta dzień
+ * czytelnika, `weekStartKey` liczy poniedziałek arytmetyką na samym kluczu.
+ * Oba są tymi samymi funkcjami, których używają Calendar i Today — kształt
+ * przepisany w drugim miejscu to klasa defektu, którą to repo już łapało.
+ *
+ * `timeZone` jest parametrem WYŁĄCZNIE po to, żeby dało się to zmierzyć: samo
+ * przełączanie `process.env.TZ` w teście nic by nie dowiodło, bo `i18n.ts`
+ * cacheuje `Intl.DateTimeFormat` po nazwie strefy i przy strefie domyślnej
+ * zapamiętałby pierwszą. Produkcja woła to bez argumentu — czyli w strefie
+ * czytelnika, co jest całym sensem.
+ */
+export const weekStartForReader = (now: Date, timeZone?: string): string =>
+  weekStartKey(dateKeyInZone(now, timeZone));
+
+const currentWeekStart = (): string => weekStartForReader(new Date());
 
 export const loadDesktopSnapshot = async (
   client: ConstellationRendererClient,

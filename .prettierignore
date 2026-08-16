@@ -1,4 +1,5 @@
 .git/
+.bug-hunter/
 .playwright-cli/
 .superpowers/
 .ui-craft/
