@@ -21,6 +21,7 @@ export const PRODUCTION_DESKTOP_FILES = new Set([
   "local-mcp-credential-custody.js",
   "local-mcp-runtime.js",
   "markdown-export.js",
+  "mcp-launch-compatibility.js",
   "obsidian-import.js",
   "obsidian-vault-reader.js",
   "media-permission.js",

@@ -163,6 +163,7 @@ import {
   writePrivacySafeSupportReport,
 } from "./support-report.js";
 import { copyRecoveryCodeToClipboard } from "./recovery-code-clipboard.js";
+import { ensureMacMcpLaunchCompatibility } from "./mcp-launch-compatibility.js";
 
 // Electron's ESM namespace materializes lazy exports before the application is
 // ready. On macOS that can initialize safeStorage early and block on Keychain.
@@ -861,6 +862,18 @@ const createWindow = async (
 };
 
 const startProductionDesktop = async (): Promise<void> => {
+  const mcpLaunchCompatibility = ensureMacMcpLaunchCompatibility({
+    executablePath: process.execPath,
+  });
+  if (
+    mcpLaunchCompatibility.status === "conflict" ||
+    mcpLaunchCompatibility.status === "unavailable" ||
+    (app.isPackaged && mcpLaunchCompatibility.status === "invalid_bundle")
+  ) {
+    console.warn(
+      `Legacy MCP launch compatibility is ${mcpLaunchCompatibility.status}.`,
+    );
+  }
   app.setAboutPanelOptions({ applicationName: "Constellation" });
   const { installApplicationMenu } = await import("./app-menu.js");
   installApplicationMenu();
