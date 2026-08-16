@@ -18,6 +18,7 @@ const electronZipDir = path.join(root, "build", "electron-zips");
 const licenseBundle = path.join(root, "build", "desktop-license-bundle");
 const appName = "Constellation";
 const LEGACY_MCP_EXECUTABLE_NAME = "Constellation Local Alpha";
+const MACOS_RENAME_EXCLUSIVE_HELPER_NAME = "constellation-rename-exclusive";
 const bundleId = "io.constellation.local-alpha";
 const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
 const releaseVersion = process.env.CONSTELLATION_RELEASE_VERSION ?? "0.0.1";
@@ -498,6 +499,35 @@ const resources =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "Resources")
     : path.join(packageRoot, "resources");
+const packagedRenameExclusiveHelper =
+  process.platform === "darwin"
+    ? path.join(resources, MACOS_RENAME_EXCLUSIVE_HELPER_NAME)
+    : undefined;
+if (packagedRenameExclusiveHelper !== undefined) {
+  const compileRenameHelper = spawnSync(
+    "xcrun",
+    [
+      "clang",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Os",
+      "-arch",
+      architecture === "x64" ? "x86_64" : "arm64",
+      path.join(root, "scripts", "native", "macos-rename-exclusive.c"),
+      "-o",
+      packagedRenameExclusiveHelper,
+    ],
+    { encoding: "utf8", timeout: 60_000 },
+  );
+  if (compileRenameHelper.status !== 0) {
+    throw new Error(
+      `MACOS_RENAME_EXCLUSIVE_HELPER_BUILD_FAILED:${compileRenameHelper.stderr}`,
+    );
+  }
+  fs.chmodSync(packagedRenameExclusiveHelper, 0o755);
+}
 const packagedLicenses = path.join(resources, "licenses");
 copy(licenseBundle, packagedLicenses);
 if (
@@ -611,6 +641,8 @@ if (
   !fs.existsSync(packagedMcpEntrypoint) ||
   (packagedCalendarHelper !== undefined &&
     !fs.existsSync(packagedCalendarHelper)) ||
+  (packagedRenameExclusiveHelper !== undefined &&
+    !fs.existsSync(packagedRenameExclusiveHelper)) ||
   unpackedFiles.length !== 1 ||
   path.basename(unpackedFiles[0]) !== "better_sqlite3.node"
 ) {
@@ -729,6 +761,14 @@ const manifest = {
     : {
         calendarHelper: packagedCalendarHelper,
         calendarHelperSha256: await digestFile(packagedCalendarHelper),
+      }),
+  ...(packagedRenameExclusiveHelper === undefined
+    ? {}
+    : {
+        renameExclusiveHelper: packagedRenameExclusiveHelper,
+        renameExclusiveHelperSha256: await digestFile(
+          packagedRenameExclusiveHelper,
+        ),
       }),
   signatureTier:
     releaseTier === "production-signed"

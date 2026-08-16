@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.2.2] - 2026-08-16
+
+### Fixed
+
+- Hardened the macOS legacy MCP compatibility path against concurrent filesystem
+  replacement. New aliases are hidden under a unique temporary name and then
+  published with an atomic no-overwrite rename; existing valid aliases are
+  verified without mutating their pathname.
+
 ## [0.2.1] - 2026-08-16
 
 ### Fixed
