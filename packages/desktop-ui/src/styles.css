@@ -11157,3 +11157,33 @@ kbd {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
+
+/* The project inspector is a preview, not the full reading surface. Keep the
+   whole outcome in one accessible text node, and only bound its visual height
+   until the reader asks to expand it. */
+.provenance-block .inspector-outcome-preview {
+  margin-bottom: var(--space-2);
+}
+.provenance-block .inspector-outcome-text {
+  display: block;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.provenance-block .inspector-outcome-text[data-measure-bounds="true"] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+}
+.project-outcome-toggle {
+  width: fit-content;
+  margin: var(--space-2) 0;
+  padding: 0;
+  color: var(--text-tertiary);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}

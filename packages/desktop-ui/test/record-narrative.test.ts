@@ -236,7 +236,11 @@ describe("unwritten record narrative", () => {
     );
     assert.match(
       realApp,
-      /selectedProject\.needsReview \?[\s\S]{0,400}NarrativeGap[\s\S]{0,400}<blockquote>\{selectedProject\.intendedOutcome\}<\/blockquote>/,
+      /selectedProject\.needsReview \?[\s\S]{0,400}NarrativeGap[\s\S]{0,500}<ProjectOutcomePreview[\s\S]{0,200}outcome=\{selectedProject\.intendedOutcome\}/,
+    );
+    assert.match(
+      realApp,
+      /const ProjectOutcomePreview[\s\S]{0,900}<blockquote[\s\S]{0,300}\{outcome\}[\s\S]{0,100}<\/blockquote>/,
     );
     assert.match(
       realApp,
