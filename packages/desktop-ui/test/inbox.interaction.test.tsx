@@ -253,8 +253,44 @@ test("B29: the waiting count agrees with what is on screen", async () => {
     "the number and the rows disagree, which is the defect decision #22 came from",
   );
   assert.equal(stated, inboxWaitingCount(projection.items));
-  // Widoczny napis i zaczep dla maszyny muszą mówić to samo.
-  assert.match(badge.textContent ?? "", new RegExp(`\\b${stated}\\b`));
+  // WPIS 3-3 OGONA FAZY III — WIDOCZNY NAPIS JEST MAPĄ EKRANU, A ZACZEP DLA
+  // MASZYNY ZOSTAJE SUMĄ, i te dwie rzeczy nie są odtąd tym samym zdaniem.
+  // Do tej poprawki pasmo mówiło `6 things waiting` i ta asercja szukała
+  // w napisie liczby z `data-inbox-waiting`. Prototyp mówi tu DWIE liczby, po
+  // jednej na sekcję (`v3/screens/inbox.js:287-288` — `4 to decide · 3 to
+  // route`), a ich SUMA w ogóle nie musi się w napisie pojawić: 2 + 1 = 3
+  // rysowałoby się jako „2 to decide · 1 to route" i stara asercja byłaby
+  // zielona tylko przez zbieg okoliczności tej fikstury.
+  //
+  // OBIE LICZBY WYPROWADZONE Z LIST, KTÓRE EKRAN NARYSOWAŁ — nie z fikstury
+  // i nie wpisane: pasmo, które zacznie mówić o innym zbiorze niż sekcje pod
+  // nim, jest dokładnie tą wadą, z której wzięła się DECYZJA #22.
+  const sectionRows = (section: string): number =>
+    plane.querySelectorAll(`[data-inbox-section="${section}"] [data-inbox-row]`)
+      .length;
+  const said = badge.textContent ?? "";
+  const shape = /(\d+) to decide · (\d+) to route/u.exec(said);
+  assert.ok(
+    shape,
+    `the band said “${said}” where the reference says “N to decide · N to route” — one number ` +
+      "summed over two mailboxes tells the reader how much is waiting and never which of the two " +
+      "screens below is waiting on them",
+  );
+  assert.equal(
+    Number(shape[1]),
+    sectionRows("work"),
+    `the band counted ${shape[1]} to decide against the rows in the work section`,
+  );
+  assert.equal(
+    Number(shape[2]),
+    sectionRows("capture"),
+    `the band counted ${shape[2]} to route against the rows in the capture section`,
+  );
+  assert.equal(
+    Number(shape[1]) + Number(shape[2]),
+    stated,
+    "the two visible numbers do not add up to the machine-readable total beside them",
+  );
   // …i musi to być więcej niż liczba o jednym rodzaju rzeczy.
   assert.ok(
     stated > projection.unreadCount,

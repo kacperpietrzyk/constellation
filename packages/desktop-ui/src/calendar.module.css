@@ -149,11 +149,24 @@
   overflow: hidden;
 }
 
+/* WPIS 2-6b OGONA FAZY III — PODŁOGA KOLUMNY DNIA, NIE ARTEFAKT FIKSTURY.
+   Dokument przejścia zapisał różnicę wysokości siatki tygodnia pod literą B
+   („fikstura"), a przeliczenie G1 zmierzyło, że 112 px z niej jest
+   ZADEKLAROWANE i nie zależy od danych: prototyp `.cal-day { min-height: 19rem }`
+   (`v3/screens/calendar.css:50`) wobec 12rem tutaj. Reszta różnicy (prototyp
+   rysuje 581 px na siódemce kolumn) naprawdę pochodzi z treści i pozostaje
+   fikstura — ale sama podłoga jest deklaracją i schodzi z listy jako rozjazd.
+
+   Kontrakt: `.ui-craft/tokens.md` — „Spacing and density" („Density is mixed
+   intentionally by content role"): kolumna dnia jest CELEM UPUSZCZENIA na
+   pustym dniu, więc jej gęstość ustala rola pojemnika, a nie liczba pozycji,
+   które akurat w nim stoją. Podłoga niższa niż prototypowa daje w piątek pole
+   upuszczenia o połowę mniejsze niż w poniedziałku pełnym pracy. */
 .day {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  min-height: 12rem;
+  min-height: 19rem;
   padding: var(--space-3);
   background: var(--surface-content);
 }
@@ -198,15 +211,39 @@
   gap: var(--space-2);
 }
 
+/* WPIS 2-7 OGONA FAZY III — KTO W GŁOWIE DNIA JEST GŁOŚNIEJSZY.
+   Prototyp (`v3/screens/calendar.css:68-76`):
+     `.cal-dayname { font-size: var(--text-2xs); font-weight: 600;
+        letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--text-quaternary) }`
+     `.cal-daynum  { font-size: var(--text-sm); font-weight: 600;
+        color: var(--text-secondary); font-variant-numeric: tabular-nums }`
+   Czyli nazwa dnia jest CICHĄ, rozstrzeloną etykietą NAD mocnym numerem.
+   Ten arkusz robił dokładnie odwrotnie na czterech osiach naraz: nazwa
+   w `--text-secondary`/`--text-sm`, numer w `--text-tertiary` i wadze 400,
+   bez wersalików i bez rozstrzelenia. Wersaliki idą przez `text-transform`,
+   więc w DOM po OBU stronach stoi `Mon` — kto czytał znaczniki, uznawał ten
+   rozjazd za zamknięty.
+
+   ROZSTRZELENIE BIERZE NASZ STOPIEŃ, nie literał prototypu: `--tracking-wide`
+   to 0,025em wobec 0,04em w `v3`. Prototyp nie ma tu skali — ma dwadzieścia
+   dwie różne wartości `letter-spacing` rozsiane po arkuszach — więc branie
+   jego literału wstawiłoby do tego pliku liczbę spoza zadeklarowanej skali,
+   żeby dogonić stronę, która skali nie ma. Zamknięta jest oś „nazwa dnia jest
+   rozstrzelona" (było `normal`); różnica samego stopnia to pytanie o skalę
+   tokenów, nie o ten wpis. */
 .dayName {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
 }
 
 .dayNum {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 
@@ -220,16 +257,29 @@
   text-transform: uppercase;
 }
 
+/* WPIS 2-8 OGONA FAZY III — ETYKIETA DNIA WOLNEGO MÓWI CISZEJ NIŻ POJEMNOŚĆ.
+   Prototyp (`v3/screens/calendar.css:79-84`):
+     `.cal-free { font-size: var(--text-2xs); color: var(--text-tertiary) }`
+     `.cal-free-none { color: var(--status-warning) }`
+     `.cal-free-off  { color: var(--text-disabled) }`
+   Trzeci stopień był u nas nieobecny: dzień wolny mówił tym samym głosem
+   (`--text-tertiary`) co „8h free", więc pusta sobota krzyczała tak samo
+   głośno jak zajęty wtorek. Rozmiar też schodzi o stopień, bo prototyp daje
+   `--text-2xs` CAŁEJ tej etykiecie, nie tylko jej wariantowi. */
 .free {
   margin-inline-start: auto;
   color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .freeNone {
   color: var(--status-warning);
+}
+
+.freeOff {
+  color: var(--text-disabled);
 }
 
 /* Miernik pokazuje SKŁAD dnia, nie tylko wynik. Liczba stoi obok, więc sam
@@ -417,14 +467,43 @@
    w `today.module.css`, RAZEM z akapitem o tym, dlaczego reguła wymienia oba
    szczeble, a znacznik jest jeden. Prototyp: `h2.cal-title` („This week",
    `v3/screens/calendar.js:205`) NAD `h3` tacy (`v3/screens/calendar.js:224`).
-   Rozmiar (`--text-md`) i waga zostają; schodzi sam szczebel. */
+
+   RESZTA WPISU 1-4, DOMKNIĘTA PRZY NAPRAWIE OGONA: stopień pisma schodzi
+   z `--text-md` (16 px) na `--text-sm` (13 px). Sam szczebel `h3` zamknął
+   wcześniejszy lot, ale rangę i rozmiar niesie TEN SAM element, a rozmiar
+   został wtedy na miejscu — nagłówek tacy był o trzy piksele głośniejszy niż
+   `h2._weekTitle_`, pod którym stoi. Prototyp:
+   `.cal-tray-head h3 { font-size: var(--text-sm); font-weight: 600 }`
+   (`v3/screens/calendar.css:190-193`); ten sam szczebel na Today jest u nas
+   `--text-sm` od dawna (`today.module.css:202`), więc Kalendarz był jedynym
+   ekranem rodziny mówiącym innym stopniem.
+
+   ROZSTRZELENIE NIE JEST TU RUSZANE, I POWÓD JEST INNY, NIŻ WYGLĄDAŁ. Pierwsza
+   wersja tej noty mówiła „literał prototypu byłby liczbą spoza naszej skali" —
+   to nieprawda i obala to plik obok: bliźniak TEGO SAMEGO szczebla na Today
+   (`today.module.css:196-205`) niesie DOKŁADNIE `-0.005em`. Czyli rodzina ma
+   dziś dwa rozstrzelenia na jednej regule (`--tracking-tight` = -0,035em tutaj,
+   literał tam) i to jest DŁUG, nie decyzja. Nazwany rozjazd 1-4 jest o STOPIEŃ,
+   więc schodzi sam stopień; rozstrzelenie zostaje nietknięte, bo nikt go nie
+   nazwał ani nie mierzy — ale zostaje ZAPISANE, a nie uzasadnione regułą,
+   której sąsiad łamie. Waga zostaje.
+
+   CZEGO TA POPRAWKA NIE ZAMYKA, A CO SAMA UWIDACZNIA — SCHODEK DO LICZNIKA.
+   Prototyp trzyma licznik o stopień NIŻEJ od nagłówka: `.cal-tray-head .n
+   { font-size: var(--text-xs); font-weight: 500 }` (`v3/screens/calendar.css:194-197`)
+   pod `h3` o `--text-sm`. Nasz `.count` (niżej w tym pliku) niesie `--text-sm`
+   i wagę 400. Do tej zmiany schodek ISTNIAŁ przy złych wartościach (16 nad 13);
+   po niej nagłówek jest poprawny, a schodka NIE MA (13 nad 13). To jest
+   rozjazd bez numeru w dokumencie przejścia i bez pary, uwidoczniony przez tę
+   poprawkę — oddany z pomiarem, nie schowany. Zamknięcie go to jedna
+   deklaracja plus własna para; obie należą do lotu, który go ponumeruje. */
 .sectionHead h2,
 .sectionHead h3 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
 }
@@ -443,7 +522,7 @@
    „The chrome belongs to the LIST, not to the section".
 
    NIE PRZYCINA — I JEST TO ŚWIADOMY ROZJAZD Z PROTOTYPEM, KTÓRY PRZYCINA
-   (`:257` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
+   (`:307` — `overflow: hidden`). Powodem NIE jest to, że prototyp problemu nie
    miał: jego wiersz tacy też jest ogniskowalny (`v3/screens/calendar.js:101` —
    `role="option"` z wędrującym `tabindex`), jego reguła ogniska sięga 3 px
    twardym konturem i 5 px poświatą poza pudełko (`v3/app.css:36-43`), a

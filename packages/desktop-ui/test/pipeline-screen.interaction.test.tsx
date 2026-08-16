@@ -868,6 +868,61 @@ test("nothing on this screen explains itself in a tooltip", async () => {
   );
 });
 
+// WPIS 6-4 OGONA FAZY III — POMIAR, KTÓREGO NIE BYŁO.
+//
+// Plakietka wieku dopisywała słowo: `420 d · stale` tam, gdzie prototyp pisze
+// `61 d` (`v3/screens/pipeline.js:326`). Kolor, tło, ramka i zegar są po obu
+// stronach IDENTYCZNE co do wartości — różniło je WYŁĄCZNIE dopisane słowo.
+// Dwie pary rejestru stoją na tej plakietce i obie mają rację o czym innym:
+// `L2-05a` pilnuje, żeby była WYPEŁNIONA, `L2-05b` — żeby niosła ZEGAR. Ani
+// jedna nie czyta jej TEKSTU, więc dopisek mógł zostać albo zniknąć bez drgnienia.
+//
+// ASERCJA JEST O KSZTAŁCIE, NIE O LICZBIE, i to nie jest ostrożność, tylko
+// warunek istnienia tej asercji: wiek liczy się z ZEGARA (`pipeline-view.ts` →
+// `daysSince(opportunity.createdAt)`), więc `420 d` będzie jutro `421 d`.
+// Wpisana liczba położyłaby `main` bez żadnej zmiany w kodzie — ten tryb awarii
+// jest w tym repozytorium udokumentowany i już raz zapłacony.
+//
+// TOTALNA NAD WSZYSTKIMI KARTAMI, także spokojnymi: reguła brzmi „plakietka
+// wieku mówi liczbę dni i nic poza nią", a nie „przeterminowana karta mówi".
+// Asercja nad jedną kartą byłaby zielona, gdyby słowo wróciło na drugiej.
+test("the age badge says a number of days and nothing else, on every card", async () => {
+  await openBoard();
+
+  const badges = [
+    ...container.querySelectorAll<HTMLElement>("[data-deal-age]"),
+  ];
+  assert.ok(
+    badges.length > 0,
+    "the board drew no age badge at all, so this assertion would be measuring an empty screen",
+  );
+  // THE ARM THAT CARRIED THE WORD HAS TO BE ON SCREEN, or this sweep proves
+  // nothing about the thing it closes: the word was appended only when
+  // `card.stale`, so a board of calm badges satisfies the rule without ever
+  // reaching the branch. Measured, not assumed — this file's deals all carry
+  // `createdAt: 2026-06-01`, so at the time of writing every one of the six is
+  // over the 45-day threshold and the CALM arm is what this fixture cannot
+  // draw. That gap is stated rather than hidden: the calm badge has always
+  // printed `${ageDays} d` and never carried the word, so the arm this rule
+  // exists for is the one the fixture does reach.
+  const stale = badges.filter((badge) => badge.querySelector("svg") !== null);
+  assert.ok(
+    stale.length > 0,
+    `none of the ${badges.length} badge(s) on the board is in the stale arm, and that is the only ` +
+      "arm that ever appended a word — this run would pass without reaching the branch it guards",
+  );
+  const wrong = badges
+    .map((badge) => (badge.textContent ?? "").trim())
+    .filter((said) => !/^\d+ d$/u.test(said));
+  assert.deepEqual(
+    wrong,
+    [],
+    "an age badge said more than the number of days; the reference says `${o.age} d` and keeps " +
+      "the rest in a title attribute, and the word this repository had added bought no channel " +
+      "the clock glyph does not already carry on both sides",
+  );
+});
+
 test("an unavailable slice says why and offers a way back, and never an empty board", async () => {
   const withoutRelationships = { ...queries };
   delete (withoutRelationships as Record<string, unknown>)[

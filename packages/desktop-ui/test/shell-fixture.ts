@@ -691,7 +691,7 @@ export const populatedShellQueries = {
 // It is a SEPARATE export rather than a change to the two above, on purpose.
 // Both are read by mounted tests that would start rendering a different screen:
 // a saved view appears in every picker, and `fieldDefinitions` turns on the
-// custom-field sections at `RealApp.tsx:3998` and `WorkSurface.tsx:1344`. A
+// custom-field sections at `RealApp.tsx:4000` and `WorkSurface.tsx:1344`. A
 // fixture that quietly changes what an unrelated test renders is the same
 // family of defect as a test that measures nothing.
 

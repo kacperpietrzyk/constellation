@@ -282,3 +282,170 @@ test("both empty arms say what is missing in words", async () => {
     "the empty arm drew a person anyway",
   );
 });
+
+// WPIS 10-2 OGONA FAZY III — SEKCJA NAZYWA SIĘ TYM, CO ZNACZY, NIE DOSTAWCĄ.
+//
+// Nagłówek drugiej sekcji mówił `Jamie results` — nazwę integracji w miejscu,
+// w którym sąsiedni nagłówek mówi `Coming up`, czyli o CZASIE spotkania.
+// Prototyp nazywa ten zbiór robotą, która z niego została:
+// `<h2>What is left of the ones that happened …` (`v3/screens/meetings.js:446`).
+//
+// SZEŚĆ PAR REJESTRU STOI NA TYM NAGŁÓWKU i ANI JEDNA nie czyta, co on mówi
+// (`D7-03a` liczy jedną głowę, `D7-03b` zero w środku listy, `D7-03c` wyjście,
+// `D7-03d` kreskę, `D7-03e` stopień pisma, `D7-03f/g` bliźniaka nadchodzących).
+// Mylił też pierwszy kandydat spoza rejestru: test w
+// `interaction-recovery-contract.test.ts` NAZYWAŁ się od tego napisu i asertował
+// `className` oraz kolejność montażu.
+//
+// ASERCJA JEST O REGULE, NIE O NAPISIE, i to jest cała różnica: pyta, czy
+// nagłówek sekcji nazywa DOSTAWCĘ — nad słownikiem, który ten sam ekran właśnie
+// narysował, a nie nad listą przepisaną do testu. Przywrócenie `Jamie results`
+// ją zapala; tak samo zapali ją `Apple Calendar results` albo `Calendar
+// results`, bo obie te nazwy naprawdę stoją dziś w plakietkach.
+//
+// CZEGO TEN SŁOWNIK DZIŚ NIE UNIESIE, i to jest własność, nie brak:
+// `providerLabel` (`MeetingsSurface.tsx:104-113`) jest funkcją totalną nad
+// dwoma zamkniętymi słownikami kontraktu i potrafi zwrócić WYŁĄCZNIE
+// `Apple Calendar` albo `Calendar`. Nazwa w rodzaju „Outlook" nie może więc
+// dziś zapalić tej asercji — nie dlatego, że reguła jej nie obejmuje, tylko
+// dlatego, że produkt jej nie rysuje. Dopisanie dostawcy do kontraktu zapala
+// kompilator w `providerLabel`, nowa nazwa wchodzi do plakietek, a ta asercja
+// obejmuje ją BEZ zmiany tego pliku. To jest cała wartość słownika branego
+// z ekranu i to jest zdanie, które ten komentarz mówił wcześniej nieprawdziwie
+// (obiecywał pokrycie nazwy, której żaden słownik produktu nie zna).
+//
+// PLAKIETKA DOSTAWCY ZOSTAJE POZA ZAKRESEM ŚWIADOMIE: `.meeting-sec-lock` mówi
+// „Apple Calendar" i MA prawo — ona nazywa POŁĄCZENIE, z którego przyszły dane,
+// a nie zbiór spotkań. Reguła dotyczy nagłówka, nie sekcji.
+test("no section heading on this screen names the system the data came from", async () => {
+  await mount((loop) => loop);
+
+  const headings = [
+    ...container.querySelectorAll<HTMLElement>(".meeting-sec-head h2"),
+  ].map((node) => (node.textContent ?? "").trim());
+  assert.ok(
+    headings.length >= 2,
+    `this screen drew ${headings.length} section heading(s); the rule is about both sections and ` +
+      "a sweep over one of them proves nothing about the other",
+  );
+
+  // SŁOWNIK Z EKRANU, NIE Z TEGO PLIKU. Nazwy dostawców, które produkt naprawdę
+  // rysuje, stoją w plakietkach połączenia i wydarzenia — biorąc je stamtąd,
+  // asercja rośnie razem z `providerLabel`, zamiast być czwartą ręczną listą
+  // obok zamkniętego słownika. „Jamie" dopisane wprost i to jest jedyny
+  // literał tutaj: to nazwa integracji pisana w prozie tego ekranu ręką, więc
+  // żadna plakietka jej nie niesie — a to właśnie ona wspięła się do nagłówka.
+  const providerNames = [
+    ...new Set([
+      ...texts(".meeting-sec-lock"),
+      ...texts(".meeting-event .meeting-locked"),
+      "Jamie",
+    ]),
+  ].filter((name) => name !== "");
+  assert.ok(
+    providerNames.length >= 2,
+    `the screen exposed ${providerNames.length} provider name(s) to compare against; with fewer ` +
+      "than two this rule is a single hard-coded word wearing a vocabulary's clothes",
+  );
+
+  const named = headings.flatMap((heading) =>
+    providerNames
+      .filter((name) => heading.includes(name))
+      .map((name) => `„${heading}" carries „${name}"`),
+  );
+  assert.deepEqual(
+    named,
+    [],
+    "a section heading names the system the rows came from instead of the meetings it holds; the " +
+      "reference names both sections by WHEN the meeting is (`Coming up`, `What is left of the " +
+      "ones that happened`) and leaves the provider to the badge beside them",
+  );
+});
+
+// DRUGA POŁOWA WPISU 10-2 — NAZWA DOSTĘPNA, KTÓRĄ NIC NIE PILNOWAŁO.
+//
+// Przemianowanie sekcji dotknęło DWÓCH napisów: widocznego `h2` i atrybutu
+// `aria-label` listy pod nim (`MeetingsSurface.tsx:1255`). Zmiana atrybutu
+// jechała na WŁASNEJ regule, wypisanej w komentarzu przy nim — „nazwa dostępna
+// RÓWNA widocznemu nagłówkowi" — a asercja wyżej skanuje wyłącznie
+// `.meeting-sec-head h2`. Czyli reguła była zadeklarowana i NIEZMIERZONA:
+// przywrócenie w atrybucie `Jamie results` przeszłoby cały `npm run check`
+// na zielono, razem z `english-copy` i `prose-guard`, które chodzą w tej samej
+// aplikacji. Znalazł to przegląd adwersarialny naprawiający ten ogon —
+// złamaniem, nie lekturą.
+//
+// ASERCJA JEST TOTALNA NAD SEKCJAMI I ICH POJEMNIKAMI, nie punktowa na jednym
+// atrybucie: bierze KAŻDĄ sekcję z nagłówkiem, w niej KAŻDEGO potomka
+// z `aria-label`, który jest pojemnikiem wierszy (a nie kontrolką ani wierszem
+// — te mają prawo do własnych nazw), i żąda równości z nagłówkiem po zdjęciu
+// licznika. Sekcja nadchodzących nie nazywa swojego pojemnika WCALE i to jest
+// zapisana decyzja, nie luka — reguła mówi „jeśli nazywa, to tak samo", więc
+// milczenie jej nie łamie i nie musi być wyjątkiem w kodzie.
+test("a section's row container answers to the same name the section shows", async () => {
+  await mount((loop) => loop);
+
+  // `closest`, a nie `:has()`: selektor rodzica jest w happy-domie zależnością,
+  // której ten plik nie musi zaciągać, a wynik jest ten sam i czytelniejszy.
+  const sections = [
+    ...new Set(
+      [...container.querySelectorAll<HTMLElement>(".meeting-sec-head")].flatMap(
+        (head) => {
+          const section = head.closest("section");
+          return section === null ? [] : [section];
+        },
+      ),
+    ),
+  ];
+  assert.ok(
+    sections.length >= 2,
+    `this screen drew ${sections.length} named section(s); the rule is about every section, and ` +
+      "one of them proves nothing about the other",
+  );
+
+  // Licznik jest OSOBNYM elementem nagłówka, nie częścią jego nazwy: prototyp
+  // pisze `<span class="n">`, my `.meeting-sec-count`. Nazwa dostępna nie
+  // powtarza liczby, więc porównanie zdejmuje ją z widocznej strony, zamiast
+  // dopisywać do atrybutu.
+  const visibleName = (section: HTMLElement): string => {
+    const heading = section.querySelector<HTMLElement>(".meeting-sec-head h2");
+    if (heading === null) return "";
+    const clone = heading.cloneNode(true) as HTMLElement;
+    for (const count of clone.querySelectorAll(".meeting-sec-count"))
+      count.remove();
+    return (clone.textContent ?? "").replace(/\s+/gu, " ").trim();
+  };
+
+  const disagreements: string[] = [];
+  let compared = 0;
+  for (const section of sections) {
+    const shown = visibleName(section);
+    if (shown === "") continue;
+    for (const rows of section.querySelectorAll<HTMLElement>(
+      "[aria-label][role='listbox'], ol[aria-label], ul[aria-label], " +
+        "div[aria-label][class$='-list']",
+    )) {
+      const announced = (rows.getAttribute("aria-label") ?? "").trim();
+      compared += 1;
+      if (announced !== shown)
+        disagreements.push(
+          `„${rows.className}" answers to „${announced}" inside a section shown as „${shown}"`,
+        );
+    }
+  }
+
+  // §6 TEJ FALI, PRZENIESIONA DO ASERCJI: pusty przelot jest nieodróżnialny
+  // od poprawnego. Jeśli produkt przestanie nazywać którykolwiek pojemnik,
+  // ten test ma o tym POWIEDZIEĆ, a nie przejść na zerze porównań.
+  assert.ok(
+    compared >= 1,
+    "this run compared zero row containers against their headings; the rule cannot pass on an " +
+      "empty sweep — either the markup lost its accessible names or this selector stopped " +
+      "reaching them",
+  );
+  assert.deepEqual(
+    disagreements,
+    [],
+    "a row container announces a different name than the heading above it, so a reader using " +
+      "software hears one collection and a reader looking sees another",
+  );
+});

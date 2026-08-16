@@ -516,14 +516,14 @@ describe("interaction recovery contracts", () => {
   // go łatać. Trzy zdania rejestru mówiły o jednym pudełku: nadchodzące
   // zdegradowane do prawej szyny, drabina jasności odwrócona, nagłówek
   // wciągnięty do środka karty.
-  it("stacks Coming up above Jamie results, each head on the canvas over its own list card", () => {
+  it("stacks Coming up above the section of meetings that happened, each head on the canvas over its own list card", () => {
     assert.ok(
       meetings.includes('className="meeting-upcoming"'),
       "Coming up must exist as its own section",
     );
     assert.ok(
       meetings.includes('className="meeting-completed"'),
-      "Jamie results must exist as its own section",
+      "the section of meetings that happened must exist as its own section",
     );
     // KOLEJNOŚĆ CZYTANA Z MIEJSCA MONTAŻU, NIE Z MIEJSCA DEKLARACJI, i to jest
     // poprawka znaleziona przez break-test, a nie przy pisaniu. Pierwsza wersja
@@ -541,7 +541,7 @@ describe("interaction recovery contracts", () => {
     assert.ok(upcomingMountedAt > -1, "Coming up must be mounted in the body");
     assert.ok(
       completedMountedAt > upcomingMountedAt,
-      "Coming up leads; Jamie results follow it in the same column",
+      "Coming up leads; what is left of the ones that happened follows it in the same column",
     );
     // TAFLA INTEGRACJI ZESZŁA Z TEGO EKRANU — WPIS 10-1, FAZA II, LOT L6.
     // Stało tu `assert.match(meetings, /\{jamieConnection\}[\s\S]*meeting-

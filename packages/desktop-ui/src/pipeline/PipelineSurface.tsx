@@ -403,12 +403,40 @@ const DealCard = ({
         <span className={styles.nextText}>{card.opportunity.nextAction}</span>
       </span>
       <span className={styles.meta}>
-        {/* Three channels, not one: the word "stale", the filled red badge and
-            the clock (`v3/screens/pipeline.js:326`). Remove the colour and the
-            sentence still says it. */}
-        <span className={`${styles.age} ${card.stale ? styles.ageStale : ""}`}>
+        {/* WPIS 6-4 OGONA FAZY III — SŁOWO `stale` SCHODZI, I ZDEJMUJE JE
+            POMIAR, NIE GUST.
+
+            Stało tu: „Three channels, not one: the word »stale«, the filled
+            red badge and the clock (`v3/screens/pipeline.js:326`). Remove the
+            colour and the sentence still says it." Ten cytat był NIEPRAWDZIWY
+            o prototypie i sprawdzenie tej jednej linii to pokazuje —
+            `v3/screens/pipeline.js:326` niesie jeden `span` o klasie
+            `tag error` albo `tag ghost`, z atrybutem `title` mówiącym „N dni
+            w lejku", z glifem `icon("clock")` wstawianym warunkowo i z treścią
+            złożoną z liczby oraz litery `d`. (Cytat jest OPISEM, nie kopią
+            źródła: dosłowne przepisanie tamtej linii postawiłoby w tym pliku
+            wzorzec, który zamiatanie `day-distance.test.ts` — słusznie —
+            czyta jako ręcznie sklejoną liczbę dni.)
+
+            Kanały są DWA (kolor i zegar) plus atrybut `title`. Słowa `stale`
+            tam nie ma, a komentarz powoływał się na tę linię jako na źródło
+            trzeciego kanału, którego ta linia nie zawiera — to jest w tym
+            repozytorium klasa defektu, nie drobiazg.
+
+            ZARZUT O DOSTĘPNOŚĆ JEST MARTWY, i dlatego to jest robota, a nie
+            decyzja: zegar rysuje się PO OBU stronach, więc po zdjęciu koloru
+            zostaje tu dokładnie to samo, co tam. Słowo nie kupowało ani
+            jednego kanału niezależnego od koloru, którego prototyp już nie ma.
+
+            LICZBA DNI JEST Z ZEGARA (`pipeline-view.ts` — `daysSince`), więc
+            żadna asercja nad tą plakietką nie ma prawa jej przypiąć; pilnuje
+            jej KSZTAŁT napisu w `pipeline-screen.interaction.test.tsx`. */}
+        <span
+          className={`${styles.age} ${card.stale ? styles.ageStale : ""}`}
+          data-deal-age
+        >
           {card.stale && <Icon name="clock" />}
-          {`${card.ageDays} d${card.stale ? " · stale" : ""}`}
+          {`${card.ageDays} d`}
         </span>
         {card.owner !== undefined && <Initials name={card.owner.name} />}
       </span>

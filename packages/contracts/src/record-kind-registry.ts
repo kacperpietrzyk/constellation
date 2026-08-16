@@ -11,7 +11,7 @@ import { z } from "zod";
 // zepsucie, nie wywnioskowane. Rekonesans zapowiadał, że wycofanie celu
 // zostawiające tu martwą wartość „kompiluje się czysto i zabija wyszukiwanie
 // dopiero w runtime". NIE KOMPILUJE SIĘ: `SearchOverlay.choose`
-// (`Wave2Surfaces.tsx:1065`) podaje `inspectorSurface` do `onNavigate`, którego
+// (`Wave2Surfaces.tsx:1085`) podaje `inspectorSurface` do `onNavigate`, którego
 // parametr ma typ `SurfaceId`, czyli dokładnie `DesktopSurface`. Odtworzony
 // stan sprzed naprawy (`capture` → `"history"` przy wycofanym celu) daje twardy
 // błąd `tsc`. Dla rodzajów WYSZUKIWALNYCH kompilator zatem pomaga.

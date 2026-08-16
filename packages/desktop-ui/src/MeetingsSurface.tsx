@@ -307,7 +307,8 @@ export const MeetingsSurface = ({
   readonly inspectorHost: HTMLElement | null;
   readonly onInspectorOpen: () => void;
   readonly onMeetingSelected: (meetingId: string) => void;
-  /* PRAWY KONIEC NAGŁÓWKA SEKCJI „Jamie results" — WPIS #65, DRUGA POŁOWA.
+  /* PRAWY KONIEC NAGŁÓWKA SEKCJI ODBYTYCH SPOTKAŃ („What is left of the ones
+     that happened"; „Jamie results" do wpisu 10-2) — WPIS #65, DRUGA POŁOWA.
      Prototyp stawia tam wyjście, nie ozdobę (`v3/screens/meetings.js:445` —
      `<button class="more" data-mt-go='{"kind":"sources"}'>Open Sources →`),
      a ekran, na który ono prowadzi, w tej aplikacji ISTNIEJE: czytelnia Źródeł
@@ -823,7 +824,7 @@ export const MeetingsSurface = ({
      BYŁO: `<div class="meeting-integration-wrap">` z sekcją `RESULT SOURCE /
      Jamie`, a w niej `Key scope` jako natywny `<select>`, `API key` jako
      natywny `<input type="password">` i przycisk `Connect Jamie` — formularz
-     administracyjny wstawiony MIĘDZY nagłówek sekcji „Jamie results" a samą
+     administracyjny wstawiony MIĘDZY nagłówek sekcji odbytych spotkań a samą
      listę wyników.
 
      JEST: `SettingsSurface.tsx`, kategoria `access` („Access and connections"),
@@ -846,8 +847,8 @@ export const MeetingsSurface = ({
   /* REKOMPOZYCJA CIAŁA EKRANU — WPISY #63, #64 I #65 REJESTRU JAKO JEDNA
      ROBOTA, BO KAŻDY Z NICH OSOBNO ZOSTAWIŁBY EKRAN GORSZYM NIŻ BYŁ.
 
-     Do tej chwili ten ekran rysował DWA PASY: podniesioną taflę „Jamie results"
-     i wąską szynę `.meeting-context-rail` po prawej, w której siedziało to,
+     Do tej chwili ten ekran rysował DWA PASY: podniesioną taflę sekcji
+     odbytych spotkań i wąską szynę `.meeting-context-rail` po prawej, w której siedziało to,
      z czym w spotkanie się WCHODZI. Trzy zdania rejestru opisują trzy strony
      tego samego pudełka:
 
@@ -1201,8 +1202,28 @@ export const MeetingsSurface = ({
   const completedSection = (
     <section className="meeting-completed" aria-labelledby="completed-title">
       <div className="meeting-sec-head">
+        {/* WPIS 10-2 OGONA FAZY III — SEKCJA NAZYWA SIĘ TYM, CO ZNACZY, A NIE
+            DOSTAWCĄ. Prototyp: `<h2>What is left of the ones that happened
+            <span class="n">${"{"}imported.length{"}"}</span></h2>`
+            (`v3/screens/meetings.js:446`), obok `Coming up` — obie nazwy mówią
+            o CZASIE spotkania, nie o systemie, z którego przyszła treść.
+            Stało tu `Jamie results`, czyli nazwa integracji w miejscu, w którym
+            sąsiednia sekcja nazywa robotę.
+
+            SZEŚĆ PAR REJESTRU STOI NA TYM NAGŁÓWKU (`D7-03a`…`D7-03g`) i ANI
+            JEDNA nie pyta, co on mówi; przemianowanie przechodzi wszystkie
+            sześć na zielono. Myli też pierwszy kandydat spoza rejestru:
+            `interaction-recovery-contract.test.ts:519` NAZYWA się „stacks
+            Coming up above Jamie results", a asertuje `className` i KOLEJNOŚĆ
+            montażu. Dlatego pomiar tej pozycji jest osobny i jest o REGULE
+            (nazwa sekcji nie jest nazwą dostawcy), a nie o tym jednym napisie.
+
+            `Jamie` ZOSTAJE TAM, GDZIE NAZYWA INTEGRACJĘ — w zdaniu stanu
+            pustego („Jamie still owns recording and transcription") i przy
+            imporcie. To nie jest niekonsekwencja: tam nazwa dostawcy jest
+            TREŚCIĄ zdania, a nie nazwą zbioru spotkań. */}
         <h2 id="completed-title">
-          Jamie results{" "}
+          What is left of the ones that happened{" "}
           <span className="meeting-sec-count">{surface.completed.length}</span>
         </h2>
         <button
@@ -1224,10 +1245,14 @@ export const MeetingsSurface = ({
         </div>
       ) : (
         <div className="meeting-results-browser">
+          {/* Nazwa dostępna RÓWNA widocznemu nagłówkowi sekcji, której ta lista
+              jest treścią — rozjazd między nimi zostawiłby czytelnikowi
+              z czytnikiem ekranu inną nazwę zbioru niż czytelnikowi
+              patrzącemu (wpis 10-2). */}
           <ol
             className="meeting-result-list"
             role="listbox"
-            aria-label="Imported Jamie results"
+            aria-label="What is left of the ones that happened"
           >
             {surface.completed.map((meeting, index) => {
               const selected = meeting.id === selectedMeeting?.id;

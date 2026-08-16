@@ -2633,9 +2633,11 @@ export const RealApp = ({
                  zamiast przewijać do tafli, której na tym ekranie już nie ma.
                  `openSettingsCategory`, a nie gołe przejście na powierzchnię:
                  Ustawienia są trybem powłoki i mają jedną drogę wejścia
-                 (`RealApp.tsx:5565-5570` mówi to wprost). */
+                 (`RealApp.tsx:5574-5579` mówi to wprost). */
               onOpenConnections={() => openSettingsCategory("access")}
-              /* „Open Sources →" na prawym końcu nagłówka „Jamie results"
+              /* „Open Sources →" na prawym końcu nagłówka sekcji odbytych spotkań
+                 („What is left of the ones that happened"; do ogona Fazy III
+                 nagłówek nazywał się „Jamie results" — wpis 10-2)
                  (wpis #65). Od lotu D3 to jest zwykłe przejście na cel
                  `sources`, a etykieta zgadza się z pozycją nawigacji, na którą
                  prowadzi — do tego lotu prowadziła na cel „Library" i mówiła
@@ -4259,8 +4261,15 @@ export const RealApp = ({
           <button className="capture-dock" onClick={openCapture}>
             <span className="capture-dock-content">
               <Icon name="capture" />
+              {/* WPIS 1-8 OGONA FAZY III — dwa nadmiarowe „a".
+                  Prototyp: `<span class="lbl">Capture a thought, link or
+                  task…</span>` (`v3/app.js:566`). Trzy pary rejestru stoją na
+                  DOKŁADNIE tym podmiocie (`L1-10a` promień, `L1-10b`
+                  wyściółka, `L1-10c` `min-height`) i żadna nie dotyka tekstu,
+                  więc ten napis mógł się rozjechać w ciszy. Wyliczenie po
+                  angielsku niesie rodzajnik RAZ, przy pierwszym członie. */}
               <span className="capture-dock-label">
-                Capture a thought, a link or a task…
+                Capture a thought, link or task…
               </span>
             </span>
             <kbd>{modifierLabel}⇧K</kbd>

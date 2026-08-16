@@ -1461,8 +1461,11 @@ test("tekst zdaje AA na każdej kryjącej powierzchni czytania", () => {
   // zwalnia tekst będący częścią NIEAKTYWNEJ kontrolki — a ten token maluje
   // w tym repo także treść żywą: `.amountNone` (pipeline.module.css:401),
   // `.state_none` (project-record.module.css:80), ikonę w aktywnym wierszu
-  // (`styles.css:1774`) i kropkę jako `background` (task-table.module.css:285).
-  // Wyjątek nie obejmuje żadnego z tych czterech, więc próg zostaje 4,5.
+  // (`styles.css:1774`), kropkę jako `background` (task-table.module.css:285)
+  // i — od ogona Fazy III, wpis 2-8 — etykietę dnia, w którym workspace nie
+  // pracuje (`calendar.module.css`, `.freeOff`). Wyjątek nie obejmuje żadnego
+  // z tych PIĘCIU, więc próg zostaje 4,5. Bliźniacza liczba stoi przy samym
+  // tokenie w `packages/desktop-ui/src/tokens.css` i rośnie razem z tą.
   const failures = readingMeasurements
     .filter((row) => row.ratio < WCAG_AA_NORMAL_TEXT)
     .map(

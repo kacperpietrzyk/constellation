@@ -799,10 +799,30 @@ export const ProjectsSurface = ({
                 </span>
               </button>
             )}
+            {/* WPIS 5-2 OGONA FAZY III — USTERKA, NIE ROZJAZD STYLU.
+                Spis powszechny bramki po WSZYSTKICH piętnastu zadeklarowanych
+                ekranach: siedem akcji tworzących w paśmie kolekcji, sześć
+                `primary-button` (`New opportunity`, `New organization`,
+                `New person`, `New renewal`, `New task`, `New note`), a ta
+                jedna — `secondary-button`. Prototyp maluje ją akcentem tak
+                samo jak pozostałe: `btn("New project", { cls: "primary",
+                icon: "plus" })` (`v3/screens/projects.js:343`). Czyli jeden
+                ekran kolekcji mówił innym głosem niż pięć pozostałych, a
+                pasmo Projektów niosło DWA przyciski (`ghost` + `secondary`)
+                i ani jednego akcentu tam, gdzie każdy sąsiad ma jeden
+                akcentowy.
+
+                `Cancel` ZOSTAJE DRUGORZĘDNY, i to jest ta sama reguła, nie
+                wyjątek od niej: akcent należy do akcji, która TWORZY, a nie do
+                przełącznika, który zamyka formularz — kontrakt daje pojemnikowi
+                dokładnie jedną akcję z wypełnieniem akcentu. Trzeciego
+                przycisku w tym paśmie NIE MA: `Cancel` i `New project` to
+                jeden i ten sam węzeł w dwóch stanach, więc na ekranie nigdy
+                nie stoją obok siebie. */}
             <button
               ref={createTriggerRef}
               type="button"
-              className="secondary-button"
+              className={creating ? "secondary-button" : "primary-button"}
               aria-expanded={creating}
               aria-controls={creating ? "project-create-form" : undefined}
               onClick={() => setCreating((value) => !value)}

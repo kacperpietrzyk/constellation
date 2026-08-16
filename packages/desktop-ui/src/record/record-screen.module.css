@@ -22,7 +22,7 @@
         `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`);
      3. rekord szansy (`opportunity/OpportunityRecordScreen.tsx:49`, nosi
         `.screen` w `:482`) wewnątrz `.surface-scroll` + `.pipeline`
-        (`pipeline/PipelineSurface.tsx:859-862` — tablica lejka oddaje kanwę
+        (`pipeline/PipelineSurface.tsx:887-890` — tablica lejka oddaje kanwę
         rekordowi w swoim własnym slocie).
      WSZYSTKIE TRZY korzenie deklarują od lotu L1 `--surface-measure: none`
      (`tasks/tasks.module.css:18`, `styles.css` przy `.project-surface`,
