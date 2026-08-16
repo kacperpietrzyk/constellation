@@ -1113,7 +1113,7 @@ const outcome = runBreakTests({
       // naprawy (`scratchpad/base-layout.txt`, wyjście 0): „D2-01a" pada tam
       // 2 razy (dwa wiersze `MATCH`, po jednym na motyw), a „— D2-01a „" ZERO
       // razy. Forma werdyktu pary powłoki to `— ${id} „${title}"`
-      // (`verify-renderer-layout.mjs:4976-4979`) i tę samą formę ma
+      // (`verify-renderer-layout.mjs:4998-5001`) i tę samą formę ma
       // `VISUAL_LANGUAGE_NOT_MEASURED` (`:4940`, `:4960`), więc igła w tym
       // kształcie pokrywa OBA kanały czerwieni i nie da się jej spełnić
       // zielenią.
@@ -2499,7 +2499,7 @@ const outcome = runBreakTests({
       // dokładnie ten stan, którego nie widzi ani liczenie pojemnika, ani
       // liczenie „ile jest elementów w DOM". Para jest czerwona, bo `atLeast`
       // liczy dopasowania NARYSOWANE, a `<span>` bez tekstu ma zerową
-      // szerokość (`verify-renderer-layout.mjs:4659-4664`). Bez tego złamania
+      // szerokość (`verify-renderer-layout.mjs:4681-4686`). Bez tego złamania
       // ta droga byłaby przeczytana w kodzie i niesprawdzona.
       name: "empty the attendee name without touching the element that holds it",
       expectRedContains: ["D7-01g"],
@@ -2892,7 +2892,7 @@ const outcome = runBreakTests({
       // w czerwień POMIAREM, a nie zabiciem podmiotu. Po skasowaniu tej jednej
       // linii `.settings-layout` dziedziczy 72 rem z `.work-surface`
       // (`styles.css:2337`), wylicza 1152 px zamiast 1184 i para `enforced`
-      // wrzuca WERDYKT (`verify-renderer-layout.mjs:8034-8040`), który idzie do
+      // wrzuca WERDYKT (`verify-renderer-layout.mjs:8056-8062`), który idzie do
       // `problems`.
       //
       // CZYM RÓŻNI SIĘ OD POZOSTAŁYCH: najbliższe mu złamanie czternaste („put
@@ -2926,7 +2926,7 @@ const outcome = runBreakTests({
       // selektorem. Dla pary `pending` nie ma innej drogi — `pending + DIFFERS`
       // jest zielone, `pending + MATCH` żąda poprawki produktu (niewyrażalnej
       // przez `replaceOnce`), a `NOT_MEASURED` JEST ŚLEPE NA STATUS
-      // (`verify-renderer-layout.mjs:8003-8010`) i kładzie bramkę niezależnie
+      // (`verify-renderer-layout.mjs:8025-8032`) i kładzie bramkę niezależnie
       // od tego, czy para jest oczekująca. Po zdjęciu klasy modułowej
       // z nośnika `[class*="_inbox_"]` nie trafia w nic, para wraca
       // `ROUTED_NOT_MEASURED` razem ze spisem części selektora — czyli
@@ -2967,7 +2967,7 @@ const outcome = runBreakTests({
       // `PENDING_ALREADY_MATCHES`) jest POPRAWKĄ, nie edycją jednego napisu,
       // i `replaceOnce` tego nie wyrazi. Jedyną gałęzią osądu, która pada
       // NIEZALEŻNIE OD STATUSU, jest `NOT_MEASURED`
-      // (`verify-renderer-layout.mjs:4871-4879` — status jest tam wyłącznie
+      // (`verify-renderer-layout.mjs:4893-4901` — status jest tam wyłącznie
       // DRUKOWANY, nie sprawdzany), więc złamanie musi ZABIĆ ISTNIENIE
       // PODMIOTU. Ten sam wybór, z tego samego powodu, zrobiło złamanie P1
       // nad Skrzynką.
@@ -4739,7 +4739,7 @@ const outcome = runBreakTests({
       name: "a call site pushes the help mark away from the label it stands beside",
       // Igła w kształcie werdyktu z tego samego powodu i z tym samym pomiarem
       // co przy złamaniu pierwszym; tu jest to werdykt TRASOWANY
-      // (`— ${id} „${title}"`, `verify-renderer-layout.mjs:8453-8459`), a więc
+      // (`— ${id} „${title}"`, `verify-renderer-layout.mjs:8475-8481`), a więc
       // ta sama forma. W zielonym przelocie „L7-04a" pada 2×, „— L7-04a „"
       // ZERO razy (`scratchpad/L7-gate-po3.txt`).
       expectRedContains: ["— L7-04a „"],
@@ -5274,6 +5274,242 @@ ${IDENTITY_STATE_ROW}            </section>
           "says={`This workspace is called ${snapshot.bootstrap.workspace.name}, and every screen in this window is looking at it.`}",
           'says={"This workspace is called Praca, and every screen in this window is looking at it."}',
           "the computed sentence of the Identity section",
+        ),
+    },
+    {
+      // ══ WPIS 11-2 FAZY III · CZTERY ZŁAMANIA NA TRZY PARY ═════════════════
+      //
+      // TRZY PARY, KTÓRE PADAJĄ OSOBNO, SĄ TRZEMA PARAMI. Trzy, które padają
+      // zawsze razem, są jedną parą o trzech identyfikatorach — i to jest
+      // jedyny powód, dla którego złamań jest cztery, a nie jedno „skasuj
+      // urywek". Każde z pierwszych trzech celuje w INNĄ z nich i zostawia
+      // pozostałe zielone; czwarte zabija podmiot i musi zgasić wszystkie.
+      //
+      // ZŁAMANIE 1 — TREŚĆ. Wiersz dalej rysuje pas, dalej go klamruje,
+      // i pokazuje w nim TYTUŁ zamiast tekstu notatki. To jest realna droga
+      // wady, nie wymyślona: tytuł jest tuż obok w tym samym komponencie i był
+      // jedyną rzeczą, którą ten wiersz pokazywał przed tym wpisem. Czerwona
+      // ma być WYŁĄCZNIE `L5-12a` — klamra i pudełko nie mają o treści zdania.
+      name: "the note row shows its title again instead of the note's own text",
+      // FRAGMENT PRZYPIĘTY DO WERDYKTU, NIE DO IDENTYFIKATORA. Gołe „L5-12a"
+      // stoi w wyjściu ZIELONEGO przebiegu (wiersz raportu `L5-12a\tMATCH`),
+      // a sama forma `L5-12a „tytuł"` jest wspólna dla werdyktu DIFFERS
+      // i awarii NOT_MEASURED — czyli nie odróżniłaby tego złamania od
+      // czwartego. Dwukropek po cudzysłowie należy WYŁĄCZNIE do werdyktu
+      // (`… „${pair.title}": ${subject} computes …`), a wersja NOT_MEASURED
+      // ma w tym miejscu „ [enforced] at ". Zmierzone na zielonym logu tego
+      // odbioru: 0 wystąpień.
+      expectRedContains: [
+        "L5-12a „the note row shows the opening of the note's own text\": ",
+      ],
+      file: "packages/desktop-ui/src/library/NotesReading.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "{note.excerpt}",
+          "{note.title}",
+          "the text the excerpt element renders",
+        ),
+    },
+    {
+      // ZŁAMANIE 2 — LICZBA WIERSZY. Pas zostaje, treść zostaje, pudełko
+      // zostaje; klamra przestaje być dwuwierszowa. Czerwona ma być WYŁĄCZNIE
+      // `L5-12b`.
+      name: "the excerpt clamp counts four lines where the reference counts two",
+      expectRedContains: ['L5-12b „the excerpt is clamped to two lines": '],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.knowledge-row-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;`,
+          `.knowledge-row-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;`,
+          "the line count of the excerpt clamp",
+        ),
+    },
+    {
+      // ZŁAMANIE 3 — I TO JEST TO, DLA KTÓREGO `L5-12c` W OGÓLE ISTNIEJE.
+      //
+      // Pudełko przestaje być pudełkiem klamry: `display: block` zamiast
+      // `-webkit-box`. Urywek LEJE SIĘ NA SZEŚĆ WIERSZY i rozpycha listę —
+      // czyli dokładnie ta wada, przed którą ta pozycja ma bronić.
+      //
+      // A TERAZ RZECZ, KTÓRA JEST TU CAŁĄ POINTĄ: `L5-12b` ZOSTAJE ZIELONA.
+      // `-webkit-line-clamp` wylicza się na „2" także wtedy, gdy nie obcina
+      // niczego, więc para czytająca samą klamrę zaświadczyłaby ten stan jako
+      // poprawny. Gdyby ten wpis dowiózł dwie pary zamiast trzech, przeszedłby
+      // odbiór z przyrządem ślepym na własny przedmiot. To złamanie jest
+      // jedynym dowodem, że tak nie jest — i dlatego jego `expectRedContains`
+      // wymienia TYLKO `L5-12c`.
+      name: "the excerpt stops being the box a clamp can bite on",
+      expectRedContains: [
+        'L5-12c „the excerpt is the box the clamp needs to bite on": ',
+      ],
+      file: "packages/desktop-ui/src/styles.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `.knowledge-row-excerpt {
+  display: -webkit-box;
+  overflow: hidden;`,
+          `.knowledge-row-excerpt {
+  display: block;
+  overflow: hidden;`,
+          "the display of the excerpt element",
+        ),
+    },
+    {
+      // ZŁAMANIE 4 — ISTNIENIE PODMIOTU. Znacznik znika, więc selektor
+      // trzech par nie ma czego zmierzyć. Wszystkie trzy muszą wrócić
+      // `NOT_MEASURED`, i to jest asercja o TRASIE: dowodzi, że pas urywków
+      // jest naprawdę rysowany na tym przystanku, a nie że pary są zielone,
+      // bo nikt na nie nie patrzy.
+      //
+      // KAŻDY FRAGMENT PRZYPINA STAN DO PARY, i to jest poprawka z odbioru.
+      // Pierwsza wersja wymieniała `"VISUAL_LANGUAGE_NOT_MEASURED"` obok
+      // gołych identyfikatorów — a gołe „L5-12a" stoi w wyjściu ZIELONEGO
+      // przebiegu, więc asercja dowodziła wyłącznie, że `NOT_MEASURED` padło
+      // GDZIEKOLWIEK. Forma „ [enforced] at " jest wyłączną własnością
+      // wiersza `ROUTED_NOT_MEASURED` (werdykt DIFFERS ma tam dwukropek),
+      // więc trzy fragmenty niżej są prawdziwe DOKŁADNIE wtedy, gdy te trzy
+      // pary nie zmierzyły niczego.
+      //
+      // 12d I 12e ZOSTAJĄ ZIELONE PO TYM ZŁAMANIU I TO JEST POPRAWNE: bez
+      // znacznika żaden wiersz nie ma pasa, więc „wiersz bez pasa istnieje"
+      // jest spełnione, a „pas pusty nie istnieje" jest spełnione pusto.
+      // Ich dowodem jest złamanie 7.
+      name: "the excerpt element loses the marker every one of its pairs aims at",
+      expectRedContains: [
+        "L5-12a „the note row shows the opening of the note's own text\" [enforced] at ",
+        'L5-12b „the excerpt is clamped to two lines" [enforced] at ',
+        'L5-12c „the excerpt is the box the clamp needs to bite on" [enforced] at ',
+      ],
+      file: "packages/desktop-ui/src/library/NotesReading.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                              className="knowledge-row-excerpt"
+                              data-note-excerpt`,
+          `                              className="knowledge-row-excerpt"`,
+          "the marker attribute on the excerpt element",
+        ),
+    },
+    {
+      // ZŁAMANIE 5 — PROJEKCJA, I ONO CELOWO NIE JEST MIERZONE BRAMKĄ UKŁADU.
+      //
+      // Kernel przestaje składać `excerpt` na `knowledge.list`. Bramka układu
+      // zostaje wtedy ZIELONA i to jest poprawne, a nie luka: harness rysuje
+      // Bibliotekę z klienta scenariuszowego nad fiksturą, więc nie przechodzi
+      // przez kernel ANI RAZU. Puszczenie tego złamania przez domyślny
+      // `verify` zgłosiłoby defekt przyrządu tam, gdzie defektem jest dobór
+      // bramki — precedens `CONTRAST_VERIFY` wyżej.
+      //
+      // Świadkiem jest jedyny test, który może nim być: `knowledge.list`
+      // wołany przez PRAWDZIWY kernel nad PRAWDZIWYM SQLite
+      // (`packages/local-store/test/document-excerpt-projection.test.ts`).
+      // Zestaw zgodności nad sklepem odniesienia NIE MOŻE nim być — ten sklep
+      // nie ma ciał dokumentów i byłby zielony przy urywku zawsze nieobecnym.
+      //
+      // FRAGMENT MUSI POCHODZIĆ Z KOMUNIKATU ASERCJI, a nie z nazwy `describe`
+      // — i to jest poprawka z odbioru. Nazwa zestawu („the excerpt a note
+      // list shows under a title") jest DRUKOWANA PRZEZ ZIELONY PRZEBIEG
+      // `test:core`, więc pierwsza wersja tego wpisu nie przypinała czerwieni
+      // do niczego. Komunikat niżej stoi przy roszczeniu 1 i pojawia się
+      // wyłącznie, gdy ono padnie.
+      name: "the projection stops carrying the excerpt the note list reads",
+      expectRedContains: [
+        "the note list must receive the opening of the indexed body",
+      ],
+      verify: { command: "npm", args: ["run", "test:core"] },
+      file: "packages/application/src/wave2.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `          ...(excerpt === undefined ? {} : { excerpt }),`,
+          // Zmienna ZOSTAJE wyliczona, żeby złamanie było o PROJEKCJI, a nie
+          // o nieużywanej zmiennej: usunięcie całego wyrażenia zostawiłoby
+          // `excerpt` bez konsumenta i pierwszą czerwienią byłaby uwaga
+          // lintera o martwym kodzie, a nie test mówiący, że lista notatek
+          // przestała dostawać treść.
+          `          ...(excerpt === undefined ? {} : {}),`,
+          "the excerpt composed onto knowledge.list",
+        ),
+    },
+    {
+      // ZŁAMANIE 6 — ECHO TYTUŁU WRACA, I TO JEST DOWÓD, ŻE POPRAWKA ODBIORU
+      // JEST TYM, CO CZYNI `L5-12a` ZIELONĄ.
+      //
+      // Do odbioru wpisu 11-2 urywek notatki `runbook` otwierał się
+      // nagłówkiem H1 powtarzającym tytuł wiersza, a para stała na `contains`
+      // — czyli była ZIELONA nad pasem, którego 50 z 67 widocznych znaków było
+      // tytułem stojącym linijkę wyżej. To złamanie przywraca dokładnie tamten
+      // stan: zdejmuje zdejmowanie echa i zostawia wszystko inne.
+      //
+      // FRAGMENT PRZYPINA ZAOBSERWOWANĄ TREŚĆ, nie identyfikator pary: werdykt
+      // DIFFERS o `L5-12a` wypisałoby także złamanie 1, a te dwa mówią o dwóch
+      // różnych wadach. Napis niżej może paść wyłącznie wtedy, gdy pas OTWIERA
+      // SIĘ tytułem.
+      name: "the excerpt opens by repeating the title standing one line above it",
+      expectRedContains: [
+        "computes text = Runbook uruchomienia środowiska po stronie klienta Notatka opisuje",
+      ],
+      file: "packages/contracts/src/document-excerpt.ts",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `  const flattened = withoutTitleEcho(body, title).replace(/\\s+/gu, " ").trim();`,
+          `  void withoutTitleEcho;
+  const flattened = body.replace(/\\s+/gu, " ").trim();`,
+          "the removal of the title echo from the opening of the excerpt",
+        ),
+    },
+    {
+      // ZŁAMANIE 7 — PAS RYSOWANY BEZWARUNKOWO, I TO JEST JEDYNY DOWÓD
+      // TRZECIEJ POŁOWY KONTRAKTU.
+      //
+      // Wiersz notatki bez tekstu dostaje pas, tylko pusty. Czytelnik widzi
+      // wtedy pod tytułem pustą wstęgę, czyli zdanie „ta notatka nic nie
+      // mówi" o notatce, o której ekran nie wie nic. Do odbioru wpisu 11-2 ta
+      // gałąź nie była asertowana NIGDZIE po stronie renderu — test
+      // jednostkowy pilnował PROJEKCJI (brak klucza), a `L5-12a/b/c` są na
+      // nią ślepe: pusty `<span>` albo wypada z `rendered()` i tamte trzy
+      // sądzą te same cztery elementy, albo nie wypada i wszystkie dziewięć
+      // wylicza tę samą klamrę. Zielone w OBU gałęziach.
+      //
+      // Obie nowe pary muszą paść, i padają z RÓŻNYCH powodów: 12d nie
+      // znajduje ani jednego wiersza BEZ pasa, 12e znajduje pięć pasów
+      // pustych.
+      name: "every note row gets a band, and five of them have nothing to put in it",
+      expectRedContains: [
+        'L5-12d „a note with no text of its own gets a row with no band": ',
+        'L5-12e „no note row carries a band with nothing in it": ',
+      ],
+      file: "packages/desktop-ui/src/library/NotesReading.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          `                          {note.excerpt === undefined ? null : (
+                            <span
+                              className="knowledge-row-excerpt"
+                              data-note-excerpt
+                            >
+                              {note.excerpt}
+                            </span>
+                          )}`,
+          `                          <span
+                            className="knowledge-row-excerpt"
+                            data-note-excerpt
+                          >
+                            {note.excerpt ?? ""}
+                          </span>`,
+          "the condition that keeps a bandless note row bandless",
         ),
     },
   ]),

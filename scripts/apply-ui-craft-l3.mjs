@@ -73,12 +73,12 @@ const edits = [
     // (`.ui-craft/patterns.md:915-918` na 2026-08-15), cytowany w całości,
     // żeby kotwica nie mogła trafić w sąsiedni wzorzec.
     was: `- **The metadata line says only what the projection knows.** \`document.list\`
-  (\`packages/contracts/src/query.ts:1718-1733\`) carries no author, so the note
+  (\`packages/contracts/src/query.ts:1747-1762\`) carries no author, so the note
   reader states WHEN and WHERE and nothing about WHO. An initials avatar drawn
   from anything else would be an assertion about authorship the read cannot make.
 `,
     willBe: `- **The metadata line says only what the projection knows.** \`document.list\`
-  (\`packages/contracts/src/query.ts:1718-1733\`) carries no author, so the note
+  (\`packages/contracts/src/query.ts:1747-1762\`) carries no author, so the note
   reader states WHEN and WHERE and nothing about WHO. An initials avatar drawn
   from anything else would be an assertion about authorship the read cannot make.
 - **Nothing stands above the title, and the KIND is not an exception.** The

@@ -8326,6 +8326,34 @@ kbd {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
+/* FAZA III, WPIS 11-2 — DWA WIERSZE TREŚCI POD TYTUŁEM.
+   Prototyp: `.kn-row-excerpt` (`v3/screens/knowledge.css:158-161`) —
+   `font-size: var(--text-xs)`, `color: var(--text-quaternary)`,
+   `line-height: 1.45`, `display: -webkit-box`, `-webkit-line-clamp: 2`,
+   `-webkit-box-orient: vertical`, `overflow: hidden`.
+
+   `-webkit-line-clamp` JEST BEZWŁADNE BEZ `display: -webkit-box`, i to nie
+   jest ciekawostka o przeglądarce, tylko powód, dla którego para kształtu tej
+   pozycji czyta OBIE własności. Sama klamra wylicza się na `2` także na
+   `display: block`, gdzie nie obcina niczego — asercja czytająca wyłącznie ją
+   byłaby zielona nad tekstem lejącym się na sześć wierszy. Prototyp deklaruje
+   obie w jednej regule i tu jest tak samo.
+
+   TO JEST TRZECI PAS SIATKI WIERSZA, nie wstawka do stopki. Wiersz jest
+   `display: grid` z `gap: 0.1875rem` (reguła `.knowledge-document-list li
+   button` niżej), więc tytuł, urywek i stopka są trzema rzędami o wspólnym
+   rytmie — i wiersz notatki, która urywka nie ma, jest po prostu wierszem
+   o dwóch rzędach. Żadnego pustego pasa, żadnej rezerwacji miejsca: wysokość
+   ma zależeć od tego, czy jest co pokazać. */
+.knowledge-row-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
 /* The truncating half. The ellipsis has to sit on the element that is the TEXT
    BOX — a bare text node inside a flex container gets clipped, not ellipsed —
    which is the same note the reference writes over its own row reference at
@@ -10348,7 +10376,7 @@ kbd {
    deklaracje mówią o dwóch RÓŻNYCH osiach i sięgają dwóch różnych zbiorów.
    `.settings-control` bywa kolumną (dziecko wprost, np. `#voice-audio-retention`
    — `SettingsSurface.tsx:2801-2814`), ale bywa też pojemnikiem RZĘDÓW
-   (`.settings-control > div` ustawia `display: flex`, `styles.css:10242-10246`),
+   (`.settings-control > div` ustawia `display: flex`, `styles.css:10270-10274`),
    a w rzędzie osią poprzeczną jest PION: `align-self: start` przykleiłoby tam
    kontrolkę do górnej krawędzi rzędu obok rozciągniętych pól tekstowych. Oś
    pozioma w rzędzie to `flex`, i tym zajmuje się reguła niżej.

@@ -454,7 +454,7 @@ export const KnowledgeEditor = ({
    * `[].join(" / ")`, czyli PUSTY ŁAŃCUCH. Wiersz rysował więc niemy glif
    * folderu po kropce rozdzielającej — pustkę zamiast zdania, dokładnie tę
    * klasę wady, którą `NotesReading` nazywa przy `structureReadable`
-   * (`NotesReading.tsx:105-127`: „the claims about structure are withdrawn").
+   * (`NotesReading.tsx:115-137`: „the claims about structure are withdrawn").
    * Stan jest TRWAŁY, nie przejściowy: `snapshot.documents` i
    * `snapshot.knowledge` to dwa niezależne odczyty, a ten edytor montuje się na
    * `client && open` bez bramki na gotowość `knowledge`.
@@ -1476,7 +1476,7 @@ export const KnowledgeEditor = ({
 
           CZEGO TU NIE MA I DLACZEGO — TO NIE JEST PRZEOCZENIE. Prototypowy
           wiersz zaczyna się od awatara z inicjałami i słowa „You". Projekcja
-          `document.list` (`packages/contracts/src/query.ts:1718-1733`) niesie
+          `document.list` (`packages/contracts/src/query.ts:1747-1762`) niesie
           `id`, `spaceId`, `title`, `folderId`, `externalId`, `role`, `version`
           i `updatedAt` — i ANI JEDNEGO pola autora. „Kto" nie jest więc
           brakującym komponentem, tylko brakującym FAKTEM: awatar narysowany

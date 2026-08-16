@@ -1492,6 +1492,35 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             evidenceCount: z.int().nonnegative(),
             namedVersionCount: z.int().nonnegative(),
             staleEvidence: z.boolean(),
+            /**
+             * THE OPENING OF THE NOTE'S OWN TEXT, so that a list of notes is a
+             * list of notes rather than a list of titles. Without it the only
+             * way to tell two notes apart is to open both.
+             *
+             * ABSENT IS NOT EMPTY, and the difference is the whole reason this
+             * is optional rather than a string that can be `""`. A note's body
+             * is indexed when it is written, and the index trigger
+             * (`local-store`, `schemaV27`) REFRESHES a row and never creates
+             * one: a note nobody has ever opened has no indexed body at all.
+             * `undefined` means "this note has never been written through this
+             * application"; `""` would mean "we read its body and it says
+             * nothing". A reader that cannot tell those apart draws an empty
+             * band under a title and states something false about the note —
+             * the same failure `structureReadable` exists to avoid one screen
+             * over.
+             *
+             * IT IS DERIVED AT READ TIME AND STORED NOWHERE. The body already
+             * lives as plain text in the search projection the write path
+             * maintains, so a second stored spelling of the same prefix would
+             * start rotting the moment the body changed — and it would need a
+             * migration and a backfill to say something the read can compute.
+             * The bound on its length is a transport bound (a Space can hold
+             * two hundred notes and this answer carries all of them at once),
+             * NOT the visible clamp: the row clamps to two lines in CSS, which
+             * is what makes the visible cut depend on the reader's column and
+             * text size rather than on a number chosen here.
+             */
+            excerpt: z.string().optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })

@@ -34,7 +34,7 @@ import {
   libraryDocumentIds,
   libraryDocuments,
   libraryFolders,
-  libraryNoteState,
+  libraryNoteStates,
   librarySources,
   librarySummaries,
 } from "./library-fixture.js";
@@ -291,11 +291,15 @@ const meetingLoopFixture = (): MeetingLoopSurface => {
   };
 };
 
+// TREŚĆ BIERZE SIĘ Z TEJ SAMEJ LISTY, Z KTÓREJ BIERZE SIĘ URYWEK. Do odbioru
+// wpisu 11-2 stał tu jeden warunek na notatkę `runbook`, a lista pokazywała
+// urywek pod czterema tytułami — więc trzy notatki obiecywały tekst i otwierały
+// się PUSTE. Produkt nie umie wyprodukować tego stanu (wiersz projekcji powstaje
+// przy zapisie ciała), czyli harness rysował ekran, którego nie ma.
+const noteStates = libraryNoteStates(taskId);
+
 const client = createScenarioClient({
-  documentState: (documentId) =>
-    documentId === libraryDocumentIds.runbook
-      ? libraryNoteState(taskId)
-      : undefined,
+  documentState: (documentId) => noteStates.get(documentId),
   meetingLoop: meetingLoopFixture(),
   executeCommand: (command): RendererCommandResponse => {
     if (

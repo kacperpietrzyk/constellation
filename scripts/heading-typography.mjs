@@ -159,61 +159,72 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
   // that excludes what it introduces and includes what another entry excludes
   // is not a stale number; re-pinning it would have kept the falsehood and
   // bought a number that rots on the next insertion.
+  //
+  // I ROTNĘŁO — na następnej wstawce, dokładnie jak wyżej napisano. Wpis 11-2
+  // Fazy III dołożył 28 wierszy na `styles.css:8329` (reguła `.knowledge-row
+  // -excerpt`), więc KAŻDY żywy cytat tego rejestru powyżej tej linii przesunął
+  // się o +28. Przesunięte zostały wyłącznie cytaty w polach `note:`, bo tylko
+  // one są twierdzeniem o DZISIEJSZYM arkuszu; liczby w komentarzu WYŻEJ
+  // (`:9576`, `:9811`, … — pomiar z 2026-08-15) i w narracji przy
+  // `citedContinuations` zostały NIETKNIĘTE, bo są zapisem stanu z konkretnego
+  // dnia, a nie wskaźnikiem do kodu. Każdy przesunięty cytat sprawdzony
+  // TREŚCIĄ, nie arytmetyką: asercje „resolve to the rule that entry registers"
+  // i „bare `:N` continuation" przechodzą, a one czytają arkusz.
   {
     sheet: "styles.css",
     selector: ".onboarding-step h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9667.",
+    note: "styles.css:9695.",
   },
   {
     sheet: "styles.css",
     selector: ".settings-copy h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:9937.",
+    note: "styles.css:9965.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog h2",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10058.",
+    note: "styles.css:10086.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-dialog > header h2",
     missing: ["font-size", "font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10228. This rule is a REFINEMENT of `.concept-help-dialog h2` (:10058) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :10058 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
+    note: "styles.css:10256. This rule is a REFINEMENT of `.concept-help-dialog h2` (:10086) and would not be judged at all if that rule were complete — but it declares no weight either, so nothing covers this one and both are registered. Giving :10086 a weight retires BOTH entries in one edit, and the scan will demand exactly that: this subject turns into a `refinement` the moment the general rule declares both.",
   },
   {
     sheet: "styles.css",
     selector: ".concept-help-layout article h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10151.",
+    note: "styles.css:10179.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-export-terms h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10261.",
+    note: "styles.css:10289.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-limitations h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10302.",
+    note: "styles.css:10330.",
   },
   {
     sheet: "styles.css",
     selector: ".notes-import-preview h3",
     missing: ["font-weight"],
     owner: "lot 6 — file scope",
-    note: "styles.css:10302 — same rule, second ancestor.",
+    note: "styles.css:10330 — same rule, second ancestor.",
   },
   {
     sheet: "settings/activity-section.module.css",

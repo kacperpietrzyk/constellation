@@ -4441,6 +4441,28 @@ const judgeVisualPair = (pair, measured, rootFontSizePx, theme) => {
       expected: `a value containing „${expect.value}"`,
     };
 
+  // ── GDZIE TEKST SIĘ ZACZYNA, A NIE CZY GDZIEŚ W NIM JEST ────────────────
+  //
+  // Dołożone przy odbiorze wpisu 11-2 Fazy III, i dołożone z POMIARU. Para
+  // treści urywka stała na `contains` i była ZIELONA nad wierszem, w którym
+  // czytelnik widział POWTÓRZONY TYTUŁ: `text` czyta `textContent` całego
+  // elementu, a klamra dwóch wierszy przepuszcza ~67 znaków — asertowana fraza
+  // leżała za nią i nie widział jej nikt. `contains` jest ślepe na tę wadę
+  // z konstrukcji: każdy napis doklejony PRZED oczekiwaną frazą spełnia je tak
+  // samo dobrze.
+  //
+  // `opensWith` pyta o POCZĄTEK, więc odpowiada na jedyne pytanie, na które
+  // odczyt `textContent` może odpowiedzieć uczciwie o rzeczy przyciętej
+  // klamrą: co czytelnik przeczyta NAJPIERW. To nadal nie jest pomiar
+  // widoczności — ale fraza na pozycji zerowej jest widoczna w każdej klamrze,
+  // która pokazuje cokolwiek.
+  if (expect.kind === "opensWith")
+    return {
+      state: observed.startsWith(expect.value) ? "MATCH" : "DIFFERS",
+      observed,
+      expected: `a value opening with „${expect.value}"`,
+    };
+
   if (expect.kind === "not")
     return {
       state: observed === expect.value ? "DIFFERS" : "MATCH",
@@ -5582,7 +5604,7 @@ const controlPaintCensus = async (browser) => {
 // asercja puszczona w wąskim oknie czerwieniłaby zdrowy ekran. Gdyby kiedyś
 // przyszło pokrycie wąskiego okna, ma ono przyjść jako osobny werdykt
 // „NOT_EXERCISED", a nie jako przejście — precedens stoi w przelocie
-// przyklejenia (`scripts/verify-renderer-layout.mjs:7839`, kubełek `STICKY_NOT_EXERCISED`; goły `:N` wiązał tę referencję z ARKUSZEM, nie z tym plikiem, i po locie L6 wskazywał na skasowaną `.meeting-integration-form` — nazwa pliku dopisana przy scaleniu torów Fazy II, 2026-08-15, bo goła kontynuacja nie umie wyrazić samoodniesienia).
+// przyklejenia (`scripts/verify-renderer-layout.mjs:7861`, kubełek `STICKY_NOT_EXERCISED`; goły `:N` wiązał tę referencję z ARKUSZEM, nie z tym plikiem, i po locie L6 wskazywał na skasowaną `.meeting-integration-form` — nazwa pliku dopisana przy scaleniu torów Fazy II, 2026-08-15, bo goła kontynuacja nie umie wyrazić samoodniesienia).
 
 const TITLE_BAND_ARRIVAL_TIMEOUT_MS = 3000;
 
