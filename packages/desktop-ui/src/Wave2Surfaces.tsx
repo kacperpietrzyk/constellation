@@ -822,6 +822,14 @@ export const ProjectsSurface = ({
             <button
               ref={createTriggerRef}
               type="button"
+              /* DEKLARACJA, NIE KLASA I NIE KOLEJNOŚĆ. Spakowany smoke sięgał tu
+                 po `.secondary-button` i przez to KODOWAŁ wadę wpisu 5-2; po jej
+                 naprawie krok przestał trafiać. Przepięcie na `aria-expanded`
+                 też było za słabe: w tym samym paśmie stoi DRUGI przycisk z tym
+                 atrybutem (przełącznik kontekstu wyżej), więc `querySelector`
+                 brał tamten i otwierał panel zamiast formularza. To jest ta sama
+                 konwencja, którą niosą `data-surface` i `data-task-row`. */
+              data-project-create
               className={creating ? "secondary-button" : "primary-button"}
               aria-expanded={creating}
               aria-controls={creating ? "project-create-form" : undefined}

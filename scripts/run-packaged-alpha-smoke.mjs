@@ -1783,11 +1783,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         // stoi na tym przycisku w OBU stanach (`Wave2Surfaces.tsx`, jeden węzeł
         // przełączany między `New project` a `Cancel`) i jest deklaracją tego,
         // CZYM ten przycisk jest, a nie tego, jak jest pomalowany.
-        `document.querySelector('.project-surface .surface-header button[aria-expanded]') !== null`,
+        `document.querySelector('.project-surface .surface-header button[data-project-create]') !== null`,
         "PACKAGED_ALPHA_PROJECT_SURFACE_MISSING",
       );
       await client.evaluate(`(() => {
-        document.querySelector('.project-surface .surface-header button[aria-expanded]').click();
+        document.querySelector('.project-surface .surface-header button[data-project-create]').click();
         return true;
       })()`);
       await waitFor(
