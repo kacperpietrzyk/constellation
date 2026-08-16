@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +21,12 @@ const built = path.join(
   "dist",
   "src",
   "mcp-launch-compatibility.js",
+);
+const exclusiveRenameSource = path.join(
+  root,
+  "scripts",
+  "native",
+  "macos-rename-exclusive.c",
 );
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
@@ -65,12 +72,18 @@ test("an upgraded macOS bundle restores the legacy external MCP launch path", as
   t.after(() =>
     fs.rmSync(current.installRoot, { recursive: true, force: true }),
   );
-  const hidden = [];
+  let publishedTarget;
+  let publishedDestination;
 
   const result = ensureMacMcpLaunchCompatibility({
     executablePath: current.executable,
-    markHidden: (target) => hidden.push(target),
     platform: "darwin",
+    publishExclusive: (target, destination) => {
+      publishedTarget = target;
+      publishedDestination = destination;
+      fs.symlinkSync(target, destination);
+      return "published";
+    },
   });
 
   const legacyApp = path.join(
@@ -90,21 +103,20 @@ test("an upgraded macOS bundle restores the legacy external MCP launch path", as
     "constellation-mcp.mjs",
   );
   assert.equal(result.status, "created");
+  assert.equal(publishedTarget, "Constellation.app");
+  assert.equal(publishedDestination, legacyApp);
   assert.equal(fs.readlinkSync(legacyApp), "Constellation.app");
   assert.equal(
     fs.realpathSync(legacyExecutable),
     fs.realpathSync(current.executable),
   );
   assert.equal(fs.readFileSync(legacyMcp, "utf8"), "mcp entrypoint");
-  assert.deepEqual(hidden, [legacyApp]);
 
   const repeated = ensureMacMcpLaunchCompatibility({
     executablePath: current.executable,
-    markHidden: (target) => hidden.push(target),
     platform: "darwin",
   });
   assert.equal(repeated.status, "ready");
-  assert.deepEqual(hidden, [legacyApp, legacyApp]);
 });
 
 test("compatibility setup never overwrites an existing legacy application", async (t) => {
@@ -121,7 +133,6 @@ test("compatibility setup never overwrites an existing legacy application", asyn
 
   const result = ensureMacMcpLaunchCompatibility({
     executablePath: current.executable,
-    markHidden: () => assert.fail("conflicting paths must not be hidden"),
     platform: "darwin",
   });
 
@@ -129,8 +140,33 @@ test("compatibility setup never overwrites an existing legacy application", asyn
   assert.equal(fs.lstatSync(legacyApp).isDirectory(), true);
 });
 
-for (const hideOutcome of ["returns", "throws"]) {
-  test(`a ${hideOutcome} hide replacement survives and never reports success`, async (t) => {
+test("an existing valid compatibility symlink is never mutated", async (t) => {
+  const { ensureMacMcpLaunchCompatibility } = await loadCompatibility();
+  const current = fixture();
+  t.after(() =>
+    fs.rmSync(current.installRoot, { recursive: true, force: true }),
+  );
+  const legacyApp = path.join(
+    current.installRoot,
+    "Constellation Local Alpha.app",
+  );
+  fs.symlinkSync("Constellation.app", legacyApp);
+
+  const result = ensureMacMcpLaunchCompatibility({
+    executablePath: current.executable,
+    platform: "darwin",
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(fs.lstatSync(legacyApp).isSymbolicLink(), true);
+  assert.equal(fs.readlinkSync(legacyApp), "Constellation.app");
+});
+
+for (const publishRace of [
+  "exists-before-publish",
+  "replacement-after-publish",
+]) {
+  test(`a ${publishRace} race never overwrites or reports success`, async (t) => {
     const { ensureMacMcpLaunchCompatibility } = await loadCompatibility();
     const current = fixture();
     t.after(() =>
@@ -140,24 +176,82 @@ for (const hideOutcome of ["returns", "throws"]) {
       current.installRoot,
       "Constellation Local Alpha.app",
     );
-
     const result = ensureMacMcpLaunchCompatibility({
       executablePath: current.executable,
-      markHidden: (target) => {
-        fs.rmSync(target);
-        fs.symlinkSync("Constellation.app", target);
-        if (hideOutcome === "throws") {
-          throw new Error("simulated hide failure after rival replacement");
-        }
-      },
       platform: "darwin",
+      publishExclusive: (target, destination) => {
+        if (publishRace === "replacement-after-publish") {
+          fs.symlinkSync(target, destination);
+          fs.rmSync(destination);
+        }
+        fs.symlinkSync("Foreign Replacement.app", destination);
+        return publishRace === "exists-before-publish" ? "exists" : "published";
+      },
     });
 
     assert.equal(result.status, "unavailable");
     assert.equal(fs.lstatSync(legacyApp).isSymbolicLink(), true);
-    assert.equal(fs.readlinkSync(legacyApp), "Constellation.app");
+    assert.equal(fs.readlinkSync(legacyApp), "Foreign Replacement.app");
   });
 }
+
+test(
+  "the macOS publisher atomically renames a symlink without overwriting",
+  { skip: process.platform !== "darwin" },
+  (t) => {
+    assert.equal(
+      fs.existsSync(exclusiveRenameSource),
+      true,
+      "exclusive rename helper source is missing",
+    );
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "constellation-rename-exclusive-"),
+    );
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const helper = path.join(directory, "constellation-rename-exclusive");
+    const compile = spawnSync(
+      "xcrun",
+      [
+        "clang",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Os",
+        exclusiveRenameSource,
+        "-o",
+        helper,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(compile.status, 0, compile.stderr);
+
+    const destination = path.join(directory, "destination");
+    assert.equal(
+      spawnSync(helper, ["Constellation.app", destination]).status,
+      0,
+    );
+    assert.equal(fs.readlinkSync(destination), "Constellation.app");
+    assert.match(
+      spawnSync("/usr/bin/stat", ["-f", "%Sf", destination], {
+        encoding: "utf8",
+      }).stdout,
+      /hidden/u,
+    );
+
+    fs.rmSync(destination);
+    fs.symlinkSync("Foreign Replacement.app", destination);
+    assert.equal(
+      spawnSync(helper, ["Constellation.app", destination]).status,
+      17,
+    );
+    assert.equal(fs.readlinkSync(destination), "Foreign Replacement.app");
+    assert.deepEqual(fs.readdirSync(directory).sort(), [
+      "constellation-rename-exclusive",
+      "destination",
+    ]);
+  },
+);
 
 test("compatibility setup is a no-op outside macOS", async (t) => {
   const { ensureMacMcpLaunchCompatibility } = await loadCompatibility();
@@ -168,7 +262,6 @@ test("compatibility setup is a no-op outside macOS", async (t) => {
 
   const result = ensureMacMcpLaunchCompatibility({
     executablePath: current.executable,
-    markHidden: () => assert.fail("non-macOS paths must not be touched"),
     platform: "win32",
   });
 
@@ -195,11 +288,25 @@ test("macOS distribution serializes DMG and updater ZIP builds", () => {
 
 test("packaging and production startup carry the legacy MCP command contract", () => {
   const alpha = read("scripts/package-alpha.mjs");
+  const compatibility = read(
+    "packages/desktop-main/src/mcp-launch-compatibility.ts",
+  );
+  const nativePublisher = read("scripts/native/macos-rename-exclusive.c");
   const productionMain = read("packages/desktop-main/src/production-main.ts");
   const productionFiles = read("scripts/desktop/production-desktop-files.mjs");
 
+  assert.doesNotMatch(compatibility, /symlinkSync|markHidden/u);
+  assert.match(nativePublisher, /mkdtemp/u);
+  assert.match(nativePublisher, /symlinkat/u);
+  assert.match(nativePublisher, /openat\([^;]+O_SYMLINK/u);
+  assert.match(nativePublisher, /fchflags/u);
+  assert.match(nativePublisher, /renameatx_np\([^;]+RENAME_EXCL/u);
+
   assert.match(alpha, /LEGACY_MCP_EXECUTABLE_NAME/u);
   assert.match(alpha, /fs\.symlinkSync\(appName, legacyMcpExecutable\)/u);
+  assert.match(alpha, /macos-rename-exclusive\.c/u);
+  assert.match(alpha, /constellation-rename-exclusive/u);
+  assert.match(alpha, /renameExclusiveHelperSha256/u);
   assert.match(
     productionMain,
     /ensureMacMcpLaunchCompatibility\(\{\s*executablePath: process\.execPath,?\s*\}\)/u,

@@ -1,12 +1,5 @@
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  lstatSync,
-  readlinkSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-} from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 const PUBLIC_APP_BUNDLE = "Constellation.app";
@@ -14,6 +7,42 @@ const PUBLIC_EXECUTABLE = "Constellation";
 const LEGACY_APP_BUNDLE = "Constellation Local Alpha.app";
 const LEGACY_EXECUTABLE = "Constellation Local Alpha";
 const MCP_ENTRYPOINT = "constellation-mcp.mjs";
+const EXCLUSIVE_RENAME_HELPER = "constellation-rename-exclusive";
+
+type ExclusivePublishResult = "published" | "exists" | "unavailable";
+
+interface SymlinkIdentity {
+  readonly birthtimeMs: number;
+  readonly dev: number;
+  readonly ino: number;
+}
+
+const symlinkIdentity = (target: string): SymlinkIdentity | undefined => {
+  const stat = lstatSync(target);
+  return stat.isSymbolicLink()
+    ? { birthtimeMs: stat.birthtimeMs, dev: stat.dev, ino: stat.ino }
+    : undefined;
+};
+
+const hasSymlinkIdentity = (
+  target: string,
+  identity: SymlinkIdentity,
+): boolean => {
+  const current = symlinkIdentity(target);
+  return (
+    current !== undefined &&
+    current.birthtimeMs === identity.birthtimeMs &&
+    current.dev === identity.dev &&
+    current.ino === identity.ino
+  );
+};
+
+const hasExpectedTarget = (
+  symlinkPath: string,
+  expectedTarget: string,
+): boolean =>
+  path.resolve(path.dirname(symlinkPath), readlinkSync(symlinkPath)) ===
+  expectedTarget;
 
 export type MacMcpLaunchCompatibilityResult =
   | { readonly status: "created"; readonly legacyAppPath: string }
@@ -26,15 +55,24 @@ export type MacMcpLaunchCompatibilityResult =
 export interface MacMcpLaunchCompatibilityOptions {
   readonly platform?: NodeJS.Platform;
   readonly executablePath?: string;
-  readonly markHidden?: (target: string) => void;
+  readonly publishExclusive?: (
+    target: string,
+    destination: string,
+  ) => ExclusivePublishResult;
 }
 
-const markPathHidden = (target: string): void => {
-  const result = spawnSync("/usr/bin/chflags", ["-h", "hidden", target], {
+const publishPathExclusive = (
+  helper: string,
+  target: string,
+  destination: string,
+): ExclusivePublishResult => {
+  const result = spawnSync(helper, [target, destination], {
     encoding: "utf8",
     timeout: 10_000,
   });
-  if (result.status !== 0) throw new Error("LEGACY_MCP_PATH_HIDE_FAILED");
+  if (result.status === 0) return "published";
+  if (result.status === 17) return "exists";
+  return "unavailable";
 };
 
 const existingPathKind = (target: string): "absent" | "symlink" | "other" => {
@@ -82,7 +120,14 @@ export const ensureMacMcpLaunchCompatibility = (
   }
 
   const legacyAppPath = path.join(path.dirname(appBundle), LEGACY_APP_BUNDLE);
-  const markHidden = options.markHidden ?? markPathHidden;
+  const publishExclusive =
+    options.publishExclusive ??
+    ((target: string, destination: string) =>
+      publishPathExclusive(
+        path.join(contentsRoot, "Resources", EXCLUSIVE_RENAME_HELPER),
+        target,
+        destination,
+      ));
   let kind: ReturnType<typeof existingPathKind>;
   try {
     kind = existingPathKind(legacyAppPath);
@@ -93,59 +138,36 @@ export const ensureMacMcpLaunchCompatibility = (
   if (kind === "other") return { status: "conflict", legacyAppPath };
   if (kind === "symlink") {
     try {
-      const target = path.resolve(
-        path.dirname(legacyAppPath),
-        readlinkSync(legacyAppPath),
-      );
-      if (target !== appBundle) return { status: "conflict", legacyAppPath };
-      markHidden(legacyAppPath);
+      const existingIdentity = symlinkIdentity(legacyAppPath);
+      if (existingIdentity === undefined) {
+        return { status: "unavailable", legacyAppPath };
+      }
+      if (!hasExpectedTarget(legacyAppPath, appBundle)) {
+        return { status: "conflict", legacyAppPath };
+      }
+      if (!hasSymlinkIdentity(legacyAppPath, existingIdentity)) {
+        return { status: "unavailable", legacyAppPath };
+      }
       return { status: "ready", legacyAppPath };
     } catch {
       return { status: "unavailable", legacyAppPath };
     }
   }
 
-  let createdIdentity:
-    | {
-        readonly birthtimeMs: number;
-        readonly dev: number;
-        readonly ino: number;
-      }
-    | undefined;
   try {
-    symlinkSync(PUBLIC_APP_BUNDLE, legacyAppPath);
-    const created = lstatSync(legacyAppPath);
-    createdIdentity = {
-      birthtimeMs: created.birthtimeMs,
-      dev: created.dev,
-      ino: created.ino,
-    };
-    markHidden(legacyAppPath);
-    const marked = lstatSync(legacyAppPath);
+    if (publishExclusive(PUBLIC_APP_BUNDLE, legacyAppPath) !== "published") {
+      return { status: "unavailable", legacyAppPath };
+    }
+    const publishedIdentity = symlinkIdentity(legacyAppPath);
     if (
-      !marked.isSymbolicLink() ||
-      marked.birthtimeMs !== createdIdentity.birthtimeMs ||
-      marked.dev !== createdIdentity.dev ||
-      marked.ino !== createdIdentity.ino
+      publishedIdentity === undefined ||
+      !hasExpectedTarget(legacyAppPath, appBundle) ||
+      !hasSymlinkIdentity(legacyAppPath, publishedIdentity)
     ) {
       return { status: "unavailable", legacyAppPath };
     }
     return { status: "created", legacyAppPath };
   } catch {
-    try {
-      const current = lstatSync(legacyAppPath);
-      if (
-        createdIdentity !== undefined &&
-        current.isSymbolicLink() &&
-        current.birthtimeMs === createdIdentity.birthtimeMs &&
-        current.dev === createdIdentity.dev &&
-        current.ino === createdIdentity.ino
-      ) {
-        rmSync(legacyAppPath, { force: true });
-      }
-    } catch {
-      // Best effort only: never turn a compatibility path into a startup failure.
-    }
     return { status: "unavailable", legacyAppPath };
   }
 };
