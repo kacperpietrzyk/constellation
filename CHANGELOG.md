@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
-## [Unreleased]
+## [0.2.0] - 2026-08-16
 
 ### Added
 
@@ -57,6 +57,41 @@ releases begin.
   view can still say that the query cannot: sorting by title or by last update,
   and the whole Space at once — the query pages.
 
+- **Projects now carry the planning context needed to run them.** A Project can
+  be renamed and given a deadline, its health is derived from its actual work,
+  and opening it shows a dedicated record with outcome, next action, related
+  work, client context and comments. Areas and Initiatives can be created and
+  linked where Projects are managed instead of living as disconnected graph
+  records.
+
+- **Records share one interaction model instead of one-off detail panes.** Tasks,
+  Projects, people, organizations and opportunities open as records with
+  consistent reading geometry, activity and comments. Task status, operational
+  state and blockers are edited on the task itself, while saved views reopen as
+  first-class views rather than as a generic Tasks filter.
+
+- **CRM is now an operational set of surfaces.** Organizations and People provide
+  client and contact readings; Pipeline carries configured stages, opportunity
+  value, offer history, cost and derived commercial measures; Renewals shows
+  contracts due for action and explains why a close cannot proceed. Deals,
+  offers and contracts carry money and relationship-specific fields, workspace
+  settings define reporting and offered currencies, and decisions and comments
+  stay attached to the records they concern.
+
+- **Library now supports a complete notes round trip.** Notes live in folders,
+  can be renamed and linked to each other, and preserve tables, images, headings,
+  hard breaks and entity references. The three-panel Library brings Notes,
+  Sources and Capture history into one reading surface. An Obsidian vault can be
+  previewed and imported with unsupported constructs named before the write, and
+  notes can be exported back to Markdown with explicit reporting of anything
+  that cannot be represented losslessly.
+
+- **Workspace controls are reachable from Settings.** Working-day boundaries,
+  funnel stages, currencies, access, activity history and connector controls now
+  live in keyboard-reachable categories inside one Settings mode. Narrow windows
+  keep every category reachable, and returning from Settings restores the place
+  from which it was opened.
+
 ### Changed
 
 - **The interface is English.** Every label, heading, button, refusal and empty
@@ -84,6 +119,36 @@ releases begin.
   `organizations`), and anything still unrecognised falls back to `Today`
   instead of pointing a tab at a target that no longer exists. The same guard
   covers the `?destination=` parameter a detached window opens with.
+- **The desktop adopts one measured visual language.** Reading widths, title
+  bands, cards, list rows, toolbars, popovers, typography and record geometry now
+  follow one set of conventions across work, CRM, Library and Settings. Renderer
+  probes measure the populated surfaces and fail when later changes reintroduce
+  the blocking layout divergences this release removed.
+- **The MCP operation contract is aligned with the kernel.** Capability
+  requirements, allowed principal kinds and partial-update semantics are derived
+  from the same vocabulary the application enforces. Agents can use the Project,
+  CRM, Library and workspace operations added by this release without the catalog
+  promising denied calls or hiding accepted ones; malformed or unauthorized
+  shapes continue to fail at the typed boundary.
+
+### Fixed
+
+- **Calendar weeks now follow the reader's local timezone.** An instant is
+  resolved into that timezone before deriving its Monday, so readers in
+  different zones no longer place the same event in the wrong week around
+  midnight.
+- **Malformed MCP operation URIs are bounded refusals.** An invalid percent
+  escape now returns the same unavailable-operation result as the other invalid
+  operation paths instead of surfacing an internal error.
+- **Renewal progress and its label now use one term basis.** Elapsed months and
+  the saved total term months drive both values, with bounded clamping and the
+  existing date-based fallback when no term length was stored.
+- **Large workspaces no longer let project context consume the shell.** The
+  sidebar keeps five project shortcuts, preserves an active project outside the
+  first five, and hands the full collection to Projects. Long intended outcomes
+  remain complete and accessible in one blockquote, while the inspector measures
+  rendered overflow, clamps the preview to four lines, and offers an explicit
+  expand/collapse control only when the text actually overflows.
 
 ## [0.1.9] - 2026-07-27
 
