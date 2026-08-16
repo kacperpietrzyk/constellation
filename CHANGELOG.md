@@ -94,6 +94,13 @@ releases begin.
 
 ### Changed
 
+- **The desktop product is now simply Constellation.** The application bundle,
+  installer artifacts, executable and user-facing metadata no longer carry the
+  `Local Alpha` suffix. The existing bundle identifier, updater cache and
+  encrypted workspace directory remain stable so an update from 0.1.9 opens the
+  same data and keeps its operating-system permissions. A new indigo-violet
+  constellation icon replaces the monochrome development mark across macOS,
+  Windows and the web surface.
 - **The interface is English.** Every label, heading, button, refusal and empty
   state the desktop shows is now written in English; the navigation was rebuilt
   at the same time, because one file was both the structure of the navigation
@@ -133,6 +140,11 @@ releases begin.
 
 ### Fixed
 
+- **A fresh self-hosted Hub can write managed attachments without running as
+  root.** The official Compose stack now prepares the attachment volume with the
+  ownership expected by the non-root Hub process before migration, diagnostics
+  or normal startup. Fresh-volume PostgreSQL, attachment, backup, restore and
+  restart checks cover the deployment path.
 - **Calendar weeks now follow the reader's local timezone.** An instant is
   resolved into that timezone before deriving its Monday, so readers in
   different zones no longer place the same event in the wrong week around

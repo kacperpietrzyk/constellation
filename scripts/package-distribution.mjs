@@ -73,10 +73,10 @@ if (production && process.platform === "darwin") {
 }
 const config = {
   appId: "io.constellation.local-alpha",
-  productName: "Constellation Local Alpha",
+  productName: "Constellation",
   forceCodeSigning: production,
   directories: { output },
-  artifactName: "Constellation-Local-Alpha-${version}-${os}-${arch}.${ext}",
+  artifactName: "Constellation-${version}-${os}-${arch}.${ext}",
   publish: normalizedOrigin
     ? [
         {

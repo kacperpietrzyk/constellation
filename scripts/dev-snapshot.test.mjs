@@ -105,7 +105,9 @@ test("a copied grant descriptor is repointed at the copy's own socket before the
   // descriptor that would otherwise authenticate against production.
   assert.equal(copiedDescriptor.endpoint, localSocketPath(destination));
   assert.equal(
-    copiedDescriptor.endpoint.includes("Constellation Local Alpha"),
+    copiedDescriptor.endpoint.includes(
+      "/Application Support/Constellation Local Alpha/mcp/",
+    ),
     false,
   );
   // Every other field, including the secret, survives untouched — this is
@@ -388,9 +390,9 @@ test("a running installed application is detected through the probe", () => {
 // pins: a substring match on the executable path alone matched both, so the
 // snapshot refused on every attempt even after the GUI application was gone.
 const GUI_COMMAND_LINE =
-  "/Applications/Constellation Local Alpha.app/Contents/MacOS/Constellation Local Alpha";
+  "/Applications/Constellation.app/Contents/MacOS/Constellation";
 const MCP_HELPER_COMMAND_LINE =
-  "/Applications/Constellation Local Alpha.app/Contents/MacOS/Constellation Local Alpha /Applications/Constellation Local Alpha.app/Contents/Resources/constellation-mcp.mjs";
+  "/Applications/Constellation.app/Contents/MacOS/Constellation /Applications/Constellation.app/Contents/Resources/constellation-mcp.mjs";
 
 test("the GUI application's command line is recognized", () => {
   assert.equal(isInstalledGuiCommandLine(GUI_COMMAND_LINE), true);

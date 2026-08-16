@@ -16,13 +16,13 @@ const RELEASE_DATE = "2026-07-16T08:00:00.000Z";
 const fixture = (includeWindows = false) => {
   const directory = mkdtempSync(path.join(tmpdir(), "constellation-release-"));
   const names = [
-    `Constellation-Local-Alpha-${VERSION}-mac-arm64.zip`,
-    `Constellation-Local-Alpha-${VERSION}-mac-arm64.dmg`,
-    `Constellation-Local-Alpha-${VERSION}-mac-x64.zip`,
-    `Constellation-Local-Alpha-${VERSION}-mac-x64.dmg`,
+    `Constellation-${VERSION}-mac-arm64.zip`,
+    `Constellation-${VERSION}-mac-arm64.dmg`,
+    `Constellation-${VERSION}-mac-x64.zip`,
+    `Constellation-${VERSION}-mac-x64.dmg`,
   ];
   if (includeWindows) {
-    names.push(`Constellation-Local-Alpha-${VERSION}-win-x64.exe`);
+    names.push(`Constellation-${VERSION}-win-x64.exe`);
   }
   for (const [index, name] of names.entries()) {
     writeFileSync(path.join(directory, name), `fixture-${index}`);
@@ -103,9 +103,7 @@ test("adds Windows metadata only when paid signing is explicitly enabled", () =>
 test("fails closed when one macOS architecture is missing", () => {
   const directory = fixture();
   try {
-    rmSync(
-      path.join(directory, `Constellation-Local-Alpha-${VERSION}-mac-x64.zip`),
-    );
+    rmSync(path.join(directory, `Constellation-${VERSION}-mac-x64.zip`));
     assert.throws(
       () =>
         prepareGitHubRelease({

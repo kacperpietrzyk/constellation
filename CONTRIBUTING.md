@@ -39,7 +39,7 @@ macOS contributors with a running local Alpha install can exercise the desktop
 application unpackaged, against a disposable copy of their own workspace:
 
 ```sh
-npm run dev:snapshot   # quit Constellation Local Alpha first
+npm run dev:snapshot   # quit Constellation first
 npm run dev:desktop
 ```
 

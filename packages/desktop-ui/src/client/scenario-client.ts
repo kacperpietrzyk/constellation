@@ -132,9 +132,9 @@ export const createScenarioClient = (
     credentialDigest: "0".repeat(64),
     descriptorPath: "/tmp/constellation-agent.json",
     launchCommand:
-      "/Applications/Constellation Local Alpha.app/Contents/MacOS/Constellation Local Alpha",
+      "/Applications/Constellation.app/Contents/MacOS/Constellation",
     launchArgs: [
-      "/Applications/Constellation Local Alpha.app/Contents/Resources/constellation-mcp.mjs",
+      "/Applications/Constellation.app/Contents/Resources/constellation-mcp.mjs",
     ],
     launchEnvironment: {
       ELECTRON_RUN_AS_NODE: "1",
