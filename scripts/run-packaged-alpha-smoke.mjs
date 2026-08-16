@@ -1774,11 +1774,20 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       })()`);
       await waitFor(
         client,
-        `document.querySelector('.project-surface .surface-header .secondary-button') !== null`,
+        // PO TOŻSAMOŚCI, NIE PO STOPNIU FARBY. Ten selektor brzmiał
+        // `.secondary-button` i przez to KODOWAŁ WADĘ, którą wpis 5-2 nazwał:
+        // `New project` był jedyną drugorzędną akcją tworzącą w produkcie
+        // (spis powszechny bramki: siedem akcji w paśmie, sześć `primary`).
+        // Naprawa wpisu przewróciła ten krok — nie dlatego, że produkt się
+        // zepsuł, tylko dlatego, że asercja opisywała defekt. `aria-expanded`
+        // stoi na tym przycisku w OBU stanach (`Wave2Surfaces.tsx`, jeden węzeł
+        // przełączany między `New project` a `Cancel`) i jest deklaracją tego,
+        // CZYM ten przycisk jest, a nie tego, jak jest pomalowany.
+        `document.querySelector('.project-surface .surface-header button[aria-expanded]') !== null`,
         "PACKAGED_ALPHA_PROJECT_SURFACE_MISSING",
       );
       await client.evaluate(`(() => {
-        document.querySelector('.project-surface .surface-header .secondary-button').click();
+        document.querySelector('.project-surface .surface-header button[aria-expanded]').click();
         return true;
       })()`);
       await waitFor(
