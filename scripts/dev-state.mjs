@@ -2,7 +2,8 @@ import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const INSTALLED_APP_NAME = "Constellation Local Alpha";
+export const INSTALLED_APP_NAME = "Constellation";
+export const INSTALLED_STATE_DIRECTORY = "Constellation Local Alpha";
 export const DEV_STATE_DIRECTORY = "Constellation Dev";
 
 // packages/desktop-main/src/local-mcp-runtime.ts falls back to a /tmp socket
@@ -14,7 +15,7 @@ const applicationSupport = (home) =>
   path.join(home, "Library", "Application Support");
 
 export const installedStateRoot = (home = os.homedir()) =>
-  path.join(applicationSupport(home), INSTALLED_APP_NAME);
+  path.join(applicationSupport(home), INSTALLED_STATE_DIRECTORY);
 
 export const devStateRoot = (home = os.homedir()) =>
   path.join(applicationSupport(home), DEV_STATE_DIRECTORY);

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Constellation">
+  <defs>
+    <linearGradient id="surface" x1="130" y1="80" x2="850" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#211B2D"/>
+      <stop offset="0.46" stop-color="#11111A"/>
+      <stop offset="1" stop-color="#07080D"/>
+    </linearGradient>
+    <radialGradient id="ambient" cx="0" cy="0" r="1" gradientTransform="translate(510 470) rotate(90) scale(470)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7F4BDC" stop-opacity="0.22"/>
+      <stop offset="0.7" stop-color="#7F4BDC" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#7F4BDC" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="signal" x1="260" y1="220" x2="770" y2="750" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D6C4FF"/>
+      <stop offset="0.42" stop-color="#AE8BFF"/>
+      <stop offset="1" stop-color="#7F4BDC"/>
+    </linearGradient>
+    <radialGradient id="core" cx="0" cy="0" r="1" gradientTransform="translate(482 474) rotate(49) scale(155)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFBFF"/>
+      <stop offset="0.36" stop-color="#DCCEFF"/>
+      <stop offset="1" stop-color="#8A59E8"/>
+    </radialGradient>
+    <filter id="tile-shadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#000000" flood-opacity="0.48"/>
+    </filter>
+    <filter id="signal-glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="28" y="28" width="968" height="968" rx="224" fill="url(#surface)"/>
+    <rect x="29" y="29" width="966" height="966" rx="223" fill="url(#ambient)"/>
+    <rect x="45" y="45" width="934" height="934" rx="207" fill="none" stroke="#FFFFFF" stroke-opacity="0.075" stroke-width="3"/>
+  </g>
+
+  <g id="constellation-mark" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512 220 760 360 725 720 300 735 255 370 512 220Z M512 220V512 M760 360 512 512 725 720 M300 735 512 512 255 370 M255 370 512 512"
+      fill="none" stroke="#020208" stroke-opacity="0.65" stroke-width="70"/>
+    <path d="M512 220 760 360 725 720 300 735 255 370 512 220Z M512 220V512 M760 360 512 512 725 720 M300 735 512 512 255 370 M255 370 512 512"
+      fill="none" stroke="url(#signal)" stroke-opacity="0.72" stroke-width="38"/>
+
+    <g filter="url(#signal-glow)">
+      <circle data-node="top" cx="512" cy="220" r="51" fill="url(#signal)"/>
+      <circle data-node="upper-right" cx="760" cy="360" r="51" fill="url(#signal)"/>
+      <circle data-node="lower-right" cx="725" cy="720" r="51" fill="url(#signal)"/>
+      <circle data-node="lower-left" cx="300" cy="735" r="51" fill="url(#signal)"/>
+      <circle data-node="upper-left" cx="255" cy="370" r="51" fill="url(#signal)"/>
+      <circle data-node="core" cx="512" cy="512" r="105" fill="url(#core)"/>
+    </g>
+
+    <circle cx="492" cy="484" r="29" fill="#FFFFFF" fill-opacity="0.72"/>
+    <circle cx="495" cy="486" r="58" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="4"/>
+    <path d="M512 394 526 472 604 486 526 500 512 578 498 500 420 486 498 472 512 394Z"
+      fill="#FFFFFF" fill-opacity="0.28"/>
+  </g>
+</svg>

@@ -169,7 +169,7 @@ const install = (manifest) => {
     if (installer === undefined)
       throw new Error("DISTRIBUTION_INSTALLER_MISSING");
     run(path.join(releaseRoot, installer.name), ["/S", `/D=${installRoot}`]);
-    return path.join(installRoot, "Constellation Local Alpha.exe");
+    return path.join(installRoot, "Constellation.exe");
   }
   throw new Error("DISTRIBUTION_PLATFORM_UNSUPPORTED");
 };
@@ -215,10 +215,7 @@ if (rolledBack.version !== "0.0.1")
   throw new Error("ROLLBACK_VERSION_NOT_ACTIVE");
 
 if (process.platform === "win32") {
-  const uninstaller = path.join(
-    installRoot,
-    "Uninstall Constellation Local Alpha.exe",
-  );
+  const uninstaller = path.join(installRoot, "Uninstall Constellation.exe");
   run(uninstaller, ["/S"]);
 } else {
   fs.rmSync(installRoot, { recursive: true, force: true });

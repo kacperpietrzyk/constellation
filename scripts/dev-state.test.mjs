@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   DEV_STATE_DIRECTORY,
   INSTALLED_APP_NAME,
+  INSTALLED_STATE_DIRECTORY,
   SNAPSHOT_ENTRIES,
   agentDescriptors,
   devStateRoot,
@@ -25,7 +26,7 @@ test("state roots sit beside each other under Application Support", () => {
     home,
     "Library",
     "Application Support",
-    INSTALLED_APP_NAME,
+    INSTALLED_STATE_DIRECTORY,
   );
   const expectedDev = path.join(
     home,
@@ -39,7 +40,8 @@ test("state roots sit beside each other under Application Support", () => {
   // functions agree with each other regardless of what they produce.
   assert.equal(expectedInstalled.includes("Library"), true);
   assert.equal(expectedInstalled.includes("Application Support"), true);
-  assert.equal(expectedInstalled.includes(INSTALLED_APP_NAME), true);
+  assert.equal(expectedInstalled.includes(INSTALLED_STATE_DIRECTORY), true);
+  assert.equal(INSTALLED_APP_NAME, "Constellation");
   assert.equal(expectedDev.includes(DEV_STATE_DIRECTORY), true);
 });
 

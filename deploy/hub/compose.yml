@@ -13,6 +13,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  attachments-init:
+    image: alpine:3.23.3
+    restart: "no"
+    command: ["sh", "-c", "chown -R 1000:1000 /data && chmod 700 /data"]
+    volumes:
+      - attachment-data:/data
   hub:
     build:
       context: ../..
@@ -20,6 +26,7 @@ services:
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
+      attachments-init: { condition: service_completed_successfully }
     environment:
       CONSTELLATION_HUB_DATABASE_URL_FILE: /run/secrets/database_url
       CONSTELLATION_HUB_STORAGE_ROOT: /var/lib/constellation/attachments

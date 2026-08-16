@@ -7,7 +7,7 @@ import { app, type BrowserWindow } from "electron";
 // The macOS Keychain item that wraps the workspace key is named after the
 // application, so this name — not the state directory — is what lets an
 // unpackaged run open a real workspace.
-const INSTALLED_APP_NAME = "Constellation Local Alpha";
+const LEGACY_KEYCHAIN_APP_NAME = "Constellation Local Alpha";
 const RELOAD_DEBOUNCE_MS = 120;
 
 const stateRoot = process.env.CONSTELLATION_DEV_STATE_ROOT;
@@ -17,7 +17,7 @@ if (stateRoot === undefined || !path.isAbsolute(stateRoot)) {
   );
 }
 
-app.setName(INSTALLED_APP_NAME);
+app.setName(LEGACY_KEYCHAIN_APP_NAME);
 app.setPath("userData", stateRoot);
 
 // Vite's emptyOutDir clears this directory's contents on every rebuild but does

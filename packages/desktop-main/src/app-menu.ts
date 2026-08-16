@@ -21,7 +21,22 @@ export const installApplicationMenu = (): void => {
   const onMac = process.platform === "darwin";
   const template: MenuItemConstructorOptions[] = [
     ...(onMac
-      ? [{ role: "appMenu" } satisfies MenuItemConstructorOptions]
+      ? [
+          {
+            label: "Constellation",
+            submenu: [
+              { role: "about", label: "About Constellation" },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide", label: "Hide Constellation" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              { role: "quit", label: "Quit Constellation" },
+            ],
+          } satisfies MenuItemConstructorOptions,
+        ]
       : []),
     {
       label: "File",

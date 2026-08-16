@@ -204,6 +204,28 @@ const {
   shell,
 } = electron;
 
+// The public product name changed in 0.2.0, but Electron derives both `userData`
+// and the macOS "<name> Safe Storage" Keychain service from its runtime name.
+// Keep the 0.1.9 compatibility identity internally so an in-place update opens
+// and decrypts the existing workspace. Bundle metadata, application menu and
+// artifacts carry the public name; explicit packaged-smoke paths still win.
+export const LEGACY_USER_DATA_DIRECTORY = "Constellation Local Alpha";
+export const LEGACY_KEYCHAIN_APP_NAME = "Constellation Local Alpha";
+if (process.platform === "darwin") app.setName(LEGACY_KEYCHAIN_APP_NAME);
+const hasExplicitUserDataPath = process.argv.some((argument) =>
+  argument.startsWith("--user-data-dir="),
+);
+if (
+  app.isPackaged &&
+  !hasExplicitUserDataPath &&
+  process.env.CONSTELLATION_ALPHA_STATE_ROOT === undefined
+) {
+  app.setPath(
+    "userData",
+    path.join(app.getPath("appData"), LEGACY_USER_DATA_DIRECTORY),
+  );
+}
+
 // MUST run before `app.whenReady()`. Electron refuses the registration after
 // the app is ready, and it refuses it SILENTLY — the scheme still exists, but
 // without `standard` a URL's host is not parsed (so every image resolves to
@@ -839,6 +861,9 @@ const createWindow = async (
 };
 
 const startProductionDesktop = async (): Promise<void> => {
+  app.setAboutPanelOptions({ applicationName: "Constellation" });
+  const { installApplicationMenu } = await import("./app-menu.js");
+  installApplicationMenu();
   session.defaultSession.setPermissionCheckHandler(
     (webContents, permission, requestingOrigin, details) =>
       allowsAudioMediaCheck(
