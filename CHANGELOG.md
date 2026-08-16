@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.2.1] - 2026-08-16
+
+### Fixed
+
+- Restored the external macOS MCP launch command used by integrations configured
+  before the public rename. The signed `Constellation.app` now carries the
+  legacy executable entry and creates a hidden compatibility path without
+  replacing any existing application, so an in-place update keeps existing MCP
+  hosts connected while the product remains visibly named Constellation.
+
 ## [0.2.0] - 2026-08-16
 
 ### Added

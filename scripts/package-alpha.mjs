@@ -17,6 +17,7 @@ const output = path.join(root, "release");
 const electronZipDir = path.join(root, "build", "electron-zips");
 const licenseBundle = path.join(root, "build", "desktop-license-bundle");
 const appName = "Constellation";
+const LEGACY_MCP_EXECUTABLE_NAME = "Constellation Local Alpha";
 const bundleId = "io.constellation.local-alpha";
 const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
 const releaseVersion = process.env.CONSTELLATION_RELEASE_VERSION ?? "0.0.1";
@@ -486,6 +487,13 @@ const executable =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "MacOS", appName)
     : path.join(packageRoot, `${appName}.exe`);
+const legacyMcpExecutable =
+  process.platform === "darwin"
+    ? path.join(appBundle, "Contents", "MacOS", LEGACY_MCP_EXECUTABLE_NAME)
+    : undefined;
+if (legacyMcpExecutable !== undefined) {
+  fs.symlinkSync(appName, legacyMcpExecutable);
+}
 const resources =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "Resources")

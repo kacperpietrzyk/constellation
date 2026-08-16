@@ -122,31 +122,41 @@ const config = {
 fs.writeFileSync(buildConfig, `${JSON.stringify(config, null, 2)}\n`);
 
 const builder = path.join(root, "node_modules", "electron-builder", "cli.js");
-const targetArgs =
+const targetArgumentSets =
   process.platform === "darwin"
-    ? ["--mac", "dmg", "zip", `--${alphaManifest.architecture}`]
+    ? [
+        ["--mac", "dmg", `--${alphaManifest.architecture}`],
+        ["--mac", "zip", `--${alphaManifest.architecture}`],
+      ]
     : process.platform === "win32"
-      ? ["--win", "nsis", "--x64"]
+      ? [["--win", "nsis", "--x64"]]
       : undefined;
-if (targetArgs === undefined)
+if (targetArgumentSets === undefined)
   throw new Error("DISTRIBUTION_PLATFORM_UNSUPPORTED");
-const built = spawnSync(
-  process.execPath,
-  [
-    builder,
-    "--prepackaged",
-    process.platform === "darwin"
-      ? alphaManifest.appBundle
-      : alphaManifest.packageRoot,
-    "--config",
-    buildConfig,
-    "--publish",
-    "never",
-    ...targetArgs,
-  ],
-  { cwd: root, encoding: "utf8", stdio: "inherit", timeout: 20 * 60_000 },
-);
-if (built.status !== 0) throw new Error("DISTRIBUTION_BUILD_FAILED");
+for (const targetArgs of targetArgumentSets) {
+  const built = spawnSync(
+    process.execPath,
+    [
+      builder,
+      "--prepackaged",
+      process.platform === "darwin"
+        ? alphaManifest.appBundle
+        : alphaManifest.packageRoot,
+      "--config",
+      buildConfig,
+      "--publish",
+      "never",
+      ...targetArgs,
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      stdio: "inherit",
+      timeout: 20 * 60_000,
+    },
+  );
+  if (built.status !== 0) throw new Error("DISTRIBUTION_BUILD_FAILED");
+}
 
 const files = fs
   .readdirSync(output, { withFileTypes: true })
