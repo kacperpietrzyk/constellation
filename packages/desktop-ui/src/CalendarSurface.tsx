@@ -359,16 +359,38 @@ const CalendarDayColumn = ({
         {/* Wolne minuty policzone BEZ spotkań to nie wolne minuty. Dopóki
             kalendarz nie jest przeczytany, kolumna mówi „nie wiem" zamiast
             podawać pełny dzień — powód stoi raz, w nagłówku tygodnia. */}
+        {/* WPIS 2-8 OGONA FAZY III — SŁOWO I GŁOS.
+            Prototyp pisze tę etykietę MAŁYMI literami i przygasza ją na dniu
+            wolnym: `<span class="cal-free cal-free-off">weekend</span>`
+            obok `full` i `8h free` (`v3/screens/calendar.js:158-160`).
+            Ten ekran pisał `Non-working` — wielką literą i tym samym głosem,
+            co pojemność dnia roboczego.
+
+            SŁOWA `weekend` NIE PRZEJMUJEMY, i to jest rozstrzygnięcie, nie
+            przeoczenie: u nas dzień wolny wypada z ustawienia workspace'u
+            (`today-plan.ts:117` — `workingDay.weekdays.includes(weekday)`),
+            więc tydzień pracy wtorek–sobota dałby napis `weekend` przy
+            niedzieli I przy poniedziałku. Prototyp ma weekend wpisany na
+            sztywno (`calIsWeekend`) — to jego OGRANICZENIE, nie jego zamiar,
+            a zamiar (cicha etykieta małymi literami) jest tu przejęty
+            w całości razem z tonem. */}
         <span
-          className={`${styles.free} ${capacity.freeMinutes === 0 && capacity.isWorkingDay && meetingsKnown ? styles.freeNone : ""}`}
+          className={`${styles.free} ${!capacity.isWorkingDay ? styles.freeOff : ""} ${capacity.freeMinutes === 0 && capacity.isWorkingDay && meetingsKnown ? styles.freeNone : ""}`}
           data-day-free
         >
+          {/* JEDEN REJESTR NA CZTERY ODPOWIEDZI, i to jest ta sama zmiana, nie
+              dokładka: prototyp pisze `weekend`, `full` i `8h free` małymi
+              literami (`v3/screens/calendar.js:158-160`), a ten slot mówił
+              `Non-working`, `Unknown`, `Full` i `8h free` — trzy wielkie
+              litery i jedna mała w JEDNYM miejscu na ekranie. Kapitalizacja
+              wybierana odpowiedzią, a nie rolą, jest tą samą wadą, co jeden
+              ekran kolekcji malujący akcję inaczej niż pięć pozostałych. */}
           {!capacity.isWorkingDay
-            ? "Non-working"
+            ? "non-working"
             : !meetingsKnown
-              ? "Unknown"
+              ? "unknown"
               : capacity.freeMinutes === 0
-                ? "Full"
+                ? "full"
                 : `${formatSpan(capacity.freeMinutes)} free`}
         </span>
       </header>
@@ -883,8 +905,18 @@ export const CalendarSurface = ({
           <h3 id="calendar-tray" data-tray-heading>
             {/* Nagłówek mówi dokładnie to, co filtr robi. Wersja bieżącego
                 tygodnia przyznaje się do spóźnionych, bo tylko tam wchodzą. */}
+            {/* WPIS 2-9 OGONA FAZY III — `past`, NIE `late`. Prototyp:
+                `<h3>Deadline this week or already past, nobody planned it`
+                (`v3/screens/calendar.js:224`). Nie jest to synonim: `late`
+                osądza czytelnika, `past` mówi, gdzie stoi termin względem
+                dzisiaj — a to jest dokładnie ta różnica, którą pilnuje
+                `prose-guard`. Rangę tego samego nagłówka (`h3` wobec `h2`)
+                zamknął wcześniejszy lot; rozmiar (16 px wobec 13 px) — reszta
+                wpisu 1-4 — zszedł na `--text-sm` przy naprawie ogona, nota
+                w `calendar.module.css` przy `.sectionHead h2, .sectionHead h3`.
+                Trzy rzeczy na jednym elemencie, wszystkie trzy zamknięte. */}
             {showingThisWeek
-              ? "Deadline this week or already late, nobody planned it"
+              ? "Deadline this week or already past, nobody planned it"
               : "Deadline inside this week, nobody planned it"}{" "}
             <span className={styles.count}>{tray.length}</span>
           </h3>

@@ -2,7 +2,7 @@ import { captureRecoveryActions } from "./CollaborationSurfaces.js";
 import type { AttentionInboxProjection, DataSlice } from "./client/workflow.js";
 import { TopicHelp } from "./help/TopicHelp.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel, formatDateTime, recordKindLabels } from "./i18n.js";
+import { formatDateTime, recordKindLabels } from "./i18n.js";
 import {
   inboxCountIsFloor,
   inboxReasonLabels,
@@ -294,17 +294,45 @@ export const InboxSurface = ({
         <h1 id="surface-title" tabIndex={-1}>
           Inbox
         </h1>
+        {/* WPIS 3-3 OGONA FAZY III — PRAWA STRONA PASMA JEST MAPĄ EKRANU,
+            NIE JEGO SUMĄ.
+
+            Prototyp: `crumbbar("Inbox", <span class="when">4 to decide · 3 to
+            route</span>)` (`v3/screens/inbox.js:287-288`) — po jednej liczbie
+            na SEKCJĘ, w tej samej kolejności, w jakiej sekcje stoją niżej.
+            Stało tu `1 thing waiting`: jedna liczba, i to nie z braku danych —
+            `inboxWaitingCount` (`inbox-triage.ts`) rozdziela te same dwie
+            skrzynki, które ekran rysuje, i ŚWIADOMIE je SUMUJE. Rozjazd był
+            w projekcie, nie w fiksturze.
+
+            OŚ `carries` SPISU PASMA TYTUŁU OGŁASZAŁA TU ZGODNOŚĆ, i to jest
+            ważniejsze niż sam napis: jej wiersz Skrzynki cytuje ten slot
+            wprost, a mimo to stawia `NAME_ONLY` po obu stronach, bo jej
+            słownik (`NAME_ONLY / SEARCH / TRAIL / SEARCH+TRAIL`) nie ma stanu
+            na TREŚĆ prawego slotu. Przebieg drukował w JEDNYM wierszu
+            rozjeżdżającą się treść („Inbox1 thing waiting") i werdykt
+            „prototype … NAME_ONLY". Pomiar tej pozycji stoi więc w asercji
+            interakcyjnej, nad DWIEMA liczbami wyprowadzonymi z list.
+
+            `At least` ZOSTAJE I OBEJMUJE OBIE LICZBY: obcięcie zapytania
+            (`ATTENTION_INBOX_LIMIT`) dotyczy CAŁEJ listy przed rozdzieleniem,
+            więc floor jest własnością pary liczb, a nie jednej z nich.
+            Zdolność, którą to niesie — „nie wiem, ile jeszcze czeka" — nie ma
+            odpowiednika w prototypie i nie schodzi razem z kształtem. */}
         {attention.kind === "ready" && (
           <p
             className={styles.waiting}
             data-inbox-waiting={waiting}
             data-inbox-waiting-floor={waitingIsFloor ? "true" : "false"}
           >
-            <strong>
-              {waitingIsFloor ? "At least " : ""}
-              {countLabel(waiting, "thing")}
-            </strong>{" "}
-            waiting
+            {waitingIsFloor ? "At least " : ""}
+            <strong data-inbox-to-decide={mailboxes.work.length}>
+              {`${mailboxes.work.length} to decide`}
+            </strong>
+            {" · "}
+            <strong data-inbox-to-route={mailboxes.captures.length}>
+              {`${mailboxes.captures.length} to route`}
+            </strong>
           </p>
         )}
       </header>

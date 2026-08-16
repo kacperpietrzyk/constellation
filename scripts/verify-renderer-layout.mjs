@@ -571,7 +571,7 @@ const TYPE_WEIGHT_SCALE = declaredWeightScale(
 //                  `[data-record-kind]` po dwukliku i zmierzyć ten ekran.
 //   "navigates"  — wiersz ZABIERA DO rekordu w jego kolekcji i nie otwiera nic;
 //                  żądanie ekranu byłoby tu żądaniem zachowania, którego produkt
-//                  świadomie nie ma (`RealApp.tsx:3008-3010`).
+//                  świadomie nie ma (`RealApp.tsx:3010-3012`).
 //
 // STRAŻNIK WYCZERPANIA JEST CZĘŚCIĄ TABELI, nie dodatkiem: powierzchnia, która
 // narysowała taki wiersz i nie stoi tutaj, wywala przelot z własną nazwą. Bez
@@ -598,7 +598,7 @@ const TYPE_WEIGHT_SCALE = declaredWeightScale(
 // na kolekcji z zaznaczonym rekordem. Zdanie „to nie są drzwi" jest tu
 // weryfikowane, zdanie „to jest przejście" nie jest.
 const RECORD_DOORS = {
-  // `taskContext(id, title, { record: true })` — `RealApp.tsx:3011-3014`.
+  // `taskContext(id, title, { record: true })` — `RealApp.tsx:3013-3016`.
   tasks: "opens",
   // `projectContext` — kolekcja Projektów promuje projekt na jego ekran.
   projects: "opens",
@@ -1358,7 +1358,7 @@ const sweep = async (browser, { width, fontSize, label, surfaces }) => {
         // (`client/shell-navigation.ts:611-621`), więc podwójne kliknięcie
         // wiersza Kalendarza ZABIERA DO zadania w jego kolekcji, zamiast
         // promować je na własny ekran. Nie jest to defekt produktu, tylko jego
-        // zapisane rozstrzygnięcie: `RealApp.tsx:3008-3010` mówi wprost „the
+        // zapisane rozstrzygnięcie: `RealApp.tsx:3010-3012` mówi wprost „the
         // ONE place a list promotes a task to its own screen", a Kalendarz
         // (`:2579-2582`) i Dziś (`:2426-2429`) świadomie nie są tym miejscem.
         //
@@ -3048,7 +3048,7 @@ const paintAlpha = (literal) => {
 
 // Wyliczony `outline` → „czy to w ogóle coś rysuje". Trzy warunki, bo trzy różne
 // sposoby na kontur, którego nie widać: styl `none`, zerowa grubość i alfa 0.
-// Dzisiejsza aplikacja trafia w ten trzeci (`tokens.css:1165` daje przy fokusie
+// Dzisiejsza aplikacja trafia w ten trzeci (`tokens.css:1170` daje przy fokusie
 // `outline: 2px solid transparent` jako podkładkę pod tryb wymuszonych kolorów),
 // a v3 stawia tam `outline: 2px solid var(--accent)` — czyli linię pierścienia.
 const outlineOf = (paint) => {
@@ -3142,7 +3142,7 @@ const describeBorder = (border) =>
 //
 // KAŻDE RAMIĘ MA WŁASNY WARUNEK WIDOCZNOŚCI i to nie jest ozdoba. Ramię konturu
 // porównujące SAM NAPIS byłoby zielone na wszystkich dziewięciu przystankach:
-// `tokens.css:1165` stawia przy fokusie `outline: 2px solid transparent` jako
+// `tokens.css:1170` stawia przy fokusie `outline: 2px solid transparent` jako
 // podkładkę pod tryb wymuszonych kolorów, więc napis konturu zmienia się ZAWSZE
 // (zmierzone: `none 0px …` → `solid 2px rgba(0, 0, 0, 0)` na całej dziewiątce,
 // w obu motywach). Ten werdykt mierzyłby wtedy podkładkę, a nie wskaźnik.
@@ -3392,7 +3392,7 @@ const measureTheme = async (
         "cannot tell that control's focus ring from its own shadow, and it measured NOTHING about " +
         "the ring there. Instrument failure, not a verdict about the accent.",
     );
-  // ZMIANA, KTÓRĄ WIDAĆ — nie każda zmiana napisu. `tokens.css:1165` ustawia przy
+  // ZMIANA, KTÓRĄ WIDAĆ — nie każda zmiana napisu. `tokens.css:1170` ustawia przy
   // fokusie `outline: 2px solid transparent`, więc SAM NAPIS konturu zmienia się
   // na KAŻDEJ kontrolce, także na tej, która nadpisze pierścień własnym cieniem.
   // Wpuszczenie takiej kontrolki tutaj kazałoby sondzie osądzić CUDZY cień jako
@@ -5303,7 +5303,7 @@ const measureControlPaintInPage = async ({
   // klucza, więc strażnik „zero kontrolek" nie miał po czym iterować.
   const declared = [shellSurface, ...all];
   // KTÓRY CEL DOJECHAŁ. Powłoka stempluje aktywny cel na planie roboczym
-  // (`RealApp.tsx:3924`), więc przybycie jest OBSERWOWALNE — a kliknięcie,
+  // (`RealApp.tsx:3926`), więc przybycie jest OBSERWOWALNE — a kliknięcie,
   // które po cichu nie zadziała, kazałoby spisowi policzyć ten sam panel pod
   // trzynastoma nazwami i wszystkie byłyby niezerowe.
   const arrivals = [];
@@ -5644,7 +5644,7 @@ const measureTitleBandActionInPage = async ({
   // WIDOCZNOŚĆ MIERZONA TAK SAMO JAK W RESZCIE TEGO PLIKU, i to jest poprawka,
   // nie ozdoba. „Szerokość i wysokość > 0" przepuszcza element 1×1 przycięty
   // `clip: rect(0,0,0,0)` — a dokładnie tak wygląda `#surface-title` w stanie
-  // ładowania Spotkań (`MeetingsSurface.tsx:617` + `.sr-only`,
+  // ładowania Spotkań (`MeetingsSurface.tsx:618` + `.sr-only`,
   // `styles.css:763-770`). Takie pudełko stałoby się GEOMETRYCZNYM ODNIESIENIEM
   // całego werdyktu: środek w rogu kadru, tolerancja pół piksela. Dziś ratuje
   // przed tym kształt cudzego drzewa (ten `<h1>` nie ma przodka `<header>`,
@@ -6836,7 +6836,7 @@ const titleBandActionCensus = async (browser) => {
 // zamiast ekranu, zmierzy pary Pipeline'u na powierzchni lądowania i wpisze
 // je wszystkie jako awarię przyrządu.
 const ROUTED_ARRIVAL = {
-  // PipelineSurface.tsx:733 / RenewalsSurface.tsx:781 — deklaracja korzenia
+  // PipelineSurface.tsx:761 / RenewalsSurface.tsx:781 — deklaracja korzenia
   // ekranu, ta sama, z której pary tej mapy biorą przedrostek podmiotu.
   pipeline: "[data-pipeline-surface]",
   renewals: "[data-renewals-surface]",
@@ -6862,7 +6862,7 @@ const ROUTED_ARRIVAL = {
   notes: "#main-content [data-note-id]",
   sources: "#main-content [data-source-row]",
   captures: "#main-content [data-capture-row]",
-  // Spotkania: `MeetingsSurface.tsx:2022` — korzeń ekranu, ta sama klasa, którą
+  // Spotkania: `MeetingsSurface.tsx:2047` — korzeń ekranu, ta sama klasa, którą
   // arkusz obsługuje jako nośnik rynny. Dopisane przy naprawie po przeglądzie
   // lotu D1: pierwsza para tej mapy nad Spotkaniami potrzebowała przystanku,
   // a ekran jest osiągalny dla obu spisów (B1 i B2 mierzą go od lotu D1), więc

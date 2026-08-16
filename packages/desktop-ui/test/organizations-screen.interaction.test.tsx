@@ -1170,7 +1170,7 @@ test("every kind the collection stopped drawing is still reachable through the i
     await import("@constellation/contracts");
   // All five still point at this destination, which is the branch that ends in
   // `selectStrategicInInspector` for anything that is not an organization
-  // (`RealApp.tsx:5160-5175`). Repointing one without a routing branch beside it
+  // (`RealApp.tsx:5169-5184`). Repointing one without a routing branch beside it
   // compiles, passes every test, and silently downgrades "open this record" to
   // "open that screen".
   for (const kind of [
@@ -1342,6 +1342,55 @@ test("an unavailable review list says so; it never reports the review complete",
   assertRefusalReadsAsASentence(
     message,
     "the Organizations review rail on a refused radar read",
+  );
+});
+
+// WPIS 7-3 OGONA FAZY III — POMIAR, KTÓREGO NIE BYŁO.
+//
+// Stopka szyny recenzji rysowała `<span>items need a decision</span>`: zdanie
+// bez ani jednej cyfry, bo `plural` (`i18n.ts`) z definicji zwraca SAMĄ FORMĘ
+// słowa, a helper z liczbą — `countLabel` — stoi cztery linie niżej w tym samym
+// module. Przed tym testem frazę znało JEDNO miejsce w repozytorium: kod, który
+// ją rysuje. Zero testów, zero par rejestru, zero wpisów NOT_COVERED.
+//
+// ASERCJA PYTA O REGUŁĘ, NIE O NAPIS: liczba w stopce równa się liczbie pozycji,
+// które szyna NARYSOWAŁA. Oczekiwanie jest wyprowadzone z DOM, nie wpisane, więc
+// bogatsza fikstura go nie unieważnia, a `plural` — który nie drukuje żadnej
+// cyfry — nie spełnia go przy ŻADNEJ liczbie pozycji.
+test("the review rail's footer states the count it names", async () => {
+  // FIKSTURA Z KANDYDATEM, nie domyślna: domyślna `queries` nie niesie
+  // `radar.review` wcale, więc szyna rysuje panel odmowy, a stopka mówi „0".
+  // Asercja nad zerem byłaby nieodróżnialna od poprawnej.
+  await openOrganizations(withRadarCandidate);
+  await waitForCondition(() => rows().length > 0, "no client row");
+
+  const rail = container
+    .querySelector("#review-title")
+    ?.closest("aside") as HTMLElement | null;
+  assert.ok(rail, "the review rail is not on the screen");
+
+  const drawn = rail.querySelectorAll("article.review-item").length;
+  assert.ok(
+    drawn > 0,
+    "the fixture drew no review item at all, so this assertion would be measuring an empty rail — " +
+      "a pass here would be indistinguishable from a correct one (empty-fixture-protects-a-wrong-assertion)",
+  );
+
+  const footer = rail.querySelector<HTMLElement>(
+    "[data-review-decision-count]",
+  );
+  assert.ok(footer, "the review rail has no footer count at all");
+  const said = (footer.textContent ?? "").trim();
+  const leading = /^(\d+)\s/u.exec(said);
+  assert.ok(
+    leading,
+    `the footer said „${said}", which carries no count — the sentence names a number of items ` +
+      "and then does not say it, so the reader is told a plural and nothing else",
+  );
+  assert.equal(
+    Number(leading[1]),
+    drawn,
+    `the footer said „${said}" over ${drawn} review item(s) drawn in the same rail`,
   );
 });
 

@@ -309,7 +309,12 @@
 
      `--text-disabled` NIE JEST tu zwolniony wyjątkiem „Incidental" z SC 1.4.3
      (tekst nieaktywnej kontrolki): ten token maluje w tym repo także treść
-     żywą — cztery miejsca wyliczone przy asercji w bramce.
+     żywą — PIĘĆ miejsc wyliczonych przy asercji w bramce. Piąte dołożył ogon
+     Fazy III (wpis 2-8): etykieta dnia, w którym workspace nie pracuje
+     (`calendar.module.css` — `.freeOff`), za prototypem
+     (`v3/screens/calendar.css:84` — `.cal-free-off { color:
+     var(--text-disabled) }`). Liczba stoi w DWÓCH miejscach i musi rosnąć
+     w obu naraz — tu i przy asercji, która je wymienia.
 
      WIĄŻĄCY PLAN NIE MA DZIŚ ANI JEDNEGO KONSUMENTA. `--surface-elevated` to
      czwarty plan, dołożony pod Fazę 3 (patrz lista tokenów bez konsumenta przy
@@ -673,7 +678,7 @@
 
      ROLA JEST PARĄ `-bg` + `-text`, A NIE POJEDYNCZYM ALIASEM, i to jest wybór
      o POMIARZE, nie o nazewnictwie: `scripts/status-contrast.test.mjs` mierzy
-     KAŻDĄ rodzinę o kształcie `--X-bg` + `--X-text` (`:324-339`), więc ta para
+     KAŻDĄ rodzinę o kształcie `--X-bg` + `--X-text` (`:329-344`), więc ta para
      dostaje asercję NA WARSTWIE TOKENÓW za darmo — tam, gdzie ograniczenie jest
      ZADEKLAROWANE, a nie tylko tam, gdzie jest skonsumowane. Pojedynczy alias
      obok `--on-accent` nie byłby rodziną i nie zostałby zmierzony nigdzie.

@@ -659,7 +659,7 @@ select {
    i `rgb(239,239,239)` w jasnym. Skutek widoczny gołym okiem: chip albo segment
    NIEWYBRANY był mocniej wyróżniony od WYBRANEGO, bo stan wybrany bierze
    `--surface-hover`, czyli 5,5% bieli nad ciemnym planem (`tokens.css:225`)
-   i 4,5% czerni nad jasnym (`:877`), a farba silnika była od obu dalsza od
+   i 4,5% czerni nad jasnym (`:882`), a farba silnika była od obu dalsza od
    planu. Spis B1 (`scripts/control-paint.mjs`) naliczył tak czternaście
    kształtów na pięciu ekranach, 27 narysowanych elementów w każdym motywie.
 
@@ -1353,7 +1353,7 @@ kbd {
   pointer-events: none;
 }
 /* DŁUG Z FAZY 1 DOMKNIĘTY W TYM SAMYM LOCIE, w którym ziarno dostaje
-   konsumenta (`tokens.css:490-496` zapisywało go jako otwarty): v3 zeruje
+   konsumenta (`tokens.css:495-501` zapisywało go jako otwarty): v3 zeruje
    `--grain-opacity` RAZEM z `--glass-blur` przy ograniczonej przezroczystości
    (`v3/tokens.css:231-233`). Bez tego Faza 3 dowozi ziarno bez wyjścia
    awaryjnego, a `--glass-blur` zostaje jedynym tokenem materiału, którego to
@@ -1418,7 +1418,7 @@ kbd {
   /* Lewa kolumna jest PLANEM, nie szybą (`v3/app.css:155-160`). Stało tu
      rozmycie tła, którego prototyp nie ma nigdzie w powłoce; pod nim leży
      nieprzezroczyste okno, więc kosztowało warstwę kompozycji i nie pokazywało
-     niczego. Token wskazuje teraz `--surface-sidebar` (`tokens.css:514-525`). */
+     niczego. Token wskazuje teraz `--surface-sidebar` (`tokens.css:519-530`). */
   background: var(--shell-sidebar-bg);
 }
 
@@ -1841,7 +1841,7 @@ kbd {
 
    TWO CARRIERS, BOTH NAMED, because excluding one would fix an instance and
    leave its twin asleep: `.active` is the paint carrier on the surface list
-   (`RealApp.tsx:1963`, `:2036`, `:3449`) and `[aria-current]` covers both the
+   (`RealApp.tsx:1963`, `:2036`, `:3451`) and `[aria-current]` covers both the
    `"page"` that always travels with it and the `"location"` of the settings
    mode column (`:1457`), which until now won only by source order.
 
@@ -1883,7 +1883,7 @@ kbd {
 
    ODWRÓCENIE NOŚNIKA, NIE ZDJĘCIE SYGNAŁU: znika ramka, zostaje ta sama
    wartość `var(--accent)` — tyle że na szynie. Pomiar kontrastu, którym
-   uzasadniano krawędź, przenosi się razem z wartością (`tokens.css:705-739`).
+   uzasadniano krawędź, przenosi się razem z wartością (`tokens.css:710-744`).
 
    WPIS NADRZĘDNY BIERZE TO SAMO. Prototyp uznaje otwarty rekord projektu za
    bycie NA „Projects": `v3/app.js:573` stawia `aria-current="page"` również na
@@ -2303,7 +2303,7 @@ kbd {
    POPRAWIONE PO PRZEGLĄDZIE: zdanie „czyta ją wyłącznie to, co NIE jest
    ekranem" stało tu w pierwszej wersji tej noty i BYŁO NIEPRAWDĄ. Pełny
    kontekst organizacji (`.organization-context`) niesie `surface-header`,
-   eyebrow i `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1774-1779`),
+   eyebrow i `<h1 id="surface-title">` (`StrategicDepthSurface.tsx:1780-1785`),
    czyli komplet trzech znaków ekranu — a brał stąd 72rem. Od naprawy L1
    deklaruje własne 92rem w `organization-context.css`, z powodem zapisanym
    tam, nie tutaj. Nie widzi tego żadna para, bo żadna trasa bramki układu tam
@@ -2769,10 +2769,10 @@ kbd {
    SPRAWDZONE, ŻE NIE ŁAPIE NIKOGO PRZYPADKIEM. Wszystkie sześć pozostałych
    miejsc rysujących `.surface-header` trzyma je o poziom GŁĘBIEJ, więc żadne nie
    jest bezpośrednim dzieckiem `.work-surface`: Spotkania w `<section
-   class="meeting-surface">` (`MeetingsSurface.tsx:2009`), ekran rekordu projektu
+   class="meeting-surface">` (`MeetingsSurface.tsx:2034`), ekran rekordu projektu
    w `.surface-scroll.project-surface` (`Wave2Surfaces.tsx:646`), pełny kontekst
    organizacji w `.surface-scroll.organization-context`
-   (`StrategicDepthSurface.tsx:1774`), historia wrzutek w
+   (`StrategicDepthSurface.tsx:1780`), historia wrzutek w
    `.surface-scroll.history-surface` (`CaptureHistoryReading.tsx:199`),
    Ustawienia w `.surface-scroll.settings-surface` (`SettingsSurface.tsx:1104`)
    i martwy `TasksSurface` w `.surface-scroll` (`Wave2Surfaces.tsx:196`).
@@ -4717,7 +4717,7 @@ kbd {
    guessed wrong. The first version of this split scoped the nav rules to
    `.sidebar` on the reasoning that `.settings-mode-column` lives in the work
    column and must not collapse when a person collapses the shell's left column.
-   It does not live there: `RealApp.tsx:3504` renders it INSIDE the same
+   It does not live there: `RealApp.tsx:3506` renders it INSIDE the same
    `<aside class="sidebar">`, replacing the destination list while settings are
    open. So the scope bought nothing — and it cost: the extra `.sidebar` lifted
    these rules to (0,3,0), which then beat the (0,2,0) rule that stands the

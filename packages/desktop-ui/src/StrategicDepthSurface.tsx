@@ -66,7 +66,6 @@ import {
   dateKeyInZone,
   formatDate,
   formatDateTime,
-  plural,
   recordKindLabels,
 } from "./i18n.js";
 import {
@@ -1149,8 +1148,15 @@ export const StrategicDepthSurface = ({
               )
             )}
             <footer>
-              <span>
-                {plural(
+              {/* `countLabel`, NIE `plural` — wpis 7-3 ogona Fazy III.
+                  `plural` (`i18n.ts`) zwraca z definicji SAMĄ FORMĘ słowa
+                  i nigdy liczby, więc stopka rysowała „items need a decision"
+                  bez ani jednej cyfry w DOM: zdanie o niczym, obok panelu,
+                  który właśnie NIE POKAZAŁ listy. Helper z liczbą stał cztery
+                  linie niżej w tym samym module od Fali 2. Wada nie zależała
+                  od danych — `plural` gubi liczbę przy KAŻDEJ wartości. */}
+              <span data-review-decision-count>
+                {countLabel(
                   radar.length + openConsequences.length,
                   "item needs a decision",
                   "items need a decision",

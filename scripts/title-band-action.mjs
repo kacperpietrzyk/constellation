@@ -806,8 +806,8 @@ export const judgeActionAgainstTitleRow = ({ title, action }) => {
  * Pytanie tego przyrządu brzmi „czy pasmo tytułu NIESIE akcję", więc ekran,
  * który ma jedną akcję w paśmie i drugą gdzie indziej, na to pytanie
  * odpowiada TAK. Projekty są dokładnie tym przypadkiem: w paśmie stoją
- * `ghost-button` „Areas and initiatives" i `secondary-button` „New project",
- * a niżej w treści bywają kolejne.
+ * `ghost-button` „Areas and initiatives" i `primary-button` „New project"
+ * (drugorzędny do ogona Fazy III — wpis 5-2), a niżej w treści bywają kolejne.
  *
  * `SPLIT_BAND` istnieje po to, żeby ekran z akcjami PO OBU stronach tytułu nie
  * musiał zostać zaokrąglony do jednej z nich. Dziś nie ma takiego ekranu —
@@ -1118,7 +1118,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/calendar.js:202 — crumbbar(„Calendar”, `<span class="when">`)',
     today: "NO_ACTION",
     todayInline: "NO_ACTION",
-    app: "CalendarSurface.tsx:673-709 — po locie L2 pasmo to <h1> i grupa prawej strony (zakres tygodnia + trzy ghost-button nawigacji); pojemność tygodnia zeszła do treści, akcji z wypełnieniem dalej nie ma",
+    app: "CalendarSurface.tsx:695-731 — po locie L2 pasmo to <h1> i grupa prawej strony (zakres tygodnia + trzy ghost-button nawigacji); pojemność tygodnia zeszła do treści, akcji z wypełnieniem dalej nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     // ODDANE W LOCIE L2: stał tu `<p class="eyebrow" data-week-range>` NAD
@@ -1162,7 +1162,7 @@ export const TITLE_BAND_ROWS = [
     // pamięta. Nikt tego nie złapał, bo jedyna asercja nad tym polem sprawdza
     // jego DŁUGOŚĆ. Adres, który nie prowadzi do pliku, jest przy odbiorze
     // nieodróżnialny od adresu, który prowadzi.
-    app: "InboxSurface.tsx:293-310 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
+    app: "InboxSurface.tsx:293-338 — po locie L2 pasmo to <h1> i licznik „N things waiting” po prawej; nadtytuł „Signals and captures” zszedł, akcji w paśmie nie ma",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1229,7 +1229,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/projects.js:343 — btn("New project", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "Wave2Surfaces.tsx:101-114 — SurfaceHeader po locie L2 to <h1> i {action}, bez nadtytułu i bez zdania opisowego; akcja to secondary-button „New project”",
+    app: "Wave2Surfaces.tsx:101-114 — SurfaceHeader po locie L2 to <h1> i {action}, bez nadtytułu i bez zdania opisowego; akcja to primary-button „New project” (do ogona Fazy III było `secondary-button` — jedyna akcja tworząca w paśmie kolekcji bez akcentu, wpis 5-2)",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     // ODDANE W LOCIE L2: stały tu TRZY WIERSZE — `<p class="eyebrow">`, `<h1>`
@@ -1312,7 +1312,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/pipeline.js:409-410 — btn("New opportunity", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "pipeline/PipelineSurface.tsx:836-868 — akcja w paśmie; .crumbbar skasowany razem ze swoją regułą w pipeline.module.css",
+    app: "pipeline/PipelineSurface.tsx:864-896 — akcja w paśmie; .crumbbar skasowany razem ze swoją regułą w pipeline.module.css",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",
@@ -1371,7 +1371,7 @@ export const TITLE_BAND_ROWS = [
     cite: 'v3/screens/crm.js:371 — btn("New organization", { cls: "primary", icon: "plus" })',
     today: "IN_BAND",
     todayInline: "FLUSH_END",
-    app: "StrategicDepthSurface.tsx:683-716 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
+    app: "StrategicDepthSurface.tsx:682-715 — akcja w paśmie i warunkowo primary-button; .crumbbar skasowany",
     prototypeStack: "ONE_ROW",
     citeStack: CRUMBBAR_ONE_ROW_CITE,
     todayStack: "ONE_ROW",

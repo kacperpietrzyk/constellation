@@ -11,7 +11,7 @@
 // To nie jest teoria. Na drzewie z 2026-08-07 ta bramka znalazła
 // `.nav-count--attention` (dziś `styles.css:2148`): `color: var(--on-accent)` na
 // `background: var(--accent)`, czyli w motywie CIEMNYM 3,54:1 przy progu 4,5.
-// Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:570` wymienia ją w tabeli
+// Liczba 3,54 jest w tym repo ZAPISANA — `tokens.css:575` wymienia ją w tabeli
 // stopni akcentu pod nagłówkiem „PONIŻEJ" — a mimo to plakietka została tak
 // pomalowana i wszystkie 27 asercji `status-contrast` zostało zielonych.
 // Para `--accent` × `--on-accent` nie jest rodziną `--X-bg`/`--X-text`, więc
@@ -27,8 +27,8 @@
 // ── DLACZEGO OSOBNY PLIK, A NIE ROZSZERZENIE `status-contrast.test.mjs` ──────
 // Bo `status-contrast.test.mjs` sam, w trzech osobnych miejscach, nazywa koszt
 // rzutu na poziomie modułu: kasuje CAŁY plik, a `EXIT=1` z zera wykonanych testów
-// wygląda identycznie jak `EXIT=1` z prawdziwej czerwieni (`:372-375`, `:590-596`,
-// `:859-861`). Ta bramka czyta ~39 arkuszy ODKRYTYCH Z DYSKU; jeden arkusz
+// wygląda identycznie jak `EXIT=1` z prawdziwej czerwieni (`:377-380`, `:595-601`,
+// `:864-866`). Ta bramka czyta ~39 arkuszy ODKRYTYCH Z DYSKU; jeden arkusz
 // o kształcie, którego nie umiem rozłożyć, wyzerowałby wtedy 27 zielonych asercji
 // o tokenach, które z nim nie mają nic wspólnego. Różne podmioty, różne tryby
 // awarii, rozdzielony promień rażenia.

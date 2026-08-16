@@ -871,8 +871,16 @@ export const RenewalsSurface = ({
           row that acts on it (`v3/app.css:295-301`,
           `v3/screens/renewals.js:218-221`). */}
       <div className={`view-band ${styles.viewbar}`}>
+        {/* WPIS 9-3 OGONA FAZY III — `3 open`, NIE `3 contracts open`.
+            Prototyp: `${open.length} open · ${closed.length} closed this cycle`
+            (`v3/screens/renewals.js:219`). Rzeczownik jest zbędny, bo pasek
+            stoi POD pasmem, które właśnie nazwało ekran — dokładnie ta sama
+            zasada, którą lot L2 zastosował do nadtytułów: nazwa, która
+            przestaje wystarczać, poprawia się w NAZWIE, nie przez powtórzenie
+            jej w liczniku. Druga liczba już była bez rzeczownika, więc pasek
+            mówił dotąd dwiema różnymi konwencjami w jednym zdaniu. */}
         <span aria-live="polite" className={styles.count} role="status">
-          {`${countLabel(sections.openCount, "contract")} open · ${sections.closed.length} closed this cycle`}
+          {`${sections.openCount} open · ${sections.closed.length} closed this cycle`}
         </span>
       </div>
 

@@ -226,14 +226,33 @@
   min-width: 0;
 }
 
+/* WPIS 3-4 OGONA FAZY III — NADTYTUŁ WIERSZA JEST MASZYNOWY, NIE KRZYCZANY.
+   Prototyp (`v3/screens/inbox.css:66-70`):
+     `.ib-reason { font-family: var(--font-mono); font-size: var(--text-2xs);
+        letter-spacing: 0.02em; color: var(--text-quaternary) }`
+   i ŻADNEJ deklaracji `text-transform`, więc nośnik zostaje przy `none` —
+   `comment mention`, `renewal due`, `waiting review elapsed` stoją tam małymi
+   literami w kroju maszynowym. Ten arkusz robił krój interfejsu plus wersaliki,
+   czyli `MENTION`.
+
+   ROZMIAR, WAGA I ROZSTRZELENIE JUŻ SIĘ ZGADZAŁY (11 px / 400, a nasze
+   `--tracking-wide` to 0,025em wobec 0,02em) — i to jest powód, dla którego
+   ten rozjazd przeżył całą falę: `type-weight.mjs` pyta o WAGĘ, a rodziny
+   monospace nie czytała w tym produkcie ANI JEDNA para. Zmieniają się DWIE
+   deklaracje z pięciu, i tylko te dwie.
+
+   TREŚĆ ETYKIETY TO OSOBNA RZECZ I ZOSTAJE: prototyp mówi `comment mention`,
+   nasz słownik `inboxReasonLabels` — `Mention`. To jest osiemnastoelementowy
+   zamknięty słownik, a nie napis, i jego przepisanie nie jest wpisem ogona. */
 .reason {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   color: var(--text-quaternary);
+  font-family: var(--font-mono);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .urgent {

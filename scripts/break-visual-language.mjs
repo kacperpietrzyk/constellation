@@ -88,6 +88,21 @@ const CONTRAST_VERIFY = {
 };
 
 /**
+ * BRAMKA DLA ZŁAMAŃ OGONA FAZY III, KTÓRYCH PODMIOTEM JEST TREŚĆ.
+ *
+ * Ta sama zasada co przy `CONTRAST_VERIFY`, na innym przyrządzie: siedem
+ * pozycji ogona ma oczekiwaną wartość WYPROWADZONĄ Z DANYCH — liczba pozycji
+ * narysowanych w szynie, liczba wierszy w sekcji, kształt napisu nad wiekiem,
+ * który rośnie z zegara. Bramka układu czyta wyliczone własności CSS i o żadnej
+ * z tych rzeczy nie ma zdania, więc puszczone przez nią wróciłyby ZIELONE,
+ * a harness zgłosiłby przyrząd zamiast kodu.
+ */
+const INTERACTION_VERIFY = {
+  command: "npm",
+  args: ["run", "test:interaction", "-w", "@constellation/desktop-ui"],
+};
+
+/**
  * Cofnięcie wypełnienia akcji głównej do płaskiego tokenu.
  *
  * JEDNA EDYCJA, DWA ZŁAMANIA, i to jest treść, a nie oszczędność: ta sama
@@ -3074,8 +3089,10 @@ const outcome = runBreakTests({
       // w całej aplikacji, więc złamanie, które psuje produkt, musi przewrócić
       // jednego świadka. Pierwszym NARYSOWANYM nagłówkiem treści Kalendarza
       // jest — zmierzone, nie założone, przelot 2026-08-13 przy 1440×900 —
-      // `h2 „Deadline this week or already late…"` o 16 px
-      // (`CalendarSurface.tsx:874-882`, reguła `calendar.module.css:416-424`).
+      // `h2 „Deadline this week or already past…"` o 16 px (słowo poprawione
+      // razem z copy we wpisie 2-9 ogona Fazy III — cytat, który przestał być
+      // prawdziwy o produkcie, jest w tym repozytorium klasą defektu)
+      // (`CalendarSurface.tsx:896-904`, reguła `calendar.module.css:466-503`).
       // Podniesienie go do `--text-2xl` daje `OPENING_2XL` wobec tabeli
       // mówiącej `OPENING_SMALLER`.
       //
@@ -3091,7 +3108,7 @@ const outcome = runBreakTests({
       // dwie rzeczy naraz nie mówi, która zapaliła.
       //
       // KOTWICA MUSI WCIĄGNĄĆ `gap` I `margin`: `font-size: var(--text-md)`
-      // pada w tym arkuszu dwa razy (`:99`, `:421`), a `font-weight:
+      // pada w tym arkuszu dwa razy (`:99`, `:500`), a `font-weight:
       // var(--weight-semibold)` po locie L5 jeszcze częściej; `replaceOnce`
       // rzuca przy dwóch trafieniach. Czterowierszowy blok jest w tym pliku
       // jedyny — sprawdzone maszynowo po przepisaniu wagi.
@@ -5510,6 +5527,246 @@ ${IDENTITY_STATE_ROW}            </section>
                             {note.excerpt ?? ""}
                           </span>`,
           "the condition that keeps a bandless note row bandless",
+        ),
+    },
+
+    // ══ OGON FAZY III — JEDENAŚCIE ZŁAMAŃ, PO JEDNYM NA ZAMKNIĘTY WPIS ══════
+    //
+    // KAŻDE ODTWARZA DOKŁADNIE TĘ WADĘ, KTÓRĄ WPIS ZAMYKA, i to jest jedyny
+    // powód, dla którego jest ich jedenaście, a nie jedno: pomiar postawiony
+    // razem z poprawką jest nieodróżnialny od pomiaru, który nic nie mierzy,
+    // dopóki nikt nie pokaże go czerwonym nad kodem SPRZED poprawki. Cztery
+    // z tych wpisów miały nad sobą przyrząd, który był ZIELONY nad rozjazdem
+    // (albo — przy 2-9 — certyfikował rozjazd jako stan docelowy), więc „coś
+    // to mierzy" nie wystarczyło ani razu.
+    //
+    // DWA `verify`, BO DWA PRZYRZĄDY. Pozycje, których podmiotem jest
+    // wyliczona własność CSS, mierzy bramka układu (domyślny `verify`);
+    // pozycje, których oczekiwana wartość jest WYPROWADZONA Z DANYCH — liczba
+    // pozycji szyny, liczba wierszy sekcji, kształt napisu nad rosnącym
+    // wiekiem — mierzą asercje interakcyjne. Złamanie treści puszczone przez
+    // bramkę wróciłoby ZIELONE i harness zgłosiłby wtedy przyrząd zamiast
+    // kodu, a to jest ta sama pomyłka, przed którą przestrzega nota przy
+    // `CONTRAST_VERIFY`.
+    {
+      name: "FIII3 1-8: put the two extra articles back into the capture dock prompt",
+      expectRedContains: [
+        "the capture dock's prompt is the reference's sentence",
+      ],
+      file: "packages/desktop-ui/src/RealApp.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "                Capture a thought, link or task…\n",
+          "                Capture a thought, a link or a task…\n",
+          "the capture dock prompt",
+        ),
+    },
+    {
+      name: "FIII3 2-7: take the caps off the calendar day name",
+      expectRedContains: ["the day name is set in caps"],
+      file: "packages/desktop-ui/src/calendar.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "  letter-spacing: var(--tracking-wide);\n  text-transform: uppercase;\n}\n\n.dayNum {",
+          "  letter-spacing: var(--tracking-wide);\n}\n\n.dayNum {",
+          "the caps on the day name",
+        ),
+    },
+    {
+      name: "FIII3 2-8: let the non-working day speak in the working day's voice",
+      expectRedContains: ["and a day nobody works speaks quieter still"],
+      file: "packages/desktop-ui/src/calendar.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          ".freeOff {\n  color: var(--text-disabled);\n}",
+          ".freeOff {\n  color: var(--text-tertiary);\n}",
+          "the third step of the capacity label",
+        ),
+    },
+    {
+      name: "FIII3 2-9: the calendar tray heading calls an overdue deadline late again",
+      expectRedContains: ["/already past/"],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/CalendarSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '? "Deadline this week or already past, nobody planned it"',
+          '? "Deadline this week or already late, nobody planned it"',
+          "the tray heading of the current week",
+        ),
+    },
+    {
+      name: "FIII3 3-3: the inbox band sums its two mailboxes into one number again",
+      expectRedContains: ["one number summed over two mailboxes"],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/InboxSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "{`${mailboxes.work.length} to decide`}",
+          "{`${mailboxes.work.length + mailboxes.captures.length} waiting`}",
+          "the left number of the inbox band",
+        ),
+    },
+    {
+      name: "FIII3 3-4: the inbox row kicker goes back to the interface face",
+      expectRedContains: ["the inbox row's kicker is set in the mono family"],
+      file: "packages/desktop-ui/src/inbox.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "  font-family: var(--font-mono);\n  font-size: var(--text-2xs);\n  letter-spacing: var(--tracking-wide);\n  text-transform: none;",
+          "  font-size: var(--text-2xs);\n  letter-spacing: var(--tracking-wide);\n  text-transform: none;",
+          "the mono family on the inbox kicker",
+        ),
+    },
+    {
+      name: "FIII3 5-2: New project goes back to being the one create action with no accent",
+      expectRedContains: [
+        "the Projects band carries an accent-filled create action",
+      ],
+      file: "packages/desktop-ui/src/Wave2Surfaces.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          'className={creating ? "secondary-button" : "primary-button"}\n              aria-expanded={creating}\n              aria-controls={creating ? "project-create-form" : undefined}',
+          'className="secondary-button"\n              aria-expanded={creating}\n              aria-controls={creating ? "project-create-form" : undefined}',
+          "the paint of the Projects create action",
+        ),
+    },
+    {
+      name: "FIII3 6-4: the age badge appends the word stale again",
+      expectRedContains: ["an age badge said more than the number of days"],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/pipeline/PipelineSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "{`${card.ageDays} d`}",
+          '{`${card.ageDays} d${card.stale ? " · stale" : ""}`}',
+          "the text of the age badge",
+        ),
+    },
+    {
+      name: "FIII3 7-3: the review rail's footer counts something other than what it drew",
+      expectRedContains: ["review item(s) drawn in the same rail"],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/StrategicDepthSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "                {countLabel(\n                  radar.length + openConsequences.length,",
+          "                {countLabel(\n                  0 * radar.length + openConsequences.length,",
+          "the count in the review rail footer",
+        ),
+    },
+    {
+      name: "FIII3 9-3: the renewals band puts the noun back in front of open",
+      expectRedContains: ["a noun between the number and the word open"],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/renewals/RenewalsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "{`${sections.openCount} open · ${sections.closed.length} closed this cycle`}",
+          '{`${countLabel(sections.openCount, "contract")} open · ${sections.closed.length} closed this cycle`}',
+          "the renewals view band count",
+        ),
+    },
+    {
+      name: "FIII3 10-2: the meetings section is named after the vendor again",
+      expectRedContains: [
+        "a section heading names the system the rows came from",
+      ],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '          What is left of the ones that happened{" "}\n',
+          '          Jamie results{" "}\n',
+          "the heading of the completed meetings section",
+        ),
+    },
+
+    // ══ NAPRAWA OGONA — CZTERY ZŁAMANIA, KAŻDE ZA ZNALEZISKIEM PRZEGLĄDU ═══
+    //
+    // DWA PIERWSZE stoją pod pozycjami, których lot nie postawił w ŻADNEJ ze
+    // swoich dwóch tabel (2-6b i reszta 1-4). DWA DALSZE stoją pod napisami,
+    // które lot ZMIENIŁ i o których napisał „MIERZONA: tak" — a przegląd
+    // adwersarialny udowodnił złamaniem, że oba wracają ZIELONE. To jest
+    // najgorszy z trzech stanów przyrządu i jedyny, którego nie widać
+    // z tabeli: pozycja bez pomiaru i pozycja z pomiarem obok wyglądają
+    // w niej identycznie.
+    {
+      name: "FIII3 2-6b: the day column goes back to a floor two thirds of the reference's",
+      expectRedContains: [
+        "an empty day is as tall as the reference's empty day",
+      ],
+      file: "packages/desktop-ui/src/calendar.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "  min-height: 19rem;\n",
+          "  min-height: 12rem;\n",
+          "the declared floor of the calendar day column",
+        ),
+    },
+    {
+      name: "FIII3 1-4: the calendar tray heading gets louder than the week above it",
+      expectRedContains: [
+        "the calendar's tray heading is quieter than the week it hangs under",
+      ],
+      file: "packages/desktop-ui/src/calendar.module.css",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          "  font-size: var(--text-sm);\n  font-weight: var(--weight-semibold);\n  letter-spacing: var(--tracking-tight);\n",
+          "  font-size: var(--text-md);\n  font-weight: var(--weight-semibold);\n  letter-spacing: var(--tracking-tight);\n",
+          "the type size of the calendar section heading",
+        ),
+    },
+    {
+      // ZŁAMANIE, KTÓRE PRZEGLĄD WYKONAŁ I DOSTAŁ ZIELEŃ. Czwarte ramię
+      // rejestru pojemności nie rysowało się w ŻADNEJ fiksturze, więc
+      // `english-copy`, `prose-guard` i cała bramka układu przepuszczały
+      // wielką literę w jednej z czterech odpowiedzi tego samego slotu.
+      name: "FIII3 2-8b: one of the four capacity answers is capitalised again",
+      expectRedContains: [
+        "a working day with no free minutes left names that state in some other way",
+      ],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/CalendarSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '                ? "full"\n',
+          '                ? "Full"\n',
+          "the fourth arm of the day capacity register",
+        ),
+    },
+    {
+      // DRUGIE ZŁAMANIE PRZEGLĄDU, TA SAMA KLASA. Wpis 10-2 przepisał DWA
+      // napisy — widoczny nagłówek i nazwę dostępną listy pod nim — a asercja
+      // lotu skanuje wyłącznie `.meeting-sec-head h2`. Reguła o równości nazwy
+      // dostępnej z widoczną była zadeklarowana w komentarzu i przez nic
+      // niemierzona.
+      name: "FIII3 10-2b: the completed list answers to the vendor's name again",
+      expectRedContains: [
+        "a row container announces a different name than the heading above it",
+      ],
+      verify: INTERACTION_VERIFY,
+      file: "packages/desktop-ui/src/MeetingsSurface.tsx",
+      edit: (text) =>
+        replaceOnce(
+          text,
+          '            aria-label="What is left of the ones that happened"\n',
+          '            aria-label="Jamie results"\n',
+          "the accessible name of the completed meetings list",
         ),
     },
   ]),

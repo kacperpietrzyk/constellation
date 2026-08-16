@@ -550,6 +550,55 @@ test("closing a contract whose follow-up IS loaded sends the outcome to the kern
   );
 });
 
+// WPIS 9-3 OGONA FAZY III — POMIAR, KTÓREGO NIE BYŁO.
+//
+// Pasek widoku mówił `3 contracts open · 1 closed this cycle` tam, gdzie
+// prototyp mówi `3 open · 2 closed this cycle`
+// (`v3/screens/renewals.js:219`). Przeliczenie zmierzyło, że MIEJSCE tego
+// napisu pilnują dwie pary (`D10-01d` żąda jednego `.work-surface >
+// .view-band`, `L3-07` zera liczników w paśmie tytułu), a jego TREŚCI nie
+// pilnuje nic. Liczby `1÷2` z dokumentu przejścia to fikstura — obie strony
+// liczą swoje dane poprawnie — więc asercja NIE MOŻE ich przypinać.
+//
+// ASERCJA PYTA O DWIE REGUŁY, obie wyprowadzone z tego, co ekran narysował:
+//   1. kształt zdania jest prototypowy — dwie liczby, bez rzeczownika przy
+//      pierwszej, przy czym rzeczownika brak SPRAWDZA kształt, a nie
+//      wyszukiwanie słowa „contracts" (dowolny inny rzeczownik też jest wadą);
+//   2. obie liczby zgadzają się z wierszami w sekcjach TEGO SAMEGO ekranu,
+//      więc licznik nie może zacząć mówić o innym zbiorze niż lista pod nim.
+test("the view band counts the contracts the screen drew, in the prototype's two-number shape", async () => {
+  await openRenewals();
+  await waitForCondition(
+    () => rowsIn("due").length > 0,
+    "Renewals drew no row, so the band count would be measured over an empty screen",
+  );
+
+  const band = container.querySelector<HTMLElement>(
+    '[data-surface="renewals"] .view-band [role="status"]',
+  );
+  assert.ok(band, "the renewals view band carries no count at all");
+  const said = (band.textContent ?? "").trim();
+  const shape = /^(\d+) open · (\d+) closed this cycle$/u.exec(said);
+  assert.ok(
+    shape,
+    `the view band said „${said}" where the reference says „N open · N closed this cycle" — a noun ` +
+      "between the number and the word open restates the name the band above it already carries, " +
+      "and the band then speaks two conventions in one sentence (the second number never had one)",
+  );
+
+  const open = rowsIn("due").length + rowsIn("watching").length;
+  assert.equal(
+    Number(shape[1]),
+    open,
+    `the band counted ${shape[1]} open against ${open} row(s) drawn in "Time to start" and "Watching"`,
+  );
+  assert.equal(
+    Number(shape[2]),
+    rowsIn("closed").length,
+    `the band counted ${shape[2]} closed against ${rowsIn("closed").length} row(s) in "Closed this cycle"`,
+  );
+});
+
 test("an unavailable relationship slice replaces the screen with its own reason", async () => {
   await openRenewals({
     ...populatedShellQueries,

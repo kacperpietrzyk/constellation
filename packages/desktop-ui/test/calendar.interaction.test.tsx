@@ -658,7 +658,7 @@ test("each day states its capacity, and the week states its own", async () => {
     dayColumn(scope, "2026-08-08")
       .querySelector("[data-day-free]")
       ?.textContent?.trim(),
-    "Non-working",
+    "non-working",
   );
   const week = scope.querySelector<HTMLElement>("[data-week-capacity]");
   assert.ok(week, "the week does not state its capacity");
@@ -668,6 +668,73 @@ test("each day states its capacity, and the week states its own", async () => {
   assert.match(text, /37h free/);
   assert.match(text, /1 meeting, 1h 30m/);
   assert.match(text, /1h 30m reserved/);
+});
+
+// WPIS 2-8 OGONA FAZY III — CZWARTE RAMIĘ REJESTRU POJEMNOŚCI.
+//
+// Slot `[data-day-free]` ma CZTERY odpowiedzi (`CalendarSurface.tsx:388-395`):
+// `non-working`, `unknown`, `full` i `8h free`. Wpis 2-8 zdjął z nich wielkie
+// litery — jeden rejestr zamiast trzech wielkich i jednej małej — ale
+// asercje tego pliku dosięgały tylko TRZECH: żaden dzień fikstury nie był
+// wypełniony do zera, więc `full` nie rysowało się nigdy. Przegląd
+// adwersarialny naprawiający ten ogon udowodnił to złamaniem: `"full"` →
+// `"Full"` przechodziło CAŁY `npm run check` na zielono, razem z
+// `english-copy` i `prose-guard`.
+//
+// FIKSTURA, KTÓRA CZEGOŚ NIE RYSUJE, CHOWA — nie tylko „nie mierzy". Ten test
+// istnieje po to, żeby czwarte ramię dało się w ogóle zobaczyć: zapełnia środę
+// całym dniem roboczym, zamiast asertować rejestr nad trzema ramionami
+// i nazywać to pokryciem.
+test("a day with nothing left says so in the same voice as the other three answers", async () => {
+  // Dzień roboczy fikstury to 09:00–17:00 w Warszawie (`DEFAULT_WORKING_DAY`),
+  // czyli 07:00–15:00 UTC w sierpniu. Jedno wydarzenie na całą tę rozpiętość
+  // zeruje wolne minuty środy. Godziny są WYPROWADZONE z tego samego dnia
+  // fikstury co reszta pliku, nie dopisane trzecią ręczną datą.
+  const scope = await mountCalendar(
+    meetingLoop([
+      {
+        title: "Warsztat migracyjny z Northstar",
+        startsAt: `${WEDNESDAY}T07:00:00.000Z`,
+        endsAt: `${WEDNESDAY}T15:00:00.000Z`,
+      },
+    ]),
+  );
+  assert.equal(
+    dayColumn(scope, WEDNESDAY)
+      .querySelector("[data-day-free]")
+      ?.textContent?.trim(),
+    "full",
+    "a working day with no free minutes left names that state in some other way",
+  );
+
+  // REGUŁA NAD CAŁYM REJESTREM, nie czwarty literał obok trzech. Kapitalizacja
+  // wybierana odpowiedzią, a nie rolą, jest tą samą wadą, którą wpis 2-8
+  // zdejmował — więc pyta o nią zamiatanie po WSZYSTKICH siedmiu kolumnach,
+  // a nie asercja na jednej.
+  const answers = [
+    ...scope.querySelectorAll<HTMLElement>("[data-day-free]"),
+  ].map((badge) => (badge.textContent ?? "").trim());
+  assert.equal(
+    answers.length,
+    7,
+    "every day states something about its capacity",
+  );
+  assert.deepEqual(
+    answers.filter((answer) => /^\p{Lu}/u.test(answer)),
+    [],
+    "the day capacity slot capitalises one of its answers and not the others, which is the " +
+      "register picked by answer instead of by role — the reference writes `weekend`, `full` " +
+      "and `8h free` in one voice (`v3/screens/calendar.js:158-160`)",
+  );
+  // TRZY Z CZTERECH RAMION W TYM PRZELOCIE, i to jest powiedziane, a nie
+  // przemilczane: stoją tu `full`, `non-working` i „Xh free". Ramię `unknown`
+  // wymaga odmówionego kalendarza i jest zmierzone osobno, w teście
+  // „without the calendar the week states no capacity at all".
+  assert.ok(
+    new Set(answers).size >= 3,
+    `this run drew ${new Set(answers).size} distinct answer(s) in the capacity slot; the register ` +
+      "rule needs at least three of the four arms on screen to mean anything",
+  );
 });
 
 test("without the calendar the week states no capacity at all", async () => {
@@ -694,13 +761,13 @@ test("without the calendar the week states no capacity at all", async () => {
   const free = [...scope.querySelectorAll<HTMLElement>("[data-day-free]")];
   assert.equal(free.length, 7, "every day states something about its capacity");
   const working = free.filter(
-    (badge) => (badge.textContent ?? "").trim() !== "Non-working",
+    (badge) => (badge.textContent ?? "").trim() !== "non-working",
   );
   assert.equal(working.length, 5, "the fixture works Monday to Friday");
   for (const badge of working)
     assert.equal(
       (badge.textContent ?? "").trim(),
-      "Unknown",
+      "unknown",
       "a working day printed free minutes computed without the calendar",
     );
   assert.ok(
@@ -774,16 +841,23 @@ test("the tray holds the deadlines its heading claims, week by week", async () =
     "Termin w poprzednim tygodniu",
     "Zamów licencje na 12 000 EPS",
   ]);
-  assert.match(heading(), /already late/u);
+  // WPIS 2-9 OGONA FAZY III — TA ASERCJA CERTYFIKOWAŁA ROZJAZD JAKO STAN
+  // DOCELOWY. Do tej poprawki pytała o słowo `late`, którego prototyp w tym
+  // nagłówku nie ma: `<h3>Deadline this week or already past, nobody planned
+  // it` (`v3/screens/calendar.js:224`). Przeliczenie ogona zapisało przy 2-9
+  // „nic tego nie mierzy" — mierzyło, tylko na złą wartość, czyli najgorszy
+  // z trzech możliwych stanów przyrządu. Pytanie zostaje to samo (czy nagłówek
+  // przyznaje się do terminów PO czasie), zmienia się słowo, którego szuka.
+  assert.match(heading(), /already past/u);
 
   // Krok naprzód pokazywał wszystko po drodze — czyli listę pod nagłówkiem
   // „termin w tym tygodniu", w której terminów z tego tygodnia było najmniej.
   await step("next");
   assert.deepEqual(trayTitles(), ["Termin w przyszłym tygodniu"]);
   assert.equal(
-    /already late/u.test(heading()),
+    /already past/u.test(heading()),
     false,
-    "a future week has nothing late in it, so the heading must not claim any",
+    "a future week has nothing behind it, so the heading must not claim any",
   );
 
   // Krok wstecz dawał ujemny horyzont i wyłącznie stare zaległości: termin
