@@ -18,6 +18,7 @@ import {
   CommandOutcomeSchema,
   DEPENDENT_SAMPLE_LIMIT,
   DOCUMENT_ENTITY_TARGET_KINDS,
+  DOCUMENT_EXCERPT_SOURCE_CHARS,
   DocumentIdSchema,
   FolderIdSchema,
   EventIdSchema,
@@ -50,6 +51,7 @@ import {
   globalSearchRecordKindIds,
   isGlobalSearchRecordKind,
   translatedRelationConditions,
+  documentExcerpt,
 } from "@constellation/contracts";
 import {
   effectiveWorkingDay,
@@ -13092,6 +13094,36 @@ export const executeWave2Query = (
       if (held === undefined) documentReferences.set(link.documentId, [row]);
       else held.push(row);
     }
+    // WHAT EACH NOTE OPENS WITH — ONE READ FOR THE SPACE, for the same reason
+    // the references above are read once: this list renders every note it
+    // holds, so a per-row read turns one answer into N scans.
+    //
+    // THE BODY IS NOT COPIED ANYWHERE BY THIS. It is already plain text in the
+    // search projection the write path maintains, so the excerpt is computed
+    // here and stored nowhere; a stored second spelling would need a migration
+    // and a backfill in order to start rotting.
+    //
+    // NOTES OUTSIDE THIS ANSWER NEVER ENTER THE MAP. The store scopes by
+    // Space, and `documents` above is the Space's own authorized list, so a
+    // prefix with no matching note is simply never looked up.
+    //
+    // THE EXCERPT IS COMPUTED WITH THE TITLE IN HAND, not from the body alone,
+    // because a body whose first block restates the note's name would
+    // otherwise fill the row with the line printed directly above it. That is
+    // the shape an Obsidian import produces by construction — the title comes
+    // from the file name and the `# Title` line stays a node — so the prefix
+    // travels raw as far as here and `documentExcerpt` decides.
+    const bodyPrefixes = new Map<string, string>();
+    for (const row of view.listDocumentBodyPrefixes(
+      query.workspaceId,
+      query.parameters.spaceId,
+      DOCUMENT_EXCERPT_SOURCE_CHARS,
+    ))
+      bodyPrefixes.set(row.documentId, row.prefix);
+    const excerptOf = (id: string, title: string): string | undefined => {
+      const prefix = bodyPrefixes.get(id);
+      return prefix === undefined ? undefined : documentExcerpt(prefix, title);
+    };
     return querySuccess(query, kernelTime, freshness, {
       kind: "knowledge.list",
       spaceId: query.parameters.spaceId,
@@ -13149,6 +13181,7 @@ export const executeWave2Query = (
             version.documentId === document.id && version.state === "active",
         );
         const latest = versions[0];
+        const excerpt = excerptOf(document.id, document.title);
         return {
           id: document.id,
           title: document.title,
@@ -13170,6 +13203,11 @@ export const executeWave2Query = (
                 currentVersion(evidence.kind, evidence.recordId) !==
                 evidence.version,
             ) ?? false,
+          // A NOTE WITH NO INDEXED BODY KEEPS THE FIELD ABSENT rather than
+          // gaining an empty one. `listDocumentBodyPrefixes` answers only for
+          // notes whose body has been indexed, and the read must not turn "we
+          // have never seen this note's text" into "its text says nothing".
+          ...(excerpt === undefined ? {} : { excerpt }),
           version: document.version,
           updatedAt: document.updatedAt,
         };

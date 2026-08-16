@@ -274,6 +274,40 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     targetKind?: DocumentEntityLink["targetKind"],
     targetId?: string,
   ): readonly DocumentEntityLink[];
+  /**
+   * THE FIRST `maxChars` CHARACTERS OF EVERY INDEXED NOTE BODY IN THE SPACE,
+   * one answer for the whole Space rather than one call per note. The Notes
+   * list renders every note it holds, so a per-row read would turn one list
+   * into N scans — the same reason `knowledge.list` reads its references and
+   * its named versions once.
+   *
+   * THIS IS NOT `searchDocumentBodies` WITH AN EMPTY PHRASE, and that is a
+   * measurement rather than a preference: that method returns `[]` for an
+   * empty phrase, and its `snippet(...)` centres the window ON THE MATCH. A
+   * note list has no phrase and wants the BEGINNING. Two different questions,
+   * two different reads.
+   *
+   * A NOTE WITH NO INDEXED BODY IS ABSENT FROM THIS ANSWER — not present with
+   * an empty prefix. The write path creates the projection row when a body is
+   * written, so "no row" means "never written through this application", and
+   * flattening that into `""` would let the reader draw an empty band under a
+   * note it knows nothing about.
+   *
+   * THE CUT IS THE STORE'S JOB, and it must happen in the query rather than
+   * after loading. A body can be thousands of characters and a Space can hold
+   * hundreds of notes; a store that returned whole bodies for the caller to
+   * slice would move the entire Library through memory to render a list.
+   * Cutting at `maxChars` may land mid-word — the caller owns the readable
+   * boundary, and `documentExcerpt` is where that single rule lives.
+   */
+  listDocumentBodyPrefixes(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    maxChars: number,
+  ): readonly {
+    readonly documentId: DocumentId;
+    readonly prefix: string;
+  }[];
   searchDocumentBodies(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
@@ -458,6 +492,7 @@ export const isApplicationWave2ReadView = (
   "getFolder" in view &&
   "listFolders" in view &&
   "listDocumentEntityLinks" in view &&
+  "listDocumentBodyPrefixes" in view &&
   "searchDocumentBodies" in view &&
   "searchProjectBodies" in view &&
   "getKnowledgeSource" in view &&

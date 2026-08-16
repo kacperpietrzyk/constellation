@@ -659,6 +659,27 @@ class ReadView implements ApplicationReadView {
       );
   }
 
+  public listDocumentBodyPrefixes(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    maxChars: number,
+  ): readonly { readonly documentId: DocumentId; readonly prefix: string }[] {
+    // Collaborative document bytes live outside the reference store, so this
+    // view can never answer with an excerpt.
+    //
+    // AND THAT IS WHY NO CONFORMANCE TEST CAN PROVE THE EXCERPT. A suite over
+    // this store would be green with the field permanently absent — it would
+    // assert that the empty answer is the empty answer. The excerpt's evidence
+    // has to run the kernel over `SqliteApplicationStore`, which is what
+    // `local-store/test/document-title-search.test.ts` already sets up and
+    // where entry 11-2 put its proof. Recorded here rather than in a report,
+    // because this is the line that makes the weaker test look adequate.
+    void workspaceId;
+    void spaceId;
+    void maxChars;
+    return [];
+  }
+
   public searchDocumentBodies(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

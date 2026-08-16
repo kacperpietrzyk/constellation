@@ -85,9 +85,11 @@ import {
   AttentionSignalIdSchema,
   CaptureIdSchema,
   CapturePayloadIdSchema,
+  DOCUMENT_EXCERPT_SOURCE_CHARS,
   DocumentIdSchema,
   FolderIdSchema,
   KnowledgeSourceIdSchema,
+  documentExcerpt,
   type CaptureId,
   type CapturePayloadId,
   type PrincipalId,
@@ -99,6 +101,7 @@ import {
 } from "@constellation/contracts";
 import {
   STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+  documentPlainText,
   migrateDocumentToRich,
   replaceStructuredDocumentInYjs,
   type StructuredDocument,
@@ -215,11 +218,17 @@ const documentShapes: readonly DocumentShape[] = [
     role: "note" as const,
     version: 4,
     // NAJŚWIEŻSZA NOTATKA W ZBIORZE, i to nie jest kosmetyka. Ekran Notatek
-    // otwiera najnowszą notatkę WIDOCZNĄ w wybranym węźle, a treść w tej
-    // fiksturze niesie wyłącznie ta jedna (`libraryNoteState`). Gdyby najnowsza
-    // była którakolwiek inna, płaszczyzna pisania rysowałaby się PUSTA,
-    // a strażnik `libraryNoteBody` bramki układu — ten, który powstał dokładnie
-    // po takim pustym pomiarze — złapałby to jako awarię przyrządu.
+    // otwiera najnowszą notatkę WIDOCZNĄ w wybranym węźle, a DŁUGĄ treść niesie
+    // w tej fiksturze wyłącznie ta jedna (`libraryNoteBody`). Gdyby najnowsza
+    // była którakolwiek inna, płaszczyzna pisania dostałaby jeden z trzech
+    // krótkich tekstów albo nie dostałaby nic, a strażnik `libraryNoteBody`
+    // bramki układu — ten, który powstał dokładnie po pustym pomiarze — złapałby
+    // to jako awarię przyrządu.
+    //
+    // Poprawione przy odbiorze wpisu 11-2: zdanie mówiło „treść niesie wyłącznie
+    // ta jedna", i przestało być prawdą w chwili, w której trzy notatki dostały
+    // krótkie ciała (`libraryNoteStates`). Prawdą pozostaje to, co ta nota ma
+    // chronić — próg 1 500 znaków czytelni spełnia tylko `runbook`.
     // WCZORAJ, i to jest teraz DRUGIE zadanie tej daty: głowa czytelni ma
     // powiedzieć „updated Yesterday", czyli narysować gałąź względną, której
     // przed tym lotem nie dosięgała ŻADNA fikstura w tym repozytorium.
@@ -644,20 +653,68 @@ const documentReferences = (
   ]);
 };
 
+/**
+ * URYWKI — WYLICZONE Z TREŚCI, KTÓRĄ HARNESS NAPRAWDĘ PODAJE, a nie wpisane
+ * obok niej.
+ *
+ * Produkcja robi: ciało Yjs → `adapter.getText()` → `content_search_projections
+ * .body` → `substr(body, 1, DOCUMENT_EXCERPT_SOURCE_CHARS)` w SQL →
+ * `documentExcerpt(prefiks, tytuł)`. Tu jest dokładnie to samo, tylko zamiast
+ * SQLite stoi `slice`: ten sam stan Yjs, który harness podaje jako treść
+ * notatki, ta sama funkcja z `@constellation/contracts`, te same stałe, ten
+ * sam tytuł, który rysuje wiersz.
+ *
+ * DLACZEGO NIE WPISANY NAPIS, I DLACZEGO POPRAWIONE PRZY ODBIORZE WPISU 11-2.
+ * Pierwsza wersja tego bloku miała TRZY urywki wpisane ręcznie i jeden
+ * wyliczony — i te trzy notatki nie miały w harnessie żadnej treści. Lista
+ * mówiła więc „ta notatka opisuje X", a czytelnia po jej otwarciu była PUSTA:
+ * dokładnie te „dwie różne rzeczy o tej samej notatce", których zakazuje nota
+ * przy odwołaniach `runbook` o sto linii wyżej. W produkcji ten stan jest
+ * NIEOSIĄGALNY — wiersz projekcji powstaje przy zapisie ciała, więc notatka
+ * z urywkiem ZAWSZE ma co pokazać po otwarciu. Fikstura rysowała stan, którego
+ * produkt nie umie wyprodukować, czyli mierzyła nie ten ekran.
+ *
+ * Teraz treść jest źródłem dla wszystkich czterech: `libraryNoteStates` jest
+ * jedyną listą notatek Z CIAŁEM, harness podaje z niej `documentState`,
+ * a `librarySummaries` liczy z niej urywek. Rozjazd przestał być możliwy do
+ * napisania.
+ */
+const excerptOfState = (
+  state: Uint8Array,
+  title: string,
+): string | undefined => {
+  const document = new Y.Doc({ gc: true });
+  Y.applyUpdate(document, state);
+  return documentExcerpt(
+    documentPlainText(document).slice(0, DOCUMENT_EXCERPT_SOURCE_CHARS),
+    title,
+  );
+};
+
 export const librarySummaries = (targets: LibraryReferenceTargets) => {
   const references = documentReferences(targets);
-  return documentShapes.map((item, index) => ({
-    id: item.id,
-    title: item.title,
-    ...(item.folderId === undefined ? {} : { folderId: item.folderId }),
-    role: item.role,
-    references: [...(references.get(item.id) ?? [])],
-    evidenceCount: index % 3,
-    namedVersionCount: item.role === "deliverable" ? 2 : 0,
-    staleEvidence: index === 2,
-    version: item.version,
-    updatedAt: item.updatedAt,
-  }));
+  const states = libraryNoteStates(targets.task.id as TaskId);
+  return documentShapes.map((item, index) => {
+    const state = states.get(item.id);
+    const excerpt =
+      state === undefined ? undefined : excerptOfState(state, item.title);
+    return {
+      id: item.id,
+      title: item.title,
+      ...(item.folderId === undefined ? {} : { folderId: item.folderId }),
+      role: item.role,
+      references: [...(references.get(item.id) ?? [])],
+      evidenceCount: index % 3,
+      namedVersionCount: item.role === "deliverable" ? 2 : 0,
+      staleEvidence: index === 2,
+      // POLE JEST NIEOBECNE, A NIE PUSTE, dla pięciu pozostałych — tak samo jak
+      // w kernelu, który po prostu nie znajduje ich w
+      // `listDocumentBodyPrefixes`.
+      ...(excerpt === undefined ? {} : { excerpt }),
+      version: item.version,
+      updatedAt: item.updatedAt,
+    };
+  });
 };
 
 /**
@@ -942,13 +999,84 @@ export const libraryNoteBody = (taskId: TaskId): StructuredDocument => ({
  * klucz mapy — druga kopia tego kształtu jest dokładnie tym, jak słowniki
  * zaczynają znaczyć co innego dla piszącego niż dla czytającego.
  */
-export const libraryNoteState = (taskId: TaskId): Uint8Array => {
+const stateOf = (body: StructuredDocument): Uint8Array => {
   const document = new Y.Doc({ gc: true });
   migrateDocumentToRich(document, "0".repeat(64), { kind: "remote" });
-  replaceStructuredDocumentInYjs(
-    document,
-    libraryNoteBody(taskId),
-    "constellation.fixture",
-  );
+  replaceStructuredDocumentInYjs(document, body, "constellation.fixture");
   return Y.encodeStateAsUpdate(document);
 };
+
+export const libraryNoteState = (taskId: TaskId): Uint8Array =>
+  stateOf(libraryNoteBody(taskId));
+
+/**
+ * TRZY KRÓTKIE NOTATKI, KTÓRE ISTNIEJĄ PO TO, ŻEBY PAS URYWKÓW BYŁ PASEM.
+ *
+ * JEDEN WIERSZ Z URYWKIEM NIE JEST PASEM. Para czytająca kształt klamry nad
+ * pojedynczym pudełkiem mówiłaby o pudełku, nie o LIŚCIE, i byłaby zielona
+ * dokładnie tak samo, gdyby reguła dotyczyła jednego wiersza — a to jest ta
+ * pusta fikstura, która w tym repozytorium już raz ochroniła fałszywą
+ * asercję. Cztery każą klamrze zadziałać nad listą.
+ *
+ * PIĘĆ POZOSTAŁYCH ZOSTAJE BEZ CIAŁA, BO TO JEST STAN PRODUKCYJNY, A NIE BRAK.
+ * `schemaV27` pisze o sobie: „a note has one only once its body has been
+ * indexed" — notatka, której nikt nigdy nie zapisał przez tę aplikację, nie ma
+ * wiersza w projekcji i nie dostanie urywka. Fikstura, w której WSZYSTKIE
+ * notatki mają urywek, nigdy nie narysowałaby wiersza o dwóch pasach zamiast
+ * trzech — a to właśnie ten wiersz może dostać pusty pas i skłamać o notatce.
+ *
+ * KAŻDA ZACZYNA SIĘ NAGŁÓWKIEM POWTARZAJĄCYM WŁASNY TYTUŁ, i to jest pomiar,
+ * nie ozdoba: dokładnie taki kształt przynosi import z Obsidiana, który bierze
+ * tytuł z NAZWY PLIKU i zostawia wiersz `# Tytuł` jako węzeł nagłówka. Do
+ * odbioru wpisu 11-2 urywek otwierał się tym echem i zjadał całą widoczną
+ * klamrę powtórzeniem wiersza stojącego linijkę wyżej. Fikstura rysuje teraz
+ * ten stan CELOWO, żeby reguła, która go usuwa, miała nad czym stać.
+ */
+const shortNoteBody = (
+  headingText: string,
+  text: string,
+): StructuredDocument => ({
+  schemaVersion: STRUCTURED_DOCUMENT_SCHEMA_VERSION,
+  type: "doc",
+  content: [heading(1, headingText), paragraph(text)],
+});
+
+/**
+ * WSZYSTKIE NOTATKI Z CIAŁEM, JEDNĄ LISTĄ — i to jest jedyne miejsce, które
+ * o tym rozstrzyga. Harness podaje z niej `documentState`, a `librarySummaries`
+ * liczy z niej urywek, więc lista i czytelnia nie mogą powiedzieć dwóch różnych
+ * rzeczy o tej samej notatce; przed odbiorem wpisu 11-2 mogły i mówiły.
+ */
+export const libraryNoteStates = (
+  taskId: TaskId,
+): ReadonlyMap<DocumentId, Uint8Array> =>
+  new Map<DocumentId, Uint8Array>([
+    [libraryDocumentIds.runbook, libraryNoteState(taskId)],
+    [
+      libraryDocumentIds.network,
+      stateOf(
+        shortNoteBody(
+          "Architektura sieci, adresacja i reguły wyjścia",
+          "Segment zarządzania wychodzi wyłącznie do repozytorium pakietów i do konsoli dostawcy. Wyjątek na pojedynczy host był przyczyną poprzedniego incydentu i nie wraca.",
+        ),
+      ),
+    ],
+    [
+      libraryDocumentIds.handover,
+      stateOf(
+        shortNoteBody(
+          "Dokumentacja powdrożeniowa dla zespołu utrzymania",
+          "Protokół odbioru podpisuje opiekun techniczny po stronie klienta, ale zakres uzgadnia zespół utrzymania. Trzy razy z rzędu zmiana zakresu szła poza podpisującym.",
+        ),
+      ),
+    ],
+    [
+      libraryDocumentIds.retention,
+      stateOf(
+        shortNoteBody(
+          "Polityka retencji nagrań i dowodów",
+          "Okno retencji liczy się od dnia indeksacji, nie od daty zdarzenia. Przy imporcie historycznym te dwie daty rozjeżdżają się nawet o kwartał.",
+        ),
+      ),
+    ],
+  ]);

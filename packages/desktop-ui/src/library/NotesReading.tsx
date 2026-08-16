@@ -73,6 +73,16 @@ type KnowledgeDocument = Extract<
 
 interface NoteRow extends ArrangeableNote {
   readonly role: "note" | "document" | "deliverable";
+  /**
+   * FAZA III, WPIS 11-2 — OPTIONAL, AND THE OPTIONALITY IS THE FEATURE.
+   * A note whose body has never been written through this application has no
+   * indexed text, so the projection sends no excerpt at all. `undefined` and
+   * `""` must not collapse here: the row draws nothing for the first and would
+   * draw an empty band for the second, and an empty band under a title says
+   * „this note is blank", which is a claim about the note the screen has not
+   * earned.
+   */
+  readonly excerpt?: string;
 }
 
 const MOVE_TO_UNFILED = "unfiled" as const;
@@ -144,6 +154,12 @@ export const NotesReading = ({
             : { folderId: item.folderId }
           : { folderId: summary.folderId }),
         references: summary?.references ?? [],
+        // THE EXCERPT RIDES ON `knowledge.list` AND ON NOTHING ELSE, so a note
+        // that `document.list` knows about and the Library read does not gets
+        // no excerpt rather than a stale one. That is also why the field is
+        // spread rather than assigned: `excerpt: undefined` and no `excerpt`
+        // are the same to a reader and different to `exactOptionalPropertyTypes`.
+        ...(summary?.excerpt === undefined ? {} : { excerpt: summary.excerpt }),
         updatedAt: summary?.updatedAt ?? item.updatedAt,
       };
     });
@@ -551,6 +567,46 @@ export const NotesReading = ({
                           {...inspectorControls}
                         >
                           <strong>{note.title}</strong>
+                          {/* FAZA III, WPIS 11-2 — TO PO TYM POZNAJE SIĘ
+                              NOTATKĘ BEZ OTWIERANIA JEJ. Prototyp stawia pod
+                              tytułem dwuwierszowy fragment treści:
+                              `.kn-row-excerpt`
+                              (`v3/screens/knowledge.css:158-161` — `--text-xs`,
+                              `--text-quaternary`, `line-height: 1.45`,
+                              `-webkit-box` z `-webkit-line-clamp: 2`), rysowany
+                              w KAŻDYM wierszu (`knowledge.js:719`). Bez niego
+                              lista notatek jest listą tytułów.
+
+                              RYSUJE SIĘ TYLKO WTEDY, GDY JEST CO NARYSOWAĆ,
+                              i to nie jest ostrożność, tylko ta sama reguła,
+                              którą ten plik stosuje o osiemdziesiąt linii
+                              wyżej przy `structureReadable`. Notatka, której
+                              ciało nigdy nie było zapisane przez tę aplikację,
+                              nie ma wiersza w projekcji wyszukiwania —
+                              `schemaV27` mówi to o sobie wprost („a note has
+                              one only once its body has been indexed"). Pusty
+                              pas pod jej tytułem czytałby się jako „ta notatka
+                              nic nie mówi", czyli jako zdanie o danych, którego
+                              ekran nie ma prawa postawić. Wiersz bez urywka
+                              zostaje wierszem o dwóch pasach, a nie o trzech,
+                              i to jest cała różnica.
+
+                              SKRACA CSS, NIE TEN KOMPONENT. Projekcja niesie
+                              urywek ograniczony do stałej liczby znaków (bo
+                              przechodzi przez granicę procesu dla całego
+                              Space'u naraz), ale to, ile z niego WIDAĆ, jest
+                              klamrą dwóch wierszy — więc zależy od szerokości
+                              kolumny i rozmiaru pisma czytelnika, a nie od
+                              liczby wpisanej w kod. Dwa przycięcia naraz byłyby
+                              jedną decyzją zapisaną w dwóch miejscach. */}
+                          {note.excerpt === undefined ? null : (
+                            <span
+                              className="knowledge-row-excerpt"
+                              data-note-excerpt
+                            >
+                              {note.excerpt}
+                            </span>
+                          )}
                           <small>
                             {/* THE SWITCHER'S WHOLE VISIBLE EFFECT ON A ROW:
                                 under a record heading the row says WHERE it

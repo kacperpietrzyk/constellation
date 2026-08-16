@@ -588,7 +588,7 @@ export const TaskRecordScreen = ({
               NOT MEASURED BY ANY GATE IN THIS TREE, and that is a fact about
               the fixture rather than about this element: the record reads its
               task from `work.overview`, and the harness's task there carries no
-              `assignment` at all (`dev/CollaborationHarness.tsx:506-535`; the
+              `assignment` at all (`dev/CollaborationHarness.tsx:510-539`; the
               field exists only on the `task.list` copy at `:456-467`). It draws
               on real data and on nothing the layout gate opens. */}
           {task.assignment !== undefined && (

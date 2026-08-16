@@ -2150,6 +2150,46 @@ class SqliteReadView implements ApplicationWave2ReadView {
       }));
   }
 
+  public listDocumentBodyPrefixes(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    maxChars: number,
+  ): readonly { readonly documentId: DocumentId; readonly prefix: string }[] {
+    // THE CUT IS IN THE QUERY, and that is the whole point of this method
+    // existing rather than the caller reading bodies and slicing them. A note
+    // body is unbounded and a Space can hold hundreds; `substr` in SQLite
+    // returns the prefix without SQLite ever handing the whole column to this
+    // process.
+    //
+    // `content_search_projections_scope (workspace_id, space_id, owner_kind,
+    // owner_id)` covers exactly this WHERE clause, so the read is an index
+    // range over one Space rather than a scan of every note in the file.
+    //
+    // A NOTE WITH NO ROW HERE IS SIMPLY NOT RETURNED. The row is written when a
+    // body is written, so its absence means "never written through this
+    // application" — which is a different fact from "its body is empty", and
+    // the caller is the one that must keep them apart.
+    const bounded = Math.max(1, Math.min(Math.trunc(maxChars), 4000));
+    return this.database
+      .prepare(
+        `SELECT owner_id, substr(body, 1, ?) AS body_prefix
+         FROM content_search_projections
+         WHERE workspace_id = ?
+           AND space_id = ?
+           AND owner_kind = 'document'
+         ORDER BY owner_id`,
+      )
+      .all(bounded, workspaceId, spaceId)
+      .map((row) => ({
+        documentId: stringValue(
+          row,
+          "owner_id",
+          "document body prefix",
+        ) as DocumentId,
+        prefix: stringValue(row, "body_prefix", "document body prefix"),
+      }));
+  }
+
   public searchDocumentBodies(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

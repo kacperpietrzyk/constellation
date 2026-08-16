@@ -224,13 +224,13 @@ export interface RelationshipIndex {
  * workspaceId, spaceId, createdBy, version, createdAt and updatedAt, and
  * nothing else — so a record that was never removed carries no `recordState`
  * AT ALL, and `relationship.workspace` hands it over verbatim
- * (`application/src/wave2.ts:2105-2112` returns `{ ...record }`).
+ * (`application/src/wave2.ts:2107-2114` returns `{ ...record }`).
  *
  * The two layers that already read it agree, and this is the third:
  *   - domain: `strategicRecordState` — `record.recordState ?? "active"`
  *     (`strategic-depth.ts:812-814`), and `recordIsActive` beside it;
  *   - store: `json_extract(payload_json, '$.recordState') IS NOT 'removed'`
- *     (`local-store/src/sqlite-application-store.ts:2364-2371`), with the same
+ *     (`local-store/src/sqlite-application-store.ts:2404-2411`), with the same
  *     sentence written above it.
  *
  * Reading it as `!== "active"` instead — which is what stood here — throws away

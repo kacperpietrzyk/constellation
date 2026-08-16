@@ -84,6 +84,12 @@
 //               porównania przechodzą przez tę samą normalizację przeglądarki)
 //   literal   — rozwiązana właściwość równa się dosłownemu napisowi
 //   contains  — rozwiązana właściwość zawiera podnapis
+//   opensWith — rozwiązana właściwość ZACZYNA SIĘ od podnapisu. Osobny rodzaj,
+//               a nie wariant `contains`, bo pytanie jest inne: przy tekście
+//               przyciętym klamrą `contains` jest spełnione także frazą, która
+//               leży ZA cięciem i której czytelnik nie widzi (zmierzone na
+//               `L5-12a` przy odbiorze wpisu 11-2 — 50 z 67 widocznych znaków
+//               było powtórzonym tytułem, a asertowana fraza była niewidoczna)
 //   not       — rozwiązana właściwość RÓŻNI SIĘ od dosłownego napisu
 //   rem       — rozwiązana długość równa się N × żywy rozmiar pisma korzenia
 //               (nigdy wpisany piksel: przeloty chodzą też przy 200% i 300%)
@@ -1534,7 +1540,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
     expect: { kind: "rem", value: 68 },
     // `rem`, A NIE PIKSEL, i to nie jest ostrożność: `judgeVisualPair` dzieli
     // przez `getComputedStyle(document.documentElement).fontSize`
-    // (`verify-renderer-layout.mjs:4577-4579`), więc ta para pyta o REGUŁĘ
+    // (`verify-renderer-layout.mjs:4599-4601`), więc ta para pyta o REGUŁĘ
     // („ekran deklaruje 68 rem"), a nie o szerokość okna. Wszystkie liczby
     // dokumentu przejścia są z 1662 px, a ta mapa chodzi przy 1440 px.
     //
@@ -1719,7 +1725,7 @@ export const VISUAL_LANGUAGE_PAIRS = [
   // (`scripts/break-visual-language.mjs`, „the Today plan list's role").
   //
   // `:has()` BEZ SPACJI W ŚRODKU NAWIASU. Diagnostyka `NOT_MEASURED` dzieli
-  // selektor po `\s+` (`verify-renderer-layout.mjs:4498-4509`); spacja wewnątrz
+  // selektor po `\s+` (`verify-renderer-layout.mjs:4520-4531`); spacja wewnątrz
   // `:has()` rozbija go na dwa nieparsowalne kawałki i spis „każda część
   // osobno" przestaje cokolwiek mówić, choć czerwień dalej pada.
   //
@@ -4747,7 +4753,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     expect: { kind: "token", token: "--text-xl" },
     // MIERZONE, NIE PRZECZUTE: „jeżeli harness ląduje na otwartej notatce"
     // z poprzedniej wersji tego pola opisywało możliwość. To nie jest
-    // możliwość — to jedyne zachowanie tego ekranu. `NotesReading.tsx:189-195`
+    // możliwość — to jedyne zachowanie tego ekranu. `NotesReading.tsx:205-211`
     // NIE MA stanu „nic nie otwarte": kiedy `selectedId` niczego nie trafia,
     // otwiera się NAJŚWIEŻSZA notatka z widoku, a `.knowledge-welcome` jest
     // gałęzią `else` (`:571`), do której da się dojść tylko przez PUSTY
@@ -5051,6 +5057,226 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // deklaruje dziś obie połowy `--status-success` / `--status-success-bg`,
     // więc `scripts/consumer-contrast.test.mjs` i `status-contrast.test.mjs`
     // sądzą realny konsument, a nie samą parę tokenów. Oba przeszły.
+    status: "enforced",
+  },
+
+  // ── POZYCJA 12 LOTU 5, DOWIEZIONA W FAZIE III (wpis 11-2) ─────────────────
+  //
+  // TA POZYCJA BYŁA WPISEM `NOT_COVERED` I NIM BYĆ PRZESTAJE. Stało tam: „the
+  // note row has no slot for a two-line excerpt”, z uzasadnieniem „projekcja
+  // nie niesie urywka … para asertowałaby robotę, której lot ma świadomie nie
+  // zrobić”. Uzasadnienie było prawdziwe i przestało być: `knowledge.list`
+  // niesie dziś `excerpt`, wyliczony przy odczycie z projekcji wyszukiwania.
+  // Wpis znika w TYM SAMYM przebiegu, w którym pojawiają się te trzy pary —
+  // inaczej rejestr twierdziłby naraz, że tego nie ma i że to mierzy.
+  //
+  // TRZY PARY NA JEDNĄ POZYCJĘ, I ŻADNA NIE JEST TRZECIM ZAPISEM TEJ SAMEJ
+  // RZECZY. To jest jedyny powód, dla którego jest ich trzy, a nie jedna:
+  //
+  //   12a czyta TREŚĆ — czy pod tytułem stoi tekst TEJ notatki. Sama nie
+  //       powie, ile go widać: `contains` jest spełnione także wtedy, gdy cały
+  //       urywek leje się na sześć wierszy i rozpycha listę.
+  //   12b czyta KLAMRĘ — `-webkit-line-clamp: 2`. Sama nie powie NIC, i to
+  //       jest zmierzone, a nie przewidziane: ta własność wylicza się na „2”
+  //       także na `display: block`, gdzie NIE OBCINA NICZEGO. Para stojąca
+  //       tylko na niej byłaby zielona nad dokładnie tym rozjazdem, który ma
+  //       łapać.
+  //   12c czyta PUDEŁKO — `display: -webkit-box`, czyli to, co dopiero czyni
+  //       klamrę czymkolwiek. Sama nie powie, ile wierszy.
+  //
+  // Prototyp deklaruje wszystkie trzy rzeczy w jednej regule
+  // (`v3/screens/knowledge.css:158-161`), więc rozcięcie na trzy pary jest
+  // wyborem PRZYRZĄDU: każda z nich pada od innego złamania i żadna nie
+  // maskuje pozostałych.
+  //
+  // DLACZEGO 12a CELUJE W JEDEN KONKRETNY WIERSZ, A 12b/12c W CAŁY PAS.
+  // Urywków rysuje się CZTERY i mają RÓŻNE teksty, więc selektor obejmujący
+  // wszystkie dałby przy odczycie treści `distinct.length > 1`, czyli awarię
+  // przyrządu zamiast werdyktu (pułapka nr 5 mechaniki). Wiersz `runbook` jest
+  // wskazany po IDENTYFIKATORZE, bo kolejność listy zależy od układu, a ta
+  // para ma mierzyć zawsze tę samą notatkę i zawsze ten sam tekst.
+  // Dla 12b i 12c jest odwrotnie: wyliczona wartość jest identyczna na
+  // wszystkich czterech, więc pas mierzy się w całości i para mówi o LIŚCIE,
+  // a nie o jednym pudełku.
+  //
+  // DWIE DALSZE PARY, 12d I 12e, DOŁOŻONE PRZY ODBIORZE. Akapit kontraktu ma
+  // TRZY połowy, a wpis asertował dwie: „wiersz notatki bez urywka ma o jeden
+  // pas mniej, a nie pusty pas" nie było mierzone NIGDZIE po stronie renderu
+  // (test jednostkowy pilnował PROJEKCJI, czyli braku klucza, a nie wiersza).
+  // Ta luka była zielona w OBU gałęziach: pusty `<span>` albo wypada jako
+  // zerowa powierzchnia i 12b/12c sądzą te same cztery elementy, albo nie
+  // wypada i wszystkie dziewięć wylicza tę samą klamrę — MATCH tak czy tak.
+  // 12d mierzy pierwszą połowę zdania (wiersz BEZ pasa istnieje), 12e drugą
+  // (pas, który nic nie niesie, nie istnieje).
+  {
+    id: "L5-12a",
+    lot: 5,
+    position: 12,
+    kind: "restructure",
+    title: "the note row shows the opening of the note's own text",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Narrow switching column", akapit „A row says what the note is ABOUT, not only what it is called"',
+    prototype: {
+      file: "v3/screens/knowledge.js",
+      lines: "719",
+      value:
+        '`<span class="kn-row-excerpt">${esc(n.excerpt)}</span>` — fragment treści stoi w KAŻDYM wierszu listy, między tytułem a stopką',
+    },
+    route: { surface: "notes" },
+    subject: {
+      // WIERSZ WSKAZANY PO IDENTYFIKATORZE NOTATKI, nie po pozycji na liście:
+      // kolejność zależy od układu (folder / rekord / data), a ta para ma
+      // mierzyć zawsze tę samą notatkę — jedyną, której urywek jest wyliczony
+      // z jej ciała, a nie napisany obok niego.
+      selector:
+        '[data-note-id="00000000-0000-4000-8000-000000000901"] [data-note-excerpt]',
+      why: "every fixture excerpt is now derived from the note body the harness actually serves, through the same `documentExcerpt` the kernel uses, so no row can disagree with its own reading pane; this pair pins the runbook row because a selector over all four would read four DIFFERENT texts and fail as an instrument (`distinct.length > 1`) rather than as a verdict. The id is the fixture constant `libraryDocumentIds.runbook`",
+      app: "packages/desktop-ui/src/library/NotesReading.tsx (`data-note-excerpt`), packages/desktop-ui/src/dev/library-fixture.ts (`librarySummaries`, `libraryNoteStates`)",
+    },
+    read: { property: "text" },
+    // ── `opensWith`, A NIE `contains`, I TO JEST POPRAWKA Z ODBIORU ─────────
+    //
+    // Napisana najpierw jako `contains "Notatka opisuje kolejność"` i ZIELONA
+    // nad wierszem, w którym czytelnik widział POWTÓRZONY TYTUŁ. Zmierzone:
+    // ciało notatki otwiera się nagłówkiem H1, projekcja jest płaskim tekstem,
+    // więc urywek brzmiał „Runbook uruchomienia środowiska po stronie klienta
+    // Notatka opisuje kolejność…" — a przez klamrę dwóch wierszy przechodziło
+    // 67 znaków, z czego 50 to był tytuł stojący linijkę wyżej. Asertowana
+    // fraza leżała ZA cięciem. Para czytała `textContent`, czyli rzecz, której
+    // czytelnik nie widzi.
+    //
+    // Prototyp ma o tym zdanie i rozjeżdżaliśmy się z nim: wszystkie urywki
+    // w `v3/data.js:557-576` są prozą ciała i ani jeden nie powtarza własnego
+    // tytułu. Wada jest produkcyjna, nie fiksturowa — import z Obsidiana bierze
+    // tytuł z NAZWY PLIKU (`obsidian-import.ts`, `titleOf`) i zostawia wiersz
+    // `# Tytuł` jako węzeł nagłówka (`markdown-import.ts`), więc echo przychodzi
+    // z pierwszym importem. `documentExcerpt` zdejmuje je dziś przy odczycie.
+    //
+    // Pytanie o POCZĄTEK jest jedynym, na które odczyt `textContent` może
+    // odpowiedzieć uczciwie o tekście przyciętym klamrą: fraza na pozycji
+    // zerowej jest widoczna w każdej klamrze, która pokazuje cokolwiek.
+    expect: {
+      kind: "opensWith",
+      // ZDANIE Z CIAŁA NOTATKI, KTÓREGO NIE MA W ŻADNYM TYTULE — żeby złamanie
+      // „rysuj tytuł zamiast urywka" dało DIFFERS.
+      value: "Notatka opisuje kolejność",
+    },
+    status: "enforced",
+  },
+  {
+    id: "L5-12b",
+    lot: 5,
+    position: 12,
+    kind: "restyle",
+    title: "the excerpt is clamped to two lines",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Narrow switching column", akapit „A row says what the note is ABOUT, not only what it is called"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "158-161",
+      value: "`.kn-row-excerpt { … -webkit-line-clamp: 2 … }`",
+    },
+    route: { surface: "notes" },
+    subject: {
+      selector: "[data-note-excerpt]",
+      why: "four drawn excerpts share one rule, so every match resolves to the same computed value and the pair judges the LANE rather than one box; zero drawn matches is NOT_MEASURED, which is the floor this pair needs and does not have to declare separately",
+      app: "packages/desktop-ui/src/styles.css (`.knowledge-row-excerpt`)",
+    },
+    read: { property: "webkitLineClamp" },
+    expect: { kind: "literal", value: "2" },
+    status: "enforced",
+  },
+  {
+    id: "L5-12c",
+    lot: 5,
+    position: 12,
+    kind: "restyle",
+    title: "the excerpt is the box the clamp needs to bite on",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Narrow switching column", akapit „A row says what the note is ABOUT, not only what it is called"',
+    prototype: {
+      file: "v3/screens/knowledge.css",
+      lines: "158-161",
+      value:
+        "`.kn-row-excerpt { display: -webkit-box; … }` — DEKLARUJE `-webkit-box`, a WYLICZA `flow-root`: zmierzone na prototypie 2026-08-16, wszystkie 16 wierszy, bo `.kn-row` jest siatką (`:138-139`) i element blokowany jest jako element siatki. Klamra mimo to TNIE: `scrollHeight 52 > clientHeight 35` przy `line-height 17.4px`, czyli równo dwa wiersze",
+    },
+    route: { surface: "notes" },
+    subject: {
+      selector: "[data-note-excerpt]",
+      why: 'same lane as L5-12b and deliberately a SECOND pair rather than a second clause: `-webkit-line-clamp` computes to „2" on a `display: block` element that clamps NOTHING, so the clamp pair alone would certify an excerpt spilling over six lines. This pair is what makes the clamp real, and its value discriminates — a rule written as `display: block` computes „block", while the reference\'s `-webkit-box` computes „flow-root" once the row blockifies it',
+      app: "packages/desktop-ui/src/styles.css (`.knowledge-row-excerpt`)",
+    },
+    read: { property: "display" },
+    // WYLICZONE, NIE ZADEKLAROWANE — i to jest poprawka, którą wymusił pierwszy
+    // przelot tej pary. Napisana najpierw jako `literal: "-webkit-box"`, wróciła
+    // czerwona na `flow-root`; pomiar prototypu pokazał TĘ SAMĄ wartość po jego
+    // stronie. Para czytająca deklarację zamiast wyliczenia mierzyłaby arkusz,
+    // a nie ekran, i była nieprawdziwa o obu stronach naraz.
+    expect: { kind: "literal", value: "flow-root" },
+    status: "enforced",
+  },
+  {
+    id: "L5-12d",
+    lot: 5,
+    position: 12,
+    kind: "restructure",
+    title: "a note with no text of its own gets a row with no band",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Narrow switching column", akapit „A row says what the note is ABOUT, not only what it is called", trzecia połowa („A note with no excerpt gets one row less, never an empty band")',
+    prototype: {
+      file: "v3/screens/knowledge.js",
+      lines: "719",
+      value:
+        '`<span class="kn-row-excerpt">${esc(n.excerpt)}</span>` — w referencji pas ZAWSZE niesie tekst notatki (`v3/data.js:557-576`, 16 z 16 pozycji ma `excerpt`). Pas, w którym nic nie stoi, jest kształtem, którego prototyp NIE RYSUJE ANI RAZU — więc reguła „albo tekst, albo nic" jest jego regułą, tylko nienazwaną, bo jego dane nie mają drugiej gałęzi',
+    },
+    route: { surface: "notes" },
+    subject: {
+      // WIERSZE, KTÓRE PASA NIE MAJĄ — liczone, a nie wskazywane po id, bo
+      // twierdzenie jest o REGULE („notatka bez tekstu"), nie o jednej
+      // notatce. Fikstura ma dziś pięć takich wierszy i cztery z pasem.
+      selector: "#main-content [data-note-id]:not(:has([data-note-excerpt]))",
+      why: 'this is the pair that has a FLOOR, and that is why it carries the "one row less" half rather than an absence pair carrying it: `count` with `atLeast` counts RENDERED matches, so a screen that drew nothing returns 0 and goes DIFFERS instead of quietly passing. It also reddens both ways the rule can be broken from the render side: a row band drawn unconditionally (empty for a note with no text) leaves NO row matching `:not(:has(…))`, whether or not the empty span survives the `rendered()` filter',
+      app: "packages/desktop-ui/src/library/NotesReading.tsx (`note.excerpt === undefined ? null : …`)",
+    },
+    // LICZONE, NIE CZYTANE — dokładnie jak dwadzieścia par tej mapy, które
+    // mówią o OBECNOŚCI albo NIEOBECNOŚCI elementu.
+    read: { property: null },
+    // JEDEN WYSTARCZA, BO TYLE MÓWI REGUŁA. „Notatka bez tekstu dostaje wiersz
+    // bez pasa" jest zdaniem o wierszu, nie o liczbie wierszy; fikstura ma ich
+    // dziś pięć, ale wpisanie tu piątki asertowałoby kształt fikstury, a nie
+    // regułę ekranu. Podłoga jest po drugiej stronie: zero NARYSOWANYCH
+    // dopasowań to DIFFERS, więc pusty ekran nie przechodzi.
+    expect: { kind: "count", atLeast: 1 },
+    status: "enforced",
+  },
+  {
+    id: "L5-12e",
+    lot: 5,
+    position: 12,
+    kind: "restructure",
+    title: "no note row carries a band with nothing in it",
+    contract:
+      '.ui-craft/patterns.md — „Pattern: Narrow switching column", akapit „A row says what the note is ABOUT, not only what it is called", trzecia połowa („A note with no excerpt gets one row less, never an empty band")',
+    prototype: {
+      file: "v3/data.js",
+      lines: "557-576",
+      value:
+        "każda pozycja `NOTES` niesie `excerpt` będący prozą ciała; referencja nie ma ani jednego wiersza, pod którego tytułem stoi pusty pas",
+    },
+    route: { surface: "notes" },
+    subject: {
+      // `:empty` TRAFIA W PUSTY NOŚNIK, którego `rendered()` by nie zobaczył —
+      // i to jest cała różnica między tą parą a 12b/12c. Gałąź `count` przy
+      // `equals: 0` liczy WSZYSTKIE dopasowania, także schowane i zerowej
+      // szerokości, więc pas bez treści jest tu obalalny, a przez tamte dwie
+      // pary nie jest: pusty `<span>` albo z nich wypada, albo wylicza tę samą
+      // klamrę co pełny.
+      selector: "#main-content [data-note-id] [data-note-excerpt]:empty",
+      why: 'the „never an empty band" half, and it is a separate pair from L5-12d because the two halves fail separately: a row could keep its band and empty it (12e red, 12d red), or draw a band for every note carrying a single space (12e green — a space is not `:empty` — and 12d red). Its own floor is supplied by the siblings on this stop: with nothing drawn, L5-12b and L5-12c return NOT_MEASURED and the run is red anyway, which is the one thing an absence pair cannot prove about itself',
+      app: "packages/desktop-ui/src/library/NotesReading.tsx (`note.excerpt === undefined ? null : …`)",
+    },
+    read: { property: null },
+    expect: { kind: "count", equals: 0 },
     status: "enforced",
   },
 
@@ -5423,7 +5649,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   //     = „256px" we wszystkich sześciu, czyli jedna wartość i pomiar.
   //   * „podmioty nie są DOSIĘGALNE tym spacerem" — Ustawienia są pełnoprawnym
   //     przystankiem przez `route: { settingsMode: true }`
-  //     (`verify-renderer-layout.mjs:6232-6257`, wyjęte spod `ROUTED_ARRIVAL`
+  //     (`verify-renderer-layout.mjs:6254-6279`, wyjęte spod `ROUTED_ARRIVAL`
   //     w `:6033`), i sześć par L6-* mierzy tam od Fazy 3. `.railSelect` też
   //     się rysuje: zmierzone na otwartym rekordzie projektu w tym harnessie —
   //     jedna narysowana kontrolka, `flex-grow` „0", `max-width` „256px”,
@@ -6379,7 +6605,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     read: { property: null },
     expect: { kind: "count", equals: 1 },
     // KOGO ta linia NIE MÓWI: `document.list`
-    // (`packages/contracts/src/query.ts:1718-1733`) nie niesie autora, więc
+    // (`packages/contracts/src/query.ts:1747-1762`) nie niesie autora, więc
     // prototypowy awatar z inicjałami nie ma z czego powstać. Zgłoszone jako
     // pozycja nieoddana lotu, nie zamknięte cicho.
     status: "enforced",
@@ -7851,7 +8077,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     route: { surface: "meetings" },
     subject: {
       selector: ".meeting-event .meeting-person-name",
-      why: 'IMIĘ JEST PODMIOTEM, A NIE POJEMNIK PO NIM — i to jest naprawa po przeglądzie adwersarialnym, zmierzona, nie przewidziana. Para stała na `.meeting-person`, czyli na OPAKOWANIU awatara i imienia; adwersarz skasował `<span className="meeting-person-name">{attendee.name}</span>`, wiersz został z samymi inicjałami — dosłownie „MN · PZ”, czyli stan, który ta para w swoim tytule ODRZUCA — a bramka wróciła ZIELONA w obu motywach (`observed: 2 rendered element(s) match „.meeting-event .meeting-person” — MATCH`). Przyrząd mierzył OBECNOŚĆ POJEMNIKA i nie mógł zobaczyć słów, o które pyta jego tytuł. Na `.meeting-person-name` to samo złamanie daje ZERO. PARA WIDZI TAKŻE IMIĘ WYZEROWANE, nie tylko skasowany element, i to jest sprawdzone w kodzie przyrządu, a nie założone: `judgeVisualPair` dla oczekiwania `atLeast` liczy `visible`, czyli dopasowania przefiltrowane przez `rendered()` (`verify-renderer-layout.mjs:4659-4664` — `display !== none` ORAZ `width > 0 && height > 0`), a `<span>` bez tekstu ma zerową szerokość. Awatar zostaje policzony przez nic — i tak ma być: awatar bez imienia jest właśnie tym, co prototyp odrzuca własnym komentarzem. PODŁOGA, NIE RÓWNOŚĆ, i to jest wybór wymuszony fiksturą: harness rysuje JEDEN wiersz nadchodzących z DWOMA uczestnikami (`CollaborationHarness.tsx`), więc `equals 2` przypinałoby parę do liczby, która jest własnością fikstury, a nie regułą produktu — klasa `fixture-artifact-is-not-a-design-defect`. CZEGO TA PARA NIE MÓWI: nie mówi, że narysowanym słowem jest IMIĘ TEGO uczestnika. Bramka chodzi po jednej fiksturze, więc równość z nazwiskiem byłaby fiksturą przepisaną do przyrządu — ten sam powód i ten sam podział co przy `L11-03a`/`L11-03b`. Równość `.meeting-person-name` z `event.attendees[].name` stoi w `packages/desktop-ui/test/meetings-room.interaction.test.tsx`. ROLI TA PARA NIE ŻĄDA I NIE MOŻE — `CalendarAttendeeSchema` (`packages/contracts/src/meeting-loop.ts:43-53`, `.strict()`) nie niesie stanowiska; to jest ustalenie o kontrakcie i stoi wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`',
+      why: 'IMIĘ JEST PODMIOTEM, A NIE POJEMNIK PO NIM — i to jest naprawa po przeglądzie adwersarialnym, zmierzona, nie przewidziana. Para stała na `.meeting-person`, czyli na OPAKOWANIU awatara i imienia; adwersarz skasował `<span className="meeting-person-name">{attendee.name}</span>`, wiersz został z samymi inicjałami — dosłownie „MN · PZ”, czyli stan, który ta para w swoim tytule ODRZUCA — a bramka wróciła ZIELONA w obu motywach (`observed: 2 rendered element(s) match „.meeting-event .meeting-person” — MATCH`). Przyrząd mierzył OBECNOŚĆ POJEMNIKA i nie mógł zobaczyć słów, o które pyta jego tytuł. Na `.meeting-person-name` to samo złamanie daje ZERO. PARA WIDZI TAKŻE IMIĘ WYZEROWANE, nie tylko skasowany element, i to jest sprawdzone w kodzie przyrządu, a nie założone: `judgeVisualPair` dla oczekiwania `atLeast` liczy `visible`, czyli dopasowania przefiltrowane przez `rendered()` (`verify-renderer-layout.mjs:4681-4686` — `display !== none` ORAZ `width > 0 && height > 0`), a `<span>` bez tekstu ma zerową szerokość. Awatar zostaje policzony przez nic — i tak ma być: awatar bez imienia jest właśnie tym, co prototyp odrzuca własnym komentarzem. PODŁOGA, NIE RÓWNOŚĆ, i to jest wybór wymuszony fiksturą: harness rysuje JEDEN wiersz nadchodzących z DWOMA uczestnikami (`CollaborationHarness.tsx`), więc `equals 2` przypinałoby parę do liczby, która jest własnością fikstury, a nie regułą produktu — klasa `fixture-artifact-is-not-a-design-defect`. CZEGO TA PARA NIE MÓWI: nie mówi, że narysowanym słowem jest IMIĘ TEGO uczestnika. Bramka chodzi po jednej fiksturze, więc równość z nazwiskiem byłaby fiksturą przepisaną do przyrządu — ten sam powód i ten sam podział co przy `L11-03a`/`L11-03b`. Równość `.meeting-person-name` z `event.attendees[].name` stoi w `packages/desktop-ui/test/meetings-room.interaction.test.tsx`. ROLI TA PARA NIE ŻĄDA I NIE MOŻE — `CalendarAttendeeSchema` (`packages/contracts/src/meeting-loop.ts:43-53`, `.strict()`) nie niesie stanowiska; to jest ustalenie o kontrakcie i stoi wypisane w `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`',
       app: "packages/desktop-ui/src/styles.css (.meeting-person-name) + MeetingsSurface.tsx",
     },
     read: { property: null },
@@ -8565,7 +8791,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     // ENFORCED, BO PASUJE DZIŚ — i to jest jedna z dwóch par tego przyrządu,
     // które są zielone od pierwszego przelotu. Para oczekująca, która PASUJE,
     // kładzie bramkę jako ROUTED_PENDING_ALREADY_MATCHES
-    // (`verify-renderer-layout.mjs:7572-7581`), a osłabianie oczekiwania po to,
+    // (`verify-renderer-layout.mjs:7594-7603`), a osłabianie oczekiwania po to,
     // żeby ją utrzymać w „pending", jest w tym pliku zakazane wprost.
     status: "enforced",
   },
@@ -8683,8 +8909,8 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     subject: {
       selector:
         "#main-content .settings-surface > *:not(.surface-header):not(.view-band)",
-      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9746-9748) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
-      app: "packages/desktop-ui/src/SettingsSurface.tsx:1104, styles.css:9746-9748",
+      why: "the one screen in this application that ALREADY declares its own measure — `.settings-surface { --surface-measure: 74rem }` (styles.css:9774-9776) — and therefore the pattern the other twelve are supposed to follow. Measured 2026-08-13, both themes: TWO matched, ONE rendered (div.settings-layout; the category picker computes zero width above 1440 px and falls out through `rendered()`, and its maxWidth is the same 1184px anyway, so `distinct` stays 1 either way)",
+      app: "packages/desktop-ui/src/SettingsSurface.tsx:1104, styles.css:9774-9776",
     },
     read: { property: "maxWidth" },
     expect: { kind: "rem", value: 74 },
@@ -9070,7 +9296,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   //
   // DLACZEGO WSZYSTKIE OSIEM CZYTA `count`, A NIE WŁASNOŚĆ. Gałąź `count`
   // w runnerze odkłada `{ state: "measured", matches: found.length }` i robi
-  // `continue` (`verify-renderer-layout.mjs:4474-4481`) ZANIM dojdzie do
+  // `continue` (`verify-renderer-layout.mjs:4496-4503`) ZANIM dojdzie do
   // strażnika „selektor nie trafił w nic" (`:4484-4512`) i do strażnika
   // `distinct.length > 1` (`:4543-4552`). Zero dopasowań jest więc dla tych
   // par POMIAREM, nie awarią przyrządu, a pułapka wielu różnych wartości ich
@@ -9938,7 +10164,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
     },
     read: { property: null },
     // `count` robi `continue` PRZED strażnikiem „zero dopasowań"
-    // (`verify-renderer-layout.mjs:4726-4743`), więc zero jest tu WERDYKTEM.
+    // (`verify-renderer-layout.mjs:4748-4765`), więc zero jest tu WERDYKTEM.
     // Oczekiwanie nieobecności liczy WSZYSTKIE dopasowania, także schowane
     // (`:4305-4309`) — rozpychacz przeniesiony pod `display: none` nie
     // przeszedłby jako skasowany.
@@ -10009,7 +10235,7 @@ export const VISUAL_LANGUAGE_ROUTED_PAIRS = [
   // postawić parę. Druga — wiersz autorstwa przeniesiony DO komórki — jest
   // oddana w kodzie i NIEMIERZALNA w tej fiksturze: rekord czyta zadanie
   // z `work.overview`, a harness nie kładzie tam `plannedBy` (jest wyłącznie
-  // na kopii z `task.list`, `dev/CollaborationHarness.tsx:433-437`). Zasianie
+  // na kopii z `task.list`, `dev/CollaborationHarness.tsx:437-441`). Zasianie
   // go NIE JEST darmowe — `TaskBoardLayout.tsx:152` rysuje wtedy etykietę
   // planisty na KAŻDEJ karcie tablicy, czyli przestawia inny ekran, którego
   // ten lot nie mierzy. Wypisane w `NOT_COVERED` z warunkiem wyjścia.
@@ -10749,7 +10975,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     //
     // WRÓCIŁA `MATCH` NA OBU MOTYWACH — `aside.inspector.open` liczy tam ZERO.
     // Przyczyna nie jest w produkcie: krok trasy otwierający rekord wysyła
-    // WYŁĄCZNIE `new MouseEvent("dblclick")` (`verify-renderer-layout.mjs:7523`),
+    // WYŁĄCZNIE `new MouseEvent("dblclick")` (`verify-renderer-layout.mjs:7545`),
     // bez ani jednego `click`, więc `onClick` karty nigdy nie biegnie i nic nie
     // zaznacza. Rekord ZADANIA zapala podgląd inną drogą — efektem z
     // `activeContext.taskId` (`RealApp.tsx:776-778`) — i dlatego TAM ta sama
@@ -10786,7 +11012,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     // I TO NIE JEST „ZA TRUDNE DO ZMIERZENIA", TYLKO „NIE MA CZEGO MIERZYĆ" —
     // dokładnie ta klasa, którą ten plik zbiera od fal. Rekord czyta zadanie
     // z `work.overview`, a harness kładzie `plannedBy` WYŁĄCZNIE na kopii
-    // z `task.list` (`dev/CollaborationHarness.tsx:433-437`), żeby zapalić
+    // z `task.list` (`dev/CollaborationHarness.tsx:437-441`), żeby zapalić
     // plakietkę autorstwa na Dzisiaj.
     //
     // WARUNEK WYJŚCIA I JEGO CENA, POLICZONA PRZED ZOSTAWIENIEM TEGO WPISU:
@@ -11040,20 +11266,13 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     greenWrong:
       "Liczniki w Bibliotece mogą zostać obwiedzionymi pigułkami albo dostać dowolny inny kształt.",
   },
-  {
-    lot: 5,
-    position: 12,
-    scope: "cała pozycja",
-    title: "the note row has no slot for a two-line excerpt",
-    prototype: "v3/screens/knowledge.css:158-161 (`.kn-row-excerpt`)",
-    app: "packages/desktop-ui/src/styles.css:6773-6788, NotesReading.tsx:474-498",
-    why:
-      "Brief wyjmuje tę pozycję z zakresu lotu WPROST: „nie buduje slotu urywka pod puste dane (poz. 12 " +
-      "czeka na dane)”. Projekcja nie niesie urywka (załącznik A). Para asertowałaby robotę, której lot " +
-      "ma świadomie nie zrobić — i to jest dokładnie ta klasa błędu, którą pamięć projektu nazywa " +
-      "„pusta fikstura chroni fałszywą asercję”.",
-    greenWrong: "Nic — pozycja jest świadomie odłożona, nie pominięta.",
-  },
+  // POZYCJA 12 LOTU 5 STAŁA TU I ZOSTAŁA ZDJĘTA PRZEZ WPIS 11-2 FAZY III.
+  // Jej uzasadnienie („projekcja nie niesie urywka … para asertowałaby robotę,
+  // której lot ma świadomie nie zrobić") było prawdziwe do commita, w którym
+  // `knowledge.list` dostał `excerpt`. Zastąpiona trzema parami `L5-12a/b/c`
+  // w mapie trasowanej — jedną czytającą TREŚĆ, dwiema czytającymi kształt
+  // klamry. Ślad zostaje tutaj, bo wpis, który znika bez zdania, wygląda jak
+  // wpis przeoczony przy przeliczaniu liczników.
   {
     lot: 6,
     position: 1,
@@ -11182,7 +11401,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
     app: "packages/desktop-ui/src/inbox.module.css — od lotu L4 wiersz niesie `border-bottom`, a `.row:last-child` je zeruje; niezmierzone zostaje, czy oba te zdania są prawdziwe",
     why:
       "Fikstura czyni asercję FAŁSZYWĄ, nie „niewygodną”. `attention.inbox` harnessu niesie DOKŁADNIE " +
-      'JEDNĄ pozycję (`dev/CollaborationHarness.tsx:859-876`, `unreadCount: 1`, `destination.kind: "task"`, ' +
+      'JEDNĄ pozycję (`dev/CollaborationHarness.tsx:863-880`, `unreadCount: 1`, `destination.kind: "task"`, ' +
       "czyli skrzynka `work`), więc jedyny wiersz JEST wierszem ostatnim, a prototyp każe ostatniemu " +
       "mieć `border-bottom: 0`. Para asertująca `1px` byłaby czerwona wobec kodu zgodnego z prototypem; " +
       "para asertująca `0px` byłaby zielona nad listą bez ani jednego separatora.",
@@ -11282,7 +11501,7 @@ export const VISUAL_LANGUAGE_ROUTED_NOT_COVERED = [
       "DWUCZĘŚCIOWY, i obie części to robota przelotu albo fikstury, nie ekranu. PIERWSZA: krok " +
       "trasy, który otwiera coś INNEGO niż dymek tej aplikacji. Istniejący `openPopover` się do " +
       "tego nie nadaje i to jest sprawdzone w kodzie, nie założone — po kliknięciu wyzwalacza " +
-      'wymaga on narysowanego `[role="dialog"].inline-popover` (`verify-renderer-layout.mjs:7298-7340`) ' +
+      'wymaga on narysowanego `[role="dialog"].inline-popover` (`verify-renderer-layout.mjs:7320-7362`) ' +
       "i inaczej pada jako awaria trasy, więc panel deala, dialog, rozwinięty wiersz ani menu " +
       "natywnego `<select>` nie przejdą przez ten krok. DRUGA: fikstura z co najmniej jednym " +
       "zapisanym widokiem. Do tego czasu czwarty `<select>` Zadań — `ready` w `SavedViewFilterForm` " +
@@ -11830,12 +12049,12 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // z dwóch identycznych liczb. Zgodność dwóch deklaracji NIE JEST tu dowodem
   // niczego: jest zbiegiem okoliczności, który zabrałby bramce cztery pary bez
   // ani jednego czerwonego wiersza.
-  pairs: 226,
+  pairs: 231,
   // ── SPIS STATUSÓW, DOŁOŻONY PRZY NAPRAWIE LOTU NASADY FAZY III, 2026-08-15 ─
   //
   // TEJ MAPY NIE PILNOWAŁ ŻADEN RACHUNEK OCZEKUJĄCYCH, a mapa powłoki miała go
   // od zawsze (`VISUAL_LANGUAGE_EXPECTED.enforced` / `.pending`,
-  // `verify-renderer-layout.mjs:4525-4528`). Znalazł to przegląd adwersarialny
+  // `verify-renderer-layout.mjs:4547-4550`). Znalazł to przegląd adwersarialny
   // tego lotu i znalazł na WŁASNYM przykładzie: sam lot nasady przerzucił tutaj
   // `D5-02b` z `enforced` na `pending` i dołożył PIĘĆ nowych par `pending`
   // (P1B-02…05, P1B-07), czyli 2 → 8 — CZTEROKROTNY przyrost populacji, której
@@ -11881,7 +12100,7 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // `enforced`), a lot D2 dopisał `FIII2-02a`/`FIII2-02b` od razu uzbrojone,
   // NIE zdejmując `D5-02a`/`D5-02b`: `D5-02b` zostaje oczekująca nad lotem,
   // którego wpisy 13-1/13-6 ten tor oddaje tylko częściowo.
-  enforced: 218,
+  enforced: 223,
   pending: 8,
   // 9 → 11: `TopicHelp` (trzecia forma tego samego wyzwalacza) i piksel
   // bliźniaka na Kalendarzu. Powody przy wpisach.
@@ -11998,7 +12217,7 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
   // w pozycji przygotowania (`recordId` dowodu nie adresuje nazwanego rekordu)
   // i cała treść `fact` w wierszu listy (jedna linia z wielokropkiem po obu
   // stronach). Treść, dowód i warunek wyjścia stoją przy wpisach.
-  notCovered: 24,
+  notCovered: 23,
   // Pary, których NIE DA SIĘ zmierzyć nawet po dodaniu tras, dopóki harness nie
   // dostanie drugiego zestawu danych (brief §4, „Osobno").
   //
@@ -12563,9 +12782,19 @@ export const VISUAL_LANGUAGE_ROUTED_EXPECTED = {
       // 11 → 12 → 14: rozpad L5-02 na L5-02a/L5-02b oraz dołożenie L5-01b
       // i L5-09b przy odbiorze — patrz noty przy `pairs` wyżej. Pozycje objęte
       // parą się nie zmieniły.
-      pairs: 14,
-      positionsWithPairs: 10, // 1-10
-      positionsWithoutPairs: [11, 12],
+      // 14 → 19 PRZY WPISIE 11-2 FAZY III: `L5-12a/b/c` na pozycji 12, która
+      // do tej pory stała we `VISUAL_LANGUAGE_ROUTED_NOT_COVERED`, plus
+      // `L5-12d/e` dołożone przy odbiorze — trzecia połowa akapitu kontraktu
+      // („o jeden pas mniej, nigdy pusty pas") nie była asertowana NIGDZIE po
+      // stronie renderu. To jedyny przyrost w tym bloku, który rusza TAKŻE
+      // `positionsWithPairs` — poprzednie dwa były rozpadami par na już
+      // objętych pozycjach.
+      pairs: 19,
+      positionsWithPairs: 11, // 1-10, 12
+      // Pozycja 11 zostaje jawnie nieobjęta: jej podmiotem jest globalna reguła
+      // licznika, której brief lotu 5 zabrania ruszać, a klasy, która miałaby ją
+      // zawęzić, wciąż nie ma. Wpis `NOT_COVERED` na nią stoi nietknięty.
+      positionsWithoutPairs: [11],
     },
     6: {
       // faza-3-build-brief.md:369-378
