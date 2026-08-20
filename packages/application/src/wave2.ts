@@ -149,6 +149,8 @@ import {
   undoCaptureKnowledgeRoute,
   updateProjectDetails,
   updateProjectOutcome,
+  projectAttentionState,
+  setProjectAttentionState,
   type AuditReceipt,
   type DomainEvent,
   type FieldDefinition,
@@ -284,7 +286,9 @@ export type Wave2Command = Extract<
       | "meeting.detachNote"
       | "project.updateOutcome"
       | "project.updateDetails"
+      | "project.setAttentionState"
       | "task.create"
+      | "task.createInProject"
       | "task.updateDetails"
       | "task.setParent"
       | "template.create"
@@ -338,6 +342,7 @@ export type Wave2Query = Extract<
   {
     queryName:
       | "project.list"
+      | "project.similarCandidates"
       | "project.checkInList"
       | "document.list"
       | "document.linkCandidates"
@@ -939,7 +944,8 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "project.updateOutcome":
-    case "project.updateDetails": {
+    case "project.updateDetails":
+    case "project.setAttentionState": {
       const project = view.getProject(command.payload.projectId);
       return authorized(
         dependencies,
@@ -960,6 +966,28 @@ export const isWave2CommandAuthorized = (
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
+    }
+    case "task.createInProject": {
+      const project = view.getProject(command.payload.projectId);
+      const spaceId =
+        project?.workspaceId === command.workspaceId &&
+        project.spaceId === command.payload.spaceId
+          ? project.spaceId
+          : undefined;
+      const baseAuthorized = authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        spaceId,
+      );
+      const relationAuthorized = additionallyAuthorized(
+        dependencies,
+        context,
+        command,
+        spaceId,
+      );
+      return baseAuthorized && relationAuthorized;
     }
     case "template.create":
     case "template.rename":
@@ -2543,6 +2571,18 @@ const foldForCandidateSearch = (value: string): string =>
     .replace(/ł/gu, "l")
     .replace(/Ł/gu, "L")
     .toLowerCase();
+
+const projectSimilarityTokens = (value: string): ReadonlySet<string> =>
+  new Set(
+    foldForCandidateSearch(value)
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((token) => token.length >= 3),
+  );
+
+const sharedSimilarityTokens = (
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): readonly string[] => [...left].filter((token) => right.has(token));
 
 // Lower is better. A prefix of the whole label beats a prefix of a later word,
 // which beats a match in the middle of one. Obsidian ranks the same way and it
@@ -7090,6 +7130,65 @@ export const executeWave2Command = (
         },
       );
     }
+    case "project.setAttentionState": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (
+        project === undefined ||
+        project.recordState === "removed" ||
+        project.lifecycle === "closed" ||
+        projectAttentionState(project) === command.payload.attentionState
+      )
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [project.id]: project.version }))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      const updated = setProjectAttentionState(
+        project,
+        command.payload.attentionState,
+        occurredAt,
+      );
+      if (!transaction.updateProject(updated, project.version))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.attention_state_changed",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["attentionState"],
+        {
+          diagnosticCode: "project.attention_state_changed",
+          projection: {
+            kind: "project.attention_state_changed",
+            projectId: updated.id,
+            attentionState: projectAttentionState(updated),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "project.restore_attention_state",
+          projectId: project.id,
+          priorAttentionState: projectAttentionState(project),
+          resultingVersion: updated.version,
+        },
+      );
+    }
     case "task.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       const existing = transaction.getTask(command.payload.taskId);
@@ -7198,6 +7297,118 @@ export const executeWave2Command = (
           taskId: task.id,
           resultingVersion: task.version,
         },
+      );
+    }
+    case "task.createInProject": {
+      const project = transaction.getProject(command.payload.projectId);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        project === undefined ||
+        workspace === undefined ||
+        project.workspaceId !== command.workspaceId ||
+        project.spaceId !== command.payload.spaceId ||
+        project.lifecycle !== "active" ||
+        project.recordState === "removed"
+      )
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [project.id]: project.version }))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      const existing = transaction.getTask(command.payload.taskId);
+      if (existing !== undefined)
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      const task = createTask({
+        id: command.payload.taskId,
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        ...(command.payload.description === undefined
+          ? {}
+          : { description: command.payload.description }),
+        ...(command.payload.nextAction === undefined
+          ? {}
+          : { nextAction: command.payload.nextAction }),
+        ...(command.payload.startAt === undefined
+          ? {}
+          : { startAt: command.payload.startAt }),
+        ...(command.payload.dueAt === undefined
+          ? {}
+          : { dueAt: command.payload.dueAt }),
+        ...(command.payload.priority === undefined
+          ? {}
+          : { priority: command.payload.priority }),
+        statusId: workspace.defaultTaskStatusId,
+        createdBy: context.principalId,
+        createdByKind: context.principalKind,
+        occurredAt,
+      });
+      const relation = relateTaskToProject({
+        id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+        task,
+        project,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertTask(task);
+      transaction.insertRelation(relation);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.created",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: task.version,
+          occurredAt,
+        },
+        { [task.id]: task.version, [relation.id]: relation.version },
+        ["title", "projectId", "statusId"],
+        {
+          diagnosticCode: "task.created_in_project",
+          projection: {
+            kind: "task.created_in_project",
+            taskId: task.id,
+            projectId: project.id,
+            relationId: relation.id,
+            spaceId: task.spaceId,
+            title: task.title,
+            ...(task.description === undefined
+              ? {}
+              : { description: task.description }),
+            ...(task.nextAction === undefined
+              ? {}
+              : { nextAction: task.nextAction }),
+            ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+            ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+            ...(task.priority === undefined ? {} : { priority: task.priority }),
+            statusId: task.statusId,
+            completionState: task.completionState,
+            taskVersion: task.version,
+            projectVersion: project.version,
+            relationVersion: relation.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task_project.undo_create",
+          taskId: task.id,
+          relationId: relation.id,
+          resultingTaskVersion: task.version,
+          resultingRelationVersion: relation.version,
+        },
+        { [task.id]: "task", [relation.id]: "relation" },
       );
     }
     case "task.setCalendarBlock": {
@@ -10108,6 +10319,7 @@ export const descriptorRecordIds = (
   switch (descriptor.kind) {
     case "project.restore_outcome":
     case "project.restore_details":
+    case "project.restore_attention_state":
       return [descriptor.projectId];
     case "project_check_in.void":
       return [
@@ -10161,6 +10373,8 @@ export const descriptorRecordIds = (
     case "task.restore_parent":
     case "task.restore_operational_state":
       return [descriptor.taskId];
+    case "task_project.undo_create":
+      return [descriptor.taskId, descriptor.relationId];
     case "strategic.undo_create":
     case "strategic.restore_record_state":
     case "record.undo_create":
@@ -10243,6 +10457,7 @@ interface RevertContext {
  */
 const compensationRemovesRecord = (descriptor: UndoDescriptor): boolean =>
   descriptor.kind === "task.undo_create" ||
+  descriptor.kind === "task_project.undo_create" ||
   descriptor.kind === "strategic.undo_create" ||
   descriptor.kind === "record.undo_create" ||
   // The compensation `record.relate` records: it removes the relation outright,
@@ -10348,7 +10563,8 @@ const descriptorState = (
   }
   switch (descriptor.kind) {
     case "project.restore_details":
-    case "project.restore_outcome": {
+    case "project.restore_outcome":
+    case "project.restore_attention_state": {
       // Ta gałąź jest tym, co chroni rzutowanie `as Project` w zastosowaniu
       // kompensacji niżej: bez sprawdzenia wersji cofnięcie sięgałoby po rekord,
       // który mógł się zmienić albo zniknąć.
@@ -10627,6 +10843,31 @@ const descriptorState = (
             available: true,
             recordIds: [workspace.id],
             versions: { [workspace.id]: workspace.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "task_project.undo_create": {
+      const task = view.getTask(descriptor.taskId);
+      const relation = view.getRelation(descriptor.relationId);
+      return task?.recordState === "active" &&
+        task.completionState === "open" &&
+        task.version === descriptor.resultingTaskVersion &&
+        relation?.state === "active" &&
+        relation.version === descriptor.resultingRelationVersion &&
+        relation.relationType === "task_contributes_to_project" &&
+        relation.taskId === task.id
+        ? {
+            available: true,
+            recordIds: [task.id, relation.id],
+            versions: {
+              [task.id]: task.version,
+              [relation.id]: relation.version,
+            },
           }
         : {
             available: false,
@@ -11391,7 +11632,17 @@ const compensateDescriptor = (
   | { readonly ok: false } => {
   let compensatedVersions: Record<string, number>;
   let compensatedKinds: CompensatedRecordKinds;
-  if (descriptor.kind === "project.restore_details") {
+  if (descriptor.kind === "project.restore_attention_state") {
+    const project = transaction.getProject(descriptor.projectId) as Project;
+    const restored = setProjectAttentionState(
+      project,
+      descriptor.priorAttentionState,
+      occurredAt,
+    );
+    transaction.updateProject(restored, project.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "project" };
+  } else if (descriptor.kind === "project.restore_details") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = updateProjectDetails(
       project,
@@ -11844,6 +12095,27 @@ const compensateDescriptor = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task_project.undo_create") {
+    const relation = transaction.getRelation(descriptor.relationId);
+    const task = transaction.getTask(descriptor.taskId);
+    if (relation === undefined || task === undefined) return { ok: false };
+    const removedRelation = removeTaskProjectRelation(relation, occurredAt);
+    transaction.updateRelation(removedRelation, relation.version);
+    const removedTask: Task = {
+      ...task,
+      recordState: "removed",
+      version: task.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateTask(removedTask, task.version);
+    compensatedVersions = {
+      [removedTask.id]: removedTask.version,
+      [removedRelation.id]: removedRelation.version,
+    };
+    compensatedKinds = {
+      [removedTask.id]: "task",
+      [removedRelation.id]: "relation",
+    };
   } else if (descriptor.kind === "task.undo_create") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const removed: Task = {
@@ -13556,6 +13828,151 @@ export const executeWave2Query = (
       items,
     });
   }
+  if (query.queryName === "project.similarCandidates") {
+    const requestedTitle = foldForCandidateSearch(query.parameters.title)
+      .replace(/\s+/g, " ")
+      .trim();
+    const requestedTokens = projectSimilarityTokens(query.parameters.title);
+    const strategic = liveStrategicRecords(
+      view,
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
+    const requestedClientIds = new Set(
+      query.parameters.clientOrganizationIds ?? [],
+    );
+    const requestedContexts = new Map(
+      (query.parameters.contexts ?? []).map((context) => [
+        context.recordId,
+        context.kind,
+      ]),
+    );
+    if (
+      [...requestedClientIds].some(
+        (id) =>
+          !strategic.some(
+            (record) => record.kind === "organization" && record.id === id,
+          ),
+      ) ||
+      [...requestedContexts].some(
+        ([id, kind]) =>
+          !strategic.some((record) => record.kind === kind && record.id === id),
+      )
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const clientProjectIds = new Set<ProjectId>();
+    const contextKindsByProject = new Map<
+      ProjectId,
+      Set<"area" | "initiative">
+    >();
+    for (const record of strategic) {
+      if (
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        record.linkType === "project_serves_organization" &&
+        requestedClientIds.has(record.targetRecordId as never)
+      )
+        clientProjectIds.add(ProjectIdSchema.parse(record.sourceRecordId));
+      if (
+        record.kind === "opportunity" &&
+        requestedClientIds.has(record.organizationId)
+      )
+        for (const projectId of record.projectIds)
+          clientProjectIds.add(projectId);
+      if (
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        ((record.linkType === "project_serves_area" &&
+          requestedContexts.get(record.targetRecordId as never) === "area") ||
+          (record.linkType === "project_advances_initiative" &&
+            requestedContexts.get(record.targetRecordId as never) ===
+              "initiative"))
+      ) {
+        const projectId = ProjectIdSchema.parse(record.sourceRecordId);
+        const kinds = contextKindsByProject.get(projectId) ?? new Set();
+        kinds.add(
+          record.linkType === "project_serves_area" ? "area" : "initiative",
+        );
+        contextKindsByProject.set(projectId, kinds);
+      }
+    }
+    const ranked = view
+      .listProjects(query.workspaceId, query.parameters.spaceId)
+      .flatMap((project) => {
+        const foldedTitle = foldForCandidateSearch(project.title)
+          .replace(/\s+/g, " ")
+          .trim();
+        const candidateTokens = projectSimilarityTokens(project.title);
+        const shared = sharedSimilarityTokens(requestedTokens, candidateTokens);
+        const exactTitle = foldedTitle === requestedTitle;
+        const clientMatch = clientProjectIds.has(project.id);
+        const contextMatches =
+          contextKindsByProject.get(project.id) ?? new Set();
+        if (
+          !exactTitle &&
+          shared.length < 2 &&
+          !(
+            (clientMatch || contextMatches.size > 0) &&
+            shared.some((token) => token.length >= 5)
+          )
+        )
+          return [];
+        return [
+          {
+            project,
+            foldedTitle,
+            exactTitle,
+            clientMatch,
+            contextMatches,
+            sharedCount: shared.length,
+            diceDenominator: requestedTokens.size + candidateTokens.size,
+          },
+        ];
+      })
+      .sort((left, right) => {
+        if (left.exactTitle !== right.exactTitle)
+          return left.exactTitle ? -1 : 1;
+        if (left.contextMatches.size !== right.contextMatches.size)
+          return right.contextMatches.size - left.contextMatches.size;
+        if (left.clientMatch !== right.clientMatch)
+          return left.clientMatch ? -1 : 1;
+        if (left.project.lifecycle !== right.project.lifecycle)
+          return left.project.lifecycle === "active" ? -1 : 1;
+        const diceOrder =
+          right.sharedCount * left.diceDenominator -
+          left.sharedCount * right.diceDenominator;
+        return (
+          diceOrder ||
+          right.sharedCount - left.sharedCount ||
+          (left.foldedTitle < right.foldedTitle
+            ? -1
+            : left.foldedTitle > right.foldedTitle
+              ? 1
+              : 0) ||
+          left.project.id.localeCompare(right.project.id)
+        );
+      });
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.similarCandidates",
+      items: ranked
+        .slice(0, query.parameters.limit)
+        .map(({ project, clientMatch, contextMatches }) => ({
+          projectId: project.id,
+          spaceId: project.spaceId,
+          title: project.title,
+          lifecycle: project.lifecycle,
+          version: project.version,
+          matchedOn: [
+            "title" as const,
+            ...(clientMatch ? (["client"] as const) : []),
+            ...(contextMatches.has("area") ? (["area"] as const) : []),
+            ...(contextMatches.has("initiative")
+              ? (["initiative"] as const)
+              : []),
+          ],
+        })),
+    });
+  }
   if (query.queryName === "project.list") {
     const relations = view.listRelations(
       query.workspaceId,
@@ -13583,6 +14000,7 @@ export const executeWave2Query = (
           ...(project.externalId === undefined
             ? {}
             : { externalId: project.externalId }),
+          attentionState: projectAttentionState(project),
           lifecycle: project.lifecycle,
           relatedOpenTaskCount: relations.filter(
             (relation) =>
@@ -14121,6 +14539,7 @@ export const executeWave2Query = (
         title: project.title,
         ...intendedOutcomeFields(project.intendedOutcome),
         ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
+        attentionState: projectAttentionState(project),
         lifecycle: project.lifecycle,
         ...(project.appliedTemplateId === undefined
           ? {}
@@ -15180,6 +15599,7 @@ export const executeWave2Query = (
     // ukrywa przemianowanie w Aktywności. Wpis i wartość w enumie zapytania
     // muszą wejść tą samą zmianą, inaczej `activity.meaningful` rzuca.
     "project.details_updated": "project_details_changed",
+    "project.attention_state_changed": "project_attention_changed",
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",

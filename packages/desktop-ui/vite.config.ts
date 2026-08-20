@@ -9,4 +9,5 @@ export default defineConfig({
     rollupOptions: { treeshake: { moduleSideEffects: false } },
   },
   plugins: [react()],
+  resolve: { dedupe: ["@tiptap/core"] },
 });

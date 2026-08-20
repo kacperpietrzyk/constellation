@@ -3719,6 +3719,87 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(reswept.projection.alreadySignaledCount, 1);
   });
 
+  it("changes explicit Project attention without inferring it from Task state", () => {
+    const harness = setup();
+    const { projectId } = createProjectRecord(harness, "Portfolio attention");
+    const taskId = createTask(
+      harness,
+      "Waiting task does not park its Project",
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("attention-relation", {
+            [taskId]: 1,
+            [projectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("attention-task-waiting", { [taskId]: 1 }),
+          commandName: "task.setOperationalState",
+          payload: {
+            taskId,
+            operationalState: "waiting",
+            waitingOn: {
+              kind: "external",
+              label: "Client decision",
+              direction: "waiting_on_them",
+            },
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const listed = () => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "project.list"
+      )
+        throw new Error("Expected the project list.");
+      const project = result.result.projection.items.find(
+        (item) => item.id === projectId,
+      );
+      assert.ok(project);
+      return project;
+    };
+
+    assert.equal(listed().attentionState, "current");
+    const changed = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attention-park", { [projectId]: 1 }),
+        commandName: "project.setAttentionState",
+        payload: { projectId, attentionState: "parked" },
+      }),
+    );
+    assert.equal(changed.outcome, "success");
+    if (changed.outcome !== "success") throw new Error("Expected success.");
+    assert.equal(changed.diagnosticCode, "project.attention_state_changed");
+    assert.equal(changed.projection.attentionState, "parked");
+    assert.equal(listed().attentionState, "parked");
+  });
+
   it("renames a Project and moves its deadline, one field at a time, reversibly", () => {
     // Do 0.2.0 Projektu NIE DAŁO SIĘ PRZEMIANOWAĆ: tytuł pisał wyłącznie
     // `project.create`. Rekord nie znał też ANI JEDNEJ daty, więc os czasu nad

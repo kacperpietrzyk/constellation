@@ -4,7 +4,6 @@ import {
   Suspense,
   useRef,
   useState,
-  type FormEvent,
   type KeyboardEvent,
 } from "react";
 
@@ -29,6 +28,10 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
+import type {
+  ProjectCreateClassifierProps,
+  SimilarCandidatesState,
+} from "./projects/ProjectCreateClassifier.js";
 import type { WorkContextKind } from "./record-narrative.js";
 import type { SettingsCategoryId } from "./settings-categories.js";
 import { LazySurfaceBoundary } from "./SurfaceLifecycleStates.js";
@@ -46,6 +49,11 @@ import { countLabel, formatDate, recordKindLabels } from "./i18n.js";
 const ProjectContextPanel = lazy(async () => ({
   default: (await import("./projects/ProjectContextPanel.js"))
     .ProjectContextPanel,
+}));
+
+const ProjectCreateClassifier = lazy(async () => ({
+  default: (await import("./projects/ProjectCreateClassifier.js"))
+    .ProjectCreateClassifier,
 }));
 
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
@@ -516,9 +524,14 @@ export const ProjectsSurface = ({
   onSelectProject,
   onBackToProjects,
   onCreate,
+  onCreateTaskInProject,
+  onOpenOpportunityAuthoring,
+  onOpenCapture,
+  onLoadSimilarCandidates,
   onApplyTemplate,
   onUpdateOutcome,
   onSetLifecycle,
+  onSetAttentionState,
   onRelate,
   onUnrelate,
   onEntityActivate,
@@ -551,9 +564,20 @@ export const ProjectsSurface = ({
     outcome: string | undefined,
     templateId?: string,
   ) => Promise<boolean>;
+  readonly onCreateTaskInProject: ProjectCreateClassifierProps["onCreateTaskInProject"];
+  readonly onOpenOpportunityAuthoring: () => void;
+  readonly onOpenCapture: () => void;
+  readonly onLoadSimilarCandidates: (
+    input: Parameters<
+      ProjectCreateClassifierProps["onLoadSimilarCandidates"]
+    >[0],
+  ) => Promise<SimilarCandidatesState>;
   readonly onApplyTemplate: (templateId: string) => void;
   readonly onUpdateOutcome: (outcome: string) => void;
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
+  readonly onSetAttentionState: (
+    attentionState: "current" | "waiting" | "parked",
+  ) => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
   readonly onEntityActivate: (target: {
@@ -584,12 +608,12 @@ export const ProjectsSurface = ({
 }) => {
   const [creating, setCreating] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const [contextCreateRequest, setContextCreateRequest] = useState<{
+    readonly kind: "area" | "initiative";
+    readonly nonce: number;
+  }>();
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState("");
-  const [newOutcome, setNewOutcome] = useState("");
-  const [createTemplateId, setCreateTemplateId] = useState("");
   const createTriggerRef = useRef<HTMLButtonElement>(null);
-  const createTitleRef = useRef<HTMLInputElement>(null);
   const [editedOutcome, setEditedOutcome] = useState(
     overview?.project.intendedOutcome ?? "",
   );
@@ -597,9 +621,6 @@ export const ProjectsSurface = ({
     () => setEditedOutcome(overview?.project.intendedOutcome ?? ""),
     [overview],
   );
-  useEffect(() => {
-    if (creating) createTitleRef.current?.focus();
-  }, [creating]);
   const projects = snapshot.projects;
   const projectItems = projects.kind === "ready" ? projects.data.items : [];
   const projectTemplates = snapshot.bootstrap.projectTemplates ?? [];
@@ -661,6 +682,23 @@ export const ProjectsSurface = ({
           onWriteOutcome: () => setEditing(true),
           actions: (
             <>
+              <label className="record-action-field">
+                Portfolio
+                <select
+                  aria-label="Portfolio attention"
+                  disabled={busy || overview.project.lifecycle === "closed"}
+                  onChange={(event) =>
+                    onSetAttentionState(
+                      event.target.value as "current" | "waiting" | "parked",
+                    )
+                  }
+                  value={overview.project.attentionState}
+                >
+                  <option value="current">Current</option>
+                  <option value="waiting">Waiting</option>
+                  <option value="parked">Parked</option>
+                </select>
+              </label>
               {!editing && !overview.project.needsReview && (
                 <button
                   className="ghost-button"
@@ -853,11 +891,11 @@ export const ProjectsSurface = ({
               data-project-create
               className={creating ? "secondary-button" : "primary-button"}
               aria-expanded={creating}
-              aria-controls={creating ? "project-create-form" : undefined}
+              aria-controls={creating ? "project-create-classifier" : undefined}
               onClick={() => setCreating((value) => !value)}
             >
               <Icon name={creating ? "close" : "capture"} />
-              <span>{creating ? "Cancel" : "New project"}</span>
+              <span>{creating ? "Cancel" : "Add work"}</span>
             </button>
           </div>
         }
@@ -876,75 +914,78 @@ export const ProjectsSurface = ({
                 onOpenContext={onOpenContext}
                 selectedContextId={selectedContextId}
                 snapshot={snapshot}
+                {...(contextCreateRequest === undefined
+                  ? {}
+                  : { requestedCreate: contextCreateRequest })}
               />
             </Suspense>
           </LazySurfaceBoundary>
         </div>
       )}
       {creating && (
-        <form
-          id="project-create-form"
-          className="project-overview"
-          onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            if (title.trim()) {
-              void onCreate(
-                title,
-                newOutcome.trim() === "" ? undefined : newOutcome,
-                createTemplateId === "" ? undefined : createTemplateId,
-              ).then((created) => {
-                if (!created) return;
+        <LazySurfaceBoundary label="Create work">
+          <Suspense fallback={null}>
+            <ProjectCreateClassifier
+              busy={busy}
+              contexts={
+                snapshot.work.kind === "ready"
+                  ? [
+                      ...snapshot.work.data.areas.map((area) => ({
+                        id: area.id,
+                        kind: "area" as const,
+                        title: area.title,
+                      })),
+                      ...snapshot.work.data.initiatives.map((initiative) => ({
+                        id: initiative.id,
+                        kind: "initiative" as const,
+                        title: initiative.title,
+                      })),
+                    ]
+                  : []
+              }
+              onCancel={() => {
                 setCreating(false);
-                setTitle("");
-                setNewOutcome("");
-                setCreateTemplateId("");
                 requestAnimationFrame(() => createTriggerRef.current?.focus());
-              });
-            }
-          }}
-        >
-          <div className="overview-intent">
-            <label htmlFor="project-title">Project name</label>
-            <input
-              ref={createTitleRef}
-              id="project-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={160}
-              required
+              }}
+              onCreateProject={({ title, intendedOutcome, templateId }) =>
+                onCreate(title, intendedOutcome, templateId)
+              }
+              onCreateTaskInProject={onCreateTaskInProject}
+              onLoadSimilarCandidates={onLoadSimilarCandidates}
+              onOpenCapture={onOpenCapture}
+              onOpenExistingAuthoring={(kind) => {
+                if (kind === "opportunity") {
+                  onOpenOpportunityAuthoring();
+                  return;
+                }
+                setContextOpen(true);
+                setContextCreateRequest({ kind, nonce: Date.now() });
+              }}
+              onOpenProject={onOpenProject}
+              organizations={
+                snapshot.relationships.kind === "ready"
+                  ? snapshot.relationships.data.records
+                      .filter((record) => record.kind === "organization")
+                      .map((record) => ({ id: record.id, name: record.name }))
+                  : []
+              }
+              projects={projectItems.map((project) => ({
+                id: project.id,
+                spaceId: project.spaceId,
+                title: project.title,
+                lifecycle: project.lifecycle,
+                version: project.version,
+              }))}
+              {...(snapshot.bootstrap.spaces[0]?.id === undefined
+                ? {}
+                : { spaceId: snapshot.bootstrap.spaces[0].id })}
+              templates={activeTemplates.map((template) => ({
+                id: template.id,
+                name: template.name,
+              }))}
             />
-            <label htmlFor="project-outcome">Intended outcome (optional)</label>
-            <textarea
-              id="project-outcome"
-              value={newOutcome}
-              onChange={(event) => setNewOutcome(event.target.value)}
-              maxLength={2_000}
-              placeholder="How will you know the work is done? You can fill this in later."
-            />
-            {activeTemplates.length > 0 && (
-              <>
-                <label htmlFor="project-create-template">
-                  Starting template (optional)
-                </label>
-                <select
-                  id="project-create-template"
-                  value={createTemplateId}
-                  onChange={(event) => setCreateTemplateId(event.target.value)}
-                >
-                  <option value="">No template</option>
-                  {activeTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            <button className="primary-button" disabled={busy} type="submit">
-              {busy ? "Creating…" : "Create project"}
-            </button>
-          </div>
-        </form>
+          </Suspense>
+        </LazySurfaceBoundary>
       )}
       {projects.kind === "unavailable" ? (
         <InlineState

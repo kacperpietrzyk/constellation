@@ -99,6 +99,21 @@ export const updateProjectDetails = (
   };
 };
 
+export const projectAttentionState = (
+  project: Project,
+): "current" | "waiting" | "parked" => project.attentionState ?? "current";
+
+export const setProjectAttentionState = (
+  project: Project,
+  attentionState: "current" | "waiting" | "parked",
+  occurredAt: string,
+): Project => ({
+  ...project,
+  attentionState,
+  version: project.version + 1,
+  updatedAt: occurredAt,
+});
+
 export const closeProject = (
   project: Project,
   principalId: PrincipalId,

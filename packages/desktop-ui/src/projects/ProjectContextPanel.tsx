@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import type { SpaceId, StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -48,6 +48,7 @@ export const ProjectContextPanel = ({
   onOpenContext,
   onReload,
   onFailure,
+  requestedCreate,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -60,12 +61,20 @@ export const ProjectContextPanel = ({
   ) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
+  readonly requestedCreate?: {
+    readonly kind: "area" | "initiative";
+    readonly nonce: number;
+  };
 }) => {
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const [openPopover, setOpenPopover] = useState<string>();
   const [linkProjectId, setLinkProjectId] = useState("");
   const work = snapshot.work;
   const projection = work.kind === "ready" ? work.data : undefined;
+
+  useEffect(() => {
+    if (requestedCreate !== undefined) setOpenPopover(requestedCreate.kind);
+  }, [requestedCreate]);
 
   // A rejected transport promise still lands in `onFailure` and still clears
   // busy: a control left disabled after a dropped connection reads as a broken

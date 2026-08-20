@@ -13,6 +13,35 @@
   overflow-x: hidden;
 }
 
+.governance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+}
+
+.lenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.filterLabel {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.filterLabel select {
+  min-block-size: 36px;
+  max-inline-size: 100%;
+}
+
 .viewbar {
   display: flex;
   flex-wrap: wrap;

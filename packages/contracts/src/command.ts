@@ -2250,6 +2250,17 @@ export const ProjectUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
     ),
 }).strict();
 
+export const ProjectSetAttentionStateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("project.setAttentionState"),
+    payload: z
+      .object({
+        projectId: ProjectIdSchema,
+        attentionState: z.enum(["current", "waiting", "parked"]),
+      })
+      .strict(),
+  }).strict();
+
 const TaskTitleSchema = z.string().trim().min(1).max(500);
 const TaskDescriptionSchema = z.string().trim().min(1).max(16_000);
 const TaskNextActionSchema = z.string().trim().min(1).max(500);
@@ -2277,6 +2288,30 @@ export const TaskCreateCommandSchema = CommandMetadataSchema.extend({
         payload.dueAt === undefined ||
         Date.parse(payload.startAt) <= Date.parse(payload.dueAt),
       { message: "task.create requires startAt to not exceed dueAt." },
+    ),
+}).strict();
+
+export const TaskCreateInProjectCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.createInProject"),
+  payload: z
+    .object({
+      taskId: TaskIdSchema,
+      projectId: ProjectIdSchema,
+      spaceId: SpaceIdSchema,
+      title: TaskTitleSchema,
+      description: TaskDescriptionSchema.optional(),
+      nextAction: TaskNextActionSchema.optional(),
+      startAt: TaskInstantSchema.optional(),
+      dueAt: TaskInstantSchema.optional(),
+      priority: TaskPrioritySchema.optional(),
+    })
+    .strict()
+    .refine(
+      (payload) =>
+        payload.startAt === undefined ||
+        payload.dueAt === undefined ||
+        Date.parse(payload.startAt) <= Date.parse(payload.dueAt),
+      { message: "task.createInProject requires startAt to not exceed dueAt." },
     ),
 }).strict();
 
@@ -2865,6 +2900,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   ProjectCreateCommandSchema,
   ProjectCheckInAddCommandSchema,
   ProjectUpdateDetailsCommandSchema,
+  ProjectSetAttentionStateCommandSchema,
   ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,
   DocumentRenameCommandSchema,
@@ -2935,6 +2971,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   MeetingDetachNoteCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskCreateCommandSchema,
+  TaskCreateInProjectCommandSchema,
   TaskUpdateDetailsCommandSchema,
   TaskSetParentCommandSchema,
   TemplateCreateCommandSchema,

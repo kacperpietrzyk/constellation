@@ -872,7 +872,7 @@ describe("interaction recovery contracts", () => {
     // could only ever say a button existed in a branch.
     assert.match(
       surfaces,
-      /aria-controls=\{creating \? "project-create-form" : undefined\}/,
+      /aria-controls=\{\s*creating \? "project-create-classifier" : undefined\s*\}/,
     );
   });
 

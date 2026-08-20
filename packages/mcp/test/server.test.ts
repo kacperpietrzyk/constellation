@@ -345,6 +345,7 @@ test("fails the complete resource when payload integrity changes", async () => {
 test("serves a grant-filtered operation catalog generated from the contract", async () => {
   const capabilityScope = [
     "project.create",
+    "project.list",
     "project.updateDetails",
     "task.create",
     "task.updateDetails",
@@ -455,9 +456,13 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         // otherwise is what sent an agent into an unfixable denial.
         "meeting.promoteWorkItem",
         "project.create",
+        "project.list",
+        "project.setAttentionState",
+        "project.similarCandidates",
         "project.updateDetails",
         "record.relate",
         "task.create",
+        "task.createInProject",
         "task.list",
         "task.updateDetails",
         "work.overview",

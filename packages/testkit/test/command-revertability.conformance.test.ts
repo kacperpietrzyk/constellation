@@ -310,6 +310,21 @@ describe("Command revertability", () => {
       },
       versions(projectId),
     );
+    apply(
+      "project.setAttentionState",
+      { projectId, attentionState: "waiting" },
+      versions(projectId),
+    );
+    apply(
+      "task.createInProject",
+      {
+        taskId: uuid(),
+        projectId,
+        spaceId: ids.rootSpace,
+        title: "Atomic project follow-up",
+      },
+      versions(projectId),
+    );
     const relationId = String(
       projection(
         apply(

@@ -62,6 +62,7 @@ const project = (
   title,
   intendedOutcome: `Cel projektu ${title}.`,
   needsReview: false,
+  attentionState: "current",
   lifecycle: "active",
   relatedOpenTaskCount: 1,
   version: 1,
@@ -71,24 +72,23 @@ const project = (
 
 const NOW = "2026-08-03T08:00:00.000Z";
 const ALPHA = project("01", "Alpha, przeterminowana", NOW);
-const BRAVO = project("02", "Bravo, ucichla", "2026-07-01T08:00:00.000Z");
+const BRAVO = {
+  ...project("02", "Bravo, ucichla", "2026-07-01T08:00:00.000Z"),
+  attentionState: "parked" as const,
+};
 // Both read "No signal", so they share a group — and their deadlines run the
 // OTHER way round from their titles. The collection is ordered by severity then
 // title, the list lens orders inside a group by deadline, so these two are
 // drawn in the opposite order to the one they arrive in. That is the divergence
 // the keyboard assertion needs in order to be able to fail at all.
-const CHARLIE = project(
-  "03",
-  "Charlie, bez zadan",
-  NOW,
-  "2026-12-01T10:00:00.000Z",
-);
-const DELTA = project(
-  "04",
-  "Delta, bez zadan",
-  NOW,
-  "2026-09-01T10:00:00.000Z",
-);
+const CHARLIE = {
+  ...project("03", "Charlie, bez zadan", NOW, "2026-12-01T10:00:00.000Z"),
+  attentionState: "waiting" as const,
+};
+const DELTA = {
+  ...project("04", "Delta, bez zadan", NOW, "2026-09-01T10:00:00.000Z"),
+  lifecycle: "closed" as const,
+};
 
 const spread = {
   ...populatedShellQueries,
@@ -234,6 +234,43 @@ test("Projects opens as a collection, not as one project", async () => {
     main.querySelector('[data-record-kind="project"]'),
     "Projects opened straight into a single project's record",
   );
+});
+
+test("portfolio lenses filter explicit attention and preserve a labelled result count", async () => {
+  await mountShell();
+  await openProjects();
+  const lens = (name: string): HTMLButtonElement => {
+    const button = container.querySelector<HTMLButtonElement>(
+      `[data-portfolio-lens="${name}"]`,
+    );
+    assert.ok(button, `missing ${name} portfolio lens`);
+    return button;
+  };
+  const identity = (): string[] =>
+    rows().map((row) => row.dataset.projectRow ?? "");
+
+  await act(async () => lens("parked").click());
+  assert.deepEqual(identity(), [BRAVO.id]);
+  assert.match(
+    container.querySelector("[data-project-result-count]")?.textContent ?? "",
+    /1 project/u,
+  );
+
+  await act(async () => lens("waiting").click());
+  assert.deepEqual(identity(), [CHARLIE.id]);
+
+  await act(async () => lens("closed").click());
+  assert.deepEqual(identity(), [DELTA.id]);
+});
+
+test("context and client portfolio filters are explicit controls, not inferred labels", async () => {
+  await mountShell();
+  await openProjects();
+  for (const kind of ["area", "initiative", "client"])
+    assert.ok(
+      container.querySelector(`[data-project-filter="${kind}"]`),
+      `missing ${kind} filter`,
+    );
 });
 
 test("every lens draws the same collection, only differently", async () => {

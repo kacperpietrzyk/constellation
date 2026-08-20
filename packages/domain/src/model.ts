@@ -581,6 +581,8 @@ export interface Project {
    * czasu nad projektami nie istniała.
    */
   readonly dueAt?: string;
+  /** Explicit portfolio attention. Absence is legacy `current`. */
+  readonly attentionState?: "current" | "waiting" | "parked";
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
@@ -1323,6 +1325,16 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "project.restore_attention_state";
+      readonly projectId: ProjectId;
+      readonly priorAttentionState: "current" | "waiting" | "parked";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "project_check_in.void";
       readonly checkInId: ProjectCheckInId;
       readonly resultingVersion: number;
@@ -1658,6 +1670,17 @@ export type UndoDescriptor =
       readonly kind: "task.undo_create";
       readonly taskId: TaskId;
       readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task_project.undo_create";
+      readonly taskId: TaskId;
+      readonly relationId: RelationId;
+      readonly resultingTaskVersion: number;
+      readonly resultingRelationVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
   | {
@@ -2066,6 +2089,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "project.created"
         | "project.outcome_updated"
         | "project.details_updated"
+        | "project.attention_state_changed"
         | "project.lifecycle_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;

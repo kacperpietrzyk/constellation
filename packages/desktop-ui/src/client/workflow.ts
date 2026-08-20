@@ -70,6 +70,8 @@ type CaptureHistoryProjection = Projection<"capture.history">;
 export type AccessProjection = Projection<"workspace.access">;
 export type AgentAccessProjection = Projection<"agent.access">;
 export type ProjectListProjection = Projection<"project.list">;
+export type ProjectSimilarCandidatesProjection =
+  Projection<"project.similarCandidates">;
 export type WorkOverviewProjection = Projection<"work.overview">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
@@ -1781,6 +1783,36 @@ export const searchGlobal = async (
     "search.global",
   );
 };
+
+export const loadProjectSimilarCandidates = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly title: string;
+    readonly spaceId?: SpaceId;
+    readonly clientOrganizationIds?: readonly StrategicRecordId[];
+    readonly contexts?: readonly {
+      readonly kind: "area" | "initiative";
+      readonly recordId: StrategicRecordId;
+    }[];
+  },
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "project.similarCandidates",
+      snapshot.bootstrap.workspace.id,
+      {
+        spaceId: input.spaceId ?? firstSpace(snapshot),
+        title: input.title,
+        ...(input.clientOrganizationIds === undefined
+          ? {}
+          : { clientOrganizationIds: input.clientOrganizationIds }),
+        ...(input.contexts === undefined ? {} : { contexts: input.contexts }),
+      },
+    ),
+    "project.similarCandidates",
+  );
 
 const commandFailure = (response: RendererCommandResponse): MutationFailure => {
   if (response.kind === "contract_rejected")
@@ -3948,6 +3980,45 @@ export const createTask = (
         : undefined,
   );
 
+export const createTaskInProject = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly projectId: ProjectId;
+    readonly projectVersion: number;
+    readonly spaceId: SpaceId;
+    readonly title: string;
+    readonly description?: string;
+    readonly nextAction?: string;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [input.projectId]: input.projectVersion,
+      }),
+      commandName: "task.createInProject",
+      payload: {
+        taskId: crypto.randomUUID(),
+        projectId: input.projectId,
+        spaceId: input.spaceId,
+        title: input.title,
+        ...(input.description === undefined || input.description === ""
+          ? {}
+          : { description: input.description }),
+        ...(input.nextAction === undefined || input.nextAction === ""
+          ? {}
+          : { nextAction: input.nextAction }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.created_in_project"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export interface TaskDetailsDraft {
   readonly title?: string;
   readonly description?: string | null;
@@ -4902,6 +4973,28 @@ export const setProjectLifecycle = (
     (response) =>
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind === "project.lifecycle_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setProjectAttentionState = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: Pick<ProjectListProjection["items"][number], "id" | "version">,
+  attentionState: "current" | "waiting" | "parked",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: "project.setAttentionState",
+      payload: { projectId: project.id, attentionState },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.attention_state_changed"
         ? response.outcome.projection
         : undefined,
   );

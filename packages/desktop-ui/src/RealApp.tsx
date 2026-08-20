@@ -146,6 +146,8 @@ import {
   editComment,
   applyTemplateToProject,
   createProject,
+  createTaskInProject,
+  loadProjectSimilarCandidates,
   directClientLinks,
   linkableClientOrganizations,
   linkOrganizationDelivery,
@@ -169,6 +171,7 @@ import {
   setTaskStatus,
   setCommentResolved,
   setProjectLifecycle,
+  setProjectAttentionState,
   stageManagedAttachment,
   submitQuickCapture,
   undoCommand,
@@ -511,6 +514,7 @@ export const RealApp = ({
     }
   }, [taskEditOpen]);
   const [projectBusy, setProjectBusy] = useState(false);
+  const [pipelineCreateRequest, setPipelineCreateRequest] = useState<number>();
   const [commentBusy, setCommentBusy] = useState(false);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
@@ -2968,6 +2972,13 @@ export const RealApp = ({
             }
             onReload={reload}
             onFailure={showFailure}
+            {...(pipelineCreateRequest === undefined
+              ? {}
+              : {
+                  createRequest: pipelineCreateRequest,
+                  onCreateRequestConsumed: () =>
+                    setPipelineCreateRequest(undefined),
+                })}
           />
         </Suspense>
       </LazySurfaceBoundary>
@@ -3647,6 +3658,51 @@ export const RealApp = ({
           setSelectedMeetingId(target.targetId);
           openContext(destinationContext("meetings", "Meetings"));
         }}
+        onOpenCapture={openCapture}
+        onLoadSimilarCandidates={async (input) => {
+          if (!client)
+            return {
+              kind: "unavailable" as const,
+              message: "The desktop data layer is unavailable.",
+            };
+          try {
+            const projection = await loadProjectSimilarCandidates(
+              client,
+              state.snapshot,
+              input,
+            );
+            return { kind: "ready" as const, items: projection.items };
+          } catch (error) {
+            return {
+              kind: "unavailable" as const,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Suggestions unavailable.",
+            };
+          }
+        }}
+        onCreateTaskInProject={async (input) => {
+          if (!client) return false;
+          setProjectBusy(true);
+          const result = await createTaskInProject(
+            client,
+            state.snapshot,
+            input,
+          );
+          setProjectBusy(false);
+          if (result.kind !== "success") {
+            showFailure(result);
+            return false;
+          }
+          await refreshAfter("Task created in the Project.");
+          openContext(taskContext(result.data.taskId, input.title));
+          return true;
+        }}
+        onOpenOpportunityAuthoring={() => {
+          setPipelineCreateRequest((current) => (current ?? 0) + 1);
+          openContext(destinationContext("pipeline", "Pipeline"));
+        }}
         onCreate={async (title, outcome, templateId) => {
           if (!client) return false;
           setProjectBusy(true);
@@ -3724,6 +3780,23 @@ export const RealApp = ({
                 lifecycle === "closed"
                   ? "Project closed. History and open tasks are unchanged."
                   : "Project reopened.",
+              );
+            else showFailure(result);
+          });
+        }}
+        onSetAttentionState={(attentionState) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void setProjectAttentionState(
+            client,
+            state.snapshot,
+            projectOverview.project,
+            attentionState,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success")
+              await refreshAfter(
+                `Portfolio attention set to ${attentionState}.`,
               );
             else showFailure(result);
           });

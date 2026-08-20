@@ -2504,6 +2504,94 @@ describe("SQLite ApplicationStore", () => {
     database.close();
   });
 
+  it("persists atomic Task-in-Project creation and similarity across reopen", () => {
+    withDatabase((filename) => {
+      const database = new DatabaseSync(filename);
+      const first = createKernel(database);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      const projectId = "00000000-0000-4000-8000-0000000000e1";
+      const taskId = "00000000-0000-4000-8000-0000000000e2";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId,
+                spaceId: ids.rootSpace,
+                title: "Persistent similarity delivery",
+              },
+              "persistent-similarity-project",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      const created = unwrap(
+        first.kernel.execute(
+          context(),
+          wave2Command(
+            "task.createInProject",
+            {
+              taskId,
+              projectId,
+              spaceId: ids.rootSpace,
+              title: "Follow persistent delivery",
+            },
+            "persistent-task-in-project",
+            { [projectId]: 1 },
+          ),
+        ),
+      );
+      assert.equal(created.outcome, "success");
+      database.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const snapshot = reopened.store.snapshot();
+      assert.equal(
+        snapshot.tasks.some((task) => task.id === taskId),
+        true,
+      );
+      assert.equal(
+        snapshot.relations.some(
+          (relation) =>
+            relation.relationType === "task_contributes_to_project" &&
+            relation.taskId === taskId &&
+            relation.projectId === projectId,
+        ),
+        true,
+      );
+      const query = reopened.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.similarCandidates",
+        queryId: "00000000-0000-4000-8000-0000000000e3",
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          title: "Persistent similarity delivery",
+        },
+      });
+      assert.equal(query.kind, "query_result");
+      if (
+        query.kind !== "query_result" ||
+        query.result.outcome !== "success" ||
+        query.result.projection.kind !== "project.similarCandidates"
+      )
+        throw new Error("Expected persisted similarity query.");
+      assert.deepEqual(
+        query.result.projection.items.map((item) => item.projectId),
+        [projectId],
+      );
+      reopenedDatabase.close();
+    });
+  });
+
   it("persists Wave 2 Project, status, relation, search, cockpit, activity, and undo semantics", () => {
     withDatabase((filename) => {
       const firstDatabase = new DatabaseSync(filename);

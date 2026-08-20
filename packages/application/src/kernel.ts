@@ -621,7 +621,9 @@ const isCurrentlyAuthorized = (
     case "meeting.detachNote":
     case "project.updateOutcome":
     case "project.updateDetails":
+    case "project.setAttentionState":
     case "task.create":
+    case "task.createInProject":
     case "task.updateDetails":
     case "task.setCalendarBlock":
     case "task.setParent":
@@ -1137,7 +1139,9 @@ export class ApplicationKernel {
       case "meeting.detachNote":
       case "project.updateOutcome":
       case "project.updateDetails":
+      case "project.setAttentionState":
       case "task.create":
+      case "task.createInProject":
       case "task.updateDetails":
       case "task.setCalendarBlock":
       case "task.setParent":
@@ -3190,6 +3194,7 @@ export class ApplicationKernel {
             freshness,
           );
         case "project.list":
+        case "project.similarCandidates":
         case "project.checkInList":
         case "work.overview":
         case "document.list":

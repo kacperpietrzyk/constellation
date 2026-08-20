@@ -602,6 +602,8 @@ export const PipelineSurface = ({
   onNavigate,
   onReload,
   onFailure,
+  createRequest,
+  onCreateRequestConsumed,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -617,6 +619,8 @@ export const PipelineSurface = ({
   readonly onNavigate: (surface: "settings", label: string) => void;
   readonly onReload: () => Promise<void> | void;
   readonly onFailure: (failure: MutationFailure) => void;
+  readonly createRequest?: number;
+  readonly onCreateRequestConsumed?: () => void;
 }) => {
   const [creating, setCreating] = useState(false);
   const [draftOrganizationId, setDraftOrganizationId] = useState("");
@@ -645,6 +649,12 @@ export const PipelineSurface = ({
   // than an id because clearing it must not depend on that column still being
   // rendered — a board reloads under a drag that changed a stage.
   const dropTarget = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (createRequest === undefined) return;
+    setCreating(true);
+    onCreateRequestConsumed?.();
+  }, [createRequest, onCreateRequestConsumed]);
 
   const markDropTarget = (node: HTMLElement | null) => {
     if (dropTarget.current === node) return;

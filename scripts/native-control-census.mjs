@@ -201,7 +201,7 @@ export const NATIVE_CONTROL_LEDGER = {
   // PIĘĆ, A NIE CZTERY: piąta to `<select id="organization-delivery-link">`
   // (`:1239`), której tekstowa wersja tego spisu nie widziała.
   "StrategicDepthSurface.tsx": 5,
-  "Wave2Surfaces.tsx": 11,
+  "Wave2Surfaces.tsx": 9,
   "WorkspaceRecovery.tsx": 4,
   "components/ChoicePopover.tsx": 1,
   "components/DecisionClientSection.tsx": 1,
@@ -214,6 +214,12 @@ export const NATIVE_CONTROL_LEDGER = {
   "people/PeopleSurface.tsx": 4,
   "pipeline/PipelineSurface.tsx": 7,
   "projects/ProjectContextPanel.tsx": 6,
+  // Portfolio filters remain ordinary labelled selects, keeping Area,
+  // Initiative and client selection keyboard-native without a query builder.
+  "projects/ProjectCollection.tsx": 4,
+  // The one-step classifier owns bounded Project/Task authoring and routes the
+  // other four kinds to their existing forms; its fields are labelled at 320 px.
+  "projects/ProjectCreateClassifier.tsx": 7,
   "record/ProjectRecordOverview.tsx": 4,
   "record/RecordCommentsPanel.tsx": 2,
   // Four bounded native fields keep direct Task/Project authoring keyboard-first

@@ -237,6 +237,40 @@ export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
+export const ProjectSimilarCandidatesQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("project.similarCandidates"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      clientOrganizationIds: z
+        .array(StrategicRecordIdSchema)
+        .max(20)
+        .optional(),
+      contexts: z
+        .array(
+          z.discriminatedUnion("kind", [
+            z
+              .object({
+                kind: z.literal("area"),
+                recordId: StrategicRecordIdSchema,
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("initiative"),
+                recordId: StrategicRecordIdSchema,
+              })
+              .strict(),
+          ]),
+        )
+        .max(20)
+        .optional(),
+      limit: z.int().min(1).max(10).default(5),
+    })
+    .strict(),
+}).strict();
+
 export const ProjectCheckInListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("project.checkInList"),
   parameters: z.object({ projectId: ProjectIdSchema }).strict(),
@@ -487,6 +521,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   CommentMentionCandidatesQuerySchema,
   AttentionInboxQuerySchema,
   ProjectListQuerySchema,
+  ProjectSimilarCandidatesQuerySchema,
   ProjectCheckInListQuerySchema,
   WorkOverviewQuerySchema,
   DocumentListQuerySchema,
@@ -1807,6 +1842,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             // arms: a projection that re-applied the write constraint would
             // make an already-stored value unreadable the day it is tightened.
             externalId: z.string().optional(),
+            attentionState: z.enum(["current", "waiting", "parked"]),
             lifecycle: z.enum(["active", "closed"]),
             // Termin dostawy, opcjonalny. Nigdy nullowalny: `null` w polu
             // ISO ze `.strict()` wywala CAŁY odczyt, a nie jedną wartość.
@@ -1817,6 +1853,27 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("project.similarCandidates"),
+      items: z
+        .array(
+          z
+            .object({
+              projectId: ProjectIdSchema,
+              spaceId: SpaceIdSchema,
+              title: z.string(),
+              lifecycle: z.enum(["active", "closed"]),
+              version: z.int().positive(),
+              matchedOn: z
+                .array(z.enum(["title", "client", "area", "initiative"]))
+                .min(1),
+            })
+            .strict(),
+        )
+        .max(10),
     })
     .strict(),
   z
@@ -1959,6 +2016,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           title: z.string(),
           intendedOutcome: z.string(),
           needsReview: NeedsReviewSchema,
+          attentionState: z.enum(["current", "waiting", "parked"]),
           lifecycle: z.enum(["active", "closed"]),
           appliedTemplateId: ProjectTemplateIdSchema.optional(),
           dueAt: z.iso.datetime({ offset: true }).optional(),
@@ -2531,6 +2589,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "project_check_in_added",
               "project_outcome_changed",
               "project_details_changed",
+              "project_attention_changed",
               "task_created",
               "task_details_updated",
               "task_parent_changed",

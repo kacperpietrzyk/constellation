@@ -310,7 +310,12 @@ export const COMMAND_CAPABILITIES: Readonly<
   "meeting.detachNote": { capability: "meeting.detachNote" },
   "project.updateOutcome": { capability: "project.updateOutcome" },
   "project.updateDetails": { capability: "project.updateDetails" },
+  "project.setAttentionState": { capability: "project.updateDetails" },
   "task.create": { capability: "task.create" },
+  "task.createInProject": {
+    capability: "task.create",
+    additionalCapabilities: ["record.relate"],
+  },
   "task.updateDetails": { capability: "task.updateDetails" },
   "task.setParent": { capability: "task.setParent" },
   // Templates, automation rules and the recurrence sweep all insert Tasks
@@ -443,6 +448,7 @@ export const QUERY_CAPABILITIES: Readonly<
   "comment.mentionCandidates": { capability: "comment.mentionCandidates" },
   "attention.inbox": { capability: "attention.inbox" },
   "project.list": { capability: "project.list" },
+  "project.similarCandidates": { capability: "project.list" },
   "project.checkInList": { capability: "project.checkInList" },
   "work.overview": { capability: "work.overview" },
   "document.list": { capability: "document.list" },

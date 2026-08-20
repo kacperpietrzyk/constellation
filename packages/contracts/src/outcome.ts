@@ -92,8 +92,10 @@ export const DiagnosticCodeSchema = z.enum([
   "record.removed",
   "project.outcome_updated",
   "project.details_updated",
+  "project.attention_state_changed",
   "project.lifecycle_changed",
   "task.created",
+  "task.created_in_project",
   "task.details_updated",
   "task.parent_changed",
   "template.created",
@@ -494,6 +496,14 @@ export const ProjectDetailsUpdatedProjectionSchema = z
     ...ProjectProjectionFields,
   })
   .strict();
+export const ProjectAttentionStateChangedProjectionSchema = z
+  .object({
+    kind: z.literal("project.attention_state_changed"),
+    projectId: ProjectIdSchema,
+    attentionState: z.enum(["current", "waiting", "parked"]),
+    version: z.int().positive(),
+  })
+  .strict();
 export const ProjectLifecycleChangedProjectionSchema = z
   .object({
     kind: z.literal("project.lifecycle_changed"),
@@ -531,6 +541,21 @@ export const TaskCreatedProjectionSchema = z
     statusId: TaskStatusIdSchema,
     completionState: z.enum(["open", "completed"]),
     version: z.int().positive(),
+  })
+  .strict();
+export const TaskCreatedInProjectProjectionSchema = z
+  .object({
+    kind: z.literal("task.created_in_project"),
+    taskId: TaskIdSchema,
+    projectId: ProjectIdSchema,
+    relationId: RelationIdSchema,
+    spaceId: SpaceIdSchema,
+    ...TaskDetailFields,
+    statusId: TaskStatusIdSchema,
+    completionState: z.literal("open"),
+    taskVersion: z.int().positive(),
+    projectVersion: z.int().positive(),
+    relationVersion: z.int().positive(),
   })
   .strict();
 export const TaskDetailsUpdatedProjectionSchema = z
@@ -993,8 +1018,10 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   KnowledgeNamedVersionMutationProjectionSchema,
   StrategicRecordMutationProjectionSchema,
   ProjectOutcomeUpdatedProjectionSchema,
+  ProjectAttentionStateChangedProjectionSchema,
   ProjectLifecycleChangedProjectionSchema,
   TaskCreatedProjectionSchema,
+  TaskCreatedInProjectProjectionSchema,
   TaskDetailsUpdatedProjectionSchema,
   TaskParentChangedProjectionSchema,
   FolderCreatedProjectionSchema,
@@ -1251,6 +1278,12 @@ const ProjectDetailsUpdatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("project.details_updated"),
     projection: ProjectDetailsUpdatedProjectionSchema,
   }).strict();
+const ProjectAttentionStateChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.attention_state_changed"),
+    projection: ProjectAttentionStateChangedProjectionSchema,
+  }).strict();
 const ProjectLifecycleChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1262,6 +1295,12 @@ const TaskCreatedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   diagnosticCode: z.literal("task.created"),
   projection: TaskCreatedProjectionSchema,
 }).strict();
+const TaskCreatedInProjectSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("task.created_in_project"),
+    projection: TaskCreatedInProjectProjectionSchema,
+  }).strict();
 const TaskDetailsUpdatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1561,8 +1600,10 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   RecordRemovedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
   ProjectDetailsUpdatedSuccessOutcomeSchema,
+  ProjectAttentionStateChangedSuccessOutcomeSchema,
   ProjectLifecycleChangedSuccessOutcomeSchema,
   TaskCreatedSuccessOutcomeSchema,
+  TaskCreatedInProjectSuccessOutcomeSchema,
   TaskDetailsUpdatedSuccessOutcomeSchema,
   TaskParentChangedSuccessOutcomeSchema,
   FolderCreatedSuccessOutcomeSchema,

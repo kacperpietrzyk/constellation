@@ -98,6 +98,7 @@ const overview: Projection<"project.operationalOverview"> = {
     title: project.title,
     intendedOutcome: project.intendedOutcome,
     needsReview: false,
+    attentionState: "current",
     lifecycle: "active",
     version: 7,
     updatedAt: "2026-07-20T14:30:00.000Z",

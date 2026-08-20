@@ -1939,6 +1939,15 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       })()`);
       await waitFor(
         client,
+        `document.querySelector('[data-project-create-kind="project"]') !== null`,
+        "PACKAGED_ALPHA_PROJECT_CLASSIFIER_MISSING",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('[data-project-create-kind="project"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
         `document.querySelector('#project-title') !== null && document.querySelector('#project-outcome') !== null`,
         "PACKAGED_ALPHA_PROJECT_FORM_MISSING",
       );
