@@ -249,9 +249,13 @@ export type Wave2Command = Extract<
       | "area.create"
       | "area.remove"
       | "area.updateResponsibility"
+      | "area.archive"
+      | "area.restore"
       | "initiative.create"
       | "initiative.remove"
       | "initiative.updateOutcome"
+      | "initiative.close"
+      | "initiative.reopen"
       | "work.linkCreate"
       | "work.linkRemove"
       | "savedView.create"
@@ -338,6 +342,8 @@ export type Wave2Query = Extract<
       | "organization.list"
       | "radar.review"
       | "project.operationalOverview"
+      | "area.operationalOverview"
+      | "initiative.operationalOverview"
       | "organization.operationalOverview"
       | "search.global"
       | "cockpit.week"
@@ -682,7 +688,9 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
-    case "area.updateResponsibility": {
+    case "area.updateResponsibility":
+    case "area.archive":
+    case "area.restore": {
       const record = view.getStrategicRecord(command.payload.areaId);
       return authorized(
         dependencies,
@@ -694,7 +702,9 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
-    case "initiative.updateOutcome": {
+    case "initiative.updateOutcome":
+    case "initiative.close":
+    case "initiative.reopen": {
       const record = view.getStrategicRecord(command.payload.initiativeId);
       return authorized(
         dependencies,
@@ -4472,6 +4482,36 @@ export const executeWave2Command = (
         },
       );
     }
+    case "area.archive":
+    case "area.restore": {
+      const current = transaction.getStrategicRecord(command.payload.areaId);
+      if (current?.kind !== "area" || strategicRecordIsDeleted(current))
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const state =
+        command.commandName === "area.archive" ? "archived" : "active";
+      if (current.state === state) return precondition(command, occurredAt);
+      const record: typeof current = {
+        ...current,
+        state,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state"],
+      );
+    }
     case "initiative.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
@@ -4543,6 +4583,38 @@ export const executeWave2Command = (
             : { priorOutcome: current.intendedOutcome }),
           resultingVersion: record.version,
         },
+      );
+    }
+    case "initiative.close":
+    case "initiative.reopen": {
+      const current = transaction.getStrategicRecord(
+        command.payload.initiativeId,
+      );
+      if (current?.kind !== "initiative" || strategicRecordIsDeleted(current))
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const state =
+        command.commandName === "initiative.close" ? "closed" : "active";
+      if (current.state === state) return precondition(command, occurredAt);
+      const record: typeof current = {
+        ...current,
+        state,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state"],
       );
     }
     case "work.linkCreate": {
@@ -12804,35 +12876,55 @@ export const executeWave2Query = (
               ? [project.spaceId]
               : [];
           })()
-        : query.queryName === "organization.operationalOverview"
-          ? [query.parameters.spaceId]
-          : query.queryName === "knowledge.documentContext"
-            ? (() => {
-                const document = view.getDocument(query.parameters.documentId);
-                return document?.workspaceId === query.workspaceId
-                  ? [document.spaceId]
-                  : [];
-              })()
-            : query.queryName === "recovery.preview"
+        : query.queryName === "area.operationalOverview" ||
+            query.queryName === "initiative.operationalOverview"
+          ? (() => {
+              const targetId =
+                query.queryName === "area.operationalOverview"
+                  ? query.parameters.areaId
+                  : query.parameters.initiativeId;
+              const record = view.getStrategicRecord(targetId);
+              const expectedKind =
+                query.queryName === "area.operationalOverview"
+                  ? "area"
+                  : "initiative";
+              return record?.workspaceId === query.workspaceId &&
+                record.kind === expectedKind &&
+                !strategicRecordIsDeleted(record)
+                ? [record.spaceId]
+                : [];
+            })()
+          : query.queryName === "organization.operationalOverview"
+            ? [query.parameters.spaceId]
+            : query.queryName === "knowledge.documentContext"
               ? (() => {
-                  const receipt = view.getAuditReceiptByCommand(
-                    query.parameters.targetCommandId,
+                  const document = view.getDocument(
+                    query.parameters.documentId,
                   );
-                  return receipt?.workspaceId === query.workspaceId
-                    ? [receipt.spaceId]
+                  return document?.workspaceId === query.workspaceId
+                    ? [document.spaceId]
                     : [];
                 })()
-              : query.queryName === "document.backlinks"
+              : query.queryName === "recovery.preview"
                 ? (() => {
-                    const target = resolveDocumentEntityTarget(
-                      view,
-                      query.workspaceId,
-                      query.parameters.targetKind,
-                      query.parameters.targetId,
+                    const receipt = view.getAuditReceiptByCommand(
+                      query.parameters.targetCommandId,
                     );
-                    return target === undefined ? [] : [target.spaceId];
+                    return receipt?.workspaceId === query.workspaceId
+                      ? [receipt.spaceId]
+                      : [];
                   })()
-                : [query.parameters.spaceId];
+                : query.queryName === "document.backlinks"
+                  ? (() => {
+                      const target = resolveDocumentEntityTarget(
+                        view,
+                        query.workspaceId,
+                        query.parameters.targetKind,
+                        query.parameters.targetId,
+                      );
+                      return target === undefined ? [] : [target.spaceId];
+                    })()
+                  : [query.parameters.spaceId];
   if (
     spaceIds.length === 0 ||
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
@@ -13649,6 +13741,146 @@ export const executeWave2Query = (
           updatedAt: source.updatedAt,
         })),
     });
+  }
+  if (
+    query.queryName === "area.operationalOverview" ||
+    query.queryName === "initiative.operationalOverview"
+  ) {
+    const targetId =
+      query.queryName === "area.operationalOverview"
+        ? query.parameters.areaId
+        : query.parameters.initiativeId;
+    const record = view.getStrategicRecord(targetId);
+    const expectedKind =
+      query.queryName === "area.operationalOverview" ? "area" : "initiative";
+    if (
+      record === undefined ||
+      record.kind !== expectedKind ||
+      record.workspaceId !== query.workspaceId ||
+      strategicRecordIsDeleted(record)
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+
+    const relationType =
+      record.kind === "area"
+        ? "task_contributes_to_area"
+        : "task_advances_initiative";
+    const directRelations = view
+      .listRelations(query.workspaceId, record.spaceId)
+      .filter(
+        (relation) =>
+          relation.state === "active" &&
+          relation.relationType === relationType &&
+          (relation.relationType === "task_contributes_to_area"
+            ? relation.areaId === record.id
+            : relation.initiativeId === record.id),
+      );
+    const relationByTaskId = new Map(
+      directRelations.map((relation) => [relation.taskId, relation]),
+    );
+    const directTasks = view
+      .listTasksInSpace(query.workspaceId, record.spaceId)
+      .filter(
+        (task) =>
+          task.recordState === "active" && relationByTaskId.has(task.id),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const linkType =
+      record.kind === "area"
+        ? "project_serves_area"
+        : "project_advances_initiative";
+    const workLinks = liveStrategicRecords(
+      view,
+      query.workspaceId,
+      record.spaceId,
+    ).filter(
+      (
+        candidate,
+      ): candidate is Extract<
+        StrategicRecord,
+        { readonly kind: "work_link" }
+      > =>
+        candidate.kind === "work_link" &&
+        candidate.state === "active" &&
+        candidate.linkType === linkType &&
+        candidate.targetRecordId === record.id,
+    );
+    const linkByProjectId = new Map(
+      workLinks.map((link) => [link.sourceRecordId, link]),
+    );
+    const projects = view
+      .listProjects(query.workspaceId, record.spaceId)
+      .filter(
+        (project) =>
+          project.recordState !== "removed" && linkByProjectId.has(project.id),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const taskProjection = directTasks.slice(0, 100).map((task) => {
+      const relation = relationByTaskId.get(task.id)!;
+      return {
+        id: task.id,
+        title: task.title,
+        completionState: task.completionState,
+        relationId: relation.id,
+        relationVersion: relation.version,
+        version: task.version,
+        updatedAt: task.updatedAt,
+      };
+    });
+    const projectProjection = projects.slice(0, 100).map((project) => {
+      const link = linkByProjectId.get(project.id)!;
+      return {
+        id: project.id,
+        title: project.title,
+        ...intendedOutcomeFields(project.intendedOutcome),
+        lifecycle: project.lifecycle,
+        linkId: link.id,
+        linkVersion: link.version,
+        version: project.version,
+        updatedAt: project.updatedAt,
+      };
+    });
+    return record.kind === "area"
+      ? querySuccess(query, kernelTime, freshness, {
+          kind: "area.operationalOverview",
+          area: {
+            id: record.id,
+            spaceId: record.spaceId,
+            title: record.title,
+            ...responsibilityFields(record.responsibility),
+            state: record.state,
+            version: record.version,
+            updatedAt: record.updatedAt,
+          },
+          directTaskCount: directTasks.length,
+          directTasks: taskProjection,
+          projectCount: projects.length,
+          projects: projectProjection,
+        })
+      : querySuccess(query, kernelTime, freshness, {
+          kind: "initiative.operationalOverview",
+          initiative: {
+            id: record.id,
+            spaceId: record.spaceId,
+            title: record.title,
+            ...intendedOutcomeFields(record.intendedOutcome),
+            state: record.state,
+            version: record.version,
+            updatedAt: record.updatedAt,
+          },
+          directTaskCount: directTasks.length,
+          directTasks: taskProjection,
+          projectCount: projects.length,
+          projects: projectProjection,
+        });
   }
   if (query.queryName === "organization.operationalOverview") {
     const strategicRecords = view.listStrategicRecords(

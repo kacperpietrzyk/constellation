@@ -373,6 +373,17 @@ export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
   },
 ).strict();
 
+export const AreaOperationalOverviewQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("area.operationalOverview"),
+  parameters: z.object({ areaId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const InitiativeOperationalOverviewQuerySchema =
+  QueryMetadataSchema.extend({
+    queryName: z.literal("initiative.operationalOverview"),
+    parameters: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
+  }).strict();
+
 export const OrganizationOperationalOverviewQuerySchema =
   QueryMetadataSchema.extend({
     queryName: z.literal("organization.operationalOverview"),
@@ -480,6 +491,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   OrganizationListQuerySchema,
   RadarReviewQuerySchema,
   ProjectOperationalOverviewQuerySchema,
+  AreaOperationalOverviewQuerySchema,
+  InitiativeOperationalOverviewQuerySchema,
   OrganizationOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
@@ -1973,6 +1986,108 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       // question the field was added to answer — "which Projects rest on the
       // note whose currency I doubt?" — could not be asked from either end.
       evidenceSources: z.array(KnowledgeSourceProjectionSchema),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("area.operationalOverview"),
+      area: z
+        .object({
+          id: StrategicRecordIdSchema,
+          spaceId: SpaceIdSchema,
+          title: z.string(),
+          responsibility: z.string(),
+          needsReview: NeedsReviewSchema,
+          state: z.enum(["active", "archived"]),
+          version: z.int().positive(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+      directTaskCount: z.int().nonnegative(),
+      directTasks: z
+        .array(
+          z
+            .object({
+              id: TaskIdSchema,
+              title: z.string(),
+              completionState: z.enum(["open", "completed"]),
+              relationId: RelationIdSchema,
+              relationVersion: z.int().positive(),
+              version: z.int().positive(),
+              updatedAt: z.iso.datetime({ offset: true }),
+            })
+            .strict(),
+        )
+        .max(100),
+      projectCount: z.int().nonnegative(),
+      projects: z
+        .array(
+          z
+            .object({
+              id: ProjectIdSchema,
+              title: z.string(),
+              intendedOutcome: z.string(),
+              needsReview: NeedsReviewSchema,
+              lifecycle: z.enum(["active", "closed"]),
+              linkId: StrategicRecordIdSchema,
+              linkVersion: z.int().positive(),
+              version: z.int().positive(),
+              updatedAt: z.iso.datetime({ offset: true }),
+            })
+            .strict(),
+        )
+        .max(100),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("initiative.operationalOverview"),
+      initiative: z
+        .object({
+          id: StrategicRecordIdSchema,
+          spaceId: SpaceIdSchema,
+          title: z.string(),
+          intendedOutcome: z.string(),
+          needsReview: NeedsReviewSchema,
+          state: z.enum(["active", "closed"]),
+          version: z.int().positive(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+      directTaskCount: z.int().nonnegative(),
+      directTasks: z
+        .array(
+          z
+            .object({
+              id: TaskIdSchema,
+              title: z.string(),
+              completionState: z.enum(["open", "completed"]),
+              relationId: RelationIdSchema,
+              relationVersion: z.int().positive(),
+              version: z.int().positive(),
+              updatedAt: z.iso.datetime({ offset: true }),
+            })
+            .strict(),
+        )
+        .max(100),
+      projectCount: z.int().nonnegative(),
+      projects: z
+        .array(
+          z
+            .object({
+              id: ProjectIdSchema,
+              title: z.string(),
+              intendedOutcome: z.string(),
+              needsReview: NeedsReviewSchema,
+              lifecycle: z.enum(["active", "closed"]),
+              linkId: StrategicRecordIdSchema,
+              linkVersion: z.int().positive(),
+              version: z.int().positive(),
+              updatedAt: z.iso.datetime({ offset: true }),
+            })
+            .strict(),
+        )
+        .max(100),
     })
     .strict(),
   z

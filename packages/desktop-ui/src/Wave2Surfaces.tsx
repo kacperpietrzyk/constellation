@@ -523,8 +523,10 @@ export const ProjectsSurface = ({
   onUnrelate,
   onEntityActivate,
   renderRecordScreen,
+  contextRecord,
   selectedContextId,
   onSelectContext,
+  onOpenContext,
   onReload,
   onFailure,
 }: {
@@ -565,12 +567,18 @@ export const ProjectsSurface = ({
    *  the old detail flow in place rather than showing an empty record. */
   readonly renderRecordScreen?:
     ((slots: ProjectRecordSlots) => React.ReactNode) | undefined;
+  readonly contextRecord?: React.ReactNode;
   /** Areas and initiatives, which live here now that the work surface is going.
    *  The selection is the SHELL's — picking one opens it in the inspector, the
    *  same drawer a project opens into — so this screen holds neither the state
    *  nor the write; it holds the panel that authors them. */
   readonly selectedContextId: string | undefined;
   readonly onSelectContext: (kind: WorkContextKind, id: string) => void;
+  readonly onOpenContext: (
+    kind: WorkContextKind,
+    id: string,
+    title: string,
+  ) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
@@ -603,6 +611,11 @@ export const ProjectsSurface = ({
   const unrelated = snapshot.tasks.filter(
     (task) => !overview?.relatedTasks.some((related) => related.id === task.id),
   );
+
+  if (contextRecord !== undefined)
+    return (
+      <div className="surface-scroll project-surface">{contextRecord}</div>
+    );
 
   // The record screen brings its own `<h1>`, its own way back and its own
   // verbs, so the surface header does not run for this view — two level-one
@@ -852,6 +865,7 @@ export const ProjectsSurface = ({
                 onFailure={onFailure}
                 onReload={onReload}
                 onSelectContext={onSelectContext}
+                onOpenContext={onOpenContext}
                 selectedContextId={selectedContextId}
                 snapshot={snapshot}
               />
@@ -993,7 +1007,12 @@ export const SearchOverlay = ({
     label: string,
     settingsCategory?: SettingsCategoryId,
   ) => void;
-  readonly onNavigate: (surface: SurfaceId, recordId: string) => void;
+  readonly onNavigate: (
+    surface: SurfaceId,
+    recordId: string,
+    recordKind: SearchProjection["items"][number]["recordKind"],
+    title: string,
+  ) => void;
 }) => {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<
@@ -1068,6 +1087,8 @@ export const SearchOverlay = ({
     onNavigate(
       getHumanRecordKindDescriptor(item.recordKind).inspectorSurface,
       item.recordId,
+      item.recordKind,
+      item.title,
     );
     onClose();
   };

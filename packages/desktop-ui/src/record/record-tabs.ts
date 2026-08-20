@@ -26,6 +26,7 @@ import type { CommentListProjection } from "../client/workflow.js";
 export const RECORD_TABS = [
   "overview",
   "tasks",
+  "projects",
   "offers",
   "documents",
   "comments",
@@ -36,6 +37,7 @@ export type RecordTab = (typeof RECORD_TABS)[number];
 export const RECORD_TAB_LABELS: Record<RecordTab, string> = {
   overview: "Overview",
   tasks: "Tasks",
+  projects: "Projects",
   offers: "Offers",
   documents: "Documents",
   comments: "Comments",

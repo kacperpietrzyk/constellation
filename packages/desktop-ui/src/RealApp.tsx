@@ -102,6 +102,9 @@ import {
 const ProjectRecordScreen = lazy(
   () => import("./record/ProjectRecordScreen.js"),
 );
+const WorkContextRecordHost = lazy(
+  () => import("./record/WorkContextRecordHost.js"),
+);
 // Lazy for exactly the same measured reason. Tasks is an EAGER destination
 // (⌘4), so anything this file imports statically for it lands in the first
 // paint — and the record screen with its stylesheet and the comments panel is
@@ -188,6 +191,7 @@ import {
 import {
   activateShellContext,
   activeShellContext,
+  areaContext,
   canMoveShellHistory,
   closeShellContext,
   createShellNavigation,
@@ -207,6 +211,7 @@ import {
   serializeShellNavigation,
   settingsCategoryContext,
   opportunityContext,
+  initiativeContext,
   taskContext,
   tasksSavedViewContext,
   type ShellContext,
@@ -1023,6 +1028,16 @@ export const RealApp = ({
         ? snapshot.projects.data.items.map((project) => project.id)
         : [],
     );
+    const areaIds = new Set(
+      snapshot.work.kind === "ready"
+        ? snapshot.work.data.areas.map((area) => area.id)
+        : [],
+    );
+    const initiativeIds = new Set(
+      snapshot.work.kind === "ready"
+        ? snapshot.work.data.initiatives.map((initiative) => initiative.id)
+        : [],
+    );
     const documentIds = new Set(
       snapshot.documents.kind === "ready"
         ? snapshot.documents.data.items.map((document) => document.id)
@@ -1048,6 +1063,8 @@ export const RealApp = ({
         {
           taskIds,
           projectIds,
+          areaIds,
+          initiativeIds,
           documentIds,
           organizationIds,
           opportunityIds,
@@ -1632,6 +1649,10 @@ export const RealApp = ({
       message,
       ...(undoCommandId === undefined ? {} : { undoCommandId }),
     });
+  };
+  const refreshAfterWithoutUndo = async (message: string) => {
+    await reloadSnapshot();
+    pushToast({ message });
   };
   const writeWorkContextNarrative = () => {
     const record = selectedWorkContextRecord;
@@ -2620,6 +2641,45 @@ export const RealApp = ({
     </LazySurfaceBoundary>
   );
 
+  const contextRecordPanel =
+    client !== undefined &&
+    (activeContext.areaId !== undefined ||
+      activeContext.initiativeId !== undefined) ? (
+      <Suspense fallback={<p className="capacity-note">Opening the record…</p>}>
+        <WorkContextRecordHost
+          client={client}
+          snapshot={state.snapshot}
+          {...(activeContext.areaId === undefined
+            ? {}
+            : { areaId: activeContext.areaId })}
+          {...(activeContext.initiativeId === undefined
+            ? {}
+            : { initiativeId: activeContext.initiativeId })}
+          onBack={() => openContext(destinationContext("projects", "Projects"))}
+          onOpenTask={(taskId) => {
+            const task = state.snapshot.tasks.find(
+              (item) => item.id === taskId,
+            );
+            openContext(
+              taskContext(taskId, task?.title ?? "Task", { record: true }),
+            );
+          }}
+          onOpenProject={(projectId) => {
+            const project =
+              state.snapshot.projects.kind === "ready"
+                ? state.snapshot.projects.data.items.find(
+                    (item) => item.id === projectId,
+                  )
+                : undefined;
+            openContext(projectContext(projectId, project?.title ?? "Project"));
+          }}
+          onWrote={refreshAfter}
+          onWroteWithoutUndo={refreshAfterWithoutUndo}
+          onFailure={showFailure}
+        />
+      </Suspense>
+    ) : undefined;
+
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
       <TodaySurface
@@ -2942,6 +3002,60 @@ export const RealApp = ({
               ? {}
               : { requestedCategory: activeContext.settingsCategory })}
             onUndo={(id) => void openUndo(id)}
+            onOpenActivityRecord={(recordKind, recordId) => {
+              if (recordKind === "area") {
+                const area =
+                  state.snapshot.work.kind === "ready"
+                    ? state.snapshot.work.data.areas.find(
+                        (item) => item.id === recordId,
+                      )
+                    : undefined;
+                if (area !== undefined)
+                  openContext(areaContext(area.id, area.title));
+                return;
+              }
+              if (recordKind === "initiative") {
+                const initiative =
+                  state.snapshot.work.kind === "ready"
+                    ? state.snapshot.work.data.initiatives.find(
+                        (item) => item.id === recordId,
+                      )
+                    : undefined;
+                if (initiative !== undefined)
+                  openContext(
+                    initiativeContext(initiative.id, initiative.title),
+                  );
+                return;
+              }
+              if (recordKind === "task") {
+                const task = state.snapshot.tasks.find(
+                  (item) => item.id === recordId,
+                );
+                openContext(
+                  taskContext(recordId as TaskId, task?.title ?? "Task", {
+                    record: true,
+                  }),
+                );
+                return;
+              }
+              if (recordKind === "project") {
+                const project =
+                  state.snapshot.projects.kind === "ready"
+                    ? state.snapshot.projects.data.items.find(
+                        (item) => item.id === recordId,
+                      )
+                    : undefined;
+                openContext(
+                  projectContext(
+                    recordId as ProjectId,
+                    project?.title ?? "Project",
+                  ),
+                );
+                return;
+              }
+              setSelectedStrategicId(recordId);
+              openContext(destinationContext("organizations", "Organizations"));
+            }}
           />
         </Suspense>
       </LazySurfaceBoundary>
@@ -3226,6 +3340,7 @@ export const RealApp = ({
     projects: () => (
       <ProjectsSurface
         client={client}
+        contextRecord={contextRecordPanel}
         snapshot={state.snapshot}
         selectedProjectId={selectedProjectId}
         activeProjectId={activeContext.projectId}
@@ -3550,6 +3665,14 @@ export const RealApp = ({
         // opens it in the inspector drawer, beside the projects it holds.
         selectedContextId={selectedWorkContext?.id}
         onSelectContext={selectWorkContextInInspector}
+        onOpenContext={(kind, id, title) => {
+          setSelectedWorkContext(undefined);
+          openContext(
+            kind === "area"
+              ? areaContext(id as StrategicRecordId, title)
+              : initiativeContext(id as StrategicRecordId, title),
+          );
+        }}
         onReload={reload}
         onFailure={showFailure}
       />
@@ -5670,12 +5793,38 @@ export const RealApp = ({
             }
             openContext(destinationContext(nextSurface, label));
           }}
-          onNavigate={(nextSurface, recordId) => {
+          onNavigate={(nextSurface, recordId, recordKind, title) => {
             if (nextSurface === "tasks") {
               const id = recordId as TaskId;
               const task = tasks.find((item) => item.id === id);
               openContext(taskContext(id, task?.title ?? "Task"));
             } else if (nextSurface === "projects") {
+              if (recordKind === "area") {
+                openContext(areaContext(recordId as StrategicRecordId, title));
+                return;
+              }
+              if (recordKind === "initiative") {
+                openContext(
+                  initiativeContext(recordId as StrategicRecordId, title),
+                );
+                return;
+              }
+              const work =
+                state.snapshot.work.kind === "ready"
+                  ? state.snapshot.work.data
+                  : undefined;
+              const area = work?.areas.find((item) => item.id === recordId);
+              if (area !== undefined) {
+                openContext(areaContext(area.id, area.title));
+                return;
+              }
+              const initiative = work?.initiatives.find(
+                (item) => item.id === recordId,
+              );
+              if (initiative !== undefined) {
+                openContext(initiativeContext(initiative.id, initiative.title));
+                return;
+              }
               const id = recordId as ProjectId;
               const project =
                 state.snapshot.projects.kind === "ready"

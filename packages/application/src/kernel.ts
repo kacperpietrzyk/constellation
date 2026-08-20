@@ -591,9 +591,13 @@ const isCurrentlyAuthorized = (
     case "area.create":
     case "area.remove":
     case "area.updateResponsibility":
+    case "area.archive":
+    case "area.restore":
     case "initiative.create":
     case "initiative.remove":
     case "initiative.updateOutcome":
+    case "initiative.close":
+    case "initiative.reopen":
     case "work.linkCreate":
     case "work.linkRemove":
     case "savedView.create":
@@ -1102,9 +1106,13 @@ export class ApplicationKernel {
       case "area.create":
       case "area.remove":
       case "area.updateResponsibility":
+      case "area.archive":
+      case "area.restore":
       case "initiative.create":
       case "initiative.remove":
       case "initiative.updateOutcome":
+      case "initiative.close":
+      case "initiative.reopen":
       case "work.linkCreate":
       case "work.linkRemove":
       case "savedView.create":
@@ -3191,6 +3199,8 @@ export class ApplicationKernel {
         case "organization.list":
         case "radar.review":
         case "project.operationalOverview":
+        case "area.operationalOverview":
+        case "initiative.operationalOverview":
         case "organization.operationalOverview":
         case "search.global":
         case "cockpit.week":

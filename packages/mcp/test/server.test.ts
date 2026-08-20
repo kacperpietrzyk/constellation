@@ -441,12 +441,14 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         "agent.checkpoint.revert",
         "agent.checkpointCreate",
         "agent.checkpointPreviewRevert",
+        "area.operationalOverview",
         // `agent.checkpointRevert` is deliberately NOT here; the two
         // assertions after this list say why.
         "capture.writeTranscript",
         // Unconditional: a batch authorizes each item, so any grant that can
         // run a command can batch it (ADR-048).
         "command.batch",
+        "initiative.operationalOverview",
         // Its sibling meeting.linkParticipants is deliberately ABSENT: this
         // scope holds the command's own capability and not the second one the
         // kernel consults, so the operation is unreachable and saying

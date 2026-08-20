@@ -94,12 +94,16 @@ test("200-event Activity keeps authorized filters, grouped evidence and honest f
   const { ActivitySection } =
     await import("../src/settings/ActivitySection.js");
   root = createRoot(container);
+  let opened: { kind: string; id: string } | undefined;
   await act(async () => {
     root.render(
       createElement(ActivitySection, {
         activity: activity(),
         timezone: "Europe/Warsaw",
         onUndo: () => undefined,
+        onOpenRecord: (kind, recordId) => {
+          opened = { kind, id: recordId };
+        },
         onRetry: () => undefined,
       }),
     );
@@ -130,7 +134,15 @@ test("200-event Activity keeps authorized filters, grouped evidence and honest f
   await act(async () => firstSummary.click());
   const open = firstSummary.closest("details");
   assert.equal(open?.open, true);
-  assert.equal(open?.querySelectorAll("button").length, 2);
+  assert.equal(open?.querySelectorAll("button").length, 4);
+  const firstRecord = [
+    ...(open?.querySelectorAll<HTMLButtonElement>("button") ?? []),
+  ].find((button) =>
+    (button.textContent ?? "").includes("Observable record 1"),
+  );
+  assert.ok(firstRecord, "the Activity row has no record destination");
+  await act(async () => firstRecord.click());
+  assert.deepEqual(opened, { kind: "task", id: id(601) });
   assert.equal(open?.textContent?.includes("Observable record"), true);
   assert.equal(
     open?.textContent?.includes("Linked a task directly to an Area"),

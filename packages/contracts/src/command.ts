@@ -1473,6 +1473,16 @@ export const AreaRemoveCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
+export const AreaArchiveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("area.archive"),
+  payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const AreaRestoreCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("area.restore"),
+  payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
 export const InitiativeCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("initiative.create"),
   payload: z
@@ -1498,6 +1508,16 @@ export const InitiativeUpdateOutcomeCommandSchema =
 
 export const InitiativeRemoveCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("initiative.remove"),
+  payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const InitiativeCloseCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("initiative.close"),
+  payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const InitiativeReopenCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("initiative.reopen"),
   payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
@@ -2823,9 +2843,13 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AreaCreateCommandSchema,
   AreaRemoveCommandSchema,
   AreaUpdateResponsibilityCommandSchema,
+  AreaArchiveCommandSchema,
+  AreaRestoreCommandSchema,
   InitiativeCreateCommandSchema,
   InitiativeRemoveCommandSchema,
   InitiativeUpdateOutcomeCommandSchema,
+  InitiativeCloseCommandSchema,
+  InitiativeReopenCommandSchema,
   WorkLinkCreateCommandSchema,
   WorkLinkRemoveCommandSchema,
   SavedViewCreateCommandSchema,

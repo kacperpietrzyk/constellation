@@ -216,6 +216,9 @@ export const NATIVE_CONTROL_LEDGER = {
   "projects/ProjectContextPanel.tsx": 6,
   "record/ProjectRecordOverview.tsx": 1,
   "record/RecordCommentsPanel.tsx": 2,
+  // Four bounded native fields keep direct Task/Project authoring keyboard-first
+  // on the Area/Initiative record; no generic relation builder is introduced.
+  "record/WorkContextRecordScreen.tsx": 4,
   "record/TaskOperationsPanel.tsx": 4,
   "renewals/RenewalsSurface.tsx": 9,
   "settings/AccessSection.tsx": 13,

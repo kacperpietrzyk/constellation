@@ -82,8 +82,14 @@ const context = (): ExecutionContext =>
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
       "decision.create",
+      "area.create",
       "area.remove",
+      "area.updateResponsibility",
+      "initiative.create",
       "initiative.remove",
+      "initiative.updateOutcome",
+      "work.linkCreate",
+      "work.linkRemove",
       "meeting.upsertImported",
       "meeting.detachNote",
       "relationship.workspace",
@@ -4476,6 +4482,353 @@ describe("Wave 2 reference semantics", () => {
         .snapshot()
         .relations.find((item) => item.id === areaRelationId)?.version,
       3,
+    );
+  });
+
+  it("projects bounded first-class Area and Initiative overviews without conflating indirect Task context", () => {
+    const harness = setup();
+    const directTaskId = createTask(harness, "Carry direct strategic work");
+    const indirectTaskId = createTask(harness, "Carry project-scoped work");
+    const { projectId: areaProjectId } = createProjectRecord(
+      harness,
+      "Serve the durable responsibility",
+    );
+    const { projectId: initiativeProjectId } = createProjectRecord(
+      harness,
+      "Advance the finite outcome",
+    );
+    const areaId = StrategicRecordIdSchema.parse(requestId());
+    const initiativeId = StrategicRecordIdSchema.parse(requestId());
+
+    for (const command of [
+      {
+        ...metadata("overview-area-create", {}),
+        commandName: "area.create" as const,
+        payload: {
+          areaId,
+          spaceId: ids.rootSpace,
+          title: "Product stewardship",
+          responsibility: "Keep the product useful after each delivery closes.",
+        },
+      },
+      {
+        ...metadata("overview-initiative-create", {}),
+        commandName: "initiative.create" as const,
+        payload: {
+          initiativeId,
+          spaceId: ids.rootSpace,
+          title: "Adopt the operating standard",
+          intendedOutcome: "Every live record has the right operational shape.",
+        },
+      },
+    ])
+      assert.equal(
+        unwrap(harness.kernel.execute(context(), command)).outcome,
+        "success",
+      );
+
+    const directRelations = [
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-direct-area", {
+            [directTaskId]: 1,
+            [areaId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_area",
+            taskId: directTaskId,
+            areaId,
+          },
+        }),
+      ),
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-direct-initiative", {
+            [directTaskId]: 1,
+            [initiativeId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_advances_initiative",
+            taskId: directTaskId,
+            initiativeId,
+          },
+        }),
+      ),
+    ];
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-project-only-task", {
+            [indirectTaskId]: 1,
+            [areaProjectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId: indirectTaskId,
+            projectId: areaProjectId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const workLinks = [
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-area-project", {}),
+          commandName: "work.linkCreate",
+          payload: {
+            linkId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            linkType: "project_serves_area",
+            sourceRecordId: areaProjectId,
+            targetRecordId: areaId,
+          },
+        }),
+      ),
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-initiative-project", {}),
+          commandName: "work.linkCreate",
+          payload: {
+            linkId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            linkType: "project_advances_initiative",
+            sourceRecordId: initiativeProjectId,
+            targetRecordId: initiativeId,
+          },
+        }),
+      ),
+    ];
+
+    const area = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "area.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { areaId },
+    });
+    if (
+      area.kind !== "query_result" ||
+      area.result.outcome !== "success" ||
+      area.result.projection.kind !== "area.operationalOverview"
+    )
+      assert.fail(
+        `Expected Area operational overview: ${JSON.stringify(area)}`,
+      );
+    assert.equal(
+      area.result.projection.area.responsibility.includes("useful"),
+      true,
+    );
+    assert.equal(area.result.projection.directTaskCount, 1);
+    assert.deepEqual(
+      area.result.projection.directTasks.map((task) => task.id),
+      [directTaskId],
+      "a Task reached only through a Project must not become direct Area work",
+    );
+    assert.equal(
+      area.result.projection.projects[0]?.id,
+      areaProjectId,
+      JSON.stringify(area.result.projection),
+    );
+    assert.equal(area.result.projection.projectCount, 1);
+    assert.equal(
+      area.result.projection.directTasks[0]?.relationId,
+      directRelations[0]?.outcome === "success" &&
+        directRelations[0].projection.kind === "relation.created"
+        ? directRelations[0].projection.relationId
+        : undefined,
+    );
+
+    const initiative = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "initiative.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { initiativeId },
+    });
+    if (
+      initiative.kind !== "query_result" ||
+      initiative.result.outcome !== "success" ||
+      initiative.result.projection.kind !== "initiative.operationalOverview"
+    )
+      assert.fail(
+        `Expected Initiative operational overview: ${JSON.stringify(initiative)}`,
+      );
+    assert.equal(
+      initiative.result.projection.initiative.intendedOutcome.includes("right"),
+      true,
+    );
+    assert.deepEqual(
+      initiative.result.projection.directTasks.map((task) => task.id),
+      [directTaskId],
+    );
+    assert.equal(
+      initiative.result.projection.projects[0]?.id,
+      initiativeProjectId,
+    );
+    assert.equal(initiative.result.projection.projectCount, 1);
+    assert.equal(
+      workLinks.every((result) => result.outcome === "success"),
+      true,
+    );
+
+    const lifecycle = (
+      commandName:
+        | "area.archive"
+        | "area.restore"
+        | "initiative.close"
+        | "initiative.reopen",
+      idField: "areaId" | "initiativeId",
+      id: typeof areaId,
+      version: number,
+    ) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`lifecycle-${commandName}-${version}`, { [id]: version }),
+          commandName,
+          payload: { [idField]: id },
+        }),
+      );
+    assert.equal(
+      lifecycle("area.archive", "areaId", areaId, 1).outcome,
+      "success",
+    );
+    const archivedArea = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "area.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { areaId },
+    });
+    if (
+      archivedArea.kind !== "query_result" ||
+      archivedArea.result.outcome !== "success" ||
+      archivedArea.result.projection.kind !== "area.operationalOverview"
+    )
+      assert.fail("Expected archived Area overview.");
+    assert.equal(archivedArea.result.projection.area.state, "archived");
+    assert.equal(
+      lifecycle("area.restore", "areaId", areaId, 2).outcome,
+      "success",
+    );
+    assert.equal(
+      lifecycle("initiative.close", "initiativeId", initiativeId, 1).outcome,
+      "success",
+    );
+    assert.equal(
+      lifecycle("initiative.reopen", "initiativeId", initiativeId, 2).outcome,
+      "success",
+    );
+    const staleLifecycle = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("lifecycle-stale-area", { [areaId]: 1 }),
+        commandName: "area.archive",
+        payload: { areaId },
+      }),
+    );
+    assert.equal(
+      staleLifecycle.diagnosticCode,
+      "record.version_conflict",
+      "a stale lifecycle action must not overwrite a newer narrative or state",
+    );
+
+    harness.authorization.revoke(context().grantId);
+    const denied = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "area.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { areaId },
+    });
+    assert.equal(
+      denied.kind === "query_result" ? denied.result.outcome : denied.kind,
+      "rejected",
+    );
+  });
+
+  it("refuses Area and Initiative lifecycle changes after soft removal", () => {
+    const harness = setup();
+    const removedAreaId = StrategicRecordIdSchema.parse(requestId());
+    const removedInitiativeId = StrategicRecordIdSchema.parse(requestId());
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-area-create", {}),
+          commandName: "area.create",
+          payload: {
+            areaId: removedAreaId,
+            spaceId: ids.rootSpace,
+            title: "Removed Area",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-initiative-create", {}),
+          commandName: "initiative.create",
+          payload: {
+            initiativeId: removedInitiativeId,
+            spaceId: ids.rootSpace,
+            title: "Removed Initiative",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-area-remove", { [removedAreaId]: 1 }),
+          commandName: "area.remove",
+          payload: { areaId: removedAreaId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-initiative-remove", {
+            [removedInitiativeId]: 1,
+          }),
+          commandName: "initiative.remove",
+          payload: { initiativeId: removedInitiativeId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-area-archive", { [removedAreaId]: 2 }),
+          commandName: "area.archive",
+          payload: { areaId: removedAreaId },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-initiative-close", {
+            [removedInitiativeId]: 2,
+          }),
+          commandName: "initiative.close",
+          payload: { initiativeId: removedInitiativeId },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
     );
   });
 

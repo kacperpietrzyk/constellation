@@ -126,6 +126,7 @@ describe("application contracts", () => {
       "decision",
       "impact_review",
       "area",
+      "initiative",
       "recurrence",
       "radar_candidate",
       "meeting",
@@ -184,6 +185,44 @@ describe("application contracts", () => {
       }).ok,
       true,
     );
+  });
+
+  it("accepts bounded first-class Area and Initiative operational overview queries", () => {
+    for (const [queryName, idField] of [
+      ["area.operationalOverview", "areaId"],
+      ["initiative.operationalOverview", "initiativeId"],
+    ] as const) {
+      const result = validateQueryEnvelope({
+        contractVersion: 1,
+        queryName,
+        queryId: ids.query,
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { [idField]: ids.command },
+      });
+      assert.equal(result.ok, true, JSON.stringify(result));
+    }
+  });
+
+  it("accepts exact-version Area and Initiative lifecycle commands", () => {
+    for (const [commandName, idField] of [
+      ["area.archive", "areaId"],
+      ["area.restore", "areaId"],
+      ["initiative.close", "initiativeId"],
+      ["initiative.reopen", "initiativeId"],
+    ] as const) {
+      const result = validateCommandEnvelope({
+        contractVersion: 1,
+        commandName,
+        commandId: ids.command,
+        workspaceId: ids.workspace,
+        idempotencyKey: `lifecycle-${commandName}`,
+        expectedVersions: { [ids.query]: 3 },
+        correlationId: ids.correlation,
+        payload: { [idField]: ids.query },
+      });
+      assert.equal(result.ok, true, JSON.stringify(result));
+    }
   });
 
   it("takes the four saved-view filters a task query could not express", () => {

@@ -72,6 +72,9 @@ export type ProjectListProjection = Projection<"project.list">;
 export type WorkOverviewProjection = Projection<"work.overview">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
+export type AreaOverviewProjection = Projection<"area.operationalOverview">;
+export type InitiativeOverviewProjection =
+  Projection<"initiative.operationalOverview">;
 export type OrganizationOverviewProjection =
   Projection<"organization.operationalOverview">;
 export type SearchProjection = Projection<"search.global">;
@@ -1644,6 +1647,62 @@ export const loadProjectOverview = (
     "project.operationalOverview",
   );
 
+export const loadAreaOverview = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  areaId: StrategicRecordId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope("area.operationalOverview", snapshot.bootstrap.workspace.id, {
+      areaId,
+    }),
+    "area.operationalOverview",
+  );
+
+export const loadInitiativeOverview = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  initiativeId: StrategicRecordId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "initiative.operationalOverview",
+      snapshot.bootstrap.workspace.id,
+      { initiativeId },
+    ),
+    "initiative.operationalOverview",
+  );
+
+export const loadWorkContextCandidates = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  spaceId: SpaceId,
+): Promise<{
+  readonly tasks: TaskListProjection["items"];
+  readonly projects: ProjectListProjection["items"];
+}> => {
+  const [tasks, projects] = await Promise.all([
+    queryProjection(
+      client,
+      queryEnvelope("task.list", snapshot.bootstrap.workspace.id, {
+        spaceId,
+        limit: 100,
+      }),
+      "task.list",
+    ),
+    queryProjection(
+      client,
+      queryEnvelope("project.list", snapshot.bootstrap.workspace.id, {
+        spaceId,
+      }),
+      "project.list",
+    ),
+  ]);
+  return { tasks: tasks.items, projects: projects.items };
+};
+
 export const loadOrganizationOverview = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -2021,6 +2080,28 @@ export const updateAreaResponsibility = (
         : undefined,
   );
 
+export const setAreaLifecycle = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  area: { readonly id: StrategicRecordId; readonly version: number },
+  state: "active" | "archived",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [area.id]: area.version,
+      }),
+      commandName: state === "archived" ? "area.archive" : "area.restore",
+      payload: { areaId: area.id },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const createInitiative = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -2062,6 +2143,29 @@ export const updateInitiativeOutcome = (
       }),
       commandName: "initiative.updateOutcome",
       payload: { initiativeId: initiative.id, intendedOutcome },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setInitiativeLifecycle = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  initiative: { readonly id: StrategicRecordId; readonly version: number },
+  state: "active" | "closed",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [initiative.id]: initiative.version,
+      }),
+      commandName:
+        state === "closed" ? "initiative.close" : "initiative.reopen",
+      payload: { initiativeId: initiative.id },
     },
     (response) =>
       response.outcome.outcome === "success" &&
@@ -3730,6 +3834,7 @@ export const createTask = (
     readonly description?: string;
     readonly nextAction?: string;
     readonly parentTaskId?: TaskId;
+    readonly spaceId?: SpaceId;
   },
 ) =>
   execute(
@@ -3739,7 +3844,7 @@ export const createTask = (
       commandName: "task.create",
       payload: {
         taskId: crypto.randomUUID(),
-        spaceId: firstSpace(snapshot),
+        spaceId: input.spaceId ?? firstSpace(snapshot),
         title: input.title,
         ...(input.description === undefined || input.description === ""
           ? {}

@@ -222,10 +222,8 @@ export const humanRecordKindRegistry = [
   {
     id: "initiative",
     label: "Initiative",
-    searchable: false,
-    searchSource: null,
-    // Obszary i inicjatywy mieszkają na ekranie Projektów: projekt jest
-    // jedyną rzeczą, którą się pod nie podpina.
+    searchable: true,
+    searchSource: "strategic",
     inspectorSurface: "projects",
   },
   {

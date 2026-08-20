@@ -95,10 +95,12 @@ const ActivityRow = ({
   item,
   timezone,
   onUndo,
+  onOpenRecord,
 }: {
   readonly item: ActivityItem;
   readonly timezone: string | undefined;
   readonly onUndo: (targetCommandId: CommandId) => void;
+  readonly onOpenRecord: (recordKind: string, recordId: string) => void;
 }) => {
   const itemCategory = activityCategoryFor(item);
   const relationLabel = activityRelationLabel(item);
@@ -117,12 +119,18 @@ const ActivityRow = ({
             : `${item.actor.displayName}${item.actor.kind === "agent" ? " · agent" : ""}`}{" "}
           · {formatDateTime(item.occurredAt, timezone)}
         </small>
-        <strong>
-          {item.recordTitle ?? "Record details unavailable"}
-          {item.recordKind === undefined
-            ? ""
-            : ` · ${activityRecordKindLabel(item.recordKind)}`}
-        </strong>
+        {item.recordKind === undefined ? (
+          <strong>{item.recordTitle ?? "Record details unavailable"}</strong>
+        ) : (
+          <button
+            className={styles.recordLink}
+            onClick={() => onOpenRecord(item.recordKind!, item.recordId)}
+            type="button"
+          >
+            {item.recordTitle ?? "Record details unavailable"} ·{" "}
+            {activityRecordKindLabel(item.recordKind)}
+          </button>
+        )}
         <span className={styles.action}>{activityLabelFor(item)}</span>
         {relationLabel !== undefined && <code>{relationLabel}</code>}
         {item.changedFields !== undefined && item.changedFields.length > 0 && (
@@ -144,11 +152,13 @@ export const ActivitySection = ({
   activity,
   timezone,
   onUndo,
+  onOpenRecord = () => undefined,
   onRetry,
 }: {
   readonly activity: DesktopSnapshot["activity"];
   readonly timezone?: string;
   readonly onUndo: (targetCommandId: CommandId) => void;
+  readonly onOpenRecord?: (recordKind: string, recordId: string) => void;
   readonly onRetry: () => void;
 }) => {
   const [query, setQuery] = useState("");
@@ -373,6 +383,7 @@ export const ActivitySection = ({
                             item={item}
                             timezone={timezone}
                             onUndo={onUndo}
+                            onOpenRecord={onOpenRecord}
                           />
                         );
                       }
@@ -401,6 +412,7 @@ export const ActivitySection = ({
                                   item={item}
                                   timezone={timezone}
                                   onUndo={onUndo}
+                                  onOpenRecord={onOpenRecord}
                                 />
                               ))}
                             </ol>

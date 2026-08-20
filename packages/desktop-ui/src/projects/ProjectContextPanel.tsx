@@ -45,6 +45,7 @@ export const ProjectContextPanel = ({
   snapshot,
   selectedContextId,
   onSelectContext,
+  onOpenContext,
   onReload,
   onFailure,
 }: {
@@ -52,6 +53,11 @@ export const ProjectContextPanel = ({
   readonly snapshot: DesktopSnapshot;
   readonly selectedContextId: string | undefined;
   readonly onSelectContext: (kind: WorkContextKind, id: string) => void;
+  readonly onOpenContext: (
+    kind: WorkContextKind,
+    id: StrategicRecordId,
+    title: string,
+  ) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
@@ -253,6 +259,7 @@ export const ProjectContextPanel = ({
           }`}
           data-work-context={kind}
           onClick={() => onSelectContext(kind, item.id)}
+          onDoubleClick={() => onOpenContext(kind, item.id, item.title)}
           type="button"
         >
           <span className={styles.rowCopy}>
@@ -276,6 +283,14 @@ export const ProjectContextPanel = ({
                 : `Direct tasks · ${directTasks.join(" · ")}`}
             </small>
           </span>
+        </button>
+        <button
+          aria-label={`Open ${kind} ${item.title}`}
+          className={styles.openRecord}
+          onClick={() => onOpenContext(kind, item.id, item.title)}
+          type="button"
+        >
+          Open
         </button>
       </li>
     );
