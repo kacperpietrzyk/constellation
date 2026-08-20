@@ -32,6 +32,7 @@ import {
   type CapturePayloadId,
   type PrincipalId,
   type ProjectId,
+  type ProjectCheckInId,
   type RelationId,
   type SpaceGrantId,
   type SpaceId,
@@ -66,6 +67,7 @@ import type {
   ProjectTemplate,
   OutboxEntry,
   Project,
+  ProjectCheckIn,
   Space,
   SpaceGrant,
   Task,
@@ -95,7 +97,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 28;
+export const LOCAL_STORE_SCHEMA_VERSION = 29;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -129,6 +131,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "knowledge_sources",
   "undo_descriptors",
   "task_assignments",
+  "project_check_ins",
   "projects",
   "tasks",
   "captures",
@@ -1155,6 +1158,24 @@ const schemaV28 = `
     WHERE state = 'active' AND initiative_id IS NOT NULL;
 `;
 
+const schemaV29 = `
+  CREATE TABLE project_check_ins (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    supersedes_check_in_id TEXT REFERENCES project_check_ins(id),
+    created_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    state TEXT NOT NULL CHECK (state IN ('active', 'voided')),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX project_check_ins_history
+    ON project_check_ins(project_id, created_at DESC, id ASC);
+  CREATE INDEX project_check_ins_scope
+    ON project_check_ins(workspace_id, space_id, project_id, state);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -1184,6 +1205,7 @@ const localStoreMigrations = [
   schemaV26,
   schemaV27,
   schemaV28,
+  schemaV29,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -2079,6 +2101,48 @@ class SqliteReadView implements ApplicationWave2ReadView {
           spaceId,
         });
       });
+  }
+
+  public getProjectCheckIn(id: ProjectCheckInId): ProjectCheckIn | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, project_id, payload_json FROM project_check_ins WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<ProjectCheckIn>(row, "id", id, "project check-in", {
+          workspaceId: stringValue(row, "workspace_id", "project check-in"),
+          spaceId: stringValue(row, "space_id", "project check-in"),
+          projectId: stringValue(row, "project_id", "project check-in"),
+        });
+  }
+
+  public listProjectCheckIns(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    projectId?: ProjectId,
+  ): readonly ProjectCheckIn[] {
+    const rows =
+      projectId === undefined
+        ? this.database
+            .prepare(
+              "SELECT id, workspace_id, space_id, project_id, payload_json FROM project_check_ins WHERE workspace_id = ? AND space_id = ? ORDER BY created_at DESC, id ASC",
+            )
+            .all(workspaceId, spaceId)
+        : this.database
+            .prepare(
+              "SELECT id, workspace_id, space_id, project_id, payload_json FROM project_check_ins WHERE workspace_id = ? AND space_id = ? AND project_id = ? ORDER BY created_at DESC, id ASC",
+            )
+            .all(workspaceId, spaceId, projectId);
+    return rows.map((row) => {
+      const id = stringValue(row, "id", "project check-in");
+      return parsePayload<ProjectCheckIn>(row, "id", id, "project check-in", {
+        workspaceId,
+        spaceId,
+        projectId: stringValue(row, "project_id", "project check-in"),
+      });
+    });
   }
 
   public getDocument(id: DocumentId): NativeDocument | undefined {
@@ -3300,6 +3364,51 @@ class SqliteTransaction
         .run(
           record.updatedAt,
           record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+  public insertProjectCheckIn(record: ProjectCheckIn): void {
+    this.insert(
+      "project_check_ins",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "project_id",
+        "supersedes_check_in_id",
+        "created_at",
+        "version",
+        "state",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.projectId,
+        record.supersedesCheckInId ?? null,
+        record.createdAt,
+        record.version,
+        record.state,
+        payload(record),
+      ],
+    );
+  }
+  public updateProjectCheckIn(
+    record: ProjectCheckIn,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE project_check_ins SET version = ?, state = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.version,
+          record.state,
           payload(record),
           record.id,
           expectedVersion,
@@ -4775,6 +4884,12 @@ export class SqliteApplicationStore
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
       projects: records("projects", "id", "id", "project"),
+      projectCheckIns: records(
+        "project_check_ins",
+        "id",
+        "id",
+        "project check-in",
+      ),
       documents: records("documents", "id", "id", "document"),
       folders: records("folders", "id", "id", "folder"),
       knowledgeSources: records(
@@ -5143,6 +5258,9 @@ export class SqliteApplicationStore
       transaction.insertTaskAssignment(value),
     );
     snapshot.projects.forEach((value) => transaction.insertProject(value));
+    (snapshot.projectCheckIns ?? []).forEach((value) =>
+      transaction.insertProjectCheckIn(value),
+    );
     (snapshot.documents ?? []).forEach((value) =>
       transaction.insertDocument(value),
     );

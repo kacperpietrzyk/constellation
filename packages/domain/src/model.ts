@@ -17,6 +17,8 @@ import type {
   PrincipalId,
   PrincipalKind,
   ProjectId,
+  ProjectCheckInId,
+  ProjectCheckInReference,
   RelationId,
   RequestOrigin,
   SpaceId,
@@ -586,6 +588,30 @@ export interface Project {
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface ProjectCheckIn {
+  readonly id: ProjectCheckInId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly projectId: ProjectId;
+  readonly summary: string;
+  readonly waitingOn?: string;
+  readonly nextCheckpointAt?: string;
+  readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+  readonly references: readonly ProjectCheckInReference[];
+  readonly supersedesCheckInId?: ProjectCheckInId;
+  readonly supersededByCheckInId?: ProjectCheckInId;
+  readonly state: "active" | "voided";
+  readonly authorPrincipalId: PrincipalId;
+  readonly authorPrincipalKind?: PrincipalKind;
+  readonly authorGrantId?: GrantId;
+  readonly agentRunId?: AgentRunId;
+  readonly hostRunId?: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly voidedAt?: string;
+  readonly voidedBy?: PrincipalId;
 }
 
 /**
@@ -1291,6 +1317,17 @@ export type UndoDescriptor =
       // the narrative while silently keeping the new provenance.
       readonly priorEvidenceSourceIds?: readonly KnowledgeSourceId[];
       readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project_check_in.void";
+      readonly checkInId: ProjectCheckInId;
+      readonly resultingVersion: number;
+      readonly predecessorCheckInId?: ProjectCheckInId;
+      readonly resultingPredecessorVersion?: number;
       readonly consumedByCommandId?: CommandId;
     }
   | {
@@ -2034,6 +2071,16 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly spaceId: SpaceId;
       readonly aggregateId: ProjectId;
       readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "project.check_in_added" | "project.check_in_voided";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: ProjectCheckInId;
+      readonly aggregateVersion: number;
+      readonly projectId: ProjectId;
       readonly occurredAt: string;
     }
   | {

@@ -7,6 +7,7 @@ import {
   type CommandId,
   type DataHomeStatus,
   type ProjectId,
+  type ProjectCheckInId,
   type PrincipalId,
   type QueryName,
   type QueryProjection,
@@ -75,6 +76,36 @@ export type ProjectOverviewProjection =
 export type AreaOverviewProjection = Projection<"area.operationalOverview">;
 export type InitiativeOverviewProjection =
   Projection<"initiative.operationalOverview">;
+export type ProjectCheckInListProjection = Projection<"project.checkInList">;
+export type ProjectCheckInSlice =
+  | { readonly kind: "loading"; readonly projectId: ProjectId }
+  | {
+      readonly kind: "ready";
+      readonly projectId: ProjectId;
+      readonly data: ProjectCheckInListProjection;
+    }
+  | {
+      readonly kind: "unavailable";
+      readonly projectId: ProjectId;
+      readonly message: string;
+      readonly diagnosticCode?: string;
+    };
+
+export const projectCheckInSliceForProject = (
+  slice: ProjectCheckInSlice | undefined,
+  projectId: ProjectId,
+): ProjectCheckInSlice =>
+  slice?.projectId === projectId ? slice : { kind: "loading", projectId };
+
+export const acceptProjectCheckInLoad = (
+  current: ProjectCheckInSlice | undefined,
+  requestedProjectId: ProjectId,
+  data: ProjectCheckInListProjection,
+): ProjectCheckInSlice | undefined =>
+  current?.projectId === requestedProjectId &&
+  data.projectId === requestedProjectId
+    ? { kind: "ready", projectId: requestedProjectId, data }
+    : current;
 export type OrganizationOverviewProjection =
   Projection<"organization.operationalOverview">;
 export type SearchProjection = Projection<"search.global">;
@@ -1702,6 +1733,19 @@ export const loadWorkContextCandidates = async (
   ]);
   return { tasks: tasks.items, projects: projects.items };
 };
+
+export const loadProjectCheckIns = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope("project.checkInList", snapshot.bootstrap.workspace.id, {
+      projectId,
+    }),
+    "project.checkInList",
+  );
 
 export const loadOrganizationOverview = (
   client: ConstellationRendererClient,
@@ -3767,6 +3811,46 @@ export const revokeWorkspaceMember = (
         ? response.outcome.projection
         : undefined,
   );
+
+export const addProjectCheckIn = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: { readonly id: ProjectId; readonly version: number },
+  draft: {
+    readonly summary: string;
+    readonly waitingOn?: string;
+    readonly nextCheckpointAt?: string;
+  },
+) => {
+  const checkInId = crypto.randomUUID() as ProjectCheckInId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId,
+        projectId: project.id,
+        summary: draft.summary,
+        ...(draft.waitingOn === undefined
+          ? {}
+          : { waitingOn: draft.waitingOn }),
+        ...(draft.nextCheckpointAt === undefined
+          ? {}
+          : { nextCheckpointAt: draft.nextCheckpointAt }),
+        evidenceSourceIds: [],
+        references: [],
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.check_in_added"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
 
 export const updateProjectOutcome = (
   client: ConstellationRendererClient,

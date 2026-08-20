@@ -10,7 +10,11 @@ import {
   type ProjectProse,
   type ProjectReading,
 } from "../projects/project-view.js";
-import type { ProjectOverviewProjection } from "../client/workflow.js";
+import type {
+  ProjectCheckInListProjection,
+  ProjectCheckInSlice,
+  ProjectOverviewProjection,
+} from "../client/workflow.js";
 import { countLabel } from "../i18n.js";
 import { Icon } from "../components/Icon.js";
 import styles from "./project-record.module.css";
@@ -399,12 +403,60 @@ const ClientLinking = ({
   );
 };
 
+type ProjectCheckInItem = ProjectCheckInListProjection["items"][number];
+
+const CheckInEntry = ({
+  item,
+  latest = false,
+}: {
+  readonly item: ProjectCheckInItem;
+  readonly latest?: boolean;
+}) => (
+  <article
+    className={latest ? styles.checkInLatest : styles.checkInEarlier}
+    {...(latest ? { "data-latest-check-in": item.id } : {})}
+  >
+    <p>{item.summary}</p>
+    {item.waitingOn !== undefined && <p>Waiting on: {item.waitingOn}</p>}
+    {item.nextCheckpointAt !== undefined && (
+      <p>Next checkpoint: {item.nextCheckpointAt.slice(0, 10)}</p>
+    )}
+    {item.evidenceSourceIds.length > 0 && (
+      <p>Evidence: {countLabel(item.evidenceSourceIds.length, "source")}</p>
+    )}
+    {item.references.length > 0 && (
+      <ul>
+        {item.references.map((reference) => (
+          <li key={`${reference.kind}:${reference.recordId}`}>
+            {reference.label ?? "Reference unavailable"} · {reference.kind}
+          </li>
+        ))}
+      </ul>
+    )}
+    <small>
+      {item.actor?.displayName ?? "Author unavailable"} ·{" "}
+      {item.createdAt.slice(0, 10)}
+      {item.hostRunId === undefined ? "" : ` · ${item.hostRunId}`}
+      {item.state === "voided" ? " · Voided" : ""}
+      {item.supersededByCheckInId === undefined ? "" : " · Superseded"}
+    </small>
+  </article>
+);
+
 export interface ProjectRecordOverviewProps {
   /** The one reading of this project. Health is never recomputed here: two
    *  surfaces answering the same question twice is this repo's named repeat
    *  defect. */
   readonly reading: ProjectReading;
   readonly overview: ProjectOverviewProjection;
+  readonly checkIns?: ProjectCheckInSlice;
+  readonly busy?: boolean;
+  readonly onAddCheckIn?: (draft: {
+    readonly summary: string;
+    readonly waitingOn?: string;
+    readonly nextCheckpointAt?: string;
+  }) => Promise<boolean>;
+  readonly onReloadCheckIns?: () => void;
   readonly onOpenClient?: ((client: ClientOrganization) => void) | undefined;
   readonly onOpenSource?: ((source: EvidenceSource) => void) | undefined;
   /** Absent means this reader cannot write the outcome, and then the empty
@@ -441,6 +493,10 @@ export interface ProjectRecordOverviewProps {
 export const ProjectRecordOverview = ({
   reading,
   overview,
+  checkIns,
+  busy = false,
+  onAddCheckIn = async () => false,
+  onReloadCheckIns = () => undefined,
   onOpenClient,
   onOpenSource,
   onWriteOutcome,
@@ -455,6 +511,31 @@ export const ProjectRecordOverview = ({
   const sources = overview.evidenceSources;
   const meetings = overview.relatedMeetings;
   const decisions = overview.relatedDecisions;
+  const visibleCheckIns: ProjectCheckInSlice = checkIns ?? {
+    kind: "unavailable",
+    projectId: overview.project.id,
+    message: "Project check-ins are unavailable.",
+  };
+  const [checkInComposerOpen, setCheckInComposerOpen] = useState(false);
+  const [checkInDraft, setCheckInDraft] = useState({
+    summary: "",
+    waitingOn: "",
+    nextCheckpointDate: "",
+  });
+  const [checkInError, setCheckInError] = useState<string>();
+  const latestCheckIn =
+    visibleCheckIns.kind === "ready" &&
+    visibleCheckIns.data.latestCheckInId !== undefined
+      ? visibleCheckIns.data.items.find(
+          (item) => item.id === visibleCheckIns.data.latestCheckInId,
+        )
+      : undefined;
+  const historyCheckIns =
+    visibleCheckIns.kind === "ready"
+      ? visibleCheckIns.data.items.filter(
+          (item) => item.id !== latestCheckIn?.id,
+        )
+      : [];
   const written =
     !overview.project.needsReview && overview.project.intendedOutcome !== "";
   return (
@@ -507,6 +588,140 @@ export const ProjectRecordOverview = ({
       </section>
 
       <div className={styles.body}>
+        <section aria-label="Project check-ins" className={styles.checkIns}>
+          <div className={styles.checkInHeading}>
+            <h2 className={styles.docHeading}>Project check-ins</h2>
+            <button
+              className={styles.railAction}
+              disabled={busy}
+              onClick={() => setCheckInComposerOpen((open) => !open)}
+              type="button"
+            >
+              Add check-in
+            </button>
+          </div>
+          {visibleCheckIns.kind === "loading" ? (
+            <p role="status">Loading project check-ins…</p>
+          ) : visibleCheckIns.kind === "unavailable" ? (
+            <div role="status">
+              <p>{visibleCheckIns.message}</p>
+              <button
+                className={styles.railAction}
+                onClick={onReloadCheckIns}
+                type="button"
+              >
+                Try again
+              </button>
+            </div>
+          ) : visibleCheckIns.data.items.length === 0 ? (
+            <p className={styles.railNote}>No check-ins yet.</p>
+          ) : (
+            <>
+              {latestCheckIn === undefined ? (
+                <p className={styles.railNote}>No active check-in.</p>
+              ) : (
+                <CheckInEntry item={latestCheckIn} latest />
+              )}
+              {historyCheckIns.length > 0 && (
+                <details open={latestCheckIn === undefined}>
+                  <summary>
+                    {latestCheckIn === undefined
+                      ? "Check-in history"
+                      : "Earlier check-ins"}{" "}
+                    ({historyCheckIns.length})
+                  </summary>
+                  {historyCheckIns.map((item) => (
+                    <CheckInEntry item={item} key={item.id} />
+                  ))}
+                </details>
+              )}
+            </>
+          )}
+          {checkInComposerOpen && (
+            <form
+              className={styles.checkInComposer}
+              onSubmit={(event) => {
+                event.preventDefault();
+                setCheckInError(undefined);
+                void onAddCheckIn({
+                  summary: checkInDraft.summary,
+                  ...(checkInDraft.waitingOn.trim() === ""
+                    ? {}
+                    : { waitingOn: checkInDraft.waitingOn }),
+                  ...(checkInDraft.nextCheckpointDate === ""
+                    ? {}
+                    : {
+                        nextCheckpointAt: new Date(
+                          `${checkInDraft.nextCheckpointDate}T12:00:00.000Z`,
+                        ).toISOString(),
+                      }),
+                }).then((saved) => {
+                  if (!saved) {
+                    setCheckInError(
+                      "The check-in was not saved. Your draft is still here.",
+                    );
+                    return;
+                  }
+                  setCheckInDraft({
+                    summary: "",
+                    waitingOn: "",
+                    nextCheckpointDate: "",
+                  });
+                  setCheckInComposerOpen(false);
+                });
+              }}
+            >
+              <label>
+                Summary
+                <textarea
+                  maxLength={4000}
+                  onChange={(event) =>
+                    setCheckInDraft((draft) => ({
+                      ...draft,
+                      summary: event.target.value,
+                    }))
+                  }
+                  required
+                  value={checkInDraft.summary}
+                />
+              </label>
+              <label>
+                Waiting or blocker
+                <textarea
+                  maxLength={2000}
+                  onChange={(event) =>
+                    setCheckInDraft((draft) => ({
+                      ...draft,
+                      waitingOn: event.target.value,
+                    }))
+                  }
+                  value={checkInDraft.waitingOn}
+                />
+              </label>
+              <label>
+                Next checkpoint
+                <input
+                  onChange={(event) =>
+                    setCheckInDraft((draft) => ({
+                      ...draft,
+                      nextCheckpointDate: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={checkInDraft.nextCheckpointDate}
+                />
+              </label>
+              {checkInError !== undefined && <p role="alert">{checkInError}</p>}
+              <button
+                className={styles.railAction}
+                disabled={busy}
+                type="submit"
+              >
+                Save check-in
+              </button>
+            </form>
+          )}
+        </section>
         <div className={styles.doc}>
           <h2 className={styles.docHeading}>Intended outcome</h2>
           {outcomeEditor !== undefined ? (

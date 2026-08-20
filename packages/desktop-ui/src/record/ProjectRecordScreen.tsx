@@ -14,6 +14,7 @@ import type {
   CommentListProjection,
   DataSlice,
   ProjectOverviewProjection,
+  ProjectCheckInSlice,
 } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
@@ -157,6 +158,7 @@ export interface ProjectRecordScreenProps {
   readonly documents: readonly RecordDocument[];
   readonly comments: DataSlice<CommentListProjection>;
   readonly activity: DataSlice<ActivityProjection>;
+  readonly checkIns?: ProjectCheckInSlice;
   readonly busy: boolean;
   readonly commentBusy: boolean;
   readonly canComment: boolean;
@@ -181,6 +183,12 @@ export interface ProjectRecordScreenProps {
     parent?: CommentThread,
     attachmentSourceIds?: readonly KnowledgeSourceId[],
   ) => Promise<boolean>;
+  readonly onAddCheckIn?: (draft: {
+    readonly summary: string;
+    readonly waitingOn?: string;
+    readonly nextCheckpointAt?: string;
+  }) => Promise<boolean>;
+  readonly onReloadCheckIns?: () => void;
   /** Editing and settling a comment. REQUIRED, and the reason is a defect this
    *  screen already shipped once: these were optional, the single caller filled
    *  neither, and the record quietly offered no Edit, no Unlink and no Resolve
@@ -229,6 +237,7 @@ export const ProjectRecordScreen = ({
   documents,
   comments,
   activity,
+  checkIns,
   busy,
   commentBusy,
   canComment,
@@ -239,6 +248,8 @@ export const ProjectRecordScreen = ({
   mentionNameOf,
   mentionCandidates,
   onAddComment,
+  onAddCheckIn = async () => false,
+  onReloadCheckIns = () => undefined,
   onEditComment,
   onResolveComment,
   onBack,
@@ -378,6 +389,16 @@ export const ProjectRecordScreen = ({
           // w `ProjectRecordOverview.tsx`.
           <ProjectRecordOverview
             body={body}
+            checkIns={
+              checkIns ?? {
+                kind: "unavailable",
+                projectId,
+                message: "Project check-ins are unavailable.",
+              }
+            }
+            busy={busy}
+            onAddCheckIn={onAddCheckIn}
+            onReloadCheckIns={onReloadCheckIns}
             clientLinking={clientLinking}
             onOpenClient={(organization) =>
               onOpenRelationship(organization.id as StrategicRecordId)

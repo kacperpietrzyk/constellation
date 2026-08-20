@@ -16,6 +16,7 @@ import type {
   DocumentId,
   PrincipalId,
   ProjectId,
+  ProjectCheckInId,
   RelationId,
   SpaceId,
   SpaceGrantId,
@@ -52,6 +53,7 @@ import type {
   ProjectTemplate,
   OutboxEntry,
   Project,
+  ProjectCheckIn,
   Space,
   SpaceGrant,
   Task,
@@ -96,6 +98,8 @@ export type FailureBoundary =
   | "task-update"
   | "project"
   | "project-update"
+  | "project-check-in"
+  | "project-check-in-update"
   | "document"
   | "document-update"
   | "folder"
@@ -155,6 +159,7 @@ interface MutableState {
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
+  readonly projectCheckIns: Map<ProjectCheckInId, ProjectCheckIn>;
   readonly documents: Map<DocumentId, NativeDocument>;
   readonly folders: Map<FolderId, Folder>;
   readonly documentEntityLinks: Map<string, DocumentEntityLink>;
@@ -192,6 +197,7 @@ const emptyState = (): MutableState => ({
   captures: new Map(),
   tasks: new Map(),
   projects: new Map(),
+  projectCheckIns: new Map(),
   documents: new Map(),
   folders: new Map(),
   documentEntityLinks: new Map(),
@@ -226,6 +232,7 @@ const cloneState = (state: MutableState): MutableState => ({
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
+  projectCheckIns: new Map(state.projectCheckIns),
   documents: new Map(state.documents),
   folders: new Map(state.folders),
   documentEntityLinks: new Map(state.documentEntityLinks),
@@ -575,6 +582,29 @@ class ReadView implements ApplicationReadView {
         (left, right) =>
           right.updatedAt.localeCompare(left.updatedAt) ||
           right.id.localeCompare(left.id),
+      );
+  }
+
+  public getProjectCheckIn(id: ProjectCheckInId): ProjectCheckIn | undefined {
+    return this.state.projectCheckIns.get(id);
+  }
+
+  public listProjectCheckIns(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    projectId?: ProjectId,
+  ): readonly ProjectCheckIn[] {
+    return [...this.state.projectCheckIns.values()]
+      .filter(
+        (checkIn) =>
+          checkIn.workspaceId === workspaceId &&
+          checkIn.spaceId === spaceId &&
+          (projectId === undefined || checkIn.projectId === projectId),
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) ||
+          left.id.localeCompare(right.id),
       );
   }
 
@@ -1231,6 +1261,24 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertProjectCheckIn(checkIn: ProjectCheckIn): void {
+    if (this.state.projectCheckIns.has(checkIn.id))
+      throw new Error(`Duplicate project check-in ID: ${checkIn.id}`);
+    this.state.projectCheckIns.set(checkIn.id, checkIn);
+    this.failures.reached("project-check-in");
+  }
+
+  public updateProjectCheckIn(
+    checkIn: ProjectCheckIn,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.projectCheckIns.get(checkIn.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.projectCheckIns.set(checkIn.id, checkIn);
+    this.failures.reached("project-check-in-update");
+    return true;
+  }
+
   public insertDocument(document: NativeDocument): void {
     if (this.state.documents.has(document.id)) {
       throw new Error(`Duplicate document ID: ${document.id}`);
@@ -1489,6 +1537,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   captures: new Map(snapshot.captures.map((value) => [value.id, value])),
   tasks: new Map(snapshot.tasks.map((value) => [value.id, value])),
   projects: new Map(snapshot.projects.map((value) => [value.id, value])),
+  projectCheckIns: new Map(
+    (snapshot.projectCheckIns ?? []).map((value) => [value.id, value]),
+  ),
   documents: new Map(
     (snapshot.documents ?? []).map((value) => [value.id, value]),
   ),
@@ -1594,6 +1645,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],
+      projectCheckIns: [...this.state.projectCheckIns.values()],
       documents: [...this.state.documents.values()],
       folders: [...this.state.folders.values()],
       knowledgeSources: [...this.state.knowledgeSources.values()],

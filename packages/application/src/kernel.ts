@@ -550,6 +550,7 @@ const isCurrentlyAuthorized = (
       );
     }
     case "project.create":
+    case "project.checkInAdd":
     case "project.remove":
     case "document.create":
     case "document.rename":
@@ -1065,6 +1066,7 @@ export class ApplicationKernel {
           occurredAt,
         );
       case "project.create":
+      case "project.checkInAdd":
       case "project.remove":
       case "document.create":
       case "document.rename":
@@ -3188,6 +3190,7 @@ export class ApplicationKernel {
             freshness,
           );
         case "project.list":
+        case "project.checkInList":
         case "work.overview":
         case "document.list":
         case "document.linkCandidates":

@@ -48,6 +48,7 @@ export const HubWorkspaceSnapshotSchema = z
     captures: z.array(JsonObjectSchema),
     tasks: z.array(JsonObjectSchema),
     projects: z.array(JsonObjectSchema),
+    projectCheckIns: z.array(JsonObjectSchema).default([]),
     documents: z.array(JsonObjectSchema).default([]),
     // Defaulted like every family added after v1: a snapshot published by a
     // build that predates folders carries no key, and reading it must not

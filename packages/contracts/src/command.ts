@@ -25,6 +25,7 @@ import {
   PrincipalIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
   SpaceGrantIdSchema,
@@ -682,6 +683,67 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
 export const ProjectRemoveCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.remove"),
   payload: z.object({ projectId: ProjectIdSchema }).strict(),
+}).strict();
+
+export const ProjectCheckInSummarySchema = z.string().trim().min(1).max(4_000);
+export const ProjectCheckInWaitingOnSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_000);
+export const ProjectCheckInReferenceKindSchema = z.enum([
+  "task",
+  "project",
+  "document",
+  "person",
+  "organization",
+  "meeting",
+  "area",
+  "initiative",
+  "decision",
+]);
+export const ProjectCheckInReferenceSchema = z
+  .object({
+    kind: ProjectCheckInReferenceKindSchema,
+    recordId: z.uuid(),
+  })
+  .strict();
+export type ProjectCheckInReference = z.infer<
+  typeof ProjectCheckInReferenceSchema
+>;
+
+const uniqueIds = (values: readonly string[]): boolean =>
+  new Set(values).size === values.length;
+const uniqueCheckInReferences = (
+  values: readonly z.infer<typeof ProjectCheckInReferenceSchema>[],
+): boolean =>
+  new Set(values.map((value) => `${value.kind}:${value.recordId}`)).size ===
+  values.length;
+
+export const ProjectCheckInAddCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.checkInAdd"),
+  payload: z
+    .object({
+      checkInId: ProjectCheckInIdSchema,
+      projectId: ProjectIdSchema,
+      summary: ProjectCheckInSummarySchema,
+      waitingOn: ProjectCheckInWaitingOnSchema.optional(),
+      nextCheckpointAt: z.iso.datetime({ offset: true }).optional(),
+      evidenceSourceIds: z
+        .array(KnowledgeSourceIdSchema)
+        .max(20)
+        .refine(uniqueIds, { error: "Evidence source ids must be unique." })
+        .default([]),
+      references: z
+        .array(ProjectCheckInReferenceSchema)
+        .max(50)
+        .refine(uniqueCheckInReferences, {
+          error: "Project check-in references must be unique.",
+        })
+        .default([]),
+      supersedesCheckInId: ProjectCheckInIdSchema.optional(),
+    })
+    .strict(),
 }).strict();
 
 export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
@@ -2801,6 +2863,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
+  ProjectCheckInAddCommandSchema,
   ProjectUpdateDetailsCommandSchema,
   ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,

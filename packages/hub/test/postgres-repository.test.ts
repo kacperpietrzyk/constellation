@@ -15,6 +15,7 @@ import {
   ExecutionContextSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
   type ExecutionContext,
@@ -62,6 +63,9 @@ it(
     const projectRevisionId = DocumentRevisionIdSchema.parse(
       "00000000-0000-4000-8000-000000000914",
     );
+    const checkInId = ProjectCheckInIdSchema.parse(
+      "00000000-0000-4000-8000-000000000916",
+    );
     const context: ExecutionContext = ExecutionContextSchema.parse({
       principalId,
       principalKind: "human",
@@ -77,6 +81,8 @@ it(
         "capture.submitText",
         "capture.history",
         "document.create",
+        "project.create",
+        "project.checkInAdd",
         "document.list",
         "task.list",
         "audit.receipt",
@@ -240,6 +246,34 @@ it(
       payload: { documentId, spaceId, title: "Restart-safe document" },
     });
     assert.equal(createdDocument.kind, "command_outcome");
+    const createdProject = harness.kernel.execute(context, {
+      contractVersion: 1,
+      commandName: "project.create",
+      commandId: "00000000-0000-4000-8000-000000000917",
+      workspaceId,
+      idempotencyKey: "postgres-project",
+      expectedVersions: {},
+      correlationId: "00000000-0000-4000-8000-000000000918",
+      payload: { projectId, spaceId, title: "Restart-safe Project" },
+    });
+    assert.equal(createdProject.kind, "command_outcome");
+    const createdCheckIn = harness.kernel.execute(context, {
+      contractVersion: 1,
+      commandName: "project.checkInAdd",
+      commandId: "00000000-0000-4000-8000-000000000919",
+      workspaceId,
+      idempotencyKey: "postgres-check-in",
+      expectedVersions: { [projectId]: 1 },
+      correlationId: "00000000-0000-4000-8000-000000000920",
+      payload: {
+        checkInId,
+        projectId,
+        summary: "The Hub snapshot keeps this append-only update.",
+        evidenceSourceIds: [],
+        references: [],
+      },
+    });
+    assert.equal(createdCheckIn.kind, "command_outcome");
     const secrets = ["p".repeat(43), "q".repeat(43)];
     const service = new HubService(repository, {
       now: () => "2026-07-14T12:00:00.000Z",
@@ -687,6 +721,8 @@ it(
     assert.equal(replay.currentCheckpoint, "3");
     assert.equal(replay.receipts[0]?.commandId, command.commandId);
     assert.equal(replay.change?.snapshot.captures.length, 2);
+    assert.equal(replay.change?.snapshot.projectCheckIns.length, 1);
+    assert.equal(replay.change?.snapshot.projectCheckIns[0]?.id, checkInId);
     const restartedDocument = await restartedRepository.loadDocumentState({
       workspaceId,
       documentId,

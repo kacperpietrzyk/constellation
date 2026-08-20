@@ -47,9 +47,12 @@ import type { HubRepository, HubStoredReceipt } from "./repository.js";
 import {
   authorizationForSnapshot,
   fromHubSnapshot,
-  scopeHubSnapshot,
+  fromInternalHubSnapshot,
+  internalHubSnapshotFromRepository,
+  scopeInternalHubSnapshot,
   snapshotDigest,
   toHubSnapshot,
+  toInternalHubSnapshot,
 } from "./snapshot.js";
 
 const canonicalJson = (value: unknown): string => {
@@ -153,11 +156,15 @@ export class HubService {
     } else {
       fromHubSnapshot(input.snapshot, input.workspaceId);
     }
+    const snapshot =
+      input.snapshot.workspaces.length === 0
+        ? input.snapshot
+        : toHubSnapshot(fromHubSnapshot(input.snapshot, input.workspaceId));
     await this.repository.createWorkspace({
       workspaceId: input.workspaceId,
       checkpoint: 0n,
-      snapshot: input.snapshot,
-      snapshotDigest: snapshotDigest(input.snapshot),
+      snapshot,
+      snapshotDigest: snapshotDigest(snapshot),
       receipts: new Map(),
     });
   }
@@ -279,7 +286,10 @@ export class HubService {
         authentication.device.authorization,
       );
       if (authorization === undefined) return { outcome: "rejected" } as const;
-      const snapshot = fromHubSnapshot(state.snapshot, input.workspaceId);
+      const snapshot = fromInternalHubSnapshot(
+        internalHubSnapshotFromRepository(state.snapshot),
+        input.workspaceId,
+      );
       const record =
         owner.kind === "document"
           ? (snapshot.documents ?? []).find(
@@ -387,7 +397,10 @@ export class HubService {
           }
           const store = new InMemoryReferenceStore(
             undefined,
-            fromHubSnapshot(state.snapshot, input.workspaceId),
+            fromInternalHubSnapshot(
+              internalHubSnapshotFromRepository(state.snapshot),
+              input.workspaceId,
+            ),
           );
           const hasher = new Sha256Hasher();
           const ids = new CommandScopedIdGenerator(hasher);
@@ -462,7 +475,7 @@ export class HubService {
           if (outcome.outcome === "success") {
             state.checkpoint += 1n;
             checkpoint = state.checkpoint.toString();
-            state.snapshot = toHubSnapshot(store.snapshot());
+            state.snapshot = toInternalHubSnapshot(store.snapshot()).snapshot;
             state.snapshotDigest = snapshotDigest(state.snapshot);
             currentAuthorization =
               authorizationForSnapshot(
@@ -480,8 +493,8 @@ export class HubService {
           receipts.push(receipt);
         }
         const shouldSendChange = requestedCheckpoint < state.checkpoint;
-        const scopedSnapshot = scopeHubSnapshot(
-          state.snapshot,
+        const scopedSnapshot = scopeInternalHubSnapshot(
+          internalHubSnapshotFromRepository(state.snapshot),
           input.workspaceId,
           currentAuthorization,
         );
@@ -540,7 +553,10 @@ export class HubService {
       if (currentAuthorization === undefined) return;
       const store = new InMemoryReferenceStore(
         undefined,
-        fromHubSnapshot(state.snapshot, workspaceId),
+        fromInternalHubSnapshot(
+          internalHubSnapshotFromRepository(state.snapshot),
+          workspaceId,
+        ),
       );
       const capture = store.read((view) => view.getCapture(captureId));
       if (
@@ -613,7 +629,7 @@ export class HubService {
         result.outcome.outcome !== "success"
       )
         return;
-      state.snapshot = toHubSnapshot(store.snapshot());
+      state.snapshot = toInternalHubSnapshot(store.snapshot()).snapshot;
       state.snapshotDigest = snapshotDigest(state.snapshot);
       state.checkpoint += 1n;
     });
@@ -634,19 +650,22 @@ export class HubService {
     });
     if (authentication.outcome === "rejected")
       return { outcome: "rejected", code: authentication.code };
-    fromHubSnapshot(input.snapshot, input.workspaceId);
+    const sanitizedSnapshot = toHubSnapshot(
+      fromHubSnapshot(input.snapshot, input.workspaceId),
+    );
     if (snapshotDigest(input.snapshot) !== input.digest)
       return { outcome: "rejected", code: "digest_mismatch" };
+    const sanitizedDigest = snapshotDigest(sanitizedSnapshot);
     return this.repository.withWorkspaceLock(input.workspaceId, (state) => {
       if (state.checkpoint !== 0n || state.receipts.size > 0)
         return { outcome: "rejected" as const, code: "workspace_not_empty" };
       if (state.snapshot.workspaces.length > 0) {
-        return state.snapshotDigest === input.digest
+        return state.snapshotDigest === sanitizedDigest
           ? { outcome: "success" as const }
           : { outcome: "rejected" as const, code: "workspace_not_empty" };
       }
-      state.snapshot = input.snapshot;
-      state.snapshotDigest = input.digest;
+      state.snapshot = sanitizedSnapshot;
+      state.snapshotDigest = sanitizedDigest;
       return { outcome: "success" as const };
     });
   }

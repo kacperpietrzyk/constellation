@@ -13,6 +13,7 @@ import type {
   OutboxEntryId,
   PrincipalId,
   ProjectId,
+  ProjectCheckInId,
   RelationId,
   SpaceId,
   TaskId,
@@ -40,6 +41,7 @@ import type {
   OutboxEntry,
   Space,
   Project,
+  ProjectCheckIn,
   FieldDefinition,
   AutomationRule,
   ProjectTemplate,
@@ -242,6 +244,12 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
   listTasksInSpace(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Task[];
   getProject(id: ProjectId): Project | undefined;
   listProjects(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Project[];
+  getProjectCheckIn(id: ProjectCheckInId): ProjectCheckIn | undefined;
+  listProjectCheckIns(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    projectId?: ProjectId,
+  ): readonly ProjectCheckIn[];
   getDocument(id: DocumentId): NativeDocument | undefined;
   /**
    * The note claiming a source key in this Space, if one does.
@@ -453,6 +461,11 @@ export interface ApplicationWave2Transaction
   updateTask(task: Task, expectedVersion: number): boolean;
   insertProject(project: Project): void;
   updateProject(project: Project, expectedVersion: number): boolean;
+  insertProjectCheckIn(checkIn: ProjectCheckIn): void;
+  updateProjectCheckIn(
+    checkIn: ProjectCheckIn,
+    expectedVersion: number,
+  ): boolean;
   insertDocument(document: NativeDocument): void;
   updateDocument(document: NativeDocument, expectedVersion: number): boolean;
   insertFolder(folder: Folder): void;
@@ -487,6 +500,8 @@ export const isApplicationWave2ReadView = (
   "listTasksInSpace" in view &&
   "getProject" in view &&
   "listProjects" in view &&
+  "getProjectCheckIn" in view &&
+  "listProjectCheckIns" in view &&
   "getDocument" in view &&
   "listDocuments" in view &&
   "getFolder" in view &&
@@ -582,6 +597,7 @@ export interface ReferenceStateSnapshot {
   readonly automationRules?: readonly AutomationRule[];
   readonly tasks: readonly Task[];
   readonly projects: readonly Project[];
+  readonly projectCheckIns?: readonly ProjectCheckIn[];
   readonly documents?: readonly NativeDocument[];
   readonly folders?: readonly Folder[];
   readonly knowledgeSources?: readonly KnowledgeSource[];

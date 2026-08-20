@@ -74,9 +74,10 @@ import { emptyHubRemoteAgentState } from "./repository.js";
 import type { RealtimeDocumentGateway } from "./realtime-documents.js";
 import {
   authorizationForSnapshot,
-  fromHubSnapshot,
+  fromInternalHubSnapshot,
+  internalHubSnapshotFromRepository,
   snapshotDigest,
-  toHubSnapshot,
+  toInternalHubSnapshot,
 } from "./snapshot.js";
 
 const MAX_CALLS_PER_MINUTE = 120;
@@ -209,7 +210,10 @@ const namedBlocks = (
   });
 
 const mergedSnapshot = (state: HubWorkspaceState) => {
-  const base = fromHubSnapshot(state.snapshot, state.workspaceId);
+  const base = fromInternalHubSnapshot(
+    internalHubSnapshotFromRepository(state.snapshot),
+    state.workspaceId,
+  );
   const remote = state.remoteAgents ?? emptyHubRemoteAgentState();
   return {
     ...base,
@@ -227,7 +231,7 @@ const persistSnapshot = (
   snapshot: ReturnType<InMemoryReferenceStore["snapshot"]>,
 ): void => {
   const previous = state.remoteAgents ?? emptyHubRemoteAgentState();
-  state.snapshot = toHubSnapshot(snapshot);
+  state.snapshot = toInternalHubSnapshot(snapshot).snapshot;
   state.snapshotDigest = snapshotDigest(state.snapshot);
   const principals = new Set(
     (snapshot.agentGrants ?? []).map((grant) => grant.agentPrincipalId),

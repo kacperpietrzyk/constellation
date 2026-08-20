@@ -24,6 +24,7 @@ import {
   EventIdSchema,
   OutboxEntryIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   QueryResultSchema,
   RelationIdSchema,
   TaskIdSchema,
@@ -47,6 +48,7 @@ import {
   type SpaceId,
   type WorkspaceId,
   type KnowledgeSourceId,
+  type ProjectCheckInReference,
   type GlobalSearchRecordKind,
   globalSearchRecordKindIds,
   isGlobalSearchRecordKind,
@@ -60,6 +62,8 @@ import {
   completeTask,
   assignTask,
   createProject,
+  createProjectCheckIn,
+  voidProjectCheckIn,
   automationRuleState,
   createAutomationRule,
   createFieldDefinition,
@@ -158,6 +162,7 @@ import {
   type Workspace,
   type OutboxEntry,
   type Project,
+  type ProjectCheckIn,
   type Task,
   type TaskAssignment,
   type TaskProjectRelation,
@@ -208,6 +213,7 @@ export type Wave2Command = Extract<
   {
     commandName:
       | "project.create"
+      | "project.checkInAdd"
       | "project.remove"
       | "document.create"
       | "document.rename"
@@ -332,6 +338,7 @@ export type Wave2Query = Extract<
   {
     queryName:
       | "project.list"
+      | "project.checkInList"
       | "document.list"
       | "document.linkCandidates"
       | "document.backlinks"
@@ -445,6 +452,7 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "project.checkInAdd":
     case "project.remove": {
       const project = view.getProject(command.payload.projectId);
       return authorized(
@@ -1302,6 +1310,7 @@ const appendJournal = (
       | "task"
       | "taskAssignment"
       | "project"
+      | "projectCheckIn"
       | "document"
       | "folder"
       | "knowledgeSource"
@@ -1592,6 +1601,28 @@ const strategicRecordTitle = (record: StrategicRecord): string =>
         ? record.name
         : record.kind;
 
+const projectCheckInReferenceDependents = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+  kind: ProjectCheckInReference["kind"],
+  recordId: string,
+): readonly BlockingRecord[] =>
+  view
+    .listProjectCheckIns(workspaceId, spaceId)
+    .filter(
+      (checkIn) =>
+        checkIn.state === "active" &&
+        checkIn.references.some(
+          (reference) =>
+            reference.kind === kind && reference.recordId === recordId,
+        ),
+    )
+    .map((checkIn) => ({
+      recordId: checkIn.id,
+      recordKind: "projectCheckIn" as const,
+    }));
+
 /**
  * What still points at a Project, a Document or a Knowledge Source inside its
  * Space. Same rule as every other removal: refuse rather than orphan, and read
@@ -1611,6 +1642,23 @@ const tableRecordDependents = (
   const strategic = view.listStrategicRecords(workspaceId, spaceId);
   if (recordKind === "project")
     return [
+      ...view
+        .listProjectCheckIns(workspaceId, spaceId, id as ProjectId)
+        .filter((checkIn) => checkIn.state === "active")
+        .map((checkIn) => ({
+          recordId: checkIn.id,
+          recordKind: "projectCheckIn" as const,
+        })),
+      ...projectCheckInReferenceDependents(
+        view,
+        workspaceId,
+        spaceId,
+        "project",
+        id,
+      ).filter(
+        (dependent) =>
+          view.getProjectCheckIn(dependent.recordId as never)?.projectId !== id,
+      ),
       ...view
         .listRelations(workspaceId, spaceId)
         .filter(
@@ -1643,6 +1691,13 @@ const tableRecordDependents = (
     ];
   if (recordKind === "document")
     return [
+      ...projectCheckInReferenceDependents(
+        view,
+        workspaceId,
+        spaceId,
+        "document",
+        id,
+      ),
       ...strategic
         .filter(
           (candidate) =>
@@ -1758,6 +1813,13 @@ const knowledgeSourceReferences = (
         blocking: { recordId: project.id, recordKind: "project" },
         title: project.title,
       });
+  for (const checkIn of view.listProjectCheckIns(workspaceId, spaceId))
+    if (checkIn.state === "active")
+      for (const sourceId of checkIn.evidenceSourceIds)
+        add(sourceId, {
+          blocking: { recordId: checkIn.id, recordKind: "projectCheckIn" },
+          title: checkIn.summary,
+        });
   return references;
 };
 
@@ -1879,7 +1941,29 @@ const strategicRecordDependents = (
       recordId: relation.id,
       recordKind: "relation" as const,
     }));
-  return [...strategicDependents, ...relationDependents];
+  const checkInKind = (
+    [
+      "person",
+      "organization",
+      "meeting",
+      "area",
+      "initiative",
+      "decision",
+    ] as const
+  ).find((kind) => kind === record.kind);
+  return [
+    ...(checkInKind === undefined
+      ? []
+      : projectCheckInReferenceDependents(
+          view,
+          record.workspaceId,
+          record.spaceId,
+          checkInKind,
+          record.id,
+        )),
+    ...strategicDependents,
+    ...relationDependents,
+  ];
 };
 
 /**
@@ -2366,6 +2450,71 @@ export const resolveDocumentEntityTarget = (
       );
     }
   }
+};
+
+interface ResolvedProjectCheckInReference {
+  readonly reference: ProjectCheckInReference;
+  readonly label: string;
+  readonly spaceId: SpaceId;
+  readonly version: number;
+}
+
+const resolveProjectCheckInReference = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  reference: ProjectCheckInReference,
+): ResolvedProjectCheckInReference | undefined => {
+  if (
+    [
+      "task",
+      "project",
+      "document",
+      "person",
+      "organization",
+      "meeting",
+    ].includes(reference.kind)
+  ) {
+    const resolved = resolveDocumentEntityTarget(
+      view,
+      workspaceId,
+      reference.kind as DocumentEntityTargetKind,
+      reference.recordId,
+    );
+    if (resolved === undefined) return undefined;
+    const record =
+      reference.kind === "task"
+        ? view.getTask(TaskIdSchema.parse(reference.recordId))
+        : reference.kind === "project"
+          ? view.getProject(ProjectIdSchema.parse(reference.recordId))
+          : reference.kind === "document"
+            ? view.getDocument(DocumentIdSchema.parse(reference.recordId))
+            : view.getStrategicRecord(
+                StrategicRecordIdSchema.parse(reference.recordId),
+              );
+    return record === undefined
+      ? undefined
+      : {
+          reference,
+          label: resolved.label,
+          spaceId: resolved.spaceId,
+          version: record.version,
+        };
+  }
+  const record = view.getStrategicRecord(
+    StrategicRecordIdSchema.parse(reference.recordId),
+  );
+  if (
+    record?.workspaceId !== workspaceId ||
+    strategicRecordState(record) !== "active" ||
+    record.kind !== reference.kind
+  )
+    return undefined;
+  return {
+    reference,
+    label: strategicRecordTitle(record),
+    spaceId: record.spaceId,
+    version: record.version,
+  };
 };
 
 // One collator for the process. `localeCompare(other, "pl", {…})` builds a
@@ -6526,6 +6675,168 @@ export const executeWave2Command = (
         },
       );
     }
+    case "project.checkInAdd": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (
+        project === undefined ||
+        project.workspaceId !== command.workspaceId ||
+        !recordIsActive(project) ||
+        transaction.getProjectCheckIn(command.payload.checkInId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      const sources = command.payload.evidenceSourceIds.map((sourceId) =>
+        transaction.getKnowledgeSource(sourceId),
+      );
+      const references = command.payload.references.map((reference) =>
+        resolveProjectCheckInReference(
+          transaction,
+          command.workspaceId,
+          reference,
+        ),
+      );
+      const superseded =
+        command.payload.supersedesCheckInId === undefined
+          ? undefined
+          : transaction.getProjectCheckIn(command.payload.supersedesCheckInId);
+      if (
+        sources.some(
+          (source) =>
+            source === undefined ||
+            source.spaceId !== project.spaceId ||
+            !recordIsActive(source),
+        ) ||
+        references.some(
+          (reference) =>
+            reference === undefined || reference.spaceId !== project.spaceId,
+        ) ||
+        (command.payload.supersedesCheckInId !== undefined &&
+          (superseded === undefined ||
+            superseded.projectId !== project.id ||
+            superseded.spaceId !== project.spaceId ||
+            superseded.state !== "active"))
+      )
+        return precondition(command, occurredAt);
+      const expected: Record<string, number> = {
+        [project.id]: project.version,
+      };
+      for (const source of sources) expected[source!.id] = source!.version;
+      for (const reference of references)
+        expected[reference!.reference.recordId] = reference!.version;
+      if (superseded !== undefined)
+        expected[superseded.id] = superseded.version;
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      if (superseded?.supersededByCheckInId !== undefined)
+        return precondition(command, occurredAt);
+      const claimedPredecessor =
+        superseded === undefined
+          ? undefined
+          : {
+              ...superseded,
+              supersededByCheckInId: command.payload.checkInId,
+              version: superseded.version + 1,
+            };
+      if (
+        claimedPredecessor !== undefined &&
+        !transaction.updateProjectCheckIn(
+          claimedPredecessor,
+          superseded!.version,
+        )
+      )
+        return versionConflict(command, occurredAt, expected);
+      const checkIn = createProjectCheckIn({
+        id: ProjectCheckInIdSchema.parse(command.payload.checkInId),
+        workspaceId: command.workspaceId,
+        spaceId: project.spaceId,
+        projectId: project.id,
+        summary: command.payload.summary,
+        ...(command.payload.waitingOn === undefined
+          ? {}
+          : { waitingOn: command.payload.waitingOn }),
+        ...(command.payload.nextCheckpointAt === undefined
+          ? {}
+          : { nextCheckpointAt: command.payload.nextCheckpointAt }),
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        references: command.payload.references,
+        ...(command.payload.supersedesCheckInId === undefined
+          ? {}
+          : { supersedesCheckInId: command.payload.supersedesCheckInId }),
+        authorPrincipalId: context.principalId,
+        authorPrincipalKind: context.principalKind,
+        authorGrantId: context.grantId,
+        ...(context.hostRun?.agentRunId === undefined
+          ? {}
+          : { agentRunId: context.hostRun.agentRunId }),
+        ...(context.hostRun?.runId === undefined
+          ? {}
+          : { hostRunId: context.hostRun.runId }),
+        createdAt: occurredAt,
+      });
+      transaction.insertProjectCheckIn(checkIn);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.check_in_added",
+          workspaceId: checkIn.workspaceId,
+          spaceId: checkIn.spaceId,
+          aggregateId: checkIn.id,
+          aggregateVersion: checkIn.version,
+          projectId: checkIn.projectId,
+          occurredAt,
+        },
+        {
+          [checkIn.id]: checkIn.version,
+          ...(claimedPredecessor === undefined
+            ? {}
+            : { [claimedPredecessor.id]: claimedPredecessor.version }),
+        },
+        [
+          "summary",
+          ...(checkIn.waitingOn === undefined ? [] : ["waitingOn"]),
+          ...(checkIn.nextCheckpointAt === undefined
+            ? []
+            : ["nextCheckpointAt"]),
+          ...(checkIn.evidenceSourceIds.length === 0
+            ? []
+            : ["evidenceSourceIds"]),
+          ...(checkIn.references.length === 0 ? [] : ["references"]),
+        ],
+        {
+          diagnosticCode: "project.check_in_added",
+          projection: {
+            kind: "project.check_in_added",
+            checkInId: checkIn.id,
+            projectId: checkIn.projectId,
+            version: checkIn.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: checkIn.workspaceId,
+          spaceId: checkIn.spaceId,
+          kind: "project_check_in.void",
+          checkInId: checkIn.id,
+          resultingVersion: checkIn.version,
+          ...(claimedPredecessor === undefined
+            ? {}
+            : {
+                predecessorCheckInId: claimedPredecessor.id,
+                resultingPredecessorVersion: claimedPredecessor.version,
+              }),
+        },
+        {
+          [checkIn.id]: "projectCheckIn",
+          ...(claimedPredecessor === undefined
+            ? {}
+            : { [claimedPredecessor.id]: "projectCheckIn" as const }),
+        },
+      );
+    }
     case "project.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       const projectId = ProjectIdSchema.parse(
@@ -6992,13 +7303,22 @@ export const executeWave2Command = (
       // of merging it into command.precondition_failed. Tasks have no
       // recordType — that field exists because strategicRecord covers
       // fifteen types.
-      const activeChildren = transaction
-        .listTasksInSpace(task.workspaceId, task.spaceId)
-        .filter((candidate) => candidate.parentTaskId === task.id)
-        .map((candidate) => ({
-          recordId: candidate.id,
-          recordKind: "task" as const,
-        }));
+      const activeChildren = [
+        ...transaction
+          .listTasksInSpace(task.workspaceId, task.spaceId)
+          .filter((candidate) => candidate.parentTaskId === task.id)
+          .map((candidate) => ({
+            recordId: candidate.id,
+            recordKind: "task" as const,
+          })),
+        ...projectCheckInReferenceDependents(
+          transaction,
+          task.workspaceId,
+          task.spaceId,
+          "task",
+          task.id,
+        ),
+      ];
       if (activeChildren.length > 0)
         return blocked(command, occurredAt, activeChildren);
       const priorRecordState = task.recordState;
@@ -9789,6 +10109,13 @@ export const descriptorRecordIds = (
     case "project.restore_outcome":
     case "project.restore_details":
       return [descriptor.projectId];
+    case "project_check_in.void":
+      return [
+        descriptor.checkInId,
+        ...(descriptor.predecessorCheckInId === undefined
+          ? []
+          : [descriptor.predecessorCheckInId]),
+      ];
     case "area.restore_responsibility":
       return [descriptor.areaId];
     case "initiative.restore_outcome":
@@ -10031,6 +10358,40 @@ const descriptorState = (
             available: true,
             recordIds: [project.id],
             versions: { [project.id]: project.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "project_check_in.void": {
+      const checkIn = view.getProjectCheckIn(descriptor.checkInId);
+      const predecessor =
+        descriptor.predecessorCheckInId === undefined
+          ? undefined
+          : view.getProjectCheckIn(descriptor.predecessorCheckInId);
+      const predecessorMatches =
+        descriptor.predecessorCheckInId === undefined
+          ? descriptor.resultingPredecessorVersion === undefined
+          : predecessor?.version === descriptor.resultingPredecessorVersion &&
+            predecessor?.supersededByCheckInId === checkIn?.id;
+      return checkIn?.version === descriptor.resultingVersion &&
+        checkIn.state === "active" &&
+        predecessorMatches
+        ? {
+            available: true,
+            recordIds: [
+              checkIn.id,
+              ...(predecessor === undefined ? [] : [predecessor.id]),
+            ],
+            versions: {
+              [checkIn.id]: checkIn.version,
+              ...(predecessor === undefined
+                ? {}
+                : { [predecessor.id]: predecessor.version }),
+            },
           }
         : {
             available: false,
@@ -10994,6 +11355,7 @@ type CompensatedRecordKinds = Record<
   | "capture"
   | "task"
   | "project"
+  | "projectCheckIn"
   | "document"
   | "folder"
   | "knowledgeSource"
@@ -11994,6 +12356,34 @@ const compensateDescriptor = (
     transaction.updateDocument(restored, document.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "document" };
+  } else if (descriptor.kind === "project_check_in.void") {
+    const checkIn = transaction.getProjectCheckIn(descriptor.checkInId)!;
+    const voided = voidProjectCheckIn(checkIn, context.principalId, occurredAt);
+    transaction.updateProjectCheckIn(voided, checkIn.version);
+    const predecessor =
+      descriptor.predecessorCheckInId === undefined
+        ? undefined
+        : transaction.getProjectCheckIn(descriptor.predecessorCheckInId);
+    const released =
+      predecessor === undefined
+        ? undefined
+        : (() => {
+            const { supersededByCheckInId: _claimed, ...rest } = predecessor;
+            void _claimed;
+            return { ...rest, version: predecessor.version + 1 };
+          })();
+    if (released !== undefined)
+      transaction.updateProjectCheckIn(released, predecessor!.version);
+    compensatedVersions = {
+      [voided.id]: voided.version,
+      ...(released === undefined ? {} : { [released.id]: released.version }),
+    };
+    compensatedKinds = {
+      [voided.id]: "projectCheckIn",
+      ...(released === undefined
+        ? {}
+        : { [released.id]: "projectCheckIn" as const }),
+    };
   } else if (descriptor.kind === "knowledge.restore_evidence") {
     const document = transaction.getDocument(descriptor.documentId)!;
     const restored = setDocumentEvidence(document, {
@@ -12869,7 +13259,8 @@ export const executeWave2Query = (
   const spaceIds =
     query.queryName === "search.global"
       ? query.parameters.spaceIds
-      : query.queryName === "project.operationalOverview"
+      : query.queryName === "project.operationalOverview" ||
+          query.queryName === "project.checkInList"
         ? (() => {
             const project = view.getProject(query.parameters.projectId);
             return project?.workspaceId === query.workspaceId
@@ -13037,6 +13428,132 @@ export const executeWave2Query = (
       pendingCount: pending.length,
       finite: true,
       freshness,
+    });
+  }
+  if (query.queryName === "project.checkInList") {
+    const project = view.getProject(query.parameters.projectId);
+    if (
+      project === undefined ||
+      project.workspaceId !== query.workspaceId ||
+      !recordIsActive(project)
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const checkIns = view.listProjectCheckIns(
+      query.workspaceId,
+      project.spaceId,
+      project.id,
+    );
+    const actor = (checkIn: ProjectCheckIn) => {
+      if (checkIn.authorPrincipalKind === undefined) return undefined;
+      const membership = view.getMembership(
+        query.workspaceId,
+        checkIn.authorPrincipalId,
+      );
+      const spaceGrant = view.getSpaceGrantForPrincipal(
+        query.workspaceId,
+        project.spaceId,
+        checkIn.authorPrincipalId,
+      );
+      const workspace = view.getWorkspace(query.workspaceId);
+      const visible =
+        membership !== undefined &&
+        membership.status === "active" &&
+        ((membership.role === "owner" &&
+          workspace?.rootSpaceId === project.spaceId) ||
+          spaceGrant?.status === "active");
+      if (!visible) return undefined;
+      if (checkIn.authorPrincipalKind === "agent") {
+        if (checkIn.authorGrantId === undefined) return undefined;
+        const grant = view.getAgentGrant(checkIn.authorGrantId);
+        if (
+          grant === undefined ||
+          grant.agentPrincipalId !== checkIn.authorPrincipalId ||
+          grant.status !== "active" ||
+          !grant.spaceScope.includes(project.spaceId)
+        )
+          return undefined;
+        return {
+          authorPrincipalId: checkIn.authorPrincipalId,
+          actor: {
+            displayName: grant.displayName,
+            kind: "agent" as const,
+          },
+        };
+      }
+      if (checkIn.authorPrincipalKind !== "human") return undefined;
+      return {
+        authorPrincipalId: checkIn.authorPrincipalId,
+        actor: {
+          displayName:
+            membership.displayName ??
+            (checkIn.authorPrincipalId === context.principalId
+              ? "You"
+              : "Workspace member"),
+          kind: "human" as const,
+        },
+      };
+    };
+    const items = checkIns.map((checkIn) => {
+      const attribution = actor(checkIn);
+      return {
+        id: checkIn.id,
+        projectId: checkIn.projectId,
+        summary: checkIn.summary,
+        ...(checkIn.waitingOn === undefined
+          ? {}
+          : { waitingOn: checkIn.waitingOn }),
+        ...(checkIn.nextCheckpointAt === undefined
+          ? {}
+          : { nextCheckpointAt: checkIn.nextCheckpointAt }),
+        evidenceSourceIds: checkIn.evidenceSourceIds.filter((sourceId) => {
+          const source = view.getKnowledgeSource(sourceId);
+          return source?.spaceId === project.spaceId && recordIsActive(source);
+        }),
+        references: checkIn.references.flatMap((reference) => {
+          const resolved = resolveProjectCheckInReference(
+            view,
+            query.workspaceId,
+            reference,
+          );
+          return resolved?.spaceId === project.spaceId
+            ? [{ ...reference, label: resolved.label }]
+            : [];
+        }),
+        ...(checkIn.supersedesCheckInId === undefined
+          ? {}
+          : { supersedesCheckInId: checkIn.supersedesCheckInId }),
+        ...(checkIn.supersededByCheckInId === undefined
+          ? {}
+          : { supersededByCheckInId: checkIn.supersededByCheckInId }),
+        state: checkIn.state,
+        ...(attribution === undefined
+          ? {}
+          : {
+              ...attribution,
+              ...(checkIn.agentRunId === undefined
+                ? {}
+                : { agentRunId: checkIn.agentRunId }),
+              ...(checkIn.hostRunId === undefined
+                ? {}
+                : { hostRunId: checkIn.hostRunId }),
+            }),
+        version: checkIn.version,
+        createdAt: checkIn.createdAt,
+        ...(checkIn.voidedAt === undefined
+          ? {}
+          : { voidedAt: checkIn.voidedAt }),
+      };
+    });
+    const latest = checkIns.find(
+      (checkIn) =>
+        checkIn.state === "active" &&
+        checkIn.supersededByCheckInId === undefined,
+    );
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.checkInList",
+      projectId: project.id,
+      ...(latest === undefined ? {} : { latestCheckInId: latest.id }),
+      items,
     });
   }
   if (query.queryName === "project.list") {
@@ -14657,6 +15174,7 @@ export const executeWave2Query = (
     "capture.routed_as_knowledge_source": "capture_routed_to_knowledge",
     "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
+    "project.check_in_added": "project_check_in_added",
     "project.outcome_updated": "project_outcome_changed",
     // Mapa jest `Partial`, więc brak wpisu KOMPILUJE SIĘ i po prostu na zawsze
     // ukrywa przemianowanie w Aktywności. Wpis i wartość w enumie zapytania
@@ -14700,6 +15218,10 @@ export const executeWave2Query = (
   const safeActivityChangedFields = new Set([
     "title",
     "intendedOutcome",
+    "summary",
+    "waitingOn",
+    "nextCheckpointAt",
+    "references",
     "lifecycle",
     "evidenceSourceIds",
     "description",
@@ -14979,16 +15501,20 @@ export const executeWave2Query = (
             ? [event.taskId]
             : event.type === "capture.routed_as_task"
               ? [event.taskId]
-              : event.type === "capture.routed_as_knowledge_source"
-                ? [event.knowledgeSourceId]
-                : event.type === "comment.added" ||
-                    event.type === "comment.edited" ||
-                    event.type === "comment.resolved" ||
-                    event.type === "comment.reopened"
-                  ? [commentActivityRecordId(event.aggregateId)].filter(
-                      (recordId): recordId is string => recordId !== undefined,
-                    )
-                  : [event.aggregateId];
+              : event.type === "project.check_in_added" ||
+                  event.type === "project.check_in_voided"
+                ? [event.projectId]
+                : event.type === "capture.routed_as_knowledge_source"
+                  ? [event.knowledgeSourceId]
+                  : event.type === "comment.added" ||
+                      event.type === "comment.edited" ||
+                      event.type === "comment.resolved" ||
+                      event.type === "comment.reopened"
+                    ? [commentActivityRecordId(event.aggregateId)].filter(
+                        (recordId): recordId is string =>
+                          recordId !== undefined,
+                      )
+                    : [event.aggregateId];
       const receipt =
         candidateReceipt?.workspaceId === query.workspaceId &&
         candidateReceipt.spaceId === query.parameters.spaceId &&

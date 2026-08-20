@@ -8,6 +8,7 @@ import {
   CommentIdSchema,
   DocumentIdSchema,
   PrincipalIdSchema,
+  ProjectCheckInIdSchema,
   StrategicRecordIdSchema,
   type QueryProjection,
 } from "@constellation/contracts";
@@ -74,6 +75,9 @@ const decision = StrategicRecordIdSchema.parse(
 );
 const deliverable = DocumentIdSchema.parse(
   "00000000-0000-4000-8000-0000000009c4",
+);
+const checkInId = ProjectCheckInIdSchema.parse(
+  "00000000-0000-4000-8000-0000000009c8",
 );
 const rootComment = CommentIdSchema.parse(
   "00000000-0000-4000-8000-0000000009c5",
@@ -228,6 +232,27 @@ const queries = {
   ...populatedShellQueries,
   "workspace.access": projectionResponse(access),
   "project.operationalOverview": projectionResponse(overview),
+  "project.checkInList": projectionResponse({
+    kind: "project.checkInList",
+    projectId,
+    latestCheckInId: checkInId,
+    items: [
+      {
+        id: checkInId,
+        projectId,
+        summary: "The rollout is ready for client confirmation.",
+        waitingOn: "Client confirmation",
+        evidenceSourceIds: [],
+        references: [],
+        state: "active",
+        authorPrincipalId: principalId,
+        actor: { displayName: "Hermes", kind: "agent" },
+        hostRunId: "project-check-ins",
+        version: 1,
+        createdAt: "2026-08-20T12:00:00.000Z",
+      },
+    ],
+  } satisfies Projection<"project.checkInList">),
   "comment.list": projectionResponse(comments),
   "comment.mentionCandidates": projectionResponse(mentionCandidates),
 };
@@ -421,6 +446,174 @@ test("a project opens as a record with one heading the shell can still find", as
   assert.equal(headings[0]?.tabIndex, -1);
   const main = container.querySelector<HTMLElement>("main[data-surface]");
   assert.equal(main?.getAttribute("aria-labelledby"), "surface-title");
+});
+
+test("the Project overview shows the latest attributed check-in and opens a bounded composer", async () => {
+  await openRecord();
+  assert.match(container.textContent ?? "", /Project check-ins/u);
+  assert.match(
+    container.textContent ?? "",
+    /rollout is ready for client confirmation/u,
+  );
+  assert.match(
+    container.textContent ?? "",
+    /Hermes · 2026-08-20 · project-check-ins/u,
+  );
+  const add = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent?.trim() === "Add check-in",
+  );
+  assert.ok(add);
+  await act(async () => add.click());
+  assert.ok(container.querySelector('textarea[maxlength="4000"]'));
+  assert.ok(container.querySelector('textarea[maxlength="2000"]'));
+  assert.ok(container.querySelector('input[type="date"]'));
+  assert.match(container.textContent ?? "", /Save check-in/u);
+});
+
+test("the authoritative latest id wins over chronological order and full history stays structured and attributed", async () => {
+  const voidedId = ProjectCheckInIdSchema.parse(
+    "00000000-0000-4000-8000-0000000009d1",
+  );
+  const activeId = ProjectCheckInIdSchema.parse(
+    "00000000-0000-4000-8000-0000000009d2",
+  );
+  await openRecord({
+    "project.checkInList": projectionResponse({
+      kind: "project.checkInList",
+      projectId,
+      latestCheckInId: activeId,
+      items: [
+        {
+          id: voidedId,
+          projectId,
+          summary: "Newer but voided",
+          evidenceSourceIds: [],
+          references: [],
+          state: "voided",
+          actor: { displayName: "Former agent", kind: "agent" },
+          hostRunId: "voided-run",
+          version: 2,
+          createdAt: "2026-08-21T12:00:00.000Z",
+          voidedAt: "2026-08-21T13:00:00.000Z",
+        },
+        {
+          id: activeId,
+          projectId,
+          summary: "Active authoritative",
+          waitingOn: "Client approval",
+          nextCheckpointAt: "2026-08-30T12:00:00.000Z",
+          evidenceSourceIds: ["00000000-0000-4000-8000-0000000009e1" as never],
+          references: [
+            {
+              kind: "task",
+              recordId: "00000000-0000-4000-8000-0000000009e2",
+              label: "Task Alpha",
+            },
+          ],
+          state: "active",
+          actor: { displayName: "Hermes", kind: "agent" },
+          hostRunId: "active-run",
+          version: 1,
+          createdAt: "2026-08-20T12:00:00.000Z",
+        },
+      ],
+    } satisfies Projection<"project.checkInList">),
+  });
+  const latest = container.querySelector("[data-latest-check-in]");
+  assert.match(latest?.textContent ?? "", /Active authoritative/u);
+  assert.doesNotMatch(latest?.textContent ?? "", /Newer but voided/u);
+  assert.match(latest?.textContent ?? "", /Next checkpoint: 2026-08-30/u);
+  assert.match(latest?.textContent ?? "", /Evidence: 1 source/u);
+  assert.match(latest?.textContent ?? "", /Task Alpha/u);
+  assert.match(
+    container.textContent ?? "",
+    /Former agent · 2026-08-21 · voided-run/u,
+  );
+});
+
+test("voiding the latest leaves no active latest while preserving attributed history", async () => {
+  await openRecord({
+    "project.checkInList": projectionResponse({
+      kind: "project.checkInList",
+      projectId,
+      items: [
+        {
+          id: checkInId,
+          projectId,
+          summary: "Voided latest",
+          evidenceSourceIds: [],
+          references: [],
+          state: "voided",
+          actor: { displayName: "Hermes", kind: "agent" },
+          hostRunId: "voided-latest-run",
+          version: 2,
+          createdAt: "2026-08-20T12:00:00.000Z",
+          voidedAt: "2026-08-20T13:00:00.000Z",
+        },
+      ],
+    } satisfies Projection<"project.checkInList">),
+  });
+  assert.equal(container.querySelector("[data-latest-check-in]"), null);
+  assert.match(container.textContent ?? "", /No active check-in/u);
+  assert.match(
+    container.textContent ?? "",
+    /Hermes · 2026-08-20 · voided-latest-run/u,
+  );
+});
+
+test("a failed check-in save keeps the draft and names the failure", async () => {
+  await openRecord();
+  const add = buttonIn(container, "Add check-in");
+  assert.ok(add);
+  await act(async () => add.click());
+  const summary = container.querySelector<HTMLTextAreaElement>(
+    'textarea[maxlength="4000"]',
+  );
+  assert.ok(summary);
+  await typeInto(summary, "Draft survives refusal");
+  const save = buttonIn(container, "Save check-in");
+  assert.ok(save);
+  await act(async () => save.click());
+  await waitForCondition(
+    () => container.textContent?.includes("Your draft is still here") === true,
+    "the failed save never named its retained draft",
+  );
+  assert.equal(summary.value, "Draft survives refusal");
+});
+
+test("empty and unavailable check-in reads stay distinct and retryable", async () => {
+  await openRecord({
+    "project.checkInList": projectionResponse({
+      kind: "project.checkInList",
+      projectId,
+      items: [],
+    } satisfies Projection<"project.checkInList">),
+  });
+  assert.match(container.textContent ?? "", /No check-ins yet/u);
+  assert.ok(buttonIn(container, "Add check-in"));
+
+  if (mounted) {
+    mounted = false;
+    await act(async () => root.unmount());
+  }
+  container.replaceChildren();
+  await openRecord({
+    "project.checkInList": {
+      kind: "query_result",
+      result: {
+        contractVersion: 1,
+        queryId: "00000000-0000-4000-8000-0000000009f1",
+        kernelTime: "2026-08-20T12:00:00.000Z",
+        outcome: "refused",
+        diagnosticCode: "query.unsupported",
+      },
+    },
+  });
+  assert.doesNotMatch(container.textContent ?? "", /No check-ins yet/u);
+  const retry = buttonIn(container, "Try again");
+  assert.ok(retry);
+  await act(async () => retry.click());
+  assert.match(container.textContent ?? "", /Project check-ins/u);
 });
 
 test("the record is left by a control, and leaving it returns the collection", async () => {

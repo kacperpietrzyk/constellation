@@ -12,6 +12,7 @@ import {
   FolderIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   RelationIdSchema,
   SpaceGrantIdSchema,
   SpaceIdSchema,
@@ -73,6 +74,7 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.exception_resolved",
   "capture.routed_as_task",
   "project.created",
+  "project.check_in_added",
   "document.created",
   "document.renamed",
   "document.folder_changed",
@@ -164,6 +166,7 @@ export const RecordKindSchema = z.enum([
   "projectTemplate",
   "automationRule",
   "project",
+  "projectCheckIn",
   "document",
   // A Folder is here and NOT in `humanRecordKindRegistry`, and the two are
   // independent vocabularies rather than one question asked twice. THIS one is
@@ -366,6 +369,15 @@ const ProjectProjectionFields = {
 
 export const ProjectCreatedProjectionSchema = z
   .object({ kind: z.literal("project.created"), ...ProjectProjectionFields })
+  .strict();
+
+export const ProjectCheckInAddedProjectionSchema = z
+  .object({
+    kind: z.literal("project.check_in_added"),
+    checkInId: ProjectCheckInIdSchema,
+    projectId: ProjectIdSchema,
+    version: z.int().positive(),
+  })
   .strict();
 
 export const DocumentCreatedProjectionSchema = z
@@ -973,6 +985,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureAwaitingTranscriptProjectionSchema,
   CaptureExceptionResolvedProjectionSchema,
   ProjectCreatedProjectionSchema,
+  ProjectCheckInAddedProjectionSchema,
   DocumentCreatedProjectionSchema,
   DocumentRenamedProjectionSchema,
   KnowledgeSourceMutationProjectionSchema,
@@ -1158,6 +1171,12 @@ const ProjectCreatedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("project.created"),
     projection: ProjectCreatedProjectionSchema,
+  }).strict();
+const ProjectCheckInAddedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.check_in_added"),
+    projection: ProjectCheckInAddedProjectionSchema,
   }).strict();
 const DocumentCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -1529,6 +1548,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureAudioDeletedSuccessOutcomeSchema,
   CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
+  ProjectCheckInAddedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
   DocumentRenamedSuccessOutcomeSchema,
   KnowledgeSourceCreatedSuccessOutcomeSchema,

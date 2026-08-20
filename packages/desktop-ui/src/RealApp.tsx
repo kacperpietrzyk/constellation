@@ -158,6 +158,10 @@ import {
   type FieldValue,
   loadDesktopSnapshot,
   loadProjectOverview,
+  loadProjectCheckIns,
+  addProjectCheckIn,
+  acceptProjectCheckInLoad,
+  projectCheckInSliceForProject,
   loadComments,
   previewUndo,
   relateTask,
@@ -183,6 +187,7 @@ import {
   type MutationFailure,
   type MutationResult,
   type ProjectOverviewProjection,
+  type ProjectCheckInSlice,
   type CommentListProjection,
   type CommentTarget,
   type DataSlice,
@@ -481,6 +486,7 @@ export const RealApp = ({
     useState<LibraryReading>("notes");
   const [projectOverview, setProjectOverview] =
     useState<ProjectOverviewProjection>();
+  const [projectCheckIns, setProjectCheckIns] = useState<ProjectCheckInSlice>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
   const [taskEditOpen, setTaskEditOpen] = useState(false);
   const [taskDraft, setTaskDraft] = useState({
@@ -1194,6 +1200,37 @@ export const RealApp = ({
                 : "The project overview is unavailable.",
           });
         }
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, selectedProjectId, snapshot]);
+
+  useEffect(() => {
+    if (!client || !snapshot || !selectedProjectId) {
+      setProjectCheckIns(undefined);
+      return;
+    }
+    const requestedProjectId = selectedProjectId;
+    setProjectCheckIns({ kind: "loading", projectId: requestedProjectId });
+    let active = true;
+    void loadProjectCheckIns(client, snapshot, requestedProjectId)
+      .then((data) => {
+        if (!active) return;
+        setProjectCheckIns((current) =>
+          acceptProjectCheckInLoad(current, requestedProjectId, data),
+        );
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setProjectCheckIns({
+          kind: "unavailable",
+          projectId: requestedProjectId,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Project check-ins are unavailable.",
+        });
       });
     return () => {
       active = false;
@@ -3359,6 +3396,10 @@ export const RealApp = ({
                     actions={slots.actions}
                     currentDisplayName={currentDisplayName}
                     activity={state.snapshot.activity}
+                    checkIns={projectCheckInSliceForProject(
+                      projectCheckIns,
+                      projectOverview.project.id,
+                    )}
                     body={slots.body}
                     busy={projectBusy}
                     canComment={canComment}
@@ -3421,6 +3462,72 @@ export const RealApp = ({
                           "Comment saved.",
                         ),
                       );
+                    }}
+                    onAddCheckIn={async (draft) => {
+                      if (!client || !projectOverview) return false;
+                      setProjectBusy(true);
+                      const result = await addProjectCheckIn(
+                        client,
+                        state.snapshot,
+                        projectOverview.project,
+                        draft,
+                      );
+                      setProjectBusy(false);
+                      if (result.kind !== "success") {
+                        showFailure(result);
+                        return false;
+                      }
+                      await refreshAfter("Project check-in added.");
+                      const requestedProjectId = projectOverview.project.id;
+                      const data = await loadProjectCheckIns(
+                        client,
+                        state.snapshot,
+                        requestedProjectId,
+                      );
+                      setProjectCheckIns((current) =>
+                        acceptProjectCheckInLoad(
+                          current,
+                          requestedProjectId,
+                          data,
+                        ),
+                      );
+                      return true;
+                    }}
+                    onReloadCheckIns={() => {
+                      if (!client || !projectOverview) return;
+                      const requestedProjectId = projectOverview.project.id;
+                      setProjectCheckIns({
+                        kind: "loading",
+                        projectId: requestedProjectId,
+                      });
+                      void loadProjectCheckIns(
+                        client,
+                        state.snapshot,
+                        requestedProjectId,
+                      )
+                        .then((data) =>
+                          setProjectCheckIns((current) =>
+                            acceptProjectCheckInLoad(
+                              current,
+                              requestedProjectId,
+                              data,
+                            ),
+                          ),
+                        )
+                        .catch((error: unknown) =>
+                          setProjectCheckIns((current) =>
+                            current?.projectId === requestedProjectId
+                              ? {
+                                  kind: "unavailable",
+                                  projectId: requestedProjectId,
+                                  message:
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Project check-ins are unavailable.",
+                                }
+                              : current,
+                          ),
+                        );
                     }}
                     actorOf={actorOf}
                     mentionNameOf={mentionNameOf}

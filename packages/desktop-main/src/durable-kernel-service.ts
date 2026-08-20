@@ -54,6 +54,8 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "capture.routeAsTask",
   "capture.history",
   "project.create",
+  "project.checkInAdd",
+  "project.checkInList",
   "project.remove",
   "document.create",
   "document.rename",

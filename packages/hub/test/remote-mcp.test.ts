@@ -15,6 +15,7 @@ import {
   ExecutionContextSchema,
   TaskIdSchema,
   QueryIdSchema,
+  ProjectCheckInIdSchema,
   ProjectIdSchema,
   capabilitiesForAgentGrantPreset,
   SpaceIdSchema,
@@ -33,8 +34,11 @@ import {
   HubRemoteMcpService,
   RealtimeDocumentGateway,
   HubService,
+  internalHubSnapshotFromRepository,
   InMemoryHubRepository,
   parseHubRemoteAgentState,
+  scopeHubSnapshot,
+  scopeInternalHubSnapshot,
   startHubServer,
   toHubSnapshot,
 } from "../src/index.js";
@@ -340,6 +344,135 @@ const run = {
 };
 
 describe("remote MCP Hub gateway", () => {
+  it("persists remote Project check-in attribution across its own write, restart and unrelated write", async () => {
+    const { repository, remote, realtimeDocuments, deviceCredential } =
+      await setup();
+    const created = await createRemoteGrant(remote, deviceCredential, false, [
+      "project.checkInAdd",
+      "project.checkInList",
+      "task.create",
+    ]);
+    const checkInId = ProjectCheckInIdSchema.parse(
+      "60000000-0000-4000-8000-000000000904",
+    );
+    const added = await remote.invoke(ids.workspace, created.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "project.checkInAdd",
+        commandId: uuid(),
+        workspaceId: ids.workspace,
+        idempotencyKey: "remote-check-in-add",
+        expectedVersions: { [ids.project]: 1 },
+        correlationId: uuid(),
+        payload: {
+          checkInId,
+          projectId: ids.project,
+          summary: "Remote operator recorded this checkpoint.",
+          evidenceSourceIds: [],
+          references: [],
+        },
+      }),
+    });
+    assert.equal(added.outcome, "success");
+
+    const internalItem = async () =>
+      repository.withWorkspaceLock(ids.workspace, (state) => {
+        const scoped = scopeInternalHubSnapshot(
+          internalHubSnapshotFromRepository(state.snapshot),
+          ids.workspace,
+          managerContext(),
+        );
+        assert.ok(scoped);
+        return scoped.projectCheckIns.find(
+          (candidate) => candidate.id === checkInId,
+        ) as Record<string, unknown> | undefined;
+      });
+    const first = await internalItem();
+    assert.equal(first?.authorPrincipalId, created.grant.agentPrincipalId);
+    assert.equal(first?.authorPrincipalKind, "agent");
+    assert.equal(first?.authorGrantId, created.grant.grantId);
+    assert.equal(first?.agentRunId, run.agentRunId);
+    assert.equal(first?.hostRunId, run.hostRunId);
+
+    const restartedRemote = new HubRemoteMcpService(repository, {
+      now: () => "2026-07-14T20:01:00.000Z",
+      randomSecret: () => "s".repeat(43),
+      realtimeDocuments,
+    });
+    const unrelatedTaskId = TaskIdSchema.parse(
+      "60000000-0000-4000-8000-000000000905",
+    );
+    const unrelated = await restartedRemote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "command",
+        run,
+        command: CommandEnvelopeSchema.parse({
+          contractVersion: 1,
+          commandName: "task.create",
+          commandId: uuid(),
+          workspaceId: ids.workspace,
+          idempotencyKey: "remote-unrelated-task",
+          expectedVersions: {},
+          correlationId: uuid(),
+          payload: {
+            taskId: unrelatedTaskId,
+            spaceId: ids.space,
+            title: "Unrelated remote mutation",
+          },
+        }),
+      },
+    );
+    assert.equal(unrelated.outcome, "success");
+    const afterRestart = await internalItem();
+    assert.equal(
+      afterRestart?.authorPrincipalId,
+      created.grant.agentPrincipalId,
+    );
+    assert.equal(afterRestart?.authorGrantId, created.grant.grantId);
+    assert.equal(afterRestart?.agentRunId, run.agentRunId);
+    assert.equal(afterRestart?.hostRunId, run.hostRunId);
+
+    const revoked = await restartedRemote.revokeGrant(deviceCredential, {
+      protocolVersion: 1,
+      workspaceId: ids.workspace,
+      deviceId: ids.device,
+      grantId: created.grant.grantId,
+      expectedVersion: created.grant.version,
+    });
+    assert.equal(revoked.outcome, "success");
+    const afterRevocation = await internalItem();
+    assert.equal(afterRevocation?.authorPrincipalId, undefined);
+    assert.equal(afterRevocation?.authorPrincipalKind, undefined);
+    assert.equal(afterRevocation?.authorGrantId, undefined);
+    assert.equal(afterRevocation?.agentRunId, undefined);
+    assert.equal(afterRevocation?.hostRunId, undefined);
+    const publicItem = await repository.withWorkspaceLock(
+      ids.workspace,
+      (state) => {
+        const scoped = scopeHubSnapshot(
+          state.snapshot,
+          ids.workspace,
+          managerContext(),
+        );
+        assert.ok(scoped);
+        return scoped.projectCheckIns.find(
+          (candidate) => candidate.id === checkInId,
+        ) as Record<string, unknown> | undefined;
+      },
+    );
+    assert.equal(publicItem?.authorPrincipalId, undefined);
+    assert.equal(publicItem?.agentRunId, undefined);
+    assert.equal(publicItem?.hostRunId, undefined);
+  });
+
   it("executes the same query and command contract while keeping control state out of device snapshots", async () => {
     const { repository, remote, deviceCredential } = await setup();
     const created = await createRemoteGrant(remote, deviceCredential);

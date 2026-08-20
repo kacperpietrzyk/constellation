@@ -558,6 +558,7 @@ export const executeCollaborationQuery = (
     kind:
       | "task"
       | "project"
+      | "project_check_in"
       | "document"
       | "knowledge_source"
       | "named_document_version"
@@ -624,6 +625,13 @@ export const executeCollaborationQuery = (
       })),
     );
     records.push(
+      ...view.listProjectCheckIns(workspace.id, space.id).map((record) => ({
+        kind: "project_check_in" as const,
+        id: record.id,
+        spaceId: record.spaceId,
+      })),
+    );
+    records.push(
       ...view.listDocuments(workspace.id, space.id).map((record) => ({
         kind: "document" as const,
         id: record.id,
@@ -672,6 +680,9 @@ export const executeCollaborationQuery = (
     counts: {
       tasks: records.filter((item) => item.kind === "task").length,
       projects: records.filter((item) => item.kind === "project").length,
+      projectCheckIns: records.filter(
+        (item) => item.kind === "project_check_in",
+      ).length,
       documents: records.filter((item) => item.kind === "document").length,
       knowledgeSources: records.filter(
         (item) => item.kind === "knowledge_source",

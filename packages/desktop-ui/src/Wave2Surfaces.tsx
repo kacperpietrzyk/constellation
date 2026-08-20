@@ -705,10 +705,18 @@ export const ProjectsSurface = ({
                 Intended outcome
               </label>
               <textarea
+                aria-describedby="project-outcome-check-in-guidance"
                 id="edited-project-outcome"
                 onChange={(event) => setEditedOutcome(event.target.value)}
                 value={editedOutcome}
               />
+              <p
+                className="capacity-note"
+                id="project-outcome-check-in-guidance"
+              >
+                Keep the durable result here. Put dated progress and the next
+                checkpoint in a check-in.
+              </p>
               <div className="capture-footer">
                 <button
                   className="ghost-button"

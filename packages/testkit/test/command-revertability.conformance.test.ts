@@ -282,6 +282,17 @@ describe("Command revertability", () => {
       )["projectId"],
     );
     apply(
+      "project.checkInAdd",
+      {
+        checkInId: uuid(),
+        projectId,
+        summary: "The revertability table includes visible void recovery.",
+        evidenceSourceIds: [],
+        references: [],
+      },
+      versions(projectId),
+    );
+    apply(
       "project.updateOutcome",
       { projectId, intendedOutcome: "The table is pinned by this test" },
       versions(projectId),

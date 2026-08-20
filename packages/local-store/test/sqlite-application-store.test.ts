@@ -79,6 +79,8 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "capture.history",
       "project.create",
+      "project.checkInAdd",
+      "project.checkInList",
       "project.remove",
       "project.updateOutcome",
       "project.updateDetails",
@@ -4041,6 +4043,86 @@ describe("narrative-less records in the durable store", () => {
         ["Clients", "Falcon"],
       );
       reopened.close();
+    });
+  });
+
+  it("persists append-only Project check-ins across SQLite reopen", () => {
+    withDatabase((filename) => {
+      const projectId = "00000000-0000-4000-8000-0000000001f0";
+      const checkInId = "00000000-0000-4000-8000-0000000001f1";
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId,
+                spaceId: ids.rootSpace,
+                title: "Durable check-ins",
+                intendedOutcome: "History survives restart.",
+              },
+              "check-in-project",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.checkInAdd",
+              {
+                checkInId,
+                projectId,
+                summary: "SQLite stores this status separately.",
+                evidenceSourceIds: [],
+                references: [],
+              },
+              "check-in-add",
+              { [projectId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.id,
+        checkInId,
+      );
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.summary,
+        "SQLite stores this status separately.",
+      );
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.authorPrincipalKind,
+        "human",
+      );
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.authorGrantId,
+        ids.grant,
+      );
+      assert.equal(
+        (
+          reopenedDatabase.prepare("PRAGMA user_version").get() as {
+            user_version: number;
+          }
+        ).user_version,
+        LOCAL_STORE_SCHEMA_VERSION,
+      );
+      reopenedDatabase.close();
     });
   });
 });

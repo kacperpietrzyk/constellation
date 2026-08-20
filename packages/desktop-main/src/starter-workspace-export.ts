@@ -20,6 +20,9 @@ import type { StarterWorkspaceManifest } from "./starter-workspace-import.js";
  * ADR-050. Export produces exactly the package the import engine already
  * accepts — the same v2 exchange manifest, so the round trip is one format
  * rather than a writer and a reader that can disagree.
+ * Check-ins stay outside exchange v6: this format imports work into another
+ * workspace under the importing actor, while check-ins are attributed history.
+ * Portable backup still preserves them byte-for-byte.
  */
 
 const deterministicUuid = (seed: string): string => {

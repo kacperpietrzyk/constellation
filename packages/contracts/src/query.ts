@@ -13,6 +13,7 @@ import {
   GrantIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   QueryIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
@@ -38,6 +39,7 @@ import {
   CommentTargetSchema,
   ContractVersionSchema,
   FieldDefinitionTypeSchema,
+  ProjectCheckInReferenceKindSchema,
   RelationConditionsSchema,
   SavedViewFieldFiltersSchema,
   SavedViewFiltersSchema,
@@ -233,6 +235,11 @@ export const AttentionInboxQuerySchema = QueryMetadataSchema.extend({
 export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("project.list"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const ProjectCheckInListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("project.checkInList"),
+  parameters: z.object({ projectId: ProjectIdSchema }).strict(),
 }).strict();
 
 export const WorkOverviewQuerySchema = QueryMetadataSchema.extend({
@@ -480,6 +487,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   CommentMentionCandidatesQuerySchema,
   AttentionInboxQuerySchema,
   ProjectListQuerySchema,
+  ProjectCheckInListQuerySchema,
   WorkOverviewQuerySchema,
   DocumentListQuerySchema,
   DocumentLinkCandidatesQuerySchema,
@@ -1229,6 +1237,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         .object({
           tasks: z.int().nonnegative(),
           projects: z.int().nonnegative(),
+          projectCheckIns: z.int().nonnegative().default(0),
           documents: z.int().nonnegative().default(0),
           knowledgeSources: z.int().nonnegative().default(0),
           namedDocumentVersions: z.int().nonnegative().default(0),
@@ -1247,6 +1256,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             kind: z.enum([
               "task",
               "project",
+              "project_check_in",
               "document",
               "knowledge_source",
               "named_document_version",
@@ -1804,6 +1814,50 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             relatedOpenTaskCount: z.int().nonnegative(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("project.checkInList"),
+      projectId: ProjectIdSchema,
+      latestCheckInId: ProjectCheckInIdSchema.optional(),
+      items: z.array(
+        z
+          .object({
+            id: ProjectCheckInIdSchema,
+            projectId: ProjectIdSchema,
+            summary: z.string(),
+            waitingOn: z.string().optional(),
+            nextCheckpointAt: z.iso.datetime({ offset: true }).optional(),
+            evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+            references: z.array(
+              z
+                .object({
+                  kind: ProjectCheckInReferenceKindSchema,
+                  recordId: z.uuid(),
+                  label: z.string().optional(),
+                })
+                .strict(),
+            ),
+            supersedesCheckInId: ProjectCheckInIdSchema.optional(),
+            supersededByCheckInId: ProjectCheckInIdSchema.optional(),
+            state: z.enum(["active", "voided"]),
+            authorPrincipalId: PrincipalIdSchema.optional(),
+            actor: z
+              .object({
+                displayName: z.string(),
+                kind: z.enum(["human", "agent", "system"]),
+              })
+              .strict()
+              .optional(),
+            agentRunId: AgentRunIdSchema.optional(),
+            hostRunId: z.string().optional(),
+            version: z.int().positive(),
+            createdAt: z.iso.datetime({ offset: true }),
+            voidedAt: z.iso.datetime({ offset: true }).optional(),
           })
           .strict(),
       ),
@@ -2474,6 +2528,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "capture_routed_to_knowledge",
               "capture_transcript_ready",
               "project_created",
+              "project_check_in_added",
               "project_outcome_changed",
               "project_details_changed",
               "task_created",

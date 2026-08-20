@@ -33,6 +33,7 @@ export const CheckpointRevertUnavailableReasonSchema = z
 export const CompensationKindSchema = z.enum([
   "project.restore_outcome",
   "project.restore_details",
+  "project_check_in.void",
   "area.restore_responsibility",
   "initiative.restore_outcome",
   "task.restore_state",
