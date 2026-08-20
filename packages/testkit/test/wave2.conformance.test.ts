@@ -1412,6 +1412,24 @@ describe("Wave 2 reference semantics", () => {
       relationActivity?.changedFields?.includes("relationType"),
       true,
     );
+    assert.deepEqual(
+      (
+        relationActivity as typeof relationActivity & {
+          readonly relationContext?: {
+            readonly relationType: "task_contributes_to_project";
+            readonly path: "project_mediated";
+            readonly taskId: string;
+            readonly projectId: string;
+          };
+        }
+      )?.relationContext,
+      {
+        relationType: "task_contributes_to_project",
+        path: "project_mediated",
+        taskId,
+        projectId,
+      },
+    );
   });
 
   it("composes one Project read from authorized graph relations", () => {
@@ -4317,6 +4335,60 @@ describe("Wave 2 reference semantics", () => {
       ],
     );
 
+    const activity = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "activity.meaningful",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      activity.kind !== "query_result" ||
+      activity.result.outcome !== "success" ||
+      activity.result.projection.kind !== "activity.meaningful"
+    )
+      assert.fail("Expected direct-context Activity.");
+    type RelationActivity =
+      (typeof activity.result.projection.items)[number] & {
+        readonly relationContext?:
+          | {
+              readonly relationType: "task_contributes_to_area";
+              readonly path: "direct";
+              readonly taskId: string;
+              readonly areaId: string;
+            }
+          | {
+              readonly relationType: "task_advances_initiative";
+              readonly path: "direct";
+              readonly taskId: string;
+              readonly initiativeId: string;
+            };
+      };
+    const relationActivities = activity.result.projection.items.filter(
+      (item) => item.activityType === "relation_added",
+    ) as readonly RelationActivity[];
+    const areaActivity = relationActivities.find(
+      (item) =>
+        item.relationContext?.relationType === "task_contributes_to_area",
+    );
+    const initiativeActivity = relationActivities.find(
+      (item) =>
+        item.relationContext?.relationType === "task_advances_initiative",
+    );
+    assert.deepEqual(areaActivity?.relationContext, {
+      relationType: "task_contributes_to_area",
+      path: "direct",
+      taskId,
+      areaId,
+    });
+    assert.deepEqual(initiativeActivity?.relationContext, {
+      relationType: "task_advances_initiative",
+      path: "direct",
+      taskId,
+      initiativeId,
+    });
+
     const work = harness.kernel.query(context(), {
       contractVersion: 1,
       queryName: "work.overview",
@@ -4471,6 +4543,25 @@ describe("Wave 2 reference semantics", () => {
       ).outcome,
       "success",
     );
+    const activityAfterRemoval = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "activity.meaningful",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      activityAfterRemoval.kind !== "query_result" ||
+      activityAfterRemoval.result.outcome !== "success" ||
+      activityAfterRemoval.result.projection.kind !== "activity.meaningful"
+    )
+      assert.fail("Expected privacy-filtered Activity.");
+    const serializedActivity = JSON.stringify(
+      activityAfterRemoval.result.projection,
+    );
+    assert.equal(serializedActivity.includes(areaId), false);
+    assert.equal(serializedActivity.includes(relationId), false);
     const refused = unwrap(
       harness.kernel.execute(context(), {
         ...metadata("relate-removed-area", { [taskId]: 1, [areaId]: 2 }),

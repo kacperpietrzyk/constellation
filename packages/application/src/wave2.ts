@@ -14680,12 +14680,58 @@ export const executeWave2Query = (
           : comment.target.opportunityId;
   };
 
+  const relationActivityContext = (
+    event: Extract<
+      DomainEvent,
+      { type: "relation.created" | "relation.removed" }
+    >,
+  ) =>
+    event.projectId !== undefined
+      ? {
+          relationType: "task_contributes_to_project" as const,
+          path: "project_mediated" as const,
+          taskId: event.taskId,
+          projectId: event.projectId,
+        }
+      : event.opportunityId !== undefined
+        ? {
+            relationType: "task_contributes_to_opportunity" as const,
+            path: "direct" as const,
+            taskId: event.taskId,
+            opportunityId: event.opportunityId,
+          }
+        : event.areaId !== undefined
+          ? {
+              relationType: "task_contributes_to_area" as const,
+              path: "direct" as const,
+              taskId: event.taskId,
+              areaId: event.areaId,
+            }
+          : event.initiativeId !== undefined
+            ? {
+                relationType: "task_advances_initiative" as const,
+                path: "direct" as const,
+                taskId: event.taskId,
+                initiativeId: event.initiativeId,
+              }
+            : undefined;
+
   const items = view
     .listEvents(query.workspaceId, query.parameters.spaceId)
     .flatMap((event) => {
       const activityType = activityMap[event.type];
       if (activityType === undefined) return [];
       const candidateReceipt = view.getAuditReceiptByCommand(event.commandId);
+      const relationContext =
+        event.type === "relation.created" || event.type === "relation.removed"
+          ? relationActivityContext(event)
+          : undefined;
+      if (
+        (event.type === "relation.created" ||
+          event.type === "relation.removed") &&
+        relationContext === undefined
+      )
+        return [];
       const presentationRecordIds =
         event.type === "relation.created" || event.type === "relation.removed"
           ? [
@@ -14694,6 +14740,8 @@ export const executeWave2Query = (
               ...(event.opportunityId === undefined
                 ? []
                 : [event.opportunityId]),
+              ...(event.areaId === undefined ? [] : [event.areaId]),
+              ...(event.initiativeId === undefined ? [] : [event.initiativeId]),
             ]
           : event.type === "task.assigned" || event.type === "task.unassigned"
             ? [event.taskId]
@@ -14716,13 +14764,18 @@ export const executeWave2Query = (
         candidateReceipt.affectedRecordIds.includes(event.aggregateId)
           ? candidateReceipt
           : undefined;
+      const resolvedPresentationRecords = presentationRecordIds.map(
+        resolveActivityRecord,
+      );
+      if (
+        relationContext !== undefined &&
+        resolvedPresentationRecords.some((candidate) => candidate === undefined)
+      )
+        return [];
       const record = [
-        ...presentationRecordIds,
-        ...(receipt?.affectedRecordIds ?? []),
-      ]
-        .filter((recordId, index, all) => all.indexOf(recordId) === index)
-        .map(resolveActivityRecord)
-        .find((candidate) => candidate !== undefined);
+        ...resolvedPresentationRecords,
+        ...(receipt?.affectedRecordIds.map(resolveActivityRecord) ?? []),
+      ].find((candidate) => candidate !== undefined);
       if (record === undefined) return [];
       const actor =
         receipt === undefined ? undefined : resolveActivityActor(receipt);
@@ -14738,6 +14791,7 @@ export const executeWave2Query = (
           recordId: record.recordId,
           recordKind: record.recordKind,
           recordTitle: record.recordTitle,
+          ...(relationContext === undefined ? {} : { relationContext }),
           ...(receipt === undefined || actor === undefined
             ? {}
             : {

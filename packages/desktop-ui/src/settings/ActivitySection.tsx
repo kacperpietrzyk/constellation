@@ -7,7 +7,7 @@ import {
   activityCategoryFor,
   activityCategoryLabel,
   activityCategoryMark,
-  activityLabels,
+  activityLabelFor,
   filterActivityItems,
   groupActivityItems,
   groupActivityOperations,
@@ -79,6 +79,18 @@ const activityRecordKindLabel = (kind: string | undefined): string =>
         .replace(/([a-z])([A-Z])/g, "$1 $2")
         .replace(/^./, (value) => value.toUpperCase());
 
+const activityRelationLabel = (item: ActivityItem): string | undefined => {
+  const context = item.relationContext;
+  if (context === undefined) return undefined;
+  return context.path === "project_mediated"
+    ? "Via Project"
+    : context.relationType === "task_contributes_to_area"
+      ? "Direct Area context"
+      : context.relationType === "task_advances_initiative"
+        ? "Direct Initiative context"
+        : "Direct Opportunity context";
+};
+
 const ActivityRow = ({
   item,
   timezone,
@@ -89,6 +101,7 @@ const ActivityRow = ({
   readonly onUndo: (targetCommandId: CommandId) => void;
 }) => {
   const itemCategory = activityCategoryFor(item);
+  const relationLabel = activityRelationLabel(item);
   return (
     <li className={styles.row}>
       <span
@@ -110,9 +123,8 @@ const ActivityRow = ({
             ? ""
             : ` · ${activityRecordKindLabel(item.recordKind)}`}
         </strong>
-        <span className={styles.action}>
-          {activityLabels[item.activityType]}
-        </span>
+        <span className={styles.action}>{activityLabelFor(item)}</span>
+        {relationLabel !== undefined && <code>{relationLabel}</code>}
         {item.changedFields !== undefined && item.changedFields.length > 0 && (
           <code>{item.changedFields.join(" · ")}</code>
         )}

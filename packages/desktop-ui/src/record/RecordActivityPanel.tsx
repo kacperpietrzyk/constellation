@@ -1,7 +1,7 @@
 import {
   activityCategoryFor,
   activityCategoryMark,
-  activityLabels,
+  activityLabelFor,
   type ActivityItem,
 } from "../activity-collection.js";
 import { formatDateTime } from "../i18n.js";
@@ -131,7 +131,7 @@ export const RecordActivityPanel = ({
                   )}{" "}
                 </>
               )}
-              {activityLabels[item.activityType]}
+              {activityLabelFor(item)}
             </span>
             <span className={styles.eventWhen}>
               {formatDateTime(item.occurredAt, timeZone)}

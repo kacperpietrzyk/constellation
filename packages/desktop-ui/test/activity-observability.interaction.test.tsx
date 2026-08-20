@@ -31,10 +31,34 @@ const activity = (): DesktopSnapshot["activity"] =>
       items: Array.from({ length: 200 }, (_, index) => ({
         eventId: id(index + 1),
         targetCommandId: id(index + 301) as never,
-        activityType: index % 2 === 0 ? "project_created" : "task_created",
+        activityType:
+          index < 2
+            ? "relation_added"
+            : index % 2 === 0
+              ? "project_created"
+              : "task_created",
         recordId: id(index + 601),
-        recordKind: index % 2 === 0 ? "project" : "task",
+        recordKind: index < 2 ? "task" : index % 2 === 0 ? "project" : "task",
         recordTitle: `Observable record ${index + 1}`,
+        ...(index === 0
+          ? {
+              relationContext: {
+                relationType: "task_contributes_to_area" as const,
+                path: "direct" as const,
+                taskId: id(601) as never,
+                areaId: id(1_601) as never,
+              },
+            }
+          : index === 1
+            ? {
+                relationContext: {
+                  relationType: "task_contributes_to_project" as const,
+                  path: "project_mediated" as const,
+                  taskId: id(602) as never,
+                  projectId: id(1_602) as never,
+                },
+              }
+            : {}),
         ...(index === 199
           ? {}
           : {
@@ -108,10 +132,17 @@ test("200-event Activity keeps authorized filters, grouped evidence and honest f
   assert.equal(open?.open, true);
   assert.equal(open?.querySelectorAll("button").length, 2);
   assert.equal(open?.textContent?.includes("Observable record"), true);
+  assert.equal(
+    open?.textContent?.includes("Linked a task directly to an Area"),
+    true,
+  );
+  assert.equal(open?.textContent?.includes("Linked a task to a Project"), true);
+  assert.equal(open?.textContent?.includes("Direct Area context"), true);
+  assert.equal(open?.textContent?.includes("Via Project"), true);
 
   await setSelect(actor, id(901));
   await setSelect(kind, "project");
-  assert.match(container.textContent ?? "", /50 results of 200/);
+  assert.match(container.textContent ?? "", /49 results of 200/);
   assert.equal(
     container.querySelectorAll("details").length,
     0,

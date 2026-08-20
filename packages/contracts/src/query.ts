@@ -868,6 +868,41 @@ const SourceReferenceSchema = z
   })
   .strict();
 
+const ActivityRelationContextSchema = z.discriminatedUnion("relationType", [
+  z
+    .object({
+      relationType: z.literal("task_contributes_to_project"),
+      path: z.literal("project_mediated"),
+      taskId: TaskIdSchema,
+      projectId: ProjectIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      relationType: z.literal("task_contributes_to_opportunity"),
+      path: z.literal("direct"),
+      taskId: TaskIdSchema,
+      opportunityId: StrategicRecordIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      relationType: z.literal("task_contributes_to_area"),
+      path: z.literal("direct"),
+      taskId: TaskIdSchema,
+      areaId: StrategicRecordIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      relationType: z.literal("task_advances_initiative"),
+      path: z.literal("direct"),
+      taskId: TaskIdSchema,
+      initiativeId: StrategicRecordIdSchema,
+    })
+    .strict(),
+]);
+
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -2368,6 +2403,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             // would turn Activity into an authorization oracle.
             recordKind: RecordKindSchema.optional(),
             recordTitle: z.string().trim().min(1).max(500).optional(),
+            relationContext: ActivityRelationContextSchema.optional(),
             actor: z
               .object({
                 principalId: PrincipalIdSchema,

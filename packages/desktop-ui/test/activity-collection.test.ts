@@ -100,6 +100,65 @@ describe("activity collection", () => {
     assert.deepEqual(filterActivityItems(items, "work", "22222222"), []);
   });
 
+  it("names direct and Project-mediated relation actions precisely", () => {
+    const labelFor = (
+      activityCollection as unknown as {
+        activityLabelFor: (item: ActivityItem) => string;
+      }
+    ).activityLabelFor;
+    const taskId = "71111111-1111-4111-8111-111111111111" as never;
+    const relation = (
+      relationContext: NonNullable<ActivityItem["relationContext"]>,
+    ) =>
+      item("relation_added", "2026-07-18T09:00:00.000Z", taskId, {
+        relationContext,
+      });
+    assert.equal(
+      labelFor(
+        relation({
+          relationType: "task_contributes_to_area",
+          path: "direct",
+          taskId,
+          areaId: "72222222-2222-4222-8222-222222222222" as never,
+        }),
+      ),
+      "Linked a task directly to an Area",
+    );
+    assert.equal(
+      labelFor(
+        relation({
+          relationType: "task_advances_initiative",
+          path: "direct",
+          taskId,
+          initiativeId: "73333333-3333-4333-8333-333333333333" as never,
+        }),
+      ),
+      "Linked a task directly to an Initiative",
+    );
+    assert.equal(
+      labelFor(
+        relation({
+          relationType: "task_contributes_to_opportunity",
+          path: "direct",
+          taskId,
+          opportunityId: "74444444-4444-4444-8444-444444444444" as never,
+        }),
+      ),
+      "Linked a task directly to an Opportunity",
+    );
+    assert.equal(
+      labelFor(
+        relation({
+          relationType: "task_contributes_to_project",
+          path: "project_mediated",
+          taskId,
+          projectId: "75555555-5555-4555-8555-555555555555" as never,
+        }),
+      ),
+      "Linked a task to a Project",
+    );
+  });
+
   it("searches current authorized record titles and actor labels", () => {
     const enriched = item(
       "project_created",

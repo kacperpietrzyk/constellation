@@ -51,7 +51,7 @@ export const activityLabels: Record<ActivityItem["activityType"], string> = {
   comment_edited: "Edited a comment",
   comment_resolved: "Resolved a comment thread",
   comment_reopened: "Reopened a comment thread",
-  relation_added: "Linked a task to a project",
+  relation_added: "Linked records",
   relation_removed: "Removed a link",
   knowledge_source_created: "Saved a knowledge source",
   knowledge_source_updated: "Updated a knowledge source",
@@ -60,6 +60,32 @@ export const activityLabels: Record<ActivityItem["activityType"], string> = {
   knowledge_named_version_voided: "Voided a named version",
   strategic_record_changed: "Changed a strategic record",
   command_undone: "Undid a command",
+};
+
+export const activityLabelFor = (item: ActivityItem): string => {
+  const context = item.relationContext;
+  if (
+    context === undefined ||
+    (item.activityType !== "relation_added" &&
+      item.activityType !== "relation_removed")
+  )
+    return activityLabels[item.activityType];
+
+  const target =
+    context.relationType === "task_contributes_to_project"
+      ? "Project"
+      : context.relationType === "task_contributes_to_area"
+        ? "Area"
+        : context.relationType === "task_advances_initiative"
+          ? "Initiative"
+          : "Opportunity";
+  if (item.activityType === "relation_removed")
+    return context.path === "project_mediated"
+      ? `Removed a ${target} link`
+      : `Removed a direct ${target} link`;
+  return context.path === "project_mediated"
+    ? `Linked a task to a ${target}`
+    : `Linked a task directly to an ${target}`;
 };
 
 const categoryByType: Record<
@@ -144,7 +170,7 @@ export const filterActivityItems = (
       return false;
     if (recordKind !== "all" && item.recordKind !== recordKind) return false;
     if (normalizedQuery.length === 0) return true;
-    return `${activityLabels[item.activityType]} ${item.recordTitle ?? ""} ${item.actor?.displayName ?? ""} ${item.recordKind ?? ""} ${item.commandName ?? ""} ${item.recordId}`
+    return `${activityLabelFor(item)} ${item.recordTitle ?? ""} ${item.actor?.displayName ?? ""} ${item.recordKind ?? ""} ${item.commandName ?? ""} ${item.recordId}`
       .toLocaleLowerCase("pl-PL")
       .includes(normalizedQuery);
   });
