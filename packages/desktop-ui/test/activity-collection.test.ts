@@ -3,11 +3,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import * as activityCollection from "../src/activity-collection.js";
 import {
   activityCategoryFor,
   activityLabels,
   filterActivityItems,
   groupActivityItems,
+  type ActivityCategory,
   type ActivityItem,
 } from "../src/activity-collection.js";
 
@@ -15,6 +17,7 @@ const item = (
   activityType: ActivityItem["activityType"],
   occurredAt: string,
   recordId = "11111111-1111-4111-8111-111111111111",
+  enrichment: Partial<ActivityItem> = {},
 ): ActivityItem =>
   ({
     eventId: crypto.randomUUID(),
@@ -22,6 +25,7 @@ const item = (
     activityType,
     recordId,
     occurredAt,
+    ...enrichment,
   }) as ActivityItem;
 
 const shiftDays = (iso: string, days: number): string =>
@@ -94,6 +98,149 @@ describe("activity collection", () => {
 
     assert.deepEqual(filterActivityItems(items, "all", "22222222"), [items[1]]);
     assert.deepEqual(filterActivityItems(items, "work", "22222222"), []);
+  });
+
+  it("searches current authorized record titles and actor labels", () => {
+    const enriched = item(
+      "project_created",
+      "2026-07-18T09:00:00.000Z",
+      "33333333-3333-4333-8333-333333333333",
+      {
+        recordKind: "project",
+        recordTitle: "Current Northstar title",
+        actor: {
+          principalId: "44444444-4444-4444-8444-444444444444" as never,
+          displayName: "Hermes",
+          kind: "agent",
+        },
+      },
+    );
+    assert.deepEqual(filterActivityItems([enriched], "all", "northstar"), [
+      enriched,
+    ]);
+    assert.deepEqual(filterActivityItems([enriched], "all", "hermes"), [
+      enriched,
+    ]);
+  });
+
+  it("filters by authorized actor and record kind without matching absent metadata", () => {
+    const hermesProject = item(
+      "project_created",
+      "2026-07-18T09:00:00.000Z",
+      "33333333-3333-4333-8333-333333333333",
+      {
+        recordKind: "project",
+        recordTitle: "Northstar",
+        actor: {
+          principalId: "44444444-4444-4444-8444-444444444444" as never,
+          displayName: "Hermes",
+          kind: "agent",
+        },
+      },
+    );
+    const humanTask = item(
+      "task_created",
+      "2026-07-18T08:00:00.000Z",
+      "55555555-5555-4555-8555-555555555555",
+      {
+        recordKind: "task",
+        actor: {
+          principalId: "66666666-6666-4666-8666-666666666666" as never,
+          displayName: "Kacper",
+          kind: "human",
+        },
+      },
+    );
+    const filter = filterActivityItems as unknown as (
+      items: readonly ActivityItem[],
+      category: ActivityCategory,
+      query: string,
+      actorPrincipalId?: string,
+      recordKind?: string,
+    ) => readonly ActivityItem[];
+    assert.deepEqual(
+      filter(
+        [hermesProject, humanTask],
+        "all",
+        "",
+        "44444444-4444-4444-8444-444444444444",
+        "project",
+      ),
+      [hermesProject],
+    );
+    assert.deepEqual(
+      filter(
+        [humanTask],
+        "all",
+        "",
+        "44444444-4444-4444-8444-444444444444",
+        "all",
+      ),
+      [],
+    );
+  });
+
+  it("groups only consecutive commands that share a correlation or agent run", () => {
+    const correlationId = "77777777-7777-4777-8777-777777777777" as never;
+    const runId = "88888888-8888-4888-8888-888888888888" as never;
+    const first = item(
+      "project_created",
+      "2026-07-18T09:00:00.000Z",
+      undefined,
+      {
+        correlationId,
+        agentRunId: runId,
+      },
+    );
+    const second = item("task_created", "2026-07-18T08:59:00.000Z", undefined, {
+      correlationId,
+      agentRunId: runId,
+    });
+    const unrelated = item("task_completed", "2026-07-18T08:58:00.000Z");
+    const laterSame = item(
+      "task_reopened",
+      "2026-07-18T08:57:00.000Z",
+      undefined,
+      {
+        correlationId,
+        agentRunId: runId,
+      },
+    );
+    const laterSameSecond = item(
+      "task_completed",
+      "2026-07-18T08:56:00.000Z",
+      undefined,
+      {
+        correlationId,
+        agentRunId: runId,
+      },
+    );
+    const groupOperations = (
+      activityCollection as unknown as {
+        groupActivityOperations: (items: readonly ActivityItem[]) => readonly {
+          readonly key: string;
+          readonly grouped: boolean;
+          readonly items: readonly ActivityItem[];
+        }[];
+      }
+    ).groupActivityOperations;
+    const operations = groupOperations([
+      first,
+      second,
+      unrelated,
+      laterSame,
+      laterSameSecond,
+    ]);
+    assert.equal(operations.length, 3);
+    assert.equal(operations[0]?.grouped, true);
+    assert.deepEqual(operations[0]?.items, [first, second]);
+    assert.deepEqual(operations[1]?.items, [unrelated]);
+    assert.deepEqual(operations[2]?.items, [laterSame, laterSameSecond]);
+    assert.notEqual(
+      operations[0]?.key,
+      operations[2]?.key,
+      "separated groups with one correlation need distinct React keys",
+    );
   });
 
   it("groups in source order and labels the two most recent days relatively", () => {

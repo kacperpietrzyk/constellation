@@ -73,7 +73,7 @@
 
 .controls {
   display: grid;
-  grid-template-columns: minmax(11rem, 1fr) auto auto;
+  grid-template-columns: minmax(11rem, 1fr) repeat(3, minmax(8rem, auto)) auto;
   align-items: end;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -218,6 +218,58 @@
   list-style: none;
 }
 
+.operation {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.operation:last-child {
+  border-bottom: 0;
+}
+
+.operation > details > summary {
+  min-height: 3.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  color: var(--text-secondary);
+  list-style: none;
+}
+
+.operation > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.operation > details > summary > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.operation > details > summary strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operation > details > summary small {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  overflow-wrap: anywhere;
+}
+
+.operation > details[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.operation .list {
+  padding-inline-start: var(--space-3);
+}
+
 .row {
   min-height: 5rem;
   display: grid;
@@ -287,6 +339,11 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.045em;
   text-transform: uppercase;
+}
+
+.action {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .rowCopy code {

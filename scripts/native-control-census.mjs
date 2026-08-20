@@ -219,7 +219,7 @@ export const NATIVE_CONTROL_LEDGER = {
   "record/TaskOperationsPanel.tsx": 4,
   "renewals/RenewalsSurface.tsx": 9,
   "settings/AccessSection.tsx": 13,
-  "settings/ActivitySection.tsx": 2,
+  "settings/ActivitySection.tsx": 4,
   "settings/CommercialDefaultsSection.tsx": 6,
   "settings/WorkingDaySection.tsx": 3,
   "tasks/SavedViewFilterForm.tsx": 4,

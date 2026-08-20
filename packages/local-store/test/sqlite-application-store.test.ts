@@ -2917,6 +2917,40 @@ describe("SQLite ApplicationStore", () => {
         captureId,
       );
 
+      const activity = reopened.kernel.query(
+        context(),
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "activity.meaningful",
+          queryId: "00000000-0000-4000-8000-000000000021",
+          workspaceId: ids.workspace,
+          consistency: "local_authoritative",
+          parameters: { spaceId: ids.rootSpace, limit: 20 },
+        }),
+      );
+      if (
+        activity.kind !== "query_result" ||
+        activity.result.outcome !== "success" ||
+        activity.result.projection.kind !== "activity.meaningful"
+      )
+        assert.fail("Expected reopened meaningful activity.");
+      const routedActivity = activity.result.projection.items.find(
+        (item) => item.activityType === "capture_routed",
+      );
+      assert.equal(
+        routedActivity?.recordTitle,
+        "Prepare the restart-safe review",
+      );
+      assert.equal(routedActivity?.commandName, "capture.routeAsTask");
+      assert.equal(routedActivity?.correlationId, captureCommand.correlationId);
+      assert.deepEqual(routedActivity?.changedFields, [
+        "processingState",
+        "derivedTaskId",
+        "task.title",
+        "task.statusId",
+        "task.sourceCaptureId",
+      ]);
+
       const replay = unwrap(reopened.kernel.execute(context(), captureCommand));
       assert.deepEqual(replay, captureOutcome);
       const capture = reopened.store.read((view) => view.getCapture(captureId));

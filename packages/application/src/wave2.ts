@@ -14422,6 +14422,7 @@ export const executeWave2Query = (
   }
   const activityMap: Partial<Record<DomainEvent["type"], string>> = {
     "capture.routed_as_task": "capture_routed",
+    "capture.routed_as_knowledge_source": "capture_routed_to_knowledge",
     "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
     "project.outcome_updated": "project_outcome_changed",
@@ -14451,6 +14452,7 @@ export const executeWave2Query = (
     "task.assigned": "task_assigned",
     "task.unassigned": "task_unassigned",
     "comment.added": "comment_added",
+    "comment.edited": "comment_edited",
     "comment.resolved": "comment_resolved",
     "comment.reopened": "comment_reopened",
     "relation.created": "relation_added",
@@ -14463,21 +14465,296 @@ export const executeWave2Query = (
     "strategic.record_changed": "strategic_record_changed",
     "command.undone": "command_undone",
   };
+  const safeActivityChangedFields = new Set([
+    "title",
+    "intendedOutcome",
+    "lifecycle",
+    "evidenceSourceIds",
+    "description",
+    "nextAction",
+    "startAt",
+    "dueAt",
+    "priority",
+    "parentTaskId",
+    "statusId",
+    "completionState",
+    "operationalState",
+    "waitingOn",
+    "assigneePrincipalId",
+    "relationType",
+    "sourceKind",
+    "canonicalUrl",
+    "excerpt",
+    "availability",
+    "state",
+    "name",
+    "label",
+    "fieldId",
+    "value",
+    "recipe",
+    "defaultTaskStatusId",
+    "commercialDefaults",
+    "threadState",
+    "body",
+    "folderId",
+    "processingState",
+    "derivedTaskId",
+    "derivedKnowledgeSourceId",
+    "task.title",
+    "task.statusId",
+    "task.sourceCaptureId",
+    "source.sourceCaptureId",
+    "attention.state",
+  ]);
+  const resolveActivityRecord = (recordId: string) => {
+    const capture = view.getCapture(recordId as never);
+    if (
+      capture?.workspaceId === query.workspaceId &&
+      capture.spaceId === query.parameters.spaceId
+    ) {
+      const title = capture.originalText.trim();
+      if (title.length > 0)
+        return {
+          recordId: capture.id,
+          recordKind: "capture" as const,
+          recordTitle: title.slice(0, 500),
+        };
+    }
+    const task = view.getTask(recordId as never);
+    if (
+      task?.workspaceId === query.workspaceId &&
+      task.spaceId === query.parameters.spaceId &&
+      task.recordState === "active"
+    )
+      return {
+        recordId: task.id,
+        recordKind: "task" as const,
+        recordTitle: task.title,
+      };
+
+    const project = view.getProject(recordId as never);
+    if (
+      project?.workspaceId === query.workspaceId &&
+      project.spaceId === query.parameters.spaceId &&
+      project.recordState !== "removed"
+    )
+      return {
+        recordId: project.id,
+        recordKind: "project" as const,
+        recordTitle: project.title,
+      };
+
+    const document = view.getDocument(recordId as never);
+    if (
+      document?.workspaceId === query.workspaceId &&
+      document.spaceId === query.parameters.spaceId &&
+      document.recordState !== "removed"
+    )
+      return {
+        recordId: document.id,
+        recordKind: "document" as const,
+        recordTitle: document.title,
+      };
+
+    const source = view.getKnowledgeSource(recordId as never);
+    if (
+      source?.workspaceId === query.workspaceId &&
+      source.spaceId === query.parameters.spaceId &&
+      source.recordState !== "removed"
+    )
+      return {
+        recordId: source.id,
+        recordKind: "knowledgeSource" as const,
+        recordTitle: source.title,
+      };
+
+    const strategic = view.getStrategicRecord(recordId as never);
+    if (
+      strategic?.workspaceId === query.workspaceId &&
+      strategic.spaceId === query.parameters.spaceId &&
+      strategic.recordState !== "removed"
+    )
+      return {
+        recordId: strategic.id,
+        recordKind: "strategicRecord" as const,
+        recordTitle: strategicSearchText(strategic).title,
+      };
+
+    const status = view.getTaskStatus(recordId as never);
+    if (
+      status?.workspaceId === query.workspaceId &&
+      status.state !== "archived"
+    )
+      return {
+        recordId: status.id,
+        recordKind: "taskStatus" as const,
+        recordTitle: status.label,
+      };
+    const field = view.getFieldDefinition(recordId as never);
+    if (field?.workspaceId === query.workspaceId && field.state !== "retired")
+      return {
+        recordId: field.id,
+        recordKind: "fieldDefinition" as const,
+        recordTitle: field.label,
+      };
+    const template = view.getProjectTemplate(recordId as never);
+    if (
+      template?.workspaceId === query.workspaceId &&
+      template.state !== "retired"
+    )
+      return {
+        recordId: template.id,
+        recordKind: "projectTemplate" as const,
+        recordTitle: template.name,
+      };
+    const automation = view.getAutomationRule(recordId as never);
+    if (automation?.workspaceId === query.workspaceId)
+      return {
+        recordId: automation.id,
+        recordKind: "automationRule" as const,
+        recordTitle: automation.name,
+      };
+    return undefined;
+  };
+
+  const resolveActivityActor = (receipt: AuditReceipt) => {
+    const membership = view.getMembership(
+      query.workspaceId,
+      receipt.principalId,
+    );
+    const spaceGrant = view.getSpaceGrantForPrincipal(
+      query.workspaceId,
+      query.parameters.spaceId,
+      receipt.principalId,
+    );
+    const workspace = view.getWorkspace(query.workspaceId);
+    const ownsRootSpace =
+      membership?.role === "owner" &&
+      workspace?.rootSpaceId === query.parameters.spaceId;
+    if (
+      membership === undefined ||
+      membership.status === "revoked" ||
+      (!ownsRootSpace && spaceGrant?.status !== "active")
+    )
+      return undefined;
+
+    const agentGrant = view.getAgentGrant(receipt.grantId);
+    if (agentGrant !== undefined) {
+      if (
+        agentGrant.agentPrincipalId !== receipt.principalId ||
+        agentGrant.status !== "active" ||
+        !agentGrant.spaceScope.includes(query.parameters.spaceId)
+      )
+        return undefined;
+      return {
+        principalId: receipt.principalId,
+        displayName: agentGrant.displayName,
+        kind: "agent" as const,
+      };
+    }
+
+    const displayName =
+      membership.displayName ??
+      (receipt.principalId === context.principalId ? "You" : undefined);
+    if (displayName === undefined) return undefined;
+    return {
+      principalId: receipt.principalId,
+      displayName,
+      kind: "human" as const,
+    };
+  };
+
+  const commentActivityRecordId = (commentId: string): string | undefined => {
+    const comment = view.getComment(commentId as never);
+    if (
+      comment?.workspaceId !== query.workspaceId ||
+      comment.spaceId !== query.parameters.spaceId
+    )
+      return undefined;
+    return comment.target.kind === "task"
+      ? comment.target.taskId
+      : comment.target.kind === "project"
+        ? comment.target.projectId
+        : comment.target.kind === "organization"
+          ? comment.target.organizationId
+          : comment.target.opportunityId;
+  };
+
   const items = view
     .listEvents(query.workspaceId, query.parameters.spaceId)
     .flatMap((event) => {
       const activityType = activityMap[event.type];
-      return activityType === undefined
-        ? []
-        : [
-            {
-              eventId: event.id,
-              targetCommandId: event.commandId,
-              activityType,
-              recordId: event.aggregateId,
-              occurredAt: event.occurredAt,
-            },
-          ];
+      if (activityType === undefined) return [];
+      const candidateReceipt = view.getAuditReceiptByCommand(event.commandId);
+      const presentationRecordIds =
+        event.type === "relation.created" || event.type === "relation.removed"
+          ? [
+              event.taskId,
+              ...(event.projectId === undefined ? [] : [event.projectId]),
+              ...(event.opportunityId === undefined
+                ? []
+                : [event.opportunityId]),
+            ]
+          : event.type === "task.assigned" || event.type === "task.unassigned"
+            ? [event.taskId]
+            : event.type === "capture.routed_as_task"
+              ? [event.taskId]
+              : event.type === "capture.routed_as_knowledge_source"
+                ? [event.knowledgeSourceId]
+                : event.type === "comment.added" ||
+                    event.type === "comment.edited" ||
+                    event.type === "comment.resolved" ||
+                    event.type === "comment.reopened"
+                  ? [commentActivityRecordId(event.aggregateId)].filter(
+                      (recordId): recordId is string => recordId !== undefined,
+                    )
+                  : [event.aggregateId];
+      const receipt =
+        candidateReceipt?.workspaceId === query.workspaceId &&
+        candidateReceipt.spaceId === query.parameters.spaceId &&
+        candidateReceipt.commandId === event.commandId &&
+        candidateReceipt.affectedRecordIds.includes(event.aggregateId)
+          ? candidateReceipt
+          : undefined;
+      const record = [
+        ...presentationRecordIds,
+        ...(receipt?.affectedRecordIds ?? []),
+      ]
+        .filter((recordId, index, all) => all.indexOf(recordId) === index)
+        .map(resolveActivityRecord)
+        .find((candidate) => candidate !== undefined);
+      if (record === undefined) return [];
+      const actor =
+        receipt === undefined ? undefined : resolveActivityActor(receipt);
+      const changedFields =
+        receipt?.changedFields
+          .filter((field) => safeActivityChangedFields.has(field))
+          .slice(0, 64) ?? [];
+      return [
+        {
+          eventId: event.id,
+          targetCommandId: event.commandId,
+          activityType,
+          recordId: record.recordId,
+          recordKind: record.recordKind,
+          recordTitle: record.recordTitle,
+          ...(receipt === undefined || actor === undefined
+            ? {}
+            : {
+                actor,
+                commandName: receipt.commandName,
+                changedFields,
+                correlationId: receipt.correlationId,
+                ...(receipt.agentRunId === undefined
+                  ? {}
+                  : { agentRunId: receipt.agentRunId }),
+                ...(receipt.hostRunId === undefined
+                  ? {}
+                  : { hostRunId: receipt.hostRunId }),
+              }),
+          occurredAt: event.occurredAt,
+        },
+      ];
     })
     .slice(0, query.parameters.limit ?? 50);
   return querySuccess(query, kernelTime, freshness, {

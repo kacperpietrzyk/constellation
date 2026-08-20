@@ -739,14 +739,17 @@ describe("interaction recovery contracts", () => {
   it("keeps dense Activity controllable and semantically grouped", () => {
     assert.match(activitySection, /id="activity-search"/);
     assert.match(activitySection, /id="activity-category"/);
+    assert.match(activitySection, /id="activity-actor"/);
+    assert.match(activitySection, /id="activity-record-kind"/);
     assert.match(
       activitySection,
-      /filterActivityItems\(items, category, query\)/,
+      /filterActivityItems\(items, category, query, actorPrincipalId, recordKind\)/,
     );
     assert.match(
       activitySection,
       /groupActivityItems\(filteredItems, timezone\)/,
     );
+    assert.match(activitySection, /groupActivityOperations\(group\.items\)/);
     assert.match(activitySection, /<ol className=\{styles\.list\}>/);
     // Groups are labelled regions, so a dense list stays navigable.
     assert.match(

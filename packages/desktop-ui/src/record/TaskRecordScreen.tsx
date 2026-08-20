@@ -31,7 +31,7 @@ import {
 } from "../tasks/task-view.js";
 import {
   RecordActivityPanel,
-  recordActivityItems,
+  recordActivityEntries,
 } from "./RecordActivityPanel.js";
 import {
   RecordCommentsPanel,
@@ -459,9 +459,7 @@ export const TaskRecordScreen = ({
   const threads = comments.kind === "ready" ? comments.data.threads : undefined;
   const activityEntries =
     activity.kind === "ready"
-      ? recordActivityItems(
-          activity.data.items.filter((item) => item.recordId === taskId),
-        ).map((item) => ({ item }))
+      ? recordActivityEntries(activity.data.items, taskId)
       : [];
 
   const counts: Partial<Record<RecordTab, number>> =

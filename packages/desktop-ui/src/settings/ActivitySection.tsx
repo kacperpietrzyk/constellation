@@ -10,7 +10,9 @@ import {
   activityLabels,
   filterActivityItems,
   groupActivityItems,
+  groupActivityOperations,
   type ActivityCategory,
+  type ActivityItem,
 } from "../activity-collection.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
@@ -70,6 +72,62 @@ const ActivityInlineState = ({
   </div>
 );
 
+const activityRecordKindLabel = (kind: string | undefined): string =>
+  kind === undefined
+    ? "Record"
+    : kind
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/^./, (value) => value.toUpperCase());
+
+const ActivityRow = ({
+  item,
+  timezone,
+  onUndo,
+}: {
+  readonly item: ActivityItem;
+  readonly timezone: string | undefined;
+  readonly onUndo: (targetCommandId: CommandId) => void;
+}) => {
+  const itemCategory = activityCategoryFor(item);
+  return (
+    <li className={styles.row}>
+      <span
+        className={`${styles.kindMark} ${styles[itemCategory] ?? ""}`}
+        aria-hidden="true"
+      >
+        {activityCategoryMark[itemCategory]}
+      </span>
+      <span className={styles.rowCopy}>
+        <small>
+          {item.actor === undefined
+            ? activityCategoryLabel(itemCategory)
+            : `${item.actor.displayName}${item.actor.kind === "agent" ? " · agent" : ""}`}{" "}
+          · {formatDateTime(item.occurredAt, timezone)}
+        </small>
+        <strong>
+          {item.recordTitle ?? "Record details unavailable"}
+          {item.recordKind === undefined
+            ? ""
+            : ` · ${activityRecordKindLabel(item.recordKind)}`}
+        </strong>
+        <span className={styles.action}>
+          {activityLabels[item.activityType]}
+        </span>
+        {item.changedFields !== undefined && item.changedFields.length > 0 && (
+          <code>{item.changedFields.join(" · ")}</code>
+        )}
+      </span>
+      <button
+        type="button"
+        className="ghost-button"
+        onClick={() => onUndo(item.targetCommandId)}
+      >
+        Preview undo
+      </button>
+    </li>
+  );
+};
+
 export const ActivitySection = ({
   activity,
   timezone,
@@ -83,18 +141,53 @@ export const ActivitySection = ({
 }) => {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<ActivityCategory>("all");
+  const [actorPrincipalId, setActorPrincipalId] = useState("all");
+  const [recordKind, setRecordKind] = useState("all");
   const items = activity.kind === "ready" ? activity.data.items : [];
+  const actorOptions = useMemo(
+    () =>
+      [
+        ...new Map(
+          items
+            .filter((item) => item.actor !== undefined)
+            .map((item) => [item.actor!.principalId, item.actor!] as const),
+        ).values(),
+      ].sort((left, right) =>
+        left.displayName.localeCompare(right.displayName),
+      ),
+    [items],
+  );
+  const recordKindOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          items
+            .map((item) => item.recordKind)
+            .filter(
+              (kind): kind is NonNullable<typeof kind> => kind !== undefined,
+            ),
+        ),
+      ].sort((left, right) => left.localeCompare(right)),
+    [items],
+  );
   const filteredItems = useMemo(
-    () => filterActivityItems(items, category, query),
-    [items, category, query],
+    () =>
+      filterActivityItems(items, category, query, actorPrincipalId, recordKind),
+    [items, category, query, actorPrincipalId, recordKind],
   );
   const groups = useMemo(
     () => groupActivityItems(filteredItems, timezone),
     [filteredItems, timezone],
   );
-  const filtersActive = category !== "all" || query.trim().length > 0;
+  const filtersActive =
+    category !== "all" ||
+    actorPrincipalId !== "all" ||
+    recordKind !== "all" ||
+    query.trim().length > 0;
   const resetFilters = () => {
     setCategory("all");
+    setActorPrincipalId("all");
+    setRecordKind("all");
     setQuery("");
   };
 
@@ -117,8 +210,8 @@ export const ActivitySection = ({
             Activity
           </h2>
           <p className={styles.lede}>
-            Confirmed changes. Attribution and full receipts stay in the audit
-            log.
+            Authorized records, actors and operation context. Full receipts stay
+            in the audit log.
           </p>
         </div>
         {activity.kind === "ready" && items.length > 0 && (
@@ -158,7 +251,7 @@ export const ActivitySection = ({
                 id="activity-search"
                 type="search"
                 value={query}
-                placeholder="Event or record ID"
+                placeholder="Record, actor or action"
                 onChange={(event) => setQuery(event.currentTarget.value)}
               />
             </label>
@@ -177,6 +270,42 @@ export const ActivitySection = ({
                 {activityCategoryDefinitions.map((definition) => (
                   <option key={definition.id} value={definition.id}>
                     {definition.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.categoryControl} htmlFor="activity-actor">
+              <span>Actor</span>
+              <select
+                id="activity-actor"
+                value={actorPrincipalId}
+                onChange={(event) =>
+                  setActorPrincipalId(event.currentTarget.value)
+                }
+              >
+                <option value="all">All actors</option>
+                {actorOptions.map((actor) => (
+                  <option key={actor.principalId} value={actor.principalId}>
+                    {actor.displayName}
+                    {actor.kind === "agent" ? " · agent" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              className={styles.categoryControl}
+              htmlFor="activity-record-kind"
+            >
+              <span>Record</span>
+              <select
+                id="activity-record-kind"
+                value={recordKind}
+                onChange={(event) => setRecordKind(event.currentTarget.value)}
+              >
+                <option value="all">All record kinds</option>
+                {recordKindOptions.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {activityRecordKindLabel(kind)}
                   </option>
                 ))}
               </select>
@@ -223,31 +352,47 @@ export const ActivitySection = ({
                     <span>{countLabel(group.items.length, "change")}</span>
                   </header>
                   <ol className={styles.list}>
-                    {group.items.map((item) => {
-                      const itemCategory = activityCategoryFor(item);
+                    {groupActivityOperations(group.items).map((operation) => {
+                      if (!operation.grouped) {
+                        const item = operation.items[0]!;
+                        return (
+                          <ActivityRow
+                            key={item.eventId}
+                            item={item}
+                            timezone={timezone}
+                            onUndo={onUndo}
+                          />
+                        );
+                      }
+                      const first = operation.items[0]!;
                       return (
-                        <li className={styles.row} key={item.eventId}>
-                          <span
-                            className={`${styles.kindMark} ${styles[itemCategory] ?? ""}`}
-                            aria-hidden="true"
-                          >
-                            {activityCategoryMark[itemCategory]}
-                          </span>
-                          <span className={styles.rowCopy}>
-                            <small>
-                              {activityCategoryLabel(itemCategory)} ·{" "}
-                              {formatDateTime(item.occurredAt, timezone)}
-                            </small>
-                            <strong>{activityLabels[item.activityType]}</strong>
-                            <code>record {item.recordId.slice(0, 8)}</code>
-                          </span>
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            onClick={() => onUndo(item.targetCommandId)}
-                          >
-                            Preview undo
-                          </button>
+                        <li className={styles.operation} key={operation.key}>
+                          <details>
+                            <summary>
+                              <span>
+                                <strong>
+                                  {first.actor?.displayName ?? "Operation"}
+                                </strong>
+                                <small>
+                                  {countLabel(operation.items.length, "change")}
+                                  {first.hostRunId === undefined
+                                    ? ""
+                                    : ` · run ${first.hostRunId}`}
+                                </small>
+                              </span>
+                              <span aria-hidden="true">⌄</span>
+                            </summary>
+                            <ol className={styles.list}>
+                              {operation.items.map((item) => (
+                                <ActivityRow
+                                  key={item.eventId}
+                                  item={item}
+                                  timezone={timezone}
+                                  onUndo={onUndo}
+                                />
+                              ))}
+                            </ol>
+                          </details>
                         </li>
                       );
                     })}

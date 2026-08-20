@@ -2321,6 +2321,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             targetCommandId: CommandIdSchema,
             activityType: z.enum([
               "capture_routed",
+              "capture_routed_to_knowledge",
               "capture_transcript_ready",
               "project_created",
               "project_outcome_changed",
@@ -2346,6 +2347,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task_assigned",
               "task_unassigned",
               "comment_added",
+              "comment_edited",
               "comment_resolved",
               "comment_reopened",
               "relation_added",
@@ -2359,6 +2361,29 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "command_undone",
             ]),
             recordId: z.uuid(),
+            // Enrichment is deliberately optional as a whole: old events may
+            // predate their audit receipt or the current caller may no longer
+            // be authorized to resolve the record or principal. Absence is the
+            // honest fallback; placeholder identities and cached old labels
+            // would turn Activity into an authorization oracle.
+            recordKind: RecordKindSchema.optional(),
+            recordTitle: z.string().trim().min(1).max(500).optional(),
+            actor: z
+              .object({
+                principalId: PrincipalIdSchema,
+                displayName: z.string().trim().min(1).max(300),
+                kind: z.enum(["human", "agent", "system"]),
+              })
+              .strict()
+              .optional(),
+            commandName: z.string().trim().min(1).max(200).optional(),
+            changedFields: z
+              .array(z.string().trim().min(1).max(120))
+              .max(64)
+              .optional(),
+            correlationId: CorrelationIdSchema.optional(),
+            agentRunId: AgentRunIdSchema.optional(),
+            hostRunId: z.string().trim().min(1).max(200).optional(),
             occurredAt: z.iso.datetime({ offset: true }),
           })
           .strict(),

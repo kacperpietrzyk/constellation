@@ -231,7 +231,7 @@ export const KNOWN_HEADING_TYPOGRAPHY_DEBT = [
     selector: ".stateTitle",
     missing: ["font-size", "font-weight"],
     owner: "lot 6 — file scope",
-    note: "activity-section.module.css:390. A CLASS subject (`ActivitySection.tsx:66` puts it on an <h3>) whose only rule sets `min-width: 0`. The layout gate already knows this element by name — `h3._stateTitle` was a registry entry in `descendant-overflow.mjs` — so it is measured for WIDTH and unmeasured for TYPE.",
+    note: "activity-section.module.css:447. A CLASS subject (`ActivitySection.tsx:66` puts it on an <h3>) whose only rule sets `min-width: 0`. The layout gate already knows this element by name — `h3._stateTitle` was a registry entry in `descendant-overflow.mjs` — so it is measured for WIDTH and unmeasured for TYPE.",
   },
   // ── Outside Phase 3 entirely ──────────────────────────────────────────────
   // No lot has these files in scope. They are here so the scan can run today,

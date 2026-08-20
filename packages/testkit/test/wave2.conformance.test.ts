@@ -464,6 +464,26 @@ describe("Wave 2 reference semantics", () => {
       routed.projection.kind !== "capture.routed_as_knowledge_source"
     )
       assert.fail("Expected file Knowledge Source.");
+    const routedActivityResult = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "activity.meaningful",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      routedActivityResult.kind !== "query_result" ||
+      routedActivityResult.result.outcome !== "success" ||
+      routedActivityResult.result.projection.kind !== "activity.meaningful"
+    )
+      assert.fail("Expected Capture routing activity.");
+    const routedActivity = routedActivityResult.result.projection.items.find(
+      (item) => item.activityType === "capture_routed_to_knowledge",
+    );
+    assert.equal(routedActivity?.recordId, routed.projection.sourceId);
+    assert.equal(routedActivity?.recordKind, "knowledgeSource");
+    assert.equal(routedActivity?.commandName, "capture.process");
     const documentId = requestId();
     unwrap(
       harness.kernel.execute(context(), {
@@ -1380,6 +1400,17 @@ describe("Wave 2 reference semantics", () => {
         "project_created",
         "capture_routed",
       ],
+    );
+    const relationActivity = activity.result.projection.items.find(
+      (item) => item.activityType === "relation_added",
+    );
+    assert.equal(relationActivity?.recordId, taskId);
+    assert.equal(relationActivity?.recordKind, "task");
+    assert.equal(relationActivity?.commandName, "record.relate");
+    assert.ok(relationActivity?.correlationId);
+    assert.equal(
+      relationActivity?.changedFields?.includes("relationType"),
+      true,
     );
   });
 

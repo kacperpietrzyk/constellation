@@ -56,6 +56,24 @@ export const recordActivityItems = (
   items: readonly ActivityItem[],
 ): readonly ActivityItem[] => items.filter(isRecordActivity);
 
+export const recordActivityEntries = (
+  items: readonly ActivityItem[],
+  recordId: string,
+): readonly RecordActivityEntry[] =>
+  recordActivityItems(items.filter((item) => item.recordId === recordId)).map(
+    (item) => ({
+      item,
+      ...(item.actor === undefined
+        ? {}
+        : {
+            actor: {
+              name: item.actor.displayName,
+              agent: item.actor.kind === "agent",
+            },
+          }),
+    }),
+  );
+
 /** Newest first, ties broken on the event id so a batch written by one command
  *  holds its order between renders. */
 const byRecency = (

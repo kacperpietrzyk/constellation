@@ -21,6 +21,7 @@ export const activityCategoryDefinitions: readonly {
 
 export const activityLabels: Record<ActivityItem["activityType"], string> = {
   capture_routed: "Turned a Capture into a task",
+  capture_routed_to_knowledge: "Turned a Capture into a knowledge source",
   capture_transcript_ready: "Saved a voice note transcript",
   project_created: "Created a project",
   project_outcome_changed: "Changed a project's intended outcome",
@@ -47,6 +48,7 @@ export const activityLabels: Record<ActivityItem["activityType"], string> = {
   task_assigned: "Assigned a task",
   task_unassigned: "Unassigned a task",
   comment_added: "Added a comment",
+  comment_edited: "Edited a comment",
   comment_resolved: "Resolved a comment thread",
   comment_reopened: "Reopened a comment thread",
   relation_added: "Linked a task to a project",
@@ -65,6 +67,7 @@ const categoryByType: Record<
   ActivityItemCategory
 > = {
   capture_routed: "capture",
+  capture_routed_to_knowledge: "capture",
   capture_transcript_ready: "capture",
   project_created: "work",
   project_outcome_changed: "work",
@@ -90,6 +93,7 @@ const categoryByType: Record<
   task_assigned: "work",
   task_unassigned: "work",
   comment_added: "collaboration",
+  comment_edited: "collaboration",
   comment_resolved: "collaboration",
   comment_reopened: "collaboration",
   relation_added: "collaboration",
@@ -125,17 +129,59 @@ export const filterActivityItems = (
   items: readonly ActivityItem[],
   category: ActivityCategory,
   query: string,
+  actorPrincipalId: string = "all",
+  recordKind: string = "all",
 ): readonly ActivityItem[] => {
   const normalizedQuery = normalizeQuery(query);
   return items.filter((item) => {
     if (category !== "all" && activityCategoryFor(item) !== category) {
       return false;
     }
+    if (
+      actorPrincipalId !== "all" &&
+      item.actor?.principalId !== actorPrincipalId
+    )
+      return false;
+    if (recordKind !== "all" && item.recordKind !== recordKind) return false;
     if (normalizedQuery.length === 0) return true;
-    return `${activityLabels[item.activityType]} ${item.recordId}`
+    return `${activityLabels[item.activityType]} ${item.recordTitle ?? ""} ${item.actor?.displayName ?? ""} ${item.recordKind ?? ""} ${item.commandName ?? ""} ${item.recordId}`
       .toLocaleLowerCase("pl-PL")
       .includes(normalizedQuery);
   });
+};
+
+export interface ActivityOperationGroup {
+  readonly key: string;
+  readonly grouped: boolean;
+  readonly items: readonly ActivityItem[];
+}
+
+const sharesOperation = (left: ActivityItem, right: ActivityItem): boolean => {
+  if (left.correlationId !== undefined || right.correlationId !== undefined)
+    return (
+      left.correlationId !== undefined &&
+      left.correlationId === right.correlationId
+    );
+  return left.agentRunId !== undefined && left.agentRunId === right.agentRunId;
+};
+
+export const groupActivityOperations = (
+  items: readonly ActivityItem[],
+): readonly ActivityOperationGroup[] => {
+  const groups: ActivityItem[][] = [];
+  for (const item of items) {
+    const current = groups.at(-1);
+    if (current !== undefined && sharesOperation(current.at(-1)!, item)) {
+      current.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+  return groups.map((group) => ({
+    key: `${group[0]?.correlationId ?? group[0]?.agentRunId ?? "activity-operation"}:${group[0]?.eventId ?? "missing-event"}`,
+    grouped: group.length > 1,
+    items: group,
+  }));
 };
 
 const dateParts = (
