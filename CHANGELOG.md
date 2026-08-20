@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.2.3] - 2026-08-20
+
+### Fixed
+
+- Polished the desktop navigation without widening the sidebar: destination
+  labels keep their available width, counts share one right-aligned column, and
+  the favorite control no longer reserves an empty track when it is hidden.
+  Organizations, Renewals, and Capture history remain readable at the standard
+  desktop width while the accepted narrow rail and text-scaling behavior stay
+  unchanged.
+- Reworked Appearance into one compact, keyboard-accessible segmented Theme
+  control while preserving native radio semantics and device-local persistence.
+  Settings cards now use the shared spacing scale, and card-level primary actions
+  size to their labels instead of becoming full-width bars.
+
 ## [0.2.2] - 2026-08-16
 
 ### Fixed
