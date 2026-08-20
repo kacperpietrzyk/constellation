@@ -211,6 +211,26 @@ describe("interaction recovery contracts", () => {
     assert.match(styles, /\.inspector-resize::after\s*\{[^}]*width:\s*1px/s);
   });
 
+  it("makes the narrow inspector an opaque replacement layer", () => {
+    const narrowInspector = sliceBetween(
+      styles,
+      "@media (max-width: 75rem) {\n  .desktop-shell",
+      ".attention-detail-actions button {",
+      "narrow inspector",
+    );
+
+    assert.match(
+      narrowInspector,
+      /\.inspector\s*\{[^}]*background:\s*var\(--surface-window\)/s,
+      "At 320px the glass inspector lets the Projects controls and copy show through its own text.",
+    );
+    assert.match(
+      narrowInspector,
+      /\.inspector\s*\{[^}]*backdrop-filter:\s*none/s,
+      "A narrow replacement layer must not keep the desktop glass treatment.",
+    );
+  });
+
   it("returns focus from the undo preview to the invoking Activity action", () => {
     assert.match(
       surfaces,
