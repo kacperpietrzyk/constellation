@@ -127,6 +127,8 @@ const context = (): ExecutionContext =>
       "opportunity.create",
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
+      "area.create",
+      "initiative.create",
       "relationship.workspace",
       "meeting.upsertImported",
       "meeting.editWorkItem",
@@ -690,6 +692,89 @@ describe("SQLite ApplicationStore", () => {
         [first.projection.relationId]: 1,
       });
       database.close();
+    });
+  });
+
+  it("persists direct Area and Initiative relations across SQLite reopen", () => {
+    withDatabase((filename) => {
+      const areaId = "00000000-0000-4000-8000-000000000163";
+      const initiativeId = "00000000-0000-4000-8000-000000000164";
+      const taskId = "00000000-0000-4000-8000-000000000165";
+      const database = new DatabaseSync(filename);
+      const first = createKernel(database);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const command of [
+        wave2Command(
+          "area.create",
+          {
+            areaId,
+            spaceId: ids.rootSpace,
+            title: "Product stewardship",
+            responsibility: "Keep lightweight work in its direct context.",
+          },
+          "direct-area-create",
+        ),
+        wave2Command(
+          "initiative.create",
+          {
+            initiativeId,
+            spaceId: ids.rootSpace,
+            title: "Adopt work structure",
+            intendedOutcome: "Direct context is usable without fake projects.",
+          },
+          "direct-initiative-create",
+        ),
+        wave2Command(
+          "task.create",
+          { taskId, spaceId: ids.rootSpace, title: "Apply the standard" },
+          "direct-task-create",
+        ),
+      ])
+        assert.equal(
+          unwrap(first.kernel.execute(context(), command)).outcome,
+          "success",
+        );
+
+      for (const [relationType, targetId] of [
+        ["task_contributes_to_area", areaId],
+        ["task_advances_initiative", initiativeId],
+      ] as const) {
+        const command = wave2Command(
+          "record.relate",
+          relationType === "task_contributes_to_area"
+            ? { relationType, taskId, areaId: targetId }
+            : { relationType, taskId, initiativeId: targetId },
+          `persist-${relationType}`,
+          { [taskId]: 1, [targetId]: 1 },
+        );
+        assert.equal(
+          unwrap(first.kernel.execute(context(), command)).outcome,
+          "success",
+        );
+      }
+      database.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = new SqliteApplicationStore(sqlitePort(reopenedDatabase));
+      const relations = reopened.snapshot().relations;
+      assert.deepEqual(
+        relations.map((relation) => relation.relationType).sort(),
+        ["task_advances_initiative", "task_contributes_to_area"],
+      );
+      assert.deepEqual(
+        relations.map((relation) =>
+          relation.relationType === "task_contributes_to_area"
+            ? relation.areaId
+            : relation.relationType === "task_advances_initiative"
+              ? relation.initiativeId
+              : "unexpected",
+        ),
+        [initiativeId, areaId].sort(),
+      );
+      reopenedDatabase.close();
     });
   });
 

@@ -43,7 +43,11 @@ CRM or generic database builder.
   Project.
 - An Initiative is a completable multi-Project outcome. Typed work links connect
   Projects to Areas or Initiatives and Tasks to their dependencies without
-  forcing every record into one containment tree.
+  forcing every record into one containment tree. A Task may also contribute
+  directly to an Area or advance an Initiative when the work is too lightweight
+  for a Project. Those direct relations remain distinct from
+  Task→Project→Area/Initiative reach in projections and relation filters; no
+  Project is inferred or created as a side effect.
 - An Area's responsibility and a Project's or Initiative's intended outcome are
   optional at creation. Imported work that predates the record often has no
   written intent, and requiring one only guarantees a plausible invention. A

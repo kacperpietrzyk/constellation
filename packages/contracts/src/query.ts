@@ -14,6 +14,7 @@ import {
   PrincipalIdSchema,
   ProjectIdSchema,
   QueryIdSchema,
+  RelationIdSchema,
   SpaceIdSchema,
   TaskIdSchema,
   TaskAssignmentIdSchema,
@@ -904,6 +905,24 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             // turns that into a loud parse failure instead of every task
             // silently landing under "no project".
             projectIds: z.array(ProjectIdSchema),
+            // Direct context only. Project→Area/Initiative work links are kept
+            // separate so callers can distinguish lightweight work from work
+            // reached through a Project.
+            areaIds: z.array(StrategicRecordIdSchema),
+            initiativeIds: z.array(StrategicRecordIdSchema),
+            directContextRelations: z.array(
+              z
+                .object({
+                  relationId: RelationIdSchema,
+                  relationType: z.enum([
+                    "task_contributes_to_area",
+                    "task_advances_initiative",
+                  ]),
+                  targetId: StrategicRecordIdSchema,
+                  version: z.int().positive(),
+                })
+                .strict(),
+            ),
             fields: z
               .record(
                 z.string(),

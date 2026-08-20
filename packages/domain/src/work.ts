@@ -494,6 +494,68 @@ export const relateTaskToOpportunity = (input: {
   };
 };
 
+export const relateTaskToArea = (input: {
+  readonly id: RelationId;
+  readonly task: Task;
+  readonly area: {
+    readonly id: StrategicRecordId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  };
+  readonly createdBy: PrincipalId;
+  readonly occurredAt: string;
+}): TaskWorkRelation => {
+  if (
+    input.task.workspaceId !== input.area.workspaceId ||
+    input.task.spaceId !== input.area.spaceId
+  )
+    throw new Error("Task and Area must share an owning Workspace and Space.");
+  return {
+    id: input.id,
+    workspaceId: input.task.workspaceId,
+    spaceId: input.task.spaceId,
+    relationType: "task_contributes_to_area",
+    state: "active",
+    taskId: input.task.id,
+    areaId: input.area.id,
+    createdBy: input.createdBy,
+    version: 1,
+    createdAt: input.occurredAt,
+  };
+};
+
+export const relateTaskToInitiative = (input: {
+  readonly id: RelationId;
+  readonly task: Task;
+  readonly initiative: {
+    readonly id: StrategicRecordId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  };
+  readonly createdBy: PrincipalId;
+  readonly occurredAt: string;
+}): TaskWorkRelation => {
+  if (
+    input.task.workspaceId !== input.initiative.workspaceId ||
+    input.task.spaceId !== input.initiative.spaceId
+  )
+    throw new Error(
+      "Task and Initiative must share an owning Workspace and Space.",
+    );
+  return {
+    id: input.id,
+    workspaceId: input.task.workspaceId,
+    spaceId: input.task.spaceId,
+    relationType: "task_advances_initiative",
+    state: "active",
+    taskId: input.task.id,
+    initiativeId: input.initiative.id,
+    createdBy: input.createdBy,
+    version: 1,
+    createdAt: input.occurredAt,
+  };
+};
+
 export const removeTaskProjectRelation = (
   relation: TaskWorkRelation,
   occurredAt: string,

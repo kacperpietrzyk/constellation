@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import type { SpaceId } from "@constellation/contracts";
+import type { SpaceId, StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
@@ -105,7 +105,7 @@ export const ProjectContextPanel = ({
       </p>
     );
 
-  const { areas, initiatives, projects, links } = projection;
+  const { areas, initiatives, projects, tasks, links } = projection;
   const contextLinks = links.filter(
     (link) =>
       link.state === "active" &&
@@ -121,6 +121,18 @@ export const ProjectContextPanel = ({
           projects.find((project) => project.id === link.sourceRecordId)
             ?.title ?? "A project outside this Space’s work",
       );
+
+  const tasksServingDirectly = (
+    kind: WorkContextKind,
+    contextId: StrategicRecordId,
+  ): readonly string[] =>
+    tasks
+      .filter((task) =>
+        kind === "area"
+          ? task.areaIds.includes(contextId)
+          : task.initiativeIds.includes(contextId),
+      )
+      .map((task) => task.title);
 
   const linksOfProject = (projectId: string): readonly WorkLink[] =>
     contextLinks.filter((link) => link.sourceRecordId === projectId);
@@ -226,11 +238,12 @@ export const ProjectContextPanel = ({
    *  them into a gap to fill instead of a blank line. */
   const contextRow = (
     kind: WorkContextKind,
-    item: { readonly id: string; readonly title: string },
+    item: { readonly id: StrategicRecordId; readonly title: string },
     lede: string,
     narrative: ReactNode,
   ) => {
     const serving = projectsServing(item.id);
+    const directTasks = tasksServingDirectly(kind, item.id);
     return (
       <li key={item.id}>
         <button
@@ -252,7 +265,15 @@ export const ProjectContextPanel = ({
             <small className={styles.rowServing}>
               {serving.length === 0
                 ? "No project under it yet"
-                : serving.join(" · ")}
+                : `Projects · ${serving.join(" · ")}`}
+            </small>
+            <small
+              className={styles.rowServing}
+              data-context-direct-tasks={kind}
+            >
+              {directTasks.length === 0
+                ? "No directly related task"
+                : `Direct tasks · ${directTasks.join(" · ")}`}
             </small>
           </span>
         </button>

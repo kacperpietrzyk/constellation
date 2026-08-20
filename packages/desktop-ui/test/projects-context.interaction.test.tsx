@@ -84,6 +84,9 @@ const bootstrap: Projection<"workspace.bootstrapContext"> = {
  *  panel cannot pass by drawing every project under every context. */
 const work: Projection<"work.overview"> = {
   ...populatedWorkOverview,
+  tasks: populatedWorkOverview.tasks.map((task, index) =>
+    index === 0 ? { ...task, areaIds: [areaId] } : task,
+  ),
   areas: [
     {
       id: areaId,
@@ -335,6 +338,16 @@ test("Projects is where an area and an initiative are read, with the work under 
   assert.ok(
     (areaRow.textContent ?? "").includes("Przeniesienie archiwum umów"),
     "the area does not say which project is under it",
+  );
+  const directTasks = areaRow.querySelector<HTMLElement>(
+    '[data-context-direct-tasks="area"]',
+  );
+  assert.ok(directTasks, "direct tasks are not separated from projects");
+  assert.ok(
+    (directTasks.textContent ?? "").includes(
+      populatedWorkOverview.tasks[0]!.title,
+    ),
+    "the Area does not name its directly related Task",
   );
   const initiativeRow = panel.querySelector<HTMLElement>(
     '[data-work-context="initiative"]',

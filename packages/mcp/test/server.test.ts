@@ -539,6 +539,43 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         "expectedVersions" in operation.envelopeSchema.properties,
       "the envelope schema is the full strict contract shape",
     );
+    const relateResource = await client.readResource({
+      uri: "constellation://v1/operations/record.relate",
+    });
+    const relateContent = relateResource.contents[0];
+    const relateText =
+      relateContent !== undefined && "text" in relateContent
+        ? relateContent.text
+        : undefined;
+    assert.ok(typeof relateText === "string");
+    const relateOperation = JSON.parse(relateText) as {
+      readonly name: string;
+      readonly envelopeSchema: unknown;
+    };
+    assert.equal(relateOperation.name, "record.relate");
+    const relateSchema = JSON.stringify(relateOperation.envelopeSchema);
+    for (const relationType of [
+      "task_contributes_to_project",
+      "task_contributes_to_opportunity",
+      "task_contributes_to_area",
+      "task_advances_initiative",
+    ])
+      assert.match(
+        relateSchema,
+        new RegExp(`"const":"${relationType}"`, "u"),
+        `the generated MCP schema omitted ${relationType}`,
+      );
+    for (const targetId of [
+      "projectId",
+      "opportunityId",
+      "areaId",
+      "initiativeId",
+    ])
+      assert.match(
+        relateSchema,
+        new RegExp(`"${targetId}"`, "u"),
+        `the generated MCP schema omitted ${targetId}`,
+      );
     // An operation outside the grant reads the same as one that does not
     // exist: the catalog must not confirm what it will not authorize.
     await assert.rejects(

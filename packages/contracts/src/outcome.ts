@@ -865,14 +865,16 @@ export const AttentionDismissedProjectionSchema = z
   })
   .strict();
 
-// The far end is a Project or an Opportunity, never both: a Task's next action
-// can serve the delivery or the deal, and flattening the second onto the first
-// is what a migration had to do before the relation existed.
+// Exactly one far end is present. Optional fields keep the projection additive
+// for older Project/Opportunity readers; the relation type remains the closed
+// discriminator at the command and domain boundaries.
 const RelationProjectionFields = {
   relationId: RelationIdSchema,
   taskId: TaskIdSchema,
   projectId: ProjectIdSchema.optional(),
   opportunityId: StrategicRecordIdSchema.optional(),
+  areaId: StrategicRecordIdSchema.optional(),
+  initiativeId: StrategicRecordIdSchema.optional(),
   version: z.int().positive(),
 } as const;
 

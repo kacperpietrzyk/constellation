@@ -373,7 +373,7 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
   getRelation(id: RelationId): TaskProjectRelation | undefined;
   /**
    * The active relation between a Task and the record it contributes to,
-   * whichever far end that is: a Project or an Opportunity.
+   * whichever typed far end that is: Project, Opportunity, Area, or Initiative.
    */
   findTaskProjectRelation(
     taskId: TaskId,

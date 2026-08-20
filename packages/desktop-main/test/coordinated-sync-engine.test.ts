@@ -59,6 +59,8 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "capture.history",
       "project.create",
+      "area.create",
+      "initiative.create",
       "record.relate",
       "record.unrelate",
       "task.list",
@@ -485,6 +487,104 @@ describe("coordinated desktop projection", () => {
     assert.equal((await engineB.syncNow()).checkpoint, "5");
     assert.equal(deviceB.store.snapshot().relations[0]?.state, "removed");
 
+    const areaId = "00000000-0000-4000-8000-000000001038";
+    const initiativeId = "00000000-0000-4000-8000-000000001039";
+    for (const command of [
+      {
+        contractVersion: 1,
+        commandName: "area.create" as const,
+        commandId: "00000000-0000-4000-8000-00000000103a",
+        workspaceId: ids.workspace,
+        idempotencyKey: "direct-area-create",
+        expectedVersions: {},
+        correlationId: "00000000-0000-4000-8000-00000000103b",
+        payload: {
+          areaId,
+          spaceId: ids.space,
+          title: "Product stewardship",
+          responsibility: "Carry lightweight work without a Project.",
+        },
+      },
+      {
+        contractVersion: 1,
+        commandName: "initiative.create" as const,
+        commandId: "00000000-0000-4000-8000-00000000103c",
+        workspaceId: ids.workspace,
+        idempotencyKey: "direct-initiative-create",
+        expectedVersions: {},
+        correlationId: "00000000-0000-4000-8000-00000000103d",
+        payload: {
+          initiativeId,
+          spaceId: ids.space,
+          title: "Adopt direct work context",
+          intendedOutcome: "Both devices see typed direct Task context.",
+        },
+      },
+      {
+        contractVersion: 1,
+        commandName: "record.relate" as const,
+        commandId: "00000000-0000-4000-8000-00000000103e",
+        workspaceId: ids.workspace,
+        idempotencyKey: "direct-area-relate",
+        expectedVersions: { [taskId]: 1, [areaId]: 1 },
+        correlationId: "00000000-0000-4000-8000-00000000103f",
+        payload: {
+          relationType: "task_contributes_to_area" as const,
+          taskId,
+          areaId,
+        },
+      },
+      {
+        contractVersion: 1,
+        commandName: "record.relate" as const,
+        commandId: "00000000-0000-4000-8000-000000001040",
+        workspaceId: ids.workspace,
+        idempotencyKey: "direct-initiative-relate",
+        expectedVersions: { [taskId]: 1, [initiativeId]: 1 },
+        correlationId: "00000000-0000-4000-8000-000000001041",
+        payload: {
+          relationType: "task_advances_initiative" as const,
+          taskId,
+          initiativeId,
+        },
+      },
+    ]) {
+      const result = deviceA.runtime.execute(command);
+      assert.equal(result.kind, "command_outcome", command.commandName);
+      if (result.kind === "command_outcome")
+        assert.equal(
+          result.outcome.outcome,
+          "success",
+          `${command.commandName}: ${JSON.stringify(result.outcome)}`,
+        );
+    }
+    assert.equal(deviceA.store.listPendingSyncCommands().length, 4);
+    const directSyncA = await engineA.syncNow();
+    assert.equal(directSyncA.checkpoint, "9", JSON.stringify(directSyncA));
+    assert.equal((await engineB.syncNow()).checkpoint, "9");
+    const deviceBState = deviceB.store.snapshot();
+    assert.deepEqual(
+      deviceBState.relations
+        .filter((relation) => relation.state === "active")
+        .map((relation) => relation.relationType)
+        .sort(),
+      ["task_advances_initiative", "task_contributes_to_area"],
+    );
+    assert.deepEqual(
+      deviceBState.strategicRecords
+        ?.filter(
+          (record) => record.kind === "area" || record.kind === "initiative",
+        )
+        .map((record) => record.id)
+        .sort(),
+      [areaId, initiativeId].sort(),
+    );
+    assert.equal(
+      deviceBState.projects.length,
+      1,
+      "direct context must not synthesize another Project on device B",
+    );
+
     const rename = {
       contractVersion: 1,
       commandName: "workspace.rename",
@@ -500,12 +600,12 @@ describe("coordinated desktop projection", () => {
     assert.equal((await engineA.syncNow()).state, "unknown_reconcile");
     const reconciled = await engineA.syncNow();
     assert.equal(reconciled.state, "current");
-    assert.equal(reconciled.checkpoint, "6");
+    assert.equal(reconciled.checkpoint, "10");
     assert.equal(
       deviceA.store.read((view) => view.getWorkspace(ids.workspace)?.name),
       "Renamed exactly once",
     );
-    assert.equal((await engineB.syncNow()).checkpoint, "6");
+    assert.equal((await engineB.syncNow()).checkpoint, "10");
     assert.equal(
       deviceB.store.read((view) => view.getWorkspace(ids.workspace)?.name),
       "Renamed exactly once",

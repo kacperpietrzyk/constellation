@@ -95,7 +95,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 27;
+export const LOCAL_STORE_SCHEMA_VERSION = 28;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -121,11 +121,13 @@ const COORDINATED_PROJECTION_TABLES = [
   "content_revisions",
   "content_collaboration_state",
   "named_document_versions",
+  // Relations reference Tasks plus Project or strategic far ends. Delete the
+  // child table before any of those parents during projection replacement.
+  "task_work_relations",
   "strategic_records",
   "documents",
   "knowledge_sources",
   "undo_descriptors",
-  "task_work_relations",
   "task_assignments",
   "projects",
   "tasks",
@@ -1099,6 +1101,60 @@ const schemaV27 = `
   END;
 `;
 
+const schemaV28 = `
+  CREATE TABLE task_work_relations_v28 (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    project_id TEXT REFERENCES projects(id),
+    opportunity_id TEXT REFERENCES strategic_records(id),
+    area_id TEXT REFERENCES strategic_records(id),
+    initiative_id TEXT REFERENCES strategic_records(id),
+    state TEXT NOT NULL CHECK (state IN ('active', 'removed')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL,
+    CHECK (
+      (project_id IS NOT NULL) +
+      (opportunity_id IS NOT NULL) +
+      (area_id IS NOT NULL) +
+      (initiative_id IS NOT NULL) = 1
+    )
+  ) STRICT;
+  INSERT INTO task_work_relations_v28
+    (id, workspace_id, space_id, task_id, project_id, opportunity_id,
+     area_id, initiative_id, state, version, payload_json)
+  SELECT id, workspace_id, space_id, task_id, project_id, opportunity_id,
+    NULL, NULL, state, version, payload_json
+  FROM task_work_relations;
+  DROP TABLE task_work_relations;
+  ALTER TABLE task_work_relations_v28 RENAME TO task_work_relations;
+  CREATE INDEX task_work_relations_scope
+    ON task_work_relations(workspace_id, space_id, state, id);
+  CREATE INDEX task_work_relations_task
+    ON task_work_relations(task_id, state);
+  CREATE INDEX task_work_relations_project
+    ON task_work_relations(project_id, task_id, state);
+  CREATE INDEX task_work_relations_opportunity
+    ON task_work_relations(opportunity_id, task_id, state);
+  CREATE INDEX task_work_relations_area
+    ON task_work_relations(area_id, task_id, state);
+  CREATE INDEX task_work_relations_initiative
+    ON task_work_relations(initiative_id, task_id, state);
+  CREATE UNIQUE INDEX task_work_relations_one_active_project
+    ON task_work_relations(task_id, project_id)
+    WHERE state = 'active' AND project_id IS NOT NULL;
+  CREATE UNIQUE INDEX task_work_relations_one_active_opportunity
+    ON task_work_relations(task_id, opportunity_id)
+    WHERE state = 'active' AND opportunity_id IS NOT NULL;
+  CREATE UNIQUE INDEX task_work_relations_one_active_area
+    ON task_work_relations(task_id, area_id)
+    WHERE state = 'active' AND area_id IS NOT NULL;
+  CREATE UNIQUE INDEX task_work_relations_one_active_initiative
+    ON task_work_relations(task_id, initiative_id)
+    WHERE state = 'active' AND initiative_id IS NOT NULL;
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -1127,6 +1183,7 @@ const localStoreMigrations = [
   schemaV25,
   schemaV26,
   schemaV27,
+  schemaV28,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1263,20 +1320,29 @@ const nullableStringValue = (
 };
 
 /**
- * The far end a relation row carries. Exactly one of the two columns is set —
+ * The far end a relation row carries. Exactly one of the four columns is set —
  * the table's own CHECK enforces it — so reading them together is what keeps a
  * corrupt row from being silently read as a Project relation.
  */
 const relationFarEnd = (row: unknown): Record<string, string> => {
   const projectId = nullableStringValue(row, "project_id", "relation");
   const opportunityId = nullableStringValue(row, "opportunity_id", "relation");
-  if ((projectId === undefined) === (opportunityId === undefined))
+  const areaId = nullableStringValue(row, "area_id", "relation");
+  const initiativeId = nullableStringValue(row, "initiative_id", "relation");
+  const present = [projectId, opportunityId, areaId, initiativeId].filter(
+    (id) => id !== undefined,
+  );
+  if (present.length !== 1)
     throw new LocalStoreCorruptionError(
-      "relation must name exactly one of project_id and opportunity_id.",
+      "relation must name exactly one typed far end.",
     );
-  return projectId === undefined
-    ? { opportunityId: opportunityId as string }
-    : { projectId };
+  return projectId !== undefined
+    ? { projectId }
+    : opportunityId !== undefined
+      ? { opportunityId }
+      : areaId !== undefined
+        ? { areaId }
+        : { initiativeId: initiativeId as string };
 };
 
 const numberValue = (row: unknown, key: string, context: string): number => {
@@ -2426,7 +2492,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
   public getRelation(id: RelationId): TaskProjectRelation | undefined {
     const row = this.database
       .prepare(
-        "SELECT workspace_id, space_id, task_id, project_id, opportunity_id, state, payload_json FROM task_work_relations WHERE id = ?",
+        "SELECT workspace_id, space_id, task_id, project_id, opportunity_id, area_id, initiative_id, state, payload_json FROM task_work_relations WHERE id = ?",
       )
       .get(id);
     return row === undefined
@@ -2446,9 +2512,9 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): TaskProjectRelation | undefined {
     const row = this.database
       .prepare(
-        "SELECT id, workspace_id, space_id, task_id, project_id, opportunity_id, state, payload_json FROM task_work_relations WHERE task_id = ? AND (project_id = ? OR opportunity_id = ?) AND state = 'active' ORDER BY id LIMIT 1",
+        "SELECT id, workspace_id, space_id, task_id, project_id, opportunity_id, area_id, initiative_id, state, payload_json FROM task_work_relations WHERE task_id = ? AND (project_id = ? OR opportunity_id = ? OR area_id = ? OR initiative_id = ?) AND state = 'active' ORDER BY id LIMIT 1",
       )
-      .get(taskId, targetId, targetId);
+      .get(taskId, targetId, targetId, targetId, targetId);
     if (row === undefined) return undefined;
     const id = stringValue(row, "id", "relation");
     return parsePayload<TaskProjectRelation>(row, "id", id, "relation", {
@@ -2466,7 +2532,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): readonly TaskProjectRelation[] {
     return this.database
       .prepare(
-        "SELECT id, task_id, project_id, opportunity_id, state, payload_json FROM task_work_relations WHERE workspace_id = ? AND space_id = ? AND state = 'active' ORDER BY id",
+        "SELECT id, task_id, project_id, opportunity_id, area_id, initiative_id, state, payload_json FROM task_work_relations WHERE workspace_id = ? AND space_id = ? AND state = 'active' ORDER BY id",
       )
       .all(workspaceId, spaceId)
       .map((row) => {
@@ -3457,6 +3523,8 @@ class SqliteTransaction
         "task_id",
         "project_id",
         "opportunity_id",
+        "area_id",
+        "initiative_id",
         "state",
         "version",
         "payload_json",
@@ -3471,6 +3539,12 @@ class SqliteTransaction
           : null,
         record.relationType === "task_contributes_to_opportunity"
           ? record.opportunityId
+          : null,
+        record.relationType === "task_contributes_to_area"
+          ? record.areaId
+          : null,
+        record.relationType === "task_advances_initiative"
+          ? record.initiativeId
           : null,
         record.state,
         record.version,

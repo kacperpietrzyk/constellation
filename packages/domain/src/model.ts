@@ -1077,10 +1077,8 @@ export type StrategicRecord =
     });
 
 /**
- * A Task's contribution to the work it serves. The far end is a Project or an
- * Opportunity — never both, and never neither: a per-client next action dies
- * with the deal it belongs to, and hanging it on a reporting Project was the
- * flattening the first migration had to accept.
+ * A Task's direct contribution to the work context it serves. The far end is
+ * exactly one typed Project, Opportunity, Area, or Initiative.
  */
 export type TaskWorkRelation = {
   readonly id: RelationId;
@@ -1100,6 +1098,14 @@ export type TaskWorkRelation = {
   | {
       readonly relationType: "task_contributes_to_opportunity";
       readonly opportunityId: StrategicRecordId;
+    }
+  | {
+      readonly relationType: "task_contributes_to_area";
+      readonly areaId: StrategicRecordId;
+    }
+  | {
+      readonly relationType: "task_advances_initiative";
+      readonly initiativeId: StrategicRecordId;
     }
 );
 
@@ -2141,6 +2147,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       // Exactly one far end, the same one the relation carries.
       readonly projectId?: ProjectId;
       readonly opportunityId?: StrategicRecordId;
+      readonly areaId?: StrategicRecordId;
+      readonly initiativeId?: StrategicRecordId;
       readonly occurredAt: string;
     }
   | {

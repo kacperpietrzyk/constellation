@@ -38,6 +38,8 @@ const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
 const projectTitle = "Verify packaged Project context";
 const projectOutcome = "Project inspector preserves the intended outcome";
+const directAreaId = "00000000-0000-4000-8000-000000000060";
+const directInitiativeId = "00000000-0000-4000-8000-000000000061";
 // A freshly mounted ad-hoc macOS app can briefly stall CDP while OS services
 // attach. The journey-level waits remain bounded separately.
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
@@ -526,6 +528,138 @@ const stopPackagedApp = async (client, child, browserUserData) => {
     fs.rmSync(browserUserData, { force: true, recursive: true });
   }
 };
+
+const directContextState = async (client, workspaceId) =>
+  client.evaluate(`(async () => {
+    const bootstrap = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "workspace.bootstrapContext",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_authoritative",
+      parameters: {}
+    });
+    const spaceId = bootstrap.kind === "query_result" &&
+      bootstrap.result.outcome === "success" &&
+      bootstrap.result.projection.kind === "workspace.bootstrapContext"
+        ? bootstrap.result.projection.spaces[0]?.id
+        : undefined;
+    if (spaceId === undefined) return { outcome: "bootstrap_failed", bootstrap };
+    const query = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "work.overview",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_authoritative",
+      parameters: { spaceId }
+    });
+    if (
+      query.kind !== "query_result" ||
+      query.result.outcome !== "success" ||
+      query.result.projection.kind !== "work.overview"
+    ) return { outcome: "unavailable", query };
+    const task = query.result.projection.tasks.find(
+      (item) => item.title === ${JSON.stringify(taskTitle)}
+    );
+    return {
+      outcome: task === undefined ? "task_missing" : "success",
+      areaIds: task?.areaIds ?? [],
+      initiativeIds: task?.initiativeIds ?? [],
+      directTypes: (task?.directContextRelations ?? [])
+        .map((relation) => relation.relationType)
+        .sort(),
+      projectIds: task?.projectIds ?? []
+    };
+  })()`);
+
+const assertDirectContextState = (state, phase) => {
+  if (
+    state.outcome !== "success" ||
+    state.areaIds.join(",") !== directAreaId ||
+    state.initiativeIds.join(",") !== directInitiativeId ||
+    state.directTypes.join(",") !==
+      "task_advances_initiative,task_contributes_to_area" ||
+    state.projectIds.length !== 0
+  ) {
+    throw new Error(
+      `PACKAGED_ALPHA_DIRECT_CONTEXT_${phase.toUpperCase()}_INVALID:${JSON.stringify(state)}`,
+    );
+  }
+};
+
+const createDirectContext = async (client, workspaceId) =>
+  client.evaluate(`(async () => {
+    const bootstrap = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "workspace.bootstrapContext",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_authoritative",
+      parameters: {}
+    });
+    const spaceId = bootstrap.kind === "query_result" &&
+      bootstrap.result.outcome === "success" &&
+      bootstrap.result.projection.kind === "workspace.bootstrapContext"
+        ? bootstrap.result.projection.spaces[0]?.id
+        : undefined;
+    if (spaceId === undefined) return { outcome: "bootstrap_failed", bootstrap };
+    const tasks = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_authoritative",
+      parameters: { spaceId }
+    });
+    if (
+      tasks.kind !== "query_result" ||
+      tasks.result.outcome !== "success" ||
+      tasks.result.projection.kind !== "task.list"
+    ) return { outcome: "task_query_failed", tasks };
+    const task = tasks.result.projection.items.find(
+      (item) => item.title === ${JSON.stringify(taskTitle)}
+    );
+    if (task === undefined) return { outcome: "task_missing" };
+    const execute = (commandName, payload, expectedVersions) =>
+      window.constellation.executeCommand({
+        contractVersion: 1,
+        commandName,
+        commandId: crypto.randomUUID(),
+        workspaceId: ${JSON.stringify(workspaceId)},
+        idempotencyKey: crypto.randomUUID(),
+        expectedVersions,
+        correlationId: crypto.randomUUID(),
+        payload
+      });
+    const area = await execute("area.create", {
+      areaId: ${JSON.stringify(directAreaId)},
+      spaceId: task.spaceId,
+      title: "Packaged direct Area",
+      responsibility: "Prove direct context survives relaunch."
+    }, {});
+    const initiative = await execute("initiative.create", {
+      initiativeId: ${JSON.stringify(directInitiativeId)},
+      spaceId: task.spaceId,
+      title: "Packaged direct Initiative",
+      intendedOutcome: "Both typed relations survive encrypted restart."
+    }, {});
+    const areaRelation = await execute("record.relate", {
+      relationType: "task_contributes_to_area",
+      taskId: task.id,
+      areaId: ${JSON.stringify(directAreaId)}
+    }, { [task.id]: task.version, [${JSON.stringify(directAreaId)}]: 1 });
+    const initiativeRelation = await execute("record.relate", {
+      relationType: "task_advances_initiative",
+      taskId: task.id,
+      initiativeId: ${JSON.stringify(directInitiativeId)}
+    }, { [task.id]: task.version, [${JSON.stringify(directInitiativeId)}]: 1 });
+    return {
+      outcome: [area, initiative, areaRelation, initiativeRelation].every(
+        (result) => result.kind === "command_outcome" && result.outcome.outcome === "success"
+      ) ? "success" : "failed",
+      results: [area, initiative, areaRelation, initiativeRelation]
+    };
+  })()`);
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
   // Non-macOS safeStorage binds its protected material to Chromium's profile.
@@ -1671,6 +1805,19 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         throw new Error("PACKAGED_ALPHA_STARTER_PREVIEW_MUTATED");
       }
       captureCommitMs = await submitCapture(taskTitle);
+      const directCreated = await createDirectContext(
+        client,
+        boundary.build.initialWorkspaceId,
+      );
+      if (directCreated.outcome !== "success") {
+        throw new Error(
+          `PACKAGED_ALPHA_DIRECT_CONTEXT_CREATE_FAILED:${JSON.stringify(directCreated)}`,
+        );
+      }
+      assertDirectContextState(
+        await directContextState(client, boundary.build.initialWorkspaceId),
+        "created",
+      );
       backup = await client.evaluate(
         `window.constellation.exportWorkspaceBackup()`,
       );
@@ -1979,6 +2126,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       )`,
       `PACKAGED_ALPHA_TASK_${phase.toUpperCase()}_MISSING`,
     );
+    if (phase.startsWith("recovered-") || phase === "restored") {
+      assertDirectContextState(
+        await directContextState(client, boundary.build.initialWorkspaceId),
+        phase,
+      );
+    }
     const taskCount = await client.evaluate(
       `document.querySelectorAll("[data-task-row]").length`,
     );

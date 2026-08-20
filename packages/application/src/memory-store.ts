@@ -829,7 +829,11 @@ class ReadView implements ApplicationReadView {
             relation.taskId === taskId &&
             (relation.relationType === "task_contributes_to_project"
               ? relation.projectId === targetId
-              : relation.opportunityId === targetId),
+              : relation.relationType === "task_contributes_to_opportunity"
+                ? relation.opportunityId === targetId
+                : relation.relationType === "task_contributes_to_area"
+                  ? relation.areaId === targetId
+                  : relation.initiativeId === targetId),
         )
         // Insertion order is not id order, and the conflict this feeds names the
         // relation it found. Sorted so both stores name the same one.

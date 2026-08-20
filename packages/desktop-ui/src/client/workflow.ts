@@ -4746,6 +4746,50 @@ export const relateTask = (
         : undefined,
   );
 
+export const relateTaskToContext = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  task: Pick<WorkOverviewProjection["tasks"][number], "id" | "version">,
+  target:
+    | {
+        readonly kind: "area";
+        readonly id: StrategicRecordId;
+        readonly version: number;
+      }
+    | {
+        readonly kind: "initiative";
+        readonly id: StrategicRecordId;
+        readonly version: number;
+      },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [task.id]: task.version,
+        [target.id]: target.version,
+      }),
+      commandName: "record.relate",
+      payload:
+        target.kind === "area"
+          ? {
+              relationType: "task_contributes_to_area",
+              taskId: task.id,
+              areaId: target.id,
+            }
+          : {
+              relationType: "task_advances_initiative",
+              taskId: task.id,
+              initiativeId: target.id,
+            },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "relation.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const unrelateTask = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

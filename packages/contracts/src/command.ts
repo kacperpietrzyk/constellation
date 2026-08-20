@@ -1601,6 +1601,44 @@ export const RelationConditionSchema = z.discriminatedUnion("path", [
       ]),
     })
     .strict(),
+  z
+    .object({
+      path: z.literal("area"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("state"),
+            equals: z.enum(["active", "archived"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  z
+    .object({
+      path: z.literal("initiative"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("state"),
+            equals: z.enum(["active", "closed"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
   // Two-hop: Task→Project→Area via the project_serves_area work link.
   z
     .object({
@@ -2683,6 +2721,20 @@ export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
         relationType: z.literal("task_contributes_to_opportunity"),
         taskId: TaskIdSchema,
         opportunityId: StrategicRecordIdSchema,
+      })
+      .strict(),
+    z
+      .object({
+        relationType: z.literal("task_contributes_to_area"),
+        taskId: TaskIdSchema,
+        areaId: StrategicRecordIdSchema,
+      })
+      .strict(),
+    z
+      .object({
+        relationType: z.literal("task_advances_initiative"),
+        taskId: TaskIdSchema,
+        initiativeId: StrategicRecordIdSchema,
       })
       .strict(),
   ]),

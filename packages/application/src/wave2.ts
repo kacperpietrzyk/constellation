@@ -94,6 +94,8 @@ import {
   documentsInFolderSubtree,
   relateTaskToProject,
   relateTaskToOpportunity,
+  relateTaskToArea,
+  relateTaskToInitiative,
   removeTaskProjectRelation,
   reopenTask,
   removeTaskAssignment,
@@ -1153,7 +1155,13 @@ export const isWave2CommandAuthorized = (
       const target =
         command.payload.relationType === "task_contributes_to_project"
           ? view.getProject(command.payload.projectId)
-          : view.getStrategicRecord(command.payload.opportunityId);
+          : view.getStrategicRecord(
+              command.payload.relationType === "task_contributes_to_opportunity"
+                ? command.payload.opportunityId
+                : command.payload.relationType === "task_contributes_to_area"
+                  ? command.payload.areaId
+                  : command.payload.initiativeId,
+            );
       const spaceId =
         task?.workspaceId === command.workspaceId &&
         target?.workspaceId === command.workspaceId &&
@@ -1829,8 +1837,8 @@ const removedStrategicRecordId = (
 const strategicRecordDependents = (
   view: ApplicationWave2ReadView,
   record: StrategicRecord,
-): readonly BlockingRecord[] =>
-  view
+): readonly BlockingRecord[] => {
+  const strategicDependents = view
     .listStrategicRecords(record.workspaceId, record.spaceId)
     .filter(
       (candidate) =>
@@ -1842,6 +1850,27 @@ const strategicRecordDependents = (
       recordKind: "strategicRecord" as const,
       recordType: candidate.kind,
     }));
+  const relationDependents = view
+    .listRelations(record.workspaceId, record.spaceId)
+    .filter(
+      (relation) =>
+        relation.state === "active" &&
+        ((record.kind === "opportunity" &&
+          relation.relationType === "task_contributes_to_opportunity" &&
+          relation.opportunityId === record.id) ||
+          (record.kind === "area" &&
+            relation.relationType === "task_contributes_to_area" &&
+            relation.areaId === record.id) ||
+          (record.kind === "initiative" &&
+            relation.relationType === "task_advances_initiative" &&
+            relation.initiativeId === record.id)),
+    )
+    .map((relation) => ({
+      recordId: relation.id,
+      recordKind: "relation" as const,
+    }));
+  return [...strategicDependents, ...relationDependents];
+};
 
 /**
  * The removal path for the three records that keep their own table. Same
@@ -9416,24 +9445,36 @@ export const executeWave2Command = (
         command.payload.relationType === "task_contributes_to_project"
           ? transaction.getProject(command.payload.projectId)
           : undefined;
-      const opportunity =
-        command.payload.relationType === "task_contributes_to_opportunity"
-          ? transaction.getStrategicRecord(command.payload.opportunityId)
-          : undefined;
-      const target =
+      const strategicTarget =
         command.payload.relationType === "task_contributes_to_project"
-          ? project
-          : opportunity?.kind === "opportunity"
-            ? opportunity
-            : undefined;
+          ? undefined
+          : transaction.getStrategicRecord(
+              command.payload.relationType === "task_contributes_to_opportunity"
+                ? command.payload.opportunityId
+                : command.payload.relationType === "task_contributes_to_area"
+                  ? command.payload.areaId
+                  : command.payload.initiativeId,
+            );
+      const target =
+        project ??
+        (command.payload.relationType === "task_contributes_to_opportunity" &&
+        strategicTarget?.kind === "opportunity"
+          ? strategicTarget
+          : command.payload.relationType === "task_contributes_to_area" &&
+              strategicTarget?.kind === "area"
+            ? strategicTarget
+            : command.payload.relationType === "task_advances_initiative" &&
+                strategicTarget?.kind === "initiative"
+              ? strategicTarget
+              : undefined);
       // ADR-043 §5 — a removed Task takes no new relation, and neither does a
       // removed record at the other end.
       if (
         task === undefined ||
         target === undefined ||
         task.recordState !== "active" ||
-        (opportunity !== undefined &&
-          strategicRecordState(opportunity) !== "active")
+        (strategicTarget !== undefined &&
+          strategicRecordState(strategicTarget) !== "active")
       )
         return precondition(command, occurredAt);
       if (
@@ -9455,27 +9496,62 @@ export const executeWave2Command = (
           currentVersions: { [existing.id]: existing.version },
         });
       }
+      const relationId = RelationIdSchema.parse(
+        dependencies.ids.next("relation"),
+      );
       const relation =
-        project === undefined
-          ? relateTaskToOpportunity({
-              id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+        command.payload.relationType === "task_contributes_to_project"
+          ? relateTaskToProject({
+              id: relationId,
               task,
-              opportunity: {
-                id: StrategicRecordIdSchema.parse(target.id),
-                workspaceId: target.workspaceId,
-                spaceId: target.spaceId,
-              },
+              project: project!,
               createdBy: context.principalId,
               occurredAt,
             })
-          : relateTaskToProject({
-              id: RelationIdSchema.parse(dependencies.ids.next("relation")),
-              task,
-              project,
-              createdBy: context.principalId,
-              occurredAt,
-            });
+          : command.payload.relationType === "task_contributes_to_opportunity"
+            ? relateTaskToOpportunity({
+                id: relationId,
+                task,
+                opportunity: {
+                  id: StrategicRecordIdSchema.parse(target.id),
+                  workspaceId: target.workspaceId,
+                  spaceId: target.spaceId,
+                },
+                createdBy: context.principalId,
+                occurredAt,
+              })
+            : command.payload.relationType === "task_contributes_to_area"
+              ? relateTaskToArea({
+                  id: relationId,
+                  task,
+                  area: {
+                    id: StrategicRecordIdSchema.parse(target.id),
+                    workspaceId: target.workspaceId,
+                    spaceId: target.spaceId,
+                  },
+                  createdBy: context.principalId,
+                  occurredAt,
+                })
+              : relateTaskToInitiative({
+                  id: relationId,
+                  task,
+                  initiative: {
+                    id: StrategicRecordIdSchema.parse(target.id),
+                    workspaceId: target.workspaceId,
+                    spaceId: target.spaceId,
+                  },
+                  createdBy: context.principalId,
+                  occurredAt,
+                });
       transaction.insertRelation(relation);
+      const relationTargetField =
+        relation.relationType === "task_contributes_to_project"
+          ? "projectId"
+          : relation.relationType === "task_contributes_to_opportunity"
+            ? "opportunityId"
+            : relation.relationType === "task_contributes_to_area"
+              ? "areaId"
+              : "initiativeId";
       return appendJournal(
         dependencies,
         transaction,
@@ -9494,7 +9570,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [relation.id]: relation.version },
-        ["relationType", "taskId", "projectId"],
+        ["relationType", "taskId", relationTargetField],
         {
           diagnosticCode: "relation.created",
           projection: {
@@ -9621,10 +9697,18 @@ export /**
  */
 const relationFarEnd = (
   relation: TaskWorkRelation,
-): { projectId: ProjectId } | { opportunityId: StrategicRecordId } =>
+):
+  | { projectId: ProjectId }
+  | { opportunityId: StrategicRecordId }
+  | { areaId: StrategicRecordId }
+  | { initiativeId: StrategicRecordId } =>
   relation.relationType === "task_contributes_to_project"
     ? { projectId: relation.projectId }
-    : { opportunityId: relation.opportunityId };
+    : relation.relationType === "task_contributes_to_opportunity"
+      ? { opportunityId: relation.opportunityId }
+      : relation.relationType === "task_contributes_to_area"
+        ? { areaId: relation.areaId }
+        : { initiativeId: relation.initiativeId };
 
 export const descriptorRecordIds = (
   descriptor: UndoDescriptor,
@@ -12335,16 +12419,48 @@ export const executeWave2Query = (
     // — `record.relate` guards pair-uniqueness only — and all of them are
     // projected, because grouping by project lists such a task under each.
     const projectIdsByTask = new Map<TaskId, ProjectId[]>();
+    const areaIdsByTask = new Map<TaskId, StrategicRecordId[]>();
+    const initiativeIdsByTask = new Map<TaskId, StrategicRecordId[]>();
+    const directContextRelationsByTask = new Map<
+      TaskId,
+      Array<{
+        relationId: RelationId;
+        relationType: "task_contributes_to_area" | "task_advances_initiative";
+        targetId: StrategicRecordId;
+        version: number;
+      }>
+    >();
+    const appendId = <Id extends string>(
+      map: Map<TaskId, Id[]>,
+      taskId: TaskId,
+      id: Id,
+    ): void => {
+      const existing = map.get(taskId);
+      if (existing === undefined) map.set(taskId, [id]);
+      else existing.push(id);
+    };
     for (const relation of view.listRelations(query.workspaceId, space.id)) {
-      if (
-        relation.relationType !== "task_contributes_to_project" ||
-        relation.state !== "active"
-      )
+      if (relation.state !== "active") continue;
+      if (relation.relationType === "task_contributes_to_project") {
+        appendId(projectIdsByTask, relation.taskId, relation.projectId);
         continue;
-      const existing = projectIdsByTask.get(relation.taskId);
-      if (existing === undefined)
-        projectIdsByTask.set(relation.taskId, [relation.projectId]);
-      else existing.push(relation.projectId);
+      }
+      if (relation.relationType === "task_contributes_to_opportunity") continue;
+      if (relation.relationType === "task_contributes_to_area")
+        appendId(areaIdsByTask, relation.taskId, relation.areaId);
+      else
+        appendId(initiativeIdsByTask, relation.taskId, relation.initiativeId);
+      const contexts = directContextRelationsByTask.get(relation.taskId) ?? [];
+      contexts.push({
+        relationId: relation.id,
+        relationType: relation.relationType,
+        targetId:
+          relation.relationType === "task_contributes_to_area"
+            ? relation.areaId
+            : relation.initiativeId,
+        version: relation.version,
+      });
+      directContextRelationsByTask.set(relation.taskId, contexts);
     }
     return querySuccess(query, kernelTime, freshness, {
       kind: "work.overview",
@@ -12392,6 +12508,10 @@ export const executeWave2Query = (
             ? {}
             : { calendarBlock: task.calendarBlock }),
           projectIds: projectIdsByTask.get(task.id) ?? [],
+          areaIds: areaIdsByTask.get(task.id) ?? [],
+          initiativeIds: initiativeIdsByTask.get(task.id) ?? [],
+          directContextRelations:
+            directContextRelationsByTask.get(task.id) ?? [],
           ...(() => {
             const fields = taskFieldsWithComputedValues(
               task.fields,
