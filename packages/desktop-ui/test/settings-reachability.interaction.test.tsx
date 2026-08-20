@@ -176,6 +176,38 @@ test("exactly one section is current, and the screen says which", async () => {
   );
 });
 
+test("the segmented Theme control keeps native radio state and device persistence", async () => {
+  await mountSettings();
+
+  const group = container.querySelector<HTMLFieldSetElement>(
+    '[data-theme-choice="segmented"]',
+  );
+  assert.ok(group, "Theme is not exposed as one segmented preference control");
+  const radios = [
+    ...group.querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+  ];
+  assert.deepEqual(
+    radios.map((radio) => radio.value),
+    ["system", "dark", "light"],
+  );
+  assert.equal(radios.filter((radio) => radio.checked).length, 1);
+
+  const dark = radios[1];
+  assert.ok(dark);
+  await act(async () => dark.click());
+  assert.equal(dark.checked, true);
+  assert.equal(localStorage.getItem("constellation.theme"), "dark");
+  assert.equal(document.documentElement.dataset.theme, "dark");
+
+  const light = radios[2];
+  assert.ok(light);
+  await act(async () => light.click());
+  assert.equal(light.checked, true);
+  assert.equal(dark.checked, false);
+  assert.equal(localStorage.getItem("constellation.theme"), "light");
+  assert.equal(document.documentElement.dataset.theme, "light");
+});
+
 test("the native control and the declared section stay in agreement", async () => {
   // Dwa wejścia do tej samej rzeczy rozjeżdżają się po cichu: coś przestawia
   // stan, a `<select>` dalej pokazuje starą wartość, więc człowiek czyta dwie

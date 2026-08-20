@@ -1207,25 +1207,31 @@ export const SettingsSurface = ({
                   motion follow system settings.
                 </p>
               </div>
-              <fieldset className="settings-control settings-choice">
+              <fieldset
+                className="settings-control settings-choice"
+                data-theme-choice="segmented"
+              >
                 <legend>Theme</legend>
-                {(["system", "dark", "light"] as const).map((item) => (
-                  <label key={item}>
-                    <input
-                      type="radio"
-                      name="theme"
-                      checked={theme === item}
-                      onChange={() => applyTheme(item)}
-                    />
-                    <span>
-                      {item === "system"
-                        ? "System"
-                        : item === "dark"
-                          ? "Dark"
-                          : "Light"}
-                    </span>
-                  </label>
-                ))}
+                <div className="settings-segments">
+                  {(["system", "dark", "light"] as const).map((item) => (
+                    <label key={item}>
+                      <input
+                        type="radio"
+                        name="theme"
+                        value={item}
+                        checked={theme === item}
+                        onChange={() => applyTheme(item)}
+                      />
+                      <span>
+                        {item === "system"
+                          ? "System"
+                          : item === "dark"
+                            ? "Dark"
+                            : "Light"}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </fieldset>
             </section>
           </div>
@@ -3207,7 +3213,7 @@ export const SettingsSurface = ({
                     by ANI JEDNEGO piksela — a znacznik czytałby się poprawnie. */}
                 <button
                   type="button"
-                  className="primary-button"
+                  className="primary-button settings-inline-action"
                   data-notes-export="true"
                   disabled={busyNotesExport || !client?.exportNotesMarkdown}
                   onClick={() => void exportNotesMarkdown()}
@@ -3309,7 +3315,7 @@ export const SettingsSurface = ({
                     `.ui-craft/tokens.md` „Usage constraints" 3. */}
                 <button
                   type="button"
-                  className="primary-button"
+                  className="primary-button settings-inline-action"
                   data-notes-import-scan="true"
                   disabled={busyVaultScan || !client?.scanObsidianVault}
                   onClick={() => void scanObsidianVault()}

@@ -1785,7 +1785,8 @@ kbd {
 .nav-entry {
   align-items: center;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 1.65rem;
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
 }
 
 .nav-favorite-toggle {
@@ -1797,12 +1798,21 @@ kbd {
   height: 1.65rem;
   opacity: 0;
   padding: 0;
+  position: absolute;
+  right: 0;
+  width: 1.65rem;
 }
 
 .nav-entry:hover .nav-favorite-toggle,
 .nav-favorite-toggle:focus-visible,
 .nav-favorite-toggle[aria-pressed="true"] {
   opacity: 1;
+}
+
+.nav-entry:hover .nav-item-meta kbd,
+.nav-entry:focus-within .nav-item-meta kbd,
+.nav-entry:has(.nav-favorite-toggle[aria-pressed="true"]) .nav-item-meta kbd {
+  visibility: hidden;
 }
 
 .nav-favorite {
@@ -1975,9 +1985,13 @@ kbd {
 }
 .nav-item-meta {
   align-items: center;
-  display: flex;
-  gap: 0.35rem;
+  display: grid;
+  grid-template-columns: 1.65rem;
+  gap: var(--space-1);
   min-width: 0;
+}
+.nav-item-meta:has(.nav-count) {
+  grid-template-columns: 1.25rem 1.65rem;
 }
 .nav-item-meta .nav-count {
   flex: none;
@@ -9933,7 +9947,7 @@ kbd {
 .settings-category > section {
   overflow: hidden;
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   /* Wyściółka POZIOMA schodzi na dzieci, bo pasmo nagłówka musi dobiec do obu
      krawędzi karty — sekcja z wyściółką na wszystkie strony daje kreskę
      kończącą się 20 px przed obrysem, czyli podkreślenie, a nie pasmo. */
@@ -10263,7 +10277,7 @@ kbd {
   align-items: stretch;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -10688,35 +10702,55 @@ kbd {
 }
 
 .settings-choice {
+  align-items: flex-start;
   border: 0;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: flex-start;
   margin: 0;
   padding: 0;
 }
 
+.settings-control > .settings-segments {
+  align-self: flex-start;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  width: fit-content;
+}
+
 .settings-choice label {
   align-items: center;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
-  gap: 0.4rem;
-  padding: 0.45rem 0.65rem;
-  min-height: 2.75rem;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0 var(--space-3);
   touch-action: manipulation;
 }
 
+.settings-choice input {
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
 /* Same selection pattern as .agent-option: neutral hover material and a
-   strong border plus lifted surface on the checked pill. */
+   strong border plus lifted surface on the checked segment. */
 .settings-choice label:hover {
   background: var(--surface-hover);
 }
 
 .settings-choice label:has(input:checked) {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
+  background: var(--surface-raised);
+  border-color: var(--border-default);
+  box-shadow: var(--elevation-rest);
+  color: var(--text-primary);
 }
 
 .settings-choice label:has(input:focus-visible) {
@@ -10725,6 +10759,10 @@ kbd {
 
 .settings-choice input:focus-visible {
   box-shadow: none;
+}
+
+.settings-control > .settings-inline-action {
+  align-self: flex-start;
 }
 
 .settings-actions {
