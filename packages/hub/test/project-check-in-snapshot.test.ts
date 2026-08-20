@@ -423,6 +423,12 @@ it("attests active exact agent attribution before dropping local control state a
     "hostRunId",
   ])
     assert.equal(key in revoked, false, key);
+  const revokedReceipt = revokedScoped.auditReceipts.find(
+    (receipt) => receipt.commandName === "project.checkInAdd",
+  ) as Record<string, unknown> | undefined;
+  assert.ok(revokedReceipt);
+  assert.equal("agentRunId" in revokedReceipt, false);
+  assert.equal("hostRunId" in revokedReceipt, false);
 });
 
 it("redacts Project check-in actor and run metadata from scoped Hub snapshots", () => {

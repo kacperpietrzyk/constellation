@@ -552,23 +552,47 @@ const scopeSnapshot = (
     ...relations.map((value) => value.id),
     ...undoDescriptors.map((value) => value.targetCommandId),
   ]);
-  const auditReceipts = scopedAuditReceipts.map((receipt) => ({
-    ...receipt,
-    ...(isEligibleInSpace(receipt.principalId, receipt.spaceId)
-      ? {}
-      : {
-          principalId: REDACTED_ASSIGNEE_PRINCIPAL_ID,
-          grantId: REDACTED_GRANT_ID,
-        }),
-    affectedRecordIds: receipt.affectedRecordIds.filter((recordId) =>
-      allowedRecordIds.has(recordId),
-    ),
-    recordVersions: Object.fromEntries(
-      Object.entries(receipt.recordVersions).filter(([recordId]) =>
+  const auditReceipts = scopedAuditReceipts.map((receipt) => {
+    const { agentRunId, hostRunId, ...receiptWithoutRunAttribution } = receipt;
+    const affectedCheckIns = (state.projectCheckIns ?? []).filter((checkIn) =>
+      receipt.affectedRecordIds.includes(checkIn.id),
+    );
+    const runAttributionAttested =
+      (agentRunId === undefined && hostRunId === undefined) ||
+      affectedCheckIns.length === 0 ||
+      affectedCheckIns.some((checkIn) => {
+        const persisted = checkIn as unknown as Record<string, unknown>;
+        return (
+          persisted.hubAttributionAttestation ===
+            CHECK_IN_ATTRIBUTION_ATTESTATION &&
+          persisted.authorPrincipalId === receipt.principalId &&
+          persisted.authorGrantId === receipt.grantId
+        );
+      });
+    return {
+      ...receiptWithoutRunAttribution,
+      ...(runAttributionAttested && agentRunId !== undefined
+        ? { agentRunId }
+        : {}),
+      ...(runAttributionAttested && hostRunId !== undefined
+        ? { hostRunId }
+        : {}),
+      ...(isEligibleInSpace(receipt.principalId, receipt.spaceId)
+        ? {}
+        : {
+            principalId: REDACTED_ASSIGNEE_PRINCIPAL_ID,
+            grantId: REDACTED_GRANT_ID,
+          }),
+      affectedRecordIds: receipt.affectedRecordIds.filter((recordId) =>
         allowedRecordIds.has(recordId),
       ),
-    ),
-  }));
+      recordVersions: Object.fromEntries(
+        Object.entries(receipt.recordVersions).filter(([recordId]) =>
+          allowedRecordIds.has(recordId),
+        ),
+      ),
+    };
+  });
   const idempotencyPrefix = `${workspaceId}:${current.principalId}:`;
   return HubWorkspaceSnapshotSchema.parse({
     format: "constellation.workspace-snapshot/v1",

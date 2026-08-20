@@ -44,6 +44,11 @@ const context = ExecutionContextSchema.parse({
     "command.undo",
     "task.create",
     "task.remove",
+    "area.create",
+    "area.remove",
+    "initiative.create",
+    "initiative.remove",
+    "work.overview",
   ],
   origin: "desktop",
 });
@@ -77,6 +82,7 @@ describe("Project check-ins", () => {
         ...context.capabilityScope,
         "agent.manageAccess",
         "workspace.manageAccess",
+        "audit.receipt",
       ],
     });
     harness.authorization.register(owner);
@@ -153,20 +159,19 @@ describe("Project check-ins", () => {
     });
     harness.authorization.register(agent);
     const agentCheckInId = ProjectCheckInIdSchema.parse(id("507"));
-    assert.equal(
-      runAs(agent, {
-        ...metadata("real-revoke-check-in", { [projectId]: 1 }),
-        commandName: "project.checkInAdd",
-        payload: {
-          checkInId: agentCheckInId,
-          projectId,
-          summary: "Written by a real agent grant.",
-          evidenceSourceIds: [],
-          references: [],
-        },
-      }).outcome,
-      "success",
-    );
+    const agentWrite = runAs(agent, {
+      ...metadata("real-revoke-check-in", { [projectId]: 1 }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId: agentCheckInId,
+        projectId,
+        summary: "Written by a real agent grant.",
+        evidenceSourceIds: [],
+        references: [],
+      },
+    });
+    assert.equal(agentWrite.outcome, "success");
+    assert.ok(agentWrite.auditReceiptId);
     const stored = harness.store.snapshot().projectCheckIns?.[0] as unknown as
       Record<string, unknown> | undefined;
     assert.equal(stored?.authorPrincipalKind, "agent");
@@ -236,6 +241,22 @@ describe("Project check-ins", () => {
     assert.equal(redacted.actor, undefined);
     assert.equal(redacted.agentRunId, undefined);
     assert.equal(redacted.hostRunId, undefined);
+    const receipt = harness.kernel.query(ownerAfterGrant, {
+      contractVersion: 1,
+      queryName: "audit.receipt",
+      queryId: nextId(),
+      workspaceId,
+      consistency: "local_authoritative",
+      parameters: { receiptId: agentWrite.auditReceiptId },
+    });
+    if (
+      receipt.kind !== "query_result" ||
+      receipt.result.outcome !== "success" ||
+      receipt.result.projection.kind !== "audit.receipt"
+    )
+      assert.fail("Expected scoped audit receipt after grant revocation.");
+    assert.equal(receipt.result.projection.receipt.agentRunId, undefined);
+    assert.equal(receipt.result.projection.receipt.hostRunId, undefined);
   });
 
   it("fails closed for an old row without safe principal-kind and grant provenance", () => {
@@ -386,6 +407,213 @@ describe("Project check-ins", () => {
       assert.deepEqual(removed.blockedBy, [
         { recordId: referencingCheckInId, recordKind: "projectCheckIn" },
       ]);
+    }
+  });
+
+  it("resolves first-class Area and Initiative references with exact versions and reversible guards", () => {
+    const harness = createReferenceHarness();
+    harness.authorization.register(context);
+    const run = (command: Parameters<typeof harness.kernel.execute>[1]) =>
+      outcome(harness.kernel.execute(context, command));
+    assert.equal(
+      run({
+        ...metadata("strategic-reference-bootstrap", {}),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId,
+          rootSpaceId: spaceId,
+          ownerPrincipalId: principalId,
+          name: "Strategic reference workspace",
+          timezone: "Europe/Warsaw",
+        },
+      }).outcome,
+      "success",
+    );
+    assert.equal(
+      run({
+        ...metadata("strategic-reference-project", {}),
+        commandName: "project.create",
+        payload: { projectId, spaceId, title: "Strategic delivery" },
+      }).outcome,
+      "success",
+    );
+    const areaId = id("601");
+    const initiativeId = id("602");
+    assert.equal(
+      run({
+        ...metadata("strategic-reference-area", {}),
+        commandName: "area.create",
+        payload: { areaId, spaceId, title: "Product stewardship" },
+      }).outcome,
+      "success",
+    );
+    assert.equal(
+      run({
+        ...metadata("strategic-reference-initiative", {}),
+        commandName: "initiative.create",
+        payload: { initiativeId, spaceId, title: "Adopt the standard" },
+      }).outcome,
+      "success",
+    );
+    const references = [
+      { kind: "area" as const, recordId: areaId },
+      { kind: "initiative" as const, recordId: initiativeId },
+    ];
+    const missingInitiativeVersion = run({
+      ...metadata("strategic-reference-missing-version", {
+        [projectId]: 1,
+        [areaId]: 1,
+      }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId: ProjectCheckInIdSchema.parse(id("603")),
+        projectId,
+        summary: "Missing one exact target version.",
+        evidenceSourceIds: [],
+        references,
+      },
+    });
+    assert.equal(
+      missingInitiativeVersion.diagnosticCode,
+      "record.version_conflict",
+    );
+
+    const crossSpaceId = id("604");
+    harness.store.transact((transaction) => {
+      assert.equal(isApplicationWave2Transaction(transaction), true);
+      if (!isApplicationWave2Transaction(transaction)) return;
+      const initiative = transaction.getStrategicRecord(initiativeId as never)!;
+      transaction.updateStrategicRecord(
+        { ...initiative, spaceId: crossSpaceId as never, version: 2 },
+        initiative.version,
+      );
+    });
+    const crossSpace = run({
+      ...metadata("strategic-reference-cross-space", {
+        [projectId]: 1,
+        [areaId]: 1,
+        [initiativeId]: 2,
+      }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId: ProjectCheckInIdSchema.parse(id("605")),
+        projectId,
+        summary: "Cross-Space references must not become an oracle.",
+        evidenceSourceIds: [],
+        references,
+      },
+    });
+    assert.equal(crossSpace.diagnosticCode, "command.precondition_failed");
+    harness.store.transact((transaction) => {
+      assert.equal(isApplicationWave2Transaction(transaction), true);
+      if (!isApplicationWave2Transaction(transaction)) return;
+      const initiative = transaction.getStrategicRecord(initiativeId as never)!;
+      transaction.updateStrategicRecord(
+        { ...initiative, spaceId: spaceId as never, version: 3 },
+        initiative.version,
+      );
+    });
+
+    const add = {
+      ...metadata("strategic-reference-check-in", {
+        [projectId]: 1,
+        [areaId]: 1,
+        [initiativeId]: 3,
+      }),
+      commandName: "project.checkInAdd" as const,
+      payload: {
+        checkInId: ProjectCheckInIdSchema.parse(id("606")),
+        projectId,
+        summary: "Both strategic contexts are current.",
+        evidenceSourceIds: [],
+        references,
+      },
+    };
+    assert.equal(run(add).outcome, "success");
+    const listed = harness.kernel.query(context, {
+      contractVersion: 1,
+      queryName: "project.checkInList",
+      queryId: nextId(),
+      workspaceId,
+      consistency: "local_authoritative",
+      parameters: { projectId },
+    });
+    if (
+      listed.kind !== "query_result" ||
+      listed.result.outcome !== "success" ||
+      listed.result.projection.kind !== "project.checkInList"
+    )
+      assert.fail("Expected strategic references in the check-in list.");
+    assert.deepEqual(listed.result.projection.items[0]?.references, [
+      { kind: "area", recordId: areaId, label: "Product stewardship" },
+      {
+        kind: "initiative",
+        recordId: initiativeId,
+        label: "Adopt the standard",
+      },
+    ]);
+    for (const [commandName, payload, targetId, version] of [
+      ["area.remove", { areaId }, areaId, 1],
+      ["initiative.remove", { initiativeId }, initiativeId, 3],
+    ] as const) {
+      const removal = run({
+        ...metadata(`guard-${commandName}`, { [targetId]: version }),
+        commandName,
+        payload,
+      });
+      assert.equal(removal.diagnosticCode, "record.still_referenced");
+    }
+    assert.equal(
+      run({
+        ...metadata("undo-strategic-reference-check-in", {
+          [add.payload.checkInId]: 1,
+        }),
+        commandName: "command.undo",
+        payload: { targetCommandId: add.commandId },
+      }).outcome,
+      "success",
+    );
+    const areaRemoval = {
+      ...metadata("remove-released-area", { [areaId]: 1 }),
+      commandName: "area.remove" as const,
+      payload: { areaId },
+    };
+    const initiativeRemoval = {
+      ...metadata("remove-released-initiative", { [initiativeId]: 3 }),
+      commandName: "initiative.remove" as const,
+      payload: { initiativeId },
+    };
+    assert.equal(run(areaRemoval).outcome, "success");
+    assert.equal(run(initiativeRemoval).outcome, "success");
+    for (const removal of [areaRemoval, initiativeRemoval])
+      assert.equal(
+        run({
+          ...metadata(`undo-${removal.idempotencyKey}`, {
+            ["areaId" in removal.payload
+              ? removal.payload.areaId
+              : removal.payload.initiativeId]:
+              "areaId" in removal.payload ? 2 : 4,
+          }),
+          commandName: "command.undo",
+          payload: { targetCommandId: removal.commandId },
+        }).outcome,
+        "success",
+      );
+    for (const [queryName, parameters] of [
+      ["area.operationalOverview", { areaId }],
+      ["initiative.operationalOverview", { initiativeId }],
+    ] as const) {
+      const surface = harness.kernel.query(context, {
+        contractVersion: 1,
+        queryName,
+        queryId: nextId(),
+        workspaceId,
+        consistency: "local_authoritative",
+        parameters,
+      });
+      assert.equal(surface.kind, "query_result");
+      if (surface.kind === "query_result")
+        assert.equal(surface.result.outcome, "success");
     }
   });
 

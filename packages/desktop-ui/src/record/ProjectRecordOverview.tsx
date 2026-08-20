@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import {
   compositionSentence,
@@ -523,6 +523,15 @@ export const ProjectRecordOverview = ({
     nextCheckpointDate: "",
   });
   const [checkInError, setCheckInError] = useState<string>();
+  useEffect(() => {
+    setCheckInComposerOpen(false);
+    setCheckInDraft({
+      summary: "",
+      waitingOn: "",
+      nextCheckpointDate: "",
+    });
+    setCheckInError(undefined);
+  }, [overview.project.id]);
   const latestCheckIn =
     visibleCheckIns.kind === "ready" &&
     visibleCheckIns.data.latestCheckInId !== undefined

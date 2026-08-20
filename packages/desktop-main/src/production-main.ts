@@ -154,6 +154,7 @@ import {
   previewStarterWorkspace,
   type StarterWorkspaceManifest,
 } from "./starter-workspace-import.js";
+import { MINIMUM_DESKTOP_WINDOW_WIDTH } from "./window-bounds.js";
 import {
   DesktopReleaseService,
   type DesktopUpdaterAdapter,
@@ -822,7 +823,7 @@ const createWindow = async (
   const window = new BrowserWindow({
     width: 1380,
     height: 860,
-    minWidth: 760,
+    minWidth: MINIMUM_DESKTOP_WINDOW_WIDTH,
     minHeight: 560,
     backgroundColor: "#08090b",
     show: false,

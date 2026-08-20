@@ -37,6 +37,7 @@ export const PRODUCTION_DESKTOP_FILES = new Set([
   "support-report.js",
   "workspace-key-custody.js",
   "workspace-backup-archive.js",
+  "window-bounds.js",
   "workspace-recovery-service.js",
   "workspace-registry.js",
 ]);

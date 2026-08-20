@@ -3899,6 +3899,17 @@ export class ApplicationKernel {
         "query.consistency_unavailable",
       );
     }
+    const receiptCarriesAgentRun =
+      receipt.agentRunId !== undefined || receipt.hostRunId !== undefined;
+    const exactAgentGrant = receiptCarriesAgentRun
+      ? view.getAgentGrant(receipt.grantId)
+      : undefined;
+    const runAttributionVisible =
+      !receiptCarriesAgentRun ||
+      (exactAgentGrant !== undefined &&
+        exactAgentGrant.agentPrincipalId === receipt.principalId &&
+        exactAgentGrant.status === "active" &&
+        exactAgentGrant.spaceScope.includes(receipt.spaceId));
     return QueryResultSchema.parse({
       outcome: "success",
       contractVersion: 1,
@@ -3927,10 +3938,10 @@ export class ApplicationKernel {
           ...(receipt.checkpointId === undefined
             ? {}
             : { checkpointId: receipt.checkpointId }),
-          ...(receipt.agentRunId === undefined
+          ...(!runAttributionVisible || receipt.agentRunId === undefined
             ? {}
             : { agentRunId: receipt.agentRunId }),
-          ...(receipt.hostRunId === undefined
+          ...(!runAttributionVisible || receipt.hostRunId === undefined
             ? {}
             : { hostRunId: receipt.hostRunId }),
         },

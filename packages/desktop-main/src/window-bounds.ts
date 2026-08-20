@@ -1,0 +1,1 @@
+export const MINIMUM_DESKTOP_WINDOW_WIDTH = 320;
