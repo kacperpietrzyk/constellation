@@ -28,8 +28,11 @@ const context = ExecutionContextSchema.parse({
   spaceScope: [spaceId],
   capabilityScope: [
     "workspace.createLocal",
+    "workspace.bootstrapContext",
     "project.create",
     "project.reclassify",
+    "relationship.organizationCreate",
+    "relationship.personCreate",
     "project.list",
     "project.checkInAdd",
     "knowledge.sourceCreate",
@@ -181,7 +184,13 @@ describe("Project reclassification", () => {
       queryName: "project.reclassificationPreview",
       parameters: {
         projectId,
-        destination: { mode: "create", kind: "initiative", targetId: id("7") },
+        destination: {
+          mode: "create",
+          kind: "initiative",
+          targetId: id("7"),
+          title: "Operate the work system",
+          intendedOutcome: "A durable ongoing product outcome",
+        },
       },
     });
     if (
@@ -413,5 +422,146 @@ describe("Project reclassification", () => {
     );
     assert.equal(restoredArea?.recordState, undefined);
     assert.deepEqual(restoredArea?.reclassifiedFromProjectIds, []);
+  });
+
+  it("rejects invalid Opportunity references and stage identically in preview and apply without writes", () => {
+    const harness = createReferenceHarness();
+    harness.authorization.register(context);
+    const run = (command: Parameters<typeof harness.kernel.execute>[1]) =>
+      unwrap(harness.kernel.execute(context, command));
+    assert.equal(
+      run({
+        ...metadata("invalid-bootstrap", {}),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId,
+          rootSpaceId: spaceId,
+          ownerPrincipalId: principalId,
+          name: "Invalid destination guards",
+          timezone: "Europe/Warsaw",
+        },
+      }).outcome,
+      "success",
+    );
+    const guardedProjectId = ProjectIdSchema.parse(id("40"));
+    const organizationId = id("41");
+    const personId = id("42");
+    const sourceId = id("43");
+    for (const command of [
+      {
+        ...metadata("invalid-project", {}),
+        commandName: "project.create" as const,
+        payload: {
+          projectId: guardedProjectId,
+          spaceId,
+          title: "Guard this Project",
+        },
+      },
+      {
+        ...metadata("invalid-organization", {}),
+        commandName: "relationship.organizationCreate" as const,
+        payload: {
+          organizationId,
+          spaceId,
+          name: "Valid organization",
+          relationshipState: "active" as const,
+        },
+      },
+      {
+        ...metadata("invalid-person", {}),
+        commandName: "relationship.personCreate" as const,
+        payload: { personId, spaceId, name: "Valid person" },
+      },
+      {
+        ...metadata("invalid-evidence", {}),
+        commandName: "knowledge.sourceCreate" as const,
+        payload: {
+          sourceId,
+          spaceId,
+          sourceKind: "excerpt" as const,
+          title: "Valid evidence",
+          excerpt: "A bounded source.",
+          availability: "available" as const,
+          observedAt: "2026-08-21T08:00:00.000Z",
+        },
+      },
+    ])
+      assert.equal(run(command).outcome, "success");
+    const bootstrap = harness.kernel.query(context, {
+      contractVersion: 1,
+      queryId: nextId(),
+      workspaceId,
+      consistency: "local_authoritative",
+      queryName: "workspace.bootstrapContext",
+      parameters: {},
+    });
+    if (
+      bootstrap.kind !== "query_result" ||
+      bootstrap.result.outcome !== "success" ||
+      bootstrap.result.projection.kind !== "workspace.bootstrapContext"
+    )
+      assert.fail("Expected bootstrap defaults.");
+    const stage =
+      bootstrap.result.projection.workspace.commercialDefaults.stages[0]!.id;
+    const valid = {
+      mode: "create" as const,
+      kind: "opportunity" as const,
+      title: "Guarded opportunity",
+      organizationId,
+      personIds: [personId],
+      ownerPersonId: personId,
+      need: "A confirmed need",
+      qualification: "A confirmed qualification",
+      stage,
+      nextAction: "Take the next action",
+      evidenceSourceIds: [sourceId],
+    };
+    const invalidDestinations = [
+      { ...valid, targetId: id("50"), organizationId: id("90") },
+      { ...valid, targetId: id("51"), personIds: [id("91")] },
+      { ...valid, targetId: id("52"), ownerPersonId: id("92") },
+      { ...valid, targetId: id("53"), evidenceSourceIds: [id("93")] },
+      { ...valid, targetId: id("54"), stage: "not-a-workspace-stage" },
+    ];
+    for (const [index, destination] of invalidDestinations.entries()) {
+      const preview = harness.kernel.query(context, {
+        contractVersion: 1,
+        queryId: nextId(),
+        workspaceId,
+        consistency: "local_authoritative",
+        queryName: "project.reclassificationPreview",
+        parameters: { projectId: guardedProjectId, destination },
+      });
+      if (
+        preview.kind !== "query_result" ||
+        preview.result.outcome !== "success" ||
+        preview.result.projection.kind !== "project.reclassificationPreview"
+      )
+        assert.fail("Expected a bounded invalid-destination preview.");
+      assert.equal(preview.result.projection.canApply, false);
+      assert.equal(
+        preview.result.projection.blockedReason,
+        "destination_invalid",
+      );
+      const applied = run({
+        ...metadata(`invalid-apply-${index}`, { [guardedProjectId]: 1 }),
+        commandName: "project.reclassify",
+        payload: { projectId: guardedProjectId, destination },
+      });
+      assert.equal(applied.outcome, "rejected");
+      assert.equal(applied.diagnosticCode, "command.precondition_failed");
+      const state = harness.store.snapshot();
+      assert.equal(
+        state.projects.find((project) => project.id === guardedProjectId)
+          ?.version,
+        1,
+      );
+      assert.equal(
+        state.strategicRecords?.some(
+          (record) => record.id === destination.targetId,
+        ),
+        false,
+      );
+    }
   });
 });

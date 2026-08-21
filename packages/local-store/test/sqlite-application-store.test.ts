@@ -4293,6 +4293,8 @@ describe("narrative-less records in the durable store", () => {
             mode: "create",
             kind: "initiative",
             targetId: initiativeId,
+            title: "Durably reclassify this Project",
+            intendedOutcome: "Lineage must survive a database restart.",
           },
         },
       });

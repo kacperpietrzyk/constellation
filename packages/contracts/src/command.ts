@@ -746,7 +746,7 @@ export const ProjectCheckInAddCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
-const ProjectReclassificationDestinationSchema = z.union([
+export const ProjectReclassificationDestinationSchema = z.union([
   z
     .object({
       mode: z.literal("merge"),

@@ -40,5 +40,6 @@ export default defineConfig({
     // wyglądałyby na przechodzące, nie wykonując ani jednej asercji.
     globals: false,
     restoreMocks: true,
+    setupFiles: ["./test/setup.ts"],
   },
 });

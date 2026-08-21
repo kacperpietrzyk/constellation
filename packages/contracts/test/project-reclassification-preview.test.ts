@@ -20,3 +20,48 @@ it("accepts a bounded Project reclassification preview query", () => {
   });
   assert.equal(parsed.queryName, "project.reclassificationPreview");
 });
+
+it("requires the same complete Opportunity facts in preview and apply", () => {
+  const parsed = QueryEnvelopeSchema.safeParse({
+    contractVersion: 1,
+    queryId: id("5"),
+    workspaceId: id("2"),
+    consistency: "local_authoritative",
+    queryName: "project.reclassificationPreview",
+    parameters: {
+      projectId: id("3"),
+      destination: {
+        mode: "create",
+        kind: "opportunity",
+        targetId: id("4"),
+        title: "Renewal",
+      },
+    },
+  });
+  assert.equal(parsed.success, false);
+
+  const complete = QueryEnvelopeSchema.safeParse({
+    contractVersion: 1,
+    queryId: id("6"),
+    workspaceId: id("2"),
+    consistency: "local_authoritative",
+    queryName: "project.reclassificationPreview",
+    parameters: {
+      projectId: id("3"),
+      destination: {
+        mode: "create",
+        kind: "opportunity",
+        targetId: id("4"),
+        title: "Renewal",
+        organizationId: id("7"),
+        personIds: [],
+        need: "Renew the service",
+        qualification: "Incumbent and budget confirmed",
+        stage: "qualified",
+        nextAction: "Prepare the offer",
+        evidenceSourceIds: [],
+      },
+    },
+  });
+  assert.equal(complete.success, true);
+});

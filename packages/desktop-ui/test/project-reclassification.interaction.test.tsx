@@ -78,8 +78,8 @@ test("previews a Project merge with preserved history before it can confirm", as
             },
           };
         },
-        onApply: async (preview) => {
-          applied.push(preview);
+        onApply: async (_preview, destination) => {
+          applied.push(destination);
           return {
             kind: "success" as const,
             commandId: "76100000-0000-4000-8000-000000000019",
@@ -128,6 +128,11 @@ test("previews a Project merge with preserved history before it can confirm", as
   assert.ok(confirm, "a fresh preview must offer confirmation");
   await act(async () => confirm.click());
   assert.equal(applied.length, 1);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(applied[0])),
+    JSON.parse(JSON.stringify(previewed[0])),
+    "preview and apply must use the same semantic destination bytes",
+  );
 });
 
 test("keys a preview to every destination fact", () => {

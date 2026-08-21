@@ -148,6 +148,7 @@ import {
   createProject,
   createTaskInProject,
   loadProjectSimilarCandidates,
+  projectReclassificationTargets,
   previewProjectReclassification,
   reclassifyProject,
   directClientLinks,
@@ -3859,28 +3860,21 @@ export const RealApp = ({
         onFailure={showFailure}
         reclassificationTargets={
           state.snapshot.work.kind === "ready"
-            ? [
-                ...state.snapshot.work.data.areas.map((area) => ({
-                  id: area.id,
-                  kind: "area" as const,
-                  title: area.title,
-                })),
-                ...state.snapshot.work.data.initiatives.map((initiative) => ({
-                  id: initiative.id,
-                  kind: "initiative" as const,
-                  title: initiative.title,
-                })),
-                ...(state.snapshot.relationships.kind === "ready"
-                  ? state.snapshot.relationships.data.records
-                      .filter((record) => record.kind === "opportunity")
-                      .map((record) => ({
-                        id: record.id,
-                        kind: "opportunity" as const,
-                        title: record.title,
-                      }))
-                  : []),
-              ]
+            ? projectReclassificationTargets(
+                state.snapshot.work.data,
+                state.snapshot.opportunities,
+              )
             : []
+        }
+        reclassificationOrganizations={
+          state.snapshot.relationships.kind === "ready"
+            ? state.snapshot.relationships.data.records
+                .filter((record) => record.kind === "organization")
+                .map((record) => ({ id: record.id, name: record.name }))
+            : []
+        }
+        reclassificationStages={
+          state.snapshot.bootstrap.workspace.commercialDefaults.stages
         }
         onPreviewReclassification={async (destination) => {
           if (!client || !projectOverview)

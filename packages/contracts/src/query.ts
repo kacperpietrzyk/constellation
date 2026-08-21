@@ -40,6 +40,7 @@ import {
   ContractVersionSchema,
   FieldDefinitionTypeSchema,
   ProjectCheckInReferenceKindSchema,
+  ProjectReclassificationDestinationSchema,
   RelationConditionsSchema,
   SavedViewFieldFiltersSchema,
   SavedViewFiltersSchema,
@@ -282,13 +283,7 @@ export const ProjectReclassificationPreviewQuerySchema =
     parameters: z
       .object({
         projectId: ProjectIdSchema,
-        destination: z
-          .object({
-            mode: z.enum(["create", "merge"]),
-            kind: z.enum(["area", "initiative", "opportunity"]),
-            targetId: StrategicRecordIdSchema,
-          })
-          .strict(),
+        destination: ProjectReclassificationDestinationSchema,
       })
       .strict(),
   }).strict();
@@ -2023,6 +2018,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "target_kind_mismatch",
           "target_scope_mismatch",
           "target_id_in_use",
+          "destination_invalid",
         ])
         .optional(),
       expectedVersions: z.record(z.uuid(), z.int().positive()),

@@ -1,7 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { collectInventoryPages } from "../src/client/workflow.js";
+import {
+  collectInventoryPages,
+  projectReclassificationTargets,
+} from "../src/client/workflow.js";
 
 const page = (
   items: readonly string[],
@@ -54,5 +57,27 @@ test("refuses inconsistent inventory pages instead of presenting a partial count
         : page(["two"], { totalCount: 3, final: true }),
     ),
     /item count does not match totalCount/u,
+  );
+});
+
+test("builds reclassification targets from the complete pageable Opportunity inventory", () => {
+  const targets = projectReclassificationTargets(
+    {
+      areas: [{ id: "area-1", title: "Product" }],
+      initiatives: [{ id: "initiative-1", title: "Desktop" }],
+    } as never,
+    {
+      kind: "ready",
+      data: {
+        items: [
+          { id: "opportunity-1", title: "Renewal" },
+          { id: "opportunity-2", title: "Expansion" },
+        ],
+      },
+    } as never,
+  );
+  assert.deepEqual(
+    targets.map((target) => target.kind),
+    ["area", "initiative", "opportunity", "opportunity"],
   );
 });

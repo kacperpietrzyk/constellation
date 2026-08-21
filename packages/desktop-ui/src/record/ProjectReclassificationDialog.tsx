@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { ProjectId, StrategicRecordId } from "@constellation/contracts";
+import type {
+  ProjectId,
+  ProjectReclassifyCommand,
+  StrategicRecordId,
+} from "@constellation/contracts";
 
 export type ReclassificationKind = "area" | "initiative" | "opportunity";
 export type ReclassificationDestination = {
@@ -9,6 +13,8 @@ export type ReclassificationDestination = {
   readonly targetId: StrategicRecordId;
   readonly targetTitle?: string | undefined;
 };
+export type ReclassificationCommandDestination =
+  ProjectReclassifyCommand["payload"]["destination"];
 export type ReclassificationPreview = {
   readonly projectId: ProjectId;
   readonly destination: ReclassificationDestination;
@@ -59,6 +65,8 @@ const label = (kind: ReclassificationKind): string =>
 export const ProjectReclassificationDialog = ({
   projectTitle,
   targets,
+  organizations,
+  stages,
   onClose,
   onPreview,
   onApply,
@@ -70,13 +78,18 @@ export const ProjectReclassificationDialog = ({
     readonly kind: ReclassificationKind;
     readonly title: string;
   }[];
+  readonly organizations?: readonly {
+    readonly id: StrategicRecordId;
+    readonly name: string;
+  }[];
+  readonly stages?: readonly { readonly id: string; readonly label: string }[];
   readonly onClose: () => void;
   readonly onPreview: (
-    destination: ReclassificationDestination,
+    destination: ReclassificationCommandDestination,
   ) => Promise<ReclassificationLoad>;
   readonly onApply: (
     preview: ReclassificationPreview,
-    destination: unknown,
+    destination: ReclassificationCommandDestination,
   ) => Promise<
     | { readonly kind: "success"; readonly commandId: string }
     | { readonly kind: "failure"; readonly message: string }
@@ -94,10 +107,10 @@ export const ProjectReclassificationDialog = ({
   const [creationTitle, setCreationTitle] = useState(projectTitle);
   const [responsibility, setResponsibility] = useState("");
   const [opportunityFacts, setOpportunityFacts] = useState({
-    organizationId: "",
+    organizationId: organizations?.[0]?.id ?? "",
     need: "",
     qualification: "",
-    stage: "",
+    stage: stages?.[0]?.id ?? "",
     nextAction: "",
   });
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -131,11 +144,49 @@ export const ProjectReclassificationDialog = ({
         : newTargetId(),
     );
   };
-  const selectedTarget = targets.find((target) => target.id === targetId);
-  const destination: ReclassificationDestination =
-    mode === "merge" && selectedTarget !== undefined
-      ? { mode, kind, targetId, targetTitle: selectedTarget.title }
-      : { mode, kind, targetId };
+  const destination: ReclassificationDestination = { mode, kind, targetId };
+  const payloadDestination: ReclassificationCommandDestination =
+    mode === "merge"
+      ? { mode: "merge", kind, targetId }
+      : kind === "opportunity"
+        ? {
+            mode: "create",
+            kind: "opportunity",
+            targetId,
+            title: creationTitle.trim(),
+            organizationId:
+              opportunityFacts.organizationId as StrategicRecordId,
+            personIds: [],
+            need: opportunityFacts.need.trim(),
+            qualification: opportunityFacts.qualification.trim(),
+            stage: opportunityFacts.stage.trim(),
+            nextAction: opportunityFacts.nextAction.trim(),
+            evidenceSourceIds: [],
+          }
+        : kind === "area"
+          ? {
+              mode: "create",
+              kind: "area",
+              targetId,
+              title: creationTitle.trim(),
+              ...(responsibility.trim()
+                ? { responsibility: responsibility.trim() }
+                : {}),
+            }
+          : {
+              mode: "create",
+              kind: "initiative",
+              targetId,
+              title: creationTitle.trim(),
+              ...(responsibility.trim()
+                ? { intendedOutcome: responsibility.trim() }
+                : {}),
+            };
+  const creationValid =
+    mode !== "create" ||
+    (creationTitle.trim() !== "" &&
+      (kind !== "opportunity" ||
+        Object.values(opportunityFacts).every((value) => value.trim() !== "")));
   const draftKey = reclassificationDraftKey(destination, {
     title: creationTitle,
     responsibility,
@@ -151,9 +202,13 @@ export const ProjectReclassificationDialog = ({
       setMessage(`No authorized ${label(kind)} is available to merge into.`);
       return;
     }
+    if (!creationValid) {
+      setMessage("Complete every required target fact before previewing.");
+      return;
+    }
     setBusy(true);
     setMessage(undefined);
-    const result = await onPreview(destination);
+    const result = await onPreview(payloadDestination);
     setBusy(false);
     if (result.kind === "ready") {
       setPreview(result.data);
@@ -166,42 +221,7 @@ export const ProjectReclassificationDialog = ({
   };
   const apply = async () => {
     if (freshPreview === undefined || !freshPreview.canApply) return;
-    const payloadDestination =
-      mode === "merge"
-        ? destination
-        : kind === "opportunity"
-          ? {
-              ...destination,
-              title: creationTitle.trim(),
-              organizationId: opportunityFacts.organizationId,
-              personIds: [],
-              need: opportunityFacts.need.trim(),
-              qualification: opportunityFacts.qualification.trim(),
-              stage: opportunityFacts.stage.trim(),
-              nextAction: opportunityFacts.nextAction.trim(),
-              evidenceSourceIds: [],
-            }
-          : kind === "area"
-            ? {
-                ...destination,
-                title: creationTitle.trim(),
-                ...(responsibility.trim()
-                  ? { responsibility: responsibility.trim() }
-                  : {}),
-              }
-            : {
-                ...destination,
-                title: creationTitle.trim(),
-                ...(responsibility.trim()
-                  ? { intendedOutcome: responsibility.trim() }
-                  : {}),
-              };
-    if (
-      mode === "create" &&
-      (creationTitle.trim() === "" ||
-        (kind === "opportunity" &&
-          Object.values(opportunityFacts).some((value) => value.trim() === "")))
-    ) {
+    if (!creationValid) {
       setMessage("Complete every required target fact before confirming.");
       return;
     }
@@ -325,34 +345,96 @@ export const ProjectReclassificationDialog = ({
             {kind === "opportunity" && (
               <fieldset>
                 <legend>Opportunity facts</legend>
-                {(
-                  [
-                    "organizationId",
-                    "need",
-                    "qualification",
-                    "stage",
-                    "nextAction",
-                  ] as const
-                ).map((field) => (
-                  <label key={field}>
-                    {field === "organizationId"
-                      ? "Organization ID"
-                      : label(
-                          field === "nextAction" ? "initiative" : "area",
-                        ).replace("Area", field)}
-                    <input
-                      aria-label={field}
-                      disabled={busy}
-                      value={opportunityFacts[field]}
-                      onChange={(event) =>
-                        setOpportunityFacts((current) => ({
-                          ...current,
-                          [field]: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                ))}
+                <label>
+                  Organization
+                  <select
+                    aria-label="Opportunity organization"
+                    disabled={busy || organizations?.length === 0}
+                    value={opportunityFacts.organizationId}
+                    onChange={(event) =>
+                      setOpportunityFacts((current) => ({
+                        ...current,
+                        organizationId: event.target.value,
+                      }))
+                    }
+                  >
+                    {organizations?.length ? (
+                      organizations.map((organization) => (
+                        <option key={organization.id} value={organization.id}>
+                          {organization.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No authorized organizations</option>
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Need
+                  <textarea
+                    aria-label="Opportunity need"
+                    disabled={busy}
+                    value={opportunityFacts.need}
+                    onChange={(event) =>
+                      setOpportunityFacts((current) => ({
+                        ...current,
+                        need: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Qualification
+                  <textarea
+                    aria-label="Opportunity qualification"
+                    disabled={busy}
+                    value={opportunityFacts.qualification}
+                    onChange={(event) =>
+                      setOpportunityFacts((current) => ({
+                        ...current,
+                        qualification: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Stage
+                  <select
+                    aria-label="Opportunity stage"
+                    disabled={busy || stages?.length === 0}
+                    value={opportunityFacts.stage}
+                    onChange={(event) =>
+                      setOpportunityFacts((current) => ({
+                        ...current,
+                        stage: event.target.value,
+                      }))
+                    }
+                  >
+                    {stages?.length ? (
+                      stages.map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                          {stage.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No configured stages</option>
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Next action
+                  <input
+                    aria-label="Opportunity next action"
+                    disabled={busy}
+                    value={opportunityFacts.nextAction}
+                    onChange={(event) =>
+                      setOpportunityFacts((current) => ({
+                        ...current,
+                        nextAction: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
               </fieldset>
             )}
           </>

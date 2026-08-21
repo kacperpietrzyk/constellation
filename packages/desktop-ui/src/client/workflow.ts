@@ -7,6 +7,7 @@ import {
   type CommandId,
   type DataHomeStatus,
   type ProjectId,
+  type ProjectReclassifyCommand,
   type ProjectCheckInId,
   type PrincipalId,
   type QueryName,
@@ -134,6 +135,29 @@ export type RelationshipWorkspaceProjection =
 export type OpportunityListProjection = Projection<"opportunity.list">;
 export type RelationListProjection = Projection<"relation.list">;
 export type RadarReviewProjection = Projection<"radar.review">;
+
+export const projectReclassificationTargets = (
+  work: Pick<WorkOverviewProjection, "areas" | "initiatives">,
+  opportunities: DataSlice<OpportunityListProjection> | undefined,
+) => [
+  ...work.areas.map((area) => ({
+    id: area.id,
+    kind: "area" as const,
+    title: area.title,
+  })),
+  ...work.initiatives.map((initiative) => ({
+    id: initiative.id,
+    kind: "initiative" as const,
+    title: initiative.title,
+  })),
+  ...(opportunities?.kind === "ready"
+    ? opportunities.data.items.map((opportunity) => ({
+        id: opportunity.id,
+        kind: "opportunity" as const,
+        title: opportunity.title,
+      }))
+    : []),
+];
 
 interface InventoryPage<Item> {
   readonly items: readonly Item[];
@@ -1929,11 +1953,7 @@ export const previewProjectReclassification = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   projectId: ProjectId,
-  destination: {
-    readonly mode: "create" | "merge";
-    readonly kind: "area" | "initiative" | "opportunity";
-    readonly targetId: StrategicRecordId;
-  },
+  destination: ProjectReclassifyCommand["payload"]["destination"],
 ) =>
   queryProjection(
     client,
@@ -1952,7 +1972,7 @@ export const reclassifyProject = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   projectId: ProjectId,
-  destination: unknown,
+  destination: ProjectReclassifyCommand["payload"]["destination"],
   expectedVersions: Readonly<Record<string, number>>,
 ) =>
   execute(

@@ -2972,9 +2972,12 @@ export const executeWave2Command = (
           const organization = transaction.getStrategicRecord(
             destination.organizationId,
           );
-          const people = destination.personIds.map((id) =>
-            transaction.getStrategicRecord(id),
-          );
+          const people = [
+            ...destination.personIds,
+            ...(destination.ownerPersonId === undefined
+              ? []
+              : [destination.ownerPersonId]),
+          ].map((id) => transaction.getStrategicRecord(id));
           const evidence = destination.evidenceSourceIds.map((id) =>
             transaction.getKnowledgeSource(id),
           );
@@ -2996,7 +2999,10 @@ export const executeWave2Command = (
                 source.workspaceId !== project.workspaceId ||
                 source.spaceId !== project.spaceId ||
                 !recordIsActive(source),
-            )
+            ) ||
+            !effectiveCommercialDefaults(
+              transaction.getWorkspace(project.workspaceId)!,
+            ).stages.some((stage) => stage.id === destination.stage)
           )
             return precondition(command, occurredAt);
           target = createOpportunity({
@@ -13490,6 +13496,7 @@ export const executeWave2Query = (
       | "target_kind_mismatch"
       | "target_scope_mismatch"
       | "target_id_in_use"
+      | "destination_invalid"
       | undefined;
     if (!recordIsActive(project) || project.lifecycle !== "active")
       blockedReason = "source_inactive";
@@ -13513,6 +13520,47 @@ export const executeWave2Query = (
       target.kind !== destination.kind
     )
       blockedReason = "target_kind_mismatch";
+    else if (
+      destination.mode === "create" &&
+      destination.kind === "opportunity"
+    ) {
+      const organization = view.getStrategicRecord(destination.organizationId);
+      const people = [
+        ...destination.personIds,
+        ...(destination.ownerPersonId === undefined
+          ? []
+          : [destination.ownerPersonId]),
+      ].map((id) => view.getStrategicRecord(id));
+      const evidence = destination.evidenceSourceIds.map((id) =>
+        view.getKnowledgeSource(id),
+      );
+      const workspace = view.getWorkspace(project.workspaceId);
+      if (
+        organization?.kind !== "organization" ||
+        organization.workspaceId !== project.workspaceId ||
+        organization.spaceId !== project.spaceId ||
+        !recordIsActive(organization) ||
+        people.some(
+          (person) =>
+            person?.kind !== "person" ||
+            person.workspaceId !== project.workspaceId ||
+            person.spaceId !== project.spaceId ||
+            !recordIsActive(person),
+        ) ||
+        evidence.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== project.workspaceId ||
+            source.spaceId !== project.spaceId ||
+            !recordIsActive(source),
+        ) ||
+        workspace === undefined ||
+        !effectiveCommercialDefaults(workspace).stages.some(
+          (stage) => stage.id === destination.stage,
+        )
+      )
+        blockedReason = "destination_invalid";
+    }
 
     const history = projectReclassificationHistory(view, project);
     const targetTitle =
@@ -13526,7 +13574,9 @@ export const executeWave2Query = (
       kind: "project.reclassificationPreview",
       projectId: project.id,
       destination: {
-        ...destination,
+        mode: destination.mode,
+        kind: destination.kind,
+        targetId: destination.targetId,
         ...(targetTitle === undefined ? {} : { targetTitle }),
       },
       canApply: blockedReason === undefined,

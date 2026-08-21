@@ -30,7 +30,7 @@ import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
 import type {
-  ReclassificationDestination,
+  ReclassificationCommandDestination,
   ReclassificationLoad,
   ReclassificationPreview,
 } from "./record/ProjectReclassificationDialog.js";
@@ -554,6 +554,8 @@ export const ProjectsSurface = ({
   onReload,
   onFailure,
   reclassificationTargets,
+  reclassificationOrganizations,
+  reclassificationStages,
   onPreviewReclassification,
   onApplyReclassification,
 }: {
@@ -624,12 +626,20 @@ export const ProjectsSurface = ({
     readonly kind: "area" | "initiative" | "opportunity";
     readonly title: string;
   }[];
+  readonly reclassificationOrganizations: readonly {
+    readonly id: StrategicRecordId;
+    readonly name: string;
+  }[];
+  readonly reclassificationStages: readonly {
+    readonly id: string;
+    readonly label: string;
+  }[];
   readonly onPreviewReclassification: (
-    destination: ReclassificationDestination,
+    destination: ReclassificationCommandDestination,
   ) => Promise<ReclassificationLoad>;
   readonly onApplyReclassification: (
     preview: ReclassificationPreview,
-    destination: unknown,
+    destination: ReclassificationCommandDestination,
   ) => Promise<
     | { readonly kind: "success"; readonly commandId: string }
     | { readonly kind: "failure"; readonly message: string }
@@ -868,6 +878,8 @@ export const ProjectsSurface = ({
               projectId={overview.project.id}
               projectTitle={overview.project.title}
               targets={reclassificationTargets}
+              organizations={reclassificationOrganizations}
+              stages={reclassificationStages}
               onClose={() => setReclassificationOpen(false)}
               onPreview={onPreviewReclassification}
               onApply={onApplyReclassification}
