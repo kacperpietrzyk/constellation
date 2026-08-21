@@ -72,6 +72,8 @@ export type AgentAccessProjection = Projection<"agent.access">;
 export type ProjectListProjection = Projection<"project.list">;
 export type ProjectSimilarCandidatesProjection =
   Projection<"project.similarCandidates">;
+export type ProjectReclassificationPreviewProjection =
+  Projection<"project.reclassificationPreview">;
 export type WorkOverviewProjection = Projection<"work.overview">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
@@ -1919,6 +1921,52 @@ export const loadProjectSimilarCandidates = (
       },
     ),
     "project.similarCandidates",
+  );
+
+/** The preview is authoritative: callers may never synthesize its versions or
+ * preserved-history summary from stale screen data. */
+export const previewProjectReclassification = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+  destination: {
+    readonly mode: "create" | "merge";
+    readonly kind: "area" | "initiative" | "opportunity";
+    readonly targetId: StrategicRecordId;
+  },
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "project.reclassificationPreview",
+      snapshot.bootstrap.workspace.id,
+      {
+        projectId,
+        destination,
+      },
+    ),
+    "project.reclassificationPreview",
+  );
+
+export const reclassifyProject = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+  destination: unknown,
+  expectedVersions: Readonly<Record<string, number>>,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, expectedVersions),
+      commandName: "project.reclassify",
+      payload: { projectId, destination },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.reclassified"
+        ? response.outcome.projection
+        : undefined,
   );
 
 const commandFailure = (response: RendererCommandResponse): MutationFailure => {

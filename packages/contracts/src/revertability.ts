@@ -55,6 +55,7 @@ export const COMMAND_REVERTABILITY: Readonly<
   "capture.routeAsTask": "always",
   "project.create": "always",
   "project.checkInAdd": "always",
+  "project.reclassify": "always",
   "project.remove": "always",
   "document.create": "always",
   // A rename is the other way a note gets lost. Nothing in the app searches by

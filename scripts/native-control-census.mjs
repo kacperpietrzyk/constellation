@@ -221,6 +221,9 @@ export const NATIVE_CONTROL_LEDGER = {
   // other four kinds to their existing forms; its fields are labelled at 320 px.
   "projects/ProjectCreateClassifier.tsx": 7,
   "record/ProjectRecordOverview.tsx": 4,
+  // Reclassification is an explicit, previewed form: native controls keep all
+  // required Area/Initiative/Opportunity facts labelled and keyboard-operable.
+  "record/ProjectReclassificationDialog.tsx": 6,
   "record/RecordCommentsPanel.tsx": 2,
   // Four bounded native fields keep direct Task/Project authoring keyboard-first
   // on the Area/Initiative record; no generic relation builder is introduced.

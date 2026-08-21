@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [Unreleased]
+
+### Added
+
+- Added a previewable, expected-versioned Project reclassification workflow for
+  Area, Initiative, and Opportunity destinations. Creating a destination or
+  merging into an existing record preserves the source Project as the durable
+  owner of its body, revisions, check-ins, comments, evidence, Tasks, relations,
+  audit, and activity; typed lineage makes every preserved surface traversable
+  from both records. The operation is idempotent, Space-scoped, available to the
+  desktop and local or remote MCP, and undoable without closing the Project or
+  deleting an existing merge target.
+
 ## [0.2.3] - 2026-08-20
 
 ### Fixed

@@ -61,6 +61,18 @@ CRM or generic database builder.
   structured filters rather than generated recommendations.
 - Closing a Project is a versioned lifecycle change. Open Tasks and history are
   preserved, and reopening is an ordinary auditable command.
+- Reclassifying a Project as an Area, Initiative, or Opportunity is not a
+  create/relink/close recipe. `project.reclassificationPreview` returns the
+  complete bounded history manifest and exact source/target versions before
+  `project.reclassify` applies. A new destination receives a typed predecessor;
+  a merge adds the source Project to the existing destination's lineage. The
+  source remains the durable owner of its collaborative body and revisions,
+  check-ins, comments, audit, evidence, Task relations, and work links, leaves
+  active Project lists without entering the irreversible close lifecycle, and
+  remains narrowly resolvable from the destination. Undo restores the Project
+  classification; it soft-removes only a destination created by the command and
+  never removes a pre-existing merge target. Later target work or references
+  block unsafe undo instead of being orphaned.
 - Knowledge Radar candidates are deduplicated by material key. Review is finite:
   saved or dismissed items do not return without new source context.
 

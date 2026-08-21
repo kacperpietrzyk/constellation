@@ -551,6 +551,7 @@ const isCurrentlyAuthorized = (
     }
     case "project.create":
     case "project.checkInAdd":
+    case "project.reclassify":
     case "project.remove":
     case "document.create":
     case "document.rename":
@@ -1069,6 +1070,7 @@ export class ApplicationKernel {
         );
       case "project.create":
       case "project.checkInAdd":
+      case "project.reclassify":
       case "project.remove":
       case "document.create":
       case "document.rename":
@@ -3196,6 +3198,7 @@ export class ApplicationKernel {
         case "project.list":
         case "project.similarCandidates":
         case "project.checkInList":
+        case "project.reclassificationPreview":
         case "work.overview":
         case "document.list":
         case "document.linkCandidates":

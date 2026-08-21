@@ -576,7 +576,8 @@ class ReadView implements ApplicationReadView {
         (project) =>
           project.workspaceId === workspaceId &&
           project.spaceId === spaceId &&
-          recordIsActive(project),
+          recordIsActive(project) &&
+          project.reclassifiedTo === undefined,
       )
       .sort(
         (left, right) =>

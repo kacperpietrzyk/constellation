@@ -216,6 +216,7 @@ export type Wave2Command = Extract<
     commandName:
       | "project.create"
       | "project.checkInAdd"
+      | "project.reclassify"
       | "project.remove"
       | "document.create"
       | "document.rename"
@@ -344,6 +345,7 @@ export type Wave2Query = Extract<
       | "project.list"
       | "project.similarCandidates"
       | "project.checkInList"
+      | "project.reclassificationPreview"
       | "document.list"
       | "document.linkCandidates"
       | "document.backlinks"
@@ -460,6 +462,7 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "project.checkInAdd":
+    case "project.reclassify":
     case "project.remove": {
       const project = view.getProject(command.payload.projectId);
       return authorized(
@@ -2806,6 +2809,70 @@ const upsertAttention = (
   return created;
 };
 
+const projectReclassificationHistory = (
+  view: ApplicationWave2ReadView,
+  project: Project,
+) => {
+  const checkIns = view
+    .listProjectCheckIns(project.workspaceId, project.spaceId, project.id)
+    .filter((item) => item.state === "active");
+  const comments = view
+    .listComments(project.workspaceId, project.spaceId)
+    .filter(
+      (item) =>
+        item.target.kind === "project" && item.target.projectId === project.id,
+    );
+  const relations = view
+    .listRelations(project.workspaceId, project.spaceId)
+    .filter(
+      (item) =>
+        item.state === "active" &&
+        item.relationType === "task_contributes_to_project" &&
+        item.projectId === project.id,
+    );
+  const workLinks = view
+    .listStrategicRecords(project.workspaceId, project.spaceId)
+    .filter(
+      (item): item is Extract<StrategicRecord, { kind: "work_link" }> =>
+        item.kind === "work_link" &&
+        item.state === "active" &&
+        (item.sourceRecordId === project.id ||
+          item.targetRecordId === project.id),
+    );
+  const evidenceSourceIds = [
+    ...(project.evidenceSourceIds ?? []),
+    ...checkIns.flatMap((item) => item.evidenceSourceIds),
+  ].filter((value, index, values) => values.indexOf(value) === index);
+  const taskIds = [...new Set(relations.map((item) => item.taskId))].sort();
+  const relevantRecordIds = new Set<string>([
+    project.id,
+    ...checkIns.map((item) => item.id),
+    ...comments.map((item) => item.id),
+    ...evidenceSourceIds,
+    ...taskIds,
+    ...relations.map((item) => item.id),
+    ...workLinks.map((item) => item.id),
+  ]);
+  const events = view
+    .listEvents(project.workspaceId, project.spaceId)
+    .filter((event) => relevantRecordIds.has(event.aggregateId));
+  const auditReceiptIds = events.flatMap((event) => {
+    const receipt = view.getAuditReceiptByCommand(event.commandId);
+    return receipt === undefined ? [] : [receipt.id];
+  });
+  return {
+    bodyOwner: { kind: "project" as const, projectId: project.id },
+    checkInIds: checkIns.map((item) => item.id).sort(),
+    commentIds: comments.map((item) => item.id).sort(),
+    evidenceSourceIds: evidenceSourceIds.sort(),
+    taskIds,
+    relationIds: relations.map((item) => item.id).sort(),
+    workLinkIds: workLinks.map((item) => item.id).sort(),
+    eventIds: events.map((event) => event.id).sort(),
+    auditReceiptIds: auditReceiptIds.sort(),
+  };
+};
+
 export const executeWave2Command = (
   dependencies: ApplicationKernelDependencies,
   transaction: ApplicationTransaction,
@@ -2818,6 +2885,214 @@ export const executeWave2Command = (
     return precondition(command, occurredAt);
   }
   switch (command.commandName) {
+    case "project.reclassify": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (
+        project === undefined ||
+        !recordIsActive(project) ||
+        project.reclassifiedTo !== undefined ||
+        project.lifecycle !== "active"
+      )
+        return precondition(command, occurredAt);
+
+      const destination = command.payload.destination;
+      const targetId = StrategicRecordIdSchema.parse(destination.targetId);
+      const existingTarget = transaction.getStrategicRecord(targetId);
+      if (destination.mode === "merge") {
+        if (
+          existingTarget === undefined ||
+          existingTarget.kind !== destination.kind ||
+          existingTarget.workspaceId !== project.workspaceId ||
+          existingTarget.spaceId !== project.spaceId ||
+          !recordIsActive(existingTarget)
+        )
+          return precondition(command, occurredAt);
+        if (
+          !exactExpected(command, {
+            [project.id]: project.version,
+            [existingTarget.id]: existingTarget.version,
+          })
+        )
+          return versionConflict(command, occurredAt, {
+            [project.id]: project.version,
+            [existingTarget.id]: existingTarget.version,
+          });
+      } else {
+        if (existingTarget !== undefined)
+          return precondition(command, occurredAt);
+        if (!exactExpected(command, { [project.id]: project.version }))
+          return versionConflict(command, occurredAt, {
+            [project.id]: project.version,
+          });
+      }
+
+      let target: StrategicRecord;
+      if (destination.mode === "merge") {
+        target = {
+          ...existingTarget!,
+          reclassifiedFromProjectIds: [
+            ...new Set([
+              ...(existingTarget!.reclassifiedFromProjectIds ?? []),
+              project.id,
+            ]),
+          ].sort(),
+          version: existingTarget!.version + 1,
+          updatedAt: occurredAt,
+        };
+        if (!transaction.updateStrategicRecord(target, existingTarget!.version))
+          return versionConflict(command, occurredAt, {
+            [project.id]: project.version,
+            [existingTarget!.id]: existingTarget!.version,
+          });
+      } else {
+        const common = {
+          id: targetId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          createdBy: context.principalId,
+          occurredAt,
+        };
+        if (destination.kind === "area")
+          target = createArea({
+            ...common,
+            title: destination.title,
+            ...(destination.responsibility === undefined
+              ? {}
+              : { responsibility: destination.responsibility }),
+          });
+        else if (destination.kind === "initiative")
+          target = createInitiative({
+            ...common,
+            title: destination.title,
+            ...(destination.intendedOutcome === undefined
+              ? {}
+              : { intendedOutcome: destination.intendedOutcome }),
+          });
+        else {
+          const organization = transaction.getStrategicRecord(
+            destination.organizationId,
+          );
+          const people = destination.personIds.map((id) =>
+            transaction.getStrategicRecord(id),
+          );
+          const evidence = destination.evidenceSourceIds.map((id) =>
+            transaction.getKnowledgeSource(id),
+          );
+          if (
+            organization?.kind !== "organization" ||
+            organization.workspaceId !== project.workspaceId ||
+            organization.spaceId !== project.spaceId ||
+            !recordIsActive(organization) ||
+            people.some(
+              (person) =>
+                person?.kind !== "person" ||
+                person.workspaceId !== project.workspaceId ||
+                person.spaceId !== project.spaceId ||
+                !recordIsActive(person),
+            ) ||
+            evidence.some(
+              (source) =>
+                source === undefined ||
+                source.workspaceId !== project.workspaceId ||
+                source.spaceId !== project.spaceId ||
+                !recordIsActive(source),
+            )
+          )
+            return precondition(command, occurredAt);
+          target = createOpportunity({
+            ...common,
+            title: destination.title,
+            organizationId: destination.organizationId,
+            personIds: destination.personIds,
+            ...(destination.ownerPersonId === undefined
+              ? {}
+              : { ownerPersonId: destination.ownerPersonId }),
+            need: destination.need,
+            qualification: destination.qualification,
+            ...(destination.estimate === undefined
+              ? {}
+              : { estimate: destination.estimate }),
+            stage: destination.stage,
+            nextAction: destination.nextAction,
+            evidenceSourceIds: destination.evidenceSourceIds,
+          });
+        }
+        target = {
+          ...target,
+          reclassifiedFromProjectIds: [project.id],
+        };
+        transaction.insertStrategicRecord(target);
+      }
+
+      const updatedProject: Project = {
+        ...project,
+        reclassifiedTo: {
+          kind: destination.kind,
+          targetId,
+          commandId: command.commandId,
+        },
+        version: project.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateProject(updatedProject, project.version))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+          ...(destination.mode === "merge" && existingTarget !== undefined
+            ? { [existingTarget.id]: existingTarget.version }
+            : {}),
+        });
+
+      const history = projectReclassificationHistory(transaction, project);
+
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.reclassified",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: updatedProject.version,
+          occurredAt,
+        },
+        {
+          [updatedProject.id]: updatedProject.version,
+          [target.id]: target.version,
+        },
+        ["reclassifiedTo", "reclassifiedFromProjectIds"],
+        {
+          diagnosticCode: "project.reclassified",
+          projection: {
+            kind: "project.reclassified",
+            projectId: project.id,
+            targetKind: destination.kind,
+            targetId,
+            mode: destination.mode,
+            projectVersion: updatedProject.version,
+            targetVersion: target.version,
+            history,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "project_reclassification.restore",
+          projectId: project.id,
+          targetId: target.id,
+          mode: destination.mode,
+          priorTargetProjectIds:
+            existingTarget?.reclassifiedFromProjectIds ?? [],
+          resultingProjectVersion: updatedProject.version,
+          resultingTargetVersion: target.version,
+        },
+        { [updatedProject.id]: "project", [target.id]: "strategicRecord" },
+      );
+    }
     case "document.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (transaction.getDocument(command.payload.documentId) !== undefined) {
@@ -10323,6 +10598,8 @@ export const descriptorRecordIds = (
     case "project.restore_details":
     case "project.restore_attention_state":
       return [descriptor.projectId];
+    case "project_reclassification.restore":
+      return [descriptor.projectId, descriptor.targetId];
     case "project_check_in.void":
       return [
         descriptor.checkInId,
@@ -10564,6 +10841,42 @@ const descriptorState = (
     };
   }
   switch (descriptor.kind) {
+    case "project_reclassification.restore": {
+      const project = view.getProject(descriptor.projectId);
+      const target = view.getStrategicRecord(descriptor.targetId);
+      if (
+        project?.version !== descriptor.resultingProjectVersion ||
+        target?.version !== descriptor.resultingTargetVersion ||
+        project.reclassifiedTo?.targetId !== target.id ||
+        target.reclassifiedFromProjectIds?.includes(project.id) !== true
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      if (
+        descriptor.mode === "create" &&
+        strategicRecordDependents(view, target).some(
+          (dependent) => revert?.removed.has(dependent.recordId) !== true,
+        )
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "still_referenced",
+        };
+      return {
+        available: true,
+        recordIds: [project.id, target.id],
+        versions: {
+          [project.id]: project.version,
+          [target.id]: target.version,
+        },
+      };
+    }
     case "project.restore_details":
     case "project.restore_outcome":
     case "project.restore_attention_state": {
@@ -11634,7 +11947,43 @@ const compensateDescriptor = (
   | { readonly ok: false } => {
   let compensatedVersions: Record<string, number>;
   let compensatedKinds: CompensatedRecordKinds;
-  if (descriptor.kind === "project.restore_attention_state") {
+  if (descriptor.kind === "project_reclassification.restore") {
+    const project = transaction.getProject(descriptor.projectId);
+    const target = transaction.getStrategicRecord(descriptor.targetId);
+    if (project === undefined || target === undefined) return { ok: false };
+    const { reclassifiedTo: _reclassifiedTo, ...projectRest } = project;
+    void _reclassifiedTo;
+    const restoredProject: Project = {
+      ...projectRest,
+      version: project.version + 1,
+      updatedAt: occurredAt,
+    };
+    const restoredTarget: StrategicRecord =
+      descriptor.mode === "create"
+        ? {
+            ...target,
+            recordState: "removed",
+            reclassifiedFromProjectIds: descriptor.priorTargetProjectIds,
+            version: target.version + 1,
+            updatedAt: occurredAt,
+          }
+        : {
+            ...target,
+            reclassifiedFromProjectIds: descriptor.priorTargetProjectIds,
+            version: target.version + 1,
+            updatedAt: occurredAt,
+          };
+    transaction.updateProject(restoredProject, project.version);
+    transaction.updateStrategicRecord(restoredTarget, target.version);
+    compensatedVersions = {
+      [restoredProject.id]: restoredProject.version,
+      [restoredTarget.id]: restoredTarget.version,
+    };
+    compensatedKinds = {
+      [restoredProject.id]: "project",
+      [restoredTarget.id]: "strategicRecord",
+    };
+  } else if (descriptor.kind === "project.restore_attention_state") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = setProjectAttentionState(
       project,
@@ -13117,6 +13466,81 @@ export const executeWave2Query = (
         : "query.consistency_unavailable",
     );
   }
+  if (query.queryName === "project.reclassificationPreview") {
+    const project = view.getProject(query.parameters.projectId);
+    if (
+      project === undefined ||
+      project.workspaceId !== query.workspaceId ||
+      !canViewSpace(view, context, query.workspaceId, project.spaceId) ||
+      !dependencies.authorization.authorize({
+        context,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
+        workspaceId: query.workspaceId,
+        spaceId: project.spaceId,
+      })
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+
+    const destination = query.parameters.destination;
+    const target = view.getStrategicRecord(destination.targetId);
+    let blockedReason:
+      | "source_inactive"
+      | "already_reclassified"
+      | "target_unavailable"
+      | "target_kind_mismatch"
+      | "target_scope_mismatch"
+      | "target_id_in_use"
+      | undefined;
+    if (!recordIsActive(project) || project.lifecycle !== "active")
+      blockedReason = "source_inactive";
+    else if (project.reclassifiedTo !== undefined)
+      blockedReason = "already_reclassified";
+    else if (destination.mode === "create" && target !== undefined)
+      blockedReason = "target_id_in_use";
+    else if (destination.mode === "merge" && target === undefined)
+      blockedReason = "target_unavailable";
+    else if (
+      destination.mode === "merge" &&
+      target !== undefined &&
+      (target.workspaceId !== project.workspaceId ||
+        target.spaceId !== project.spaceId ||
+        !recordIsActive(target))
+    )
+      blockedReason = "target_unavailable";
+    else if (
+      destination.mode === "merge" &&
+      target !== undefined &&
+      target.kind !== destination.kind
+    )
+      blockedReason = "target_kind_mismatch";
+
+    const history = projectReclassificationHistory(view, project);
+    const targetTitle =
+      target === undefined
+        ? undefined
+        : "title" in target
+          ? target.title
+          : undefined;
+
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.reclassificationPreview",
+      projectId: project.id,
+      destination: {
+        ...destination,
+        ...(targetTitle === undefined ? {} : { targetTitle }),
+      },
+      canApply: blockedReason === undefined,
+      ...(blockedReason === undefined ? {} : { blockedReason }),
+      expectedVersions: {
+        [project.id]: project.version,
+        ...(destination.mode === "merge" && target !== undefined
+          ? { [target.id]: target.version }
+          : {}),
+      },
+      history,
+      finite: true,
+    });
+  }
   if (query.queryName === "work.overview") {
     const space = view.getSpace(query.parameters.spaceId);
     if (
@@ -13279,6 +13703,9 @@ export const executeWave2Query = (
           title: area.title,
           ...responsibilityFields(area.responsibility),
           state: area.state,
+          ...(area.reclassifiedFromProjectIds === undefined
+            ? {}
+            : { reclassifiedFromProjectIds: area.reclassifiedFromProjectIds }),
           version: area.version,
         })),
       initiatives: records
@@ -13293,6 +13720,12 @@ export const executeWave2Query = (
           title: initiative.title,
           ...intendedOutcomeFields(initiative.intendedOutcome),
           state: initiative.state,
+          ...(initiative.reclassifiedFromProjectIds === undefined
+            ? {}
+            : {
+                reclassifiedFromProjectIds:
+                  initiative.reclassifiedFromProjectIds,
+              }),
           version: initiative.version,
         })),
       links: records
@@ -14684,6 +15117,9 @@ export const executeWave2Query = (
         ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
         attentionState: projectAttentionState(project),
         lifecycle: project.lifecycle,
+        ...(project.reclassifiedTo === undefined
+          ? {}
+          : { reclassifiedTo: project.reclassifiedTo }),
         ...(project.appliedTemplateId === undefined
           ? {}
           : { appliedTemplateId: project.appliedTemplateId }),
@@ -15737,6 +16173,7 @@ export const executeWave2Query = (
     "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
     "project.check_in_added": "project_check_in_added",
+    "project.reclassified": "project_reclassified",
     "project.outcome_updated": "project_outcome_changed",
     // Mapa jest `Partial`, więc brak wpisu KOMPILUJE SIĘ i po prostu na zawsze
     // ukrywa przemianowanie w Aktywności. Wpis i wartość w enumie zapytania

@@ -1252,7 +1252,9 @@ describe("remote MCP Hub gateway", () => {
       Buffer.from("remote tail"),
     ]);
     const { remote, deviceCredential } = await setup(managedBytes);
-    const created = await createRemoteGrant(remote, deviceCredential);
+    const created = await createRemoteGrant(remote, deviceCredential, false, [
+      "project.reclassify",
+    ]);
     const server = await startHubServer({
       service: new HubService(new InMemoryHubRepository()),
       remoteMcp: remote,
@@ -1289,6 +1291,30 @@ describe("remote MCP Hub gateway", () => {
           "constellation.checkpoint.revert.v1",
         ],
       );
+      const catalogResource = await client.readResource({
+        uri: "constellation://v1/operations",
+      });
+      const catalogText = catalogResource.contents[0];
+      assert.ok(catalogText !== undefined && "text" in catalogText);
+      const catalog = JSON.parse(catalogText.text) as {
+        readonly operations: readonly {
+          readonly name: string;
+          readonly kind: string;
+          readonly requiredCapability?: string;
+          readonly revertable?: string;
+        }[];
+      };
+      const reclassify = catalog.operations.find(
+        (operation) => operation.name === "project.reclassify",
+      );
+      const preview = catalog.operations.find(
+        (operation) => operation.name === "project.reclassificationPreview",
+      );
+      assert.equal(reclassify?.kind, "command");
+      assert.equal(reclassify?.requiredCapability, "project.reclassify");
+      assert.equal(reclassify?.revertable, "always");
+      assert.equal(preview?.kind, "query");
+      assert.equal(preview?.requiredCapability, "project.reclassify");
       const result = await client.callTool({
         name: "constellation.query.v1",
         arguments: {

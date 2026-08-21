@@ -56,6 +56,7 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "project.create",
   "project.checkInAdd",
   "project.checkInList",
+  "project.reclassify",
   "project.remove",
   "document.create",
   "document.rename",

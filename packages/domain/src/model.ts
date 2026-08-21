@@ -584,6 +584,11 @@ export interface Project {
   /** Explicit portfolio attention. Absence is legacy `current`. */
   readonly attentionState?: "current" | "waiting" | "parked";
   readonly lifecycle: "active" | "closed";
+  readonly reclassifiedTo?: {
+    readonly kind: "area" | "initiative" | "opportunity";
+    readonly targetId: StrategicRecordId;
+    readonly commandId: CommandId;
+  };
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
   readonly createdBy: PrincipalId;
@@ -771,6 +776,7 @@ interface StrategicRecordBase {
    * projection, search and relation read goes through.
    */
   readonly recordState?: "active" | "removed";
+  readonly reclassifiedFromProjectIds?: readonly ProjectId[];
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -1141,6 +1147,19 @@ export type TaskWorkRelation = {
 export type TaskProjectRelation = TaskWorkRelation;
 
 export type UndoDescriptor =
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project_reclassification.restore";
+      readonly projectId: ProjectId;
+      readonly targetId: StrategicRecordId;
+      readonly mode: "create" | "merge";
+      readonly priorTargetProjectIds: readonly ProjectId[];
+      readonly resultingProjectVersion: number;
+      readonly resultingTargetVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
   | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
@@ -2090,6 +2109,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "project.outcome_updated"
         | "project.details_updated"
         | "project.attention_state_changed"
+        | "project.reclassified"
         | "project.lifecycle_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;

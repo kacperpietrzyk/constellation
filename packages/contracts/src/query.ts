@@ -276,6 +276,23 @@ export const ProjectCheckInListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ projectId: ProjectIdSchema }).strict(),
 }).strict();
 
+export const ProjectReclassificationPreviewQuerySchema =
+  QueryMetadataSchema.extend({
+    queryName: z.literal("project.reclassificationPreview"),
+    parameters: z
+      .object({
+        projectId: ProjectIdSchema,
+        destination: z
+          .object({
+            mode: z.enum(["create", "merge"]),
+            kind: z.enum(["area", "initiative", "opportunity"]),
+            targetId: StrategicRecordIdSchema,
+          })
+          .strict(),
+      })
+      .strict(),
+  }).strict();
+
 export const WorkOverviewQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("work.overview"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
@@ -540,6 +557,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   ProjectListQuerySchema,
   ProjectSimilarCandidatesQuerySchema,
   ProjectCheckInListQuerySchema,
+  ProjectReclassificationPreviewQuerySchema,
   WorkOverviewQuerySchema,
   DocumentListQuerySchema,
   DocumentLinkCandidatesQuerySchema,
@@ -607,6 +625,7 @@ const StrategicRecordBaseSchema = z.object({
   // holds a projection alongside a record it removed needs the two to be
   // distinguishable, and because the domain field must have a home here.
   recordState: z.enum(["active", "removed"]).optional(),
+  reclassifiedFromProjectIds: z.array(ProjectIdSchema).optional(),
   version: z.int().positive(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
@@ -1096,6 +1115,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             responsibility: z.string(),
             needsReview: NeedsReviewSchema,
             state: z.enum(["active", "archived"]),
+            reclassifiedFromProjectIds: z.array(ProjectIdSchema).optional(),
             version: z.int().positive(),
           })
           .strict(),
@@ -1108,6 +1128,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             intendedOutcome: z.string(),
             needsReview: NeedsReviewSchema,
             state: z.enum(["active", "closed"]),
+            reclassifiedFromProjectIds: z.array(ProjectIdSchema).optional(),
             version: z.int().positive(),
           })
           .strict(),
@@ -1982,6 +2003,49 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("project.reclassificationPreview"),
+      projectId: ProjectIdSchema,
+      destination: z
+        .object({
+          mode: z.enum(["create", "merge"]),
+          kind: z.enum(["area", "initiative", "opportunity"]),
+          targetId: StrategicRecordIdSchema,
+          targetTitle: z.string().optional(),
+        })
+        .strict(),
+      canApply: z.boolean(),
+      blockedReason: z
+        .enum([
+          "source_unavailable",
+          "source_inactive",
+          "already_reclassified",
+          "target_unavailable",
+          "target_kind_mismatch",
+          "target_scope_mismatch",
+          "target_id_in_use",
+        ])
+        .optional(),
+      expectedVersions: z.record(z.uuid(), z.int().positive()),
+      history: z
+        .object({
+          bodyOwner: z
+            .object({ kind: z.literal("project"), projectId: ProjectIdSchema })
+            .strict(),
+          checkInIds: z.array(ProjectCheckInIdSchema),
+          commentIds: z.array(CommentIdSchema),
+          evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+          taskIds: z.array(TaskIdSchema),
+          relationIds: z.array(RelationIdSchema),
+          workLinkIds: z.array(StrategicRecordIdSchema),
+          eventIds: z.array(z.uuid()),
+          auditReceiptIds: z.array(AuditReceiptIdSchema),
+        })
+        .strict(),
+      finite: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("document.list"),
       items: z.array(
         z
@@ -2078,6 +2142,14 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           needsReview: NeedsReviewSchema,
           attentionState: z.enum(["current", "waiting", "parked"]),
           lifecycle: z.enum(["active", "closed"]),
+          reclassifiedTo: z
+            .object({
+              kind: z.enum(["area", "initiative", "opportunity"]),
+              targetId: StrategicRecordIdSchema,
+              commandId: CommandIdSchema,
+            })
+            .strict()
+            .optional(),
           appliedTemplateId: ProjectTemplateIdSchema.optional(),
           dueAt: z.iso.datetime({ offset: true }).optional(),
           version: z.int().positive(),
@@ -2647,6 +2719,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "capture_transcript_ready",
               "project_created",
               "project_check_in_added",
+              "project_reclassified",
               "project_outcome_changed",
               "project_details_changed",
               "project_attention_changed",

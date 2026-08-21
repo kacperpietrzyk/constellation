@@ -75,6 +75,7 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.routed_as_task",
   "project.created",
   "project.check_in_added",
+  "project.reclassified",
   "document.created",
   "document.renamed",
   "document.folder_changed",
@@ -379,6 +380,33 @@ export const ProjectCheckInAddedProjectionSchema = z
     checkInId: ProjectCheckInIdSchema,
     projectId: ProjectIdSchema,
     version: z.int().positive(),
+  })
+  .strict();
+
+export const ProjectReclassifiedProjectionSchema = z
+  .object({
+    kind: z.literal("project.reclassified"),
+    projectId: ProjectIdSchema,
+    targetKind: z.enum(["area", "initiative", "opportunity"]),
+    targetId: StrategicRecordIdSchema,
+    mode: z.enum(["create", "merge"]),
+    projectVersion: z.int().positive(),
+    targetVersion: z.int().positive(),
+    history: z
+      .object({
+        bodyOwner: z
+          .object({ kind: z.literal("project"), projectId: ProjectIdSchema })
+          .strict(),
+        checkInIds: z.array(ProjectCheckInIdSchema),
+        commentIds: z.array(CommentIdSchema),
+        evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+        taskIds: z.array(TaskIdSchema),
+        relationIds: z.array(RelationIdSchema),
+        workLinkIds: z.array(StrategicRecordIdSchema),
+        eventIds: z.array(z.uuid()),
+        auditReceiptIds: z.array(AuditReceiptIdSchema),
+      })
+      .strict(),
   })
   .strict();
 
@@ -1011,6 +1039,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureExceptionResolvedProjectionSchema,
   ProjectCreatedProjectionSchema,
   ProjectCheckInAddedProjectionSchema,
+  ProjectReclassifiedProjectionSchema,
   DocumentCreatedProjectionSchema,
   DocumentRenamedProjectionSchema,
   KnowledgeSourceMutationProjectionSchema,
@@ -1204,6 +1233,12 @@ const ProjectCheckInAddedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("project.check_in_added"),
     projection: ProjectCheckInAddedProjectionSchema,
+  }).strict();
+const ProjectReclassifiedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.reclassified"),
+    projection: ProjectReclassifiedProjectionSchema,
   }).strict();
 const DocumentCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -1588,6 +1623,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   ProjectCheckInAddedSuccessOutcomeSchema,
+  ProjectReclassifiedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
   DocumentRenamedSuccessOutcomeSchema,
   KnowledgeSourceCreatedSuccessOutcomeSchema,

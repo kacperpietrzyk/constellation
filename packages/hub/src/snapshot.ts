@@ -355,7 +355,44 @@ const scopeSnapshot = (
       inScope(assignment) && visibleTaskIds.has(assignment.taskId),
   );
   const captures = state.captures.filter(inScope);
-  const projects = state.projects.filter(inScope);
+  const visibleStrategicRecords = (state.strategicRecords ?? []).filter(
+    inScope,
+  );
+  const visibleStrategicRecordIds = new Set(
+    visibleStrategicRecords.map((record) => record.id),
+  );
+  // A Project stays visible after reclassification, but its target identifier is
+  // a cross-Space edge. Do not disclose that edge when the target is outside
+  // the caller's scope.
+  const projects = state.projects.filter(inScope).map((project) => {
+    if (
+      project.reclassifiedTo !== undefined &&
+      !visibleStrategicRecordIds.has(project.reclassifiedTo.targetId)
+    ) {
+      const { reclassifiedTo: _reclassifiedTo, ...withoutHiddenLineage } =
+        project;
+      void _reclassifiedTo;
+      return withoutHiddenLineage;
+    }
+    return project;
+  });
+  const visibleProjectIds = new Set(projects.map((project) => project.id));
+  const strategicRecords = visibleStrategicRecords.map((record) => {
+    if (record.reclassifiedFromProjectIds === undefined) return record;
+    const reclassifiedFromProjectIds = record.reclassifiedFromProjectIds.filter(
+      (projectId) => visibleProjectIds.has(projectId),
+    );
+    return reclassifiedFromProjectIds.length === 0
+      ? (() => {
+          const {
+            reclassifiedFromProjectIds: _reclassifiedFromProjectIds,
+            ...withoutHiddenLineage
+          } = record;
+          void _reclassifiedFromProjectIds;
+          return withoutHiddenLineage;
+        })()
+      : { ...record, reclassifiedFromProjectIds };
+  });
   const projectCheckInCandidates = (state.projectCheckIns ?? []).filter(
     inScope,
   );
@@ -367,7 +404,6 @@ const scopeSnapshot = (
       inScope(version) &&
       documents.some((doc) => doc.id === version.documentId),
   );
-  const strategicRecords = (state.strategicRecords ?? []).filter(inScope);
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
   const visibleEvents = state.events.filter(inScope);

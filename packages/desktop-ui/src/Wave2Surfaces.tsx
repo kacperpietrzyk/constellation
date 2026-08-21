@@ -11,6 +11,7 @@ import type {
   PrincipalId,
   ProjectId,
   RelationId,
+  StrategicRecordId,
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
@@ -28,6 +29,11 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
+import type {
+  ReclassificationDestination,
+  ReclassificationLoad,
+  ReclassificationPreview,
+} from "./record/ProjectReclassificationDialog.js";
 import type {
   ProjectCreateClassifierProps,
   SimilarCandidatesState,
@@ -57,6 +63,11 @@ const ProjectCreateClassifier = lazy(async () => ({
 }));
 
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
+
+const ProjectReclassificationDialog = lazy(async () => ({
+  default: (await import("./record/ProjectReclassificationDialog.js"))
+    .ProjectReclassificationDialog,
+}));
 
 // Wybór szablonu do zastosowania. Leniwy Z POWODU BUDŻETU, i to jest pomiar:
 // ten moduł jest na ścieżce gorącej, a `InlinePopover` — mimo ośmiu konsumentów
@@ -542,6 +553,9 @@ export const ProjectsSurface = ({
   onOpenContext,
   onReload,
   onFailure,
+  reclassificationTargets,
+  onPreviewReclassification,
+  onApplyReclassification,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -605,8 +619,24 @@ export const ProjectsSurface = ({
   ) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
+  readonly reclassificationTargets: readonly {
+    readonly id: StrategicRecordId;
+    readonly kind: "area" | "initiative" | "opportunity";
+    readonly title: string;
+  }[];
+  readonly onPreviewReclassification: (
+    destination: ReclassificationDestination,
+  ) => Promise<ReclassificationLoad>;
+  readonly onApplyReclassification: (
+    preview: ReclassificationPreview,
+    destination: unknown,
+  ) => Promise<
+    | { readonly kind: "success"; readonly commandId: string }
+    | { readonly kind: "failure"; readonly message: string }
+  >;
 }) => {
   const [creating, setCreating] = useState(false);
+  const [reclassificationOpen, setReclassificationOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextCreateRequest, setContextCreateRequest] = useState<{
     readonly kind: "area" | "initiative";
@@ -709,6 +739,14 @@ export const ProjectsSurface = ({
                 </button>
               )}
               {lifecycleAction}
+              <button
+                className="ghost-button"
+                disabled={busy || overview.project.lifecycle !== "active"}
+                onClick={() => setReclassificationOpen(true)}
+                type="button"
+              >
+                Reclassify project
+              </button>
               {templateApplied !== undefined && (
                 <small>Template: {templateApplied}</small>
               )}
@@ -824,6 +862,18 @@ export const ProjectsSurface = ({
               </div>
             ) : undefined,
         })}
+        {reclassificationOpen && (
+          <Suspense fallback={null}>
+            <ProjectReclassificationDialog
+              projectId={overview.project.id}
+              projectTitle={overview.project.title}
+              targets={reclassificationTargets}
+              onClose={() => setReclassificationOpen(false)}
+              onPreview={onPreviewReclassification}
+              onApply={onApplyReclassification}
+            />
+          </Suspense>
+        )}
       </div>
     );
   }

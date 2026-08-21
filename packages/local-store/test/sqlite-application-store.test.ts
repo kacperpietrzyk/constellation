@@ -79,6 +79,7 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "capture.history",
       "project.create",
+      "project.reclassify",
       "project.checkInAdd",
       "project.checkInList",
       "project.remove",
@@ -4209,6 +4210,105 @@ describe("narrative-less records in the durable store", () => {
           }
         ).user_version,
         LOCAL_STORE_SCHEMA_VERSION,
+      );
+      reopenedDatabase.close();
+    });
+  });
+
+  it("persists reclassification lineage and authoritative preview behavior across SQLite reopen", () => {
+    withDatabase((filename) => {
+      const projectId = "00000000-0000-4000-8000-0000000002f0";
+      const initiativeId = "00000000-0000-4000-8000-0000000002f1";
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId,
+                spaceId: ids.rootSpace,
+                title: "Durably reclassify this Project",
+                intendedOutcome: "Lineage must survive a database restart.",
+              },
+              "durable-reclassification-project",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      const reclassification = wave2Command(
+        "project.reclassify",
+        {
+          projectId,
+          destination: {
+            mode: "create",
+            kind: "initiative",
+            targetId: initiativeId,
+            title: "Durably reclassify this Project",
+            intendedOutcome: "Lineage must survive a database restart.",
+          },
+        },
+        "durable-reclassification",
+        { [projectId]: 1 },
+      );
+      assert.equal(
+        unwrap(first.kernel.execute(context(), reclassification)).outcome,
+        "success",
+      );
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const snapshot = reopened.store.snapshot();
+      assert.deepEqual(
+        snapshot.projects.find((project) => project.id === projectId)
+          ?.reclassifiedTo,
+        {
+          kind: "initiative",
+          targetId: initiativeId,
+          commandId: reclassification.commandId,
+        },
+      );
+      assert.deepEqual(
+        snapshot.strategicRecords?.find((record) => record.id === initiativeId)
+          ?.reclassifiedFromProjectIds,
+        [projectId],
+      );
+      const preview = reopened.kernel.query(context(), {
+        contractVersion: 1,
+        queryId: "00000000-0000-4000-8000-0000000002f2",
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        queryName: "project.reclassificationPreview",
+        parameters: {
+          projectId,
+          destination: {
+            mode: "create",
+            kind: "initiative",
+            targetId: initiativeId,
+          },
+        },
+      });
+      assert.equal(preview.kind, "query_result");
+      if (
+        preview.kind !== "query_result" ||
+        preview.result.outcome !== "success" ||
+        preview.result.projection.kind !== "project.reclassificationPreview"
+      )
+        throw new Error(
+          "Expected persisted authoritative reclassification preview.",
+        );
+      assert.equal(preview.result.projection.canApply, false);
+      assert.equal(
+        preview.result.projection.blockedReason,
+        "already_reclassified",
       );
       reopenedDatabase.close();
     });

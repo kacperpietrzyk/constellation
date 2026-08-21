@@ -77,6 +77,7 @@ export const PREVIEW_CAPABILITY_DISPOSITION: Readonly<
   "capture.routeAsTask": "granted",
   "capture.history": "granted",
   "project.create": "granted",
+  "project.reclassify": "granted",
   "project.checkInAdd": "granted",
   "project.checkInList": "granted",
   "project.remove": "granted",

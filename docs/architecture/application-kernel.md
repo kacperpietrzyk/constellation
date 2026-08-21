@@ -40,6 +40,7 @@ Commands:
 - `capture.submitText`
 - `capture.routeAsTask`
 - `project.create`
+- `project.reclassify`
 - `project.updateOutcome`
 - `document.create`
 - `knowledge.sourceCreate`
@@ -113,6 +114,7 @@ Queries:
 - `comment.mentionCandidates`
 - `attention.inbox`
 - `project.list`
+- `project.reclassificationPreview`
 - `work.overview`
 - `project.operationalOverview`
 - `document.list`

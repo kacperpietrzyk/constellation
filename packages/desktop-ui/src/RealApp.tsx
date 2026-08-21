@@ -148,6 +148,8 @@ import {
   createProject,
   createTaskInProject,
   loadProjectSimilarCandidates,
+  previewProjectReclassification,
+  reclassifyProject,
   directClientLinks,
   linkableClientOrganizations,
   linkOrganizationDelivery,
@@ -3855,6 +3857,79 @@ export const RealApp = ({
         }}
         onReload={reload}
         onFailure={showFailure}
+        reclassificationTargets={
+          state.snapshot.work.kind === "ready"
+            ? [
+                ...state.snapshot.work.data.areas.map((area) => ({
+                  id: area.id,
+                  kind: "area" as const,
+                  title: area.title,
+                })),
+                ...state.snapshot.work.data.initiatives.map((initiative) => ({
+                  id: initiative.id,
+                  kind: "initiative" as const,
+                  title: initiative.title,
+                })),
+                ...(state.snapshot.relationships.kind === "ready"
+                  ? state.snapshot.relationships.data.records
+                      .filter((record) => record.kind === "opportunity")
+                      .map((record) => ({
+                        id: record.id,
+                        kind: "opportunity" as const,
+                        title: record.title,
+                      }))
+                  : []),
+              ]
+            : []
+        }
+        onPreviewReclassification={async (destination) => {
+          if (!client || !projectOverview)
+            return {
+              kind: "unavailable" as const,
+              message: "The desktop data layer is unavailable.",
+            };
+          try {
+            return {
+              kind: "ready" as const,
+              data: await previewProjectReclassification(
+                client,
+                state.snapshot,
+                projectOverview.project.id,
+                destination,
+              ),
+            };
+          } catch (error) {
+            return {
+              kind: "unavailable" as const,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Reclassification preview is unavailable.",
+            };
+          }
+        }}
+        onApplyReclassification={async (preview, destination) => {
+          if (!client || !projectOverview)
+            return {
+              kind: "failure" as const,
+              message: "The desktop data layer is unavailable.",
+            };
+          setProjectBusy(true);
+          const result = await reclassifyProject(
+            client,
+            state.snapshot,
+            projectOverview.project.id,
+            destination,
+            preview.expectedVersions,
+          );
+          setProjectBusy(false);
+          if (result.kind !== "success")
+            return { kind: "failure" as const, message: result.message };
+          await refreshAfter(
+            "Project reclassified. Use Undo to restore the previous classification.",
+          );
+          return { kind: "success" as const, commandId: result.data.projectId };
+        }}
       />
     ),
     inbox: () => (

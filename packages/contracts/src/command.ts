@@ -746,6 +746,70 @@ export const ProjectCheckInAddCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+const ProjectReclassificationDestinationSchema = z.union([
+  z
+    .object({
+      mode: z.literal("merge"),
+      kind: z.enum(["area", "initiative", "opportunity"]),
+      targetId: StrategicRecordIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      kind: z.literal("area"),
+      targetId: StrategicRecordIdSchema,
+      title: ProjectTitleSchema,
+      responsibility: RecordNarrativeSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      kind: z.literal("initiative"),
+      targetId: StrategicRecordIdSchema,
+      title: ProjectTitleSchema,
+      intendedOutcome: RecordNarrativeSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      kind: z.literal("opportunity"),
+      targetId: StrategicRecordIdSchema,
+      title: ProjectTitleSchema,
+      organizationId: StrategicRecordIdSchema,
+      personIds: z.array(StrategicRecordIdSchema).max(100),
+      ownerPersonId: StrategicRecordIdSchema.optional(),
+      need: z.string().trim().min(1).max(4_000),
+      qualification: z.string().trim().min(1).max(2_000),
+      estimate: MoneyInputSchema.optional(),
+      stage: z.string().trim().min(1).max(120),
+      nextAction: z.string().trim().min(1).max(1_000),
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+    })
+    .strict(),
+]);
+
+/**
+ * Reclassifies one Project without closing or deleting it. A new destination
+ * receives an explicit predecessor link; a merge names an existing target. The
+ * source remains as the durable owner of its body, revisions, check-ins and
+ * comments, while the destination records mechanically traversable lineage.
+ */
+export const ProjectReclassifyCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.reclassify"),
+  payload: z
+    .object({
+      projectId: ProjectIdSchema,
+      destination: ProjectReclassificationDestinationSchema,
+    })
+    .strict(),
+}).strict();
+export type ProjectReclassifyCommand = z.infer<
+  typeof ProjectReclassifyCommandSchema
+>;
+
 export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("document.create"),
   payload: z
@@ -2899,6 +2963,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
   ProjectCheckInAddCommandSchema,
+  ProjectReclassifyCommandSchema,
   ProjectUpdateDetailsCommandSchema,
   ProjectSetAttentionStateCommandSchema,
   ProjectRemoveCommandSchema,

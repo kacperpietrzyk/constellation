@@ -2091,7 +2091,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
       .prepare(
         // Removed records keep their rows and leave every list at once;
         // absent recordState means active, so no row needs migrating.
-        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY updated_at DESC, id DESC",
+        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' AND json_extract(payload_json, '$.reclassifiedTo') IS NULL ORDER BY updated_at DESC, id DESC",
       )
       .all(workspaceId, spaceId)
       .map((row) => {

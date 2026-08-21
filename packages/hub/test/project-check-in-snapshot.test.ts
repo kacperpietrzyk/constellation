@@ -9,12 +9,14 @@ import {
   AgentRunIdSchema,
   capabilitiesForAgentGrantPreset,
   CaptureIdSchema,
+  CommandIdSchema,
   CapturePayloadIdSchema,
   ExecutionContextSchema,
   PrincipalIdSchema,
   ProjectCheckInIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
   WorkspaceIdSchema,
   type CaptureId,
   type ExecutionContext,
@@ -526,4 +528,117 @@ it("redacts Project check-in actor and run metadata from scoped Hub snapshots", 
   assert.equal("authorGrantId" in item, false);
   assert.equal("agentRunId" in item, false);
   assert.equal("hostRunId" in item, false);
+});
+
+it("does not disclose out-of-Space reclassification lineage through a scoped Hub snapshot", () => {
+  const workspaceId = WorkspaceIdSchema.parse(id("921"));
+  const visibleSpaceId = SpaceIdSchema.parse(id("922"));
+  const hiddenSpaceId = SpaceIdSchema.parse(id("923"));
+  const ownerId = PrincipalIdSchema.parse(id("924"));
+  const sourceProjectId = ProjectIdSchema.parse(id("925"));
+  const hiddenInitiativeId = StrategicRecordIdSchema.parse(id("926"));
+  const reclassificationCommandId = CommandIdSchema.parse(id("931"));
+  const context = ExecutionContextSchema.parse({
+    principalId: ownerId,
+    principalKind: "human",
+    credentialId: id("927"),
+    grantId: id("928"),
+    policyVersion: 1,
+    workspaceId,
+    spaceScope: [visibleSpaceId],
+    capabilityScope: ["workspace.createLocal", "workspace.manageAccess"],
+    origin: "desktop",
+  });
+  const harness = createReferenceHarness();
+  harness.authorization.register(context);
+  const created = harness.kernel.execute(context, {
+    contractVersion: 1,
+    commandName: "workspace.createLocal",
+    commandId: id("929"),
+    workspaceId,
+    idempotencyKey: "reclassification-scope-bootstrap",
+    expectedVersions: {},
+    correlationId: id("930"),
+    payload: {
+      workspaceId,
+      rootSpaceId: visibleSpaceId,
+      ownerPrincipalId: ownerId,
+      name: "Scoped reclassification lineage",
+      timezone: "Europe/Warsaw",
+    },
+  });
+  assert.equal(created.kind, "command_outcome");
+  harness.store.transact((transaction) => {
+    assert.equal(isApplicationWave2Transaction(transaction), true);
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected Wave 2 transaction.");
+    transaction.insertSpace({
+      id: hiddenSpaceId,
+      workspaceId,
+      name: "Hidden Space",
+      version: 1,
+      createdAt: "2026-08-21T10:00:00.000Z",
+    });
+    transaction.insertProject({
+      id: sourceProjectId,
+      workspaceId,
+      spaceId: visibleSpaceId,
+      title: "Visible source Project",
+      lifecycle: "active",
+      reclassifiedTo: {
+        kind: "initiative",
+        targetId: hiddenInitiativeId,
+        commandId: reclassificationCommandId,
+      },
+      createdBy: ownerId,
+      version: 2,
+      createdAt: "2026-08-21T10:00:00.000Z",
+      updatedAt: "2026-08-21T10:01:00.000Z",
+    });
+    transaction.insertStrategicRecord({
+      id: hiddenInitiativeId,
+      workspaceId,
+      spaceId: hiddenSpaceId,
+      kind: "initiative",
+      title: "Hidden target Initiative",
+      intendedOutcome: "Private strategic outcome",
+      state: "active",
+      reclassifiedFromProjectIds: [sourceProjectId],
+      createdBy: ownerId,
+      version: 1,
+      createdAt: "2026-08-21T10:00:00.000Z",
+      updatedAt: "2026-08-21T10:00:00.000Z",
+    });
+  });
+
+  const persisted = harness.store.snapshot();
+  const roundTripped = fromHubSnapshot(toHubSnapshot(persisted), workspaceId);
+  assert.deepEqual(
+    roundTripped.projects.find((project) => project.id === sourceProjectId)
+      ?.reclassifiedTo,
+    {
+      kind: "initiative",
+      targetId: hiddenInitiativeId,
+      commandId: reclassificationCommandId,
+    },
+  );
+  assert.deepEqual(
+    roundTripped.strategicRecords?.find(
+      (record) => record.id === hiddenInitiativeId,
+    )?.reclassifiedFromProjectIds,
+    [sourceProjectId],
+  );
+
+  const scoped = scopeInternalHubSnapshot(
+    toInternalHubSnapshot(persisted),
+    workspaceId,
+    context,
+  );
+  assert.ok(scoped);
+  const source = scoped.projects.find(
+    (project) => project.id === sourceProjectId,
+  );
+  assert.ok(source);
+  assert.equal("reclassifiedTo" in source, false);
+  assert.equal(JSON.stringify(scoped).includes(hiddenInitiativeId), false);
 });

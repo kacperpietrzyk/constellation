@@ -336,6 +336,29 @@ describe("Command revertability", () => {
     );
     apply("record.unrelate", { relationId }, versions(relationId));
 
+    const reclassifiedProjectId = String(
+      projection(
+        apply("project.create", {
+          spaceId: ids.rootSpace,
+          title: "Reclassified by the table test",
+        }),
+      )["projectId"],
+    );
+    apply(
+      "project.reclassify",
+      {
+        projectId: reclassifiedProjectId,
+        destination: {
+          mode: "create",
+          kind: "initiative",
+          targetId: uuid(),
+          title: "Reclassification recovery",
+          intendedOutcome: "The source history stays mechanically traversable",
+        },
+      },
+      versions(reclassifiedProjectId),
+    );
+
     // Knowledge.
     const sourceId = uuid();
     apply("knowledge.sourceCreate", {
