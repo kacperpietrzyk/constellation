@@ -117,6 +117,7 @@ export const ChoicePopover = ({
   panelLabel,
   onChoose,
   trigger,
+  triggerClassName,
   triggerId,
   value,
 }: {
@@ -128,6 +129,7 @@ export const ChoicePopover = ({
   readonly onChoose: (value: string) => void;
   /** Treść pigułki. Niesie STAN — „Group: Status", nie „Group". */
   readonly trigger: string;
+  readonly triggerClassName?: string | undefined;
   /** Zostaje po `<select>`, którego ten panel zastąpił: to samo `id`, ten sam
    *  adres dla testów i dla każdego, kto tego szuka po nazwie. */
   readonly triggerId?: string | undefined;
@@ -148,6 +150,7 @@ export const ChoicePopover = ({
       onOpenChange={setOpen}
       open={open}
       panelLabel={panelLabel}
+      {...(triggerClassName === undefined ? {} : { triggerClassName })}
       triggerId={triggerId}
     >
       <div

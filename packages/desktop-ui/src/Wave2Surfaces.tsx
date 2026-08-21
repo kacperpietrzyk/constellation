@@ -746,6 +746,7 @@ export const ProjectsSurface = ({
                   trigger={`Portfolio: ${
                     overview.project.attentionState[0]?.toUpperCase() ?? ""
                   }${overview.project.attentionState.slice(1)}`}
+                  triggerClassName="secondary-button compact"
                   value={overview.project.attentionState}
                 />
               </Suspense>
