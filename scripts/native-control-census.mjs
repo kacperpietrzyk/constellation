@@ -201,7 +201,9 @@ export const NATIVE_CONTROL_LEDGER = {
   // PIĘĆ, A NIE CZTERY: piąta to `<select id="organization-delivery-link">`
   // (`:1239`), której tekstowa wersja tego spisu nie widziała.
   "StrategicDepthSurface.tsx": 5,
-  "Wave2Surfaces.tsx": 9,
+  // Portfolio attention moved from a native `<select>` in the record action
+  // strip to the shared keyboard-complete ChoicePopover.
+  "Wave2Surfaces.tsx": 8,
   "WorkspaceRecovery.tsx": 4,
   "components/ChoicePopover.tsx": 1,
   "components/DecisionClientSection.tsx": 1,

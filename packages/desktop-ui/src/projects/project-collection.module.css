@@ -17,6 +17,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: end;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   gap: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--border-subtle);
@@ -27,17 +29,23 @@
 .lenses {
   display: flex;
   flex-wrap: wrap;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   gap: var(--space-1);
 }
 
 .filterLabel {
   display: grid;
+  flex: 1 1 10rem;
+  min-inline-size: 0;
   gap: var(--space-1);
   color: var(--text-secondary);
   font-size: var(--text-xs);
 }
 
 .filterLabel select {
+  inline-size: 100%;
+  min-inline-size: 0;
   min-block-size: 36px;
   max-inline-size: 100%;
 }

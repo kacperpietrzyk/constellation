@@ -82,6 +82,13 @@ const ApplyTemplatePopover = lazy(async () => ({
     .ApplyTemplatePopover,
 }));
 
+// Portfolio attention is a choice, not a native form field in the record action
+// strip. Keep the same lazy boundary as the adjacent template picker so opening
+// a Project does not pull InlinePopover onto the first paint.
+const PortfolioAttentionPopover = lazy(async () => ({
+  default: (await import("./components/ChoicePopover.js")).ChoicePopover,
+}));
+
 /* TEN WARIANT NIE DELEGUJE DO `SurfaceTitleBand`, I TO JEST POMIAR, NIE
    PRZEOCZENIE. Lot C2 raz go przepiął i cofnął po CZERWIENI bramki typografii
    nagłówków (`scripts/heading-typography.mjs`): ta bramka czyta LITERALNE
@@ -722,23 +729,26 @@ export const ProjectsSurface = ({
           onWriteOutcome: () => setEditing(true),
           actions: (
             <>
-              <label className="record-action-field">
-                Portfolio
-                <select
-                  aria-label="Portfolio attention"
+              <Suspense fallback={null}>
+                <PortfolioAttentionPopover
+                  choices={[
+                    { value: "current", label: "Current" },
+                    { value: "waiting", label: "Waiting" },
+                    { value: "parked", label: "Parked" },
+                  ]}
                   disabled={busy || overview.project.lifecycle === "closed"}
-                  onChange={(event) =>
+                  onChoose={(value) =>
                     onSetAttentionState(
-                      event.target.value as "current" | "waiting" | "parked",
+                      value as "current" | "waiting" | "parked",
                     )
                   }
+                  panelLabel="Portfolio attention"
+                  trigger={`Portfolio: ${
+                    overview.project.attentionState[0]?.toUpperCase() ?? ""
+                  }${overview.project.attentionState.slice(1)}`}
                   value={overview.project.attentionState}
-                >
-                  <option value="current">Current</option>
-                  <option value="waiting">Waiting</option>
-                  <option value="parked">Parked</option>
-                </select>
-              </label>
+                />
+              </Suspense>
               {!editing && !overview.project.needsReview && (
                 <button
                   className="ghost-button"
