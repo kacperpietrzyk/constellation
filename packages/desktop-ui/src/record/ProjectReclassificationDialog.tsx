@@ -6,6 +6,8 @@ import type {
   StrategicRecordId,
 } from "@constellation/contracts";
 
+import styles from "./project-reclassification-dialog.module.css";
+
 export type ReclassificationKind = "area" | "initiative" | "opportunity";
 export type ReclassificationDestination = {
   readonly mode: "create" | "merge";
@@ -244,7 +246,7 @@ export const ProjectReclassificationDialog = ({
       <section
         aria-labelledby="project-reclassification-title"
         aria-modal="true"
-        className="undo-dialog"
+        className={`${styles.dialog} undo-dialog`}
         role="dialog"
         onKeyDown={(event) => event.key === "Escape" && !busy && onClose()}
       >
@@ -256,218 +258,224 @@ export const ProjectReclassificationDialog = ({
             </h2>
           </div>
         </header>
-        <p>
-          The Project is not closed. Preview the exact durable history before
-          confirming.
-        </p>
-        <label>
-          Mode{" "}
-          <select
-            aria-label="Reclassification mode"
-            disabled={busy}
-            value={mode}
-            onChange={(event) =>
-              changeMode(event.target.value as "create" | "merge")
-            }
-          >
-            <option value="create">Create a new target</option>
-            <option value="merge">Merge into an existing target</option>
-          </select>
-        </label>
-        <label>
-          Target kind{" "}
-          <select
-            aria-label="Target kind"
-            disabled={busy}
-            value={kind}
-            onChange={(event) =>
-              changeKind(event.target.value as ReclassificationKind)
-            }
-          >
-            {(["area", "initiative", "opportunity"] as const).map((item) => (
-              <option key={item} value={item}>
-                {label(item)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {mode === "merge" && (
+        <div className={styles.body} data-reclassification-dialog-body>
+          <p className={styles.intro}>
+            The Project is not closed. Preview the exact durable history before
+            confirming.
+          </p>
           <label>
-            Merge target{" "}
+            Mode{" "}
             <select
-              aria-label="Merge target"
-              disabled={busy || available.length === 0}
-              value={targetId}
-              onChange={(event) => {
-                setTargetId(event.target.value as StrategicRecordId);
-                setPreview(undefined);
-              }}
+              aria-label="Reclassification mode"
+              disabled={busy}
+              value={mode}
+              onChange={(event) =>
+                changeMode(event.target.value as "create" | "merge")
+              }
             >
-              {available.length === 0 ? (
-                <option value="">No authorized targets</option>
-              ) : (
-                available.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {target.title}
-                  </option>
-                ))
-              )}
+              <option value="create">Create a new target</option>
+              <option value="merge">Merge into an existing target</option>
             </select>
           </label>
-        )}
-        {mode === "create" && (
-          <>
+          <label>
+            Target kind{" "}
+            <select
+              aria-label="Target kind"
+              disabled={busy}
+              value={kind}
+              onChange={(event) =>
+                changeKind(event.target.value as ReclassificationKind)
+              }
+            >
+              {(["area", "initiative", "opportunity"] as const).map((item) => (
+                <option key={item} value={item}>
+                  {label(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {mode === "merge" && (
             <label>
-              Target title{" "}
-              <input
-                aria-label="Target title"
-                disabled={busy}
-                value={creationTitle}
+              Merge target{" "}
+              <select
+                aria-label="Merge target"
+                disabled={busy || available.length === 0}
+                value={targetId}
                 onChange={(event) => {
-                  setCreationTitle(event.target.value);
+                  setTargetId(event.target.value as StrategicRecordId);
                   setPreview(undefined);
                 }}
-              />
+              >
+                {available.length === 0 ? (
+                  <option value="">No authorized targets</option>
+                ) : (
+                  available.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.title}
+                    </option>
+                  ))
+                )}
+              </select>
             </label>
-            {kind !== "opportunity" && (
+          )}
+          {mode === "create" && (
+            <>
               <label>
-                {kind === "area" ? "Responsibility" : "Intended outcome"}
-                <textarea
-                  aria-label={
-                    kind === "area" ? "Responsibility" : "Intended outcome"
-                  }
+                Target title{" "}
+                <input
+                  aria-label="Target title"
                   disabled={busy}
-                  value={responsibility}
-                  onChange={(event) => setResponsibility(event.target.value)}
+                  value={creationTitle}
+                  onChange={(event) => {
+                    setCreationTitle(event.target.value);
+                    setPreview(undefined);
+                  }}
                 />
               </label>
-            )}
-            {kind === "opportunity" && (
-              <fieldset>
-                <legend>Opportunity facts</legend>
+              {kind !== "opportunity" && (
                 <label>
-                  Organization
-                  <select
-                    aria-label="Opportunity organization"
-                    disabled={busy || organizations?.length === 0}
-                    value={opportunityFacts.organizationId}
-                    onChange={(event) =>
-                      setOpportunityFacts((current) => ({
-                        ...current,
-                        organizationId: event.target.value,
-                      }))
-                    }
-                  >
-                    {organizations?.length ? (
-                      organizations.map((organization) => (
-                        <option key={organization.id} value={organization.id}>
-                          {organization.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No authorized organizations</option>
-                    )}
-                  </select>
-                </label>
-                <label>
-                  Need
+                  {kind === "area" ? "Responsibility" : "Intended outcome"}
                   <textarea
-                    aria-label="Opportunity need"
-                    disabled={busy}
-                    value={opportunityFacts.need}
-                    onChange={(event) =>
-                      setOpportunityFacts((current) => ({
-                        ...current,
-                        need: event.target.value,
-                      }))
+                    aria-label={
+                      kind === "area" ? "Responsibility" : "Intended outcome"
                     }
+                    disabled={busy}
+                    value={responsibility}
+                    onChange={(event) => setResponsibility(event.target.value)}
                   />
                 </label>
-                <label>
-                  Qualification
-                  <textarea
-                    aria-label="Opportunity qualification"
-                    disabled={busy}
-                    value={opportunityFacts.qualification}
-                    onChange={(event) =>
-                      setOpportunityFacts((current) => ({
-                        ...current,
-                        qualification: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Stage
-                  <select
-                    aria-label="Opportunity stage"
-                    disabled={busy || stages?.length === 0}
-                    value={opportunityFacts.stage}
-                    onChange={(event) =>
-                      setOpportunityFacts((current) => ({
-                        ...current,
-                        stage: event.target.value,
-                      }))
-                    }
-                  >
-                    {stages?.length ? (
-                      stages.map((stage) => (
-                        <option key={stage.id} value={stage.id}>
-                          {stage.label}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No configured stages</option>
-                    )}
-                  </select>
-                </label>
-                <label>
-                  Next action
-                  <input
-                    aria-label="Opportunity next action"
-                    disabled={busy}
-                    value={opportunityFacts.nextAction}
-                    onChange={(event) =>
-                      setOpportunityFacts((current) => ({
-                        ...current,
-                        nextAction: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </fieldset>
-            )}
-          </>
-        )}
-        {message && <p role="alert">{message}</p>}
-        {freshPreview && (
-          <section aria-live="polite">
-            <h3>Preview</h3>
-            <p>
-              {freshPreview.canApply
-                ? "Ready to confirm this fresh preview."
-                : `Cannot apply: ${freshPreview.blockedReason ?? "the authoritative state changed"}.`}
+              )}
+              {kind === "opportunity" && (
+                <fieldset className={styles.facts}>
+                  <legend>Opportunity facts</legend>
+                  <label>
+                    Organization
+                    <select
+                      aria-label="Opportunity organization"
+                      disabled={busy || organizations?.length === 0}
+                      value={opportunityFacts.organizationId}
+                      onChange={(event) =>
+                        setOpportunityFacts((current) => ({
+                          ...current,
+                          organizationId: event.target.value,
+                        }))
+                      }
+                    >
+                      {organizations?.length ? (
+                        organizations.map((organization) => (
+                          <option key={organization.id} value={organization.id}>
+                            {organization.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No authorized organizations</option>
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Need
+                    <textarea
+                      aria-label="Opportunity need"
+                      disabled={busy}
+                      value={opportunityFacts.need}
+                      onChange={(event) =>
+                        setOpportunityFacts((current) => ({
+                          ...current,
+                          need: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Qualification
+                    <textarea
+                      aria-label="Opportunity qualification"
+                      disabled={busy}
+                      value={opportunityFacts.qualification}
+                      onChange={(event) =>
+                        setOpportunityFacts((current) => ({
+                          ...current,
+                          qualification: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Stage
+                    <select
+                      aria-label="Opportunity stage"
+                      disabled={busy || stages?.length === 0}
+                      value={opportunityFacts.stage}
+                      onChange={(event) =>
+                        setOpportunityFacts((current) => ({
+                          ...current,
+                          stage: event.target.value,
+                        }))
+                      }
+                    >
+                      {stages?.length ? (
+                        stages.map((stage) => (
+                          <option key={stage.id} value={stage.id}>
+                            {stage.label}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No configured stages</option>
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Next action
+                    <input
+                      aria-label="Opportunity next action"
+                      disabled={busy}
+                      value={opportunityFacts.nextAction}
+                      onChange={(event) =>
+                        setOpportunityFacts((current) => ({
+                          ...current,
+                          nextAction: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </fieldset>
+              )}
+            </>
+          )}
+          {message && (
+            <p className={styles.message} role="alert">
+              {message}
             </p>
-            <p>
-              Project remains the body owner.{" "}
-              {count(freshPreview.history.checkInIds, "check-in")},{" "}
-              {count(freshPreview.history.commentIds, "comment")},{" "}
-              {count(freshPreview.history.evidenceSourceIds, "evidence")},{" "}
-              {count(freshPreview.history.taskIds, "task")},{" "}
-              {count(freshPreview.history.relationIds, "relation")},{" "}
-              {count(freshPreview.history.workLinkIds, "work link")},{" "}
-              {count(freshPreview.history.eventIds, "audit event")} and{" "}
-              {count(freshPreview.history.auditReceiptIds, "audit receipt")} are
-              preserved.
-            </p>
-            <p>
-              Expected versions:{" "}
-              {Object.entries(freshPreview.expectedVersions)
-                .map(([id, version]) => `${id}: ${version}`)
-                .join(" · ")}
-            </p>
-          </section>
-        )}
+          )}
+          {freshPreview && (
+            <section aria-live="polite" className={styles.preview}>
+              <h3>Preview</h3>
+              <p>
+                {freshPreview.canApply
+                  ? "Ready to confirm this fresh preview."
+                  : `Cannot apply: ${freshPreview.blockedReason ?? "the authoritative state changed"}.`}
+              </p>
+              <p>
+                Project remains the body owner.{" "}
+                {count(freshPreview.history.checkInIds, "check-in")},{" "}
+                {count(freshPreview.history.commentIds, "comment")},{" "}
+                {count(freshPreview.history.evidenceSourceIds, "evidence")},{" "}
+                {count(freshPreview.history.taskIds, "task")},{" "}
+                {count(freshPreview.history.relationIds, "relation")},{" "}
+                {count(freshPreview.history.workLinkIds, "work link")},{" "}
+                {count(freshPreview.history.eventIds, "audit event")} and{" "}
+                {count(freshPreview.history.auditReceiptIds, "audit receipt")}{" "}
+                are preserved.
+              </p>
+              <p>
+                Expected versions:{" "}
+                {Object.entries(freshPreview.expectedVersions)
+                  .map(([id, version]) => `${id}: ${version}`)
+                  .join(" · ")}
+              </p>
+            </section>
+          )}
+        </div>
         <footer>
           <button
             ref={cancelRef}

@@ -1,0 +1,129 @@
+.dialog.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: min(48rem, calc(100dvh - 3rem));
+  margin: max(1.5rem, 6vh) auto 0;
+  overflow: hidden;
+}
+
+.body {
+  display: grid;
+  gap: var(--space-4);
+  min-block-size: 0;
+  padding: var(--space-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.intro,
+.message,
+.preview h3,
+.preview p {
+  margin: 0;
+}
+
+.intro {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.body > label,
+.facts label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.body input,
+.body select,
+.body textarea {
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--input-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+
+.body textarea {
+  min-block-size: 5rem;
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-3);
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.facts legend {
+  padding: 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.message {
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--status-warning);
+  font-size: var(--text-sm);
+}
+
+.preview {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.preview h3 {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.preview p {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+@media (width <= 40rem) {
+  .dialog.dialog {
+    width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1rem);
+    margin-block-start: 0.5rem;
+  }
+
+  .body {
+    padding: var(--space-4);
+  }
+}
+
+@media (forced-colors: active) {
+  .facts,
+  .message,
+  .preview {
+    border-color: CanvasText;
+  }
+}

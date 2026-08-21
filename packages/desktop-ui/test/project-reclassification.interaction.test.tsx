@@ -97,6 +97,10 @@ test("previews a Project merge with preserved history before it can confirm", as
   );
   assert.ok(mode);
   assert.ok(kind);
+  assert.ok(
+    container.querySelector("[data-reclassification-dialog-body]"),
+    "reclassification controls must live inside the padded scroll body",
+  );
   await act(async () => {
     mode.value = "merge";
     mode.dispatchEvent(new Event("change", { bubbles: true }));
