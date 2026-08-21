@@ -602,6 +602,8 @@ export const PipelineSurface = ({
   onNavigate,
   onReload,
   onFailure,
+  createRequest,
+  onCreateRequestConsumed,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -617,6 +619,8 @@ export const PipelineSurface = ({
   readonly onNavigate: (surface: "settings", label: string) => void;
   readonly onReload: () => Promise<void> | void;
   readonly onFailure: (failure: MutationFailure) => void;
+  readonly createRequest?: number;
+  readonly onCreateRequestConsumed?: () => void;
 }) => {
   const [creating, setCreating] = useState(false);
   const [draftOrganizationId, setDraftOrganizationId] = useState("");
@@ -646,6 +650,12 @@ export const PipelineSurface = ({
   // rendered — a board reloads under a drag that changed a stage.
   const dropTarget = useRef<HTMLElement | null>(null);
 
+  useEffect(() => {
+    if (createRequest === undefined) return;
+    setCreating(true);
+    onCreateRequestConsumed?.();
+  }, [createRequest, onCreateRequestConsumed]);
+
   const markDropTarget = (node: HTMLElement | null) => {
     if (dropTarget.current === node) return;
     dropTarget.current?.removeAttribute("data-drop-target");
@@ -673,14 +683,30 @@ export const PipelineSurface = ({
     ? settings.homeCurrency
     : offeredCurrencies[0];
   const relationships = readSlice(snapshot.relationships);
-
-  const index = useMemo(
-    () =>
-      indexRelationships(
-        relationships.available ? relationships.data.records : [],
-      ),
-    [relationships],
+  const opportunities = readSlice(
+    snapshot.opportunities ?? {
+      kind: "unavailable",
+      message: "Opportunity inventory is unavailable.",
+    },
   );
+  const relations = readSlice(
+    snapshot.relations ?? {
+      kind: "unavailable",
+      message: "Relation inventory is unavailable.",
+    },
+  );
+
+  const index = useMemo(() => {
+    const records = relationships.available ? relationships.data.records : [];
+    return indexRelationships(
+      opportunities.available
+        ? [
+            ...records.filter((record) => record.kind !== "opportunity"),
+            ...opportunities.data.items,
+          ]
+        : records,
+    );
+  }, [opportunities, relationships]);
 
   const board = useMemo(
     () => readBoard(index, stages, settings, prose),
@@ -804,6 +830,21 @@ export const PipelineSurface = ({
   const header = (action?: ReactNode) => (
     <SurfaceTitleBand action={action} title="Pipeline" />
   );
+
+  const inventoryFinality =
+    opportunities.available && relations.available ? (
+      <p
+        data-opportunity-snapshot={opportunities.data.snapshot}
+        data-portfolio-inventory-finality
+        data-relation-snapshot={relations.data.snapshot}
+      >
+        {`${countLabel(opportunities.data.totalCount, "opportunity", "opportunities")} · complete inventory · ${countLabel(relations.data.totalCount, "relation")} · complete inventory`}
+      </p>
+    ) : (
+      <p data-portfolio-inventory-finality>
+        Complete portfolio inventory is unavailable.
+      </p>
+    );
 
   // R3 × #232: ten blok stał u mnie PRZED strażnikiem dostępności, a jego
   // kolejność jest własnością POPRAWNOŚCI, nie układu — więc wygrywa wersja
@@ -962,6 +1003,7 @@ export const PipelineSurface = ({
             <TopicHelp topic="unconfigured-stage" />
           </>
         )}
+        {inventoryFinality}
         <span
           aria-live="polite"
           className={styles.count}

@@ -14,8 +14,12 @@ preload bridge.
 - one kernel unit of work maps to `BEGIN IMMEDIATE` and commits or rolls back as
   one database transaction;
 - Workspace, Space, membership, Task status, Capture, Task, Task assignment,
-  comment, Attention signal, Project, Task-to-Project relation, undo descriptor,
+  comment, Attention signal, Project, typed Task work relation, undo descriptor,
   event, audit, idempotency, and outbox records have separate relational tables;
+- `task_work_relations` stores exactly one Project, Opportunity, Area, or
+  Initiative far end per relation. SQLite enforces exact-one-of-four and active
+  pair uniqueness for every target kind; upgrades preserve existing
+  Project/Opportunity rows and payloads;
 - lookup, Workspace/Space filtering, ordering, pagination, uniqueness, and
   optimistic versions use explicit columns;
 - complete typed records are retained as JSON payloads and checked against

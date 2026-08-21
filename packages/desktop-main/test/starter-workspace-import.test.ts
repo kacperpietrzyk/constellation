@@ -433,6 +433,11 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
   });
   assert.ok(exported);
   if (exported === undefined) return;
+  assert.equal(
+    "projectCheckIns" in exported.manifest,
+    false,
+    "exchange v6 moves current work, not attributed check-in history; portable backup preserves that history",
+  );
   assert.deepEqual(exported.counts, {
     // The bootstrap status the imported task sits in travels with it, so a
     // target that has never heard of it can still accept the package.

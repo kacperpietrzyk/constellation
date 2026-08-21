@@ -25,6 +25,7 @@ import {
   type DurableKernelService,
 } from "./durable-kernel-service.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
+import type { PreviewCheckInsAcceptanceService } from "./preview-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
 import {
   allowsAudioMediaCheck,
@@ -32,6 +33,7 @@ import {
 } from "./media-permission.js";
 import type { AsyncSafeStorage } from "./workspace-key-custody.js";
 import { copyRecoveryCodeToClipboard } from "./recovery-code-clipboard.js";
+import { MINIMUM_DESKTOP_WINDOW_WIDTH } from "./window-bounds.js";
 
 const developmentUrl = process.env.CONSTELLATION_RENDERER_URL;
 const preloadPath = fileURLToPath(
@@ -53,7 +55,7 @@ let durableKernel: DurableKernelService | undefined;
 
 interface DesktopRuntime {
   readonly buildInfo: DesktopBuildInfo;
-  readonly service: DesktopKernelService;
+  readonly service: DesktopKernelService | PreviewCheckInsAcceptanceService;
 }
 
 const electronSafeStorage: AsyncSafeStorage = {
@@ -69,10 +71,16 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
         "The in-memory preview is not included in local Alpha builds.",
       );
     }
-    const { PREVIEW_IDENTITY, createPreviewKernelService } =
-      await import("./preview-service.js");
+    const {
+      PREVIEW_IDENTITY,
+      createPreviewKernelService,
+      createPreviewCheckInsAcceptanceService,
+    } = await import("./preview-service.js");
     return {
-      service: createPreviewKernelService(),
+      service:
+        process.env.CONSTELLATION_PREVIEW_CHECK_INS_ACCEPTANCE === "1"
+          ? createPreviewCheckInsAcceptanceService()
+          : createPreviewKernelService(),
       buildInfo: {
         channel: "developer-preview",
         startupRecovery: "none",
@@ -108,7 +116,7 @@ const createWindow = async (destination?: string): Promise<BrowserWindow> => {
   const window = new BrowserWindow({
     width: 1380,
     height: 860,
-    minWidth: 760,
+    minWidth: MINIMUM_DESKTOP_WINDOW_WIDTH,
     minHeight: 560,
     backgroundColor: "#08090b",
     show: false,

@@ -4,6 +4,7 @@ import test, { describe, it } from "node:test";
 import {
   CapabilitySchema,
   CommandEnvelopeSchema,
+  CommandOutcomeSchema,
   QueryEnvelopeSchema,
   QueryIdSchema,
   type Capability,
@@ -14,7 +15,10 @@ import {
   ALL_PREVIEW_CAPABILITIES,
   PREVIEW_CAPABILITY_DISPOSITION,
   PREVIEW_IDENTITY,
+  PREVIEW_CHECK_INS_ACCEPTANCE,
+  createPreviewCheckInsAcceptanceService,
   createPreviewKernelService,
+  previewCheckInAcceptanceDelayMs,
 } from "../src/preview-service.js";
 import { isTrustedRendererUrl } from "../src/security.js";
 
@@ -177,6 +181,103 @@ test("preview service executes Capture to Task through the real kernel", () => {
   } else {
     assert.fail("Task list should return the routed Task.");
   }
+});
+
+test("check-in acceptance preview is isolated, seeded, failure-safe, and races Project queries", async () => {
+  const service = createPreviewCheckInsAcceptanceService();
+  const query = (projectId: string, queryId: string) =>
+    service.query({
+      contractVersion: 1,
+      queryName: "project.checkInList",
+      queryId,
+      workspaceId: PREVIEW_IDENTITY.workspaceId,
+      consistency: "local_authoritative",
+      parameters: { projectId },
+    });
+  const populated = await query(
+    PREVIEW_CHECK_INS_ACCEPTANCE.projectAId,
+    "00000000-0000-4000-8000-000000000920",
+  );
+  if (
+    populated.kind !== "query_result" ||
+    populated.result.outcome !== "success" ||
+    populated.result.projection.kind !== "project.checkInList"
+  )
+    assert.fail("Expected populated acceptance Project.");
+  assert.equal(populated.result.projection.items.length, 2);
+  assert.ok(populated.result.projection.latestCheckInId);
+  const empty = await query(
+    PREVIEW_CHECK_INS_ACCEPTANCE.projectBId,
+    "00000000-0000-4000-8000-000000000921",
+  );
+  if (
+    empty.kind !== "query_result" ||
+    empty.result.outcome !== "success" ||
+    empty.result.projection.kind !== "project.checkInList"
+  )
+    assert.fail("Expected empty acceptance Project.");
+  assert.equal(empty.result.projection.items.length, 0);
+
+  const completionOrder: string[] = [];
+  await Promise.all([
+    query(
+      PREVIEW_CHECK_INS_ACCEPTANCE.projectAId,
+      "00000000-0000-4000-8000-000000000922",
+    ).then(() => completionOrder.push("A")),
+    query(
+      PREVIEW_CHECK_INS_ACCEPTANCE.projectBId,
+      "00000000-0000-4000-8000-000000000923",
+    ).then(() => completionOrder.push("B")),
+  ]);
+  assert.deepEqual(completionOrder, ["B", "A"]);
+
+  const failed = service.execute({
+    contractVersion: 1,
+    commandName: "project.checkInAdd",
+    commandId: "00000000-0000-4000-8000-000000000924",
+    workspaceId: PREVIEW_IDENTITY.workspaceId,
+    idempotencyKey: "acceptance-write-failure",
+    expectedVersions: {
+      [PREVIEW_CHECK_INS_ACCEPTANCE.writeFailureProjectId]: 1,
+    },
+    correlationId: "00000000-0000-4000-8000-000000000925",
+    payload: {
+      checkInId: "00000000-0000-4000-8000-000000000926",
+      projectId: PREVIEW_CHECK_INS_ACCEPTANCE.writeFailureProjectId,
+      summary: "Draft must survive this failure.",
+      evidenceSourceIds: [],
+      references: [],
+    },
+  });
+  assert.equal(failed.kind, "command_outcome");
+  if (failed.kind === "command_outcome") {
+    CommandOutcomeSchema.parse(failed.outcome);
+    assert.equal(failed.outcome.outcome, "retryable");
+  }
+  const isolated = createPreviewKernelService();
+  const ordinaryProjects = isolated.query({
+    contractVersion: 1,
+    queryName: "project.list",
+    queryId: "00000000-0000-4000-8000-000000000927",
+    workspaceId: PREVIEW_IDENTITY.workspaceId,
+    consistency: "local_authoritative",
+    parameters: { spaceId: PREVIEW_IDENTITY.rootSpaceId },
+  });
+  if (
+    ordinaryProjects.kind !== "query_result" ||
+    ordinaryProjects.result.outcome !== "success" ||
+    ordinaryProjects.result.projection.kind !== "project.list"
+  )
+    assert.fail("Expected isolated ordinary preview.");
+  assert.equal(ordinaryProjects.result.projection.items.length, 0);
+});
+
+test("check-in acceptance preview accepts a bounded operator-visible slow-query delay", () => {
+  assert.equal(previewCheckInAcceptanceDelayMs(undefined), 80);
+  assert.equal(previewCheckInAcceptanceDelayMs("1500"), 1_500);
+  assert.equal(previewCheckInAcceptanceDelayMs("0"), 80);
+  assert.equal(previewCheckInAcceptanceDelayMs("6000"), 80);
+  assert.equal(previewCheckInAcceptanceDelayMs("not-a-number"), 80);
 });
 
 test("renderer origin checks fail closed", () => {

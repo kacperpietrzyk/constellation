@@ -51,7 +51,7 @@ already solve well:
 
 ## Project status
 
-Constellation `0.2.0` is the current **desktop Alpha**. Its production macOS
+Constellation `0.2.4` is the current **desktop Alpha**. Its production macOS
 artifacts are Developer ID signed, notarized, stapled, and published for Apple
 Silicon and Intel through
 [GitHub Releases](https://github.com/kacperpietrzyk/constellation/releases/latest).
@@ -298,7 +298,7 @@ boundary and current limitations are documented in
 The distribution gate produces a DMG plus update ZIP on macOS and a
 per-user NSIS installer on Windows. Hosted drills install the application,
 reopen the encrypted workspace through a compatible update and rollback, and
-remove application files while preserving workspace data. The public `0.2.0`
+remove application files while preserving workspace data. The public `0.2.4`
 macOS artifacts pass the separate fail-closed Developer ID signing,
 notarization, stapling, and Gatekeeper workflow; the in-app updater requires
 explicit check, download, and restart actions. Windows mechanism artifacts stay

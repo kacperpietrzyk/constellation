@@ -7,6 +7,7 @@ import { afterEach, beforeEach, test, vi } from "vitest";
 import {
   CommentIdSchema,
   PrincipalIdSchema,
+  RelationIdSchema,
   SpaceIdSchema,
   StrategicRecordIdSchema,
   TaskAssignmentIdSchema,
@@ -84,6 +85,15 @@ const droppedTaskId = TaskIdSchema.parse(
   "00000000-0000-4000-8000-00000000ea07",
 );
 const otherTaskId = TaskIdSchema.parse("00000000-0000-4000-8000-00000000ea08");
+const areaId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-00000000ea09",
+);
+const initiativeId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-00000000ea10",
+);
+const areaRelationId = RelationIdSchema.parse(
+  "00000000-0000-4000-8000-00000000ea11",
+);
 
 const openRootId = CommentIdSchema.parse(
   "00000000-0000-4000-8000-00000000eb01",
@@ -371,9 +381,42 @@ const work: Projection<"work.overview"> = {
       : { parentTaskId: item.parentTaskId }),
     ...(item.assignment === undefined ? {} : { assignment: item.assignment }),
     projectIds: [projectId],
+    areaIds: item.id === openedTaskId ? [areaId] : [],
+    initiativeIds: [],
+    directContextRelations:
+      item.id === openedTaskId
+        ? [
+            {
+              relationId: areaRelationId,
+              relationType: "task_contributes_to_area" as const,
+              targetId: areaId,
+              version: 1,
+            },
+          ]
+        : [],
     version: item.version,
     updatedAt: item.updatedAt,
   })),
+  areas: [
+    {
+      id: areaId,
+      title: "Product stewardship",
+      responsibility: "Keep lightweight work in its durable responsibility.",
+      needsReview: false,
+      state: "active",
+      version: 1,
+    },
+  ],
+  initiatives: [
+    {
+      id: initiativeId,
+      title: "Adopt the work structure",
+      intendedOutcome: "No synthetic project is needed for lightweight work.",
+      needsReview: false,
+      state: "active",
+      version: 1,
+    },
+  ],
   links,
 };
 
@@ -805,6 +848,98 @@ const commentAddVersions = (): Record<string, number>[] =>
   issued
     .filter((command) => command.name === "comment.add")
     .map((command) => command.expectedVersions);
+
+test("a Task authors direct Area and Initiative context without creating a Project relation", async () => {
+  const opened = await openRecord();
+  const contextSection = opened.querySelector<HTMLElement>(
+    "[data-task-context]",
+  );
+  assert.ok(
+    contextSection,
+    "the Task record has no direct work-context section",
+  );
+  assert.match(contextSection.textContent ?? "", /Product stewardship/u);
+
+  const remove = contextSection.querySelector<HTMLButtonElement>(
+    'button[aria-label="Remove Product stewardship"]',
+  );
+  assert.ok(remove, "the direct Area relation cannot be removed from the Task");
+  await act(async () => {
+    remove.click();
+  });
+  assert.deepEqual(
+    issued.find((command) => command.name === "record.unrelate"),
+    {
+      name: "record.unrelate",
+      payload: { relationId: areaRelationId },
+      expectedVersions: { [areaRelationId]: 1 },
+    },
+  );
+
+  const picker = contextSection.querySelector<HTMLButtonElement>(
+    "#task-direct-context",
+  );
+  assert.ok(picker, "the Task record has no drawn context picker");
+  await act(async () => {
+    picker.click();
+  });
+  const initiativeChoice = document.body.querySelector<HTMLButtonElement>(
+    `[data-choice="initiative:${initiativeId}"]`,
+  );
+  assert.ok(
+    initiativeChoice,
+    "the context picker does not offer the Initiative",
+  );
+  assert.equal(initiativeChoice.getAttribute("role"), "menuitemradio");
+  const menu = initiativeChoice.closest<HTMLElement>('[role="menu"]');
+  const emptyChoice =
+    document.body.querySelector<HTMLButtonElement>('[data-choice=""]');
+  assert.ok(menu && emptyChoice, "the drawn context menu is incomplete");
+  emptyChoice.focus();
+  await act(async () => {
+    menu.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
+  });
+  assert.equal(
+    document.activeElement,
+    initiativeChoice,
+    "ArrowDown does not move to the Initiative choice",
+  );
+  await act(async () => {
+    initiativeChoice.click();
+  });
+  const link = buttonIn(contextSection, "Link context");
+  assert.ok(link, "the Task record has no link action");
+  await act(async () => {
+    link.click();
+  });
+  assert.deepEqual(
+    issued.find(
+      (command) =>
+        command.name === "record.relate" &&
+        command.payload.relationType === "task_advances_initiative",
+    ),
+    {
+      name: "record.relate",
+      payload: {
+        relationType: "task_advances_initiative",
+        taskId: openedTaskId,
+        initiativeId,
+      },
+      expectedVersions: { [openedTaskId]: 3, [initiativeId]: 1 },
+    },
+  );
+  assert.equal(
+    issued.some(
+      (command) =>
+        command.name === "record.relate" &&
+        command.payload.relationType === "task_contributes_to_project",
+    ),
+    false,
+    "linking direct context must not synthesize a Project relation",
+  );
+});
 
 test("opening a task puts the task itself on screen, named once, with a way back", async () => {
   const opened = await openRecord();

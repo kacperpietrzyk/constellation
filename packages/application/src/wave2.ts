@@ -24,6 +24,7 @@ import {
   EventIdSchema,
   OutboxEntryIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   QueryResultSchema,
   RelationIdSchema,
   TaskIdSchema,
@@ -47,6 +48,7 @@ import {
   type SpaceId,
   type WorkspaceId,
   type KnowledgeSourceId,
+  type ProjectCheckInReference,
   type GlobalSearchRecordKind,
   globalSearchRecordKindIds,
   isGlobalSearchRecordKind,
@@ -60,6 +62,8 @@ import {
   completeTask,
   assignTask,
   createProject,
+  createProjectCheckIn,
+  voidProjectCheckIn,
   automationRuleState,
   createAutomationRule,
   createFieldDefinition,
@@ -94,6 +98,8 @@ import {
   documentsInFolderSubtree,
   relateTaskToProject,
   relateTaskToOpportunity,
+  relateTaskToArea,
+  relateTaskToInitiative,
   removeTaskProjectRelation,
   reopenTask,
   removeTaskAssignment,
@@ -143,6 +149,8 @@ import {
   undoCaptureKnowledgeRoute,
   updateProjectDetails,
   updateProjectOutcome,
+  projectAttentionState,
+  setProjectAttentionState,
   type AuditReceipt,
   type DomainEvent,
   type FieldDefinition,
@@ -156,6 +164,7 @@ import {
   type Workspace,
   type OutboxEntry,
   type Project,
+  type ProjectCheckIn,
   type Task,
   type TaskAssignment,
   type TaskProjectRelation,
@@ -206,6 +215,8 @@ export type Wave2Command = Extract<
   {
     commandName:
       | "project.create"
+      | "project.checkInAdd"
+      | "project.reclassify"
       | "project.remove"
       | "document.create"
       | "document.rename"
@@ -247,9 +258,13 @@ export type Wave2Command = Extract<
       | "area.create"
       | "area.remove"
       | "area.updateResponsibility"
+      | "area.archive"
+      | "area.restore"
       | "initiative.create"
       | "initiative.remove"
       | "initiative.updateOutcome"
+      | "initiative.close"
+      | "initiative.reopen"
       | "work.linkCreate"
       | "work.linkRemove"
       | "savedView.create"
@@ -272,7 +287,9 @@ export type Wave2Command = Extract<
       | "meeting.detachNote"
       | "project.updateOutcome"
       | "project.updateDetails"
+      | "project.setAttentionState"
       | "task.create"
+      | "task.createInProject"
       | "task.updateDetails"
       | "task.setParent"
       | "template.create"
@@ -326,16 +343,23 @@ export type Wave2Query = Extract<
   {
     queryName:
       | "project.list"
+      | "project.similarCandidates"
+      | "project.checkInList"
+      | "project.reclassificationPreview"
       | "document.list"
       | "document.linkCandidates"
       | "document.backlinks"
       | "knowledge.list"
       | "knowledge.documentContext"
       | "relationship.workspace"
+      | "opportunity.list"
+      | "relation.list"
       | "person.list"
       | "organization.list"
       | "radar.review"
       | "project.operationalOverview"
+      | "area.operationalOverview"
+      | "initiative.operationalOverview"
       | "organization.operationalOverview"
       | "search.global"
       | "cockpit.week"
@@ -437,6 +461,8 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "project.checkInAdd":
+    case "project.reclassify":
     case "project.remove": {
       const project = view.getProject(command.payload.projectId);
       return authorized(
@@ -680,7 +706,9 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
-    case "area.updateResponsibility": {
+    case "area.updateResponsibility":
+    case "area.archive":
+    case "area.restore": {
       const record = view.getStrategicRecord(command.payload.areaId);
       return authorized(
         dependencies,
@@ -692,7 +720,9 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
-    case "initiative.updateOutcome": {
+    case "initiative.updateOutcome":
+    case "initiative.close":
+    case "initiative.reopen": {
       const record = view.getStrategicRecord(command.payload.initiativeId);
       return authorized(
         dependencies,
@@ -919,7 +949,8 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "project.updateOutcome":
-    case "project.updateDetails": {
+    case "project.updateDetails":
+    case "project.setAttentionState": {
       const project = view.getProject(command.payload.projectId);
       return authorized(
         dependencies,
@@ -940,6 +971,28 @@ export const isWave2CommandAuthorized = (
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
+    }
+    case "task.createInProject": {
+      const project = view.getProject(command.payload.projectId);
+      const spaceId =
+        project?.workspaceId === command.workspaceId &&
+        project.spaceId === command.payload.spaceId
+          ? project.spaceId
+          : undefined;
+      const baseAuthorized = authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        spaceId,
+      );
+      const relationAuthorized = additionallyAuthorized(
+        dependencies,
+        context,
+        command,
+        spaceId,
+      );
+      return baseAuthorized && relationAuthorized;
     }
     case "template.create":
     case "template.rename":
@@ -1153,7 +1206,13 @@ export const isWave2CommandAuthorized = (
       const target =
         command.payload.relationType === "task_contributes_to_project"
           ? view.getProject(command.payload.projectId)
-          : view.getStrategicRecord(command.payload.opportunityId);
+          : view.getStrategicRecord(
+              command.payload.relationType === "task_contributes_to_opportunity"
+                ? command.payload.opportunityId
+                : command.payload.relationType === "task_contributes_to_area"
+                  ? command.payload.areaId
+                  : command.payload.initiativeId,
+            );
       const spaceId =
         task?.workspaceId === command.workspaceId &&
         target?.workspaceId === command.workspaceId &&
@@ -1284,6 +1343,7 @@ const appendJournal = (
       | "task"
       | "taskAssignment"
       | "project"
+      | "projectCheckIn"
       | "document"
       | "folder"
       | "knowledgeSource"
@@ -1574,6 +1634,28 @@ const strategicRecordTitle = (record: StrategicRecord): string =>
         ? record.name
         : record.kind;
 
+const projectCheckInReferenceDependents = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+  kind: ProjectCheckInReference["kind"],
+  recordId: string,
+): readonly BlockingRecord[] =>
+  view
+    .listProjectCheckIns(workspaceId, spaceId)
+    .filter(
+      (checkIn) =>
+        checkIn.state === "active" &&
+        checkIn.references.some(
+          (reference) =>
+            reference.kind === kind && reference.recordId === recordId,
+        ),
+    )
+    .map((checkIn) => ({
+      recordId: checkIn.id,
+      recordKind: "projectCheckIn" as const,
+    }));
+
 /**
  * What still points at a Project, a Document or a Knowledge Source inside its
  * Space. Same rule as every other removal: refuse rather than orphan, and read
@@ -1593,6 +1675,23 @@ const tableRecordDependents = (
   const strategic = view.listStrategicRecords(workspaceId, spaceId);
   if (recordKind === "project")
     return [
+      ...view
+        .listProjectCheckIns(workspaceId, spaceId, id as ProjectId)
+        .filter((checkIn) => checkIn.state === "active")
+        .map((checkIn) => ({
+          recordId: checkIn.id,
+          recordKind: "projectCheckIn" as const,
+        })),
+      ...projectCheckInReferenceDependents(
+        view,
+        workspaceId,
+        spaceId,
+        "project",
+        id,
+      ).filter(
+        (dependent) =>
+          view.getProjectCheckIn(dependent.recordId as never)?.projectId !== id,
+      ),
       ...view
         .listRelations(workspaceId, spaceId)
         .filter(
@@ -1625,6 +1724,13 @@ const tableRecordDependents = (
     ];
   if (recordKind === "document")
     return [
+      ...projectCheckInReferenceDependents(
+        view,
+        workspaceId,
+        spaceId,
+        "document",
+        id,
+      ),
       ...strategic
         .filter(
           (candidate) =>
@@ -1740,6 +1846,13 @@ const knowledgeSourceReferences = (
         blocking: { recordId: project.id, recordKind: "project" },
         title: project.title,
       });
+  for (const checkIn of view.listProjectCheckIns(workspaceId, spaceId))
+    if (checkIn.state === "active")
+      for (const sourceId of checkIn.evidenceSourceIds)
+        add(sourceId, {
+          blocking: { recordId: checkIn.id, recordKind: "projectCheckIn" },
+          title: checkIn.summary,
+        });
   return references;
 };
 
@@ -1829,8 +1942,8 @@ const removedStrategicRecordId = (
 const strategicRecordDependents = (
   view: ApplicationWave2ReadView,
   record: StrategicRecord,
-): readonly BlockingRecord[] =>
-  view
+): readonly BlockingRecord[] => {
+  const strategicDependents = view
     .listStrategicRecords(record.workspaceId, record.spaceId)
     .filter(
       (candidate) =>
@@ -1842,6 +1955,49 @@ const strategicRecordDependents = (
       recordKind: "strategicRecord" as const,
       recordType: candidate.kind,
     }));
+  const relationDependents = view
+    .listRelations(record.workspaceId, record.spaceId)
+    .filter(
+      (relation) =>
+        relation.state === "active" &&
+        ((record.kind === "opportunity" &&
+          relation.relationType === "task_contributes_to_opportunity" &&
+          relation.opportunityId === record.id) ||
+          (record.kind === "area" &&
+            relation.relationType === "task_contributes_to_area" &&
+            relation.areaId === record.id) ||
+          (record.kind === "initiative" &&
+            relation.relationType === "task_advances_initiative" &&
+            relation.initiativeId === record.id)),
+    )
+    .map((relation) => ({
+      recordId: relation.id,
+      recordKind: "relation" as const,
+    }));
+  const checkInKind = (
+    [
+      "person",
+      "organization",
+      "meeting",
+      "area",
+      "initiative",
+      "decision",
+    ] as const
+  ).find((kind) => kind === record.kind);
+  return [
+    ...(checkInKind === undefined
+      ? []
+      : projectCheckInReferenceDependents(
+          view,
+          record.workspaceId,
+          record.spaceId,
+          checkInKind,
+          record.id,
+        )),
+    ...strategicDependents,
+    ...relationDependents,
+  ];
+};
 
 /**
  * The removal path for the three records that keep their own table. Same
@@ -2329,6 +2485,71 @@ export const resolveDocumentEntityTarget = (
   }
 };
 
+interface ResolvedProjectCheckInReference {
+  readonly reference: ProjectCheckInReference;
+  readonly label: string;
+  readonly spaceId: SpaceId;
+  readonly version: number;
+}
+
+const resolveProjectCheckInReference = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  reference: ProjectCheckInReference,
+): ResolvedProjectCheckInReference | undefined => {
+  if (
+    [
+      "task",
+      "project",
+      "document",
+      "person",
+      "organization",
+      "meeting",
+    ].includes(reference.kind)
+  ) {
+    const resolved = resolveDocumentEntityTarget(
+      view,
+      workspaceId,
+      reference.kind as DocumentEntityTargetKind,
+      reference.recordId,
+    );
+    if (resolved === undefined) return undefined;
+    const record =
+      reference.kind === "task"
+        ? view.getTask(TaskIdSchema.parse(reference.recordId))
+        : reference.kind === "project"
+          ? view.getProject(ProjectIdSchema.parse(reference.recordId))
+          : reference.kind === "document"
+            ? view.getDocument(DocumentIdSchema.parse(reference.recordId))
+            : view.getStrategicRecord(
+                StrategicRecordIdSchema.parse(reference.recordId),
+              );
+    return record === undefined
+      ? undefined
+      : {
+          reference,
+          label: resolved.label,
+          spaceId: resolved.spaceId,
+          version: record.version,
+        };
+  }
+  const record = view.getStrategicRecord(
+    StrategicRecordIdSchema.parse(reference.recordId),
+  );
+  if (
+    record?.workspaceId !== workspaceId ||
+    strategicRecordState(record) !== "active" ||
+    record.kind !== reference.kind
+  )
+    return undefined;
+  return {
+    reference,
+    label: strategicRecordTitle(record),
+    spaceId: record.spaceId,
+    version: record.version,
+  };
+};
+
 // One collator for the process. `localeCompare(other, "pl", {…})` builds a
 // fresh Intl.Collator per comparison, so the old sort constructed O(N log N)
 // of them over the whole Space before a single candidate was thrown away.
@@ -2355,6 +2576,18 @@ const foldForCandidateSearch = (value: string): string =>
     .replace(/ł/gu, "l")
     .replace(/Ł/gu, "L")
     .toLowerCase();
+
+const projectSimilarityTokens = (value: string): ReadonlySet<string> =>
+  new Set(
+    foldForCandidateSearch(value)
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((token) => token.length >= 3),
+  );
+
+const sharedSimilarityTokens = (
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): readonly string[] => [...left].filter((token) => right.has(token));
 
 // Lower is better. A prefix of the whole label beats a prefix of a later word,
 // which beats a match in the middle of one. Obsidian ranks the same way and it
@@ -2576,6 +2809,70 @@ const upsertAttention = (
   return created;
 };
 
+const projectReclassificationHistory = (
+  view: ApplicationWave2ReadView,
+  project: Project,
+) => {
+  const checkIns = view
+    .listProjectCheckIns(project.workspaceId, project.spaceId, project.id)
+    .filter((item) => item.state === "active");
+  const comments = view
+    .listComments(project.workspaceId, project.spaceId)
+    .filter(
+      (item) =>
+        item.target.kind === "project" && item.target.projectId === project.id,
+    );
+  const relations = view
+    .listRelations(project.workspaceId, project.spaceId)
+    .filter(
+      (item) =>
+        item.state === "active" &&
+        item.relationType === "task_contributes_to_project" &&
+        item.projectId === project.id,
+    );
+  const workLinks = view
+    .listStrategicRecords(project.workspaceId, project.spaceId)
+    .filter(
+      (item): item is Extract<StrategicRecord, { kind: "work_link" }> =>
+        item.kind === "work_link" &&
+        item.state === "active" &&
+        (item.sourceRecordId === project.id ||
+          item.targetRecordId === project.id),
+    );
+  const evidenceSourceIds = [
+    ...(project.evidenceSourceIds ?? []),
+    ...checkIns.flatMap((item) => item.evidenceSourceIds),
+  ].filter((value, index, values) => values.indexOf(value) === index);
+  const taskIds = [...new Set(relations.map((item) => item.taskId))].sort();
+  const relevantRecordIds = new Set<string>([
+    project.id,
+    ...checkIns.map((item) => item.id),
+    ...comments.map((item) => item.id),
+    ...evidenceSourceIds,
+    ...taskIds,
+    ...relations.map((item) => item.id),
+    ...workLinks.map((item) => item.id),
+  ]);
+  const events = view
+    .listEvents(project.workspaceId, project.spaceId)
+    .filter((event) => relevantRecordIds.has(event.aggregateId));
+  const auditReceiptIds = events.flatMap((event) => {
+    const receipt = view.getAuditReceiptByCommand(event.commandId);
+    return receipt === undefined ? [] : [receipt.id];
+  });
+  return {
+    bodyOwner: { kind: "project" as const, projectId: project.id },
+    checkInIds: checkIns.map((item) => item.id).sort(),
+    commentIds: comments.map((item) => item.id).sort(),
+    evidenceSourceIds: evidenceSourceIds.sort(),
+    taskIds,
+    relationIds: relations.map((item) => item.id).sort(),
+    workLinkIds: workLinks.map((item) => item.id).sort(),
+    eventIds: events.map((event) => event.id).sort(),
+    auditReceiptIds: auditReceiptIds.sort(),
+  };
+};
+
 export const executeWave2Command = (
   dependencies: ApplicationKernelDependencies,
   transaction: ApplicationTransaction,
@@ -2588,6 +2885,220 @@ export const executeWave2Command = (
     return precondition(command, occurredAt);
   }
   switch (command.commandName) {
+    case "project.reclassify": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (
+        project === undefined ||
+        !recordIsActive(project) ||
+        project.reclassifiedTo !== undefined ||
+        project.lifecycle !== "active"
+      )
+        return precondition(command, occurredAt);
+
+      const destination = command.payload.destination;
+      const targetId = StrategicRecordIdSchema.parse(destination.targetId);
+      const existingTarget = transaction.getStrategicRecord(targetId);
+      if (destination.mode === "merge") {
+        if (
+          existingTarget === undefined ||
+          existingTarget.kind !== destination.kind ||
+          existingTarget.workspaceId !== project.workspaceId ||
+          existingTarget.spaceId !== project.spaceId ||
+          !recordIsActive(existingTarget)
+        )
+          return precondition(command, occurredAt);
+        if (
+          !exactExpected(command, {
+            [project.id]: project.version,
+            [existingTarget.id]: existingTarget.version,
+          })
+        )
+          return versionConflict(command, occurredAt, {
+            [project.id]: project.version,
+            [existingTarget.id]: existingTarget.version,
+          });
+      } else {
+        if (existingTarget !== undefined)
+          return precondition(command, occurredAt);
+        if (!exactExpected(command, { [project.id]: project.version }))
+          return versionConflict(command, occurredAt, {
+            [project.id]: project.version,
+          });
+      }
+
+      let target: StrategicRecord;
+      if (destination.mode === "merge") {
+        target = {
+          ...existingTarget!,
+          reclassifiedFromProjectIds: [
+            ...new Set([
+              ...(existingTarget!.reclassifiedFromProjectIds ?? []),
+              project.id,
+            ]),
+          ].sort(),
+          version: existingTarget!.version + 1,
+          updatedAt: occurredAt,
+        };
+        if (!transaction.updateStrategicRecord(target, existingTarget!.version))
+          return versionConflict(command, occurredAt, {
+            [project.id]: project.version,
+            [existingTarget!.id]: existingTarget!.version,
+          });
+      } else {
+        const common = {
+          id: targetId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          createdBy: context.principalId,
+          occurredAt,
+        };
+        if (destination.kind === "area")
+          target = createArea({
+            ...common,
+            title: destination.title,
+            ...(destination.responsibility === undefined
+              ? {}
+              : { responsibility: destination.responsibility }),
+          });
+        else if (destination.kind === "initiative")
+          target = createInitiative({
+            ...common,
+            title: destination.title,
+            ...(destination.intendedOutcome === undefined
+              ? {}
+              : { intendedOutcome: destination.intendedOutcome }),
+          });
+        else {
+          const organization = transaction.getStrategicRecord(
+            destination.organizationId,
+          );
+          const people = [
+            ...destination.personIds,
+            ...(destination.ownerPersonId === undefined
+              ? []
+              : [destination.ownerPersonId]),
+          ].map((id) => transaction.getStrategicRecord(id));
+          const evidence = destination.evidenceSourceIds.map((id) =>
+            transaction.getKnowledgeSource(id),
+          );
+          if (
+            organization?.kind !== "organization" ||
+            organization.workspaceId !== project.workspaceId ||
+            organization.spaceId !== project.spaceId ||
+            !recordIsActive(organization) ||
+            people.some(
+              (person) =>
+                person?.kind !== "person" ||
+                person.workspaceId !== project.workspaceId ||
+                person.spaceId !== project.spaceId ||
+                !recordIsActive(person),
+            ) ||
+            evidence.some(
+              (source) =>
+                source === undefined ||
+                source.workspaceId !== project.workspaceId ||
+                source.spaceId !== project.spaceId ||
+                !recordIsActive(source),
+            ) ||
+            !effectiveCommercialDefaults(
+              transaction.getWorkspace(project.workspaceId)!,
+            ).stages.some((stage) => stage.id === destination.stage)
+          )
+            return precondition(command, occurredAt);
+          target = createOpportunity({
+            ...common,
+            title: destination.title,
+            organizationId: destination.organizationId,
+            personIds: destination.personIds,
+            ...(destination.ownerPersonId === undefined
+              ? {}
+              : { ownerPersonId: destination.ownerPersonId }),
+            need: destination.need,
+            qualification: destination.qualification,
+            ...(destination.estimate === undefined
+              ? {}
+              : { estimate: destination.estimate }),
+            stage: destination.stage,
+            nextAction: destination.nextAction,
+            evidenceSourceIds: destination.evidenceSourceIds,
+          });
+        }
+        target = {
+          ...target,
+          reclassifiedFromProjectIds: [project.id],
+        };
+        transaction.insertStrategicRecord(target);
+      }
+
+      const updatedProject: Project = {
+        ...project,
+        reclassifiedTo: {
+          kind: destination.kind,
+          targetId,
+          commandId: command.commandId,
+        },
+        version: project.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateProject(updatedProject, project.version))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+          ...(destination.mode === "merge" && existingTarget !== undefined
+            ? { [existingTarget.id]: existingTarget.version }
+            : {}),
+        });
+
+      const history = projectReclassificationHistory(transaction, project);
+
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.reclassified",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: updatedProject.version,
+          occurredAt,
+        },
+        {
+          [updatedProject.id]: updatedProject.version,
+          [target.id]: target.version,
+        },
+        ["reclassifiedTo", "reclassifiedFromProjectIds"],
+        {
+          diagnosticCode: "project.reclassified",
+          projection: {
+            kind: "project.reclassified",
+            projectId: project.id,
+            targetKind: destination.kind,
+            targetId,
+            mode: destination.mode,
+            projectVersion: updatedProject.version,
+            targetVersion: target.version,
+            history,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "project_reclassification.restore",
+          projectId: project.id,
+          targetId: target.id,
+          mode: destination.mode,
+          priorTargetProjectIds:
+            existingTarget?.reclassifiedFromProjectIds ?? [],
+          resultingProjectVersion: updatedProject.version,
+          resultingTargetVersion: target.version,
+        },
+        { [updatedProject.id]: "project", [target.id]: "strategicRecord" },
+      );
+    }
     case "document.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (transaction.getDocument(command.payload.documentId) !== undefined) {
@@ -4443,6 +4954,36 @@ export const executeWave2Command = (
         },
       );
     }
+    case "area.archive":
+    case "area.restore": {
+      const current = transaction.getStrategicRecord(command.payload.areaId);
+      if (current?.kind !== "area" || strategicRecordIsDeleted(current))
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const state =
+        command.commandName === "area.archive" ? "archived" : "active";
+      if (current.state === state) return precondition(command, occurredAt);
+      const record: typeof current = {
+        ...current,
+        state,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state"],
+      );
+    }
     case "initiative.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
@@ -4514,6 +5055,38 @@ export const executeWave2Command = (
             : { priorOutcome: current.intendedOutcome }),
           resultingVersion: record.version,
         },
+      );
+    }
+    case "initiative.close":
+    case "initiative.reopen": {
+      const current = transaction.getStrategicRecord(
+        command.payload.initiativeId,
+      );
+      if (current?.kind !== "initiative" || strategicRecordIsDeleted(current))
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const state =
+        command.commandName === "initiative.close" ? "closed" : "active";
+      if (current.state === state) return precondition(command, occurredAt);
+      const record: typeof current = {
+        ...current,
+        state,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state"],
       );
     }
     case "work.linkCreate": {
@@ -6425,6 +6998,168 @@ export const executeWave2Command = (
         },
       );
     }
+    case "project.checkInAdd": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (
+        project === undefined ||
+        project.workspaceId !== command.workspaceId ||
+        !recordIsActive(project) ||
+        transaction.getProjectCheckIn(command.payload.checkInId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      const sources = command.payload.evidenceSourceIds.map((sourceId) =>
+        transaction.getKnowledgeSource(sourceId),
+      );
+      const references = command.payload.references.map((reference) =>
+        resolveProjectCheckInReference(
+          transaction,
+          command.workspaceId,
+          reference,
+        ),
+      );
+      const superseded =
+        command.payload.supersedesCheckInId === undefined
+          ? undefined
+          : transaction.getProjectCheckIn(command.payload.supersedesCheckInId);
+      if (
+        sources.some(
+          (source) =>
+            source === undefined ||
+            source.spaceId !== project.spaceId ||
+            !recordIsActive(source),
+        ) ||
+        references.some(
+          (reference) =>
+            reference === undefined || reference.spaceId !== project.spaceId,
+        ) ||
+        (command.payload.supersedesCheckInId !== undefined &&
+          (superseded === undefined ||
+            superseded.projectId !== project.id ||
+            superseded.spaceId !== project.spaceId ||
+            superseded.state !== "active"))
+      )
+        return precondition(command, occurredAt);
+      const expected: Record<string, number> = {
+        [project.id]: project.version,
+      };
+      for (const source of sources) expected[source!.id] = source!.version;
+      for (const reference of references)
+        expected[reference!.reference.recordId] = reference!.version;
+      if (superseded !== undefined)
+        expected[superseded.id] = superseded.version;
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      if (superseded?.supersededByCheckInId !== undefined)
+        return precondition(command, occurredAt);
+      const claimedPredecessor =
+        superseded === undefined
+          ? undefined
+          : {
+              ...superseded,
+              supersededByCheckInId: command.payload.checkInId,
+              version: superseded.version + 1,
+            };
+      if (
+        claimedPredecessor !== undefined &&
+        !transaction.updateProjectCheckIn(
+          claimedPredecessor,
+          superseded!.version,
+        )
+      )
+        return versionConflict(command, occurredAt, expected);
+      const checkIn = createProjectCheckIn({
+        id: ProjectCheckInIdSchema.parse(command.payload.checkInId),
+        workspaceId: command.workspaceId,
+        spaceId: project.spaceId,
+        projectId: project.id,
+        summary: command.payload.summary,
+        ...(command.payload.waitingOn === undefined
+          ? {}
+          : { waitingOn: command.payload.waitingOn }),
+        ...(command.payload.nextCheckpointAt === undefined
+          ? {}
+          : { nextCheckpointAt: command.payload.nextCheckpointAt }),
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        references: command.payload.references,
+        ...(command.payload.supersedesCheckInId === undefined
+          ? {}
+          : { supersedesCheckInId: command.payload.supersedesCheckInId }),
+        authorPrincipalId: context.principalId,
+        authorPrincipalKind: context.principalKind,
+        authorGrantId: context.grantId,
+        ...(context.hostRun?.agentRunId === undefined
+          ? {}
+          : { agentRunId: context.hostRun.agentRunId }),
+        ...(context.hostRun?.runId === undefined
+          ? {}
+          : { hostRunId: context.hostRun.runId }),
+        createdAt: occurredAt,
+      });
+      transaction.insertProjectCheckIn(checkIn);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.check_in_added",
+          workspaceId: checkIn.workspaceId,
+          spaceId: checkIn.spaceId,
+          aggregateId: checkIn.id,
+          aggregateVersion: checkIn.version,
+          projectId: checkIn.projectId,
+          occurredAt,
+        },
+        {
+          [checkIn.id]: checkIn.version,
+          ...(claimedPredecessor === undefined
+            ? {}
+            : { [claimedPredecessor.id]: claimedPredecessor.version }),
+        },
+        [
+          "summary",
+          ...(checkIn.waitingOn === undefined ? [] : ["waitingOn"]),
+          ...(checkIn.nextCheckpointAt === undefined
+            ? []
+            : ["nextCheckpointAt"]),
+          ...(checkIn.evidenceSourceIds.length === 0
+            ? []
+            : ["evidenceSourceIds"]),
+          ...(checkIn.references.length === 0 ? [] : ["references"]),
+        ],
+        {
+          diagnosticCode: "project.check_in_added",
+          projection: {
+            kind: "project.check_in_added",
+            checkInId: checkIn.id,
+            projectId: checkIn.projectId,
+            version: checkIn.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: checkIn.workspaceId,
+          spaceId: checkIn.spaceId,
+          kind: "project_check_in.void",
+          checkInId: checkIn.id,
+          resultingVersion: checkIn.version,
+          ...(claimedPredecessor === undefined
+            ? {}
+            : {
+                predecessorCheckInId: claimedPredecessor.id,
+                resultingPredecessorVersion: claimedPredecessor.version,
+              }),
+        },
+        {
+          [checkIn.id]: "projectCheckIn",
+          ...(claimedPredecessor === undefined
+            ? {}
+            : { [claimedPredecessor.id]: "projectCheckIn" as const }),
+        },
+      );
+    }
     case "project.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       const projectId = ProjectIdSchema.parse(
@@ -6678,6 +7413,65 @@ export const executeWave2Command = (
         },
       );
     }
+    case "project.setAttentionState": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (
+        project === undefined ||
+        project.recordState === "removed" ||
+        project.lifecycle === "closed" ||
+        projectAttentionState(project) === command.payload.attentionState
+      )
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [project.id]: project.version }))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      const updated = setProjectAttentionState(
+        project,
+        command.payload.attentionState,
+        occurredAt,
+      );
+      if (!transaction.updateProject(updated, project.version))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.attention_state_changed",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["attentionState"],
+        {
+          diagnosticCode: "project.attention_state_changed",
+          projection: {
+            kind: "project.attention_state_changed",
+            projectId: updated.id,
+            attentionState: projectAttentionState(updated),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "project.restore_attention_state",
+          projectId: project.id,
+          priorAttentionState: projectAttentionState(project),
+          resultingVersion: updated.version,
+        },
+      );
+    }
     case "task.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       const existing = transaction.getTask(command.payload.taskId);
@@ -6788,6 +7582,118 @@ export const executeWave2Command = (
         },
       );
     }
+    case "task.createInProject": {
+      const project = transaction.getProject(command.payload.projectId);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        project === undefined ||
+        workspace === undefined ||
+        project.workspaceId !== command.workspaceId ||
+        project.spaceId !== command.payload.spaceId ||
+        project.lifecycle !== "active" ||
+        project.recordState === "removed"
+      )
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [project.id]: project.version }))
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      const existing = transaction.getTask(command.payload.taskId);
+      if (existing !== undefined)
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      const task = createTask({
+        id: command.payload.taskId,
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        ...(command.payload.description === undefined
+          ? {}
+          : { description: command.payload.description }),
+        ...(command.payload.nextAction === undefined
+          ? {}
+          : { nextAction: command.payload.nextAction }),
+        ...(command.payload.startAt === undefined
+          ? {}
+          : { startAt: command.payload.startAt }),
+        ...(command.payload.dueAt === undefined
+          ? {}
+          : { dueAt: command.payload.dueAt }),
+        ...(command.payload.priority === undefined
+          ? {}
+          : { priority: command.payload.priority }),
+        statusId: workspace.defaultTaskStatusId,
+        createdBy: context.principalId,
+        createdByKind: context.principalKind,
+        occurredAt,
+      });
+      const relation = relateTaskToProject({
+        id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+        task,
+        project,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertTask(task);
+      transaction.insertRelation(relation);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.created",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: task.version,
+          occurredAt,
+        },
+        { [task.id]: task.version, [relation.id]: relation.version },
+        ["title", "projectId", "statusId"],
+        {
+          diagnosticCode: "task.created_in_project",
+          projection: {
+            kind: "task.created_in_project",
+            taskId: task.id,
+            projectId: project.id,
+            relationId: relation.id,
+            spaceId: task.spaceId,
+            title: task.title,
+            ...(task.description === undefined
+              ? {}
+              : { description: task.description }),
+            ...(task.nextAction === undefined
+              ? {}
+              : { nextAction: task.nextAction }),
+            ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+            ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+            ...(task.priority === undefined ? {} : { priority: task.priority }),
+            statusId: task.statusId,
+            completionState: task.completionState,
+            taskVersion: task.version,
+            projectVersion: project.version,
+            relationVersion: relation.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task_project.undo_create",
+          taskId: task.id,
+          relationId: relation.id,
+          resultingTaskVersion: task.version,
+          resultingRelationVersion: relation.version,
+        },
+        { [task.id]: "task", [relation.id]: "relation" },
+      );
+    }
     case "task.setCalendarBlock": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined || task.recordState !== "active")
@@ -6891,13 +7797,22 @@ export const executeWave2Command = (
       // of merging it into command.precondition_failed. Tasks have no
       // recordType — that field exists because strategicRecord covers
       // fifteen types.
-      const activeChildren = transaction
-        .listTasksInSpace(task.workspaceId, task.spaceId)
-        .filter((candidate) => candidate.parentTaskId === task.id)
-        .map((candidate) => ({
-          recordId: candidate.id,
-          recordKind: "task" as const,
-        }));
+      const activeChildren = [
+        ...transaction
+          .listTasksInSpace(task.workspaceId, task.spaceId)
+          .filter((candidate) => candidate.parentTaskId === task.id)
+          .map((candidate) => ({
+            recordId: candidate.id,
+            recordKind: "task" as const,
+          })),
+        ...projectCheckInReferenceDependents(
+          transaction,
+          task.workspaceId,
+          task.spaceId,
+          "task",
+          task.id,
+        ),
+      ];
       if (activeChildren.length > 0)
         return blocked(command, occurredAt, activeChildren);
       const priorRecordState = task.recordState;
@@ -9416,24 +10331,36 @@ export const executeWave2Command = (
         command.payload.relationType === "task_contributes_to_project"
           ? transaction.getProject(command.payload.projectId)
           : undefined;
-      const opportunity =
-        command.payload.relationType === "task_contributes_to_opportunity"
-          ? transaction.getStrategicRecord(command.payload.opportunityId)
-          : undefined;
-      const target =
+      const strategicTarget =
         command.payload.relationType === "task_contributes_to_project"
-          ? project
-          : opportunity?.kind === "opportunity"
-            ? opportunity
-            : undefined;
+          ? undefined
+          : transaction.getStrategicRecord(
+              command.payload.relationType === "task_contributes_to_opportunity"
+                ? command.payload.opportunityId
+                : command.payload.relationType === "task_contributes_to_area"
+                  ? command.payload.areaId
+                  : command.payload.initiativeId,
+            );
+      const target =
+        project ??
+        (command.payload.relationType === "task_contributes_to_opportunity" &&
+        strategicTarget?.kind === "opportunity"
+          ? strategicTarget
+          : command.payload.relationType === "task_contributes_to_area" &&
+              strategicTarget?.kind === "area"
+            ? strategicTarget
+            : command.payload.relationType === "task_advances_initiative" &&
+                strategicTarget?.kind === "initiative"
+              ? strategicTarget
+              : undefined);
       // ADR-043 §5 — a removed Task takes no new relation, and neither does a
       // removed record at the other end.
       if (
         task === undefined ||
         target === undefined ||
         task.recordState !== "active" ||
-        (opportunity !== undefined &&
-          strategicRecordState(opportunity) !== "active")
+        (strategicTarget !== undefined &&
+          strategicRecordState(strategicTarget) !== "active")
       )
         return precondition(command, occurredAt);
       if (
@@ -9455,27 +10382,62 @@ export const executeWave2Command = (
           currentVersions: { [existing.id]: existing.version },
         });
       }
+      const relationId = RelationIdSchema.parse(
+        dependencies.ids.next("relation"),
+      );
       const relation =
-        project === undefined
-          ? relateTaskToOpportunity({
-              id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+        command.payload.relationType === "task_contributes_to_project"
+          ? relateTaskToProject({
+              id: relationId,
               task,
-              opportunity: {
-                id: StrategicRecordIdSchema.parse(target.id),
-                workspaceId: target.workspaceId,
-                spaceId: target.spaceId,
-              },
+              project: project!,
               createdBy: context.principalId,
               occurredAt,
             })
-          : relateTaskToProject({
-              id: RelationIdSchema.parse(dependencies.ids.next("relation")),
-              task,
-              project,
-              createdBy: context.principalId,
-              occurredAt,
-            });
+          : command.payload.relationType === "task_contributes_to_opportunity"
+            ? relateTaskToOpportunity({
+                id: relationId,
+                task,
+                opportunity: {
+                  id: StrategicRecordIdSchema.parse(target.id),
+                  workspaceId: target.workspaceId,
+                  spaceId: target.spaceId,
+                },
+                createdBy: context.principalId,
+                occurredAt,
+              })
+            : command.payload.relationType === "task_contributes_to_area"
+              ? relateTaskToArea({
+                  id: relationId,
+                  task,
+                  area: {
+                    id: StrategicRecordIdSchema.parse(target.id),
+                    workspaceId: target.workspaceId,
+                    spaceId: target.spaceId,
+                  },
+                  createdBy: context.principalId,
+                  occurredAt,
+                })
+              : relateTaskToInitiative({
+                  id: relationId,
+                  task,
+                  initiative: {
+                    id: StrategicRecordIdSchema.parse(target.id),
+                    workspaceId: target.workspaceId,
+                    spaceId: target.spaceId,
+                  },
+                  createdBy: context.principalId,
+                  occurredAt,
+                });
       transaction.insertRelation(relation);
+      const relationTargetField =
+        relation.relationType === "task_contributes_to_project"
+          ? "projectId"
+          : relation.relationType === "task_contributes_to_opportunity"
+            ? "opportunityId"
+            : relation.relationType === "task_contributes_to_area"
+              ? "areaId"
+              : "initiativeId";
       return appendJournal(
         dependencies,
         transaction,
@@ -9494,7 +10456,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [relation.id]: relation.version },
-        ["relationType", "taskId", "projectId"],
+        ["relationType", "taskId", relationTargetField],
         {
           diagnosticCode: "relation.created",
           projection: {
@@ -9621,10 +10583,18 @@ export /**
  */
 const relationFarEnd = (
   relation: TaskWorkRelation,
-): { projectId: ProjectId } | { opportunityId: StrategicRecordId } =>
+):
+  | { projectId: ProjectId }
+  | { opportunityId: StrategicRecordId }
+  | { areaId: StrategicRecordId }
+  | { initiativeId: StrategicRecordId } =>
   relation.relationType === "task_contributes_to_project"
     ? { projectId: relation.projectId }
-    : { opportunityId: relation.opportunityId };
+    : relation.relationType === "task_contributes_to_opportunity"
+      ? { opportunityId: relation.opportunityId }
+      : relation.relationType === "task_contributes_to_area"
+        ? { areaId: relation.areaId }
+        : { initiativeId: relation.initiativeId };
 
 export const descriptorRecordIds = (
   descriptor: UndoDescriptor,
@@ -9632,7 +10602,17 @@ export const descriptorRecordIds = (
   switch (descriptor.kind) {
     case "project.restore_outcome":
     case "project.restore_details":
+    case "project.restore_attention_state":
       return [descriptor.projectId];
+    case "project_reclassification.restore":
+      return [descriptor.projectId, descriptor.targetId];
+    case "project_check_in.void":
+      return [
+        descriptor.checkInId,
+        ...(descriptor.predecessorCheckInId === undefined
+          ? []
+          : [descriptor.predecessorCheckInId]),
+      ];
     case "area.restore_responsibility":
       return [descriptor.areaId];
     case "initiative.restore_outcome":
@@ -9678,6 +10658,8 @@ export const descriptorRecordIds = (
     case "task.restore_parent":
     case "task.restore_operational_state":
       return [descriptor.taskId];
+    case "task_project.undo_create":
+      return [descriptor.taskId, descriptor.relationId];
     case "strategic.undo_create":
     case "strategic.restore_record_state":
     case "record.undo_create":
@@ -9760,6 +10742,7 @@ interface RevertContext {
  */
 const compensationRemovesRecord = (descriptor: UndoDescriptor): boolean =>
   descriptor.kind === "task.undo_create" ||
+  descriptor.kind === "task_project.undo_create" ||
   descriptor.kind === "strategic.undo_create" ||
   descriptor.kind === "record.undo_create" ||
   // The compensation `record.relate` records: it removes the relation outright,
@@ -9864,8 +10847,45 @@ const descriptorState = (
     };
   }
   switch (descriptor.kind) {
+    case "project_reclassification.restore": {
+      const project = view.getProject(descriptor.projectId);
+      const target = view.getStrategicRecord(descriptor.targetId);
+      if (
+        project?.version !== descriptor.resultingProjectVersion ||
+        target?.version !== descriptor.resultingTargetVersion ||
+        project.reclassifiedTo?.targetId !== target.id ||
+        target.reclassifiedFromProjectIds?.includes(project.id) !== true
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      if (
+        descriptor.mode === "create" &&
+        strategicRecordDependents(view, target).some(
+          (dependent) => revert?.removed.has(dependent.recordId) !== true,
+        )
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "still_referenced",
+        };
+      return {
+        available: true,
+        recordIds: [project.id, target.id],
+        versions: {
+          [project.id]: project.version,
+          [target.id]: target.version,
+        },
+      };
+    }
     case "project.restore_details":
-    case "project.restore_outcome": {
+    case "project.restore_outcome":
+    case "project.restore_attention_state": {
       // Ta gałąź jest tym, co chroni rzutowanie `as Project` w zastosowaniu
       // kompensacji niżej: bez sprawdzenia wersji cofnięcie sięgałoby po rekord,
       // który mógł się zmienić albo zniknąć.
@@ -9875,6 +10895,40 @@ const descriptorState = (
             available: true,
             recordIds: [project.id],
             versions: { [project.id]: project.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "project_check_in.void": {
+      const checkIn = view.getProjectCheckIn(descriptor.checkInId);
+      const predecessor =
+        descriptor.predecessorCheckInId === undefined
+          ? undefined
+          : view.getProjectCheckIn(descriptor.predecessorCheckInId);
+      const predecessorMatches =
+        descriptor.predecessorCheckInId === undefined
+          ? descriptor.resultingPredecessorVersion === undefined
+          : predecessor?.version === descriptor.resultingPredecessorVersion &&
+            predecessor?.supersededByCheckInId === checkIn?.id;
+      return checkIn?.version === descriptor.resultingVersion &&
+        checkIn.state === "active" &&
+        predecessorMatches
+        ? {
+            available: true,
+            recordIds: [
+              checkIn.id,
+              ...(predecessor === undefined ? [] : [predecessor.id]),
+            ],
+            versions: {
+              [checkIn.id]: checkIn.version,
+              ...(predecessor === undefined
+                ? {}
+                : { [predecessor.id]: predecessor.version }),
+            },
           }
         : {
             available: false,
@@ -10110,6 +11164,31 @@ const descriptorState = (
             available: true,
             recordIds: [workspace.id],
             versions: { [workspace.id]: workspace.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "task_project.undo_create": {
+      const task = view.getTask(descriptor.taskId);
+      const relation = view.getRelation(descriptor.relationId);
+      return task?.recordState === "active" &&
+        task.completionState === "open" &&
+        task.version === descriptor.resultingTaskVersion &&
+        relation?.state === "active" &&
+        relation.version === descriptor.resultingRelationVersion &&
+        relation.relationType === "task_contributes_to_project" &&
+        relation.taskId === task.id
+        ? {
+            available: true,
+            recordIds: [task.id, relation.id],
+            versions: {
+              [task.id]: task.version,
+              [relation.id]: relation.version,
+            },
           }
         : {
             available: false,
@@ -10838,6 +11917,7 @@ type CompensatedRecordKinds = Record<
   | "capture"
   | "task"
   | "project"
+  | "projectCheckIn"
   | "document"
   | "folder"
   | "knowledgeSource"
@@ -10873,7 +11953,53 @@ const compensateDescriptor = (
   | { readonly ok: false } => {
   let compensatedVersions: Record<string, number>;
   let compensatedKinds: CompensatedRecordKinds;
-  if (descriptor.kind === "project.restore_details") {
+  if (descriptor.kind === "project_reclassification.restore") {
+    const project = transaction.getProject(descriptor.projectId);
+    const target = transaction.getStrategicRecord(descriptor.targetId);
+    if (project === undefined || target === undefined) return { ok: false };
+    const { reclassifiedTo: _reclassifiedTo, ...projectRest } = project;
+    void _reclassifiedTo;
+    const restoredProject: Project = {
+      ...projectRest,
+      version: project.version + 1,
+      updatedAt: occurredAt,
+    };
+    const restoredTarget: StrategicRecord =
+      descriptor.mode === "create"
+        ? {
+            ...target,
+            recordState: "removed",
+            reclassifiedFromProjectIds: descriptor.priorTargetProjectIds,
+            version: target.version + 1,
+            updatedAt: occurredAt,
+          }
+        : {
+            ...target,
+            reclassifiedFromProjectIds: descriptor.priorTargetProjectIds,
+            version: target.version + 1,
+            updatedAt: occurredAt,
+          };
+    transaction.updateProject(restoredProject, project.version);
+    transaction.updateStrategicRecord(restoredTarget, target.version);
+    compensatedVersions = {
+      [restoredProject.id]: restoredProject.version,
+      [restoredTarget.id]: restoredTarget.version,
+    };
+    compensatedKinds = {
+      [restoredProject.id]: "project",
+      [restoredTarget.id]: "strategicRecord",
+    };
+  } else if (descriptor.kind === "project.restore_attention_state") {
+    const project = transaction.getProject(descriptor.projectId) as Project;
+    const restored = setProjectAttentionState(
+      project,
+      descriptor.priorAttentionState,
+      occurredAt,
+    );
+    transaction.updateProject(restored, project.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "project" };
+  } else if (descriptor.kind === "project.restore_details") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = updateProjectDetails(
       project,
@@ -11326,6 +12452,27 @@ const compensateDescriptor = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task_project.undo_create") {
+    const relation = transaction.getRelation(descriptor.relationId);
+    const task = transaction.getTask(descriptor.taskId);
+    if (relation === undefined || task === undefined) return { ok: false };
+    const removedRelation = removeTaskProjectRelation(relation, occurredAt);
+    transaction.updateRelation(removedRelation, relation.version);
+    const removedTask: Task = {
+      ...task,
+      recordState: "removed",
+      version: task.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateTask(removedTask, task.version);
+    compensatedVersions = {
+      [removedTask.id]: removedTask.version,
+      [removedRelation.id]: removedRelation.version,
+    };
+    compensatedKinds = {
+      [removedTask.id]: "task",
+      [removedRelation.id]: "relation",
+    };
   } else if (descriptor.kind === "task.undo_create") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const removed: Task = {
@@ -11838,6 +12985,34 @@ const compensateDescriptor = (
     transaction.updateDocument(restored, document.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "document" };
+  } else if (descriptor.kind === "project_check_in.void") {
+    const checkIn = transaction.getProjectCheckIn(descriptor.checkInId)!;
+    const voided = voidProjectCheckIn(checkIn, context.principalId, occurredAt);
+    transaction.updateProjectCheckIn(voided, checkIn.version);
+    const predecessor =
+      descriptor.predecessorCheckInId === undefined
+        ? undefined
+        : transaction.getProjectCheckIn(descriptor.predecessorCheckInId);
+    const released =
+      predecessor === undefined
+        ? undefined
+        : (() => {
+            const { supersededByCheckInId: _claimed, ...rest } = predecessor;
+            void _claimed;
+            return { ...rest, version: predecessor.version + 1 };
+          })();
+    if (released !== undefined)
+      transaction.updateProjectCheckIn(released, predecessor!.version);
+    compensatedVersions = {
+      [voided.id]: voided.version,
+      ...(released === undefined ? {} : { [released.id]: released.version }),
+    };
+    compensatedKinds = {
+      [voided.id]: "projectCheckIn",
+      ...(released === undefined
+        ? {}
+        : { [released.id]: "projectCheckIn" as const }),
+    };
   } else if (descriptor.kind === "knowledge.restore_evidence") {
     const document = transaction.getDocument(descriptor.documentId)!;
     const restored = setDocumentEvidence(document, {
@@ -12297,6 +13472,125 @@ export const executeWave2Query = (
         : "query.consistency_unavailable",
     );
   }
+  if (query.queryName === "project.reclassificationPreview") {
+    const project = view.getProject(query.parameters.projectId);
+    if (
+      project === undefined ||
+      project.workspaceId !== query.workspaceId ||
+      !canViewSpace(view, context, query.workspaceId, project.spaceId) ||
+      !dependencies.authorization.authorize({
+        context,
+        capability: QUERY_CAPABILITIES[query.queryName].capability,
+        workspaceId: query.workspaceId,
+        spaceId: project.spaceId,
+      })
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+
+    const destination = query.parameters.destination;
+    const target = view.getStrategicRecord(destination.targetId);
+    let blockedReason:
+      | "source_inactive"
+      | "already_reclassified"
+      | "target_unavailable"
+      | "target_kind_mismatch"
+      | "target_scope_mismatch"
+      | "target_id_in_use"
+      | "destination_invalid"
+      | undefined;
+    if (!recordIsActive(project) || project.lifecycle !== "active")
+      blockedReason = "source_inactive";
+    else if (project.reclassifiedTo !== undefined)
+      blockedReason = "already_reclassified";
+    else if (destination.mode === "create" && target !== undefined)
+      blockedReason = "target_id_in_use";
+    else if (destination.mode === "merge" && target === undefined)
+      blockedReason = "target_unavailable";
+    else if (
+      destination.mode === "merge" &&
+      target !== undefined &&
+      (target.workspaceId !== project.workspaceId ||
+        target.spaceId !== project.spaceId ||
+        !recordIsActive(target))
+    )
+      blockedReason = "target_unavailable";
+    else if (
+      destination.mode === "merge" &&
+      target !== undefined &&
+      target.kind !== destination.kind
+    )
+      blockedReason = "target_kind_mismatch";
+    else if (
+      destination.mode === "create" &&
+      destination.kind === "opportunity"
+    ) {
+      const organization = view.getStrategicRecord(destination.organizationId);
+      const people = [
+        ...destination.personIds,
+        ...(destination.ownerPersonId === undefined
+          ? []
+          : [destination.ownerPersonId]),
+      ].map((id) => view.getStrategicRecord(id));
+      const evidence = destination.evidenceSourceIds.map((id) =>
+        view.getKnowledgeSource(id),
+      );
+      const workspace = view.getWorkspace(project.workspaceId);
+      if (
+        organization?.kind !== "organization" ||
+        organization.workspaceId !== project.workspaceId ||
+        organization.spaceId !== project.spaceId ||
+        !recordIsActive(organization) ||
+        people.some(
+          (person) =>
+            person?.kind !== "person" ||
+            person.workspaceId !== project.workspaceId ||
+            person.spaceId !== project.spaceId ||
+            !recordIsActive(person),
+        ) ||
+        evidence.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== project.workspaceId ||
+            source.spaceId !== project.spaceId ||
+            !recordIsActive(source),
+        ) ||
+        workspace === undefined ||
+        !effectiveCommercialDefaults(workspace).stages.some(
+          (stage) => stage.id === destination.stage,
+        )
+      )
+        blockedReason = "destination_invalid";
+    }
+
+    const history = projectReclassificationHistory(view, project);
+    const targetTitle =
+      target === undefined
+        ? undefined
+        : "title" in target
+          ? target.title
+          : undefined;
+
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.reclassificationPreview",
+      projectId: project.id,
+      destination: {
+        mode: destination.mode,
+        kind: destination.kind,
+        targetId: destination.targetId,
+        ...(targetTitle === undefined ? {} : { targetTitle }),
+      },
+      canApply: blockedReason === undefined,
+      ...(blockedReason === undefined ? {} : { blockedReason }),
+      expectedVersions: {
+        [project.id]: project.version,
+        ...(destination.mode === "merge" && target !== undefined
+          ? { [target.id]: target.version }
+          : {}),
+      },
+      history,
+      finite: true,
+    });
+  }
   if (query.queryName === "work.overview") {
     const space = view.getSpace(query.parameters.spaceId);
     if (
@@ -12335,16 +13629,48 @@ export const executeWave2Query = (
     // — `record.relate` guards pair-uniqueness only — and all of them are
     // projected, because grouping by project lists such a task under each.
     const projectIdsByTask = new Map<TaskId, ProjectId[]>();
+    const areaIdsByTask = new Map<TaskId, StrategicRecordId[]>();
+    const initiativeIdsByTask = new Map<TaskId, StrategicRecordId[]>();
+    const directContextRelationsByTask = new Map<
+      TaskId,
+      Array<{
+        relationId: RelationId;
+        relationType: "task_contributes_to_area" | "task_advances_initiative";
+        targetId: StrategicRecordId;
+        version: number;
+      }>
+    >();
+    const appendId = <Id extends string>(
+      map: Map<TaskId, Id[]>,
+      taskId: TaskId,
+      id: Id,
+    ): void => {
+      const existing = map.get(taskId);
+      if (existing === undefined) map.set(taskId, [id]);
+      else existing.push(id);
+    };
     for (const relation of view.listRelations(query.workspaceId, space.id)) {
-      if (
-        relation.relationType !== "task_contributes_to_project" ||
-        relation.state !== "active"
-      )
+      if (relation.state !== "active") continue;
+      if (relation.relationType === "task_contributes_to_project") {
+        appendId(projectIdsByTask, relation.taskId, relation.projectId);
         continue;
-      const existing = projectIdsByTask.get(relation.taskId);
-      if (existing === undefined)
-        projectIdsByTask.set(relation.taskId, [relation.projectId]);
-      else existing.push(relation.projectId);
+      }
+      if (relation.relationType === "task_contributes_to_opportunity") continue;
+      if (relation.relationType === "task_contributes_to_area")
+        appendId(areaIdsByTask, relation.taskId, relation.areaId);
+      else
+        appendId(initiativeIdsByTask, relation.taskId, relation.initiativeId);
+      const contexts = directContextRelationsByTask.get(relation.taskId) ?? [];
+      contexts.push({
+        relationId: relation.id,
+        relationType: relation.relationType,
+        targetId:
+          relation.relationType === "task_contributes_to_area"
+            ? relation.areaId
+            : relation.initiativeId,
+        version: relation.version,
+      });
+      directContextRelationsByTask.set(relation.taskId, contexts);
     }
     return querySuccess(query, kernelTime, freshness, {
       kind: "work.overview",
@@ -12392,6 +13718,10 @@ export const executeWave2Query = (
             ? {}
             : { calendarBlock: task.calendarBlock }),
           projectIds: projectIdsByTask.get(task.id) ?? [],
+          areaIds: areaIdsByTask.get(task.id) ?? [],
+          initiativeIds: initiativeIdsByTask.get(task.id) ?? [],
+          directContextRelations:
+            directContextRelationsByTask.get(task.id) ?? [],
           ...(() => {
             const fields = taskFieldsWithComputedValues(
               task.fields,
@@ -12423,6 +13753,9 @@ export const executeWave2Query = (
           title: area.title,
           ...responsibilityFields(area.responsibility),
           state: area.state,
+          ...(area.reclassifiedFromProjectIds === undefined
+            ? {}
+            : { reclassifiedFromProjectIds: area.reclassifiedFromProjectIds }),
           version: area.version,
         })),
       initiatives: records
@@ -12437,6 +13770,12 @@ export const executeWave2Query = (
           title: initiative.title,
           ...intendedOutcomeFields(initiative.intendedOutcome),
           state: initiative.state,
+          ...(initiative.reclassifiedFromProjectIds === undefined
+            ? {}
+            : {
+                reclassifiedFromProjectIds:
+                  initiative.reclassifiedFromProjectIds,
+              }),
           version: initiative.version,
         })),
       links: records
@@ -12677,42 +14016,63 @@ export const executeWave2Query = (
   const spaceIds =
     query.queryName === "search.global"
       ? query.parameters.spaceIds
-      : query.queryName === "project.operationalOverview"
+      : query.queryName === "project.operationalOverview" ||
+          query.queryName === "project.checkInList"
         ? (() => {
             const project = view.getProject(query.parameters.projectId);
             return project?.workspaceId === query.workspaceId
               ? [project.spaceId]
               : [];
           })()
-        : query.queryName === "organization.operationalOverview"
-          ? [query.parameters.spaceId]
-          : query.queryName === "knowledge.documentContext"
-            ? (() => {
-                const document = view.getDocument(query.parameters.documentId);
-                return document?.workspaceId === query.workspaceId
-                  ? [document.spaceId]
-                  : [];
-              })()
-            : query.queryName === "recovery.preview"
+        : query.queryName === "area.operationalOverview" ||
+            query.queryName === "initiative.operationalOverview"
+          ? (() => {
+              const targetId =
+                query.queryName === "area.operationalOverview"
+                  ? query.parameters.areaId
+                  : query.parameters.initiativeId;
+              const record = view.getStrategicRecord(targetId);
+              const expectedKind =
+                query.queryName === "area.operationalOverview"
+                  ? "area"
+                  : "initiative";
+              return record?.workspaceId === query.workspaceId &&
+                record.kind === expectedKind &&
+                !strategicRecordIsDeleted(record)
+                ? [record.spaceId]
+                : [];
+            })()
+          : query.queryName === "organization.operationalOverview"
+            ? [query.parameters.spaceId]
+            : query.queryName === "knowledge.documentContext"
               ? (() => {
-                  const receipt = view.getAuditReceiptByCommand(
-                    query.parameters.targetCommandId,
+                  const document = view.getDocument(
+                    query.parameters.documentId,
                   );
-                  return receipt?.workspaceId === query.workspaceId
-                    ? [receipt.spaceId]
+                  return document?.workspaceId === query.workspaceId
+                    ? [document.spaceId]
                     : [];
                 })()
-              : query.queryName === "document.backlinks"
+              : query.queryName === "recovery.preview"
                 ? (() => {
-                    const target = resolveDocumentEntityTarget(
-                      view,
-                      query.workspaceId,
-                      query.parameters.targetKind,
-                      query.parameters.targetId,
+                    const receipt = view.getAuditReceiptByCommand(
+                      query.parameters.targetCommandId,
                     );
-                    return target === undefined ? [] : [target.spaceId];
+                    return receipt?.workspaceId === query.workspaceId
+                      ? [receipt.spaceId]
+                      : [];
                   })()
-                : [query.parameters.spaceId];
+                : query.queryName === "document.backlinks"
+                  ? (() => {
+                      const target = resolveDocumentEntityTarget(
+                        view,
+                        query.workspaceId,
+                        query.parameters.targetKind,
+                        query.parameters.targetId,
+                      );
+                      return target === undefined ? [] : [target.spaceId];
+                    })()
+                  : [query.parameters.spaceId];
   if (
     spaceIds.length === 0 ||
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
@@ -12777,6 +14137,147 @@ export const executeWave2Query = (
       hasMore: start + page.length < events.length,
     });
   }
+  if (query.queryName === "opportunity.list") {
+    const records = view
+      .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+      .filter(
+        (record): record is Extract<StrategicRecord, { kind: "opportunity" }> =>
+          record.kind === "opportunity" && !strategicRecordIsDeleted(record),
+      )
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+    const snapshot = dependencies.hasher.fingerprint({ records, freshness });
+    let start = 0;
+    if (query.parameters.cursor !== undefined) {
+      const decoded = dependencies.cursorCodec.decode(query.parameters.cursor);
+      if (
+        decoded?.kind !== "opportunity_inventory" ||
+        decoded.workspaceId !== query.workspaceId ||
+        decoded.spaceId !== query.parameters.spaceId
+      )
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      if (decoded.snapshot !== snapshot)
+        return queryRejected(
+          query,
+          kernelTime,
+          "query.consistency_unavailable",
+        );
+      const anchor = records.findIndex(
+        (record) =>
+          record.id === decoded.recordId &&
+          record.createdAt === decoded.orderedAt,
+      );
+      if (anchor < 0)
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      start = anchor + 1;
+    }
+    const limit = query.parameters.limit ?? 50;
+    const page = records.slice(start, start + limit);
+    const last = page.at(-1);
+    const final = start + page.length >= records.length;
+    const nextCursor =
+      !final && last !== undefined
+        ? dependencies.cursorCodec.encode({
+            kind: "opportunity_inventory",
+            workspaceId: query.workspaceId,
+            spaceId: query.parameters.spaceId,
+            snapshot,
+            orderedAt: last.createdAt,
+            recordId: last.id,
+          })
+        : null;
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "opportunity.list",
+      items: page.map(strategicRecordProjection),
+      totalCount: records.length,
+      snapshot,
+      nextCursor,
+      final,
+      freshness,
+    });
+  }
+  if (query.queryName === "relation.list") {
+    const records = view
+      .listRelations(query.workspaceId, query.parameters.spaceId)
+      .slice()
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+    const snapshot = dependencies.hasher.fingerprint({ records, freshness });
+    let start = 0;
+    if (query.parameters.cursor !== undefined) {
+      const decoded = dependencies.cursorCodec.decode(query.parameters.cursor);
+      if (
+        decoded?.kind !== "relation_inventory" ||
+        decoded.workspaceId !== query.workspaceId ||
+        decoded.spaceId !== query.parameters.spaceId
+      )
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      if (decoded.snapshot !== snapshot)
+        return queryRejected(
+          query,
+          kernelTime,
+          "query.consistency_unavailable",
+        );
+      const anchor = records.findIndex(
+        (record) =>
+          record.id === decoded.recordId &&
+          record.createdAt === decoded.orderedAt,
+      );
+      if (anchor < 0)
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      start = anchor + 1;
+    }
+    const limit = query.parameters.limit ?? 50;
+    const page = records.slice(start, start + limit);
+    const last = page.at(-1);
+    const final = start + page.length >= records.length;
+    const nextCursor =
+      !final && last !== undefined
+        ? dependencies.cursorCodec.encode({
+            kind: "relation_inventory",
+            workspaceId: query.workspaceId,
+            spaceId: query.parameters.spaceId,
+            snapshot,
+            orderedAt: last.createdAt,
+            recordId: last.id,
+          })
+        : null;
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "relation.list",
+      items: page.map((relation) => ({
+        id: relation.id,
+        workspaceId: relation.workspaceId,
+        spaceId: relation.spaceId,
+        relationType: relation.relationType,
+        taskId: relation.taskId,
+        targetId:
+          relation.relationType === "task_contributes_to_project"
+            ? relation.projectId
+            : relation.relationType === "task_contributes_to_opportunity"
+              ? relation.opportunityId
+              : relation.relationType === "task_contributes_to_area"
+                ? relation.areaId
+                : relation.initiativeId,
+        state: relation.state,
+        ...(relation.removedAt === undefined
+          ? {}
+          : { removedAt: relation.removedAt }),
+        version: relation.version,
+        createdAt: relation.createdAt,
+      })),
+      totalCount: records.length,
+      snapshot,
+      nextCursor,
+      final,
+      freshness,
+    });
+  }
   if (query.queryName === "relationship.workspace") {
     return querySuccess(query, kernelTime, freshness, {
       kind: "relationship.workspace",
@@ -12827,6 +14328,277 @@ export const executeWave2Query = (
       freshness,
     });
   }
+  if (query.queryName === "project.checkInList") {
+    const project = view.getProject(query.parameters.projectId);
+    if (
+      project === undefined ||
+      project.workspaceId !== query.workspaceId ||
+      !recordIsActive(project)
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const checkIns = view.listProjectCheckIns(
+      query.workspaceId,
+      project.spaceId,
+      project.id,
+    );
+    const actor = (checkIn: ProjectCheckIn) => {
+      if (checkIn.authorPrincipalKind === undefined) return undefined;
+      const membership = view.getMembership(
+        query.workspaceId,
+        checkIn.authorPrincipalId,
+      );
+      const spaceGrant = view.getSpaceGrantForPrincipal(
+        query.workspaceId,
+        project.spaceId,
+        checkIn.authorPrincipalId,
+      );
+      const workspace = view.getWorkspace(query.workspaceId);
+      const visible =
+        membership !== undefined &&
+        membership.status === "active" &&
+        ((membership.role === "owner" &&
+          workspace?.rootSpaceId === project.spaceId) ||
+          spaceGrant?.status === "active");
+      if (!visible) return undefined;
+      if (checkIn.authorPrincipalKind === "agent") {
+        if (checkIn.authorGrantId === undefined) return undefined;
+        const grant = view.getAgentGrant(checkIn.authorGrantId);
+        if (
+          grant === undefined ||
+          grant.agentPrincipalId !== checkIn.authorPrincipalId ||
+          grant.status !== "active" ||
+          !grant.spaceScope.includes(project.spaceId)
+        )
+          return undefined;
+        return {
+          authorPrincipalId: checkIn.authorPrincipalId,
+          actor: {
+            displayName: grant.displayName,
+            kind: "agent" as const,
+          },
+        };
+      }
+      if (checkIn.authorPrincipalKind !== "human") return undefined;
+      return {
+        authorPrincipalId: checkIn.authorPrincipalId,
+        actor: {
+          displayName:
+            membership.displayName ??
+            (checkIn.authorPrincipalId === context.principalId
+              ? "You"
+              : "Workspace member"),
+          kind: "human" as const,
+        },
+      };
+    };
+    const items = checkIns.map((checkIn) => {
+      const attribution = actor(checkIn);
+      return {
+        id: checkIn.id,
+        projectId: checkIn.projectId,
+        summary: checkIn.summary,
+        ...(checkIn.waitingOn === undefined
+          ? {}
+          : { waitingOn: checkIn.waitingOn }),
+        ...(checkIn.nextCheckpointAt === undefined
+          ? {}
+          : { nextCheckpointAt: checkIn.nextCheckpointAt }),
+        evidenceSourceIds: checkIn.evidenceSourceIds.filter((sourceId) => {
+          const source = view.getKnowledgeSource(sourceId);
+          return source?.spaceId === project.spaceId && recordIsActive(source);
+        }),
+        references: checkIn.references.flatMap((reference) => {
+          const resolved = resolveProjectCheckInReference(
+            view,
+            query.workspaceId,
+            reference,
+          );
+          return resolved?.spaceId === project.spaceId
+            ? [{ ...reference, label: resolved.label }]
+            : [];
+        }),
+        ...(checkIn.supersedesCheckInId === undefined
+          ? {}
+          : { supersedesCheckInId: checkIn.supersedesCheckInId }),
+        ...(checkIn.supersededByCheckInId === undefined
+          ? {}
+          : { supersededByCheckInId: checkIn.supersededByCheckInId }),
+        state: checkIn.state,
+        ...(attribution === undefined
+          ? {}
+          : {
+              ...attribution,
+              ...(checkIn.agentRunId === undefined
+                ? {}
+                : { agentRunId: checkIn.agentRunId }),
+              ...(checkIn.hostRunId === undefined
+                ? {}
+                : { hostRunId: checkIn.hostRunId }),
+            }),
+        version: checkIn.version,
+        createdAt: checkIn.createdAt,
+        ...(checkIn.voidedAt === undefined
+          ? {}
+          : { voidedAt: checkIn.voidedAt }),
+      };
+    });
+    const latest = checkIns.find(
+      (checkIn) =>
+        checkIn.state === "active" &&
+        checkIn.supersededByCheckInId === undefined,
+    );
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.checkInList",
+      projectId: project.id,
+      ...(latest === undefined ? {} : { latestCheckInId: latest.id }),
+      items,
+    });
+  }
+  if (query.queryName === "project.similarCandidates") {
+    const requestedTitle = foldForCandidateSearch(query.parameters.title)
+      .replace(/\s+/g, " ")
+      .trim();
+    const requestedTokens = projectSimilarityTokens(query.parameters.title);
+    const strategic = liveStrategicRecords(
+      view,
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
+    const requestedClientIds = new Set(
+      query.parameters.clientOrganizationIds ?? [],
+    );
+    const requestedContexts = new Map(
+      (query.parameters.contexts ?? []).map((context) => [
+        context.recordId,
+        context.kind,
+      ]),
+    );
+    if (
+      [...requestedClientIds].some(
+        (id) =>
+          !strategic.some(
+            (record) => record.kind === "organization" && record.id === id,
+          ),
+      ) ||
+      [...requestedContexts].some(
+        ([id, kind]) =>
+          !strategic.some((record) => record.kind === kind && record.id === id),
+      )
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const clientProjectIds = new Set<ProjectId>();
+    const contextKindsByProject = new Map<
+      ProjectId,
+      Set<"area" | "initiative">
+    >();
+    for (const record of strategic) {
+      if (
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        record.linkType === "project_serves_organization" &&
+        requestedClientIds.has(record.targetRecordId as never)
+      )
+        clientProjectIds.add(ProjectIdSchema.parse(record.sourceRecordId));
+      if (
+        record.kind === "opportunity" &&
+        requestedClientIds.has(record.organizationId)
+      )
+        for (const projectId of record.projectIds)
+          clientProjectIds.add(projectId);
+      if (
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        ((record.linkType === "project_serves_area" &&
+          requestedContexts.get(record.targetRecordId as never) === "area") ||
+          (record.linkType === "project_advances_initiative" &&
+            requestedContexts.get(record.targetRecordId as never) ===
+              "initiative"))
+      ) {
+        const projectId = ProjectIdSchema.parse(record.sourceRecordId);
+        const kinds = contextKindsByProject.get(projectId) ?? new Set();
+        kinds.add(
+          record.linkType === "project_serves_area" ? "area" : "initiative",
+        );
+        contextKindsByProject.set(projectId, kinds);
+      }
+    }
+    const ranked = view
+      .listProjects(query.workspaceId, query.parameters.spaceId)
+      .flatMap((project) => {
+        const foldedTitle = foldForCandidateSearch(project.title)
+          .replace(/\s+/g, " ")
+          .trim();
+        const candidateTokens = projectSimilarityTokens(project.title);
+        const shared = sharedSimilarityTokens(requestedTokens, candidateTokens);
+        const exactTitle = foldedTitle === requestedTitle;
+        const clientMatch = clientProjectIds.has(project.id);
+        const contextMatches =
+          contextKindsByProject.get(project.id) ?? new Set();
+        if (
+          !exactTitle &&
+          shared.length < 2 &&
+          !(
+            (clientMatch || contextMatches.size > 0) &&
+            shared.some((token) => token.length >= 5)
+          )
+        )
+          return [];
+        return [
+          {
+            project,
+            foldedTitle,
+            exactTitle,
+            clientMatch,
+            contextMatches,
+            sharedCount: shared.length,
+            diceDenominator: requestedTokens.size + candidateTokens.size,
+          },
+        ];
+      })
+      .sort((left, right) => {
+        if (left.exactTitle !== right.exactTitle)
+          return left.exactTitle ? -1 : 1;
+        if (left.contextMatches.size !== right.contextMatches.size)
+          return right.contextMatches.size - left.contextMatches.size;
+        if (left.clientMatch !== right.clientMatch)
+          return left.clientMatch ? -1 : 1;
+        if (left.project.lifecycle !== right.project.lifecycle)
+          return left.project.lifecycle === "active" ? -1 : 1;
+        const diceOrder =
+          right.sharedCount * left.diceDenominator -
+          left.sharedCount * right.diceDenominator;
+        return (
+          diceOrder ||
+          right.sharedCount - left.sharedCount ||
+          (left.foldedTitle < right.foldedTitle
+            ? -1
+            : left.foldedTitle > right.foldedTitle
+              ? 1
+              : 0) ||
+          left.project.id.localeCompare(right.project.id)
+        );
+      });
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.similarCandidates",
+      items: ranked
+        .slice(0, query.parameters.limit)
+        .map(({ project, clientMatch, contextMatches }) => ({
+          projectId: project.id,
+          spaceId: project.spaceId,
+          title: project.title,
+          lifecycle: project.lifecycle,
+          version: project.version,
+          matchedOn: [
+            "title" as const,
+            ...(clientMatch ? (["client"] as const) : []),
+            ...(contextMatches.has("area") ? (["area"] as const) : []),
+            ...(contextMatches.has("initiative")
+              ? (["initiative"] as const)
+              : []),
+          ],
+        })),
+    });
+  }
   if (query.queryName === "project.list") {
     const relations = view.listRelations(
       query.workspaceId,
@@ -12854,6 +14626,7 @@ export const executeWave2Query = (
           ...(project.externalId === undefined
             ? {}
             : { externalId: project.externalId }),
+          attentionState: projectAttentionState(project),
           lifecycle: project.lifecycle,
           relatedOpenTaskCount: relations.filter(
             (relation) =>
@@ -13392,7 +15165,11 @@ export const executeWave2Query = (
         title: project.title,
         ...intendedOutcomeFields(project.intendedOutcome),
         ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
+        attentionState: projectAttentionState(project),
         lifecycle: project.lifecycle,
+        ...(project.reclassifiedTo === undefined
+          ? {}
+          : { reclassifiedTo: project.reclassifiedTo }),
         ...(project.appliedTemplateId === undefined
           ? {}
           : { appliedTemplateId: project.appliedTemplateId }),
@@ -13529,6 +15306,146 @@ export const executeWave2Query = (
           updatedAt: source.updatedAt,
         })),
     });
+  }
+  if (
+    query.queryName === "area.operationalOverview" ||
+    query.queryName === "initiative.operationalOverview"
+  ) {
+    const targetId =
+      query.queryName === "area.operationalOverview"
+        ? query.parameters.areaId
+        : query.parameters.initiativeId;
+    const record = view.getStrategicRecord(targetId);
+    const expectedKind =
+      query.queryName === "area.operationalOverview" ? "area" : "initiative";
+    if (
+      record === undefined ||
+      record.kind !== expectedKind ||
+      record.workspaceId !== query.workspaceId ||
+      strategicRecordIsDeleted(record)
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+
+    const relationType =
+      record.kind === "area"
+        ? "task_contributes_to_area"
+        : "task_advances_initiative";
+    const directRelations = view
+      .listRelations(query.workspaceId, record.spaceId)
+      .filter(
+        (relation) =>
+          relation.state === "active" &&
+          relation.relationType === relationType &&
+          (relation.relationType === "task_contributes_to_area"
+            ? relation.areaId === record.id
+            : relation.initiativeId === record.id),
+      );
+    const relationByTaskId = new Map(
+      directRelations.map((relation) => [relation.taskId, relation]),
+    );
+    const directTasks = view
+      .listTasksInSpace(query.workspaceId, record.spaceId)
+      .filter(
+        (task) =>
+          task.recordState === "active" && relationByTaskId.has(task.id),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const linkType =
+      record.kind === "area"
+        ? "project_serves_area"
+        : "project_advances_initiative";
+    const workLinks = liveStrategicRecords(
+      view,
+      query.workspaceId,
+      record.spaceId,
+    ).filter(
+      (
+        candidate,
+      ): candidate is Extract<
+        StrategicRecord,
+        { readonly kind: "work_link" }
+      > =>
+        candidate.kind === "work_link" &&
+        candidate.state === "active" &&
+        candidate.linkType === linkType &&
+        candidate.targetRecordId === record.id,
+    );
+    const linkByProjectId = new Map(
+      workLinks.map((link) => [link.sourceRecordId, link]),
+    );
+    const projects = view
+      .listProjects(query.workspaceId, record.spaceId)
+      .filter(
+        (project) =>
+          project.recordState !== "removed" && linkByProjectId.has(project.id),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const taskProjection = directTasks.slice(0, 100).map((task) => {
+      const relation = relationByTaskId.get(task.id)!;
+      return {
+        id: task.id,
+        title: task.title,
+        completionState: task.completionState,
+        relationId: relation.id,
+        relationVersion: relation.version,
+        version: task.version,
+        updatedAt: task.updatedAt,
+      };
+    });
+    const projectProjection = projects.slice(0, 100).map((project) => {
+      const link = linkByProjectId.get(project.id)!;
+      return {
+        id: project.id,
+        title: project.title,
+        ...intendedOutcomeFields(project.intendedOutcome),
+        lifecycle: project.lifecycle,
+        linkId: link.id,
+        linkVersion: link.version,
+        version: project.version,
+        updatedAt: project.updatedAt,
+      };
+    });
+    return record.kind === "area"
+      ? querySuccess(query, kernelTime, freshness, {
+          kind: "area.operationalOverview",
+          area: {
+            id: record.id,
+            spaceId: record.spaceId,
+            title: record.title,
+            ...responsibilityFields(record.responsibility),
+            state: record.state,
+            version: record.version,
+            updatedAt: record.updatedAt,
+          },
+          directTaskCount: directTasks.length,
+          directTasks: taskProjection,
+          projectCount: projects.length,
+          projects: projectProjection,
+        })
+      : querySuccess(query, kernelTime, freshness, {
+          kind: "initiative.operationalOverview",
+          initiative: {
+            id: record.id,
+            spaceId: record.spaceId,
+            title: record.title,
+            ...intendedOutcomeFields(record.intendedOutcome),
+            state: record.state,
+            version: record.version,
+            updatedAt: record.updatedAt,
+          },
+          directTaskCount: directTasks.length,
+          directTasks: taskProjection,
+          projectCount: projects.length,
+          projects: projectProjection,
+        });
   }
   if (query.queryName === "organization.operationalOverview") {
     const strategicRecords = view.listStrategicRecords(
@@ -14302,13 +16219,17 @@ export const executeWave2Query = (
   }
   const activityMap: Partial<Record<DomainEvent["type"], string>> = {
     "capture.routed_as_task": "capture_routed",
+    "capture.routed_as_knowledge_source": "capture_routed_to_knowledge",
     "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
+    "project.check_in_added": "project_check_in_added",
+    "project.reclassified": "project_reclassified",
     "project.outcome_updated": "project_outcome_changed",
     // Mapa jest `Partial`, więc brak wpisu KOMPILUJE SIĘ i po prostu na zawsze
     // ukrywa przemianowanie w Aktywności. Wpis i wartość w enumie zapytania
     // muszą wejść tą samą zmianą, inaczej `activity.meaningful` rzuca.
     "project.details_updated": "project_details_changed",
+    "project.attention_state_changed": "project_attention_changed",
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",
@@ -14331,6 +16252,7 @@ export const executeWave2Query = (
     "task.assigned": "task_assigned",
     "task.unassigned": "task_unassigned",
     "comment.added": "comment_added",
+    "comment.edited": "comment_edited",
     "comment.resolved": "comment_resolved",
     "comment.reopened": "comment_reopened",
     "relation.created": "relation_added",
@@ -14343,21 +16265,358 @@ export const executeWave2Query = (
     "strategic.record_changed": "strategic_record_changed",
     "command.undone": "command_undone",
   };
+  const safeActivityChangedFields = new Set([
+    "title",
+    "intendedOutcome",
+    "summary",
+    "waitingOn",
+    "nextCheckpointAt",
+    "references",
+    "lifecycle",
+    "evidenceSourceIds",
+    "description",
+    "nextAction",
+    "startAt",
+    "dueAt",
+    "priority",
+    "parentTaskId",
+    "statusId",
+    "completionState",
+    "operationalState",
+    "waitingOn",
+    "assigneePrincipalId",
+    "relationType",
+    "sourceKind",
+    "canonicalUrl",
+    "excerpt",
+    "availability",
+    "state",
+    "name",
+    "label",
+    "fieldId",
+    "value",
+    "recipe",
+    "defaultTaskStatusId",
+    "commercialDefaults",
+    "threadState",
+    "body",
+    "folderId",
+    "processingState",
+    "derivedTaskId",
+    "derivedKnowledgeSourceId",
+    "task.title",
+    "task.statusId",
+    "task.sourceCaptureId",
+    "source.sourceCaptureId",
+    "attention.state",
+  ]);
+  const resolveActivityRecord = (recordId: string) => {
+    const capture = view.getCapture(recordId as never);
+    if (
+      capture?.workspaceId === query.workspaceId &&
+      capture.spaceId === query.parameters.spaceId
+    ) {
+      const title = capture.originalText.trim();
+      if (title.length > 0)
+        return {
+          recordId: capture.id,
+          recordKind: "capture" as const,
+          recordTitle: title.slice(0, 500),
+        };
+    }
+    const task = view.getTask(recordId as never);
+    if (
+      task?.workspaceId === query.workspaceId &&
+      task.spaceId === query.parameters.spaceId &&
+      task.recordState === "active"
+    )
+      return {
+        recordId: task.id,
+        recordKind: "task" as const,
+        recordTitle: task.title,
+      };
+
+    const project = view.getProject(recordId as never);
+    if (
+      project?.workspaceId === query.workspaceId &&
+      project.spaceId === query.parameters.spaceId &&
+      project.recordState !== "removed"
+    )
+      return {
+        recordId: project.id,
+        recordKind: "project" as const,
+        recordTitle: project.title,
+      };
+
+    const document = view.getDocument(recordId as never);
+    if (
+      document?.workspaceId === query.workspaceId &&
+      document.spaceId === query.parameters.spaceId &&
+      document.recordState !== "removed"
+    )
+      return {
+        recordId: document.id,
+        recordKind: "document" as const,
+        recordTitle: document.title,
+      };
+
+    const source = view.getKnowledgeSource(recordId as never);
+    if (
+      source?.workspaceId === query.workspaceId &&
+      source.spaceId === query.parameters.spaceId &&
+      source.recordState !== "removed"
+    )
+      return {
+        recordId: source.id,
+        recordKind: "knowledgeSource" as const,
+        recordTitle: source.title,
+      };
+
+    const strategic = view.getStrategicRecord(recordId as never);
+    if (
+      strategic?.workspaceId === query.workspaceId &&
+      strategic.spaceId === query.parameters.spaceId &&
+      strategic.recordState !== "removed"
+    )
+      return {
+        recordId: strategic.id,
+        recordKind: "strategicRecord" as const,
+        recordTitle: strategicSearchText(strategic).title,
+      };
+
+    const status = view.getTaskStatus(recordId as never);
+    if (
+      status?.workspaceId === query.workspaceId &&
+      status.state !== "archived"
+    )
+      return {
+        recordId: status.id,
+        recordKind: "taskStatus" as const,
+        recordTitle: status.label,
+      };
+    const field = view.getFieldDefinition(recordId as never);
+    if (field?.workspaceId === query.workspaceId && field.state !== "retired")
+      return {
+        recordId: field.id,
+        recordKind: "fieldDefinition" as const,
+        recordTitle: field.label,
+      };
+    const template = view.getProjectTemplate(recordId as never);
+    if (
+      template?.workspaceId === query.workspaceId &&
+      template.state !== "retired"
+    )
+      return {
+        recordId: template.id,
+        recordKind: "projectTemplate" as const,
+        recordTitle: template.name,
+      };
+    const automation = view.getAutomationRule(recordId as never);
+    if (automation?.workspaceId === query.workspaceId)
+      return {
+        recordId: automation.id,
+        recordKind: "automationRule" as const,
+        recordTitle: automation.name,
+      };
+    return undefined;
+  };
+
+  const resolveActivityActor = (receipt: AuditReceipt) => {
+    const membership = view.getMembership(
+      query.workspaceId,
+      receipt.principalId,
+    );
+    const spaceGrant = view.getSpaceGrantForPrincipal(
+      query.workspaceId,
+      query.parameters.spaceId,
+      receipt.principalId,
+    );
+    const workspace = view.getWorkspace(query.workspaceId);
+    const ownsRootSpace =
+      membership?.role === "owner" &&
+      workspace?.rootSpaceId === query.parameters.spaceId;
+    if (
+      membership === undefined ||
+      membership.status === "revoked" ||
+      (!ownsRootSpace && spaceGrant?.status !== "active")
+    )
+      return undefined;
+
+    const agentGrant = view.getAgentGrant(receipt.grantId);
+    if (agentGrant !== undefined) {
+      if (
+        agentGrant.agentPrincipalId !== receipt.principalId ||
+        agentGrant.status !== "active" ||
+        !agentGrant.spaceScope.includes(query.parameters.spaceId)
+      )
+        return undefined;
+      return {
+        principalId: receipt.principalId,
+        displayName: agentGrant.displayName,
+        kind: "agent" as const,
+      };
+    }
+
+    const displayName =
+      membership.displayName ??
+      (receipt.principalId === context.principalId ? "You" : undefined);
+    if (displayName === undefined) return undefined;
+    return {
+      principalId: receipt.principalId,
+      displayName,
+      kind: "human" as const,
+    };
+  };
+
+  const commentActivityRecordId = (commentId: string): string | undefined => {
+    const comment = view.getComment(commentId as never);
+    if (
+      comment?.workspaceId !== query.workspaceId ||
+      comment.spaceId !== query.parameters.spaceId
+    )
+      return undefined;
+    return comment.target.kind === "task"
+      ? comment.target.taskId
+      : comment.target.kind === "project"
+        ? comment.target.projectId
+        : comment.target.kind === "organization"
+          ? comment.target.organizationId
+          : comment.target.opportunityId;
+  };
+
+  const relationActivityContext = (
+    event: Extract<
+      DomainEvent,
+      { type: "relation.created" | "relation.removed" }
+    >,
+  ) =>
+    event.projectId !== undefined
+      ? {
+          relationType: "task_contributes_to_project" as const,
+          path: "project_mediated" as const,
+          taskId: event.taskId,
+          projectId: event.projectId,
+        }
+      : event.opportunityId !== undefined
+        ? {
+            relationType: "task_contributes_to_opportunity" as const,
+            path: "direct" as const,
+            taskId: event.taskId,
+            opportunityId: event.opportunityId,
+          }
+        : event.areaId !== undefined
+          ? {
+              relationType: "task_contributes_to_area" as const,
+              path: "direct" as const,
+              taskId: event.taskId,
+              areaId: event.areaId,
+            }
+          : event.initiativeId !== undefined
+            ? {
+                relationType: "task_advances_initiative" as const,
+                path: "direct" as const,
+                taskId: event.taskId,
+                initiativeId: event.initiativeId,
+              }
+            : undefined;
+
   const items = view
     .listEvents(query.workspaceId, query.parameters.spaceId)
     .flatMap((event) => {
       const activityType = activityMap[event.type];
-      return activityType === undefined
-        ? []
-        : [
-            {
-              eventId: event.id,
-              targetCommandId: event.commandId,
-              activityType,
-              recordId: event.aggregateId,
-              occurredAt: event.occurredAt,
-            },
-          ];
+      if (activityType === undefined) return [];
+      const candidateReceipt = view.getAuditReceiptByCommand(event.commandId);
+      const relationContext =
+        event.type === "relation.created" || event.type === "relation.removed"
+          ? relationActivityContext(event)
+          : undefined;
+      if (
+        (event.type === "relation.created" ||
+          event.type === "relation.removed") &&
+        relationContext === undefined
+      )
+        return [];
+      const presentationRecordIds =
+        event.type === "relation.created" || event.type === "relation.removed"
+          ? [
+              event.taskId,
+              ...(event.projectId === undefined ? [] : [event.projectId]),
+              ...(event.opportunityId === undefined
+                ? []
+                : [event.opportunityId]),
+              ...(event.areaId === undefined ? [] : [event.areaId]),
+              ...(event.initiativeId === undefined ? [] : [event.initiativeId]),
+            ]
+          : event.type === "task.assigned" || event.type === "task.unassigned"
+            ? [event.taskId]
+            : event.type === "capture.routed_as_task"
+              ? [event.taskId]
+              : event.type === "project.check_in_added" ||
+                  event.type === "project.check_in_voided"
+                ? [event.projectId]
+                : event.type === "capture.routed_as_knowledge_source"
+                  ? [event.knowledgeSourceId]
+                  : event.type === "comment.added" ||
+                      event.type === "comment.edited" ||
+                      event.type === "comment.resolved" ||
+                      event.type === "comment.reopened"
+                    ? [commentActivityRecordId(event.aggregateId)].filter(
+                        (recordId): recordId is string =>
+                          recordId !== undefined,
+                      )
+                    : [event.aggregateId];
+      const receipt =
+        candidateReceipt?.workspaceId === query.workspaceId &&
+        candidateReceipt.spaceId === query.parameters.spaceId &&
+        candidateReceipt.commandId === event.commandId &&
+        candidateReceipt.affectedRecordIds.includes(event.aggregateId)
+          ? candidateReceipt
+          : undefined;
+      const resolvedPresentationRecords = presentationRecordIds.map(
+        resolveActivityRecord,
+      );
+      if (
+        relationContext !== undefined &&
+        resolvedPresentationRecords.some((candidate) => candidate === undefined)
+      )
+        return [];
+      const record = [
+        ...resolvedPresentationRecords,
+        ...(receipt?.affectedRecordIds.map(resolveActivityRecord) ?? []),
+      ].find((candidate) => candidate !== undefined);
+      if (record === undefined) return [];
+      const actor =
+        receipt === undefined ? undefined : resolveActivityActor(receipt);
+      const changedFields =
+        receipt?.changedFields
+          .filter((field) => safeActivityChangedFields.has(field))
+          .slice(0, 64) ?? [];
+      return [
+        {
+          eventId: event.id,
+          targetCommandId: event.commandId,
+          activityType,
+          recordId: record.recordId,
+          recordKind: record.recordKind,
+          recordTitle: record.recordTitle,
+          ...(relationContext === undefined ? {} : { relationContext }),
+          ...(receipt === undefined || actor === undefined
+            ? {}
+            : {
+                actor,
+                commandName: receipt.commandName,
+                changedFields,
+                correlationId: receipt.correlationId,
+                ...(receipt.agentRunId === undefined
+                  ? {}
+                  : { agentRunId: receipt.agentRunId }),
+                ...(receipt.hostRunId === undefined
+                  ? {}
+                  : { hostRunId: receipt.hostRunId }),
+              }),
+          occurredAt: event.occurredAt,
+        },
+      ];
     })
     .slice(0, query.parameters.limit ?? 50);
   return querySuccess(query, kernelTime, freshness, {

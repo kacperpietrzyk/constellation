@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [Unreleased]
+
+## [0.2.4] - 2026-08-21
+
+### Added
+
+- Added first-class Area and Initiative records with dedicated desktop screens,
+  editable responsibility or outcome narratives, typed relations, navigation,
+  audit history, and equivalent local and remote MCP access. Tasks can now link
+  directly to an Area or Initiative without an inferred Project, while activity
+  keeps direct and Project-mediated strategic context distinct.
+- Added attributed, append-only Project check-ins with health, confidence,
+  narrative, blockers, next steps, and evidence. The Project record exposes the
+  history and composer, and the same versioned operations are available through
+  the application kernel, durable stores, Hub synchronization, and MCP.
+- Added advisory portfolio governance and pageable Opportunity and relation
+  inventories so portfolio views can surface incomplete intent, stale check-ins,
+  blocked work, similar records, and relationship gaps without silently changing
+  user-owned records.
+- Added a previewable, expected-versioned Project reclassification workflow for
+  Area, Initiative, and Opportunity destinations. Creating a destination or
+  merging into an existing record preserves the source Project as the durable
+  owner of its body, revisions, check-ins, comments, evidence, Tasks, relations,
+  audit, and activity; typed lineage makes every preserved surface traversable
+  from both records. The operation is idempotent, Space-scoped, available to the
+  desktop and local or remote MCP, and undoable without closing the Project or
+  deleting an existing merge target.
+
+### Fixed
+
+- Kept the narrow desktop inspector visually opaque and aligned the new Project,
+  Area, Initiative, portfolio-governance, and reclassification surfaces with the
+  established desktop visual system.
+
 ## [0.2.3] - 2026-08-20
 
 ### Fixed

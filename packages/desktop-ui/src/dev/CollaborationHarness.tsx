@@ -10,6 +10,7 @@ import {
   PrincipalIdSchema,
   ProjectIdSchema,
   ProjectTemplateIdSchema,
+  RelationIdSchema,
   type MeetingLoopSurface,
   StrategicRecordIdSchema,
   TaskAssignmentIdSchema,
@@ -60,6 +61,15 @@ const agentPrincipalId = PrincipalIdSchema.parse(
   "00000000-0000-4000-8000-0000000000f2",
 );
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000006");
+const areaId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000f8",
+);
+const initiativeId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000f9",
+);
+const areaRelationId = RelationIdSchema.parse(
+  "00000000-0000-4000-8000-0000000000fa",
+);
 
 // STREFA WORKSPACE'U JAKO STAŁA, A NIE JAKO POWTÓRZONY NAPIS. Dzień „dzisiaj"
 // liczy się niżej DOKŁADNIE w tej strefie, którą `workspace.bootstrapContext`
@@ -302,6 +312,56 @@ const client = createScenarioClient({
   documentState: (documentId) => noteStates.get(documentId),
   meetingLoop: meetingLoopFixture(),
   executeCommand: (command): RendererCommandResponse => {
+    if (command.commandName === "record.unrelate") {
+      return {
+        kind: "command_outcome",
+        outcome: {
+          contractVersion: 1,
+          commandId: command.commandId,
+          correlationId: command.correlationId,
+          kernelTime: "2026-08-20T12:00:00.000Z",
+          outcome: "success",
+          diagnosticCode: "relation.removed",
+          affected: [],
+          auditReceiptId: "00000000-0000-4000-8000-0000000000fb",
+          projection: {
+            kind: "relation.removed",
+            relationId: command.payload.relationId,
+            taskId,
+            areaId,
+            version: 2,
+          },
+        },
+      } as unknown as RendererCommandResponse;
+    }
+    if (command.commandName === "record.relate") {
+      const target =
+        command.payload.relationType === "task_contributes_to_area"
+          ? { areaId: command.payload.areaId }
+          : command.payload.relationType === "task_advances_initiative"
+            ? { initiativeId: command.payload.initiativeId }
+            : {};
+      return {
+        kind: "command_outcome",
+        outcome: {
+          contractVersion: 1,
+          commandId: command.commandId,
+          correlationId: command.correlationId,
+          kernelTime: "2026-08-20T12:00:00.000Z",
+          outcome: "success",
+          diagnosticCode: "relation.created",
+          affected: [],
+          auditReceiptId: "00000000-0000-4000-8000-0000000000fc",
+          projection: {
+            kind: "relation.created",
+            relationId: "00000000-0000-4000-8000-0000000000fd",
+            taskId,
+            ...target,
+            version: 1,
+          },
+        },
+      } as unknown as RendererCommandResponse;
+    }
     if (
       command.commandName !== "attention.markRead" &&
       command.commandName !== "attention.dismiss"
@@ -534,13 +594,41 @@ const client = createScenarioClient({
           // czyta się jako niedostępna — a harness wygląda wtedy dokładnie
           // tak, jakby ekran był zepsuty.
           projectIds: [],
+          areaIds: [areaId],
+          initiativeIds: [],
+          directContextRelations: [
+            {
+              relationId: areaRelationId,
+              relationType: "task_contributes_to_area",
+              targetId: areaId,
+              version: 1,
+            },
+          ],
           version: 3,
           updatedAt: "2026-07-14T11:30:00.000Z",
         },
       ],
       projects: [],
-      areas: [],
-      initiatives: [],
+      areas: [
+        {
+          id: areaId,
+          title: "Product stewardship",
+          responsibility: "Keep lightweight work in direct context.",
+          needsReview: false,
+          state: "active",
+          version: 1,
+        },
+      ],
+      initiatives: [
+        {
+          id: initiativeId,
+          title: "Adopt the work structure",
+          intendedOutcome: "No synthetic Project is needed.",
+          needsReview: false,
+          state: "active",
+          version: 1,
+        },
+      ],
       // ONE DEPENDENCY EDGE, AND IT IS THE WHOLE SEED LOT 4 NEEDED. The task
       // record's `.list` — the subject of lot 4 #10 — is mounted only inside a
       // non-empty branch (`TaskRecordScreen.tsx`: subtasks, then dependencies);
@@ -605,6 +693,7 @@ const client = createScenarioClient({
           title: "Orbit onboarding",
           intendedOutcome: "Klient pracuje samodzielnie w Constellation",
           needsReview: false,
+          attentionState: "current",
           lifecycle: "active",
           relatedOpenTaskCount: 0,
           version: 2,
@@ -620,6 +709,7 @@ const client = createScenarioClient({
         title: "Orbit onboarding",
         intendedOutcome: "Klient pracuje samodzielnie w Constellation",
         needsReview: false,
+        attentionState: "current",
         lifecycle: "active",
         version: 2,
         updatedAt: "2026-07-14T11:00:00.000Z",

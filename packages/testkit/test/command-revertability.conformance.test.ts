@@ -282,6 +282,17 @@ describe("Command revertability", () => {
       )["projectId"],
     );
     apply(
+      "project.checkInAdd",
+      {
+        checkInId: uuid(),
+        projectId,
+        summary: "The revertability table includes visible void recovery.",
+        evidenceSourceIds: [],
+        references: [],
+      },
+      versions(projectId),
+    );
+    apply(
       "project.updateOutcome",
       { projectId, intendedOutcome: "The table is pinned by this test" },
       versions(projectId),
@@ -299,6 +310,21 @@ describe("Command revertability", () => {
       },
       versions(projectId),
     );
+    apply(
+      "project.setAttentionState",
+      { projectId, attentionState: "waiting" },
+      versions(projectId),
+    );
+    apply(
+      "task.createInProject",
+      {
+        taskId: uuid(),
+        projectId,
+        spaceId: ids.rootSpace,
+        title: "Atomic project follow-up",
+      },
+      versions(projectId),
+    );
     const relationId = String(
       projection(
         apply(
@@ -309,6 +335,29 @@ describe("Command revertability", () => {
       )["relationId"],
     );
     apply("record.unrelate", { relationId }, versions(relationId));
+
+    const reclassifiedProjectId = String(
+      projection(
+        apply("project.create", {
+          spaceId: ids.rootSpace,
+          title: "Reclassified by the table test",
+        }),
+      )["projectId"],
+    );
+    apply(
+      "project.reclassify",
+      {
+        projectId: reclassifiedProjectId,
+        destination: {
+          mode: "create",
+          kind: "initiative",
+          targetId: uuid(),
+          title: "Reclassification recovery",
+          intendedOutcome: "The source history stays mechanically traversable",
+        },
+      },
+      versions(reclassifiedProjectId),
+    );
 
     // Knowledge.
     const sourceId = uuid();

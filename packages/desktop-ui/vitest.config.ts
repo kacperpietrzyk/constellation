@@ -1,6 +1,13 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+// The surrounding Hermes shell may export NODE_ENV=production. React's
+// production entry deliberately exposes `act` as undefined, and Vite then
+// externalizes Node built-ins from DOM-environment tests. Pin the test process
+// before Vitest resolves test modules; the detached `main` baseline reproduces
+// both failures when this line is absent.
+process.env.NODE_ENV = "test";
+
 // Testy interakcji żyją WYŁĄCZNIE w tej paczce i wyłącznie tutaj chodzi Vitest.
 // Pozostałe dziesięć paczek zostaje na `node:test` przez `scripts/run-tests.mjs`
 // — to nie jest niezdecydowanie, tylko jedyna rzecz, której `node:test` nie
@@ -33,5 +40,6 @@ export default defineConfig({
     // wyglądałyby na przechodzące, nie wykonując ani jednej asercji.
     globals: false,
     restoreMocks: true,
+    setupFiles: ["./test/setup.ts"],
   },
 });

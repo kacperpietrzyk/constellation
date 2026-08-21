@@ -47,6 +47,9 @@ export type TaskId = z.infer<typeof TaskIdSchema>;
 export const ProjectIdSchema = opaqueId<"ProjectId">();
 export type ProjectId = z.infer<typeof ProjectIdSchema>;
 
+export const ProjectCheckInIdSchema = opaqueId<"ProjectCheckInId">();
+export type ProjectCheckInId = z.infer<typeof ProjectCheckInIdSchema>;
+
 export const DocumentIdSchema = opaqueId<"DocumentId">();
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 

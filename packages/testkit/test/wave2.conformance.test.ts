@@ -12,6 +12,7 @@ import {
   WorkspaceIdSchema,
   KnowledgeSourceIdSchema,
   ProjectIdSchema,
+  RelationIdSchema,
   SpaceIdSchema,
   StrategicRecordIdSchema,
   TaskStatusIdSchema,
@@ -81,6 +82,14 @@ const context = (): ExecutionContext =>
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
       "decision.create",
+      "area.create",
+      "area.remove",
+      "area.updateResponsibility",
+      "initiative.create",
+      "initiative.remove",
+      "initiative.updateOutcome",
+      "work.linkCreate",
+      "work.linkRemove",
       "meeting.upsertImported",
       "meeting.detachNote",
       "relationship.workspace",
@@ -461,6 +470,26 @@ describe("Wave 2 reference semantics", () => {
       routed.projection.kind !== "capture.routed_as_knowledge_source"
     )
       assert.fail("Expected file Knowledge Source.");
+    const routedActivityResult = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "activity.meaningful",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      routedActivityResult.kind !== "query_result" ||
+      routedActivityResult.result.outcome !== "success" ||
+      routedActivityResult.result.projection.kind !== "activity.meaningful"
+    )
+      assert.fail("Expected Capture routing activity.");
+    const routedActivity = routedActivityResult.result.projection.items.find(
+      (item) => item.activityType === "capture_routed_to_knowledge",
+    );
+    assert.equal(routedActivity?.recordId, routed.projection.sourceId);
+    assert.equal(routedActivity?.recordKind, "knowledgeSource");
+    assert.equal(routedActivity?.commandName, "capture.process");
     const documentId = requestId();
     unwrap(
       harness.kernel.execute(context(), {
@@ -1378,6 +1407,35 @@ describe("Wave 2 reference semantics", () => {
         "capture_routed",
       ],
     );
+    const relationActivity = activity.result.projection.items.find(
+      (item) => item.activityType === "relation_added",
+    );
+    assert.equal(relationActivity?.recordId, taskId);
+    assert.equal(relationActivity?.recordKind, "task");
+    assert.equal(relationActivity?.commandName, "record.relate");
+    assert.ok(relationActivity?.correlationId);
+    assert.equal(
+      relationActivity?.changedFields?.includes("relationType"),
+      true,
+    );
+    assert.deepEqual(
+      (
+        relationActivity as typeof relationActivity & {
+          readonly relationContext?: {
+            readonly relationType: "task_contributes_to_project";
+            readonly path: "project_mediated";
+            readonly taskId: string;
+            readonly projectId: string;
+          };
+        }
+      )?.relationContext,
+      {
+        relationType: "task_contributes_to_project",
+        path: "project_mediated",
+        taskId,
+        projectId,
+      },
+    );
   });
 
   it("composes one Project read from authorized graph relations", () => {
@@ -1529,6 +1587,409 @@ describe("Wave 2 reference semantics", () => {
       overview.result.projection.clientOrganizations[0]?.id,
       organizationId,
     );
+  });
+
+  it("pages a complete stable Opportunity inventory with exact versions and finality", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("opportunity-page-organization"),
+          commandName: "relationship.organizationCreate",
+          payload: {
+            organizationId,
+            spaceId: ids.rootSpace,
+            name: "Paged Client",
+            relationshipState: "active",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const opportunityIds = [0, 1, 2].map(() =>
+      StrategicRecordIdSchema.parse(requestId()),
+    );
+    for (const [index, opportunityId] of opportunityIds.entries()) {
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(context(), {
+            ...metadata(`opportunity-page-${index}`),
+            commandName: "opportunity.create",
+            payload: {
+              opportunityId,
+              spaceId: ids.rootSpace,
+              title: `Paged opportunity ${index + 1}`,
+              organizationId,
+              personIds: [],
+              need: "Enumerate every deal",
+              qualification: "Qualified",
+              stage: `stage-${index + 1}`,
+              nextAction: "Read the exact version",
+              evidenceSourceIds: [],
+            },
+          }),
+        ).outcome,
+        "success",
+      );
+    }
+
+    const read = (cursor?: string) =>
+      harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "opportunity.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      } as never);
+    const first = read();
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected the first Opportunity inventory page.");
+    assert.equal(first.result.projection.items.length, 2);
+    assert.equal(first.result.projection.totalCount, 3);
+    assert.equal(first.result.projection.final, false);
+    assert.ok(first.result.projection.nextCursor);
+    assert.ok(first.result.projection.snapshot);
+    assert.deepEqual(
+      first.result.projection.items.map((item) => ({
+        id: item.id,
+        version: item.version,
+        stage: item.stage,
+        state: item.state,
+        offerIds: item.offerIds,
+        projectIds: item.projectIds,
+      })),
+      opportunityIds.slice(0, 2).map((id, index) => ({
+        id,
+        version: 1,
+        stage: `stage-${index + 1}`,
+        state: "open",
+        offerIds: [],
+        projectIds: [],
+      })),
+    );
+
+    const second = read(first.result.projection.nextCursor ?? undefined);
+    if (
+      second.kind !== "query_result" ||
+      second.result.outcome !== "success" ||
+      second.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected the final Opportunity inventory page.");
+    assert.deepEqual(
+      second.result.projection.items.map((item) => item.id),
+      opportunityIds.slice(2),
+    );
+    assert.equal(second.result.projection.totalCount, 3);
+    assert.equal(second.result.projection.final, true);
+    assert.equal(second.result.projection.nextCursor, null);
+    assert.equal(
+      second.result.projection.snapshot,
+      first.result.projection.snapshot,
+    );
+  });
+
+  it("rejects an Opportunity cursor when the inventory snapshot changes between pages", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("opportunity-snapshot-organization"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.rootSpace,
+          name: "Snapshot Client",
+          relationshipState: "active",
+        },
+      }),
+    );
+    const createOpportunity = (index: number) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`opportunity-snapshot-${index}`),
+          commandName: "opportunity.create",
+          payload: {
+            opportunityId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            title: `Snapshot opportunity ${index}`,
+            organizationId,
+            personIds: [],
+            need: "Keep pages coherent",
+            qualification: "Qualified",
+            stage: "qualified",
+            nextAction: "Continue paging",
+            evidenceSourceIds: [],
+          },
+        }),
+      );
+    assert.equal(createOpportunity(1).outcome, "success");
+    assert.equal(createOpportunity(2).outcome, "success");
+    const first = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, limit: 1 },
+    });
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected a snapshot cursor.");
+    assert.ok(first.result.projection.nextCursor);
+    assert.equal(createOpportunity(3).outcome, "success");
+
+    const stale = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceId: ids.rootSpace,
+        limit: 1,
+        cursor: first.result.projection.nextCursor ?? "",
+      },
+    });
+    if (stale.kind !== "query_result")
+      throw new Error("Expected a query result.");
+    assert.equal(stale.result.outcome, "rejected");
+    if (stale.result.outcome === "rejected")
+      assert.equal(
+        stale.result.diagnosticCode,
+        "query.consistency_unavailable",
+      );
+  });
+
+  it("rejects an inventory cursor when projection freshness changes between pages", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("opportunity-freshness-organization"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.rootSpace,
+          name: "Freshness Client",
+          relationshipState: "active",
+        },
+      }),
+    );
+    for (const index of [1, 2])
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`opportunity-freshness-${index}`),
+          commandName: "opportunity.create",
+          payload: {
+            opportunityId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            title: `Freshness opportunity ${index}`,
+            organizationId,
+            personIds: [],
+            need: "Keep freshness coherent",
+            qualification: "Qualified",
+            stage: "qualified",
+            nextAction: "Continue paging",
+            evidenceSourceIds: [],
+          },
+        }),
+      );
+    harness.store.setFreshness({
+      mode: "local_projection",
+      checkpoint: "inventory-checkpoint-a",
+      missingCapabilities: [],
+    });
+    const first = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_projection",
+      parameters: { spaceId: ids.rootSpace, limit: 1 },
+    });
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected an inventory freshness cursor.");
+    harness.store.setFreshness({
+      mode: "local_projection",
+      checkpoint: "inventory-checkpoint-b",
+      missingCapabilities: ["remote-opportunity-updates"],
+    });
+    const stale = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_projection",
+      parameters: {
+        spaceId: ids.rootSpace,
+        limit: 1,
+        cursor: first.result.projection.nextCursor ?? "",
+      },
+    });
+    if (stale.kind !== "query_result") throw new Error("Expected a result.");
+    assert.equal(stale.result.outcome, "rejected");
+    if (stale.result.outcome === "rejected")
+      assert.equal(
+        stale.result.diagnosticCode,
+        "query.consistency_unavailable",
+      );
+  });
+
+  it("keeps malformed inventory cursors behind the same authorization boundary", () => {
+    const harness = setup();
+    const deniedContext = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: requestId(),
+      grantId: requestId(),
+      capabilityScope: context().capabilityScope.filter(
+        (capability) => capability !== "relationship.workspace",
+      ),
+    });
+    harness.authorization.register(deniedContext);
+    const query = (execution: ExecutionContext, cursor?: string) =>
+      harness.kernel.query(execution, {
+        contractVersion: 1,
+        queryName: "opportunity.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      });
+    for (const cursor of [undefined, "not-a-cursor"]) {
+      const denied = query(deniedContext, cursor);
+      if (denied.kind !== "query_result") throw new Error("Expected a result.");
+      assert.equal(denied.result.outcome, "rejected");
+      if (denied.result.outcome === "rejected")
+        assert.equal(denied.result.diagnosticCode, "authorization.denied");
+    }
+    const malformed = query(context(), "not-a-cursor");
+    if (malformed.kind !== "query_result")
+      throw new Error("Expected a result.");
+    assert.equal(malformed.result.outcome, "rejected");
+    if (malformed.result.outcome === "rejected")
+      assert.equal(malformed.result.diagnosticCode, "query.cursor_invalid");
+  });
+
+  it("pages exact relation ids and versions through the final page for safe unrelate", () => {
+    const harness = setup();
+    const { projectId } = createProjectRecord(
+      harness,
+      "Relation inventory target",
+    );
+    const relationIds: RelationId[] = [];
+    for (const index of [0, 1, 2]) {
+      const taskId = createTask(
+        harness,
+        `Relation inventory task ${index + 1}`,
+      );
+      const related = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`relation-inventory-${index}`, {
+            [taskId]: 1,
+            [projectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      );
+      if (
+        related.outcome !== "success" ||
+        related.projection.kind !== "relation.created"
+      )
+        throw new Error("Expected an inventory relation.");
+      relationIds.push(related.projection.relationId);
+    }
+
+    const read = (cursor?: string) =>
+      harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "relation.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      });
+    const first = read();
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "relation.list"
+    )
+      throw new Error("Expected the first relation inventory page.");
+    assert.deepEqual(
+      first.result.projection.items.map((item) => ({
+        id: item.id,
+        version: item.version,
+        relationType: item.relationType,
+        targetId: item.targetId,
+        state: item.state,
+      })),
+      relationIds.slice(0, 2).map((id) => ({
+        id,
+        version: 1,
+        relationType: "task_contributes_to_project",
+        targetId: projectId,
+        state: "active",
+      })),
+    );
+    assert.equal(first.result.projection.totalCount, 3);
+    assert.equal(first.result.projection.final, false);
+    assert.ok(first.result.projection.nextCursor);
+
+    const second = read(first.result.projection.nextCursor ?? undefined);
+    if (
+      second.kind !== "query_result" ||
+      second.result.outcome !== "success" ||
+      second.result.projection.kind !== "relation.list"
+    )
+      throw new Error("Expected the final relation inventory page.");
+    assert.deepEqual(
+      second.result.projection.items.map((item) => item.id),
+      relationIds.slice(2),
+    );
+    assert.equal(second.result.projection.final, true);
+    assert.equal(second.result.projection.nextCursor, null);
+
+    const exact = second.result.projection.items[0];
+    assert.ok(exact);
+    const unlinked = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("relation-inventory-unrelate", {
+          [exact.id]: exact.version,
+        }),
+        commandName: "record.unrelate",
+        payload: { relationId: exact.id },
+      }),
+    );
+    assert.equal(unlinked.outcome, "success");
   });
 
   it("composes one Organization read without duplicating shared Project work", () => {
@@ -3661,6 +4122,87 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(reswept.projection.alreadySignaledCount, 1);
   });
 
+  it("changes explicit Project attention without inferring it from Task state", () => {
+    const harness = setup();
+    const { projectId } = createProjectRecord(harness, "Portfolio attention");
+    const taskId = createTask(
+      harness,
+      "Waiting task does not park its Project",
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("attention-relation", {
+            [taskId]: 1,
+            [projectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("attention-task-waiting", { [taskId]: 1 }),
+          commandName: "task.setOperationalState",
+          payload: {
+            taskId,
+            operationalState: "waiting",
+            waitingOn: {
+              kind: "external",
+              label: "Client decision",
+              direction: "waiting_on_them",
+            },
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const listed = () => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "project.list"
+      )
+        throw new Error("Expected the project list.");
+      const project = result.result.projection.items.find(
+        (item) => item.id === projectId,
+      );
+      assert.ok(project);
+      return project;
+    };
+
+    assert.equal(listed().attentionState, "current");
+    const changed = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attention-park", { [projectId]: 1 }),
+        commandName: "project.setAttentionState",
+        payload: { projectId, attentionState: "parked" },
+      }),
+    );
+    assert.equal(changed.outcome, "success");
+    if (changed.outcome !== "success") throw new Error("Expected success.");
+    assert.equal(changed.diagnosticCode, "project.attention_state_changed");
+    assert.equal(changed.projection.attentionState, "parked");
+    assert.equal(listed().attentionState, "parked");
+  });
+
   it("renames a Project and moves its deadline, one field at a time, reversibly", () => {
     // Do 0.2.0 Projektu NIE DAŁO SIĘ PRZEMIANOWAĆ: tytuł pisał wyłącznie
     // `project.create`. Rekord nie znał też ANI JEDNEJ daty, więc os czasu nad
@@ -4204,6 +4746,669 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(relatedCount(), 1);
   });
 
+  it("relates a Task directly to an Area and Initiative and projects both contexts", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Carry lightweight work directly");
+    const areaId = StrategicRecordIdSchema.parse(requestId());
+    const initiativeId = StrategicRecordIdSchema.parse(requestId());
+    harness.store.transact((transaction) => {
+      assert.equal(isApplicationWave2Transaction(transaction), true);
+      if (!isApplicationWave2Transaction(transaction))
+        throw new Error("Expected the Wave 2 reference transaction.");
+      transaction.insertStrategicRecord({
+        id: areaId,
+        workspaceId: context().workspaceId,
+        spaceId: context().spaceScope[0]!,
+        kind: "area",
+        title: "Product stewardship",
+        responsibility: "Keep the product useful without synthetic projects.",
+        state: "active",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-08-20T12:00:00.000Z",
+        updatedAt: "2026-08-20T12:00:00.000Z",
+      });
+      transaction.insertStrategicRecord({
+        id: initiativeId,
+        workspaceId: context().workspaceId,
+        spaceId: context().spaceScope[0]!,
+        kind: "initiative",
+        title: "Adopt the operating standard",
+        intendedOutcome: "Lightweight work carries direct strategic context.",
+        state: "active",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-08-20T12:00:00.000Z",
+        updatedAt: "2026-08-20T12:00:00.000Z",
+      });
+    });
+
+    const relationIds: string[] = [];
+    const relationReceiptIds: string[] = [];
+    for (const [relationType, targetId] of [
+      ["task_contributes_to_area", areaId],
+      ["task_advances_initiative", initiativeId],
+    ] as const) {
+      const related = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`direct-${relationType}`, {
+            [taskId]: 1,
+            [targetId]: 1,
+          }),
+          commandName: "record.relate",
+          payload:
+            relationType === "task_contributes_to_area"
+              ? { relationType, taskId, areaId: targetId }
+              : { relationType, taskId, initiativeId: targetId },
+        }),
+      );
+      assert.equal(related.outcome, "success", JSON.stringify(related));
+      if (
+        related.outcome === "success" &&
+        related.projection.kind === "relation.created"
+      )
+        relationIds.push(related.projection.relationId);
+      if (related.outcome === "success")
+        relationReceiptIds.push(related.auditReceiptId);
+    }
+    assert.deepEqual(
+      relationReceiptIds.map(
+        (receiptId) =>
+          harness.store
+            .snapshot()
+            .auditReceipts.find((receipt) => receipt.id === receiptId)
+            ?.changedFields,
+      ),
+      [
+        ["relationType", "taskId", "areaId"],
+        ["relationType", "taskId", "initiativeId"],
+      ],
+    );
+
+    const activity = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "activity.meaningful",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      activity.kind !== "query_result" ||
+      activity.result.outcome !== "success" ||
+      activity.result.projection.kind !== "activity.meaningful"
+    )
+      assert.fail("Expected direct-context Activity.");
+    type RelationActivity =
+      (typeof activity.result.projection.items)[number] & {
+        readonly relationContext?:
+          | {
+              readonly relationType: "task_contributes_to_area";
+              readonly path: "direct";
+              readonly taskId: string;
+              readonly areaId: string;
+            }
+          | {
+              readonly relationType: "task_advances_initiative";
+              readonly path: "direct";
+              readonly taskId: string;
+              readonly initiativeId: string;
+            };
+      };
+    const relationActivities = activity.result.projection.items.filter(
+      (item) => item.activityType === "relation_added",
+    ) as readonly RelationActivity[];
+    const areaActivity = relationActivities.find(
+      (item) =>
+        item.relationContext?.relationType === "task_contributes_to_area",
+    );
+    const initiativeActivity = relationActivities.find(
+      (item) =>
+        item.relationContext?.relationType === "task_advances_initiative",
+    );
+    assert.deepEqual(areaActivity?.relationContext, {
+      relationType: "task_contributes_to_area",
+      path: "direct",
+      taskId,
+      areaId,
+    });
+    assert.deepEqual(initiativeActivity?.relationContext, {
+      relationType: "task_advances_initiative",
+      path: "direct",
+      taskId,
+      initiativeId,
+    });
+
+    const work = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "work.overview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      work.kind !== "query_result" ||
+      work.result.outcome !== "success" ||
+      work.result.projection.kind !== "work.overview"
+    )
+      assert.fail("Expected Work overview.");
+    const task = work.result.projection.tasks.find(
+      (item) => item.id === taskId,
+    );
+    assert.deepEqual(task?.areaIds, [areaId]);
+    assert.deepEqual(task?.initiativeIds, [initiativeId]);
+    assert.deepEqual(task?.projectIds, []);
+    assert.deepEqual(
+      (
+        task as typeof task & {
+          directContextRelations: readonly {
+            relationId: string;
+            relationType: string;
+            targetId: string;
+            version: number;
+          }[];
+        }
+      )?.directContextRelations,
+      [
+        {
+          relationId: relationIds[0],
+          relationType: "task_contributes_to_area",
+          targetId: areaId,
+          version: 1,
+        },
+        {
+          relationId: relationIds[1],
+          relationType: "task_advances_initiative",
+          targetId: initiativeId,
+          version: 1,
+        },
+      ],
+    );
+
+    const duplicate = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("duplicate-direct-area", { [taskId]: 1, [areaId]: 1 }),
+        commandName: "record.relate",
+        payload: { relationType: "task_contributes_to_area", taskId, areaId },
+      }),
+    );
+    assert.equal(duplicate.diagnosticCode, "relation.already_exists");
+
+    const areaRelationId = RelationIdSchema.parse(relationIds[0]);
+    const unrelate = {
+      ...metadata("unrelate-direct-area", { [areaRelationId]: 1 }),
+      commandName: "record.unrelate" as const,
+      payload: { relationId: areaRelationId },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), unrelate)).diagnosticCode,
+      "relation.removed",
+    );
+    assert.equal(
+      harness.store
+        .snapshot()
+        .relations.find((item) => item.id === areaRelationId)?.state,
+      "removed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("restore-direct-area", { [areaRelationId]: 2 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: unrelate.commandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+    );
+    assert.equal(
+      harness.store
+        .snapshot()
+        .relations.find((item) => item.id === areaRelationId)?.version,
+      3,
+    );
+  });
+
+  it("projects bounded first-class Area and Initiative overviews without conflating indirect Task context", () => {
+    const harness = setup();
+    const directTaskId = createTask(harness, "Carry direct strategic work");
+    const indirectTaskId = createTask(harness, "Carry project-scoped work");
+    const { projectId: areaProjectId } = createProjectRecord(
+      harness,
+      "Serve the durable responsibility",
+    );
+    const { projectId: initiativeProjectId } = createProjectRecord(
+      harness,
+      "Advance the finite outcome",
+    );
+    const areaId = StrategicRecordIdSchema.parse(requestId());
+    const initiativeId = StrategicRecordIdSchema.parse(requestId());
+
+    for (const command of [
+      {
+        ...metadata("overview-area-create", {}),
+        commandName: "area.create" as const,
+        payload: {
+          areaId,
+          spaceId: ids.rootSpace,
+          title: "Product stewardship",
+          responsibility: "Keep the product useful after each delivery closes.",
+        },
+      },
+      {
+        ...metadata("overview-initiative-create", {}),
+        commandName: "initiative.create" as const,
+        payload: {
+          initiativeId,
+          spaceId: ids.rootSpace,
+          title: "Adopt the operating standard",
+          intendedOutcome: "Every live record has the right operational shape.",
+        },
+      },
+    ])
+      assert.equal(
+        unwrap(harness.kernel.execute(context(), command)).outcome,
+        "success",
+      );
+
+    const directRelations = [
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-direct-area", {
+            [directTaskId]: 1,
+            [areaId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_area",
+            taskId: directTaskId,
+            areaId,
+          },
+        }),
+      ),
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-direct-initiative", {
+            [directTaskId]: 1,
+            [initiativeId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_advances_initiative",
+            taskId: directTaskId,
+            initiativeId,
+          },
+        }),
+      ),
+    ];
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-project-only-task", {
+            [indirectTaskId]: 1,
+            [areaProjectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId: indirectTaskId,
+            projectId: areaProjectId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const workLinks = [
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-area-project", {}),
+          commandName: "work.linkCreate",
+          payload: {
+            linkId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            linkType: "project_serves_area",
+            sourceRecordId: areaProjectId,
+            targetRecordId: areaId,
+          },
+        }),
+      ),
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-initiative-project", {}),
+          commandName: "work.linkCreate",
+          payload: {
+            linkId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            linkType: "project_advances_initiative",
+            sourceRecordId: initiativeProjectId,
+            targetRecordId: initiativeId,
+          },
+        }),
+      ),
+    ];
+
+    const area = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "area.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { areaId },
+    });
+    if (
+      area.kind !== "query_result" ||
+      area.result.outcome !== "success" ||
+      area.result.projection.kind !== "area.operationalOverview"
+    )
+      assert.fail(
+        `Expected Area operational overview: ${JSON.stringify(area)}`,
+      );
+    assert.equal(
+      area.result.projection.area.responsibility.includes("useful"),
+      true,
+    );
+    assert.equal(area.result.projection.directTaskCount, 1);
+    assert.deepEqual(
+      area.result.projection.directTasks.map((task) => task.id),
+      [directTaskId],
+      "a Task reached only through a Project must not become direct Area work",
+    );
+    assert.equal(
+      area.result.projection.projects[0]?.id,
+      areaProjectId,
+      JSON.stringify(area.result.projection),
+    );
+    assert.equal(area.result.projection.projectCount, 1);
+    assert.equal(
+      area.result.projection.directTasks[0]?.relationId,
+      directRelations[0]?.outcome === "success" &&
+        directRelations[0].projection.kind === "relation.created"
+        ? directRelations[0].projection.relationId
+        : undefined,
+    );
+
+    const initiative = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "initiative.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { initiativeId },
+    });
+    if (
+      initiative.kind !== "query_result" ||
+      initiative.result.outcome !== "success" ||
+      initiative.result.projection.kind !== "initiative.operationalOverview"
+    )
+      assert.fail(
+        `Expected Initiative operational overview: ${JSON.stringify(initiative)}`,
+      );
+    assert.equal(
+      initiative.result.projection.initiative.intendedOutcome.includes("right"),
+      true,
+    );
+    assert.deepEqual(
+      initiative.result.projection.directTasks.map((task) => task.id),
+      [directTaskId],
+    );
+    assert.equal(
+      initiative.result.projection.projects[0]?.id,
+      initiativeProjectId,
+    );
+    assert.equal(initiative.result.projection.projectCount, 1);
+    assert.equal(
+      workLinks.every((result) => result.outcome === "success"),
+      true,
+    );
+
+    const lifecycle = (
+      commandName:
+        | "area.archive"
+        | "area.restore"
+        | "initiative.close"
+        | "initiative.reopen",
+      idField: "areaId" | "initiativeId",
+      id: typeof areaId,
+      version: number,
+    ) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`lifecycle-${commandName}-${version}`, { [id]: version }),
+          commandName,
+          payload: { [idField]: id },
+        }),
+      );
+    assert.equal(
+      lifecycle("area.archive", "areaId", areaId, 1).outcome,
+      "success",
+    );
+    const archivedArea = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "area.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { areaId },
+    });
+    if (
+      archivedArea.kind !== "query_result" ||
+      archivedArea.result.outcome !== "success" ||
+      archivedArea.result.projection.kind !== "area.operationalOverview"
+    )
+      assert.fail("Expected archived Area overview.");
+    assert.equal(archivedArea.result.projection.area.state, "archived");
+    assert.equal(
+      lifecycle("area.restore", "areaId", areaId, 2).outcome,
+      "success",
+    );
+    assert.equal(
+      lifecycle("initiative.close", "initiativeId", initiativeId, 1).outcome,
+      "success",
+    );
+    assert.equal(
+      lifecycle("initiative.reopen", "initiativeId", initiativeId, 2).outcome,
+      "success",
+    );
+    const staleLifecycle = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("lifecycle-stale-area", { [areaId]: 1 }),
+        commandName: "area.archive",
+        payload: { areaId },
+      }),
+    );
+    assert.equal(
+      staleLifecycle.diagnosticCode,
+      "record.version_conflict",
+      "a stale lifecycle action must not overwrite a newer narrative or state",
+    );
+
+    harness.authorization.revoke(context().grantId);
+    const denied = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "area.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { areaId },
+    });
+    assert.equal(
+      denied.kind === "query_result" ? denied.result.outcome : denied.kind,
+      "rejected",
+    );
+  });
+
+  it("refuses Area and Initiative lifecycle changes after soft removal", () => {
+    const harness = setup();
+    const removedAreaId = StrategicRecordIdSchema.parse(requestId());
+    const removedInitiativeId = StrategicRecordIdSchema.parse(requestId());
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-area-create", {}),
+          commandName: "area.create",
+          payload: {
+            areaId: removedAreaId,
+            spaceId: ids.rootSpace,
+            title: "Removed Area",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-initiative-create", {}),
+          commandName: "initiative.create",
+          payload: {
+            initiativeId: removedInitiativeId,
+            spaceId: ids.rootSpace,
+            title: "Removed Initiative",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-area-remove", { [removedAreaId]: 1 }),
+          commandName: "area.remove",
+          payload: { areaId: removedAreaId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-initiative-remove", {
+            [removedInitiativeId]: 1,
+          }),
+          commandName: "initiative.remove",
+          payload: { initiativeId: removedInitiativeId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-area-archive", { [removedAreaId]: 2 }),
+          commandName: "area.archive",
+          payload: { areaId: removedAreaId },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("removed-lifecycle-initiative-close", {
+            [removedInitiativeId]: 2,
+          }),
+          commandName: "initiative.close",
+          payload: { initiativeId: removedInitiativeId },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+  });
+
+  it("blocks removing a directly related Area and refuses a removed direct target", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Keep the context anchored");
+    const areaId = StrategicRecordIdSchema.parse(requestId());
+    harness.store.transact((transaction) => {
+      if (!isApplicationWave2Transaction(transaction))
+        throw new Error("Expected the Wave 2 reference transaction.");
+      transaction.insertStrategicRecord({
+        id: areaId,
+        workspaceId: context().workspaceId,
+        spaceId: context().spaceScope[0]!,
+        kind: "area",
+        title: "Durable responsibility",
+        responsibility: "Carry direct lightweight work.",
+        state: "active",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-08-20T12:00:00.000Z",
+        updatedAt: "2026-08-20T12:00:00.000Z",
+      });
+    });
+    const related = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("guard-direct-area", { [taskId]: 1, [areaId]: 1 }),
+        commandName: "record.relate",
+        payload: { relationType: "task_contributes_to_area", taskId, areaId },
+      }),
+    );
+    if (
+      related.outcome !== "success" ||
+      related.projection.kind !== "relation.created"
+    )
+      assert.fail("Expected direct Area relation.");
+
+    const blocked = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("remove-related-area", { [areaId]: 1 }),
+        commandName: "area.remove",
+        payload: { areaId },
+      }),
+    );
+    assert.equal(blocked.diagnosticCode, "record.still_referenced");
+
+    const relationId = related.projection.relationId;
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("detach-direct-area", { [relationId]: 1 }),
+          commandName: "record.unrelate",
+          payload: { relationId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("remove-detached-area", { [areaId]: 1 }),
+          commandName: "area.remove",
+          payload: { areaId },
+        }),
+      ).outcome,
+      "success",
+    );
+    const activityAfterRemoval = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "activity.meaningful",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      activityAfterRemoval.kind !== "query_result" ||
+      activityAfterRemoval.result.outcome !== "success" ||
+      activityAfterRemoval.result.projection.kind !== "activity.meaningful"
+    )
+      assert.fail("Expected privacy-filtered Activity.");
+    const serializedActivity = JSON.stringify(
+      activityAfterRemoval.result.projection,
+    );
+    assert.equal(serializedActivity.includes(areaId), false);
+    assert.equal(serializedActivity.includes(relationId), false);
+    const refused = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("relate-removed-area", { [taskId]: 1, [areaId]: 2 }),
+        commandName: "record.relate",
+        payload: { relationType: "task_contributes_to_area", taskId, areaId },
+      }),
+    );
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+  });
+
   it("fails closed for revoked search, cockpit, activity, relation, and undo access", () => {
     const harness = setup();
     const taskId = createTask(harness, "Hidden after revocation");
@@ -4276,6 +5481,9 @@ describe("Wave 2 reference semantics", () => {
     const hiddenOrganizationId = StrategicRecordIdSchema.parse(
       "10000000-0000-4000-8000-00000000dcbe",
     );
+    const hiddenAreaId = StrategicRecordIdSchema.parse(
+      "10000000-0000-4000-8000-00000000dcbf",
+    );
     harness.store.transact((transaction) => {
       assert.equal(isApplicationWave2Transaction(transaction), true);
       if (!isApplicationWave2Transaction(transaction)) {
@@ -4333,6 +5541,19 @@ describe("Wave 2 reference semantics", () => {
         name: "SECRET_ORGANIZATION_TITLE",
         relationshipState: "active",
         nextAction: "SECRET_ORGANIZATION_ACTION",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-07-12T12:00:00.000Z",
+        updatedAt: "2026-07-12T12:00:00.000Z",
+      });
+      transaction.insertStrategicRecord({
+        id: hiddenAreaId,
+        workspaceId: context().workspaceId,
+        spaceId: hiddenSpaceId,
+        kind: "area",
+        title: "SECRET_AREA_TITLE",
+        responsibility: "SECRET_AREA_RESPONSIBILITY",
+        state: "active",
         createdBy: context().principalId,
         version: 1,
         createdAt: "2026-07-12T12:00:00.000Z",
@@ -4435,6 +5656,29 @@ describe("Wave 2 reference semantics", () => {
     // answer a Project id that names nothing would get, which is what keeps
     // the hidden Project's existence out of the reply.
     assert.equal(deniedRelation.diagnosticCode, "command.precondition_failed");
+    assert.equal(harness.store.snapshot().relations.length, 0);
+    const deniedDirectRelation = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("cross-space-direct-area", {
+          [taskId]: 1,
+          [hiddenAreaId]: 1,
+        }),
+        commandName: "record.relate",
+        payload: {
+          relationType: "task_contributes_to_area",
+          taskId,
+          areaId: hiddenAreaId,
+        },
+      }),
+    );
+    assert.equal(
+      deniedDirectRelation.diagnosticCode,
+      "command.precondition_failed",
+    );
+    assert.equal(
+      JSON.stringify(deniedDirectRelation).includes("SECRET"),
+      false,
+    );
     assert.equal(harness.store.snapshot().relations.length, 0);
   });
 
@@ -4731,6 +5975,152 @@ describe("Wave 2 reference semantics", () => {
       },
     ]);
     assert.equal(noProject.length, 0);
+  });
+
+  it("keeps direct Area and Initiative filters distinct from Project reach", () => {
+    const harness = setup();
+    const areaId = StrategicRecordIdSchema.parse(requestId());
+    const initiativeId = StrategicRecordIdSchema.parse(requestId());
+    const projectId = createProjectRecord(
+      harness,
+      "Indirect context project",
+    ).projectId;
+    const directAreaTask = createTask(harness, "Direct Area work");
+    const directInitiativeTask = createTask(harness, "Direct Initiative work");
+    const indirectTask = createTask(harness, "Project-carried work");
+    harness.store.transact((transaction) => {
+      if (!isApplicationWave2Transaction(transaction))
+        throw new Error("Expected the Wave 2 reference transaction.");
+      for (const record of [
+        {
+          id: areaId,
+          workspaceId: context().workspaceId,
+          spaceId: context().spaceScope[0]!,
+          kind: "area" as const,
+          title: "Product stewardship",
+          responsibility: "Keep direct work visible.",
+          state: "active" as const,
+          createdBy: context().principalId,
+          version: 1,
+          createdAt: "2026-08-20T12:00:00.000Z",
+          updatedAt: "2026-08-20T12:00:00.000Z",
+        },
+        {
+          id: initiativeId,
+          workspaceId: context().workspaceId,
+          spaceId: context().spaceScope[0]!,
+          kind: "initiative" as const,
+          title: "Adopt work structure",
+          intendedOutcome: "No synthetic projects remain.",
+          state: "active" as const,
+          createdBy: context().principalId,
+          version: 1,
+          createdAt: "2026-08-20T12:00:00.000Z",
+          updatedAt: "2026-08-20T12:00:00.000Z",
+        },
+        {
+          id: StrategicRecordIdSchema.parse(requestId()),
+          workspaceId: context().workspaceId,
+          spaceId: context().spaceScope[0]!,
+          kind: "work_link" as const,
+          linkType: "project_serves_area" as const,
+          sourceRecordId: projectId,
+          targetRecordId: areaId,
+          state: "active" as const,
+          createdBy: context().principalId,
+          version: 1,
+          createdAt: "2026-08-20T12:00:00.000Z",
+          updatedAt: "2026-08-20T12:00:00.000Z",
+        },
+        {
+          id: StrategicRecordIdSchema.parse(requestId()),
+          workspaceId: context().workspaceId,
+          spaceId: context().spaceScope[0]!,
+          kind: "work_link" as const,
+          linkType: "project_advances_initiative" as const,
+          sourceRecordId: projectId,
+          targetRecordId: initiativeId,
+          state: "active" as const,
+          createdBy: context().principalId,
+          version: 1,
+          createdAt: "2026-08-20T12:00:00.000Z",
+          updatedAt: "2026-08-20T12:00:00.000Z",
+        },
+      ])
+        transaction.insertStrategicRecord(record);
+    });
+    for (const command of [
+      {
+        taskId: directAreaTask,
+        targetId: areaId,
+        payload: {
+          relationType: "task_contributes_to_area" as const,
+          taskId: directAreaTask,
+          areaId,
+        },
+      },
+      {
+        taskId: directInitiativeTask,
+        targetId: initiativeId,
+        payload: {
+          relationType: "task_advances_initiative" as const,
+          taskId: directInitiativeTask,
+          initiativeId,
+        },
+      },
+      {
+        taskId: indirectTask,
+        targetId: projectId,
+        payload: {
+          relationType: "task_contributes_to_project" as const,
+          taskId: indirectTask,
+          projectId,
+        },
+      },
+    ])
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(context(), {
+            ...metadata(`distinct-${command.taskId}`, {
+              [command.taskId]: 1,
+              [command.targetId]: 1,
+            }),
+            commandName: "record.relate",
+            payload: command.payload,
+          }),
+        ).outcome,
+        "success",
+      );
+
+    const listWith = (
+      path: "area" | "initiative" | "project.area" | "project.initiative",
+      id: string,
+    ) => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          relationConditions: [{ path, predicate: { field: "id", in: [id] } }],
+        },
+      });
+      if (result.kind !== "query_result" || result.result.outcome !== "success")
+        assert.fail("Expected filtered task list.");
+      return result.result.projection.kind === "task.list"
+        ? result.result.projection.items.map((item) => item.id)
+        : assert.fail("Expected task list projection.");
+    };
+    assert.deepEqual(listWith("area", areaId), [directAreaTask]);
+    assert.deepEqual(listWith("initiative", initiativeId), [
+      directInitiativeTask,
+    ]);
+    assert.deepEqual(listWith("project.area", areaId), [indirectTask]);
+    assert.deepEqual(listWith("project.initiative", initiativeId), [
+      indirectTask,
+    ]);
   });
 
   it("rejects an unknown relation path instead of silently ignoring it", () => {

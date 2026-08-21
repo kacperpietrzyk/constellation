@@ -17,6 +17,8 @@ import type {
   PrincipalId,
   PrincipalKind,
   ProjectId,
+  ProjectCheckInId,
+  ProjectCheckInReference,
   RelationId,
   RequestOrigin,
   SpaceId,
@@ -579,13 +581,44 @@ export interface Project {
    * czasu nad projektami nie istniała.
    */
   readonly dueAt?: string;
+  /** Explicit portfolio attention. Absence is legacy `current`. */
+  readonly attentionState?: "current" | "waiting" | "parked";
   readonly lifecycle: "active" | "closed";
+  readonly reclassifiedTo?: {
+    readonly kind: "area" | "initiative" | "opportunity";
+    readonly targetId: StrategicRecordId;
+    readonly commandId: CommandId;
+  };
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
   readonly createdBy: PrincipalId;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface ProjectCheckIn {
+  readonly id: ProjectCheckInId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly projectId: ProjectId;
+  readonly summary: string;
+  readonly waitingOn?: string;
+  readonly nextCheckpointAt?: string;
+  readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+  readonly references: readonly ProjectCheckInReference[];
+  readonly supersedesCheckInId?: ProjectCheckInId;
+  readonly supersededByCheckInId?: ProjectCheckInId;
+  readonly state: "active" | "voided";
+  readonly authorPrincipalId: PrincipalId;
+  readonly authorPrincipalKind?: PrincipalKind;
+  readonly authorGrantId?: GrantId;
+  readonly agentRunId?: AgentRunId;
+  readonly hostRunId?: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly voidedAt?: string;
+  readonly voidedBy?: PrincipalId;
 }
 
 /**
@@ -743,6 +776,7 @@ interface StrategicRecordBase {
    * projection, search and relation read goes through.
    */
   readonly recordState?: "active" | "removed";
+  readonly reclassifiedFromProjectIds?: readonly ProjectId[];
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -1077,10 +1111,8 @@ export type StrategicRecord =
     });
 
 /**
- * A Task's contribution to the work it serves. The far end is a Project or an
- * Opportunity — never both, and never neither: a per-client next action dies
- * with the deal it belongs to, and hanging it on a reporting Project was the
- * flattening the first migration had to accept.
+ * A Task's direct contribution to the work context it serves. The far end is
+ * exactly one typed Project, Opportunity, Area, or Initiative.
  */
 export type TaskWorkRelation = {
   readonly id: RelationId;
@@ -1101,12 +1133,33 @@ export type TaskWorkRelation = {
       readonly relationType: "task_contributes_to_opportunity";
       readonly opportunityId: StrategicRecordId;
     }
+  | {
+      readonly relationType: "task_contributes_to_area";
+      readonly areaId: StrategicRecordId;
+    }
+  | {
+      readonly relationType: "task_advances_initiative";
+      readonly initiativeId: StrategicRecordId;
+    }
 );
 
 /** @deprecated The name predates the second far end; prefer TaskWorkRelation. */
 export type TaskProjectRelation = TaskWorkRelation;
 
 export type UndoDescriptor =
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project_reclassification.restore";
+      readonly projectId: ProjectId;
+      readonly targetId: StrategicRecordId;
+      readonly mode: "create" | "merge";
+      readonly priorTargetProjectIds: readonly ProjectId[];
+      readonly resultingProjectVersion: number;
+      readonly resultingTargetVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
   | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
@@ -1285,6 +1338,27 @@ export type UndoDescriptor =
       // the narrative while silently keeping the new provenance.
       readonly priorEvidenceSourceIds?: readonly KnowledgeSourceId[];
       readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project.restore_attention_state";
+      readonly projectId: ProjectId;
+      readonly priorAttentionState: "current" | "waiting" | "parked";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project_check_in.void";
+      readonly checkInId: ProjectCheckInId;
+      readonly resultingVersion: number;
+      readonly predecessorCheckInId?: ProjectCheckInId;
+      readonly resultingPredecessorVersion?: number;
       readonly consumedByCommandId?: CommandId;
     }
   | {
@@ -1615,6 +1689,17 @@ export type UndoDescriptor =
       readonly kind: "task.undo_create";
       readonly taskId: TaskId;
       readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task_project.undo_create";
+      readonly taskId: TaskId;
+      readonly relationId: RelationId;
+      readonly resultingTaskVersion: number;
+      readonly resultingRelationVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
   | {
@@ -2023,11 +2108,23 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "project.created"
         | "project.outcome_updated"
         | "project.details_updated"
+        | "project.attention_state_changed"
+        | "project.reclassified"
         | "project.lifecycle_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: ProjectId;
       readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "project.check_in_added" | "project.check_in_voided";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: ProjectCheckInId;
+      readonly aggregateVersion: number;
+      readonly projectId: ProjectId;
       readonly occurredAt: string;
     }
   | {
@@ -2141,6 +2238,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       // Exactly one far end, the same one the relation carries.
       readonly projectId?: ProjectId;
       readonly opportunityId?: StrategicRecordId;
+      readonly areaId?: StrategicRecordId;
+      readonly initiativeId?: StrategicRecordId;
       readonly occurredAt: string;
     }
   | {

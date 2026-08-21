@@ -77,6 +77,9 @@ export const PREVIEW_CAPABILITY_DISPOSITION: Readonly<
   "capture.routeAsTask": "granted",
   "capture.history": "granted",
   "project.create": "granted",
+  "project.reclassify": "granted",
+  "project.checkInAdd": "granted",
+  "project.checkInList": "granted",
   "project.remove": "granted",
   "project.updateOutcome": "granted",
   "project.updateDetails": "granted",
@@ -274,7 +277,6 @@ export const createPreviewKernelService = (): PreviewKernelService => {
     origin: "desktop",
   };
   harness.authorization.register(context);
-
   const bootstrap = CommandEnvelopeSchema.parse({
     contractVersion: 1,
     commandName: "workspace.createLocal",
@@ -295,13 +297,166 @@ export const createPreviewKernelService = (): PreviewKernelService => {
   if (
     bootstrapResponse.kind !== "command_outcome" ||
     bootstrapResponse.outcome.outcome !== "success"
-  ) {
+  )
     throw new Error("Could not initialize the in-memory preview workspace.");
-  }
-
   return {
     execute: (rawCommand) => harness.kernel.execute(context, rawCommand),
     executeBatch: (rawBatch) => harness.kernel.executeBatch(context, rawBatch),
     query: (rawQuery) => harness.kernel.query(context, rawQuery),
   };
 };
+
+export const PREVIEW_CHECK_INS_ACCEPTANCE = {
+  projectAId: "00000000-0000-4000-8000-000000000301",
+  projectBId: "00000000-0000-4000-8000-000000000302",
+  unavailableProjectId: "00000000-0000-4000-8000-000000000303",
+  writeFailureProjectId: "00000000-0000-4000-8000-000000000304",
+} as const;
+
+export const previewCheckInAcceptanceDelayMs = (
+  raw: string | undefined,
+): number => {
+  if (raw === undefined) return 80;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 5_000
+    ? parsed
+    : 80;
+};
+
+export interface PreviewCheckInsAcceptanceService {
+  execute(rawCommand: unknown): ApplicationCommandResponse;
+  executeBatch(rawBatch: unknown): ApplicationBatchResponse;
+  query(rawQuery: unknown): Promise<ApplicationQueryResponse>;
+}
+
+const acceptanceMetadata = (
+  suffix: string,
+  key: string,
+  expectedVersions: Record<string, number>,
+) => ({
+  contractVersion: 1 as const,
+  commandId: `00000000-0000-4000-8000-${suffix.padStart(12, "0")}`,
+  workspaceId: PREVIEW_IDENTITY.workspaceId,
+  idempotencyKey: `check-ins-acceptance-${key}`,
+  expectedVersions,
+  correlationId: "00000000-0000-4000-8000-000000000399",
+});
+
+export const createPreviewCheckInsAcceptanceService =
+  (): PreviewCheckInsAcceptanceService => {
+    const base = createPreviewKernelService();
+    const seed = (command: Parameters<typeof base.execute>[0]) => {
+      const response = base.execute(command);
+      if (
+        response.kind !== "command_outcome" ||
+        response.outcome.outcome !== "success"
+      )
+        throw new Error("Could not seed the check-in acceptance preview.");
+    };
+    for (const [index, projectId, title] of [
+      [1, PREVIEW_CHECK_INS_ACCEPTANCE.projectAId, "Project A — populated"],
+      [2, PREVIEW_CHECK_INS_ACCEPTANCE.projectBId, "Project B — empty"],
+      [
+        3,
+        PREVIEW_CHECK_INS_ACCEPTANCE.unavailableProjectId,
+        "Check-ins unavailable",
+      ],
+      [
+        4,
+        PREVIEW_CHECK_INS_ACCEPTANCE.writeFailureProjectId,
+        "Check-in write failure",
+      ],
+    ] as const)
+      seed({
+        ...acceptanceMetadata(String(310 + index), `project-${index}`, {}),
+        commandName: "project.create",
+        payload: {
+          projectId,
+          spaceId: PREVIEW_IDENTITY.rootSpaceId,
+          title,
+        },
+      });
+    const originalId = "00000000-0000-4000-8000-000000000321";
+    seed({
+      ...acceptanceMetadata("321", "original", {
+        [PREVIEW_CHECK_INS_ACCEPTANCE.projectAId]: 1,
+      }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId: originalId,
+        projectId: PREVIEW_CHECK_INS_ACCEPTANCE.projectAId,
+        summary: "Original status before correction.",
+        waitingOn: "Vendor confirmation",
+        evidenceSourceIds: [],
+        references: [],
+      },
+    });
+    seed({
+      ...acceptanceMetadata("322", "correction", {
+        [PREVIEW_CHECK_INS_ACCEPTANCE.projectAId]: 1,
+        [originalId]: 1,
+      }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId: "00000000-0000-4000-8000-000000000322",
+        projectId: PREVIEW_CHECK_INS_ACCEPTANCE.projectAId,
+        summary: "Corrected latest status for acceptance.",
+        nextCheckpointAt: "2026-08-21T12:00:00.000Z",
+        evidenceSourceIds: [],
+        references: [],
+        supersedesCheckInId: originalId,
+      },
+    });
+    return {
+      execute: (rawCommand) => {
+        const command = rawCommand as {
+          readonly commandName?: string;
+          readonly commandId?: string;
+          readonly correlationId?: string;
+          readonly payload?: { readonly projectId?: string };
+        };
+        if (
+          command.commandName === "project.checkInAdd" &&
+          command.payload?.projectId ===
+            PREVIEW_CHECK_INS_ACCEPTANCE.writeFailureProjectId
+        )
+          return {
+            kind: "command_outcome",
+            outcome: {
+              contractVersion: 1,
+              commandId: command.commandId!,
+              correlationId: command.correlationId!,
+              kernelTime: "2026-08-20T12:00:00.000Z",
+              outcome: "retryable",
+              diagnosticCode: "storage.permission_denied",
+            },
+          } as unknown as ApplicationCommandResponse;
+        return base.execute(rawCommand);
+      },
+      executeBatch: (rawBatch) => base.executeBatch(rawBatch),
+      query: async (rawQuery) => {
+        const query = rawQuery as {
+          readonly queryName?: string;
+          readonly parameters?: { readonly projectId?: string };
+        };
+        const projectId = query.parameters?.projectId;
+        if (
+          query.queryName === "project.checkInList" &&
+          projectId === PREVIEW_CHECK_INS_ACCEPTANCE.unavailableProjectId
+        )
+          return base.query({});
+        if (query.queryName === "project.checkInList")
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              projectId === PREVIEW_CHECK_INS_ACCEPTANCE.projectAId
+                ? previewCheckInAcceptanceDelayMs(
+                    process.env.CONSTELLATION_PREVIEW_CHECK_INS_SLOW_MS,
+                  )
+                : 10,
+            ),
+          );
+        return base.query(rawQuery);
+      },
+    };
+  };

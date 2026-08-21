@@ -656,6 +656,8 @@ describe("self-hosted Hub core", () => {
             [otherAttentionId]: 1,
           },
           changedFields: ["assigneePrincipalId"],
+          agentRunId: "00000000-0000-4000-8000-000000000899",
+          hostRunId: "hub-activity-run",
           occurredAt: "2026-07-14T12:00:00.000Z",
           outcome: "success",
         },
@@ -724,6 +726,11 @@ describe("self-hosted Hub core", () => {
       [sharedTaskId]: 1,
       [memberAttentionId]: 1,
     });
+    assert.equal(
+      attentionReceipt.agentRunId,
+      "00000000-0000-4000-8000-000000000899",
+    );
+    assert.equal(attentionReceipt.hostRunId, "hub-activity-run");
     assert.equal(scoped.idempotencyRecords.length, 0);
     const adminWithoutManagementCapability = scopeHubSnapshot(
       HubWorkspaceSnapshotSchema.parse({

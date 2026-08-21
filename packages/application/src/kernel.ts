@@ -550,6 +550,8 @@ const isCurrentlyAuthorized = (
       );
     }
     case "project.create":
+    case "project.checkInAdd":
+    case "project.reclassify":
     case "project.remove":
     case "document.create":
     case "document.rename":
@@ -591,9 +593,13 @@ const isCurrentlyAuthorized = (
     case "area.create":
     case "area.remove":
     case "area.updateResponsibility":
+    case "area.archive":
+    case "area.restore":
     case "initiative.create":
     case "initiative.remove":
     case "initiative.updateOutcome":
+    case "initiative.close":
+    case "initiative.reopen":
     case "work.linkCreate":
     case "work.linkRemove":
     case "savedView.create":
@@ -616,7 +622,9 @@ const isCurrentlyAuthorized = (
     case "meeting.detachNote":
     case "project.updateOutcome":
     case "project.updateDetails":
+    case "project.setAttentionState":
     case "task.create":
+    case "task.createInProject":
     case "task.updateDetails":
     case "task.setCalendarBlock":
     case "task.setParent":
@@ -1061,6 +1069,8 @@ export class ApplicationKernel {
           occurredAt,
         );
       case "project.create":
+      case "project.checkInAdd":
+      case "project.reclassify":
       case "project.remove":
       case "document.create":
       case "document.rename":
@@ -1102,9 +1112,13 @@ export class ApplicationKernel {
       case "area.create":
       case "area.remove":
       case "area.updateResponsibility":
+      case "area.archive":
+      case "area.restore":
       case "initiative.create":
       case "initiative.remove":
       case "initiative.updateOutcome":
+      case "initiative.close":
+      case "initiative.reopen":
       case "work.linkCreate":
       case "work.linkRemove":
       case "savedView.create":
@@ -1127,7 +1141,9 @@ export class ApplicationKernel {
       case "meeting.detachNote":
       case "project.updateOutcome":
       case "project.updateDetails":
+      case "project.setAttentionState":
       case "task.create":
+      case "task.createInProject":
       case "task.updateDetails":
       case "task.setCalendarBlock":
       case "task.setParent":
@@ -3180,6 +3196,9 @@ export class ApplicationKernel {
             freshness,
           );
         case "project.list":
+        case "project.similarCandidates":
+        case "project.checkInList":
+        case "project.reclassificationPreview":
         case "work.overview":
         case "document.list":
         case "document.linkCandidates":
@@ -3187,10 +3206,14 @@ export class ApplicationKernel {
         case "knowledge.list":
         case "knowledge.documentContext":
         case "relationship.workspace":
+        case "opportunity.list":
+        case "relation.list":
         case "person.list":
         case "organization.list":
         case "radar.review":
         case "project.operationalOverview":
+        case "area.operationalOverview":
+        case "initiative.operationalOverview":
         case "organization.operationalOverview":
         case "search.global":
         case "cockpit.week":
@@ -3886,6 +3909,17 @@ export class ApplicationKernel {
         "query.consistency_unavailable",
       );
     }
+    const receiptCarriesAgentRun =
+      receipt.agentRunId !== undefined || receipt.hostRunId !== undefined;
+    const exactAgentGrant = receiptCarriesAgentRun
+      ? view.getAgentGrant(receipt.grantId)
+      : undefined;
+    const runAttributionVisible =
+      !receiptCarriesAgentRun ||
+      (exactAgentGrant !== undefined &&
+        exactAgentGrant.agentPrincipalId === receipt.principalId &&
+        exactAgentGrant.status === "active" &&
+        exactAgentGrant.spaceScope.includes(receipt.spaceId));
     return QueryResultSchema.parse({
       outcome: "success",
       contractVersion: 1,
@@ -3914,10 +3948,10 @@ export class ApplicationKernel {
           ...(receipt.checkpointId === undefined
             ? {}
             : { checkpointId: receipt.checkpointId }),
-          ...(receipt.agentRunId === undefined
+          ...(!runAttributionVisible || receipt.agentRunId === undefined
             ? {}
             : { agentRunId: receipt.agentRunId }),
-          ...(receipt.hostRunId === undefined
+          ...(!runAttributionVisible || receipt.hostRunId === undefined
             ? {}
             : { hostRunId: receipt.hostRunId }),
         },

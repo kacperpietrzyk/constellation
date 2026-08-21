@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test, vi } from "vitest";
 
 import {
+  RelationIdSchema,
   SpaceIdSchema,
   StrategicRecordIdSchema,
   type QueryProjection,
@@ -52,6 +53,9 @@ const linkId = StrategicRecordIdSchema.parse(
 const removedLinkId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-00000000fa05",
 );
+const directAreaRelationId = RelationIdSchema.parse(
+  "00000000-0000-4000-8000-00000000fa06",
+);
 
 const AREA_TITLE = "Relacje z klientami";
 const INITIATIVE_TITLE = "Interaktywna alfa";
@@ -84,6 +88,9 @@ const bootstrap: Projection<"workspace.bootstrapContext"> = {
  *  panel cannot pass by drawing every project under every context. */
 const work: Projection<"work.overview"> = {
   ...populatedWorkOverview,
+  tasks: populatedWorkOverview.tasks.map((task, index) =>
+    index === 0 ? { ...task, areaIds: [areaId] } : task,
+  ),
   areas: [
     {
       id: areaId,
@@ -134,10 +141,70 @@ const work: Projection<"work.overview"> = {
   ],
 };
 
+const areaOverview: Projection<"area.operationalOverview"> = {
+  kind: "area.operationalOverview",
+  area: {
+    id: areaId,
+    spaceId,
+    title: AREA_TITLE,
+    responsibility: AREA_RESPONSIBILITY,
+    needsReview: false,
+    state: "active",
+    version: 1,
+    updatedAt: "2026-08-20T12:00:00.000Z",
+  },
+  directTaskCount: 1,
+  directTasks: [
+    {
+      id: populatedWorkOverview.tasks[0]!.id,
+      title: populatedWorkOverview.tasks[0]!.title,
+      completionState: populatedWorkOverview.tasks[0]!.completionState,
+      relationId: directAreaRelationId,
+      relationVersion: 2,
+      version: populatedWorkOverview.tasks[0]!.version,
+      updatedAt: populatedWorkOverview.tasks[0]!.updatedAt,
+    },
+  ],
+  projectCount: 1,
+  projects: [
+    {
+      id: draftProjectId,
+      title: populatedProjectList.items[1]!.title,
+      intendedOutcome: populatedProjectList.items[1]!.intendedOutcome,
+      needsReview: populatedProjectList.items[1]!.needsReview,
+      lifecycle: populatedProjectList.items[1]!.lifecycle,
+      linkId,
+      linkVersion: 2,
+      version: populatedProjectList.items[1]!.version,
+      updatedAt: populatedProjectList.items[1]!.updatedAt,
+    },
+  ],
+};
+
+const initiativeOverview: Projection<"initiative.operationalOverview"> = {
+  kind: "initiative.operationalOverview",
+  initiative: {
+    id: initiativeId,
+    spaceId,
+    title: INITIATIVE_TITLE,
+    intendedOutcome: "",
+    needsReview: true,
+    state: "active",
+    version: 1,
+    updatedAt: "2026-08-20T12:00:00.000Z",
+  },
+  directTaskCount: 0,
+  directTasks: [],
+  projectCount: 0,
+  projects: [],
+};
+
 const queries = {
   ...populatedShellQueries,
   "workspace.bootstrapContext": projectionResponse(bootstrap),
   "work.overview": projectionResponse(work),
+  "area.operationalOverview": projectionResponse(areaOverview),
+  "initiative.operationalOverview": projectionResponse(initiativeOverview),
 };
 
 let container: HTMLDivElement;
@@ -254,6 +321,29 @@ const openContextPanel = async (): Promise<HTMLElement> => {
   return panel;
 };
 
+const openContextRecord = async (
+  kind: "area" | "initiative",
+): Promise<HTMLElement> => {
+  const panel = await openContextPanel();
+  const openButton = panel.querySelector<HTMLElement>(
+    `[aria-label="Open ${kind} ${kind === "area" ? AREA_TITLE : INITIATIVE_TITLE}"]`,
+  );
+  assert.ok(openButton, `the ${kind} row has no keyboard-operable Open action`);
+  await act(async () => {
+    openButton.focus();
+    openButton.click();
+  });
+  await waitForCondition(
+    () => container.querySelector(`[data-record-kind="${kind}"]`) !== null,
+    `the ${kind} never opened as a record`,
+  );
+  const record = container.querySelector<HTMLElement>(
+    `[data-record-kind="${kind}"]`,
+  );
+  assert.ok(record);
+  return record;
+};
+
 const openPopoverNamed = async (
   scope: ParentNode,
   label: string,
@@ -336,6 +426,16 @@ test("Projects is where an area and an initiative are read, with the work under 
     (areaRow.textContent ?? "").includes("Przeniesienie archiwum umów"),
     "the area does not say which project is under it",
   );
+  const directTasks = areaRow.querySelector<HTMLElement>(
+    '[data-context-direct-tasks="area"]',
+  );
+  assert.ok(directTasks, "direct tasks are not separated from projects");
+  assert.ok(
+    (directTasks.textContent ?? "").includes(
+      populatedWorkOverview.tasks[0]!.title,
+    ),
+    "the Area does not name its directly related Task",
+  );
   const initiativeRow = panel.querySelector<HTMLElement>(
     '[data-work-context="initiative"]',
   );
@@ -366,6 +466,160 @@ test("opening an area sends it to the inspector, the same drawer a project opens
       (inspector.textContent ?? "").includes(AREA_TITLE)
     );
   }, "opening an area did not put it in the inspector");
+});
+
+test("opening an Area promotes it to a first-class record with direct Tasks, Projects and Activity", async () => {
+  const panel = await openContextPanel();
+  await act(async () => {
+    panel
+      .querySelector<HTMLElement>('[data-work-context="area"]')
+      ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  await waitForCondition(
+    () => container.querySelector('[data-record-kind="area"]') !== null,
+    "the Area never opened as a record",
+  );
+  const record = container.querySelector<HTMLElement>(
+    '[data-record-kind="area"]',
+  );
+  assert.ok(record);
+  assert.equal(record.querySelector("h1")?.textContent, AREA_TITLE);
+  const tasksTab = record.querySelector<HTMLElement>(
+    '[data-record-tab="tasks"]',
+  );
+  const projectsTab = record.querySelector<HTMLElement>(
+    '[data-record-tab="projects"]',
+  );
+  const activityTab = record.querySelector<HTMLElement>(
+    '[data-record-tab="activity"]',
+  );
+  assert.ok(tasksTab, "the direct Tasks tab is missing");
+  assert.equal((tasksTab.textContent ?? "").replace(/\s/gu, ""), "Tasks1");
+  assert.ok(projectsTab, "the Projects tab is missing");
+  assert.equal(
+    (projectsTab.textContent ?? "").replace(/\s/gu, ""),
+    "Projects1",
+  );
+  assert.ok(activityTab, "the Activity tab is missing");
+  assert.ok(
+    (record.textContent ?? "").includes(AREA_RESPONSIBILITY),
+    "the responsibility is not the Area overview narrative",
+  );
+
+  await act(async () => tasksTab.click());
+  assert.ok(
+    (record.textContent ?? "").includes(populatedWorkOverview.tasks[0]!.title),
+    "direct work is missing from the Tasks tab",
+  );
+  await act(async () => projectsTab.click());
+  assert.ok(
+    (record.textContent ?? "").includes(populatedProjectList.items[1]!.title),
+    "the Project serving the Area is missing",
+  );
+});
+
+test("an Initiative opens as its own record and names an unwritten outcome honestly", async () => {
+  const record = await openContextRecord("initiative");
+  assert.equal(record.querySelector("h1")?.textContent, INITIATIVE_TITLE);
+  assert.ok(
+    (record.textContent ?? "").includes("Outcome to write"),
+    "an unwritten Initiative outcome rendered as blank content",
+  );
+  assert.ok(buttonNamed(record, "Close initiative"));
+});
+
+test("Area narrative and lifecycle writes carry the exact record version", async () => {
+  const record = await openContextRecord("area");
+  await act(async () => buttonNamed(record, "Edit responsibility").click());
+  const narrative = fieldLabelled<HTMLTextAreaElement>(
+    record,
+    "Responsibility",
+  );
+  await setValue(narrative, "Own the product after every delivery closes.");
+  await submitFormOf(narrative);
+  const updated = lastCommand("area.updateResponsibility");
+  assert.equal(updated.payload.areaId, areaId);
+  assert.deepEqual(updated.expectedVersions, { [areaId]: 1 });
+
+  await act(async () => buttonNamed(record, "Archive area").click());
+  const archived = lastCommand("area.archive");
+  assert.equal(archived.payload.areaId, areaId);
+  assert.deepEqual(archived.expectedVersions, { [areaId]: 1 });
+});
+
+test("an Area creates, links and unlinks direct Tasks without a synthetic Project", async () => {
+  const record = await openContextRecord("area");
+  const tasksTab = record.querySelector<HTMLElement>(
+    '[data-record-tab="tasks"]',
+  );
+  assert.ok(tasksTab);
+  await act(async () => tasksTab.click());
+
+  const directTitle = fieldLabelled<HTMLInputElement>(
+    record,
+    "New direct task",
+  );
+  await setValue(directTitle, "Review the operating standard");
+  await submitFormOf(directTitle);
+  const created = lastCommand("task.create");
+  assert.equal(created.payload.spaceId, spaceId);
+  assert.equal(created.payload.title, "Review the operating standard");
+  assert.equal(
+    issued.some((command) => command.name === "project.create"),
+    false,
+    "direct Task creation manufactured a Project",
+  );
+
+  const existing = fieldLabelled<HTMLSelectElement>(record, "Existing task");
+  const candidate = populatedWorkOverview.tasks[1]!;
+  await setValue(existing, candidate.id);
+  await submitFormOf(existing);
+  const linked = lastCommand("record.relate");
+  assert.deepEqual(linked.payload, {
+    relationType: "task_contributes_to_area",
+    taskId: candidate.id,
+    areaId,
+  });
+  assert.deepEqual(linked.expectedVersions, {
+    [candidate.id]: candidate.version,
+    [areaId]: 1,
+  });
+
+  const unlink = record.querySelector<HTMLElement>(
+    `[aria-label="Unlink task: ${populatedWorkOverview.tasks[0]!.title}"]`,
+  );
+  assert.ok(unlink);
+  await act(async () => unlink.click());
+  const removed = lastCommand("record.unrelate");
+  assert.deepEqual(removed.payload, { relationId: directAreaRelationId });
+  assert.deepEqual(removed.expectedVersions, { [directAreaRelationId]: 2 });
+});
+
+test("an Area links and unlinks Projects from its own Projects tab", async () => {
+  const record = await openContextRecord("area");
+  const projectsTab = record.querySelector<HTMLElement>(
+    '[data-record-tab="projects"]',
+  );
+  assert.ok(projectsTab);
+  await act(async () => projectsTab.click());
+
+  const project = fieldLabelled<HTMLSelectElement>(record, "Project to link");
+  await setValue(project, projectId);
+  await submitFormOf(project);
+  const linked = lastCommand("work.linkCreate");
+  assert.equal(linked.payload.linkType, "project_serves_area");
+  assert.equal(linked.payload.sourceRecordId, projectId);
+  assert.equal(linked.payload.targetRecordId, areaId);
+  assert.equal(linked.payload.spaceId, spaceId);
+
+  const unlink = record.querySelector<HTMLElement>(
+    `[aria-label="Unlink project: ${populatedProjectList.items[1]!.title}"]`,
+  );
+  assert.ok(unlink);
+  await act(async () => unlink.click());
+  const removed = lastCommand("work.linkRemove");
+  assert.deepEqual(removed.payload, { linkId });
+  assert.deepEqual(removed.expectedVersions, { [linkId]: 2 });
 });
 
 test("an area is created with an explicit gap rather than an empty responsibility", async () => {

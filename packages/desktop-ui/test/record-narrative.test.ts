@@ -43,6 +43,9 @@ const narrativeComponent = read("src/components/RecordNarrative.tsx");
 // time pressure is to lower the floor — and lowering it is exactly how an
 // unwritten responsibility goes back to rendering as a blank line.
 const projectContextPanel = read("src/projects/ProjectContextPanel.tsx");
+const projectCreateClassifier = read(
+  "src/projects/ProjectCreateClassifier.tsx",
+);
 const surfaces = read("src/Wave2Surfaces.tsx");
 const projectRecordOverview = read("src/record/ProjectRecordOverview.tsx");
 const realApp = read("src/RealApp.tsx");
@@ -148,7 +151,7 @@ describe("unwritten record narrative", () => {
       /required/,
     );
     assert.doesNotMatch(
-      selfClosingElement(surfaces, 'id="project-outcome"'),
+      selfClosingElement(projectCreateClassifier, "name={name}"),
       /required/,
     );
     assert.match(projectContextPanel, /if \(!title\) \{/);

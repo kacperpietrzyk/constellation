@@ -1,0 +1,163 @@
+import { strict as assert } from "node:assert";
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, test } from "vitest";
+
+import type { DesktopSnapshot } from "../src/client/workflow.js";
+
+let container: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+  container = document.createElement("div");
+  document.body.append(container);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+});
+
+const id = (value: number): string =>
+  `a3000000-0000-4000-8000-${value.toString().padStart(12, "0")}`;
+
+const activity = (): DesktopSnapshot["activity"] =>
+  ({
+    kind: "ready",
+    data: {
+      kind: "activity.meaningful",
+      items: Array.from({ length: 200 }, (_, index) => ({
+        eventId: id(index + 1),
+        targetCommandId: id(index + 301) as never,
+        activityType:
+          index < 2
+            ? "relation_added"
+            : index % 2 === 0
+              ? "project_created"
+              : "task_created",
+        recordId: id(index + 601),
+        recordKind: index < 2 ? "task" : index % 2 === 0 ? "project" : "task",
+        recordTitle: `Observable record ${index + 1}`,
+        ...(index === 0
+          ? {
+              relationContext: {
+                relationType: "task_contributes_to_area" as const,
+                path: "direct" as const,
+                taskId: id(601) as never,
+                areaId: id(1_601) as never,
+              },
+            }
+          : index === 1
+            ? {
+                relationContext: {
+                  relationType: "task_contributes_to_project" as const,
+                  path: "project_mediated" as const,
+                  taskId: id(602) as never,
+                  projectId: id(1_602) as never,
+                },
+              }
+            : {}),
+        ...(index === 199
+          ? {}
+          : {
+              actor: {
+                principalId: id(index % 4 < 2 ? 901 : 902) as never,
+                displayName: index % 4 < 2 ? "Hermes" : "Claude",
+                kind: "agent" as const,
+              },
+            }),
+        commandName: index % 2 === 0 ? "project.create" : "task.create",
+        changedFields: ["title"],
+        correlationId: id(1_201 + Math.floor(index / 2)) as never,
+        agentRunId: id(index % 4 < 2 ? 1_401 : 1_402) as never,
+        hostRunId: index % 4 < 2 ? "hermes-run" : "claude-run",
+        occurredAt: new Date(
+          Date.parse("2026-08-20T12:00:00.000Z") - index * 1_000,
+        ).toISOString(),
+      })),
+    },
+  }) as DesktopSnapshot["activity"];
+
+const setSelect = async (select: HTMLSelectElement, value: string) => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value",
+    )?.set?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+};
+
+test("200-event Activity keeps authorized filters, grouped evidence and honest fallback", async () => {
+  const { ActivitySection } =
+    await import("../src/settings/ActivitySection.js");
+  root = createRoot(container);
+  let opened: { kind: string; id: string } | undefined;
+  await act(async () => {
+    root.render(
+      createElement(ActivitySection, {
+        activity: activity(),
+        timezone: "Europe/Warsaw",
+        onUndo: () => undefined,
+        onOpenRecord: (kind, recordId) => {
+          opened = { kind, id: recordId };
+        },
+        onRetry: () => undefined,
+      }),
+    );
+  });
+
+  assert.match(container.textContent ?? "", /200 changes/);
+  assert.equal(container.textContent?.includes("Unknown user"), false);
+  assert.equal(container.querySelectorAll("details").length, 100);
+
+  const actor = container.querySelector<HTMLSelectElement>("#activity-actor");
+  const kind = container.querySelector<HTMLSelectElement>(
+    "#activity-record-kind",
+  );
+  assert.ok(actor);
+  assert.ok(kind);
+  assert.deepEqual(
+    [...actor.options].map((option) => option.textContent),
+    ["All actors", "Claude · agent", "Hermes · agent"],
+  );
+  assert.deepEqual(
+    [...kind.options].map((option) => option.textContent),
+    ["All record kinds", "Project", "Task"],
+  );
+
+  const firstSummary =
+    container.querySelector<HTMLElement>("details > summary");
+  assert.ok(firstSummary);
+  await act(async () => firstSummary.click());
+  const open = firstSummary.closest("details");
+  assert.equal(open?.open, true);
+  assert.equal(open?.querySelectorAll("button").length, 4);
+  const firstRecord = [
+    ...(open?.querySelectorAll<HTMLButtonElement>("button") ?? []),
+  ].find((button) =>
+    (button.textContent ?? "").includes("Observable record 1"),
+  );
+  assert.ok(firstRecord, "the Activity row has no record destination");
+  await act(async () => firstRecord.click());
+  assert.deepEqual(opened, { kind: "task", id: id(601) });
+  assert.equal(open?.textContent?.includes("Observable record"), true);
+  assert.equal(
+    open?.textContent?.includes("Linked a task directly to an Area"),
+    true,
+  );
+  assert.equal(open?.textContent?.includes("Linked a task to a Project"), true);
+  assert.equal(open?.textContent?.includes("Direct Area context"), true);
+  assert.equal(open?.textContent?.includes("Via Project"), true);
+
+  await setSelect(actor, id(901));
+  await setSelect(kind, "project");
+  assert.match(container.textContent ?? "", /49 results of 200/);
+  assert.equal(
+    container.querySelectorAll("details").length,
+    0,
+    "filtering one command out of each correlation must not merge separate operations by run",
+  );
+});

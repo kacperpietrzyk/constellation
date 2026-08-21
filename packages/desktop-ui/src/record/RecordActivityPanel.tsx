@@ -1,7 +1,7 @@
 import {
   activityCategoryFor,
   activityCategoryMark,
-  activityLabels,
+  activityLabelFor,
   type ActivityItem,
 } from "../activity-collection.js";
 import { formatDateTime } from "../i18n.js";
@@ -55,6 +55,24 @@ export const isRecordActivity = (item: ActivityItem): boolean =>
 export const recordActivityItems = (
   items: readonly ActivityItem[],
 ): readonly ActivityItem[] => items.filter(isRecordActivity);
+
+export const recordActivityEntries = (
+  items: readonly ActivityItem[],
+  recordId: string,
+): readonly RecordActivityEntry[] =>
+  recordActivityItems(items.filter((item) => item.recordId === recordId)).map(
+    (item) => ({
+      item,
+      ...(item.actor === undefined
+        ? {}
+        : {
+            actor: {
+              name: item.actor.displayName,
+              agent: item.actor.kind === "agent",
+            },
+          }),
+    }),
+  );
 
 /** Newest first, ties broken on the event id so a batch written by one command
  *  holds its order between renders. */
@@ -113,7 +131,7 @@ export const RecordActivityPanel = ({
                   )}{" "}
                 </>
               )}
-              {activityLabels[item.activityType]}
+              {activityLabelFor(item)}
             </span>
             <span className={styles.eventWhen}>
               {formatDateTime(item.occurredAt, timeZone)}

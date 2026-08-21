@@ -102,6 +102,9 @@ import {
 const ProjectRecordScreen = lazy(
   () => import("./record/ProjectRecordScreen.js"),
 );
+const WorkContextRecordHost = lazy(
+  () => import("./record/WorkContextRecordHost.js"),
+);
 // Lazy for exactly the same measured reason. Tasks is an EAGER destination
 // (⌘4), so anything this file imports statically for it lands in the first
 // paint — and the record screen with its stylesheet and the comments panel is
@@ -143,6 +146,11 @@ import {
   editComment,
   applyTemplateToProject,
   createProject,
+  createTaskInProject,
+  loadProjectSimilarCandidates,
+  projectReclassificationTargets,
+  previewProjectReclassification,
+  reclassifyProject,
   directClientLinks,
   linkableClientOrganizations,
   linkOrganizationDelivery,
@@ -155,6 +163,10 @@ import {
   type FieldValue,
   loadDesktopSnapshot,
   loadProjectOverview,
+  loadProjectCheckIns,
+  addProjectCheckIn,
+  acceptProjectCheckInLoad,
+  projectCheckInSliceForProject,
   loadComments,
   previewUndo,
   relateTask,
@@ -162,6 +174,7 @@ import {
   setTaskStatus,
   setCommentResolved,
   setProjectLifecycle,
+  setProjectAttentionState,
   stageManagedAttachment,
   submitQuickCapture,
   undoCommand,
@@ -180,6 +193,7 @@ import {
   type MutationFailure,
   type MutationResult,
   type ProjectOverviewProjection,
+  type ProjectCheckInSlice,
   type CommentListProjection,
   type CommentTarget,
   type DataSlice,
@@ -188,6 +202,7 @@ import {
 import {
   activateShellContext,
   activeShellContext,
+  areaContext,
   canMoveShellHistory,
   closeShellContext,
   createShellNavigation,
@@ -207,6 +222,7 @@ import {
   serializeShellNavigation,
   settingsCategoryContext,
   opportunityContext,
+  initiativeContext,
   taskContext,
   tasksSavedViewContext,
   type ShellContext,
@@ -476,6 +492,7 @@ export const RealApp = ({
     useState<LibraryReading>("notes");
   const [projectOverview, setProjectOverview] =
     useState<ProjectOverviewProjection>();
+  const [projectCheckIns, setProjectCheckIns] = useState<ProjectCheckInSlice>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
   const [taskEditOpen, setTaskEditOpen] = useState(false);
   const [taskDraft, setTaskDraft] = useState({
@@ -500,6 +517,7 @@ export const RealApp = ({
     }
   }, [taskEditOpen]);
   const [projectBusy, setProjectBusy] = useState(false);
+  const [pipelineCreateRequest, setPipelineCreateRequest] = useState<number>();
   const [commentBusy, setCommentBusy] = useState(false);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
@@ -1023,6 +1041,16 @@ export const RealApp = ({
         ? snapshot.projects.data.items.map((project) => project.id)
         : [],
     );
+    const areaIds = new Set(
+      snapshot.work.kind === "ready"
+        ? snapshot.work.data.areas.map((area) => area.id)
+        : [],
+    );
+    const initiativeIds = new Set(
+      snapshot.work.kind === "ready"
+        ? snapshot.work.data.initiatives.map((initiative) => initiative.id)
+        : [],
+    );
     const documentIds = new Set(
       snapshot.documents.kind === "ready"
         ? snapshot.documents.data.items.map((document) => document.id)
@@ -1048,6 +1076,8 @@ export const RealApp = ({
         {
           taskIds,
           projectIds,
+          areaIds,
+          initiativeIds,
           documentIds,
           organizationIds,
           opportunityIds,
@@ -1177,6 +1207,37 @@ export const RealApp = ({
                 : "The project overview is unavailable.",
           });
         }
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, selectedProjectId, snapshot]);
+
+  useEffect(() => {
+    if (!client || !snapshot || !selectedProjectId) {
+      setProjectCheckIns(undefined);
+      return;
+    }
+    const requestedProjectId = selectedProjectId;
+    setProjectCheckIns({ kind: "loading", projectId: requestedProjectId });
+    let active = true;
+    void loadProjectCheckIns(client, snapshot, requestedProjectId)
+      .then((data) => {
+        if (!active) return;
+        setProjectCheckIns((current) =>
+          acceptProjectCheckInLoad(current, requestedProjectId, data),
+        );
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setProjectCheckIns({
+          kind: "unavailable",
+          projectId: requestedProjectId,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Project check-ins are unavailable.",
+        });
       });
     return () => {
       active = false;
@@ -1632,6 +1693,10 @@ export const RealApp = ({
       message,
       ...(undoCommandId === undefined ? {} : { undoCommandId }),
     });
+  };
+  const refreshAfterWithoutUndo = async (message: string) => {
+    await reloadSnapshot();
+    pushToast({ message });
   };
   const writeWorkContextNarrative = () => {
     const record = selectedWorkContextRecord;
@@ -2620,6 +2685,45 @@ export const RealApp = ({
     </LazySurfaceBoundary>
   );
 
+  const contextRecordPanel =
+    client !== undefined &&
+    (activeContext.areaId !== undefined ||
+      activeContext.initiativeId !== undefined) ? (
+      <Suspense fallback={<p className="capacity-note">Opening the record…</p>}>
+        <WorkContextRecordHost
+          client={client}
+          snapshot={state.snapshot}
+          {...(activeContext.areaId === undefined
+            ? {}
+            : { areaId: activeContext.areaId })}
+          {...(activeContext.initiativeId === undefined
+            ? {}
+            : { initiativeId: activeContext.initiativeId })}
+          onBack={() => openContext(destinationContext("projects", "Projects"))}
+          onOpenTask={(taskId) => {
+            const task = state.snapshot.tasks.find(
+              (item) => item.id === taskId,
+            );
+            openContext(
+              taskContext(taskId, task?.title ?? "Task", { record: true }),
+            );
+          }}
+          onOpenProject={(projectId) => {
+            const project =
+              state.snapshot.projects.kind === "ready"
+                ? state.snapshot.projects.data.items.find(
+                    (item) => item.id === projectId,
+                  )
+                : undefined;
+            openContext(projectContext(projectId, project?.title ?? "Project"));
+          }}
+          onWrote={refreshAfter}
+          onWroteWithoutUndo={refreshAfterWithoutUndo}
+          onFailure={showFailure}
+        />
+      </Suspense>
+    ) : undefined;
+
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
       <TodaySurface
@@ -2871,6 +2975,13 @@ export const RealApp = ({
             }
             onReload={reload}
             onFailure={showFailure}
+            {...(pipelineCreateRequest === undefined
+              ? {}
+              : {
+                  createRequest: pipelineCreateRequest,
+                  onCreateRequestConsumed: () =>
+                    setPipelineCreateRequest(undefined),
+                })}
           />
         </Suspense>
       </LazySurfaceBoundary>
@@ -2942,6 +3053,60 @@ export const RealApp = ({
               ? {}
               : { requestedCategory: activeContext.settingsCategory })}
             onUndo={(id) => void openUndo(id)}
+            onOpenActivityRecord={(recordKind, recordId) => {
+              if (recordKind === "area") {
+                const area =
+                  state.snapshot.work.kind === "ready"
+                    ? state.snapshot.work.data.areas.find(
+                        (item) => item.id === recordId,
+                      )
+                    : undefined;
+                if (area !== undefined)
+                  openContext(areaContext(area.id, area.title));
+                return;
+              }
+              if (recordKind === "initiative") {
+                const initiative =
+                  state.snapshot.work.kind === "ready"
+                    ? state.snapshot.work.data.initiatives.find(
+                        (item) => item.id === recordId,
+                      )
+                    : undefined;
+                if (initiative !== undefined)
+                  openContext(
+                    initiativeContext(initiative.id, initiative.title),
+                  );
+                return;
+              }
+              if (recordKind === "task") {
+                const task = state.snapshot.tasks.find(
+                  (item) => item.id === recordId,
+                );
+                openContext(
+                  taskContext(recordId as TaskId, task?.title ?? "Task", {
+                    record: true,
+                  }),
+                );
+                return;
+              }
+              if (recordKind === "project") {
+                const project =
+                  state.snapshot.projects.kind === "ready"
+                    ? state.snapshot.projects.data.items.find(
+                        (item) => item.id === recordId,
+                      )
+                    : undefined;
+                openContext(
+                  projectContext(
+                    recordId as ProjectId,
+                    project?.title ?? "Project",
+                  ),
+                );
+                return;
+              }
+              setSelectedStrategicId(recordId);
+              openContext(destinationContext("organizations", "Organizations"));
+            }}
           />
         </Suspense>
       </LazySurfaceBoundary>
@@ -3226,6 +3391,7 @@ export const RealApp = ({
     projects: () => (
       <ProjectsSurface
         client={client}
+        contextRecord={contextRecordPanel}
         snapshot={state.snapshot}
         selectedProjectId={selectedProjectId}
         activeProjectId={activeContext.projectId}
@@ -3244,6 +3410,10 @@ export const RealApp = ({
                     actions={slots.actions}
                     currentDisplayName={currentDisplayName}
                     activity={state.snapshot.activity}
+                    checkIns={projectCheckInSliceForProject(
+                      projectCheckIns,
+                      projectOverview.project.id,
+                    )}
                     body={slots.body}
                     busy={projectBusy}
                     canComment={canComment}
@@ -3306,6 +3476,72 @@ export const RealApp = ({
                           "Comment saved.",
                         ),
                       );
+                    }}
+                    onAddCheckIn={async (draft) => {
+                      if (!client || !projectOverview) return false;
+                      setProjectBusy(true);
+                      const result = await addProjectCheckIn(
+                        client,
+                        state.snapshot,
+                        projectOverview.project,
+                        draft,
+                      );
+                      setProjectBusy(false);
+                      if (result.kind !== "success") {
+                        showFailure(result);
+                        return false;
+                      }
+                      await refreshAfter("Project check-in added.");
+                      const requestedProjectId = projectOverview.project.id;
+                      const data = await loadProjectCheckIns(
+                        client,
+                        state.snapshot,
+                        requestedProjectId,
+                      );
+                      setProjectCheckIns((current) =>
+                        acceptProjectCheckInLoad(
+                          current,
+                          requestedProjectId,
+                          data,
+                        ),
+                      );
+                      return true;
+                    }}
+                    onReloadCheckIns={() => {
+                      if (!client || !projectOverview) return;
+                      const requestedProjectId = projectOverview.project.id;
+                      setProjectCheckIns({
+                        kind: "loading",
+                        projectId: requestedProjectId,
+                      });
+                      void loadProjectCheckIns(
+                        client,
+                        state.snapshot,
+                        requestedProjectId,
+                      )
+                        .then((data) =>
+                          setProjectCheckIns((current) =>
+                            acceptProjectCheckInLoad(
+                              current,
+                              requestedProjectId,
+                              data,
+                            ),
+                          ),
+                        )
+                        .catch((error: unknown) =>
+                          setProjectCheckIns((current) =>
+                            current?.projectId === requestedProjectId
+                              ? {
+                                  kind: "unavailable",
+                                  projectId: requestedProjectId,
+                                  message:
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Project check-ins are unavailable.",
+                                }
+                              : current,
+                          ),
+                        );
                     }}
                     actorOf={actorOf}
                     mentionNameOf={mentionNameOf}
@@ -3425,6 +3661,51 @@ export const RealApp = ({
           setSelectedMeetingId(target.targetId);
           openContext(destinationContext("meetings", "Meetings"));
         }}
+        onOpenCapture={openCapture}
+        onLoadSimilarCandidates={async (input) => {
+          if (!client)
+            return {
+              kind: "unavailable" as const,
+              message: "The desktop data layer is unavailable.",
+            };
+          try {
+            const projection = await loadProjectSimilarCandidates(
+              client,
+              state.snapshot,
+              input,
+            );
+            return { kind: "ready" as const, items: projection.items };
+          } catch (error) {
+            return {
+              kind: "unavailable" as const,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Suggestions unavailable.",
+            };
+          }
+        }}
+        onCreateTaskInProject={async (input) => {
+          if (!client) return false;
+          setProjectBusy(true);
+          const result = await createTaskInProject(
+            client,
+            state.snapshot,
+            input,
+          );
+          setProjectBusy(false);
+          if (result.kind !== "success") {
+            showFailure(result);
+            return false;
+          }
+          await refreshAfter("Task created in the Project.");
+          openContext(taskContext(result.data.taskId, input.title));
+          return true;
+        }}
+        onOpenOpportunityAuthoring={() => {
+          setPipelineCreateRequest((current) => (current ?? 0) + 1);
+          openContext(destinationContext("pipeline", "Pipeline"));
+        }}
         onCreate={async (title, outcome, templateId) => {
           if (!client) return false;
           setProjectBusy(true);
@@ -3506,6 +3787,23 @@ export const RealApp = ({
             else showFailure(result);
           });
         }}
+        onSetAttentionState={(attentionState) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void setProjectAttentionState(
+            client,
+            state.snapshot,
+            projectOverview.project,
+            attentionState,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success")
+              await refreshAfter(
+                `Portfolio attention set to ${attentionState}.`,
+              );
+            else showFailure(result);
+          });
+        }}
         onRelate={(taskId) => {
           const task = tasks.find((item) => item.id === taskId);
           if (!client || !task || !projectOverview) return;
@@ -3550,8 +3848,82 @@ export const RealApp = ({
         // opens it in the inspector drawer, beside the projects it holds.
         selectedContextId={selectedWorkContext?.id}
         onSelectContext={selectWorkContextInInspector}
+        onOpenContext={(kind, id, title) => {
+          setSelectedWorkContext(undefined);
+          openContext(
+            kind === "area"
+              ? areaContext(id as StrategicRecordId, title)
+              : initiativeContext(id as StrategicRecordId, title),
+          );
+        }}
         onReload={reload}
         onFailure={showFailure}
+        reclassificationTargets={
+          state.snapshot.work.kind === "ready"
+            ? projectReclassificationTargets(
+                state.snapshot.work.data,
+                state.snapshot.opportunities,
+              )
+            : []
+        }
+        reclassificationOrganizations={
+          state.snapshot.relationships.kind === "ready"
+            ? state.snapshot.relationships.data.records
+                .filter((record) => record.kind === "organization")
+                .map((record) => ({ id: record.id, name: record.name }))
+            : []
+        }
+        reclassificationStages={
+          state.snapshot.bootstrap.workspace.commercialDefaults.stages
+        }
+        onPreviewReclassification={async (destination) => {
+          if (!client || !projectOverview)
+            return {
+              kind: "unavailable" as const,
+              message: "The desktop data layer is unavailable.",
+            };
+          try {
+            return {
+              kind: "ready" as const,
+              data: await previewProjectReclassification(
+                client,
+                state.snapshot,
+                projectOverview.project.id,
+                destination,
+              ),
+            };
+          } catch (error) {
+            return {
+              kind: "unavailable" as const,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Reclassification preview is unavailable.",
+            };
+          }
+        }}
+        onApplyReclassification={async (preview, destination) => {
+          if (!client || !projectOverview)
+            return {
+              kind: "failure" as const,
+              message: "The desktop data layer is unavailable.",
+            };
+          setProjectBusy(true);
+          const result = await reclassifyProject(
+            client,
+            state.snapshot,
+            projectOverview.project.id,
+            destination,
+            preview.expectedVersions,
+          );
+          setProjectBusy(false);
+          if (result.kind !== "success")
+            return { kind: "failure" as const, message: result.message };
+          await refreshAfter(
+            "Project reclassified. Use Undo to restore the previous classification.",
+          );
+          return { kind: "success" as const, commandId: result.data.projectId };
+        }}
       />
     ),
     inbox: () => (
@@ -5670,12 +6042,38 @@ export const RealApp = ({
             }
             openContext(destinationContext(nextSurface, label));
           }}
-          onNavigate={(nextSurface, recordId) => {
+          onNavigate={(nextSurface, recordId, recordKind, title) => {
             if (nextSurface === "tasks") {
               const id = recordId as TaskId;
               const task = tasks.find((item) => item.id === id);
               openContext(taskContext(id, task?.title ?? "Task"));
             } else if (nextSurface === "projects") {
+              if (recordKind === "area") {
+                openContext(areaContext(recordId as StrategicRecordId, title));
+                return;
+              }
+              if (recordKind === "initiative") {
+                openContext(
+                  initiativeContext(recordId as StrategicRecordId, title),
+                );
+                return;
+              }
+              const work =
+                state.snapshot.work.kind === "ready"
+                  ? state.snapshot.work.data
+                  : undefined;
+              const area = work?.areas.find((item) => item.id === recordId);
+              if (area !== undefined) {
+                openContext(areaContext(area.id, area.title));
+                return;
+              }
+              const initiative = work?.initiatives.find(
+                (item) => item.id === recordId,
+              );
+              if (initiative !== undefined) {
+                openContext(initiativeContext(initiative.id, initiative.title));
+                return;
+              }
               const id = recordId as ProjectId;
               const project =
                 state.snapshot.projects.kind === "ready"

@@ -404,6 +404,10 @@ export const rowAccessibleName = (
 ): string =>
   [
     reading.project.title,
+    `Portfolio ${reading.project.attentionState}`,
+    reading.project.lifecycle === "closed"
+      ? "Lifecycle closed"
+      : "Lifecycle active",
     reading.health.label,
     ...reading.health.why,
     `${countLabel(reading.open.length, "task")} open of ${reading.buckets.total}`,
@@ -438,6 +442,74 @@ export const HEALTH_GROUP_LABELS: Record<HealthKey, string> = {
   good: "On track",
   none: "No signal",
 };
+
+export interface ProjectGovernanceFilter {
+  readonly portfolio?: "all" | "current" | "waiting" | "parked" | "closed";
+  readonly exception?:
+    "all" | "no_context" | "no_open_tasks" | "stale" | "no_signal";
+  readonly areaId?: string | undefined;
+  readonly initiativeId?: string | undefined;
+  readonly clientId?: string | undefined;
+}
+
+export interface ProjectGovernanceContext {
+  readonly areaIdsByProject: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly initiativeIdsByProject: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly clientIdsByProject: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+const hasContext = (
+  context: ProjectGovernanceContext,
+  projectId: string,
+): boolean =>
+  (context.areaIdsByProject.get(projectId)?.size ?? 0) > 0 ||
+  (context.initiativeIdsByProject.get(projectId)?.size ?? 0) > 0;
+
+export const filterProjectReadings = (
+  readings: readonly ProjectReading[],
+  filter: ProjectGovernanceFilter,
+  context: ProjectGovernanceContext,
+): readonly ProjectReading[] =>
+  readings.filter((reading) => {
+    const { project } = reading;
+    const portfolio = filter.portfolio ?? "all";
+    if (portfolio === "closed") {
+      if (project.lifecycle !== "closed") return false;
+    } else if (portfolio !== "all") {
+      if (
+        project.lifecycle !== "active" ||
+        project.attentionState !== portfolio
+      )
+        return false;
+    }
+    if (
+      filter.areaId !== undefined &&
+      !context.areaIdsByProject.get(project.id)?.has(filter.areaId)
+    )
+      return false;
+    if (
+      filter.initiativeId !== undefined &&
+      !context.initiativeIdsByProject.get(project.id)?.has(filter.initiativeId)
+    )
+      return false;
+    if (
+      filter.clientId !== undefined &&
+      !context.clientIdsByProject.get(project.id)?.has(filter.clientId)
+    )
+      return false;
+    switch (filter.exception ?? "all") {
+      case "no_context":
+        return !hasContext(context, project.id);
+      case "no_open_tasks":
+        return reading.open.length === 0;
+      case "stale":
+        return project.lifecycle === "active" && reading.health.key === "watch";
+      case "no_signal":
+        return project.lifecycle === "active" && reading.all.length === 0;
+      case "all":
+        return true;
+    }
+  });
 
 export const readProjects = (
   snapshot: Pick<DesktopSnapshot, "projects" | "work">,

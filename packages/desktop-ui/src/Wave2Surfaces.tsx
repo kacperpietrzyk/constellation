@@ -4,7 +4,6 @@ import {
   Suspense,
   useRef,
   useState,
-  type FormEvent,
   type KeyboardEvent,
 } from "react";
 
@@ -12,6 +11,7 @@ import type {
   PrincipalId,
   ProjectId,
   RelationId,
+  StrategicRecordId,
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
@@ -29,6 +29,15 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
+import type {
+  ReclassificationCommandDestination,
+  ReclassificationLoad,
+  ReclassificationPreview,
+} from "./record/ProjectReclassificationDialog.js";
+import type {
+  ProjectCreateClassifierProps,
+  SimilarCandidatesState,
+} from "./projects/ProjectCreateClassifier.js";
 import type { WorkContextKind } from "./record-narrative.js";
 import type { SettingsCategoryId } from "./settings-categories.js";
 import { LazySurfaceBoundary } from "./SurfaceLifecycleStates.js";
@@ -48,7 +57,17 @@ const ProjectContextPanel = lazy(async () => ({
     .ProjectContextPanel,
 }));
 
+const ProjectCreateClassifier = lazy(async () => ({
+  default: (await import("./projects/ProjectCreateClassifier.js"))
+    .ProjectCreateClassifier,
+}));
+
 const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
+
+const ProjectReclassificationDialog = lazy(async () => ({
+  default: (await import("./record/ProjectReclassificationDialog.js"))
+    .ProjectReclassificationDialog,
+}));
 
 // Wybór szablonu do zastosowania. Leniwy Z POWODU BUDŻETU, i to jest pomiar:
 // ten moduł jest na ścieżce gorącej, a `InlinePopover` — mimo ośmiu konsumentów
@@ -61,6 +80,13 @@ const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
 const ApplyTemplatePopover = lazy(async () => ({
   default: (await import("./projects/ApplyTemplatePopover.js"))
     .ApplyTemplatePopover,
+}));
+
+// Portfolio attention is a choice, not a native form field in the record action
+// strip. Keep the same lazy boundary as the adjacent template picker so opening
+// a Project does not pull InlinePopover onto the first paint.
+const PortfolioAttentionPopover = lazy(async () => ({
+  default: (await import("./components/ChoicePopover.js")).ChoicePopover,
 }));
 
 /* TEN WARIANT NIE DELEGUJE DO `SurfaceTitleBand`, I TO JEST POMIAR, NIE
@@ -516,17 +542,29 @@ export const ProjectsSurface = ({
   onSelectProject,
   onBackToProjects,
   onCreate,
+  onCreateTaskInProject,
+  onOpenOpportunityAuthoring,
+  onOpenCapture,
+  onLoadSimilarCandidates,
   onApplyTemplate,
   onUpdateOutcome,
   onSetLifecycle,
+  onSetAttentionState,
   onRelate,
   onUnrelate,
   onEntityActivate,
   renderRecordScreen,
+  contextRecord,
   selectedContextId,
   onSelectContext,
+  onOpenContext,
   onReload,
   onFailure,
+  reclassificationTargets,
+  reclassificationOrganizations,
+  reclassificationStages,
+  onPreviewReclassification,
+  onApplyReclassification,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -549,9 +587,20 @@ export const ProjectsSurface = ({
     outcome: string | undefined,
     templateId?: string,
   ) => Promise<boolean>;
+  readonly onCreateTaskInProject: ProjectCreateClassifierProps["onCreateTaskInProject"];
+  readonly onOpenOpportunityAuthoring: () => void;
+  readonly onOpenCapture: () => void;
+  readonly onLoadSimilarCandidates: (
+    input: Parameters<
+      ProjectCreateClassifierProps["onLoadSimilarCandidates"]
+    >[0],
+  ) => Promise<SimilarCandidatesState>;
   readonly onApplyTemplate: (templateId: string) => void;
   readonly onUpdateOutcome: (outcome: string) => void;
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
+  readonly onSetAttentionState: (
+    attentionState: "current" | "waiting" | "parked",
+  ) => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
   readonly onEntityActivate: (target: {
@@ -565,23 +614,53 @@ export const ProjectsSurface = ({
    *  the old detail flow in place rather than showing an empty record. */
   readonly renderRecordScreen?:
     ((slots: ProjectRecordSlots) => React.ReactNode) | undefined;
+  readonly contextRecord?: React.ReactNode;
   /** Areas and initiatives, which live here now that the work surface is going.
    *  The selection is the SHELL's — picking one opens it in the inspector, the
    *  same drawer a project opens into — so this screen holds neither the state
    *  nor the write; it holds the panel that authors them. */
   readonly selectedContextId: string | undefined;
   readonly onSelectContext: (kind: WorkContextKind, id: string) => void;
+  readonly onOpenContext: (
+    kind: WorkContextKind,
+    id: string,
+    title: string,
+  ) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
+  readonly reclassificationTargets: readonly {
+    readonly id: StrategicRecordId;
+    readonly kind: "area" | "initiative" | "opportunity";
+    readonly title: string;
+  }[];
+  readonly reclassificationOrganizations: readonly {
+    readonly id: StrategicRecordId;
+    readonly name: string;
+  }[];
+  readonly reclassificationStages: readonly {
+    readonly id: string;
+    readonly label: string;
+  }[];
+  readonly onPreviewReclassification: (
+    destination: ReclassificationCommandDestination,
+  ) => Promise<ReclassificationLoad>;
+  readonly onApplyReclassification: (
+    preview: ReclassificationPreview,
+    destination: ReclassificationCommandDestination,
+  ) => Promise<
+    | { readonly kind: "success"; readonly commandId: string }
+    | { readonly kind: "failure"; readonly message: string }
+  >;
 }) => {
   const [creating, setCreating] = useState(false);
+  const [reclassificationOpen, setReclassificationOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const [contextCreateRequest, setContextCreateRequest] = useState<{
+    readonly kind: "area" | "initiative";
+    readonly nonce: number;
+  }>();
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState("");
-  const [newOutcome, setNewOutcome] = useState("");
-  const [createTemplateId, setCreateTemplateId] = useState("");
   const createTriggerRef = useRef<HTMLButtonElement>(null);
-  const createTitleRef = useRef<HTMLInputElement>(null);
   const [editedOutcome, setEditedOutcome] = useState(
     overview?.project.intendedOutcome ?? "",
   );
@@ -589,9 +668,6 @@ export const ProjectsSurface = ({
     () => setEditedOutcome(overview?.project.intendedOutcome ?? ""),
     [overview],
   );
-  useEffect(() => {
-    if (creating) createTitleRef.current?.focus();
-  }, [creating]);
   const projects = snapshot.projects;
   const projectItems = projects.kind === "ready" ? projects.data.items : [];
   const projectTemplates = snapshot.bootstrap.projectTemplates ?? [];
@@ -603,6 +679,11 @@ export const ProjectsSurface = ({
   const unrelated = snapshot.tasks.filter(
     (task) => !overview?.relatedTasks.some((related) => related.id === task.id),
   );
+
+  if (contextRecord !== undefined)
+    return (
+      <div className="surface-scroll project-surface">{contextRecord}</div>
+    );
 
   // The record screen brings its own `<h1>`, its own way back and its own
   // verbs, so the surface header does not run for this view — two level-one
@@ -648,6 +729,27 @@ export const ProjectsSurface = ({
           onWriteOutcome: () => setEditing(true),
           actions: (
             <>
+              <Suspense fallback={null}>
+                <PortfolioAttentionPopover
+                  choices={[
+                    { value: "current", label: "Current" },
+                    { value: "waiting", label: "Waiting" },
+                    { value: "parked", label: "Parked" },
+                  ]}
+                  disabled={busy || overview.project.lifecycle === "closed"}
+                  onChoose={(value) =>
+                    onSetAttentionState(
+                      value as "current" | "waiting" | "parked",
+                    )
+                  }
+                  panelLabel="Portfolio attention"
+                  trigger={`Portfolio: ${
+                    overview.project.attentionState[0]?.toUpperCase() ?? ""
+                  }${overview.project.attentionState.slice(1)}`}
+                  triggerClassName="secondary-button compact"
+                  value={overview.project.attentionState}
+                />
+              </Suspense>
               {!editing && !overview.project.needsReview && (
                 <button
                   className="ghost-button"
@@ -658,6 +760,14 @@ export const ProjectsSurface = ({
                 </button>
               )}
               {lifecycleAction}
+              <button
+                className="ghost-button"
+                disabled={busy || overview.project.lifecycle !== "active"}
+                onClick={() => setReclassificationOpen(true)}
+                type="button"
+              >
+                Reclassify project
+              </button>
               {templateApplied !== undefined && (
                 <small>Template: {templateApplied}</small>
               )}
@@ -692,10 +802,18 @@ export const ProjectsSurface = ({
                 Intended outcome
               </label>
               <textarea
+                aria-describedby="project-outcome-check-in-guidance"
                 id="edited-project-outcome"
                 onChange={(event) => setEditedOutcome(event.target.value)}
                 value={editedOutcome}
               />
+              <p
+                className="capacity-note"
+                id="project-outcome-check-in-guidance"
+              >
+                Keep the durable result here. Put dated progress and the next
+                checkpoint in a check-in.
+              </p>
               <div className="capture-footer">
                 <button
                   className="ghost-button"
@@ -765,6 +883,20 @@ export const ProjectsSurface = ({
               </div>
             ) : undefined,
         })}
+        {reclassificationOpen && (
+          <Suspense fallback={null}>
+            <ProjectReclassificationDialog
+              projectId={overview.project.id}
+              projectTitle={overview.project.title}
+              targets={reclassificationTargets}
+              organizations={reclassificationOrganizations}
+              stages={reclassificationStages}
+              onClose={() => setReclassificationOpen(false)}
+              onPreview={onPreviewReclassification}
+              onApply={onApplyReclassification}
+            />
+          </Suspense>
+        )}
       </div>
     );
   }
@@ -832,11 +964,11 @@ export const ProjectsSurface = ({
               data-project-create
               className={creating ? "secondary-button" : "primary-button"}
               aria-expanded={creating}
-              aria-controls={creating ? "project-create-form" : undefined}
+              aria-controls={creating ? "project-create-classifier" : undefined}
               onClick={() => setCreating((value) => !value)}
             >
               <Icon name={creating ? "close" : "capture"} />
-              <span>{creating ? "Cancel" : "New project"}</span>
+              <span>{creating ? "Cancel" : "Add work"}</span>
             </button>
           </div>
         }
@@ -852,77 +984,81 @@ export const ProjectsSurface = ({
                 onFailure={onFailure}
                 onReload={onReload}
                 onSelectContext={onSelectContext}
+                onOpenContext={onOpenContext}
                 selectedContextId={selectedContextId}
                 snapshot={snapshot}
+                {...(contextCreateRequest === undefined
+                  ? {}
+                  : { requestedCreate: contextCreateRequest })}
               />
             </Suspense>
           </LazySurfaceBoundary>
         </div>
       )}
       {creating && (
-        <form
-          id="project-create-form"
-          className="project-overview"
-          onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            if (title.trim()) {
-              void onCreate(
-                title,
-                newOutcome.trim() === "" ? undefined : newOutcome,
-                createTemplateId === "" ? undefined : createTemplateId,
-              ).then((created) => {
-                if (!created) return;
+        <LazySurfaceBoundary label="Create work">
+          <Suspense fallback={null}>
+            <ProjectCreateClassifier
+              busy={busy}
+              contexts={
+                snapshot.work.kind === "ready"
+                  ? [
+                      ...snapshot.work.data.areas.map((area) => ({
+                        id: area.id,
+                        kind: "area" as const,
+                        title: area.title,
+                      })),
+                      ...snapshot.work.data.initiatives.map((initiative) => ({
+                        id: initiative.id,
+                        kind: "initiative" as const,
+                        title: initiative.title,
+                      })),
+                    ]
+                  : []
+              }
+              onCancel={() => {
                 setCreating(false);
-                setTitle("");
-                setNewOutcome("");
-                setCreateTemplateId("");
                 requestAnimationFrame(() => createTriggerRef.current?.focus());
-              });
-            }
-          }}
-        >
-          <div className="overview-intent">
-            <label htmlFor="project-title">Project name</label>
-            <input
-              ref={createTitleRef}
-              id="project-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={160}
-              required
+              }}
+              onCreateProject={({ title, intendedOutcome, templateId }) =>
+                onCreate(title, intendedOutcome, templateId)
+              }
+              onCreateTaskInProject={onCreateTaskInProject}
+              onLoadSimilarCandidates={onLoadSimilarCandidates}
+              onOpenCapture={onOpenCapture}
+              onOpenExistingAuthoring={(kind) => {
+                if (kind === "opportunity") {
+                  onOpenOpportunityAuthoring();
+                  return;
+                }
+                setContextOpen(true);
+                setContextCreateRequest({ kind, nonce: Date.now() });
+              }}
+              onOpenProject={onOpenProject}
+              organizations={
+                snapshot.relationships.kind === "ready"
+                  ? snapshot.relationships.data.records
+                      .filter((record) => record.kind === "organization")
+                      .map((record) => ({ id: record.id, name: record.name }))
+                  : []
+              }
+              projects={projectItems.map((project) => ({
+                id: project.id,
+                spaceId: project.spaceId,
+                title: project.title,
+                lifecycle: project.lifecycle,
+                version: project.version,
+              }))}
+              {...(snapshot.bootstrap.spaces[0]?.id === undefined
+                ? {}
+                : { spaceId: snapshot.bootstrap.spaces[0].id })}
+              templates={activeTemplates.map((template) => ({
+                id: template.id,
+                name: template.name,
+              }))}
             />
-            <label htmlFor="project-outcome">Intended outcome (optional)</label>
-            <textarea
-              id="project-outcome"
-              value={newOutcome}
-              onChange={(event) => setNewOutcome(event.target.value)}
-              maxLength={2_000}
-              placeholder="How will you know the work is done? You can fill this in later."
-            />
-            {activeTemplates.length > 0 && (
-              <>
-                <label htmlFor="project-create-template">
-                  Starting template (optional)
-                </label>
-                <select
-                  id="project-create-template"
-                  value={createTemplateId}
-                  onChange={(event) => setCreateTemplateId(event.target.value)}
-                >
-                  <option value="">No template</option>
-                  {activeTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            <button className="primary-button" disabled={busy} type="submit">
-              {busy ? "Creating…" : "Create project"}
-            </button>
-          </div>
-        </form>
+          </Suspense>
+        </LazySurfaceBoundary>
       )}
       {projects.kind === "unavailable" ? (
         <InlineState
@@ -993,7 +1129,12 @@ export const SearchOverlay = ({
     label: string,
     settingsCategory?: SettingsCategoryId,
   ) => void;
-  readonly onNavigate: (surface: SurfaceId, recordId: string) => void;
+  readonly onNavigate: (
+    surface: SurfaceId,
+    recordId: string,
+    recordKind: SearchProjection["items"][number]["recordKind"],
+    title: string,
+  ) => void;
 }) => {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<
@@ -1068,6 +1209,8 @@ export const SearchOverlay = ({
     onNavigate(
       getHumanRecordKindDescriptor(item.recordKind).inspectorSurface,
       item.recordId,
+      item.recordKind,
+      item.title,
     );
     onClose();
   };

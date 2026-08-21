@@ -66,6 +66,8 @@ export interface ShellContext {
   readonly surface: SurfaceId;
   readonly taskId?: TaskId;
   readonly projectId?: ProjectId;
+  readonly areaId?: StrategicRecordId;
+  readonly initiativeId?: StrategicRecordId;
   readonly documentId?: DocumentId;
   readonly organizationId?: StrategicRecordId;
   /** The deal opened AS A RECORD. No `record` flag beside it, and the absence is
@@ -171,6 +173,13 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
     return false;
   if (context.projectId !== undefined && typeof context.projectId !== "string")
     return false;
+  if (context.areaId !== undefined && typeof context.areaId !== "string")
+    return false;
+  if (
+    context.initiativeId !== undefined &&
+    typeof context.initiativeId !== "string"
+  )
+    return false;
   if (
     context.documentId !== undefined &&
     typeof context.documentId !== "string"
@@ -215,6 +224,13 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (context.key.startsWith("task:") && context.taskId === undefined)
     return false;
   if (context.key.startsWith("project:") && context.projectId === undefined)
+    return false;
+  if (context.key.startsWith("area:") && context.areaId === undefined)
+    return false;
+  if (
+    context.key.startsWith("initiative:") &&
+    context.initiativeId === undefined
+  )
     return false;
   if (context.key.startsWith("document:") && context.documentId === undefined)
     return false;
@@ -476,6 +492,8 @@ export const pruneInaccessibleShellContexts = (
   access: {
     readonly taskIds: ReadonlySet<TaskId>;
     readonly projectIds: ReadonlySet<ProjectId>;
+    readonly areaIds?: ReadonlySet<StrategicRecordId>;
+    readonly initiativeIds?: ReadonlySet<StrategicRecordId>;
     readonly documentIds: ReadonlySet<DocumentId>;
     readonly organizationIds: ReadonlySet<StrategicRecordId>;
     readonly opportunityIds: ReadonlySet<StrategicRecordId>;
@@ -486,6 +504,10 @@ export const pruneInaccessibleShellContexts = (
     (context.taskId === undefined || access.taskIds.has(context.taskId)) &&
     (context.projectId === undefined ||
       access.projectIds.has(context.projectId)) &&
+    (context.areaId === undefined ||
+      access.areaIds?.has(context.areaId) === true) &&
+    (context.initiativeId === undefined ||
+      access.initiativeIds?.has(context.initiativeId) === true) &&
     (context.documentId === undefined ||
       access.documentIds.has(context.documentId)) &&
     (context.organizationId === undefined ||
@@ -628,6 +650,26 @@ export const projectContext = (
   label,
   surface: "projects",
   projectId,
+});
+
+export const areaContext = (
+  areaId: StrategicRecordId,
+  label: string,
+): ShellContext => ({
+  key: `area:${areaId}`,
+  label,
+  surface: "projects",
+  areaId,
+});
+
+export const initiativeContext = (
+  initiativeId: StrategicRecordId,
+  label: string,
+): ShellContext => ({
+  key: `initiative:${initiativeId}`,
+  label,
+  surface: "projects",
+  initiativeId,
 });
 
 export const documentContext = (

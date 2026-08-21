@@ -20,7 +20,7 @@ const rendererRoot = path.resolve(
   "src",
 );
 
-test("THE HAND LIST THIS REPLACES: three record screens exist, not two", () => {
+test("the renderer derives every first-class record screen", () => {
   // `verify-renderer-layout.mjs` niosło `["project", "task"]` obok kodu, który
   // rysuje TRZY ekrany rekordu. Trzeci — `opportunity` — jest w repozytorium od
   // fali C i ta lista nie mogła go objąć.
@@ -29,7 +29,13 @@ test("THE HAND LIST THIS REPLACES: three record screens exist, not two", () => {
     attribute: "data-record-kind",
   });
   assert.deepEqual(dynamic, []);
-  assert.deepEqual(values, ["opportunity", "project", "task"]);
+  assert.deepEqual(values, [
+    "area",
+    "initiative",
+    "opportunity",
+    "project",
+    "task",
+  ]);
 });
 
 test("the height-bound registry is the same mechanism, read a second time", () => {
@@ -75,7 +81,7 @@ test("a derived set with members is what the loop is allowed to run over", () =>
   assert.equal(
     classifyDeclarationSet({
       attribute: "data-record-kind",
-      values: ["opportunity", "project", "task"],
+      values: ["area", "initiative", "opportunity", "project", "task"],
       dynamic: [],
     }).verdict,
     "derived",
@@ -86,11 +92,11 @@ test("NOT MEASURED IS NOT THE SAME SENTENCE AS FINE, and the coverage says which
   // Ekran szansy nie otwiera się w tym harnessie, bo fikstura nie niesie ani
   // jednej szansy. Bramka ma o tym MÓWIĆ przy każdym przebiegu, także zielonym.
   const decision = classifyDeclarationCoverage({
-    declared: ["opportunity", "project", "task"],
+    declared: ["area", "initiative", "opportunity", "project", "task"],
     measured: ["project", "task"],
   });
   assert.equal(decision.verdict, "partial");
-  assert.deepEqual(decision.unreachable, ["opportunity"]);
+  assert.deepEqual(decision.unreachable, ["area", "initiative", "opportunity"]);
 });
 
 test("measuring none of the declared subjects is a failure, not a partial", () => {

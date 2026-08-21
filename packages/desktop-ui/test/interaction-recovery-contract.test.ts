@@ -211,6 +211,26 @@ describe("interaction recovery contracts", () => {
     assert.match(styles, /\.inspector-resize::after\s*\{[^}]*width:\s*1px/s);
   });
 
+  it("makes the narrow inspector an opaque replacement layer", () => {
+    const narrowInspector = sliceBetween(
+      styles,
+      "@media (max-width: 75rem) {\n  .desktop-shell",
+      ".attention-detail-actions button {",
+      "narrow inspector",
+    );
+
+    assert.match(
+      narrowInspector,
+      /\.inspector\s*\{[^}]*background:\s*var\(--surface-window\)/s,
+      "At 320px the glass inspector lets the Projects controls and copy show through its own text.",
+    );
+    assert.match(
+      narrowInspector,
+      /\.inspector\s*\{[^}]*backdrop-filter:\s*none/s,
+      "A narrow replacement layer must not keep the desktop glass treatment.",
+    );
+  });
+
   it("returns focus from the undo preview to the invoking Activity action", () => {
     assert.match(
       surfaces,
@@ -739,14 +759,17 @@ describe("interaction recovery contracts", () => {
   it("keeps dense Activity controllable and semantically grouped", () => {
     assert.match(activitySection, /id="activity-search"/);
     assert.match(activitySection, /id="activity-category"/);
+    assert.match(activitySection, /id="activity-actor"/);
+    assert.match(activitySection, /id="activity-record-kind"/);
     assert.match(
       activitySection,
-      /filterActivityItems\(items, category, query\)/,
+      /filterActivityItems\(items, category, query, actorPrincipalId, recordKind\)/,
     );
     assert.match(
       activitySection,
       /groupActivityItems\(filteredItems, timezone\)/,
     );
+    assert.match(activitySection, /groupActivityOperations\(group\.items\)/);
     assert.match(activitySection, /<ol className=\{styles\.list\}>/);
     // Groups are labelled regions, so a dense list stays navigable.
     assert.match(
@@ -869,7 +892,7 @@ describe("interaction recovery contracts", () => {
     // could only ever say a button existed in a branch.
     assert.match(
       surfaces,
-      /aria-controls=\{creating \? "project-create-form" : undefined\}/,
+      /aria-controls=\{\s*creating \? "project-create-classifier" : undefined\s*\}/,
     );
   });
 

@@ -345,6 +345,7 @@ test("fails the complete resource when payload integrity changes", async () => {
 test("serves a grant-filtered operation catalog generated from the contract", async () => {
   const capabilityScope = [
     "project.create",
+    "project.list",
     "project.updateDetails",
     "task.create",
     "task.updateDetails",
@@ -441,21 +442,27 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         "agent.checkpoint.revert",
         "agent.checkpointCreate",
         "agent.checkpointPreviewRevert",
+        "area.operationalOverview",
         // `agent.checkpointRevert` is deliberately NOT here; the two
         // assertions after this list say why.
         "capture.writeTranscript",
         // Unconditional: a batch authorizes each item, so any grant that can
         // run a command can batch it (ADR-048).
         "command.batch",
+        "initiative.operationalOverview",
         // Its sibling meeting.linkParticipants is deliberately ABSENT: this
         // scope holds the command's own capability and not the second one the
         // kernel consults, so the operation is unreachable and saying
         // otherwise is what sent an agent into an unfixable denial.
         "meeting.promoteWorkItem",
         "project.create",
+        "project.list",
+        "project.setAttentionState",
+        "project.similarCandidates",
         "project.updateDetails",
         "record.relate",
         "task.create",
+        "task.createInProject",
         "task.list",
         "task.updateDetails",
         "work.overview",
@@ -539,6 +546,43 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         "expectedVersions" in operation.envelopeSchema.properties,
       "the envelope schema is the full strict contract shape",
     );
+    const relateResource = await client.readResource({
+      uri: "constellation://v1/operations/record.relate",
+    });
+    const relateContent = relateResource.contents[0];
+    const relateText =
+      relateContent !== undefined && "text" in relateContent
+        ? relateContent.text
+        : undefined;
+    assert.ok(typeof relateText === "string");
+    const relateOperation = JSON.parse(relateText) as {
+      readonly name: string;
+      readonly envelopeSchema: unknown;
+    };
+    assert.equal(relateOperation.name, "record.relate");
+    const relateSchema = JSON.stringify(relateOperation.envelopeSchema);
+    for (const relationType of [
+      "task_contributes_to_project",
+      "task_contributes_to_opportunity",
+      "task_contributes_to_area",
+      "task_advances_initiative",
+    ])
+      assert.match(
+        relateSchema,
+        new RegExp(`"const":"${relationType}"`, "u"),
+        `the generated MCP schema omitted ${relationType}`,
+      );
+    for (const targetId of [
+      "projectId",
+      "opportunityId",
+      "areaId",
+      "initiativeId",
+    ])
+      assert.match(
+        relateSchema,
+        new RegExp(`"${targetId}"`, "u"),
+        `the generated MCP schema omitted ${targetId}`,
+      );
     // An operation outside the grant reads the same as one that does not
     // exist: the catalog must not confirm what it will not authorize.
     await assert.rejects(
@@ -670,6 +714,10 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     // the set-level read and the two creates that accept any name.
     assert.ok(catalog.guidance["query"]?.includes("person.list"));
     assert.ok(catalog.guidance["query"]?.includes("relationship.workspace"));
+    assert.ok(catalog.guidance["query"]?.includes("opportunity.list"));
+    assert.ok(catalog.guidance["query"]?.includes("relation.list"));
+    assert.ok(catalog.guidance["query"]?.includes("nextCursor"));
+    assert.ok(catalog.guidance["query"]?.includes("final"));
     assert.ok(
       catalog.guidance["command"]?.includes("relationship.personCreate"),
     );

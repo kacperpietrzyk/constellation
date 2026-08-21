@@ -25,6 +25,7 @@ import {
   compositionSentence,
   deadlineSentence,
   deadlineTone,
+  filterProjectReadings,
   groupByHealth,
   readProject,
   readProjects,
@@ -78,6 +79,7 @@ const project = (
   spaceId: SPACE,
   intendedOutcome: "",
   needsReview: false,
+  attentionState: "current",
   lifecycle: "active",
   relatedOpenTaskCount: 0,
   version: 1,
@@ -93,6 +95,9 @@ const task = (
   operationalState: "actionable",
   completionState: "open",
   projectIds: [ALPHA],
+  areaIds: [],
+  initiativeIds: [],
+  directContextRelations: [],
   version: 1,
   updatedAt: YESTERDAY,
   ...over,
@@ -230,6 +235,66 @@ test("a closed project never reads At risk, whatever its tasks are doing", () =>
   // suppressed a verdict that was there, rather than reporting an empty one.
   const live = readProject(project({ title: "Żywy" }), tasks, PROSE);
   assert.equal(live.health.label, "At risk");
+});
+
+test("portfolio governance filters explicit attention and exceptions without reading Task waiting as portfolio state", () => {
+  const current = readProject(
+    project({ id: ALPHA, title: "Current with waiting work" }),
+    [
+      task({
+        title: "Waiting task",
+        projectIds: [ALPHA],
+        operationalState: "waiting",
+        waitingOn: { kind: "external", label: "Client" },
+      }),
+    ],
+    PROSE,
+  );
+  const parked = readProject(
+    project({ id: BETA, title: "Explicitly parked", attentionState: "parked" }),
+    [],
+    PROSE,
+  );
+  const closed = readProject(
+    project({ id: GAMMA, title: "Closed", lifecycle: "closed" }),
+    [],
+    PROSE,
+  );
+  const readings = [current, parked, closed];
+  const context = {
+    areaIdsByProject: new Map([[ALPHA, new Set(["area-1"])]]),
+    initiativeIdsByProject: new Map(),
+    clientIdsByProject: new Map(),
+  };
+
+  assert.deepEqual(
+    filterProjectReadings(readings, { portfolio: "current" }, context).map(
+      (reading) => reading.project.id,
+    ),
+    [ALPHA],
+    "Task waiting must not move the Project into the explicit Waiting lens",
+  );
+  assert.match(current.accessibleName, /Portfolio current/u);
+  assert.deepEqual(
+    filterProjectReadings(readings, { portfolio: "parked" }, context).map(
+      (reading) => reading.project.id,
+    ),
+    [BETA],
+  );
+  assert.deepEqual(
+    filterProjectReadings(readings, { exception: "no_context" }, context).map(
+      (reading) => reading.project.id,
+    ),
+    [BETA, GAMMA],
+  );
+  assert.deepEqual(
+    filterProjectReadings(
+      readings,
+      { exception: "no_open_tasks" },
+      context,
+    ).map((reading) => reading.project.id),
+    [BETA, GAMMA],
+  );
 });
 
 test("a project with no tasks reads No signal, because silence is not health", () => {

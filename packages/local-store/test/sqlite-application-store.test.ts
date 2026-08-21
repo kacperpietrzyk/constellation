@@ -79,6 +79,9 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "capture.history",
       "project.create",
+      "project.reclassify",
+      "project.checkInAdd",
+      "project.checkInList",
       "project.remove",
       "project.updateOutcome",
       "project.updateDetails",
@@ -127,6 +130,8 @@ const context = (): ExecutionContext =>
       "opportunity.create",
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
+      "area.create",
+      "initiative.create",
       "relationship.workspace",
       "meeting.upsertImported",
       "meeting.editWorkItem",
@@ -690,6 +695,89 @@ describe("SQLite ApplicationStore", () => {
         [first.projection.relationId]: 1,
       });
       database.close();
+    });
+  });
+
+  it("persists direct Area and Initiative relations across SQLite reopen", () => {
+    withDatabase((filename) => {
+      const areaId = "00000000-0000-4000-8000-000000000163";
+      const initiativeId = "00000000-0000-4000-8000-000000000164";
+      const taskId = "00000000-0000-4000-8000-000000000165";
+      const database = new DatabaseSync(filename);
+      const first = createKernel(database);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const command of [
+        wave2Command(
+          "area.create",
+          {
+            areaId,
+            spaceId: ids.rootSpace,
+            title: "Product stewardship",
+            responsibility: "Keep lightweight work in its direct context.",
+          },
+          "direct-area-create",
+        ),
+        wave2Command(
+          "initiative.create",
+          {
+            initiativeId,
+            spaceId: ids.rootSpace,
+            title: "Adopt work structure",
+            intendedOutcome: "Direct context is usable without fake projects.",
+          },
+          "direct-initiative-create",
+        ),
+        wave2Command(
+          "task.create",
+          { taskId, spaceId: ids.rootSpace, title: "Apply the standard" },
+          "direct-task-create",
+        ),
+      ])
+        assert.equal(
+          unwrap(first.kernel.execute(context(), command)).outcome,
+          "success",
+        );
+
+      for (const [relationType, targetId] of [
+        ["task_contributes_to_area", areaId],
+        ["task_advances_initiative", initiativeId],
+      ] as const) {
+        const command = wave2Command(
+          "record.relate",
+          relationType === "task_contributes_to_area"
+            ? { relationType, taskId, areaId: targetId }
+            : { relationType, taskId, initiativeId: targetId },
+          `persist-${relationType}`,
+          { [taskId]: 1, [targetId]: 1 },
+        );
+        assert.equal(
+          unwrap(first.kernel.execute(context(), command)).outcome,
+          "success",
+        );
+      }
+      database.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = new SqliteApplicationStore(sqlitePort(reopenedDatabase));
+      const relations = reopened.snapshot().relations;
+      assert.deepEqual(
+        relations.map((relation) => relation.relationType).sort(),
+        ["task_advances_initiative", "task_contributes_to_area"],
+      );
+      assert.deepEqual(
+        relations.map((relation) =>
+          relation.relationType === "task_contributes_to_area"
+            ? relation.areaId
+            : relation.relationType === "task_advances_initiative"
+              ? relation.initiativeId
+              : "unexpected",
+        ),
+        [initiativeId, areaId].sort(),
+      );
+      reopenedDatabase.close();
     });
   });
 
@@ -2417,6 +2505,94 @@ describe("SQLite ApplicationStore", () => {
     database.close();
   });
 
+  it("persists atomic Task-in-Project creation and similarity across reopen", () => {
+    withDatabase((filename) => {
+      const database = new DatabaseSync(filename);
+      const first = createKernel(database);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      const projectId = "00000000-0000-4000-8000-0000000000e1";
+      const taskId = "00000000-0000-4000-8000-0000000000e2";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId,
+                spaceId: ids.rootSpace,
+                title: "Persistent similarity delivery",
+              },
+              "persistent-similarity-project",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      const created = unwrap(
+        first.kernel.execute(
+          context(),
+          wave2Command(
+            "task.createInProject",
+            {
+              taskId,
+              projectId,
+              spaceId: ids.rootSpace,
+              title: "Follow persistent delivery",
+            },
+            "persistent-task-in-project",
+            { [projectId]: 1 },
+          ),
+        ),
+      );
+      assert.equal(created.outcome, "success");
+      database.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const snapshot = reopened.store.snapshot();
+      assert.equal(
+        snapshot.tasks.some((task) => task.id === taskId),
+        true,
+      );
+      assert.equal(
+        snapshot.relations.some(
+          (relation) =>
+            relation.relationType === "task_contributes_to_project" &&
+            relation.taskId === taskId &&
+            relation.projectId === projectId,
+        ),
+        true,
+      );
+      const query = reopened.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.similarCandidates",
+        queryId: "00000000-0000-4000-8000-0000000000e3",
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          title: "Persistent similarity delivery",
+        },
+      });
+      assert.equal(query.kind, "query_result");
+      if (
+        query.kind !== "query_result" ||
+        query.result.outcome !== "success" ||
+        query.result.projection.kind !== "project.similarCandidates"
+      )
+        throw new Error("Expected persisted similarity query.");
+      assert.deepEqual(
+        query.result.projection.items.map((item) => item.projectId),
+        [projectId],
+      );
+      reopenedDatabase.close();
+    });
+  });
+
   it("persists Wave 2 Project, status, relation, search, cockpit, activity, and undo semantics", () => {
     withDatabase((filename) => {
       const firstDatabase = new DatabaseSync(filename);
@@ -2831,6 +3007,40 @@ describe("SQLite ApplicationStore", () => {
         tasks.result.projection.items[0]?.sourceCaptureId,
         captureId,
       );
+
+      const activity = reopened.kernel.query(
+        context(),
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "activity.meaningful",
+          queryId: "00000000-0000-4000-8000-000000000021",
+          workspaceId: ids.workspace,
+          consistency: "local_authoritative",
+          parameters: { spaceId: ids.rootSpace, limit: 20 },
+        }),
+      );
+      if (
+        activity.kind !== "query_result" ||
+        activity.result.outcome !== "success" ||
+        activity.result.projection.kind !== "activity.meaningful"
+      )
+        assert.fail("Expected reopened meaningful activity.");
+      const routedActivity = activity.result.projection.items.find(
+        (item) => item.activityType === "capture_routed",
+      );
+      assert.equal(
+        routedActivity?.recordTitle,
+        "Prepare the restart-safe review",
+      );
+      assert.equal(routedActivity?.commandName, "capture.routeAsTask");
+      assert.equal(routedActivity?.correlationId, captureCommand.correlationId);
+      assert.deepEqual(routedActivity?.changedFields, [
+        "processingState",
+        "derivedTaskId",
+        "task.title",
+        "task.statusId",
+        "task.sourceCaptureId",
+      ]);
 
       const replay = unwrap(reopened.kernel.execute(context(), captureCommand));
       assert.deepEqual(replay, captureOutcome);
@@ -3922,6 +4132,187 @@ describe("narrative-less records in the durable store", () => {
         ["Clients", "Falcon"],
       );
       reopened.close();
+    });
+  });
+
+  it("persists append-only Project check-ins across SQLite reopen", () => {
+    withDatabase((filename) => {
+      const projectId = "00000000-0000-4000-8000-0000000001f0";
+      const checkInId = "00000000-0000-4000-8000-0000000001f1";
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId,
+                spaceId: ids.rootSpace,
+                title: "Durable check-ins",
+                intendedOutcome: "History survives restart.",
+              },
+              "check-in-project",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.checkInAdd",
+              {
+                checkInId,
+                projectId,
+                summary: "SQLite stores this status separately.",
+                evidenceSourceIds: [],
+                references: [],
+              },
+              "check-in-add",
+              { [projectId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.id,
+        checkInId,
+      );
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.summary,
+        "SQLite stores this status separately.",
+      );
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.authorPrincipalKind,
+        "human",
+      );
+      assert.equal(
+        reopened.store.snapshot().projectCheckIns?.[0]?.authorGrantId,
+        ids.grant,
+      );
+      assert.equal(
+        (
+          reopenedDatabase.prepare("PRAGMA user_version").get() as {
+            user_version: number;
+          }
+        ).user_version,
+        LOCAL_STORE_SCHEMA_VERSION,
+      );
+      reopenedDatabase.close();
+    });
+  });
+
+  it("persists reclassification lineage and authoritative preview behavior across SQLite reopen", () => {
+    withDatabase((filename) => {
+      const projectId = "00000000-0000-4000-8000-0000000002f0";
+      const initiativeId = "00000000-0000-4000-8000-0000000002f1";
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId,
+                spaceId: ids.rootSpace,
+                title: "Durably reclassify this Project",
+                intendedOutcome: "Lineage must survive a database restart.",
+              },
+              "durable-reclassification-project",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      const reclassification = wave2Command(
+        "project.reclassify",
+        {
+          projectId,
+          destination: {
+            mode: "create",
+            kind: "initiative",
+            targetId: initiativeId,
+            title: "Durably reclassify this Project",
+            intendedOutcome: "Lineage must survive a database restart.",
+          },
+        },
+        "durable-reclassification",
+        { [projectId]: 1 },
+      );
+      assert.equal(
+        unwrap(first.kernel.execute(context(), reclassification)).outcome,
+        "success",
+      );
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const snapshot = reopened.store.snapshot();
+      assert.deepEqual(
+        snapshot.projects.find((project) => project.id === projectId)
+          ?.reclassifiedTo,
+        {
+          kind: "initiative",
+          targetId: initiativeId,
+          commandId: reclassification.commandId,
+        },
+      );
+      assert.deepEqual(
+        snapshot.strategicRecords?.find((record) => record.id === initiativeId)
+          ?.reclassifiedFromProjectIds,
+        [projectId],
+      );
+      const preview = reopened.kernel.query(context(), {
+        contractVersion: 1,
+        queryId: "00000000-0000-4000-8000-0000000002f2",
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        queryName: "project.reclassificationPreview",
+        parameters: {
+          projectId,
+          destination: {
+            mode: "create",
+            kind: "initiative",
+            targetId: initiativeId,
+            title: "Durably reclassify this Project",
+            intendedOutcome: "Lineage must survive a database restart.",
+          },
+        },
+      });
+      assert.equal(preview.kind, "query_result");
+      if (
+        preview.kind !== "query_result" ||
+        preview.result.outcome !== "success" ||
+        preview.result.projection.kind !== "project.reclassificationPreview"
+      )
+        throw new Error(
+          "Expected persisted authoritative reclassification preview.",
+        );
+      assert.equal(preview.result.projection.canApply, false);
+      assert.equal(
+        preview.result.projection.blockedReason,
+        "already_reclassified",
+      );
+      reopenedDatabase.close();
     });
   });
 });

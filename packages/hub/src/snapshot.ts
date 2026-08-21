@@ -16,6 +16,138 @@ const REDACTED_ASSIGNEE_PRINCIPAL_ID = PrincipalIdSchema.parse(
 const REDACTED_GRANT_ID = GrantIdSchema.parse(
   "00000000-0000-4000-8000-000000000000",
 );
+const CHECK_IN_ATTRIBUTION_ATTESTATION =
+  "constellation.project-check-in-attribution/v1";
+
+const principalCanUseSpace = (
+  snapshot: ReferenceStateSnapshot,
+  principalId: string,
+  spaceId: string,
+): boolean => {
+  const membership = snapshot.memberships.find(
+    (candidate) => candidate.principalId === principalId,
+  );
+  if (membership === undefined || membership.status !== "active") return false;
+  const workspace = snapshot.workspaces.find(
+    (candidate) => candidate.id === membership.workspaceId,
+  );
+  return (
+    (membership.role === "owner" && workspace?.rootSpaceId === spaceId) ||
+    (snapshot.spaceGrants ?? []).some(
+      (grant) =>
+        grant.principalId === principalId &&
+        grant.spaceId === spaceId &&
+        grant.status === "active",
+    )
+  );
+};
+
+const attestProjectCheckInAttribution = (
+  snapshot: ReferenceStateSnapshot,
+  checkIn: NonNullable<ReferenceStateSnapshot["projectCheckIns"]>[number],
+): Record<string, unknown> => {
+  const {
+    authorPrincipalId,
+    authorPrincipalKind,
+    authorGrantId,
+    agentRunId,
+    hostRunId,
+    hubAttributionAttestation: _priorAttestation,
+    ...withoutAttribution
+  } = checkIn as typeof checkIn & {
+    readonly hubAttributionAttestation?: unknown;
+  };
+  const trustedCanonicalCarry =
+    _priorAttestation === CHECK_IN_ATTRIBUTION_ATTESTATION &&
+    (snapshot.agentGrants?.length ?? 0) === 0 &&
+    (authorPrincipalKind === "human" ||
+      (authorPrincipalKind === "agent" && authorGrantId !== undefined));
+  if (trustedCanonicalCarry) {
+    return {
+      ...withoutAttribution,
+      authorPrincipalId,
+      authorPrincipalKind,
+      ...(authorGrantId === undefined ? {} : { authorGrantId }),
+      ...(agentRunId === undefined ? {} : { agentRunId }),
+      ...(hostRunId === undefined ? {} : { hostRunId }),
+      hubAttributionAttestation: CHECK_IN_ATTRIBUTION_ATTESTATION,
+    };
+  }
+  const principalVisible = principalCanUseSpace(
+    snapshot,
+    authorPrincipalId,
+    checkIn.spaceId,
+  );
+  const exactAgentGrant =
+    authorPrincipalKind === "agent" && authorGrantId !== undefined
+      ? (snapshot.agentGrants ?? []).find(
+          (grant) =>
+            grant.id === authorGrantId &&
+            grant.agentPrincipalId === authorPrincipalId &&
+            grant.status === "active" &&
+            grant.spaceScope.includes(checkIn.spaceId),
+        )
+      : undefined;
+  const safe =
+    principalVisible &&
+    (authorPrincipalKind === "human" || exactAgentGrant !== undefined);
+  return {
+    ...withoutAttribution,
+    ...(safe
+      ? {
+          authorPrincipalId,
+          authorPrincipalKind,
+          ...(authorGrantId === undefined ? {} : { authorGrantId }),
+          ...(agentRunId === undefined ? {} : { agentRunId }),
+          ...(hostRunId === undefined ? {} : { hostRunId }),
+          hubAttributionAttestation: CHECK_IN_ATTRIBUTION_ATTESTATION,
+        }
+      : {}),
+  };
+};
+
+const stripProjectCheckInAttribution = (
+  checkIn: Record<string, unknown>,
+): Record<string, unknown> => {
+  const {
+    authorPrincipalId: _authorPrincipalId,
+    authorPrincipalKind: _authorPrincipalKind,
+    authorGrantId: _authorGrantId,
+    agentRunId: _agentRunId,
+    hostRunId: _hostRunId,
+    hubAttributionAttestation: _hubAttributionAttestation,
+    ...safe
+  } = checkIn;
+  void _authorPrincipalId;
+  void _authorPrincipalKind;
+  void _authorGrantId;
+  void _agentRunId;
+  void _hostRunId;
+  void _hubAttributionAttestation;
+  return safe;
+};
+
+export interface InternalHubSnapshotEnvelope {
+  readonly snapshot: HubWorkspaceSnapshot;
+}
+
+const trustedInternalEnvelopes = new WeakSet<InternalHubSnapshotEnvelope>();
+
+const internalEnvelope = (
+  snapshot: HubWorkspaceSnapshot,
+): InternalHubSnapshotEnvelope => {
+  const envelope = { snapshot };
+  trustedInternalEnvelopes.add(envelope);
+  return envelope;
+};
+
+const assertInternalEnvelope = (
+  envelope: InternalHubSnapshotEnvelope,
+): HubWorkspaceSnapshot => {
+  if (!trustedInternalEnvelopes.has(envelope))
+    throw new Error("Untrusted internal Hub snapshot envelope.");
+  return envelope.snapshot;
+};
 
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -31,8 +163,9 @@ const canonicalJson = (value: unknown): string => {
 export const snapshotDigest = (snapshot: HubWorkspaceSnapshot): string =>
   createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
 
-export const toHubSnapshot = (
+const serializeHubSnapshot = (
   snapshot: ReferenceStateSnapshot,
+  internal: boolean,
 ): HubWorkspaceSnapshot => {
   const {
     agentGrants: _agentGrants,
@@ -41,7 +174,6 @@ export const toHubSnapshot = (
     agentHandoffs: _agentHandoffs,
     ...hubState
   } = snapshot;
-  void _agentGrants;
   void _agentRuns;
   void _agentCheckpoints;
   void _agentHandoffs;
@@ -51,6 +183,13 @@ export const toHubSnapshot = (
   return HubWorkspaceSnapshotSchema.parse({
     format: "constellation.workspace-snapshot/v1",
     ...hubState,
+    projectCheckIns: (snapshot.projectCheckIns ?? []).map((checkIn) =>
+      internal
+        ? attestProjectCheckInAttribution(snapshot, checkIn)
+        : stripProjectCheckInAttribution(
+            checkIn as unknown as Record<string, unknown>,
+          ),
+    ),
     memberships: hubState.memberships.filter(
       (membership) => !localAgentPrincipals.has(membership.principalId),
     ),
@@ -60,9 +199,24 @@ export const toHubSnapshot = (
   });
 };
 
-export const fromHubSnapshot = (
+export const toHubSnapshot = (
+  snapshot: ReferenceStateSnapshot,
+): HubWorkspaceSnapshot => serializeHubSnapshot(snapshot, false);
+
+export const toInternalHubSnapshot = (
+  snapshot: ReferenceStateSnapshot,
+): InternalHubSnapshotEnvelope =>
+  internalEnvelope(serializeHubSnapshot(snapshot, true));
+
+export const internalHubSnapshotFromRepository = (
+  snapshot: HubWorkspaceSnapshot,
+): InternalHubSnapshotEnvelope =>
+  internalEnvelope(HubWorkspaceSnapshotSchema.parse(snapshot));
+
+const parseHubSnapshot = (
   snapshot: HubWorkspaceSnapshot,
   workspaceId: WorkspaceId,
+  internal: boolean,
 ): ReferenceStateSnapshot => {
   const parsed = HubWorkspaceSnapshotSchema.parse(snapshot);
   if (
@@ -89,6 +243,7 @@ export const fromHubSnapshot = (
     parsed.captures.some((value) => value.workspaceId !== workspaceId) ||
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
     parsed.projects.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.projectCheckIns.some((value) => value.workspaceId !== workspaceId) ||
     parsed.documents.some((value) => value.workspaceId !== workspaceId) ||
     parsed.folders.some((value) => value.workspaceId !== workspaceId) ||
     parsed.knowledgeSources.some(
@@ -109,8 +264,26 @@ export const fromHubSnapshot = (
   }
   const { format: _format, ...state } = parsed;
   void _format;
-  return state as unknown as ReferenceStateSnapshot;
+  return {
+    ...state,
+    projectCheckIns: internal
+      ? state.projectCheckIns
+      : state.projectCheckIns.map((checkIn) =>
+          stripProjectCheckInAttribution(checkIn),
+        ),
+  } as unknown as ReferenceStateSnapshot;
 };
+
+export const fromHubSnapshot = (
+  snapshot: HubWorkspaceSnapshot,
+  workspaceId: WorkspaceId,
+): ReferenceStateSnapshot => parseHubSnapshot(snapshot, workspaceId, false);
+
+export const fromInternalHubSnapshot = (
+  envelope: InternalHubSnapshotEnvelope,
+  workspaceId: WorkspaceId,
+): ReferenceStateSnapshot =>
+  parseHubSnapshot(assertInternalEnvelope(envelope), workspaceId, true);
 
 export const authorizationForSnapshot = (
   snapshot: HubWorkspaceSnapshot,
@@ -151,10 +324,11 @@ export const authorizationForSnapshot = (
   };
 };
 
-export const scopeHubSnapshot = (
+const scopeSnapshot = (
   snapshot: HubWorkspaceSnapshot,
   workspaceId: WorkspaceId,
   authorization: ExecutionContext,
+  internal: boolean,
 ): HubWorkspaceSnapshot | undefined => {
   const current = authorizationForSnapshot(
     snapshot,
@@ -162,7 +336,7 @@ export const scopeHubSnapshot = (
     authorization,
   );
   if (current === undefined) return undefined;
-  const state = fromHubSnapshot(snapshot, workspaceId);
+  const state = parseHubSnapshot(snapshot, workspaceId, internal);
   const membership = state.memberships.find(
     (value) => value.principalId === current.principalId,
   );
@@ -181,7 +355,47 @@ export const scopeHubSnapshot = (
       inScope(assignment) && visibleTaskIds.has(assignment.taskId),
   );
   const captures = state.captures.filter(inScope);
-  const projects = state.projects.filter(inScope);
+  const visibleStrategicRecords = (state.strategicRecords ?? []).filter(
+    inScope,
+  );
+  const visibleStrategicRecordIds = new Set(
+    visibleStrategicRecords.map((record) => record.id),
+  );
+  // A Project stays visible after reclassification, but its target identifier is
+  // a cross-Space edge. Do not disclose that edge when the target is outside
+  // the caller's scope.
+  const projects = state.projects.filter(inScope).map((project) => {
+    if (
+      project.reclassifiedTo !== undefined &&
+      !visibleStrategicRecordIds.has(project.reclassifiedTo.targetId)
+    ) {
+      const { reclassifiedTo: _reclassifiedTo, ...withoutHiddenLineage } =
+        project;
+      void _reclassifiedTo;
+      return withoutHiddenLineage;
+    }
+    return project;
+  });
+  const visibleProjectIds = new Set(projects.map((project) => project.id));
+  const strategicRecords = visibleStrategicRecords.map((record) => {
+    if (record.reclassifiedFromProjectIds === undefined) return record;
+    const reclassifiedFromProjectIds = record.reclassifiedFromProjectIds.filter(
+      (projectId) => visibleProjectIds.has(projectId),
+    );
+    return reclassifiedFromProjectIds.length === 0
+      ? (() => {
+          const {
+            reclassifiedFromProjectIds: _reclassifiedFromProjectIds,
+            ...withoutHiddenLineage
+          } = record;
+          void _reclassifiedFromProjectIds;
+          return withoutHiddenLineage;
+        })()
+      : { ...record, reclassifiedFromProjectIds };
+  });
+  const projectCheckInCandidates = (state.projectCheckIns ?? []).filter(
+    inScope,
+  );
   const documents = (state.documents ?? []).filter(inScope);
   const folders = (state.folders ?? []).filter(inScope);
   const knowledgeSources = (state.knowledgeSources ?? []).filter(inScope);
@@ -190,7 +404,6 @@ export const scopeHubSnapshot = (
       inScope(version) &&
       documents.some((doc) => doc.id === version.documentId),
   );
-  const strategicRecords = (state.strategicRecords ?? []).filter(inScope);
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
   const visibleEvents = state.events.filter(inScope);
@@ -228,6 +441,39 @@ export const scopeHubSnapshot = (
         ))
     );
   };
+  const projectCheckIns = projectCheckInCandidates.map((checkIn) => {
+    const persisted = checkIn as unknown as Record<string, unknown>;
+    const {
+      authorPrincipalId,
+      authorPrincipalKind,
+      authorGrantId,
+      agentRunId,
+      hostRunId,
+      hubAttributionAttestation,
+      voidedBy,
+      ...redacted
+    } = persisted;
+    const attributionAttested =
+      internal &&
+      hubAttributionAttestation === CHECK_IN_ATTRIBUTION_ATTESTATION;
+    const voiderVisible =
+      typeof voidedBy === "string" &&
+      isEligibleInSpace(voidedBy, String(checkIn.spaceId));
+    return {
+      ...redacted,
+      id: checkIn.id,
+      ...(attributionAttested
+        ? {
+            authorPrincipalId,
+            authorPrincipalKind,
+            ...(authorGrantId === undefined ? {} : { authorGrantId }),
+            ...(agentRunId === undefined ? {} : { agentRunId }),
+            ...(hostRunId === undefined ? {} : { hostRunId }),
+          }
+        : {}),
+      ...(voiderVisible ? { voidedBy } : {}),
+    };
+  });
   const taskAssignments = authoritativeAssignments.map((assignment) => {
     if (isEligibleInSpace(assignment.assigneePrincipalId, assignment.spaceId)) {
       return assignment;
@@ -333,6 +579,7 @@ export const scopeHubSnapshot = (
     ...captures.map((value) => value.id),
     ...tasks.map((value) => value.id),
     ...projects.map((value) => value.id),
+    ...projectCheckIns.map((value) => value.id),
     ...documents.map((value) => value.id),
     ...folders.map((value) => value.id),
     ...knowledgeSources.map((value) => value.id),
@@ -341,25 +588,50 @@ export const scopeHubSnapshot = (
     ...relations.map((value) => value.id),
     ...undoDescriptors.map((value) => value.targetCommandId),
   ]);
-  const auditReceipts = scopedAuditReceipts.map((receipt) => ({
-    ...receipt,
-    ...(isEligibleInSpace(receipt.principalId, receipt.spaceId)
-      ? {}
-      : {
-          principalId: REDACTED_ASSIGNEE_PRINCIPAL_ID,
-          grantId: REDACTED_GRANT_ID,
-        }),
-    affectedRecordIds: receipt.affectedRecordIds.filter((recordId) =>
-      allowedRecordIds.has(recordId),
-    ),
-    recordVersions: Object.fromEntries(
-      Object.entries(receipt.recordVersions).filter(([recordId]) =>
+  const auditReceipts = scopedAuditReceipts.map((receipt) => {
+    const { agentRunId, hostRunId, ...receiptWithoutRunAttribution } = receipt;
+    const affectedCheckIns = (state.projectCheckIns ?? []).filter((checkIn) =>
+      receipt.affectedRecordIds.includes(checkIn.id),
+    );
+    const runAttributionAttested =
+      (agentRunId === undefined && hostRunId === undefined) ||
+      affectedCheckIns.length === 0 ||
+      affectedCheckIns.some((checkIn) => {
+        const persisted = checkIn as unknown as Record<string, unknown>;
+        return (
+          persisted.hubAttributionAttestation ===
+            CHECK_IN_ATTRIBUTION_ATTESTATION &&
+          persisted.authorPrincipalId === receipt.principalId &&
+          persisted.authorGrantId === receipt.grantId
+        );
+      });
+    return {
+      ...receiptWithoutRunAttribution,
+      ...(runAttributionAttested && agentRunId !== undefined
+        ? { agentRunId }
+        : {}),
+      ...(runAttributionAttested && hostRunId !== undefined
+        ? { hostRunId }
+        : {}),
+      ...(isEligibleInSpace(receipt.principalId, receipt.spaceId)
+        ? {}
+        : {
+            principalId: REDACTED_ASSIGNEE_PRINCIPAL_ID,
+            grantId: REDACTED_GRANT_ID,
+          }),
+      affectedRecordIds: receipt.affectedRecordIds.filter((recordId) =>
         allowedRecordIds.has(recordId),
       ),
-    ),
-  }));
+      recordVersions: Object.fromEntries(
+        Object.entries(receipt.recordVersions).filter(([recordId]) =>
+          allowedRecordIds.has(recordId),
+        ),
+      ),
+    };
+  });
   const idempotencyPrefix = `${workspaceId}:${current.principalId}:`;
-  return toHubSnapshot({
+  return HubWorkspaceSnapshotSchema.parse({
+    format: "constellation.workspace-snapshot/v1",
     workspaces: state.workspaces,
     spaces: state.spaces.filter((value) => spaces.has(value.id)),
     memberships,
@@ -374,6 +646,7 @@ export const scopeHubSnapshot = (
     captures,
     tasks,
     projects,
+    projectCheckIns,
     documents,
     folders,
     knowledgeSources,
@@ -394,3 +667,22 @@ export const scopeHubSnapshot = (
     outboxEntries,
   });
 };
+
+export const scopeHubSnapshot = (
+  snapshot: HubWorkspaceSnapshot,
+  workspaceId: WorkspaceId,
+  authorization: ExecutionContext,
+): HubWorkspaceSnapshot | undefined =>
+  scopeSnapshot(snapshot, workspaceId, authorization, false);
+
+export const scopeInternalHubSnapshot = (
+  envelope: InternalHubSnapshotEnvelope,
+  workspaceId: WorkspaceId,
+  authorization: ExecutionContext,
+): HubWorkspaceSnapshot | undefined =>
+  scopeSnapshot(
+    assertInternalEnvelope(envelope),
+    workspaceId,
+    authorization,
+    true,
+  );

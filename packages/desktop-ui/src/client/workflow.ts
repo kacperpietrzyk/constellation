@@ -7,6 +7,8 @@ import {
   type CommandId,
   type DataHomeStatus,
   type ProjectId,
+  type ProjectReclassifyCommand,
+  type ProjectCheckInId,
   type PrincipalId,
   type QueryName,
   type QueryProjection,
@@ -69,9 +71,46 @@ type CaptureHistoryProjection = Projection<"capture.history">;
 export type AccessProjection = Projection<"workspace.access">;
 export type AgentAccessProjection = Projection<"agent.access">;
 export type ProjectListProjection = Projection<"project.list">;
+export type ProjectSimilarCandidatesProjection =
+  Projection<"project.similarCandidates">;
+export type ProjectReclassificationPreviewProjection =
+  Projection<"project.reclassificationPreview">;
 export type WorkOverviewProjection = Projection<"work.overview">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
+export type AreaOverviewProjection = Projection<"area.operationalOverview">;
+export type InitiativeOverviewProjection =
+  Projection<"initiative.operationalOverview">;
+export type ProjectCheckInListProjection = Projection<"project.checkInList">;
+export type ProjectCheckInSlice =
+  | { readonly kind: "loading"; readonly projectId: ProjectId }
+  | {
+      readonly kind: "ready";
+      readonly projectId: ProjectId;
+      readonly data: ProjectCheckInListProjection;
+    }
+  | {
+      readonly kind: "unavailable";
+      readonly projectId: ProjectId;
+      readonly message: string;
+      readonly diagnosticCode?: string;
+    };
+
+export const projectCheckInSliceForProject = (
+  slice: ProjectCheckInSlice | undefined,
+  projectId: ProjectId,
+): ProjectCheckInSlice =>
+  slice?.projectId === projectId ? slice : { kind: "loading", projectId };
+
+export const acceptProjectCheckInLoad = (
+  current: ProjectCheckInSlice | undefined,
+  requestedProjectId: ProjectId,
+  data: ProjectCheckInListProjection,
+): ProjectCheckInSlice | undefined =>
+  current?.projectId === requestedProjectId &&
+  data.projectId === requestedProjectId
+    ? { kind: "ready", projectId: requestedProjectId, data }
+    : current;
 export type OrganizationOverviewProjection =
   Projection<"organization.operationalOverview">;
 export type SearchProjection = Projection<"search.global">;
@@ -93,7 +132,79 @@ export type KnowledgeDocumentContextProjection =
   Projection<"knowledge.documentContext">;
 export type RelationshipWorkspaceProjection =
   Projection<"relationship.workspace">;
+export type OpportunityListProjection = Projection<"opportunity.list">;
+export type RelationListProjection = Projection<"relation.list">;
 export type RadarReviewProjection = Projection<"radar.review">;
+
+export const projectReclassificationTargets = (
+  work: Pick<WorkOverviewProjection, "areas" | "initiatives">,
+  opportunities: DataSlice<OpportunityListProjection> | undefined,
+) => [
+  ...work.areas.map((area) => ({
+    id: area.id,
+    kind: "area" as const,
+    title: area.title,
+  })),
+  ...work.initiatives.map((initiative) => ({
+    id: initiative.id,
+    kind: "initiative" as const,
+    title: initiative.title,
+  })),
+  ...(opportunities?.kind === "ready"
+    ? opportunities.data.items.map((opportunity) => ({
+        id: opportunity.id,
+        kind: "opportunity" as const,
+        title: opportunity.title,
+      }))
+    : []),
+];
+
+interface InventoryPage<Item> {
+  readonly items: readonly Item[];
+  readonly totalCount: number;
+  readonly snapshot: string;
+  readonly nextCursor: string | null;
+  readonly final: boolean;
+}
+
+export const collectInventoryPages = async <Item>(
+  read: (cursor?: string) => Promise<InventoryPage<Item>>,
+): Promise<InventoryPage<Item>> => {
+  const items: Item[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  let snapshot: string | undefined;
+  let totalCount: number | undefined;
+  for (;;) {
+    const current = await read(cursor);
+    snapshot ??= current.snapshot;
+    totalCount ??= current.totalCount;
+    if (current.snapshot !== snapshot)
+      throw new Error("Inventory snapshot changed between pages.");
+    if (current.totalCount !== totalCount)
+      throw new Error("Inventory totalCount changed between pages.");
+    items.push(...current.items);
+    if (current.final) {
+      if (current.nextCursor !== null)
+        throw new Error("A final inventory page carried nextCursor.");
+      if (items.length !== totalCount)
+        throw new Error("Inventory item count does not match totalCount.");
+      return {
+        items,
+        totalCount,
+        snapshot,
+        nextCursor: null,
+        final: true,
+      };
+    }
+    if (current.nextCursor === null)
+      throw new Error("A non-final inventory page omitted nextCursor.");
+    if (seen.has(current.nextCursor))
+      throw new Error("Inventory cursor repeated before finality.");
+    seen.add(current.nextCursor);
+    cursor = current.nextCursor;
+  }
+};
 export type CommentTarget = CommentListProjection["target"];
 
 /**
@@ -201,6 +312,8 @@ export interface DesktopSnapshot {
   readonly documents: DataSlice<DocumentListProjection>;
   readonly knowledge: DataSlice<KnowledgeListProjection>;
   readonly relationships: DataSlice<RelationshipWorkspaceProjection>;
+  readonly opportunities?: DataSlice<OpportunityListProjection>;
+  readonly relations?: DataSlice<RelationListProjection>;
   readonly radar: DataSlice<RadarReviewProjection>;
   readonly dataHome?: DataHomeStatus;
 }
@@ -477,6 +590,8 @@ export const loadDesktopSnapshot = async (
     documents,
     knowledge,
     relationships,
+    opportunities,
+    relations,
     radar,
   ] = await Promise.all([
     queryProjection(
@@ -585,6 +700,58 @@ export const loadDesktopSnapshot = async (
       ),
     ),
     optionalProjection(
+      (async (): Promise<OpportunityListProjection> => {
+        let freshness: OpportunityListProjection["freshness"] | undefined;
+        const complete = await collectInventoryPages(async (cursor) => {
+          const page = await queryProjection(
+            client,
+            queryEnvelope("opportunity.list", workspaceId, {
+              spaceId,
+              limit: 100,
+              ...(cursor === undefined ? {} : { cursor }),
+            }),
+            "opportunity.list",
+          );
+          freshness ??= page.freshness;
+          return page;
+        });
+        if (freshness === undefined)
+          throw new Error("Opportunity inventory returned no freshness.");
+        return {
+          kind: "opportunity.list",
+          ...complete,
+          items: [...complete.items],
+          freshness,
+        };
+      })(),
+    ),
+    optionalProjection(
+      (async (): Promise<RelationListProjection> => {
+        let freshness: RelationListProjection["freshness"] | undefined;
+        const complete = await collectInventoryPages(async (cursor) => {
+          const page = await queryProjection(
+            client,
+            queryEnvelope("relation.list", workspaceId, {
+              spaceId,
+              limit: 100,
+              ...(cursor === undefined ? {} : { cursor }),
+            }),
+            "relation.list",
+          );
+          freshness ??= page.freshness;
+          return page;
+        });
+        if (freshness === undefined)
+          throw new Error("Relation inventory returned no freshness.");
+        return {
+          kind: "relation.list",
+          ...complete,
+          items: [...complete.items],
+          freshness,
+        };
+      })(),
+    ),
+    optionalProjection(
       queryProjection(
         client,
         queryEnvelope("radar.review", workspaceId, { spaceId, limit: 12 }),
@@ -660,6 +827,8 @@ export const loadDesktopSnapshot = async (
     documents,
     knowledge,
     relationships,
+    opportunities,
+    relations,
     radar,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
@@ -1644,6 +1813,75 @@ export const loadProjectOverview = (
     "project.operationalOverview",
   );
 
+export const loadAreaOverview = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  areaId: StrategicRecordId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope("area.operationalOverview", snapshot.bootstrap.workspace.id, {
+      areaId,
+    }),
+    "area.operationalOverview",
+  );
+
+export const loadInitiativeOverview = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  initiativeId: StrategicRecordId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "initiative.operationalOverview",
+      snapshot.bootstrap.workspace.id,
+      { initiativeId },
+    ),
+    "initiative.operationalOverview",
+  );
+
+export const loadWorkContextCandidates = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  spaceId: SpaceId,
+): Promise<{
+  readonly tasks: TaskListProjection["items"];
+  readonly projects: ProjectListProjection["items"];
+}> => {
+  const [tasks, projects] = await Promise.all([
+    queryProjection(
+      client,
+      queryEnvelope("task.list", snapshot.bootstrap.workspace.id, {
+        spaceId,
+        limit: 100,
+      }),
+      "task.list",
+    ),
+    queryProjection(
+      client,
+      queryEnvelope("project.list", snapshot.bootstrap.workspace.id, {
+        spaceId,
+      }),
+      "project.list",
+    ),
+  ]);
+  return { tasks: tasks.items, projects: projects.items };
+};
+
+export const loadProjectCheckIns = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope("project.checkInList", snapshot.bootstrap.workspace.id, {
+      projectId,
+    }),
+    "project.checkInList",
+  );
+
 export const loadOrganizationOverview = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -1678,6 +1916,78 @@ export const searchGlobal = async (
     "search.global",
   );
 };
+
+export const loadProjectSimilarCandidates = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly title: string;
+    readonly spaceId?: SpaceId;
+    readonly clientOrganizationIds?: readonly StrategicRecordId[];
+    readonly contexts?: readonly {
+      readonly kind: "area" | "initiative";
+      readonly recordId: StrategicRecordId;
+    }[];
+  },
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "project.similarCandidates",
+      snapshot.bootstrap.workspace.id,
+      {
+        spaceId: input.spaceId ?? firstSpace(snapshot),
+        title: input.title,
+        ...(input.clientOrganizationIds === undefined
+          ? {}
+          : { clientOrganizationIds: input.clientOrganizationIds }),
+        ...(input.contexts === undefined ? {} : { contexts: input.contexts }),
+      },
+    ),
+    "project.similarCandidates",
+  );
+
+/** The preview is authoritative: callers may never synthesize its versions or
+ * preserved-history summary from stale screen data. */
+export const previewProjectReclassification = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+  destination: ProjectReclassifyCommand["payload"]["destination"],
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "project.reclassificationPreview",
+      snapshot.bootstrap.workspace.id,
+      {
+        projectId,
+        destination,
+      },
+    ),
+    "project.reclassificationPreview",
+  );
+
+export const reclassifyProject = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+  destination: ProjectReclassifyCommand["payload"]["destination"],
+  expectedVersions: Readonly<Record<string, number>>,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, expectedVersions),
+      commandName: "project.reclassify",
+      payload: { projectId, destination },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.reclassified"
+        ? response.outcome.projection
+        : undefined,
+  );
 
 const commandFailure = (response: RendererCommandResponse): MutationFailure => {
   if (response.kind === "contract_rejected")
@@ -2021,6 +2331,28 @@ export const updateAreaResponsibility = (
         : undefined,
   );
 
+export const setAreaLifecycle = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  area: { readonly id: StrategicRecordId; readonly version: number },
+  state: "active" | "archived",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [area.id]: area.version,
+      }),
+      commandName: state === "archived" ? "area.archive" : "area.restore",
+      payload: { areaId: area.id },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const createInitiative = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -2062,6 +2394,29 @@ export const updateInitiativeOutcome = (
       }),
       commandName: "initiative.updateOutcome",
       payload: { initiativeId: initiative.id, intendedOutcome },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setInitiativeLifecycle = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  initiative: { readonly id: StrategicRecordId; readonly version: number },
+  state: "active" | "closed",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [initiative.id]: initiative.version,
+      }),
+      commandName:
+        state === "closed" ? "initiative.close" : "initiative.reopen",
+      payload: { initiativeId: initiative.id },
     },
     (response) =>
       response.outcome.outcome === "success" &&
@@ -3664,6 +4019,46 @@ export const revokeWorkspaceMember = (
         : undefined,
   );
 
+export const addProjectCheckIn = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: { readonly id: ProjectId; readonly version: number },
+  draft: {
+    readonly summary: string;
+    readonly waitingOn?: string;
+    readonly nextCheckpointAt?: string;
+  },
+) => {
+  const checkInId = crypto.randomUUID() as ProjectCheckInId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: "project.checkInAdd",
+      payload: {
+        checkInId,
+        projectId: project.id,
+        summary: draft.summary,
+        ...(draft.waitingOn === undefined
+          ? {}
+          : { waitingOn: draft.waitingOn }),
+        ...(draft.nextCheckpointAt === undefined
+          ? {}
+          : { nextCheckpointAt: draft.nextCheckpointAt }),
+        evidenceSourceIds: [],
+        references: [],
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.check_in_added"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
 export const updateProjectOutcome = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -3730,6 +4125,7 @@ export const createTask = (
     readonly description?: string;
     readonly nextAction?: string;
     readonly parentTaskId?: TaskId;
+    readonly spaceId?: SpaceId;
   },
 ) =>
   execute(
@@ -3739,7 +4135,7 @@ export const createTask = (
       commandName: "task.create",
       payload: {
         taskId: crypto.randomUUID(),
-        spaceId: firstSpace(snapshot),
+        spaceId: input.spaceId ?? firstSpace(snapshot),
         title: input.title,
         ...(input.description === undefined || input.description === ""
           ? {}
@@ -3755,6 +4151,45 @@ export const createTask = (
     (response) =>
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind === "task.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const createTaskInProject = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly projectId: ProjectId;
+    readonly projectVersion: number;
+    readonly spaceId: SpaceId;
+    readonly title: string;
+    readonly description?: string;
+    readonly nextAction?: string;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [input.projectId]: input.projectVersion,
+      }),
+      commandName: "task.createInProject",
+      payload: {
+        taskId: crypto.randomUUID(),
+        projectId: input.projectId,
+        spaceId: input.spaceId,
+        title: input.title,
+        ...(input.description === undefined || input.description === ""
+          ? {}
+          : { description: input.description }),
+        ...(input.nextAction === undefined || input.nextAction === ""
+          ? {}
+          : { nextAction: input.nextAction }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.created_in_project"
         ? response.outcome.projection
         : undefined,
   );
@@ -4717,6 +5152,28 @@ export const setProjectLifecycle = (
         : undefined,
   );
 
+export const setProjectAttentionState = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: Pick<ProjectListProjection["items"][number], "id" | "version">,
+  attentionState: "current" | "waiting" | "parked",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: "project.setAttentionState",
+      payload: { projectId: project.id, attentionState },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.attention_state_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const relateTask = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -4738,6 +5195,50 @@ export const relateTask = (
         taskId,
         projectId,
       },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "relation.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const relateTaskToContext = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  task: Pick<WorkOverviewProjection["tasks"][number], "id" | "version">,
+  target:
+    | {
+        readonly kind: "area";
+        readonly id: StrategicRecordId;
+        readonly version: number;
+      }
+    | {
+        readonly kind: "initiative";
+        readonly id: StrategicRecordId;
+        readonly version: number;
+      },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [task.id]: task.version,
+        [target.id]: target.version,
+      }),
+      commandName: "record.relate",
+      payload:
+        target.kind === "area"
+          ? {
+              relationType: "task_contributes_to_area",
+              taskId: task.id,
+              areaId: target.id,
+            }
+          : {
+              relationType: "task_advances_initiative",
+              taskId: task.id,
+              initiativeId: target.id,
+            },
     },
     (response) =>
       response.outcome.outcome === "success" &&

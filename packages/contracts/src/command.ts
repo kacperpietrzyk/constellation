@@ -25,6 +25,7 @@ import {
   PrincipalIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
   SpaceGrantIdSchema,
@@ -683,6 +684,131 @@ export const ProjectRemoveCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.remove"),
   payload: z.object({ projectId: ProjectIdSchema }).strict(),
 }).strict();
+
+export const ProjectCheckInSummarySchema = z.string().trim().min(1).max(4_000);
+export const ProjectCheckInWaitingOnSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_000);
+export const ProjectCheckInReferenceKindSchema = z.enum([
+  "task",
+  "project",
+  "document",
+  "person",
+  "organization",
+  "meeting",
+  "area",
+  "initiative",
+  "decision",
+]);
+export const ProjectCheckInReferenceSchema = z
+  .object({
+    kind: ProjectCheckInReferenceKindSchema,
+    recordId: z.uuid(),
+  })
+  .strict();
+export type ProjectCheckInReference = z.infer<
+  typeof ProjectCheckInReferenceSchema
+>;
+
+const uniqueIds = (values: readonly string[]): boolean =>
+  new Set(values).size === values.length;
+const uniqueCheckInReferences = (
+  values: readonly z.infer<typeof ProjectCheckInReferenceSchema>[],
+): boolean =>
+  new Set(values.map((value) => `${value.kind}:${value.recordId}`)).size ===
+  values.length;
+
+export const ProjectCheckInAddCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.checkInAdd"),
+  payload: z
+    .object({
+      checkInId: ProjectCheckInIdSchema,
+      projectId: ProjectIdSchema,
+      summary: ProjectCheckInSummarySchema,
+      waitingOn: ProjectCheckInWaitingOnSchema.optional(),
+      nextCheckpointAt: z.iso.datetime({ offset: true }).optional(),
+      evidenceSourceIds: z
+        .array(KnowledgeSourceIdSchema)
+        .max(20)
+        .refine(uniqueIds, { error: "Evidence source ids must be unique." })
+        .default([]),
+      references: z
+        .array(ProjectCheckInReferenceSchema)
+        .max(50)
+        .refine(uniqueCheckInReferences, {
+          error: "Project check-in references must be unique.",
+        })
+        .default([]),
+      supersedesCheckInId: ProjectCheckInIdSchema.optional(),
+    })
+    .strict(),
+}).strict();
+
+export const ProjectReclassificationDestinationSchema = z.union([
+  z
+    .object({
+      mode: z.literal("merge"),
+      kind: z.enum(["area", "initiative", "opportunity"]),
+      targetId: StrategicRecordIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      kind: z.literal("area"),
+      targetId: StrategicRecordIdSchema,
+      title: ProjectTitleSchema,
+      responsibility: RecordNarrativeSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      kind: z.literal("initiative"),
+      targetId: StrategicRecordIdSchema,
+      title: ProjectTitleSchema,
+      intendedOutcome: RecordNarrativeSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      kind: z.literal("opportunity"),
+      targetId: StrategicRecordIdSchema,
+      title: ProjectTitleSchema,
+      organizationId: StrategicRecordIdSchema,
+      personIds: z.array(StrategicRecordIdSchema).max(100),
+      ownerPersonId: StrategicRecordIdSchema.optional(),
+      need: z.string().trim().min(1).max(4_000),
+      qualification: z.string().trim().min(1).max(2_000),
+      estimate: MoneyInputSchema.optional(),
+      stage: z.string().trim().min(1).max(120),
+      nextAction: z.string().trim().min(1).max(1_000),
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+    })
+    .strict(),
+]);
+
+/**
+ * Reclassifies one Project without closing or deleting it. A new destination
+ * receives an explicit predecessor link; a merge names an existing target. The
+ * source remains as the durable owner of its body, revisions, check-ins and
+ * comments, while the destination records mechanically traversable lineage.
+ */
+export const ProjectReclassifyCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.reclassify"),
+  payload: z
+    .object({
+      projectId: ProjectIdSchema,
+      destination: ProjectReclassificationDestinationSchema,
+    })
+    .strict(),
+}).strict();
+export type ProjectReclassifyCommand = z.infer<
+  typeof ProjectReclassifyCommandSchema
+>;
 
 export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("document.create"),
@@ -1473,6 +1599,16 @@ export const AreaRemoveCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
+export const AreaArchiveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("area.archive"),
+  payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const AreaRestoreCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("area.restore"),
+  payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
 export const InitiativeCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("initiative.create"),
   payload: z
@@ -1498,6 +1634,16 @@ export const InitiativeUpdateOutcomeCommandSchema =
 
 export const InitiativeRemoveCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("initiative.remove"),
+  payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const InitiativeCloseCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("initiative.close"),
+  payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+export const InitiativeReopenCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("initiative.reopen"),
   payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
@@ -1595,6 +1741,44 @@ export const RelationConditionSchema = z.discriminatedUnion("path", [
         z
           .object({
             field: z.literal("lifecycle"),
+            equals: z.enum(["active", "closed"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  z
+    .object({
+      path: z.literal("area"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("state"),
+            equals: z.enum(["active", "archived"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  z
+    .object({
+      path: z.literal("initiative"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("state"),
             equals: z.enum(["active", "closed"]),
           })
           .strict(),
@@ -2130,6 +2314,17 @@ export const ProjectUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
     ),
 }).strict();
 
+export const ProjectSetAttentionStateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("project.setAttentionState"),
+    payload: z
+      .object({
+        projectId: ProjectIdSchema,
+        attentionState: z.enum(["current", "waiting", "parked"]),
+      })
+      .strict(),
+  }).strict();
+
 const TaskTitleSchema = z.string().trim().min(1).max(500);
 const TaskDescriptionSchema = z.string().trim().min(1).max(16_000);
 const TaskNextActionSchema = z.string().trim().min(1).max(500);
@@ -2157,6 +2352,30 @@ export const TaskCreateCommandSchema = CommandMetadataSchema.extend({
         payload.dueAt === undefined ||
         Date.parse(payload.startAt) <= Date.parse(payload.dueAt),
       { message: "task.create requires startAt to not exceed dueAt." },
+    ),
+}).strict();
+
+export const TaskCreateInProjectCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.createInProject"),
+  payload: z
+    .object({
+      taskId: TaskIdSchema,
+      projectId: ProjectIdSchema,
+      spaceId: SpaceIdSchema,
+      title: TaskTitleSchema,
+      description: TaskDescriptionSchema.optional(),
+      nextAction: TaskNextActionSchema.optional(),
+      startAt: TaskInstantSchema.optional(),
+      dueAt: TaskInstantSchema.optional(),
+      priority: TaskPrioritySchema.optional(),
+    })
+    .strict()
+    .refine(
+      (payload) =>
+        payload.startAt === undefined ||
+        payload.dueAt === undefined ||
+        Date.parse(payload.startAt) <= Date.parse(payload.dueAt),
+      { message: "task.createInProject requires startAt to not exceed dueAt." },
     ),
 }).strict();
 
@@ -2685,6 +2904,20 @@ export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
         opportunityId: StrategicRecordIdSchema,
       })
       .strict(),
+    z
+      .object({
+        relationType: z.literal("task_contributes_to_area"),
+        taskId: TaskIdSchema,
+        areaId: StrategicRecordIdSchema,
+      })
+      .strict(),
+    z
+      .object({
+        relationType: z.literal("task_advances_initiative"),
+        taskId: TaskIdSchema,
+        initiativeId: StrategicRecordIdSchema,
+      })
+      .strict(),
   ]),
 }).strict();
 
@@ -2729,7 +2962,10 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
+  ProjectCheckInAddCommandSchema,
+  ProjectReclassifyCommandSchema,
   ProjectUpdateDetailsCommandSchema,
+  ProjectSetAttentionStateCommandSchema,
   ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,
   DocumentRenameCommandSchema,
@@ -2771,9 +3007,13 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AreaCreateCommandSchema,
   AreaRemoveCommandSchema,
   AreaUpdateResponsibilityCommandSchema,
+  AreaArchiveCommandSchema,
+  AreaRestoreCommandSchema,
   InitiativeCreateCommandSchema,
   InitiativeRemoveCommandSchema,
   InitiativeUpdateOutcomeCommandSchema,
+  InitiativeCloseCommandSchema,
+  InitiativeReopenCommandSchema,
   WorkLinkCreateCommandSchema,
   WorkLinkRemoveCommandSchema,
   SavedViewCreateCommandSchema,
@@ -2796,6 +3036,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   MeetingDetachNoteCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskCreateCommandSchema,
+  TaskCreateInProjectCommandSchema,
   TaskUpdateDetailsCommandSchema,
   TaskSetParentCommandSchema,
   TemplateCreateCommandSchema,

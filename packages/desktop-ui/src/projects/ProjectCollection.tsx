@@ -14,9 +14,11 @@ import { ProjectListLayout } from "./ProjectListLayout.js";
 import {
   PROJECT_LAYOUTS,
   PROJECT_LAYOUT_LABELS,
+  filterProjectReadings,
   orderForLayout,
   readProjects,
   type ProjectLayout,
+  type ProjectGovernanceFilter,
   type ProjectProse,
 } from "./project-view.js";
 import styles from "./project-collection.module.css";
@@ -48,6 +50,10 @@ export const ProjectCollection = ({
   readonly onSelectProject: (id: ProjectId) => void;
 }) => {
   const [layout, setLayout] = useState<ProjectLayout>("list");
+  const [governance, setGovernance] = useState<ProjectGovernanceFilter>({
+    portfolio: "all",
+    exception: "all",
+  });
 
   const timeZone = snapshot.bootstrap.workspace.timezone;
   const prose: ProjectProse = useMemo(
@@ -94,6 +100,45 @@ export const ProjectCollection = ({
     return names;
   }, [readings, snapshot]);
 
+  const governanceContext = useMemo(() => {
+    const areaIdsByProject = new Map<string, Set<string>>();
+    const initiativeIdsByProject = new Map<string, Set<string>>();
+    const clientIdsByProject = new Map<string, Set<string>>();
+    const add = (
+      map: Map<string, Set<string>>,
+      projectId: string,
+      id: string,
+    ) => {
+      const values = map.get(projectId) ?? new Set<string>();
+      values.add(id);
+      map.set(projectId, values);
+    };
+    if (snapshot.work.kind === "ready")
+      for (const link of snapshot.work.data.links) {
+        if (link.state !== "active") continue;
+        if (link.linkType === "project_serves_area")
+          add(areaIdsByProject, link.sourceRecordId, link.targetRecordId);
+        if (link.linkType === "project_advances_initiative")
+          add(initiativeIdsByProject, link.sourceRecordId, link.targetRecordId);
+      }
+    if (snapshot.relationships.kind === "ready" && readings !== undefined)
+      for (const reading of readings)
+        for (const organizationId of directClientLinks(
+          snapshot,
+          reading.project.id,
+        ).keys())
+          add(clientIdsByProject, reading.project.id, organizationId);
+    return { areaIdsByProject, initiativeIdsByProject, clientIdsByProject };
+  }, [readings, snapshot]);
+
+  const filtered = useMemo(
+    () =>
+      readings === undefined
+        ? undefined
+        : filterProjectReadings(readings, governance, governanceContext),
+    [governance, governanceContext, readings],
+  );
+
   // The order the MOUNTED lens actually draws, not the order the readings
   // arrived in. Each lens groups differently, and numbering rows in any other
   // order would make Enter on a focused row open a different project than the
@@ -101,12 +146,12 @@ export const ProjectCollection = ({
   // mouse click passes an id and would look correct beside it.
   const ordered = useMemo(
     () =>
-      readings === undefined
+      filtered === undefined
         ? []
-        : orderForLayout(layout, readings, (projectId) =>
+        : orderForLayout(layout, filtered, (projectId) =>
             clientNames.get(projectId),
           ),
-    [clientNames, layout, readings],
+    [clientNames, filtered, layout],
   );
   const itemProps = useListNavigation({
     itemCount: ordered.length,
@@ -128,7 +173,7 @@ export const ProjectCollection = ({
     );
 
   const layoutProps = {
-    readings,
+    readings: filtered ?? [],
     prose,
     itemProps,
     selectedProjectId,
@@ -139,6 +184,128 @@ export const ProjectCollection = ({
 
   return (
     <section aria-label="Project collection" className={styles.collection}>
+      <div aria-label="Portfolio attention" className={styles.governance}>
+        <div className={styles.lenses} role="group" aria-label="Portfolio lens">
+          {(["all", "current", "waiting", "parked", "closed"] as const).map(
+            (candidate) => (
+              <button
+                aria-pressed={(governance.portfolio ?? "all") === candidate}
+                className={styles.switch}
+                data-portfolio-lens={candidate}
+                key={candidate}
+                onClick={() =>
+                  setGovernance((current) => ({
+                    ...current,
+                    portfolio: candidate,
+                  }))
+                }
+                type="button"
+              >
+                {candidate[0]?.toUpperCase()}
+                {candidate.slice(1)}
+              </button>
+            ),
+          )}
+        </div>
+        <label className={styles.filterLabel}>
+          Exception
+          <select
+            value={governance.exception ?? "all"}
+            onChange={(event) =>
+              setGovernance((current) => ({
+                ...current,
+                exception: event.target.value as NonNullable<
+                  ProjectGovernanceFilter["exception"]
+                >,
+              }))
+            }
+          >
+            <option value="all">All</option>
+            <option value="no_context">No context</option>
+            <option value="no_open_tasks">No open tasks</option>
+            <option value="stale">Stale</option>
+            <option value="no_signal">No signal</option>
+          </select>
+        </label>
+        <label className={styles.filterLabel}>
+          Area
+          <select
+            data-project-filter="area"
+            disabled={snapshot.work.kind !== "ready"}
+            value={governance.areaId ?? ""}
+            onChange={(event) =>
+              setGovernance((current) => ({
+                ...current,
+                areaId: event.target.value || undefined,
+              }))
+            }
+          >
+            <option value="">
+              {snapshot.work.kind === "ready" ? "Any area" : "Unavailable"}
+            </option>
+            {snapshot.work.kind === "ready" &&
+              snapshot.work.data.areas.map((area) => (
+                <option key={area.id} value={area.id}>
+                  {area.title}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className={styles.filterLabel}>
+          Initiative
+          <select
+            data-project-filter="initiative"
+            disabled={snapshot.work.kind !== "ready"}
+            value={governance.initiativeId ?? ""}
+            onChange={(event) =>
+              setGovernance((current) => ({
+                ...current,
+                initiativeId: event.target.value || undefined,
+              }))
+            }
+          >
+            <option value="">
+              {snapshot.work.kind === "ready"
+                ? "Any initiative"
+                : "Unavailable"}
+            </option>
+            {snapshot.work.kind === "ready" &&
+              snapshot.work.data.initiatives.map((initiative) => (
+                <option key={initiative.id} value={initiative.id}>
+                  {initiative.title}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className={styles.filterLabel}>
+          Client
+          <select
+            data-project-filter="client"
+            disabled={snapshot.relationships.kind !== "ready"}
+            value={governance.clientId ?? ""}
+            onChange={(event) =>
+              setGovernance((current) => ({
+                ...current,
+                clientId: event.target.value || undefined,
+              }))
+            }
+          >
+            <option value="">
+              {snapshot.relationships.kind === "ready"
+                ? "Any client"
+                : "Unavailable"}
+            </option>
+            {snapshot.relationships.kind === "ready" &&
+              snapshot.relationships.data.records
+                .filter((record) => record.kind === "organization")
+                .map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+          </select>
+        </label>
+      </div>
       <div className={styles.viewbar}>
         <div
           aria-label="Project layout"
@@ -158,12 +325,25 @@ export const ProjectCollection = ({
             </button>
           ))}
         </div>
-        <span aria-live="polite" className={styles.count} role="status">
-          {countLabel(readings.length, "project")}
+        <span
+          aria-live="polite"
+          className={styles.count}
+          data-project-result-count
+          role="status"
+        >
+          {countLabel(filtered?.length ?? 0, "project")}
         </span>
       </div>
 
-      {layout === "list" && <ProjectListLayout {...layoutProps} />}
+      {filtered?.length === 0 && (
+        <p className={styles.unavailable} role="status">
+          No projects in this view. Change or clear the portfolio filters.
+        </p>
+      )}
+
+      {filtered !== undefined && filtered.length > 0 && layout === "list" && (
+        <ProjectListLayout {...layoutProps} />
+      )}
       {layout === "client" && (
         <LazySurfaceBoundary label="By client">
           <Suspense fallback={<SurfaceLoadingState label="By client" />}>

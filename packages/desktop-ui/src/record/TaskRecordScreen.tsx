@@ -16,6 +16,8 @@ import type {
   MutationFailure,
   WorkOverviewProjection,
 } from "../client/workflow.js";
+import { relateTaskToContext, unrelateTask } from "../client/workflow.js";
+import { ChoicePopover } from "../components/ChoicePopover.js";
 import { Icon } from "../components/Icon.js";
 import { dateKeyInZone, formatDateTime } from "../i18n.js";
 import {
@@ -29,7 +31,7 @@ import {
 } from "../tasks/task-view.js";
 import {
   RecordActivityPanel,
-  recordActivityItems,
+  recordActivityEntries,
 } from "./RecordActivityPanel.js";
 import {
   RecordCommentsPanel,
@@ -350,6 +352,8 @@ export const TaskRecordScreen = ({
   const [selected, setSelected] = useState<RecordTab>(() =>
     restoreTab(readStoredTabs()[taskId]),
   );
+  const [contextSelection, setContextSelection] = useState("");
+  const [contextBusy, setContextBusy] = useState(false);
   const select = (tab: RecordTab): void => {
     rememberTab(taskId, tab);
     setSelected(tab);
@@ -410,6 +414,30 @@ export const TaskRecordScreen = ({
   const taskProjects = projects.filter((project) =>
     task.projectIds.includes(project.id as ProjectId),
   );
+  const directContexts = task.directContextRelations.flatMap((relation) => {
+    const kind =
+      relation.relationType === "task_contributes_to_area"
+        ? ("area" as const)
+        : ("initiative" as const);
+    const item = (kind === "area" ? work?.areas : work?.initiatives)?.find(
+      (candidate) => candidate.id === relation.targetId,
+    );
+    return item === undefined ? [] : [{ relation, kind, item }];
+  });
+  const contextCandidates = [
+    ...(work?.areas ?? [])
+      .filter(
+        (area) => area.state === "active" && !task.areaIds.includes(area.id),
+      )
+      .map((area) => ({ kind: "area" as const, item: area })),
+    ...(work?.initiatives ?? [])
+      .filter(
+        (initiative) =>
+          initiative.state === "active" &&
+          !task.initiativeIds.includes(initiative.id),
+      )
+      .map((initiative) => ({ kind: "initiative" as const, item: initiative })),
+  ];
 
   // `state === "active"` is the whole filter and it is not defensive:
   // `work.linkRemove` flips the LINK's state and leaves `recordState` alone, so
@@ -431,9 +459,7 @@ export const TaskRecordScreen = ({
   const threads = comments.kind === "ready" ? comments.data.threads : undefined;
   const activityEntries =
     activity.kind === "ready"
-      ? recordActivityItems(
-          activity.data.items.filter((item) => item.recordId === taskId),
-        ).map((item) => ({ item }))
+      ? recordActivityEntries(activity.data.items, taskId)
       : [];
 
   const counts: Partial<Record<RecordTab, number>> =
@@ -454,6 +480,43 @@ export const TaskRecordScreen = ({
    *  same four, so a change to the contract lands in one place rather than in
    *  two mounts that can disagree. */
   const wiring = { client, snapshot, onReload, onFailure };
+
+  const mutateContext = async (
+    operation: () => Promise<{ readonly kind: string }>,
+  ): Promise<void> => {
+    if (contextBusy) return;
+    setContextBusy(true);
+    try {
+      const result = await operation();
+      if (result.kind === "success") {
+        setContextSelection("");
+        await onReload();
+      } else onFailure(result as MutationFailure);
+    } catch {
+      onFailure({
+        kind: "unavailable",
+        message: "Could not reach the data layer. Nothing changed — try again.",
+      });
+    } finally {
+      setContextBusy(false);
+    }
+  };
+
+  const submitContext = (): void => {
+    if (!client || contextSelection === "") return;
+    const [kind, id] = contextSelection.split(":");
+    const candidate = contextCandidates.find(
+      (entry) => entry.kind === kind && entry.item.id === id,
+    );
+    if (candidate === undefined) return;
+    void mutateContext(() =>
+      relateTaskToContext(client, snapshot, task, {
+        kind: candidate.kind,
+        id: candidate.item.id,
+        version: candidate.item.version,
+      }),
+    );
+  };
 
   /** The other end of a dependency, drawn once for each direction. A link whose
    *  other end is not in this Space's work says so rather than drawing a blank
@@ -738,6 +801,89 @@ export const TaskRecordScreen = ({
                         <b>Next step:</b> {detail.nextAction}
                       </p>
                     )}
+                </section>
+
+                <section className={styles.docSection} data-task-context>
+                  <h2 className={styles.docHeading}>Work context</h2>
+                  {!workKnown ? (
+                    <p className={styles.note}>
+                      The work plane could not be read, so direct context is
+                      unknown here.
+                    </p>
+                  ) : directContexts.length === 0 ? (
+                    <p className={styles.note}>
+                      No Area or Initiative is linked directly.
+                    </p>
+                  ) : (
+                    <div className={styles.contextList}>
+                      {directContexts.map(({ relation, kind, item }) => (
+                        <div
+                          className={styles.contextRow}
+                          key={relation.relationId}
+                        >
+                          <span className={styles.contextCopy}>
+                            <small>
+                              {kind === "area" ? "Area" : "Initiative"}
+                            </small>
+                            <strong>{item.title}</strong>
+                          </span>
+                          <button
+                            aria-label={`Remove ${item.title}`}
+                            className={styles.contextRemove}
+                            disabled={contextBusy || !client}
+                            onClick={() =>
+                              client === undefined
+                                ? undefined
+                                : void mutateContext(() =>
+                                    unrelateTask(
+                                      client,
+                                      snapshot,
+                                      relation.relationId,
+                                      relation.version,
+                                    ),
+                                  )
+                            }
+                            type="button"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {workKnown && contextCandidates.length > 0 && (
+                    <div className={styles.contextForm}>
+                      <ChoicePopover
+                        choices={[
+                          { value: "", label: "No context selected" },
+                          ...contextCandidates.map(({ kind, item }) => ({
+                            value: `${kind}:${item.id}`,
+                            label: `${kind === "area" ? "Area" : "Initiative"} · ${item.title}`,
+                          })),
+                        ]}
+                        disabled={contextBusy || !client}
+                        onChoose={setContextSelection}
+                        panelLabel="Add direct work context"
+                        trigger={
+                          contextCandidates.find(
+                            ({ kind, item }) =>
+                              `${kind}:${item.id}` === contextSelection,
+                          )?.item.title ?? "Choose Area or Initiative…"
+                        }
+                        triggerId="task-direct-context"
+                        value={contextSelection}
+                      />
+                      <button
+                        disabled={
+                          contextBusy || !client || contextSelection === ""
+                        }
+                        onClick={submitContext}
+                        type="button"
+                      >
+                        Link context
+                      </button>
+                    </div>
+                  )}
                 </section>
 
                 <section className={styles.docSection}>

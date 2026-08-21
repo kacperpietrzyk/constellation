@@ -11,6 +11,7 @@ export * from "./strategic-depth.js";
 export * from "./assignment.js";
 export * from "./model.js";
 export * from "./project.js";
+export * from "./project-check-in.js";
 export * from "./task.js";
 export * from "./templates.js";
 export * from "./work.js";

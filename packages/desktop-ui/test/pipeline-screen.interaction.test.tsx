@@ -214,6 +214,25 @@ const twoCurrencyRelationships = {
 const queries = {
   ...populatedShellQueries,
   "relationship.workspace": projectionResponse(relationships),
+  "opportunity.list": projectionResponse({
+    kind: "opportunity.list" as const,
+    items: records.filter((record) => record.kind === "opportunity"),
+    totalCount: records.filter((record) => record.kind === "opportunity")
+      .length,
+    snapshot: "pipeline-opportunities-snapshot",
+    nextCursor: null,
+    final: true,
+    freshness: populatedRelationshipWorkspace.freshness,
+  }),
+  "relation.list": projectionResponse({
+    kind: "relation.list" as const,
+    items: [],
+    totalCount: 0,
+    snapshot: "pipeline-relations-snapshot",
+    nextCursor: null,
+    final: true,
+    freshness: populatedRelationshipWorkspace.freshness,
+  }),
 };
 
 interface IssuedCommand {
@@ -328,6 +347,16 @@ const openBoard = async (
     "Pipeline drew no deal card at all",
   );
 };
+
+test("GAP-06A-002 — Pipeline states authoritative Opportunity and relation inventory finality", async () => {
+  await openBoard();
+  const inventory = container.querySelector<HTMLElement>(
+    "[data-portfolio-inventory-finality]",
+  );
+  assert.ok(inventory, "Pipeline did not expose portfolio inventory finality");
+  assert.match(inventory.textContent ?? "", /6 opportunities · complete/u);
+  assert.match(inventory.textContent ?? "", /0 relations · complete/u);
+});
 
 test("C8 — a reader who cannot see the card is told IN WORDS whether the price was confirmed or derived", async () => {
   await openBoard();
@@ -566,6 +595,19 @@ test("C14 — the comparison bar disappears entirely once the funnel holds more 
   await openBoard({
     ...queries,
     "relationship.workspace": projectionResponse(twoCurrencyRelationships),
+    "opportunity.list": projectionResponse({
+      kind: "opportunity.list",
+      items: twoCurrencyRelationships.records.filter(
+        (record) => record.kind === "opportunity",
+      ),
+      totalCount: twoCurrencyRelationships.records.filter(
+        (record) => record.kind === "opportunity",
+      ).length,
+      snapshot: "two-currency-opportunities",
+      nextCursor: null,
+      final: true,
+      freshness: twoCurrencyRelationships.freshness,
+    }),
   });
   assert.equal(
     container.querySelectorAll("[data-pipeline-meter]").length,
@@ -663,6 +705,19 @@ test("M lands the focus on a control that can be pressed, even for a deal on the
   await openBoard({
     ...queries,
     "relationship.workspace": projectionResponse(twoCurrencyRelationships),
+    "opportunity.list": projectionResponse({
+      kind: "opportunity.list",
+      items: twoCurrencyRelationships.records.filter(
+        (record) => record.kind === "opportunity",
+      ),
+      totalCount: twoCurrencyRelationships.records.filter(
+        (record) => record.kind === "opportunity",
+      ).length,
+      snapshot: "two-currency-opportunities",
+      nextCursor: null,
+      final: true,
+      freshness: twoCurrencyRelationships.freshness,
+    }),
   });
 
   const card = cardFor(euroDealId);

@@ -21,10 +21,14 @@ export const activityCategoryDefinitions: readonly {
 
 export const activityLabels: Record<ActivityItem["activityType"], string> = {
   capture_routed: "Turned a Capture into a task",
+  capture_routed_to_knowledge: "Turned a Capture into a knowledge source",
   capture_transcript_ready: "Saved a voice note transcript",
   project_created: "Created a project",
+  project_check_in_added: "Added a project check-in",
   project_outcome_changed: "Changed a project's intended outcome",
   project_details_changed: "Renamed a project or changed its deadline",
+  project_attention_changed: "Changed a project's portfolio attention",
+  project_reclassified: "Reclassified a project without closing it",
   task_created: "Created a task",
   task_details_updated: "Changed a task's details",
   task_parent_changed: "Changed the subtask structure",
@@ -47,9 +51,10 @@ export const activityLabels: Record<ActivityItem["activityType"], string> = {
   task_assigned: "Assigned a task",
   task_unassigned: "Unassigned a task",
   comment_added: "Added a comment",
+  comment_edited: "Edited a comment",
   comment_resolved: "Resolved a comment thread",
   comment_reopened: "Reopened a comment thread",
-  relation_added: "Linked a task to a project",
+  relation_added: "Linked records",
   relation_removed: "Removed a link",
   knowledge_source_created: "Saved a knowledge source",
   knowledge_source_updated: "Updated a knowledge source",
@@ -60,15 +65,45 @@ export const activityLabels: Record<ActivityItem["activityType"], string> = {
   command_undone: "Undid a command",
 };
 
+export const activityLabelFor = (item: ActivityItem): string => {
+  const context = item.relationContext;
+  if (
+    context === undefined ||
+    (item.activityType !== "relation_added" &&
+      item.activityType !== "relation_removed")
+  )
+    return activityLabels[item.activityType];
+
+  const target =
+    context.relationType === "task_contributes_to_project"
+      ? "Project"
+      : context.relationType === "task_contributes_to_area"
+        ? "Area"
+        : context.relationType === "task_advances_initiative"
+          ? "Initiative"
+          : "Opportunity";
+  if (item.activityType === "relation_removed")
+    return context.path === "project_mediated"
+      ? `Removed a ${target} link`
+      : `Removed a direct ${target} link`;
+  return context.path === "project_mediated"
+    ? `Linked a task to a ${target}`
+    : `Linked a task directly to an ${target}`;
+};
+
 const categoryByType: Record<
   ActivityItem["activityType"],
   ActivityItemCategory
 > = {
   capture_routed: "capture",
+  capture_routed_to_knowledge: "capture",
   capture_transcript_ready: "capture",
   project_created: "work",
+  project_check_in_added: "work",
   project_outcome_changed: "work",
   project_details_changed: "work",
+  project_attention_changed: "work",
+  project_reclassified: "work",
   task_created: "work",
   task_details_updated: "work",
   task_parent_changed: "work",
@@ -90,6 +125,7 @@ const categoryByType: Record<
   task_assigned: "work",
   task_unassigned: "work",
   comment_added: "collaboration",
+  comment_edited: "collaboration",
   comment_resolved: "collaboration",
   comment_reopened: "collaboration",
   relation_added: "collaboration",
@@ -125,17 +161,59 @@ export const filterActivityItems = (
   items: readonly ActivityItem[],
   category: ActivityCategory,
   query: string,
+  actorPrincipalId: string = "all",
+  recordKind: string = "all",
 ): readonly ActivityItem[] => {
   const normalizedQuery = normalizeQuery(query);
   return items.filter((item) => {
     if (category !== "all" && activityCategoryFor(item) !== category) {
       return false;
     }
+    if (
+      actorPrincipalId !== "all" &&
+      item.actor?.principalId !== actorPrincipalId
+    )
+      return false;
+    if (recordKind !== "all" && item.recordKind !== recordKind) return false;
     if (normalizedQuery.length === 0) return true;
-    return `${activityLabels[item.activityType]} ${item.recordId}`
+    return `${activityLabelFor(item)} ${item.recordTitle ?? ""} ${item.actor?.displayName ?? ""} ${item.recordKind ?? ""} ${item.commandName ?? ""} ${item.recordId}`
       .toLocaleLowerCase("pl-PL")
       .includes(normalizedQuery);
   });
+};
+
+export interface ActivityOperationGroup {
+  readonly key: string;
+  readonly grouped: boolean;
+  readonly items: readonly ActivityItem[];
+}
+
+const sharesOperation = (left: ActivityItem, right: ActivityItem): boolean => {
+  if (left.correlationId !== undefined || right.correlationId !== undefined)
+    return (
+      left.correlationId !== undefined &&
+      left.correlationId === right.correlationId
+    );
+  return left.agentRunId !== undefined && left.agentRunId === right.agentRunId;
+};
+
+export const groupActivityOperations = (
+  items: readonly ActivityItem[],
+): readonly ActivityOperationGroup[] => {
+  const groups: ActivityItem[][] = [];
+  for (const item of items) {
+    const current = groups.at(-1);
+    if (current !== undefined && sharesOperation(current.at(-1)!, item)) {
+      current.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+  return groups.map((group) => ({
+    key: `${group[0]?.correlationId ?? group[0]?.agentRunId ?? "activity-operation"}:${group[0]?.eventId ?? "missing-event"}`,
+    grouped: group.length > 1,
+    items: group,
+  }));
 };
 
 const dateParts = (

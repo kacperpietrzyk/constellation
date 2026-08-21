@@ -35,10 +35,32 @@
 
 .rows {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.rows li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.openRecord {
+  min-block-size: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.openRecord:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 /* The whole row is the control, so the target is the size of the thing rather
@@ -51,7 +73,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: none;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3);
   text-align: start;
   cursor: pointer;
 }
@@ -88,15 +110,24 @@
 }
 
 .rowNarrative {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* The projects under this context, named. Retiring the work surface took away
    the only display of that membership, so it is said here rather than counted. */
 .rowServing {
+  overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tools {

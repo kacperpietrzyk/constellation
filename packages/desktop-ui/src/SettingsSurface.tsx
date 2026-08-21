@@ -231,6 +231,7 @@ export const SettingsSurface = ({
   requestedCategory,
   onCategoryChange,
   onUndo,
+  onOpenActivityRecord,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -273,6 +274,10 @@ export const SettingsSurface = ({
    * would be a second copy of a decision it already owns.
    */
   readonly onUndo: (targetCommandId: CommandId) => void;
+  readonly onOpenActivityRecord?: (
+    recordKind: string,
+    recordId: string,
+  ) => void;
 }) => {
   const [name, setName] = useState(snapshot.bootstrap.workspace.name);
   const [busyName, setBusyName] = useState(false);
@@ -3104,6 +3109,7 @@ export const SettingsSurface = ({
                 ? {}
                 : { timezone: snapshot.bootstrap.workspace.timezone })}
               onUndo={onUndo}
+              onOpenRecord={onOpenActivityRecord ?? (() => undefined)}
               onRetry={() => void onReload()}
             />
           </div>

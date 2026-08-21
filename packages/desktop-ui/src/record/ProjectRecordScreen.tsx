@@ -14,6 +14,7 @@ import type {
   CommentListProjection,
   DataSlice,
   ProjectOverviewProjection,
+  ProjectCheckInSlice,
 } from "../client/workflow.js";
 import { Icon } from "../components/Icon.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
@@ -29,7 +30,10 @@ import {
   ProjectRecordOverview,
   type ProjectClientLinking,
 } from "./ProjectRecordOverview.js";
-import { RecordActivityPanel } from "./RecordActivityPanel.js";
+import {
+  RecordActivityPanel,
+  recordActivityEntries,
+} from "./RecordActivityPanel.js";
 import {
   RecordCommentsPanel,
   type MentionCandidate,
@@ -52,7 +56,6 @@ import {
   type RecordTab,
 } from "./record-tabs.js";
 import { RecordTabStrip } from "./RecordTabStrip.js";
-import { recordActivityItems } from "./RecordActivityPanel.js";
 import styles from "./record-screen.module.css";
 
 // The project record, assembled: the header, the tab bar and exactly one panel.
@@ -155,6 +158,7 @@ export interface ProjectRecordScreenProps {
   readonly documents: readonly RecordDocument[];
   readonly comments: DataSlice<CommentListProjection>;
   readonly activity: DataSlice<ActivityProjection>;
+  readonly checkIns?: ProjectCheckInSlice;
   readonly busy: boolean;
   readonly commentBusy: boolean;
   readonly canComment: boolean;
@@ -179,6 +183,12 @@ export interface ProjectRecordScreenProps {
     parent?: CommentThread,
     attachmentSourceIds?: readonly KnowledgeSourceId[],
   ) => Promise<boolean>;
+  readonly onAddCheckIn?: (draft: {
+    readonly summary: string;
+    readonly waitingOn?: string;
+    readonly nextCheckpointAt?: string;
+  }) => Promise<boolean>;
+  readonly onReloadCheckIns?: () => void;
   /** Editing and settling a comment. REQUIRED, and the reason is a defect this
    *  screen already shipped once: these were optional, the single caller filled
    *  neither, and the record quietly offered no Edit, no Unlink and no Resolve
@@ -227,6 +237,7 @@ export const ProjectRecordScreen = ({
   documents,
   comments,
   activity,
+  checkIns,
   busy,
   commentBusy,
   canComment,
@@ -237,6 +248,8 @@ export const ProjectRecordScreen = ({
   mentionNameOf,
   mentionCandidates,
   onAddComment,
+  onAddCheckIn = async () => false,
+  onReloadCheckIns = () => undefined,
   onEditComment,
   onResolveComment,
   onBack,
@@ -270,9 +283,7 @@ export const ProjectRecordScreen = ({
   const threads = comments.kind === "ready" ? comments.data.threads : undefined;
   const activityEntries =
     activity.kind === "ready"
-      ? recordActivityItems(
-          activity.data.items.filter((item) => item.recordId === projectId),
-        ).map((item) => ({ item }))
+      ? recordActivityEntries(activity.data.items, projectId)
       : [];
 
   // Sized by the panel that is on screen, and by nothing else. `itemCount` is
@@ -378,6 +389,16 @@ export const ProjectRecordScreen = ({
           // w `ProjectRecordOverview.tsx`.
           <ProjectRecordOverview
             body={body}
+            checkIns={
+              checkIns ?? {
+                kind: "unavailable",
+                projectId,
+                message: "Project check-ins are unavailable.",
+              }
+            }
+            busy={busy}
+            onAddCheckIn={onAddCheckIn}
+            onReloadCheckIns={onReloadCheckIns}
             clientLinking={clientLinking}
             onOpenClient={(organization) =>
               onOpenRelationship(organization.id as StrategicRecordId)

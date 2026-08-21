@@ -43,7 +43,11 @@ CRM or generic database builder.
   Project.
 - An Initiative is a completable multi-Project outcome. Typed work links connect
   Projects to Areas or Initiatives and Tasks to their dependencies without
-  forcing every record into one containment tree.
+  forcing every record into one containment tree. A Task may also contribute
+  directly to an Area or advance an Initiative when the work is too lightweight
+  for a Project. Those direct relations remain distinct from
+  Task→Project→Area/Initiative reach in projections and relation filters; no
+  Project is inferred or created as a side effect.
 - An Area's responsibility and a Project's or Initiative's intended outcome are
   optional at creation. Imported work that predates the record often has no
   written intent, and requiring one only guarantees a plausible invention. A
@@ -57,6 +61,18 @@ CRM or generic database builder.
   structured filters rather than generated recommendations.
 - Closing a Project is a versioned lifecycle change. Open Tasks and history are
   preserved, and reopening is an ordinary auditable command.
+- Reclassifying a Project as an Area, Initiative, or Opportunity is not a
+  create/relink/close recipe. `project.reclassificationPreview` returns the
+  complete bounded history manifest and exact source/target versions before
+  `project.reclassify` applies. A new destination receives a typed predecessor;
+  a merge adds the source Project to the existing destination's lineage. The
+  source remains the durable owner of its collaborative body and revisions,
+  check-ins, comments, audit, evidence, Task relations, and work links, leaves
+  active Project lists without entering the irreversible close lifecycle, and
+  remains narrowly resolvable from the destination. Undo restores the Project
+  classification; it soft-removes only a destination created by the command and
+  never removes a pre-existing merge target. Later target work or references
+  block unsafe undo instead of being orphaned.
 - Knowledge Radar candidates are deduplicated by material key. Review is finite:
   saved or dismissed items do not return without new source context.
 

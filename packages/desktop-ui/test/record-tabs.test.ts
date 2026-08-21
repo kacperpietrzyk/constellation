@@ -112,14 +112,30 @@ const shownRoots = (state: CommentsState): readonly string[] =>
 // id on the strip, so a key added without a label leaves a nameless tab and a
 // label added without a key is dead. Both halves move together or the test
 // says so.
-test("the record's tab vocabulary is exactly these six, in the agreed order", () => {
+test("the record's tab vocabulary is exactly these seven, in the agreed order", () => {
   assert.deepEqual(
     [...RECORD_TABS],
-    ["overview", "tasks", "offers", "documents", "comments", "activity"],
+    [
+      "overview",
+      "tasks",
+      "projects",
+      "offers",
+      "documents",
+      "comments",
+      "activity",
+    ],
   );
   assert.deepEqual(
     RECORD_TABS.map((key) => RECORD_TAB_LABELS[key]),
-    ["Overview", "Tasks", "Offers", "Documents", "Comments", "Activity"],
+    [
+      "Overview",
+      "Tasks",
+      "Projects",
+      "Offers",
+      "Documents",
+      "Comments",
+      "Activity",
+    ],
   );
 });
 

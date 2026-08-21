@@ -13,6 +13,7 @@ import { libraryReadingLabel } from "../src/library/library-readings.js";
 import {
   activateShellContext,
   activeShellContext,
+  areaContext,
   closeShellContext,
   createShellNavigation,
   destinationShortcutIndex,
@@ -24,6 +25,7 @@ import {
   openShellContext,
   openShellContextReportingEviction,
   opportunityContext,
+  initiativeContext,
   organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
@@ -46,8 +48,35 @@ const organizationId = StrategicRecordIdSchema.parse(
 const opportunityId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-000000000005",
 );
+const areaId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000006",
+);
+const initiativeId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000007",
+);
 
 describe("stable shell navigation", () => {
+  it("restores Area and Initiative as distinct first-class record contexts", () => {
+    let state = createShellNavigation(
+      destinationContext("projects", "Projects"),
+    );
+    state = openShellContext(state, areaContext(areaId, "Product stewardship"));
+    state = openShellContext(
+      state,
+      initiativeContext(initiativeId, "Adopt the operating standard"),
+    );
+    const restored = restoreShellNavigation(
+      serializeShellNavigation(state),
+      destinationContext("today", "Today"),
+    );
+    assert.equal(restored.tabs[1]?.areaId, areaId);
+    assert.equal(restored.tabs[2]?.initiativeId, initiativeId);
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.key),
+      ["destination:projects", `area:${areaId}`, `initiative:${initiativeId}`],
+    );
+  });
+
   it("maps every visible destination shortcut, including Meetings and Documents", () => {
     assert.equal(destinationShortcutIndex("Digit1"), 0);
     assert.equal(destinationShortcutIndex("Digit8"), 7);

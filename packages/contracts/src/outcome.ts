@@ -12,6 +12,7 @@ import {
   FolderIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
+  ProjectCheckInIdSchema,
   RelationIdSchema,
   SpaceGrantIdSchema,
   SpaceIdSchema,
@@ -73,6 +74,8 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.exception_resolved",
   "capture.routed_as_task",
   "project.created",
+  "project.check_in_added",
+  "project.reclassified",
   "document.created",
   "document.renamed",
   "document.folder_changed",
@@ -90,8 +93,10 @@ export const DiagnosticCodeSchema = z.enum([
   "record.removed",
   "project.outcome_updated",
   "project.details_updated",
+  "project.attention_state_changed",
   "project.lifecycle_changed",
   "task.created",
+  "task.created_in_project",
   "task.details_updated",
   "task.parent_changed",
   "template.created",
@@ -164,6 +169,7 @@ export const RecordKindSchema = z.enum([
   "projectTemplate",
   "automationRule",
   "project",
+  "projectCheckIn",
   "document",
   // A Folder is here and NOT in `humanRecordKindRegistry`, and the two are
   // independent vocabularies rather than one question asked twice. THIS one is
@@ -368,6 +374,42 @@ export const ProjectCreatedProjectionSchema = z
   .object({ kind: z.literal("project.created"), ...ProjectProjectionFields })
   .strict();
 
+export const ProjectCheckInAddedProjectionSchema = z
+  .object({
+    kind: z.literal("project.check_in_added"),
+    checkInId: ProjectCheckInIdSchema,
+    projectId: ProjectIdSchema,
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const ProjectReclassifiedProjectionSchema = z
+  .object({
+    kind: z.literal("project.reclassified"),
+    projectId: ProjectIdSchema,
+    targetKind: z.enum(["area", "initiative", "opportunity"]),
+    targetId: StrategicRecordIdSchema,
+    mode: z.enum(["create", "merge"]),
+    projectVersion: z.int().positive(),
+    targetVersion: z.int().positive(),
+    history: z
+      .object({
+        bodyOwner: z
+          .object({ kind: z.literal("project"), projectId: ProjectIdSchema })
+          .strict(),
+        checkInIds: z.array(ProjectCheckInIdSchema),
+        commentIds: z.array(CommentIdSchema),
+        evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+        taskIds: z.array(TaskIdSchema),
+        relationIds: z.array(RelationIdSchema),
+        workLinkIds: z.array(StrategicRecordIdSchema),
+        eventIds: z.array(z.uuid()),
+        auditReceiptIds: z.array(AuditReceiptIdSchema),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const DocumentCreatedProjectionSchema = z
   .object({
     kind: z.literal("document.created"),
@@ -482,6 +524,14 @@ export const ProjectDetailsUpdatedProjectionSchema = z
     ...ProjectProjectionFields,
   })
   .strict();
+export const ProjectAttentionStateChangedProjectionSchema = z
+  .object({
+    kind: z.literal("project.attention_state_changed"),
+    projectId: ProjectIdSchema,
+    attentionState: z.enum(["current", "waiting", "parked"]),
+    version: z.int().positive(),
+  })
+  .strict();
 export const ProjectLifecycleChangedProjectionSchema = z
   .object({
     kind: z.literal("project.lifecycle_changed"),
@@ -519,6 +569,21 @@ export const TaskCreatedProjectionSchema = z
     statusId: TaskStatusIdSchema,
     completionState: z.enum(["open", "completed"]),
     version: z.int().positive(),
+  })
+  .strict();
+export const TaskCreatedInProjectProjectionSchema = z
+  .object({
+    kind: z.literal("task.created_in_project"),
+    taskId: TaskIdSchema,
+    projectId: ProjectIdSchema,
+    relationId: RelationIdSchema,
+    spaceId: SpaceIdSchema,
+    ...TaskDetailFields,
+    statusId: TaskStatusIdSchema,
+    completionState: z.literal("open"),
+    taskVersion: z.int().positive(),
+    projectVersion: z.int().positive(),
+    relationVersion: z.int().positive(),
   })
   .strict();
 export const TaskDetailsUpdatedProjectionSchema = z
@@ -865,14 +930,16 @@ export const AttentionDismissedProjectionSchema = z
   })
   .strict();
 
-// The far end is a Project or an Opportunity, never both: a Task's next action
-// can serve the delivery or the deal, and flattening the second onto the first
-// is what a migration had to do before the relation existed.
+// Exactly one far end is present. Optional fields keep the projection additive
+// for older Project/Opportunity readers; the relation type remains the closed
+// discriminator at the command and domain boundaries.
 const RelationProjectionFields = {
   relationId: RelationIdSchema,
   taskId: TaskIdSchema,
   projectId: ProjectIdSchema.optional(),
   opportunityId: StrategicRecordIdSchema.optional(),
+  areaId: StrategicRecordIdSchema.optional(),
+  initiativeId: StrategicRecordIdSchema.optional(),
   version: z.int().positive(),
 } as const;
 
@@ -971,6 +1038,8 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureAwaitingTranscriptProjectionSchema,
   CaptureExceptionResolvedProjectionSchema,
   ProjectCreatedProjectionSchema,
+  ProjectCheckInAddedProjectionSchema,
+  ProjectReclassifiedProjectionSchema,
   DocumentCreatedProjectionSchema,
   DocumentRenamedProjectionSchema,
   KnowledgeSourceMutationProjectionSchema,
@@ -978,8 +1047,10 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   KnowledgeNamedVersionMutationProjectionSchema,
   StrategicRecordMutationProjectionSchema,
   ProjectOutcomeUpdatedProjectionSchema,
+  ProjectAttentionStateChangedProjectionSchema,
   ProjectLifecycleChangedProjectionSchema,
   TaskCreatedProjectionSchema,
+  TaskCreatedInProjectProjectionSchema,
   TaskDetailsUpdatedProjectionSchema,
   TaskParentChangedProjectionSchema,
   FolderCreatedProjectionSchema,
@@ -1157,6 +1228,18 @@ const ProjectCreatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("project.created"),
     projection: ProjectCreatedProjectionSchema,
   }).strict();
+const ProjectCheckInAddedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.check_in_added"),
+    projection: ProjectCheckInAddedProjectionSchema,
+  }).strict();
+const ProjectReclassifiedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.reclassified"),
+    projection: ProjectReclassifiedProjectionSchema,
+  }).strict();
 const DocumentCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1230,6 +1313,12 @@ const ProjectDetailsUpdatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("project.details_updated"),
     projection: ProjectDetailsUpdatedProjectionSchema,
   }).strict();
+const ProjectAttentionStateChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.attention_state_changed"),
+    projection: ProjectAttentionStateChangedProjectionSchema,
+  }).strict();
 const ProjectLifecycleChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1241,6 +1330,12 @@ const TaskCreatedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   diagnosticCode: z.literal("task.created"),
   projection: TaskCreatedProjectionSchema,
 }).strict();
+const TaskCreatedInProjectSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("task.created_in_project"),
+    projection: TaskCreatedInProjectProjectionSchema,
+  }).strict();
 const TaskDetailsUpdatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1527,6 +1622,8 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureAudioDeletedSuccessOutcomeSchema,
   CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
+  ProjectCheckInAddedSuccessOutcomeSchema,
+  ProjectReclassifiedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
   DocumentRenamedSuccessOutcomeSchema,
   KnowledgeSourceCreatedSuccessOutcomeSchema,
@@ -1539,8 +1636,10 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   RecordRemovedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
   ProjectDetailsUpdatedSuccessOutcomeSchema,
+  ProjectAttentionStateChangedSuccessOutcomeSchema,
   ProjectLifecycleChangedSuccessOutcomeSchema,
   TaskCreatedSuccessOutcomeSchema,
+  TaskCreatedInProjectSuccessOutcomeSchema,
   TaskDetailsUpdatedSuccessOutcomeSchema,
   TaskParentChangedSuccessOutcomeSchema,
   FolderCreatedSuccessOutcomeSchema,

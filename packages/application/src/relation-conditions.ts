@@ -156,6 +156,38 @@ export const evaluateRelationConditions = (
   const relations = view.listRelations(workspaceId, spaceId);
   let allowed: Set<TaskId> | undefined;
   for (const condition of conditions) {
+    if (condition.path === "area" || condition.path === "initiative") {
+      const matchingIds = new Set<StrategicRecordId>();
+      for (const record of view.listStrategicRecords(workspaceId, spaceId)) {
+        if (record.kind !== condition.path) continue;
+        const predicate = condition.predicate;
+        if (
+          predicate.field === "id"
+            ? predicate.in.includes(record.id)
+            : record.state === predicate.equals
+        )
+          matchingIds.add(record.id);
+      }
+      const tasksForCondition = new Set<TaskId>();
+      for (const relation of relations) {
+        if (
+          (condition.path === "area" &&
+            relation.relationType === "task_contributes_to_area" &&
+            matchingIds.has(relation.areaId)) ||
+          (condition.path === "initiative" &&
+            relation.relationType === "task_advances_initiative" &&
+            matchingIds.has(relation.initiativeId))
+        )
+          tasksForCondition.add(relation.taskId);
+      }
+      allowed =
+        allowed === undefined
+          ? tasksForCondition
+          : new Set(
+              [...allowed].filter((taskId) => tasksForCondition.has(taskId)),
+            );
+      continue;
+    }
     const matchingProjectIds = projectsMatchingCondition(
       view,
       workspaceId,
