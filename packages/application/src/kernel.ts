@@ -3203,6 +3203,8 @@ export class ApplicationKernel {
         case "knowledge.list":
         case "knowledge.documentContext":
         case "relationship.workspace":
+        case "opportunity.list":
+        case "relation.list":
         case "person.list":
         case "organization.list":
         case "radar.review":

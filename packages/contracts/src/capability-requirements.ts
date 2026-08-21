@@ -457,6 +457,8 @@ export const QUERY_CAPABILITIES: Readonly<
   "knowledge.list": { capability: "knowledge.list" },
   "knowledge.documentContext": { capability: "knowledge.documentContext" },
   "relationship.workspace": { capability: "relationship.workspace" },
+  "opportunity.list": { capability: "relationship.workspace" },
+  "relation.list": { capability: "relationship.workspace" },
   "person.list": { capability: "person.list" },
   "organization.list": { capability: "organization.list" },
   "radar.review": { capability: "radar.review" },

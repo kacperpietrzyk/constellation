@@ -1589,6 +1589,409 @@ describe("Wave 2 reference semantics", () => {
     );
   });
 
+  it("pages a complete stable Opportunity inventory with exact versions and finality", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("opportunity-page-organization"),
+          commandName: "relationship.organizationCreate",
+          payload: {
+            organizationId,
+            spaceId: ids.rootSpace,
+            name: "Paged Client",
+            relationshipState: "active",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const opportunityIds = [0, 1, 2].map(() =>
+      StrategicRecordIdSchema.parse(requestId()),
+    );
+    for (const [index, opportunityId] of opportunityIds.entries()) {
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(context(), {
+            ...metadata(`opportunity-page-${index}`),
+            commandName: "opportunity.create",
+            payload: {
+              opportunityId,
+              spaceId: ids.rootSpace,
+              title: `Paged opportunity ${index + 1}`,
+              organizationId,
+              personIds: [],
+              need: "Enumerate every deal",
+              qualification: "Qualified",
+              stage: `stage-${index + 1}`,
+              nextAction: "Read the exact version",
+              evidenceSourceIds: [],
+            },
+          }),
+        ).outcome,
+        "success",
+      );
+    }
+
+    const read = (cursor?: string) =>
+      harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "opportunity.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      } as never);
+    const first = read();
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected the first Opportunity inventory page.");
+    assert.equal(first.result.projection.items.length, 2);
+    assert.equal(first.result.projection.totalCount, 3);
+    assert.equal(first.result.projection.final, false);
+    assert.ok(first.result.projection.nextCursor);
+    assert.ok(first.result.projection.snapshot);
+    assert.deepEqual(
+      first.result.projection.items.map((item) => ({
+        id: item.id,
+        version: item.version,
+        stage: item.stage,
+        state: item.state,
+        offerIds: item.offerIds,
+        projectIds: item.projectIds,
+      })),
+      opportunityIds.slice(0, 2).map((id, index) => ({
+        id,
+        version: 1,
+        stage: `stage-${index + 1}`,
+        state: "open",
+        offerIds: [],
+        projectIds: [],
+      })),
+    );
+
+    const second = read(first.result.projection.nextCursor ?? undefined);
+    if (
+      second.kind !== "query_result" ||
+      second.result.outcome !== "success" ||
+      second.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected the final Opportunity inventory page.");
+    assert.deepEqual(
+      second.result.projection.items.map((item) => item.id),
+      opportunityIds.slice(2),
+    );
+    assert.equal(second.result.projection.totalCount, 3);
+    assert.equal(second.result.projection.final, true);
+    assert.equal(second.result.projection.nextCursor, null);
+    assert.equal(
+      second.result.projection.snapshot,
+      first.result.projection.snapshot,
+    );
+  });
+
+  it("rejects an Opportunity cursor when the inventory snapshot changes between pages", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("opportunity-snapshot-organization"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.rootSpace,
+          name: "Snapshot Client",
+          relationshipState: "active",
+        },
+      }),
+    );
+    const createOpportunity = (index: number) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`opportunity-snapshot-${index}`),
+          commandName: "opportunity.create",
+          payload: {
+            opportunityId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            title: `Snapshot opportunity ${index}`,
+            organizationId,
+            personIds: [],
+            need: "Keep pages coherent",
+            qualification: "Qualified",
+            stage: "qualified",
+            nextAction: "Continue paging",
+            evidenceSourceIds: [],
+          },
+        }),
+      );
+    assert.equal(createOpportunity(1).outcome, "success");
+    assert.equal(createOpportunity(2).outcome, "success");
+    const first = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, limit: 1 },
+    });
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected a snapshot cursor.");
+    assert.ok(first.result.projection.nextCursor);
+    assert.equal(createOpportunity(3).outcome, "success");
+
+    const stale = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceId: ids.rootSpace,
+        limit: 1,
+        cursor: first.result.projection.nextCursor ?? "",
+      },
+    });
+    if (stale.kind !== "query_result")
+      throw new Error("Expected a query result.");
+    assert.equal(stale.result.outcome, "rejected");
+    if (stale.result.outcome === "rejected")
+      assert.equal(
+        stale.result.diagnosticCode,
+        "query.consistency_unavailable",
+      );
+  });
+
+  it("rejects an inventory cursor when projection freshness changes between pages", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("opportunity-freshness-organization"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.rootSpace,
+          name: "Freshness Client",
+          relationshipState: "active",
+        },
+      }),
+    );
+    for (const index of [1, 2])
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`opportunity-freshness-${index}`),
+          commandName: "opportunity.create",
+          payload: {
+            opportunityId: StrategicRecordIdSchema.parse(requestId()),
+            spaceId: ids.rootSpace,
+            title: `Freshness opportunity ${index}`,
+            organizationId,
+            personIds: [],
+            need: "Keep freshness coherent",
+            qualification: "Qualified",
+            stage: "qualified",
+            nextAction: "Continue paging",
+            evidenceSourceIds: [],
+          },
+        }),
+      );
+    harness.store.setFreshness({
+      mode: "local_projection",
+      checkpoint: "inventory-checkpoint-a",
+      missingCapabilities: [],
+    });
+    const first = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_projection",
+      parameters: { spaceId: ids.rootSpace, limit: 1 },
+    });
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "opportunity.list"
+    )
+      throw new Error("Expected an inventory freshness cursor.");
+    harness.store.setFreshness({
+      mode: "local_projection",
+      checkpoint: "inventory-checkpoint-b",
+      missingCapabilities: ["remote-opportunity-updates"],
+    });
+    const stale = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "opportunity.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_projection",
+      parameters: {
+        spaceId: ids.rootSpace,
+        limit: 1,
+        cursor: first.result.projection.nextCursor ?? "",
+      },
+    });
+    if (stale.kind !== "query_result") throw new Error("Expected a result.");
+    assert.equal(stale.result.outcome, "rejected");
+    if (stale.result.outcome === "rejected")
+      assert.equal(
+        stale.result.diagnosticCode,
+        "query.consistency_unavailable",
+      );
+  });
+
+  it("keeps malformed inventory cursors behind the same authorization boundary", () => {
+    const harness = setup();
+    const deniedContext = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: requestId(),
+      grantId: requestId(),
+      capabilityScope: context().capabilityScope.filter(
+        (capability) => capability !== "relationship.workspace",
+      ),
+    });
+    harness.authorization.register(deniedContext);
+    const query = (execution: ExecutionContext, cursor?: string) =>
+      harness.kernel.query(execution, {
+        contractVersion: 1,
+        queryName: "opportunity.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      });
+    for (const cursor of [undefined, "not-a-cursor"]) {
+      const denied = query(deniedContext, cursor);
+      if (denied.kind !== "query_result") throw new Error("Expected a result.");
+      assert.equal(denied.result.outcome, "rejected");
+      if (denied.result.outcome === "rejected")
+        assert.equal(denied.result.diagnosticCode, "authorization.denied");
+    }
+    const malformed = query(context(), "not-a-cursor");
+    if (malformed.kind !== "query_result")
+      throw new Error("Expected a result.");
+    assert.equal(malformed.result.outcome, "rejected");
+    if (malformed.result.outcome === "rejected")
+      assert.equal(malformed.result.diagnosticCode, "query.cursor_invalid");
+  });
+
+  it("pages exact relation ids and versions through the final page for safe unrelate", () => {
+    const harness = setup();
+    const { projectId } = createProjectRecord(
+      harness,
+      "Relation inventory target",
+    );
+    const relationIds: RelationId[] = [];
+    for (const index of [0, 1, 2]) {
+      const taskId = createTask(
+        harness,
+        `Relation inventory task ${index + 1}`,
+      );
+      const related = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`relation-inventory-${index}`, {
+            [taskId]: 1,
+            [projectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      );
+      if (
+        related.outcome !== "success" ||
+        related.projection.kind !== "relation.created"
+      )
+        throw new Error("Expected an inventory relation.");
+      relationIds.push(related.projection.relationId);
+    }
+
+    const read = (cursor?: string) =>
+      harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "relation.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceId: ids.rootSpace,
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      });
+    const first = read();
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "relation.list"
+    )
+      throw new Error("Expected the first relation inventory page.");
+    assert.deepEqual(
+      first.result.projection.items.map((item) => ({
+        id: item.id,
+        version: item.version,
+        relationType: item.relationType,
+        targetId: item.targetId,
+        state: item.state,
+      })),
+      relationIds.slice(0, 2).map((id) => ({
+        id,
+        version: 1,
+        relationType: "task_contributes_to_project",
+        targetId: projectId,
+        state: "active",
+      })),
+    );
+    assert.equal(first.result.projection.totalCount, 3);
+    assert.equal(first.result.projection.final, false);
+    assert.ok(first.result.projection.nextCursor);
+
+    const second = read(first.result.projection.nextCursor ?? undefined);
+    if (
+      second.kind !== "query_result" ||
+      second.result.outcome !== "success" ||
+      second.result.projection.kind !== "relation.list"
+    )
+      throw new Error("Expected the final relation inventory page.");
+    assert.deepEqual(
+      second.result.projection.items.map((item) => item.id),
+      relationIds.slice(2),
+    );
+    assert.equal(second.result.projection.final, true);
+    assert.equal(second.result.projection.nextCursor, null);
+
+    const exact = second.result.projection.items[0];
+    assert.ok(exact);
+    const unlinked = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("relation-inventory-unrelate", {
+          [exact.id]: exact.version,
+        }),
+        commandName: "record.unrelate",
+        payload: { relationId: exact.id },
+      }),
+    );
+    assert.equal(unlinked.outcome, "success");
+  });
+
   it("composes one Organization read without duplicating shared Project work", () => {
     const harness = setup();
     const organizationId = StrategicRecordIdSchema.parse(requestId());

@@ -714,6 +714,10 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     // the set-level read and the two creates that accept any name.
     assert.ok(catalog.guidance["query"]?.includes("person.list"));
     assert.ok(catalog.guidance["query"]?.includes("relationship.workspace"));
+    assert.ok(catalog.guidance["query"]?.includes("opportunity.list"));
+    assert.ok(catalog.guidance["query"]?.includes("relation.list"));
+    assert.ok(catalog.guidance["query"]?.includes("nextCursor"));
+    assert.ok(catalog.guidance["query"]?.includes("final"));
     assert.ok(
       catalog.guidance["command"]?.includes("relationship.personCreate"),
     );

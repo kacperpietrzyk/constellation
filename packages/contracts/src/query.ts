@@ -377,6 +377,23 @@ export const RelationshipWorkspaceQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("relationship.workspace"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
+const BoundedInventoryParametersSchema = z
+  .object({
+    spaceId: SpaceIdSchema,
+    limit: z.int().min(1).max(200).optional(),
+    cursor: z.string().trim().min(1).max(500).optional(),
+  })
+  .strict();
+
+export const OpportunityListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("opportunity.list"),
+  parameters: BoundedInventoryParametersSchema,
+}).strict();
+
+export const RelationListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("relation.list"),
+  parameters: BoundedInventoryParametersSchema,
+}).strict();
 // One kind each, on purpose. `relationship.workspace` is one answer and
 // therefore one failure: a single record this build cannot project faults the
 // whole set, which is what took Relacje and Praca down on 0.1.5. These read one
@@ -530,6 +547,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   KnowledgeListQuerySchema,
   KnowledgeDocumentContextQuerySchema,
   RelationshipWorkspaceQuerySchema,
+  OpportunityListQuerySchema,
+  RelationListQuerySchema,
   PersonListQuerySchema,
   OrganizationListQuerySchema,
   RadarReviewQuerySchema,
@@ -638,9 +657,7 @@ export const PersonRecordProjectionSchema = StrategicRecordBaseSchema.extend({
   externalId: z.string().optional(),
 }).strict();
 
-export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
-  OrganizationRecordProjectionSchema,
-  PersonRecordProjectionSchema,
+export const OpportunityRecordProjectionSchema =
   StrategicRecordBaseSchema.extend({
     kind: z.literal("opportunity"),
     title: z.string(),
@@ -655,21 +672,22 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     // put a number on it — never a zero.
     estimate: MoneySchema.optional(),
     stage: z.string(),
-    /**
-     * When the deal entered the stage it stands in. Absent on deals written
-     * before the stage could move at all; a reader must say "unknown", never
-     * fall back to the record's own age, which is the number this field exists
-     * to stop being mistaken for.
-     */
+    // Absent on deals written before stage movement was recorded; readers must
+    // say unknown rather than substitute record age.
     stageEnteredAt: z.iso.datetime({ offset: true }).optional(),
     nextAction: z.string(),
     evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
     offerIds: z.array(StrategicRecordIdSchema),
     projectIds: z.array(ProjectIdSchema),
     state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
-    /** See the organization arm: looser than the command's bound, on purpose. */
+    // Looser than the command bound so older stored values stay readable.
     externalId: z.string().optional(),
-  }).strict(),
+  }).strict();
+
+export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
+  OrganizationRecordProjectionSchema,
+  PersonRecordProjectionSchema,
+  OpportunityRecordProjectionSchema,
   StrategicRecordBaseSchema.extend({
     kind: z.literal("offer"),
     title: z.string(),
@@ -1134,6 +1152,48 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("relationship.workspace"),
       records: z.array(StrategicRecordProjectionSchema),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("opportunity.list"),
+      items: z.array(OpportunityRecordProjectionSchema),
+      totalCount: z.int().nonnegative(),
+      snapshot: z.string().min(1),
+      nextCursor: z.string().nullable(),
+      final: z.boolean(),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("relation.list"),
+      items: z.array(
+        z
+          .object({
+            id: RelationIdSchema,
+            workspaceId: WorkspaceIdSchema,
+            spaceId: SpaceIdSchema,
+            relationType: z.enum([
+              "task_contributes_to_project",
+              "task_contributes_to_opportunity",
+              "task_contributes_to_area",
+              "task_advances_initiative",
+            ]),
+            taskId: TaskIdSchema,
+            targetId: z.uuid(),
+            state: z.enum(["active", "removed"]),
+            removedAt: z.iso.datetime({ offset: true }).optional(),
+            version: z.int().positive(),
+            createdAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      totalCount: z.int().nonnegative(),
+      snapshot: z.string().min(1),
+      nextCursor: z.string().nullable(),
+      final: z.boolean(),
       freshness: FreshnessSchema,
     })
     .strict(),

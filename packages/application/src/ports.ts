@@ -117,8 +117,20 @@ export interface TaskDuePaginationCursor {
   readonly recordId: TaskId;
 }
 
+export interface InventoryPaginationCursor {
+  readonly kind: "opportunity_inventory" | "relation_inventory";
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly snapshot: string;
+  readonly orderedAt: string;
+  readonly recordId: StrategicRecordId | RelationId;
+}
+
 export type PaginationCursor =
-  CapturePaginationCursor | TaskPaginationCursor | TaskDuePaginationCursor;
+  | CapturePaginationCursor
+  | TaskPaginationCursor
+  | TaskDuePaginationCursor
+  | InventoryPaginationCursor;
 
 export interface PaginationCursorCodec {
   encode(cursor: PaginationCursor): string;

@@ -350,6 +350,8 @@ export type Wave2Query = Extract<
       | "knowledge.list"
       | "knowledge.documentContext"
       | "relationship.workspace"
+      | "opportunity.list"
+      | "relation.list"
       | "person.list"
       | "organization.list"
       | "radar.review"
@@ -13650,6 +13652,147 @@ export const executeWave2Query = (
       })),
       ...(last === undefined ? {} : { nextCursor: last.id }),
       hasMore: start + page.length < events.length,
+    });
+  }
+  if (query.queryName === "opportunity.list") {
+    const records = view
+      .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+      .filter(
+        (record): record is Extract<StrategicRecord, { kind: "opportunity" }> =>
+          record.kind === "opportunity" && !strategicRecordIsDeleted(record),
+      )
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+    const snapshot = dependencies.hasher.fingerprint({ records, freshness });
+    let start = 0;
+    if (query.parameters.cursor !== undefined) {
+      const decoded = dependencies.cursorCodec.decode(query.parameters.cursor);
+      if (
+        decoded?.kind !== "opportunity_inventory" ||
+        decoded.workspaceId !== query.workspaceId ||
+        decoded.spaceId !== query.parameters.spaceId
+      )
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      if (decoded.snapshot !== snapshot)
+        return queryRejected(
+          query,
+          kernelTime,
+          "query.consistency_unavailable",
+        );
+      const anchor = records.findIndex(
+        (record) =>
+          record.id === decoded.recordId &&
+          record.createdAt === decoded.orderedAt,
+      );
+      if (anchor < 0)
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      start = anchor + 1;
+    }
+    const limit = query.parameters.limit ?? 50;
+    const page = records.slice(start, start + limit);
+    const last = page.at(-1);
+    const final = start + page.length >= records.length;
+    const nextCursor =
+      !final && last !== undefined
+        ? dependencies.cursorCodec.encode({
+            kind: "opportunity_inventory",
+            workspaceId: query.workspaceId,
+            spaceId: query.parameters.spaceId,
+            snapshot,
+            orderedAt: last.createdAt,
+            recordId: last.id,
+          })
+        : null;
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "opportunity.list",
+      items: page.map(strategicRecordProjection),
+      totalCount: records.length,
+      snapshot,
+      nextCursor,
+      final,
+      freshness,
+    });
+  }
+  if (query.queryName === "relation.list") {
+    const records = view
+      .listRelations(query.workspaceId, query.parameters.spaceId)
+      .slice()
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+    const snapshot = dependencies.hasher.fingerprint({ records, freshness });
+    let start = 0;
+    if (query.parameters.cursor !== undefined) {
+      const decoded = dependencies.cursorCodec.decode(query.parameters.cursor);
+      if (
+        decoded?.kind !== "relation_inventory" ||
+        decoded.workspaceId !== query.workspaceId ||
+        decoded.spaceId !== query.parameters.spaceId
+      )
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      if (decoded.snapshot !== snapshot)
+        return queryRejected(
+          query,
+          kernelTime,
+          "query.consistency_unavailable",
+        );
+      const anchor = records.findIndex(
+        (record) =>
+          record.id === decoded.recordId &&
+          record.createdAt === decoded.orderedAt,
+      );
+      if (anchor < 0)
+        return queryRejected(query, kernelTime, "query.cursor_invalid");
+      start = anchor + 1;
+    }
+    const limit = query.parameters.limit ?? 50;
+    const page = records.slice(start, start + limit);
+    const last = page.at(-1);
+    const final = start + page.length >= records.length;
+    const nextCursor =
+      !final && last !== undefined
+        ? dependencies.cursorCodec.encode({
+            kind: "relation_inventory",
+            workspaceId: query.workspaceId,
+            spaceId: query.parameters.spaceId,
+            snapshot,
+            orderedAt: last.createdAt,
+            recordId: last.id,
+          })
+        : null;
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "relation.list",
+      items: page.map((relation) => ({
+        id: relation.id,
+        workspaceId: relation.workspaceId,
+        spaceId: relation.spaceId,
+        relationType: relation.relationType,
+        taskId: relation.taskId,
+        targetId:
+          relation.relationType === "task_contributes_to_project"
+            ? relation.projectId
+            : relation.relationType === "task_contributes_to_opportunity"
+              ? relation.opportunityId
+              : relation.relationType === "task_contributes_to_area"
+                ? relation.areaId
+                : relation.initiativeId,
+        state: relation.state,
+        ...(relation.removedAt === undefined
+          ? {}
+          : { removedAt: relation.removedAt }),
+        version: relation.version,
+        createdAt: relation.createdAt,
+      })),
+      totalCount: records.length,
+      snapshot,
+      nextCursor,
+      final,
+      freshness,
     });
   }
   if (query.queryName === "relationship.workspace") {

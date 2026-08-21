@@ -1,4 +1,11 @@
-import { CaptureIdSchema, TaskIdSchema } from "@constellation/contracts";
+import {
+  CaptureIdSchema,
+  RelationIdSchema,
+  SpaceIdSchema,
+  StrategicRecordIdSchema,
+  TaskIdSchema,
+  WorkspaceIdSchema,
+} from "@constellation/contracts";
 
 import type { PaginationCursor, PaginationCursorCodec } from "./ports.js";
 
@@ -66,11 +73,21 @@ export class Base64JsonCursorCodec implements PaginationCursorCodec {
               orderedAt: cursor.orderedAt,
               recordId: cursor.recordId,
             }
-          : {
-              kind: cursor.kind,
-              orderedAt: cursor.orderedAt,
-              recordId: cursor.recordId,
-            },
+          : cursor.kind === "opportunity_inventory" ||
+              cursor.kind === "relation_inventory"
+            ? {
+                kind: cursor.kind,
+                workspaceId: cursor.workspaceId,
+                spaceId: cursor.spaceId,
+                snapshot: cursor.snapshot,
+                orderedAt: cursor.orderedAt,
+                recordId: cursor.recordId,
+              }
+            : {
+                kind: cursor.kind,
+                orderedAt: cursor.orderedAt,
+                recordId: cursor.recordId,
+              },
       ),
     );
   }
@@ -112,6 +129,33 @@ export class Base64JsonCursorCodec implements PaginationCursorCodec {
                 candidate.priority as (typeof TASK_DUE_CURSOR_PRIORITIES)[number],
               orderedAt: candidate.orderedAt,
               recordId: taskId.data,
+            }
+          : undefined;
+      }
+      if (
+        candidate.kind === "opportunity_inventory" ||
+        candidate.kind === "relation_inventory"
+      ) {
+        const workspaceId = WorkspaceIdSchema.safeParse(candidate.workspaceId);
+        const spaceId = SpaceIdSchema.safeParse(candidate.spaceId);
+        const recordId =
+          candidate.kind === "opportunity_inventory"
+            ? StrategicRecordIdSchema.safeParse(candidate.recordId)
+            : RelationIdSchema.safeParse(candidate.recordId);
+        return keys ===
+          "kind,orderedAt,recordId,snapshot,spaceId,workspaceId" &&
+          workspaceId.success &&
+          spaceId.success &&
+          recordId.success &&
+          typeof candidate.snapshot === "string" &&
+          candidate.snapshot.length > 0
+          ? {
+              kind: candidate.kind,
+              workspaceId: workspaceId.data,
+              spaceId: spaceId.data,
+              snapshot: candidate.snapshot,
+              orderedAt: candidate.orderedAt,
+              recordId: recordId.data,
             }
           : undefined;
       }

@@ -129,7 +129,56 @@ export type KnowledgeDocumentContextProjection =
   Projection<"knowledge.documentContext">;
 export type RelationshipWorkspaceProjection =
   Projection<"relationship.workspace">;
+export type OpportunityListProjection = Projection<"opportunity.list">;
+export type RelationListProjection = Projection<"relation.list">;
 export type RadarReviewProjection = Projection<"radar.review">;
+
+interface InventoryPage<Item> {
+  readonly items: readonly Item[];
+  readonly totalCount: number;
+  readonly snapshot: string;
+  readonly nextCursor: string | null;
+  readonly final: boolean;
+}
+
+export const collectInventoryPages = async <Item>(
+  read: (cursor?: string) => Promise<InventoryPage<Item>>,
+): Promise<InventoryPage<Item>> => {
+  const items: Item[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  let snapshot: string | undefined;
+  let totalCount: number | undefined;
+  for (;;) {
+    const current = await read(cursor);
+    snapshot ??= current.snapshot;
+    totalCount ??= current.totalCount;
+    if (current.snapshot !== snapshot)
+      throw new Error("Inventory snapshot changed between pages.");
+    if (current.totalCount !== totalCount)
+      throw new Error("Inventory totalCount changed between pages.");
+    items.push(...current.items);
+    if (current.final) {
+      if (current.nextCursor !== null)
+        throw new Error("A final inventory page carried nextCursor.");
+      if (items.length !== totalCount)
+        throw new Error("Inventory item count does not match totalCount.");
+      return {
+        items,
+        totalCount,
+        snapshot,
+        nextCursor: null,
+        final: true,
+      };
+    }
+    if (current.nextCursor === null)
+      throw new Error("A non-final inventory page omitted nextCursor.");
+    if (seen.has(current.nextCursor))
+      throw new Error("Inventory cursor repeated before finality.");
+    seen.add(current.nextCursor);
+    cursor = current.nextCursor;
+  }
+};
 export type CommentTarget = CommentListProjection["target"];
 
 /**
@@ -237,6 +286,8 @@ export interface DesktopSnapshot {
   readonly documents: DataSlice<DocumentListProjection>;
   readonly knowledge: DataSlice<KnowledgeListProjection>;
   readonly relationships: DataSlice<RelationshipWorkspaceProjection>;
+  readonly opportunities?: DataSlice<OpportunityListProjection>;
+  readonly relations?: DataSlice<RelationListProjection>;
   readonly radar: DataSlice<RadarReviewProjection>;
   readonly dataHome?: DataHomeStatus;
 }
@@ -513,6 +564,8 @@ export const loadDesktopSnapshot = async (
     documents,
     knowledge,
     relationships,
+    opportunities,
+    relations,
     radar,
   ] = await Promise.all([
     queryProjection(
@@ -621,6 +674,58 @@ export const loadDesktopSnapshot = async (
       ),
     ),
     optionalProjection(
+      (async (): Promise<OpportunityListProjection> => {
+        let freshness: OpportunityListProjection["freshness"] | undefined;
+        const complete = await collectInventoryPages(async (cursor) => {
+          const page = await queryProjection(
+            client,
+            queryEnvelope("opportunity.list", workspaceId, {
+              spaceId,
+              limit: 100,
+              ...(cursor === undefined ? {} : { cursor }),
+            }),
+            "opportunity.list",
+          );
+          freshness ??= page.freshness;
+          return page;
+        });
+        if (freshness === undefined)
+          throw new Error("Opportunity inventory returned no freshness.");
+        return {
+          kind: "opportunity.list",
+          ...complete,
+          items: [...complete.items],
+          freshness,
+        };
+      })(),
+    ),
+    optionalProjection(
+      (async (): Promise<RelationListProjection> => {
+        let freshness: RelationListProjection["freshness"] | undefined;
+        const complete = await collectInventoryPages(async (cursor) => {
+          const page = await queryProjection(
+            client,
+            queryEnvelope("relation.list", workspaceId, {
+              spaceId,
+              limit: 100,
+              ...(cursor === undefined ? {} : { cursor }),
+            }),
+            "relation.list",
+          );
+          freshness ??= page.freshness;
+          return page;
+        });
+        if (freshness === undefined)
+          throw new Error("Relation inventory returned no freshness.");
+        return {
+          kind: "relation.list",
+          ...complete,
+          items: [...complete.items],
+          freshness,
+        };
+      })(),
+    ),
+    optionalProjection(
       queryProjection(
         client,
         queryEnvelope("radar.review", workspaceId, { spaceId, limit: 12 }),
@@ -696,6 +801,8 @@ export const loadDesktopSnapshot = async (
     documents,
     knowledge,
     relationships,
+    opportunities,
+    relations,
     radar,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
