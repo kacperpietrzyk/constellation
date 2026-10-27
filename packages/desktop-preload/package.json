@@ -23,7 +23,7 @@
     "@constellation/contracts": "0.0.0"
   },
   "devDependencies": {
-    "electron": "43.2.0",
+    "electron": "43.8.1",
     "vite": "8.1.5"
   }
 }
